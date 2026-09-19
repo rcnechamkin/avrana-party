@@ -1,0 +1,232 @@
+# Claude Code handoff: Avrana Party
+
+You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
+
+## Latest user feedback and immediate priority
+
+The user reports: **“The entire affair is super laggy.”** This refers to the new Gauntlet II phone-streaming prototype. It is a working experiment, NOT a successful low-latency gaming MVP yet. The previous agent established ROM compatibility, emulation, encoding, local WebRTC reception, and controller injection, but did not establish acceptable real-phone latency.
+
+Your next job is to diagnose and substantially reduce actual phone gameplay latency and instability. Do not add Player 2 yet. Do not mistake 60 encoded frames per second for low latency. Measure before choosing a major rewrite.
+
+## Product and constraints
+
+Avrana Party is a portable, self-contained local multiplayer appliance. One central device hosts games; phones connect to its Wi-Fi and act as screens/controllers. Core gameplay must eventually work without internet, accounts, or app installation. Normal players should see Avrana Party, clean local URLs, and simple game flows—not IPs, ports, Linux or emulator administration.
+
+Current hardware is a Raspberry Pi 4 Model B Rev 1.5, approximately 4 GB RAM, ARM64 Debian 13 Trixie. Kernel observed: 6.18.39+rpt-rpi-v8. About 100+ GB storage remains. Both HDMI ports are disconnected. This is a headless machine.
+
+The original MVP is browser-native LAN Games. A later explicit user request authorized emulation, streaming, and virtual controllers for a NEW MVP. Do not treat the earlier “no streaming/emulation” scope as still prohibiting this new work.
+
+New MVP target:
+
+Gauntlet II arcade runs ONCE on the Pi -> one shared render -> ideally one hardware video encode -> same encoded content to all phones. Each phone independently controls its own player. Never launch an emulator session per phone. Priorities: latency, stability, low Pi resource usage, independent players, then picture quality. 480p is acceptable; 720p is plenty.
+
+Preserve LAN Games, nginx, Avahi, systemd, NetworkManager and management access. Avoid Docker/cloud/HTTPS certificate hacks unless a concrete need emerges. No public STUN/TURN or internet dependency is needed on this local network. Do not download ROMs. Keep the user's supplied archive UNCHANGED.
+
+## Existing infrastructure: working, preserve it
+
+- `wlan1`: USB Realtek Wi-Fi 6 adapter (USB ID 0bda:b851), dedicated AP.
+- NetworkManager connection and SSID: `Avrana Party`.
+- Shared IPv4 mode, AP address `10.42.0.1/24`, autoconnect enabled. NetworkManager supplies DHCP, NAT and dnsmasq.
+- `wlan0`: home Wi-Fi / management fallback, address previously `10.0.0.143`. Currently connected to profile `SpicyMamiMrKiwi IoT`. Do not casually disconnect it.
+- `eth0`: currently disconnected. This is not an offline test: wlan0 still provides upstream internet.
+- System hostname remains `RaspberryPi`; Avahi explicitly advertises `party.local` via `host-name=party` in `/etc/avahi/avahi-daemon.conf`. Do not rename it to avrana.local; another real server uses that name.
+- LAN Games: `/home/cody/LAN-Games`, existing venv `.venv`, Python server on port 8096.
+- Service: `avranaparty-games.service`, enabled and active. Do not modify its Python environment for the arcade experiment.
+- nginx site: `/etc/nginx/sites-available/avrana-party`, enabled by symlink, default site removed.
+- `http://party.local/` proxies to `127.0.0.1:8096` with WebSocket support.
+- `http://party.local/arcade/` now proxies to `127.0.0.1:8097/` with WebSocket support and proxy buffering disabled.
+- All of nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade were active at handoff.
+
+### Captive portal: user confirmed it works perfectly
+
+- Live landing HTML: `/var/www/avrana-portal/index.html`.
+- Editable source: `/home/cody/avrana-party/portal/index.html`.
+- nginx exact `/hotspot-detect.html` serves this file with 200 and `Cache-Control: no-store`, `etag off`, `if_modified_since off`.
+- Play links to `http://party.local/`.
+- Captive DNS config: `/etc/NetworkManager/dnsmasq-shared.d/avrana-captive.conf`.
+- Important fix: intercept BOTH `captive.apple.com` AND `captive.g.aaplimg.com` to 10.42.0.1, with `local=/.../` rules for both. Without the alias/local rules, iPhone queried Apple's alias directly and fetched Apple's actual Success page through upstream internet. A packet capture proved this. Do not regress that fix.
+- Other existing interception names include Google/Android, Microsoft and Firefox, but their complete captive flows have not been validated.
+- Do not return Apple's expected Success page or intentionally break the working portal.
+- iOS captive assistant does not provide a dependable webpage-controlled handoff to the preferred browser. User accepted manually opening the regular browser. Arcade testing was requested in the regular browser.
+- Earlier boot test of LAN Games/AP/nginx/Avahi worked according to owner; the new arcade service has NOT yet had a physical cold-boot acceptance test.
+
+## ROM compatibility: solved, do not reopen unnecessarily
+
+User means **Gauntlet II arcade (1986), four-player, short name `gaunt2`**, NOT the original 1985 Gauntlet.
+
+Original archive:
+`/srv/avrana/roms/arcade/gaunt2.zip`
+
+Original SHA-256:
+`ba854a6494fde461138f00550bd2fd38e6afe4cb93bc8e42a15245a0bc8d090e`
+
+Debian standalone MAME 0.276 was installed first and rejected this legacy set:
+- `136043-1104.6p`: expected 16384 bytes / CRC bddc3dfc; supplied 8192 bytes / CRC 1343cf6f.
+- `82s129-136043-1103.4r`: missing; archive instead has legacy `74s287-136037-103.4r`, CRC 6c5ccf08.
+
+This does NOT mean the supplied ROM is unusable. The user explicitly preferred finding a compatible older emulator rather than replacing individual files.
+
+**Selected solution: RetroArch + MAME 2010 (MAME 0.139). All 26 supplied files match name, size, CRC and SHA-1 against the EXACT source revision reported by the installed core. The actual game loads and runs.**
+
+- Core binary: `/home/cody/avrana-party/arcade/cores/mame2010_libretro.so`.
+- Core reports `MAME 2010`, version `0.139 dff8aad`.
+- Source revision: `dff8aadd1c3f38215af3955746d6e19abe0ddcea`.
+- Official download used: `https://buildbot.libretro.com/nightly/linux/aarch64/latest/mame2010_libretro.so.zip`.
+- Core SHA-256: `c57b5072c1b3963bd54766bfc9b68c2123b62c78831f2721fd07d4c8405a775b`.
+- Provenance: `arcade/evidence/selected-core.json`.
+- Pinned driver source: `arcade/evidence/mame2010-gauntlet.c`.
+- Re-run audit: `python3 /home/cody/avrana-party/arcade/audit-legacy-rom.py`.
+- Audit report: `arcade/evidence/gaunt2-mame2010-audit.json`.
+- No ROM files were downloaded, patched, padded, renamed, or replaced.
+- MAME 2010 supports four joypads. Its old non-commercial MAME license makes it a private prototype choice, not a cleared commercial distribution choice.
+
+## Current arcade implementation
+
+All project files: `/home/cody/avrana-party/arcade/`.
+There was no existing RetroArch setup before this experiment. OS packages were installed; no Docker was introduced.
+
+### Runtime chain
+
+`avranaparty-arcade.service`
+-> `run-stream.sh`
+-> `with-audio.sh` starts a private PulseAudio null sink
+-> `xvfb-run` starts private 640x480 X display
+-> `stream.py` starts virtual controller(s), one RetroArch instance, capture/encode, and HTTP/WebSocket signaling.
+
+- Service runs as `cody`, supplementary groups `input video render`.
+- Enabled at boot; `Restart=on-failure`, `KillMode=control-group`, stop timeout 10 sec.
+- Service definition: `/etc/systemd/system/avranaparty-arcade.service`; editable copy in arcade directory.
+- The emulator and encoder currently keep running even with zero viewers. This is intentional prototype behavior, not optimized appliance idle behavior.
+- PulseAudio socket: `arcade/runtime/pulse/native`; sink `avrana_arcade`, monitor `avrana_arcade.monitor`.
+- Audio wrapper: `with-audio.sh`; pulse log `runtime/pulse.log`.
+- RetroArch config: `retroarch.cfg`; core options `core-options.cfg`.
+- RetroArch GL display path works in Xvfb using software rendering. SDL2 video path segfaulted during display initialization even with software renderer forced. Do not switch back blindly.
+- Emulator log: `runtime/emulator.log`, capped by `stream.py` (copy-truncated at 20 MB to `emulator.log.1`; the file is truncated again at each service start). `retroarch.cfg` uses `libretro_log_level = "2"` because the MAME 2010 core otherwise logged ~100 KB/s of `read 'pokey' POT*` INFO warnings (6 GB in a day). Runtime/save directories under `arcade/runtime/`; RetroArch also writes its per-core options under `/home/cody/.config/retroarch/config/MAME 2010/`—check overrides when tuning.
+- `run-local.sh` runs only the audited game on a private display; `with-audio.sh sh run-local.sh ...` adds paced audio.
+
+### Video/audio transport
+
+`stream.py` uses distro Python 3.13, aiohttp and PyGObject/GStreamer.
+
+One capture pipeline:
+- `ximagesrc use-damage=false show-pointer=false`
+- 60 fps raw capture, conversion to I420
+- **one `v4l2h264enc` on `/dev/video11`**
+- target bitrate 2.5 Mbit/s, IDR period 60, repeated sequence headers
+- H.264 constrained baseline, level 3.1, byte-stream access units
+- encoded `appsink` distributes buffers to per-peer nonblocking bounded `appsrc` queues
+- each peer has its own RTP packetizers, `webrtcbin` and DTLS/SRTP transport pipeline
+- one PulseAudio capture -> Opus encode (64 kbit/s, 10 ms frames), similarly distributed.
+
+The initial dynamic tee/branch approach stalled during connect/disconnect, so current implementation separates capture from peer transport using appsink/appsrc. Source comments/docs in older sections may describe the abandoned tee topology; inspect current code.
+
+Peer pipelines use the capture pipeline clock/base time to preserve timestamps. This is worth reviewing when diagnosing accumulating delay. Generic GStreamer defaults were not comprehensively tuned for gaming.
+
+No public ICE servers. Per-peer WebRTC connections are unicast: one encode does not imply one Wi-Fi transmission for all viewers.
+
+### Controller path
+
+- **`MAX_PLAYERS = 1`** in stream.py. Do not increase until real P1 experience is acceptable.
+- Creates a named evdev/uinput pad (`Avrana Player 1`) BEFORE starting RetroArch.
+- RetroArch joypad driver is `udev`; explicit axis/button mappings are in retroarch.cfg.
+- Directions use ABS_X/ABS_Y. Fire/Magic/Coin/Start map to BTN_SOUTH/BTN_EAST/BTN_SELECT/BTN_START.
+- MAME core maps RetroPad A/B/select/start to action buttons/coin/start.
+- The browser sends full held-button snapshots over a SAME-ORIGIN WebSocket at 20 Hz and immediately on touch changes. Video/audio travel over WebRTC; controller input currently does NOT use a WebRTC data channel.
+- Server assigns/reserves the player slot; clients cannot select another slot or submit arbitrary OS keys.
+- Server clears held inputs after ~300 ms without updates and on disconnect. Browser clears on blur/background/pagehide.
+- `/dev/uinput` initially existed as a node but the module was not loaded. `modprobe uinput` fixed this.
+- Boot module config: `/etc/modules-load.d/avrana-uinput.conf`.
+- Permission rule: `/etc/udev/rules.d/70-avrana-uinput.rules` gives existing `input` group mode 0660. No root web service, no world-writable uinput.
+
+### Browser UI
+
+`arcade/index.html` is served by aiohttp through nginx at `http://party.local/arcade/`.
+
+- Video element uses autoplay, playsinline, muted.
+- User must tap Play to establish the connection. User initially saw black and had not pressed Play; pressing Play made the difference.
+- Latest change puts a large **Play Gauntlet II** button over the black video area; overlay disappears on video `playing` event. This file-only update needs page refresh, not service restart.
+- Audio enabled separately by a user gesture.
+- Touch D-pad plus Fire, Magic, Add coin, Start.
+- Connection details show browser inbound frame rate, decoded frames and lost packets.
+- UI is rough. Touch ergonomics, landscape layout, reconnection, stats/error messages and browser lifecycle handling need real-device testing.
+
+## Verified results—understand their limits
+
+1. ROM audit: 26/26 exact match; original ZIP checksum unchanged.
+2. Compatible core actually loads Gauntlet II. Title/attract screenshots saved.
+3. Paced local run: 3600 frames in 62.06 seconds including startup. Screenshot showed ~60 fps; core target 59.92 Hz. CPU time 79.06 sec (~1.27 cores average). Maximum child RSS ~215 MiB. This is attract-mode evidence, not sustained four-player gameplay.
+4. Hardware FFmpeg synthetic tests passed: 600 frames each at 640x480 and 960x720 using h264_v4l2m2m on video11. Throughput exceeded real time. NOT latency measurements.
+5. Local independent GStreamer receiver negotiated and decoded video + Opus, then disconnected/reconnected without stopping capture. Test file `test-receiver.py`; `--controls` inserts P1 coin and a short direction/fire input. Do not run this while the owner is using the sole P1 slot.
+6. Kernel input capture proved coin/fire/right events. After stopping updates while held, fire and axis released after ~310 ms. Evidence `controller-events.json`. Screenshot shows the red player's character-selection state responding.
+7. 10-second full-service baseline with ZERO viewers: ~59.96 encoded fps, ~2.01 of four CPU cores, summed process RSS ~332 MiB (shared pages double-counted), actual encoded bitrate ~1.50 Mbit/s during that scene. File `evidence/service-measurement.json`.
+8. `/dev/video11` was owned by one service Python process. The stats field `video_encoders: 1` is hardcoded descriptive metadata, NOT an independent encoder-count measurement.
+9. Wrong-Origin WebSocket request returns 403; arcade UI and existing LAN Games return 200. Captive probe continues returning landing HTML.
+10. User could reach UI and start the stream, but now reports the entire experience is SUPER LAGGY. End-to-end latency, real-phone frame timing, audio drift and sustained control responsiveness are unmeasured. Do not declare success from local tests.
+
+Useful evidence files in `arcade/evidence/`:
+- `gaunt2-paced-run.json`, `gaunt2-paced-run.log`, `gaunt2-paced.png`
+- `gaunt2-player1.png`
+- `receiver-test.log`, `receiver-controls-test.log`
+- `controller-events.json`
+- `encode-*.json`, `encode-summary.log`
+- `service-measurement.json`
+- pinned/downloaded source and initial comparisons
+
+Older failed run files exist, including SDL segfault runs and receiver GDB output. Receiver crash was fixed by retaining/copying Gst promise structures/session descriptions. Keep that lifetime fix. SDP offer creation now waits until both media caps reach the WebRTC pads; early offers previously omitted video.
+
+## Diagnose lag next: concrete investigation sequence
+
+1. Reproduce with ONE phone. Confirm exact browser, actual SSID/interface, visible frame rate, and whether “lag” means low fps, a smooth-but-delayed picture, delayed controls, audio drift, or all of them. Inspect existing logs first; do not make the owner repeat things you can observe.
+2. Verify the actual network path. Several iPhone requests in nginx logs used a **global home-network IPv6 source**, while AP clients are normally 10.42.0.x/link-local. Do NOT assume every test used wlan1. This is evidence to investigate, not proof of the cause. Check selected ICE candidate pair and interface traffic, AP signal/rate/retries/frequency, and browser path. Preserve wlan0 management.
+3. Add useful browser diagnostics: selected ICE candidate pair/RTT, inbound frames received/decoded/dropped, jitterBufferDelay divided by jitterBufferEmittedCount, processing time, frame age where measurable, video playback state. Read stats over intervals, not lifetime counters alone. Avoid calling network RTT “input-to-photon latency.”
+4. Measure per-process/cgroup CPU while the PHONE decodes, memory, thermal flags, game pacing, captured/encoded fps, Wi-Fi throughput and packet loss. Do not benchmark with the Pi simultaneously decoding the test stream and extrapolate that CPU load to phone playback.
+5. Inspect buffering/timestamps at every stage. Current stack uses generic PulseAudio/pulsesrc, appsrc queues, RTP and webrtcbin defaults. Check audio buffering/clock sync, WebRTC jitter-buffer latency, accumulated PTS offsets, appsrc queue levels and whether frames are already old when sent. Enforce short bounded queues and recoverable frame dropping. PLI/keyframe feedback in per-peer pipelines is not explicitly bridged back to the shared encoder; periodic IDRs are currently the fallback.
+6. Isolate audio: test video/control latency with audio capture/transport disabled while preserving emulator pacing. Muting the browser is not equivalent to removing audio transport/synchronization.
+7. Try a controlled lower-cost profile (e.g. encode/capture 480p30 or near-native size, while keeping emulation full speed), measure benefit before changing defaults. The software GL/Xvfb capture path consumes significant CPU; evaluate simpler capture/render approaches only if measurements justify them.
+8. Check touch/UI and input latency separately. WebSocket snapshots are simple but can suffer TCP ordering delays; a small unordered WebRTC data channel with full-state snapshots and timeout release is a candidate improvement if input transport is the bottleneck. Do not assume it fixes video buffering.
+9. Measure real input-to-photon latency with high-frame-rate filming of touch and screen response if possible. Report limitations and median/p95 rather than invented numbers.
+10. Only once one phone is playable, admit P2, verify independent controller/coin/player assignment with one emulator and encoder; then P3/P4 and viewer-scaling metrics. Finally cold boot and full offline acceptance.
+
+Current hardware showed `vcgencmd get_throttled=0x50000` (historical undervoltage/throttling, no active flags) and temperature ~49.1 C at last check. Watch under load; don't assume power is perfect or claim active throttling from historical bits alone.
+
+## Alternatives already considered
+
+- Sunshine currently publishes ARM64 Debian Trixie packages. Don't claim it lacks ARM64 support. Its inspected video.cpp creates per-session encoding contexts and lacks the Pi V4L2 encoder backend; its input code does allocate separate global gamepad IDs per client. Not shown to meet one-Pi-hardware-encode/multiple-clients requirement.
+- Wolf is session/container-oriented; no verified simpler Pi shared-encode route established.
+- Current Selkies offers ARM64 packages/browser support but documented hardware encoder backends are NVENC/VA-API, not bcm2835 V4L2. Could be a reference, not assumed turnkey Pi acceleration.
+- Current FBNeo driver expects the newer graphics dump too. MAME 2010 is the established exact ROM match, so no need to switch emulators merely for recency.
+
+Sources:
+https://docs.libretro.com/library/mame_2010/
+https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp
+https://github.com/selkies-project/selkies/blob/main/docs/component.md
+https://gstreamer.freedesktop.org/documentation/webrtc/
+https://gstreamer.freedesktop.org/documentation/rtp/rtph264pay.html
+
+## Operations, rollback and cautions
+
+```sh
+sudo systemctl status avranaparty-arcade
+sudo journalctl -u avranaparty-arcade -n 100 --no-pager
+curl http://party.local/arcade/stats
+sudo systemctl restart avranaparty-arcade
+python3 /home/cody/avrana-party/arcade/audit-legacy-rom.py
+```
+
+To stop just this experiment:
+`sudo systemctl disable --now avranaparty-arcade`
+LAN Games/AP/portal remain operational; /arcade/ will return 502 while stopped.
+
+nginx backup before arcade route:
+`/home/cody/avrana-party/backups/20260919T043756859916Z/avrana-party`
+Do not blindly restore it if newer site edits exist. Editable copies of current site are `/home/cody/avrana-party/avrana-party.nginx` and `arcade/nginx-site`; keep relevant copies aligned if changing routing. `arcade/install-service.py` installs `arcade/nginx-site` over the live site and then copies it over `avrana-party.nginx`, so `arcade/nginx-site`, `avrana-party.nginx` and `/etc/nginx/sites-available/avrana-party` MUST stay byte-identical (reconciled 2026-09-19 after `nginx-site` had drifted and would have reverted the captive-portal `/hotspot-detect.html` behavior; check with `cmp`).
+
+`install-service.py` and the older portal installers exist for provenance/recovery; do not rerun them blindly over later changes. `arcade/README.md` includes historical superseded sections; this handoff and current runtime code should guide the next step.
+
+Normal systemd stop currently logs shell exit 143 / XIO because the whole process group is stopped. Clean shutdown/reporting could be improved; distinguish intentional stops from real crashes. Fatal pipeline error handling also needs review: it can mark an error and close peers without necessarily exiting the process to trigger Restart=on-failure. Not yet appliance-grade.
+
+The prior session sometimes needed the owner to run sudo locally, but `sudo -n` later worked. Test current privileges; never request passwords in chat. Use reversible scoped changes, backups and nginx validation. No need to ask permission repeatedly for already authorized diagnostic/development work.
+
+Do not spawn additional agents unless the user or applicable local instructions explicitly authorize it. The user values direct action, clear evidence and short progress updates. If you reach a physical-phone test gate, prepare everything first and ask one concrete test question.
+
+Start by acknowledging that the streaming latency is currently unacceptable, inspect the active service and real client statistics, and work toward a genuinely playable one-phone experience. Preserve the existing successful browser-party platform throughout.

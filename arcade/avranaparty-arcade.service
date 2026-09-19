@@ -1,0 +1,18 @@
+[Unit]
+Description=Avrana Party Gauntlet II streaming prototype
+After=network.target
+
+[Service]
+Type=simple
+User=cody
+WorkingDirectory=/home/cody/avrana-party/arcade
+SupplementaryGroups=input video render
+ExecStart=/bin/sh /home/cody/avrana-party/arcade/run-stream.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+KillMode=control-group
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#15132b">
+<title>Avrana Party · Gauntlet II</title>
+<style>
+*{box-sizing:border-box;touch-action:manipulation}
+html{overscroll-behavior:none}
+body{margin:0;background:#15132b;color:#eee;font-family:system-ui,sans-serif;padding:12px;padding-bottom:env(safe-area-inset-bottom);overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px}h1{font-size:18px;margin:8px 0}p{font-size:14px;color:#cbc5e0}a{color:#c7b8ff}
+video{display:block;width:100%;max-height:60vh;aspect-ratio:4/3;background:#000;object-fit:contain;margin:10px auto}
+.stage,.controls,.controls *{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.stage{position:relative}.start-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#15132bcc}.start-overlay[hidden]{display:none}.start-overlay button{font-size:22px;padding:20px 32px;box-shadow:0 0 0 8px #c7b8ff22}
+button{font:inherit;font-weight:700;background:#c7b8ff;color:#15132b;border:0;border-radius:12px;min-height:48px;padding:12px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+button:active,button.held{background:#fff}button:disabled{opacity:.45}.controls{display:flex;justify-content:space-between;gap:16px;max-width:720px;margin:auto}.dpad{display:grid;grid-template-columns:repeat(3,52px);gap:4px}.dpad button{height:52px}.actions{display:grid;grid-template-columns:repeat(2,minmax(64px,100px));gap:8px}#status{min-height:22px}#metrics{font-family:monospace;font-size:12px}
+@media(orientation:landscape) and (max-height:600px){video{max-height:64vh}.controls{position:fixed;bottom:12px;left:12px;right:12px;max-width:none;pointer-events:none}.controls button{pointer-events:auto;opacity:.85}.dpad{grid-template-columns:repeat(3,48px)}.dpad button{height:48px}header h1{font-size:15px}}
+</style>
+<header><h1>Avrana Party · Gauntlet II</h1><a href="/">Other games</a></header>
+<p id="status" role="status">Ready to play. Tap Play to connect.</p>
+<p id="path-warning" hidden style="background:#4a2b00;color:#ffd699;padding:8px 10px;border-radius:8px">This phone is connected through your home network, not the Avrana Party Wi-Fi. Join <b>Avrana Party</b> in Wi-Fi settings for the lowest lag.</p>
+<button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Disconnect</button>
+<div class="stage">
+<video id="screen" autoplay playsinline muted></video>
+<div class="start-overlay" id="start-overlay"><button id="connect">▶ Play Gauntlet II</button></div>
+</div>
+<div class="controls">
+ <div class="dpad" aria-label="Movement">
+  <span></span><button data-key="up" aria-label="Up">▲</button><span></span>
+  <button data-key="left" aria-label="Left">◀</button><span></span><button data-key="right" aria-label="Right">▶</button>
+  <span></span><button data-key="down" aria-label="Down">▼</button><span></span>
+ </div>
+ <div class="actions">
+  <button data-key="fire">Fire</button><button data-key="magic">Magic</button>
+  <button data-key="coin">Add coin</button><button data-key="start">Start</button>
+ </div>
+</div>
+<p>Tap Add coin to join. Hold a direction to move. Turn your phone sideways for a larger view.</p>
+<details><summary>Connection details</summary><p id="metrics">Not connected</p></details>
+<script>
+'use strict';
+// iOS Safari ignores user-scalable=no for pinch; block its non-standard gesture events.
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+const status=document.querySelector('#status'), video=document.querySelector('video'), connect=document.querySelector('#connect'), sound=document.querySelector('#sound'), leave=document.querySelector('#leave');
+const overlay=document.querySelector('#start-overlay');
+video.addEventListener('playing',()=>{overlay.hidden=true});
+let ws=null,pc=null,ready=false,heartbeat=null,statsTimer=null,pendingIce=[],signalChain=Promise.resolve(),myPlayer=null;
+const held=new Map(), controls=[...document.querySelectorAll('[data-key]')];
+function enableControls(value){controls.forEach(b=>b.disabled=!value)}
+enableControls(false);
+let lastSent='',seq=0;const sentAt=new Map(),ackRtts=[];
+function sendInput(){if(ws?.readyState===WebSocket.OPEN && ready){if(ws.bufferedAmount>8192){disconnect('Connection is too slow. Tap Play to reconnect.');return}
+ const buttons=[...new Set(held.values())],key=buttons.slice().sort().join(),msg={type:'input',buttons};
+ if(key!==lastSent){lastSent=key;msg.seq=++seq;sentAt.set(seq,performance.now());if(sentAt.size>200)sentAt.delete(sentAt.keys().next().value)}
+ ws.send(JSON.stringify(msg))}}
+function releaseAll(){held.clear();controls.forEach(b=>b.classList.remove('held'));sendInput()}
+function disconnect(message='Disconnected. Tap Play to reconnect.'){
+ releaseAll();ready=false;myPlayer=null;document.querySelector('h1').textContent='Avrana Party · Gauntlet II';clearInterval(heartbeat);clearInterval(statsTimer);enableControls(false);
+ if(ws){ws.onclose=null;ws.close();ws=null}if(pc){pc.close();pc=null}video.srcObject=null;
+ connect.disabled=false;connect.textContent='▶ Play Gauntlet II';overlay.hidden=false;leave.disabled=true;sound.disabled=true;status.textContent=message;
+}
+controls.forEach(button=>{
+ button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);held.set(e.pointerId,button.dataset.key);button.classList.add('held');sendInput()});
+ const up=e=>{held.delete(e.pointerId);if(![...held.values()].includes(button.dataset.key))button.classList.remove('held');sendInput()};
+ button.addEventListener('pointerup',up);button.addEventListener('pointercancel',up);button.addEventListener('lostpointercapture',up);
+ button.addEventListener('contextmenu',e=>e.preventDefault());
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAll()});
+window.addEventListener('blur',releaseAll);window.addEventListener('pagehide',()=>disconnect());
+leave.onclick=()=>disconnect();
+sound.onclick=async()=>{video.muted=!video.muted;try{await video.play();sound.textContent=video.muted?'Enable sound':'Mute sound'}catch(e){status.textContent='Tap Enable sound again to start playback.'}};
+let vf=null,prev=null,pingId=0;const pingAt=new Map(),pingRtts=[];
+const pct=(a,q)=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);return +b[Math.min(b.length-1,Math.floor(q*b.length))].toFixed(1)};
+const per=(a,b)=>b?+(a/b*1000).toFixed(1):null;
+async function collect(){
+ if(!pc||!ws||ws.readyState!==WebSocket.OPEN)return;
+ const id=++pingId;pingAt.set(id,performance.now());ws.send(JSON.stringify({type:'ping',id}));
+ const stats=await pc.getStats(),cur={};
+ for(const s of stats.values()){
+  if(s.type==='inbound-rtp')cur[s.kind]=s;
+  else if(s.type==='candidate-pair'&&(s.nominated||s.state==='succeeded'))cur.pair=s;
+ }
+ const v=cur.video,a=cur.audio,pv=prev?.video,pa=prev?.audio,d=(x,y,k)=>x&&y?(x[k]||0)-(y[k]||0):null;
+ const out={vis:document.visibilityState,ackRtt:{n:ackRtts.length,p50:pct(ackRtts,.5),p95:pct(ackRtts,.95),max:pct(ackRtts,1)},pingRtt:{p50:pct(pingRtts,.5),max:pct(pingRtts,1)}};
+ ackRtts.length=0;pingRtts.length=0;
+ if(v){const df=d(v,pv,'framesDecoded'),jb=d(v,pv,'jitterBufferDelay'),je=d(v,pv,'jitterBufferEmittedCount');
+  out.video={w:v.frameWidth,h:v.frameHeight,fps:v.framesPerSecond,decoded:df,received:d(v,pv,'framesReceived'),dropped:d(v,pv,'framesDropped'),
+   jitterBufMs:je?+(jb/je*1000).toFixed(1):null,decodeMs:df?+(d(v,pv,'totalDecodeTime')/df*1000).toFixed(2):null,procMs:df?+(d(v,pv,'totalProcessingDelay')/df*1000).toFixed(1):null,
+   pktLost:v.packetsLost,pktLostD:d(v,pv,'packetsLost'),pkts:d(v,pv,'packetsReceived'),nack:d(v,pv,'nackCount'),pli:d(v,pv,'pliCount'),
+   freezes:v.freezeCount,freezeSec:v.totalFreezesDuration,kbps:d(v,pv,'bytesReceived')!=null?Math.round(d(v,pv,'bytesReceived')*8/1000):null}}
+ if(a){const je=d(a,pa,'jitterBufferEmittedCount');out.audio={jitterBufMs:je?+(d(a,pa,'jitterBufferDelay')/je*1000).toFixed(1):null,pktLostD:d(a,pa,'packetsLost'),concealedD:d(a,pa,'concealedSamples')}}
+ if(cur.pair)out.pair={rtt:cur.pair.currentRoundTripTime,inKbps:cur.pair.availableIncomingBitrate?Math.round(cur.pair.availableIncomingBitrate/1000):null};
+ if(vf){const g=vf.gaps;out.present={n:vf.n,gapP50:pct(g,.5),gapP95:pct(g,.95),gapMax:pct(g,1),over50:g.filter(x=>x>50).length,over100:g.filter(x=>x>100).length};vf.n=0;vf.gaps=[]}
+ prev=cur;
+ document.querySelector('#metrics').textContent=JSON.stringify(out);
+ if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'stats',s:out}));
+}
+connect.onclick=()=>{
+ if(!window.RTCPeerConnection){status.textContent='Open http://party.local/arcade/ in your phone’s regular browser to play.';return}
+ prev=null;lastSent='';document.querySelector('#path-warning').hidden=true;connect.disabled=true;connect.textContent='Connecting…';status.textContent='Connecting…';pendingIce=[];signalChain=Promise.resolve();
+ pc=new RTCPeerConnection({iceServers:[]});
+ const media=new MediaStream();video.srcObject=media;
+ pc.ontrack=e=>{media.addTrack(e.track);try{e.receiver.jitterBufferTarget=+(new URLSearchParams(location.search).get('jb')||0)}catch(_){}try{e.receiver.playoutDelayHint=0}catch(_){}video.play().catch(()=>{status.textContent='Tap Enable sound to start playback.'})};
+ pc.onicecandidate=e=>{if(e.candidate && ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ice',candidate:e.candidate.candidate,sdpMLineIndex:e.candidate.sdpMLineIndex}))};
+ pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;enableControls(true);leave.disabled=false;sound.disabled=false;status.textContent=`Player ${myPlayer} connected. Add a coin to join.`}else if(['failed','closed'].includes(pc.connectionState))disconnect('Connection lost. Tap Play to reconnect.')};
+ ws=new WebSocket(new URL('ws'+location.search,location.href).href.replace(/^http/,'ws'));
+ ws.onmessage=e=>{signalChain=signalChain.then(async()=>{
+  const message=JSON.parse(e.data);
+  if(message.type==='ack'){const t=sentAt.get(message.seq);if(t!==undefined){ackRtts.push(performance.now()-t);sentAt.delete(message.seq)}return}
+  if(message.type==='pong'){const t=pingAt.get(message.id);if(t!==undefined){pingRtts.push(performance.now()-t);pingAt.delete(message.id)}return}
+  if(message.type==='path'){document.querySelector('#path-warning').hidden=message.network==='avrana';return}
+  if(message.type==='player'){myPlayer=message.slot;document.querySelector('h1').textContent=`Avrana Party · Player ${myPlayer}`;status.textContent=`You are Player ${myPlayer}. Connecting video…`;return}
+  if(!pc)return;
+  if(message.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:message.sdp});for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];await pc.setLocalDescription(await pc.createAnswer());ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription.sdp}))}
+  else if(message.type==='ice'){const c={candidate:message.candidate,sdpMLineIndex:message.sdpMLineIndex};if(pc.remoteDescription)await pc.addIceCandidate(c);else pendingIce.push(c)}
+ }).catch(e=>{console.error(e);disconnect('Could not start video. Try your regular browser at http://party.local/arcade/.')})};
+ ws.onclose=()=>disconnect('Disconnected, or every player slot is in use. Close another controller, then tap Play.');
+ ws.onerror=()=>disconnect('Could not connect. Stay on Avrana Party Wi-Fi, and make sure a player slot is free, then try again.');
+ heartbeat=setInterval(()=>{if(!document.hidden)sendInput()},50);
+ statsTimer=setInterval(collect,1000);
+ if(video.requestVideoFrameCallback){vf={n:0,last:0,gaps:[]};const tick=(now)=>{if(vf.last)vf.gaps.push(now-vf.last);vf.last=now;vf.n++;if(pc)video.requestVideoFrameCallback(tick)};video.requestVideoFrameCallback(tick)}
+};
+</script>
+</html>

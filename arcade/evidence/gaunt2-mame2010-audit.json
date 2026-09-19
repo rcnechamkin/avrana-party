@@ -1,0 +1,190 @@
+{
+  "core": "MAME 2010 / MAME 0.139",
+  "rom": "/srv/avrana/roms/arcade/gaunt2.zip",
+  "rom_sha256": "ba854a6494fde461138f00550bd2fd38e6afe4cb93bc8e42a15245a0bc8d090e",
+  "driver_sha256": "1307ae978919ef51a4de99048c9305345f2c73e227460c79d034bdae2f556355",
+  "entries": [
+    {
+      "name": "136037-1307.9a",
+      "size": 32768,
+      "crc": "46fe8743",
+      "sha1": "d5fa19e028a2f43658330c67c10e0c811d332780",
+      "ok": true
+    },
+    {
+      "name": "136037-1308.9b",
+      "size": 32768,
+      "crc": "276e15c4",
+      "sha1": "7467b2ec21b1b4fcc18ff9387ce891495f4b064c",
+      "ok": true
+    },
+    {
+      "name": "136043-1105.10a",
+      "size": 16384,
+      "crc": "45dfda47",
+      "sha1": "a9a03150f5a0ad6ce62c5cfdffb4a9f54340590c",
+      "ok": true
+    },
+    {
+      "name": "136043-1106.10b",
+      "size": 16384,
+      "crc": "343c029c",
+      "sha1": "d2df4e5b036500dcc537a1e0025abb2a8c730bdd",
+      "ok": true
+    },
+    {
+      "name": "136043-1109.7a",
+      "size": 32768,
+      "crc": "58a0a9a3",
+      "sha1": "7f51184840e3c96574836b8a00bfb4a7a5f508d0",
+      "ok": true
+    },
+    {
+      "name": "136043-1110.7b",
+      "size": 32768,
+      "crc": "658f0da8",
+      "sha1": "dfce027ea50188659907be698aeb26f9d8bfab23",
+      "ok": true
+    },
+    {
+      "name": "136043-1121.6a",
+      "size": 32768,
+      "crc": "ae301bba",
+      "sha1": "3d93236aaffe6ef692e5073b1828633e8abf0ce4",
+      "ok": true
+    },
+    {
+      "name": "136043-1122.6b",
+      "size": 32768,
+      "crc": "e94aaa8a",
+      "sha1": "378c582c360440b808820bcd3be78ec6e8800c34",
+      "ok": true
+    },
+    {
+      "name": "136043-1120.16r",
+      "size": 16384,
+      "crc": "5c731006",
+      "sha1": "045ad571db34ef870b1bf003e77eea403204f55b",
+      "ok": true
+    },
+    {
+      "name": "136043-1119.16s",
+      "size": 32768,
+      "crc": "dc3591e7",
+      "sha1": "6d0d8493609974bd5a63be858b045fe4db35d8df",
+      "ok": true
+    },
+    {
+      "name": "136043-1104.6p",
+      "size": 8192,
+      "crc": "1343cf6f",
+      "sha1": "4a9542bc8ede305e7e8f860eb4b47ca2f3017275",
+      "ok": true
+    },
+    {
+      "name": "136043-1111.1a",
+      "size": 32768,
+      "crc": "09df6e23",
+      "sha1": "726984275c6a338c12ec0c4cc449f92f4a7a138c",
+      "ok": true
+    },
+    {
+      "name": "136037-112.1b",
+      "size": 32768,
+      "crc": "869330be",
+      "sha1": "5dfaaf54ee2b3c0eaf35e8c17558313db9791616",
+      "ok": true
+    },
+    {
+      "name": "136043-1123.1c",
+      "size": 16384,
+      "crc": "e4c98f01",
+      "sha1": "a24bece3196d13c38e4acdbf62783860253ba67d",
+      "ok": true
+    },
+    {
+      "name": "136043-1113.1l",
+      "size": 32768,
+      "crc": "33cb476e",
+      "sha1": "e0757ee0120de2d38be44f8dc8702972c35b87b3",
+      "ok": true
+    },
+    {
+      "name": "136037-114.1mn",
+      "size": 32768,
+      "crc": "29ef9882",
+      "sha1": "91e1465af6505b35cd97434c13d2b4d40a085946",
+      "ok": true
+    },
+    {
+      "name": "136043-1124.1p",
+      "size": 16384,
+      "crc": "c4857879",
+      "sha1": "3b4ce96da0d178b4bc2d05b5b51b42c7ec461113",
+      "ok": true
+    },
+    {
+      "name": "136043-1115.2a",
+      "size": 32768,
+      "crc": "f71e2503",
+      "sha1": "244e108668eaef6b64c6ff733b08b9ee6b7a2d2b",
+      "ok": true
+    },
+    {
+      "name": "136037-116.2b",
+      "size": 32768,
+      "crc": "11e0ac5b",
+      "sha1": "729b7561d59d94ef33874a134b97bcd37573dfa6",
+      "ok": true
+    },
+    {
+      "name": "136043-1125.2c",
+      "size": 16384,
+      "crc": "d9c2c2d1",
+      "sha1": "185e38c75c06b6ca131a17ee3a46098279bfe17e",
+      "ok": true
+    },
+    {
+      "name": "136043-1117.2l",
+      "size": 32768,
+      "crc": "9e30b2e9",
+      "sha1": "e9b513089eaf3bec269058b437fefe7075a3fd6f",
+      "ok": true
+    },
+    {
+      "name": "136037-118.2mn",
+      "size": 32768,
+      "crc": "8bf3b263",
+      "sha1": "683d900ab7591ee661218be2406fb375a12e435c",
+      "ok": true
+    },
+    {
+      "name": "136043-1126.2p",
+      "size": 16384,
+      "crc": "a32c732a",
+      "sha1": "abe801dff7bb3f2712e2189c2b91f172d941fccd",
+      "ok": true
+    },
+    {
+      "name": "74s472-136037-101.7u",
+      "size": 512,
+      "crc": "2964f76f",
+      "sha1": "da966c35557ec1b95e1c39cd950c38a19bce2d67",
+      "ok": true
+    },
+    {
+      "name": "74s472-136037-102.5l",
+      "size": 512,
+      "crc": "4d4fec6c",
+      "sha1": "3541b5c6405ad5742a3121dfd6acb227933de25a",
+      "ok": true
+    },
+    {
+      "name": "74s287-136037-103.4r",
+      "size": 256,
+      "crc": "6c5ccf08",
+      "sha1": "ff5dbadd85aa2e07b383a302fa399e875db8f84f",
+      "ok": true
+    }
+  ]
+}

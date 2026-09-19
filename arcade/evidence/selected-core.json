@@ -1,0 +1,8 @@
+{
+  "url": "https://buildbot.libretro.com/nightly/linux/aarch64/latest/mame2010_libretro.so.zip",
+  "core_sha256": "c57b5072c1b3963bd54766bfc9b68c2123b62c78831f2721fd07d4c8405a775b",
+  "original_rom_sha256": "ba854a6494fde461138f00550bd2fd38e6afe4cb93bc8e42a15245a0bc8d090e",
+  "core_version": "0.139 dff8aad",
+  "source_revision": "dff8aadd1c3f38215af3955746d6e19abe0ddcea",
+  "driver_url": "https://raw.githubusercontent.com/libretro/mame2010-libretro/dff8aadd1c3f38215af3955746d6e19abe0ddcea/src/mame/drivers/gauntlet.c"
+}

@@ -1,0 +1,31 @@
+# Runtime / generated
+arcade/runtime/
+__pycache__/
+*.pyc
+*.log
+*.jsonl
+*.tmp
+*.tmp.*
+*.lpl
+portal-trace.txt
+
+# Emulator cores and game assets (re-fetch per arcade/evidence/selected-core.json)
+arcade/cores/
+arcade/roms/*
+*.zip
+*.7z
+
+# Installer backups
+backups/
+
+# Bulk research snapshots; keep only small provenance files
+arcade/evidence/*
+!arcade/evidence/selected-core.json
+!arcade/evidence/*-revision.json
+!arcade/evidence/gaunt2-mame2010-audit.json
+!arcade/evidence/mame2010-gauntlet.c
+
+# Safety net
+.env*
+*.pem
+*.key
