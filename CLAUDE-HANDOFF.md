@@ -9,11 +9,37 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
 - **P1 is verified** for basic gameplay and streaming on a real iPhone (see the comment at `arcade/stream.py:23`). An earlier report said the experience was “super laggy”; that predates the P1 phone verification. **Input-to-photon latency and gameplay performance have NOT been formally measured.** Do not describe latency as solved or low, and do not mistake 60 encoded frames per second for low latency. Measure before choosing a major rewrite.
 - **`MAX_PLAYERS = 2`**: two player slots are enabled. **Two-phone behavior is not verified.** Do not raise beyond 2 until a two-phone test passes.
 - **Boot:** service startup after a reboot is verified (Pi up about 50 minutes at inspection; nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade all active and enabled; arcade started at boot with 0 restarts). **Phone-side behavior after a boot and fully offline operation are not verified.**
-- **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot (under-voltage and throttling have occurred). This is a current, open hardware/power issue. Check the supply, cable and USB load before attributing performance problems to software.
+- **Power (OPEN, gating):** the earlier "0x50000 ~50 min after boot" reading was
+  **not** a one-time boot inrush. On 2026-09-19 the kernel journal
+  (`sudo journalctl -k -b | grep -icE 'undervoltage|voltage normalis'`) showed
+  **~23 "Voltage normalised" events spread evenly across a ~100-min session**
+  (roughly one dip every 3-4 min) - recurring, transient under-voltage. A 20 s
+  live watch looked clean only because the dips are shorter than the sampling.
+  `0x50000` is the sticky "occurred since boot" flag (bits 16 + 18); no live bits
+  were ever caught set. **Treat this as unresolved and do not trust any latency
+  measurement until it is gone.** Cause is NOT identified: PSU, USB-C cable, USB
+  load (the Realtek Wi-Fi 6 + BT adapter), and Pi power delivery are all
+  hypotheses - isolate experimentally, one variable at a time, over matched
+  >=10 min windows using the kernel dip count (method in `telemetry/README.md`).
+  Config is stock (`arm_freq=1800`, `over_voltage=0`); idle temps ~40 C.
 - **A/V:** `/stats` showed audio `capture_age_ms` p50 about 152 ms versus about 10 ms for video. Unexplained; investigate audio buffering and sync.
-- **Documentation:** a BookStack shelf “Avrana Party” (http://10.0.0.218:6875/shelves/avrana-party) exists but had no books as of 2026-09-19. Until pages exist, this file, `README.md` and `arcade/README.md` are the record. The “Avrana Homelab” shelf documents a different system, the media server.
+- **Documentation:** the BookStack shelf “Avrana Party”
+  (http://10.0.0.218:6875/shelves/avrana-party) now has the **Avrana Party book**
+  with Overview, Architecture, Runbook, and Decisions & Current State pages, and
+  is the source of truth. NOTE: the BookStack MCP server failed to connect during
+  the 2026-09-19 telemetry session, so those pages may not yet reflect the
+  telemetry work or the recurring-under-voltage finding below — reconcile
+  BookStack early next session. Don’t confuse it with the “Avrana Homelab” shelf
+  (the separate media server).
+- **Telemetry (NEW 2026-09-19):** party now reports to the existing Beszel hub on
+  avrana (`http://10.0.0.218:8093`) via a pinned systemd agent, plus a small
+  `vcgencmd` sampler/timer for Pi-only metrics. See the Telemetry section below.
 
-Your next jobs, in order: measure real latency with one phone; verify two phones with independent slots; resolve the power issue; then boot and offline acceptance.
+Your next jobs, in order: **(1) resolve the recurring under-voltage** (isolate
+PSU/cable/USB-load/power-delivery experimentally — do this before trusting any
+latency numbers); (2) confirm Beszel history for `party` and finish the three
+baseline snapshots; (3) measure real one-phone latency; (4) verify two phones
+with independent slots; (5) boot and offline acceptance.
 
 ## Product and constraints
 
@@ -213,6 +239,36 @@ https://github.com/selkies-project/selkies/blob/main/docs/component.md
 https://gstreamer.freedesktop.org/documentation/webrtc/
 https://gstreamer.freedesktop.org/documentation/rtp/rtph264pay.html
 
+## Telemetry (added 2026-09-19)
+
+Source: `telemetry/` in this repo. Deliberately small — Beszel is the main
+historical dashboard; a `vcgencmd` sampler covers only what Beszel cannot read.
+
+- **Beszel hub**: already running on avrana in Docker (`beszel:0.18.7`), web UI at
+  `http://10.0.0.218:8093`. Hub keypair lives at
+  `/home/cody/avrana/services/beszel/data/id_ed25519` on avrana; the agent’s `KEY`
+  is that public half (safe to store; baked into `install-beszel-agent.sh`).
+- **Agent on party**: pinned v0.18.7 arm64 binary, checksum-verified, installed by
+  `sudo bash telemetry/install-beszel-agent.sh` as systemd `beszel-agent.service`
+  (user `beszel`, `/opt/beszel-agent/`, env `/etc/beszel-agent.env`). Listens on
+  `:45876`; the hub dials it (classic model — no token/HUB_URL; the “HUB_URL not
+  set” log line is expected). `health` returns ok. avrana→`10.0.0.143:45876` is
+  reachable. **Still TODO: add system `party` (host `10.0.0.143`, port `45876`) in
+  the hub UI** — requires a hub login, not yet done. party’s `10.0.0.143` is a DHCP
+  lease; a router reservation is advisable.
+- **Pi sampler**: `sudo bash telemetry/install-pi-throttle-check.sh` installs
+  `/opt/avrana-telemetry/pi-throttle-check.sh` + a 60 s systemd timer
+  (`pi-throttle-check.timer`) writing JSON lines to
+  `/var/log/avrana/pi-throttle.jsonl`: `get_throttled` flags, CPU temp, ARM clock,
+  V3D/GPU clock, core volts. For a test window use `--interval 1 --count N`. The
+  60 s cadence and even 1 s sampling MISS most sub-second dips; the kernel journal
+  is the authoritative dip counter.
+- **Baselines**: written to `/var/log/avrana/baseline.jsonl`, summarized in
+  `telemetry/README.md`. **Idle done** (arcade stopped): temp 40.9/49.1 C, no live
+  throttle bits, 0 dips in 60 s; min ARM 600 MHz / core 0.86 V are normal idle
+  DVFS, not throttling. **Arcade-no-viewer and arcade+1-phone snapshots are not yet
+  taken.** All baselines are provisional until the under-voltage is fixed.
+
 ## Operations, rollback and cautions
 
 ```sh
@@ -221,6 +277,11 @@ sudo journalctl -u avranaparty-arcade -n 100 --no-pager
 curl http://party.local/arcade/stats
 sudo systemctl restart avranaparty-arcade
 python3 /home/cody/avrana-party/arcade/audit-legacy-rom.py
+# telemetry
+systemctl status beszel-agent pi-throttle-check.timer
+sudo journalctl -k -b | grep -icE 'undervoltage|voltage normalis'   # authoritative dip count
+sudo /opt/avrana-telemetry/pi-throttle-check.sh --label adhoc        # one sample now
+tail -n 5 /var/log/avrana/pi-throttle.jsonl
 ```
 
 To stop just this experiment:
@@ -233,7 +294,13 @@ Do not blindly restore it if newer site edits exist. Editable copies of current 
 
 `install-service.py` and the older portal installers exist for provenance/recovery; do not rerun them blindly over later changes. `arcade/README.md` keeps superseded material under its “History” headings; this handoff and current runtime code should guide the next step.
 
-Deploy path: the Pi checkout `/home/cody/avrana-party` is a git repository with no remote (commit `1474003`, clean working tree on 2026-09-19), while the laptop repo tracks `origin` (GitHub). No sync method between them is defined yet. Decide one before deploying (for example copying specific files, then verifying with `cmp`), and record it here.
+Deploy path (DEFINED as of 2026-09-19): the Pi checkout `/home/cody/avrana-party`
+now has the GitHub `origin` and tracks `origin/main`. Deploy = commit + push from
+the laptop, then `git pull --ff-only` on party. Verified working (party pulled up
+to `df3763c`). System files under `/etc` and `/opt` are still installed by the
+repo’s install scripts run with sudo on party; the byte-identical nginx invariant
+still applies (`cmp`). Passwordless sudo worked from the SSH session on
+2026-09-19 — do not assume it always will; never request a password in chat.
 
 Normal systemd stop currently logs shell exit 143 / XIO because the whole process group is stopped. Clean shutdown/reporting could be improved; distinguish intentional stops from real crashes. Fatal pipeline error handling also needs review: it can mark an error and close peers without necessarily exiting the process to trigger Restart=on-failure. Not yet appliance-grade.
 

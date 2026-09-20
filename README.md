@@ -17,6 +17,7 @@ arcade prototype is documented in `arcade/README.md`.
 | `avrana-captive.conf` | Captive DNS rules (live: `/etc/NetworkManager/dnsmasq-shared.d/`) |
 | `install-portal.py`, `install-captive-dns.py` | Installers kept for provenance and recovery; do not rerun blindly |
 | `arcade/` | Gauntlet II streaming prototype and its service and install files |
+| `telemetry/` | Beszel agent + Pi `vcgencmd` sampler installers, systemd units, and baseline runbook |
 
 The LAN Games server source is not in this repo. It lives on the Pi at
 `/home/cody/LAN-Games` (service `avranaparty-games`, port 8096).
@@ -26,6 +27,7 @@ The LAN Games server source is not in this repo. It lives on the Pi at
 - `http://party.local/` : LAN Games
 - `http://party.local/arcade/` : Gauntlet II streaming prototype
 - `http://party.local/hotspot-detect.html` : captive-portal landing page
+- `http://10.0.0.218:8093` : Beszel hub (telemetry dashboard, hosted on avrana)
 
 ## Current state (read-only inspection of the Pi, 2026-09-19)
 
@@ -51,12 +53,20 @@ The LAN Games server source is not in this repo. It lives on the Pi at
 - Two-phone behavior is **not** verified, even though 2 slots are enabled.
 - Service startup after boot is verified. Phone-side behavior after boot and a
   true offline test (wlan0 currently provides internet) are **not** verified.
-- **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot,
-  meaning under-voltage and throttling have occurred. This is an open
-  hardware/power issue.
+- **Power (open, gating):** `get_throttled` = `0x50000` is the sticky
+  "occurred since boot" flag. The kernel journal on 2026-09-19 showed ~23
+  under-voltage recoveries spread evenly across a ~100-min session (~1 every
+  3-4 min) — a **recurring**, transient under-voltage, not a one-time boot
+  inrush. Cause not yet identified (PSU / cable / USB load / power delivery are
+  hypotheses). Do not trust latency measurements until it is resolved; see
+  `telemetry/README.md` for the isolation method and the idle baseline.
 - Platform probes other than Apple's (Android, Microsoft, Firefox) are intercepted
   but their captive flows are untested.
-- The Pi checkout has no git remote, so there is no defined deploy method yet.
+- Deploy is now defined: the Pi checkout has GitHub `origin` and tracks
+  `origin/main` (commit + push from the laptop, then `git pull` on party).
+- Telemetry: the Beszel agent and Pi sampler are installed on party; still
+  **to do** — add system `party` in the Beszel hub UI, and capture the
+  arcade-no-viewer and arcade+1-phone baselines (idle baseline is done).
 
 ## Portal install and history
 
