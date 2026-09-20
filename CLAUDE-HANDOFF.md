@@ -2,11 +2,18 @@
 
 You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
 
-## Latest user feedback and immediate priority
+## Current status and priorities (updated 2026-09-19)
 
-The user reports: **“The entire affair is super laggy.”** This refers to the new Gauntlet II phone-streaming prototype. It is a working experiment, NOT a successful low-latency gaming MVP yet. The previous agent established ROM compatibility, emulation, encoding, local WebRTC reception, and controller injection, but did not establish acceptable real-phone latency.
+Status of the Gauntlet II phone-streaming prototype, from a read-only inspection of the Pi and the current code:
 
-Your next job is to diagnose and substantially reduce actual phone gameplay latency and instability. Do not add Player 2 yet. Do not mistake 60 encoded frames per second for low latency. Measure before choosing a major rewrite.
+- **P1 is verified** for basic gameplay and streaming on a real iPhone (see the comment at `arcade/stream.py:23`). An earlier report said the experience was “super laggy”; that predates the P1 phone verification. **Input-to-photon latency and gameplay performance have NOT been formally measured.** Do not describe latency as solved or low, and do not mistake 60 encoded frames per second for low latency. Measure before choosing a major rewrite.
+- **`MAX_PLAYERS = 2`**: two player slots are enabled. **Two-phone behavior is not verified.** Do not raise beyond 2 until a two-phone test passes.
+- **Boot:** service startup after a reboot is verified (Pi up about 50 minutes at inspection; nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade all active and enabled; arcade started at boot with 0 restarts). **Phone-side behavior after a boot and fully offline operation are not verified.**
+- **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot (under-voltage and throttling have occurred). This is a current, open hardware/power issue. Check the supply, cable and USB load before attributing performance problems to software.
+- **A/V:** `/stats` showed audio `capture_age_ms` p50 about 152 ms versus about 10 ms for video. Unexplained; investigate audio buffering and sync.
+- **Documentation:** a BookStack shelf “Avrana Party” (http://10.0.0.218:6875/shelves/avrana-party) exists but had no books as of 2026-09-19. Until pages exist, this file, `README.md` and `arcade/README.md` are the record. The “Avrana Homelab” shelf documents a different system, the media server.
+
+Your next jobs, in order: measure real latency with one phone; verify two phones with independent slots; resolve the power issue; then boot and offline acceptance.
 
 ## Product and constraints
 
@@ -48,7 +55,8 @@ Preserve LAN Games, nginx, Avahi, systemd, NetworkManager and management access.
 - Other existing interception names include Google/Android, Microsoft and Firefox, but their complete captive flows have not been validated.
 - Do not return Apple's expected Success page or intentionally break the working portal.
 - iOS captive assistant does not provide a dependable webpage-controlled handoff to the preferred browser. User accepted manually opening the regular browser. Arcade testing was requested in the regular browser.
-- Earlier boot test of LAN Games/AP/nginx/Avahi worked according to owner; the new arcade service has NOT yet had a physical cold-boot acceptance test.
+- Earlier boot test of LAN Games/AP/nginx/Avahi worked according to owner. On 2026-09-19 the Pi was observed about 50 minutes after a reboot with the arcade service active at boot (0 restarts), so service startup after boot is verified. Phone-side behavior after a boot and a true offline test have NOT been done.
+- Server-side re-check on 2026-09-19: the Apple probe returns 200 with `Cache-Control: no-store`, and both `captive.apple.com` and `captive.g.aaplimg.com` resolve to 10.42.0.1 via the AP's DNS.
 
 ## ROM compatibility: solved, do not reopen unnecessarily
 
@@ -126,8 +134,8 @@ No public ICE servers. Per-peer WebRTC connections are unicast: one encode does 
 
 ### Controller path
 
-- **`MAX_PLAYERS = 1`** in stream.py. Do not increase until real P1 experience is acceptable.
-- Creates a named evdev/uinput pad (`Avrana Player 1`) BEFORE starting RetroArch.
+- **`MAX_PLAYERS = 2`** in stream.py: two slots enabled. P1 is verified on a real iPhone; P2 and two-phone behavior are not. Do not raise beyond 2 until a two-phone test passes.
+- Creates one named evdev/uinput pad per slot (P1 is `Avrana Player 1`) BEFORE starting RetroArch.
 - RetroArch joypad driver is `udev`; explicit axis/button mappings are in retroarch.cfg.
 - Directions use ABS_X/ABS_Y. Fire/Magic/Coin/Start map to BTN_SOUTH/BTN_EAST/BTN_SELECT/BTN_START.
 - MAME core maps RetroPad A/B/select/start to action buttons/coin/start.
@@ -161,7 +169,7 @@ No public ICE servers. Per-peer WebRTC connections are unicast: one encode does 
 7. 10-second full-service baseline with ZERO viewers: ~59.96 encoded fps, ~2.01 of four CPU cores, summed process RSS ~332 MiB (shared pages double-counted), actual encoded bitrate ~1.50 Mbit/s during that scene. File `evidence/service-measurement.json`.
 8. `/dev/video11` was owned by one service Python process. The stats field `video_encoders: 1` is hardcoded descriptive metadata, NOT an independent encoder-count measurement.
 9. Wrong-Origin WebSocket request returns 403; arcade UI and existing LAN Games return 200. Captive probe continues returning landing HTML.
-10. User could reach UI and start the stream, but now reports the entire experience is SUPER LAGGY. End-to-end latency, real-phone frame timing, audio drift and sustained control responsiveness are unmeasured. Do not declare success from local tests.
+10. User could reach UI and start the stream and first reported the experience as SUPER LAGGY. P1 has since been verified for basic gameplay and streaming on a real iPhone (per the `stream.py` comment). End-to-end latency, real-phone frame timing, audio drift and sustained control responsiveness are still unmeasured. Do not declare low latency from local tests or from “it plays”.
 
 Useful evidence files in `arcade/evidence/`:
 - `gaunt2-paced-run.json`, `gaunt2-paced-run.log`, `gaunt2-paced.png`
@@ -174,7 +182,9 @@ Useful evidence files in `arcade/evidence/`:
 
 Older failed run files exist, including SDL segfault runs and receiver GDB output. Receiver crash was fixed by retaining/copying Gst promise structures/session descriptions. Keep that lifetime fix. SDP offer creation now waits until both media caps reach the WebRTC pads; early offers previously omitted video.
 
-## Diagnose lag next: concrete investigation sequence
+## Open work: measure latency, then verify two phones
+
+Latency was reported as poor earlier and P1 has since been verified playable, but no formal measurement exists. Use this sequence to measure it and to investigate any remaining lag or instability.
 
 1. Reproduce with ONE phone. Confirm exact browser, actual SSID/interface, visible frame rate, and whether “lag” means low fps, a smooth-but-delayed picture, delayed controls, audio drift, or all of them. Inspect existing logs first; do not make the owner repeat things you can observe.
 2. Verify the actual network path. Several iPhone requests in nginx logs used a **global home-network IPv6 source**, while AP clients are normally 10.42.0.x/link-local. Do NOT assume every test used wlan1. This is evidence to investigate, not proof of the cause. Check selected ICE candidate pair and interface traffic, AP signal/rate/retries/frequency, and browser path. Preserve wlan0 management.
@@ -185,9 +195,9 @@ Older failed run files exist, including SDL segfault runs and receiver GDB outpu
 7. Try a controlled lower-cost profile (e.g. encode/capture 480p30 or near-native size, while keeping emulation full speed), measure benefit before changing defaults. The software GL/Xvfb capture path consumes significant CPU; evaluate simpler capture/render approaches only if measurements justify them.
 8. Check touch/UI and input latency separately. WebSocket snapshots are simple but can suffer TCP ordering delays; a small unordered WebRTC data channel with full-state snapshots and timeout release is a candidate improvement if input transport is the bottleneck. Do not assume it fixes video buffering.
 9. Measure real input-to-photon latency with high-frame-rate filming of touch and screen response if possible. Report limitations and median/p95 rather than invented numbers.
-10. Only once one phone is playable, admit P2, verify independent controller/coin/player assignment with one emulator and encoder; then P3/P4 and viewer-scaling metrics. Finally cold boot and full offline acceptance.
+10. P2 is already enabled (`MAX_PLAYERS = 2`) but unverified: with two real phones, verify independent controller/coin/player assignment with one emulator and one encoder; only then consider P3/P4 and viewer-scaling metrics. Finally phone-side cold boot and full offline acceptance.
 
-Current hardware showed `vcgencmd get_throttled=0x50000` (historical undervoltage/throttling, no active flags) and temperature ~49.1 C at last check. Watch under load; don't assume power is perfect or claim active throttling from historical bits alone.
+Power: `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot on 2026-09-19 (under-voltage and throttling have occurred since boot); temperature was about 49.6 C. This is a current open power/hardware issue. Check the supply, cable and USB load, and re-read the flags during load, before attributing lag to software.
 
 ## Alternatives already considered
 
@@ -221,7 +231,9 @@ nginx backup before arcade route:
 `/home/cody/avrana-party/backups/20260919T043756859916Z/avrana-party`
 Do not blindly restore it if newer site edits exist. Editable copies of current site are `/home/cody/avrana-party/avrana-party.nginx` and `arcade/nginx-site`; keep relevant copies aligned if changing routing. `arcade/install-service.py` installs `arcade/nginx-site` over the live site and then copies it over `avrana-party.nginx`, so `arcade/nginx-site`, `avrana-party.nginx` and `/etc/nginx/sites-available/avrana-party` MUST stay byte-identical (reconciled 2026-09-19 after `nginx-site` had drifted and would have reverted the captive-portal `/hotspot-detect.html` behavior; check with `cmp`).
 
-`install-service.py` and the older portal installers exist for provenance/recovery; do not rerun them blindly over later changes. `arcade/README.md` includes historical superseded sections; this handoff and current runtime code should guide the next step.
+`install-service.py` and the older portal installers exist for provenance/recovery; do not rerun them blindly over later changes. `arcade/README.md` keeps superseded material under its “History” headings; this handoff and current runtime code should guide the next step.
+
+Deploy path: the Pi checkout `/home/cody/avrana-party` is a git repository with no remote (commit `1474003`, clean working tree on 2026-09-19), while the laptop repo tracks `origin` (GitHub). No sync method between them is defined yet. Decide one before deploying (for example copying specific files, then verifying with `cmp`), and record it here.
 
 Normal systemd stop currently logs shell exit 143 / XIO because the whole process group is stopped. Clean shutdown/reporting could be improved; distinguish intentional stops from real crashes. Fatal pipeline error handling also needs review: it can mark an error and close peers without necessarily exiting the process to trigger Restart=on-failure. Not yet appliance-grade.
 
@@ -229,4 +241,4 @@ The prior session sometimes needed the owner to run sudo locally, but `sudo -n` 
 
 Do not spawn additional agents unless the user or applicable local instructions explicitly authorize it. The user values direct action, clear evidence and short progress updates. If you reach a physical-phone test gate, prepare everything first and ask one concrete test question.
 
-Start by acknowledging that the streaming latency is currently unacceptable, inspect the active service and real client statistics, and work toward a genuinely playable one-phone experience. Preserve the existing successful browser-party platform throughout.
+Start by inspecting the active service and real client statistics. Measure latency honestly rather than assuming it is good or bad, then verify two-phone play and investigate the power flags. Preserve the existing successful browser-party platform throughout.

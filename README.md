@@ -1,28 +1,64 @@
-# Avrana Party portal
+# Avrana Party
 
-## Inspected state — 2026-09-18
+A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts
+the games; phones join its Wi-Fi ("Avrana Party") and act as screens and
+controllers. Core play needs no internet, accounts or app installs.
 
-- nginx, avranaparty-games, avahi-daemon, and NetworkManager are active and enabled.
-- Avrana Party autoconnects in AP/shared mode on wlan1, currently 10.42.0.1/24.
-- eth0 is disconnected; wlan0 is connected and is the current default route.
-- party.local resolves to 10.42.0.1 using Avahi.
-- DNS at 10.42.0.1 answers captive.apple.com with 10.42.0.1.
-- The existing /hotspot-detect.html route already returns valid portal HTML with status 200.
-- The launcher returns 200, /health reports healthy, and /chat/ws upgrades with 101 through nginx.
+This is separate from the Avrana Homelab media server (host `avrana`); do not
+confuse them. Detailed technical context is in `CLAUDE-HANDOFF.md`, and the
+arcade prototype is documented in `arcade/README.md`.
 
-## Prepared change
+## Repo contents
 
-The mobile landing page is entirely local, with embedded CSS and no JavaScript,
-fonts, or external dependencies. Its ordinary same-window Play link leads to
-http://party.local/. It does not attempt to launch Safari automatically.
+| Path | Purpose |
+|---|---|
+| `portal/index.html` | Captive-portal landing page (live copy: `/var/www/avrana-portal/index.html`) |
+| `avrana-party.nginx` | nginx site: portal probe, `/arcade/`, LAN Games proxy |
+| `avrana-captive.conf` | Captive DNS rules (live: `/etc/NetworkManager/dnsmasq-shared.d/`) |
+| `install-portal.py`, `install-captive-dns.py` | Installers kept for provenance and recovery; do not rerun blindly |
+| `arcade/` | Gauntlet II streaming prototype and its service and install files |
 
-The existing exact nginx probe location is retained, adding no-store, disabling
-ETag, and ignoring If-Modified-Since so repeat probes receive the page body.
-See https://nginx.org/en/docs/http/ngx_http_core_module.html#if_modified_since
-and https://nginx.org/en/docs/http/ngx_http_headers_module.html#add_header.
-Other game routes, DNS, NetworkManager, Avahi, and systemd are unchanged.
+The LAN Games server source is not in this repo. It lives on the Pi at
+`/home/cody/LAN-Games` (service `avranaparty-games`, port 8096).
 
-## Install
+## URLs
+
+- `http://party.local/` : LAN Games
+- `http://party.local/arcade/` : Gauntlet II streaming prototype
+- `http://party.local/hotspot-detect.html` : captive-portal landing page
+
+## Current state (read-only inspection of the Pi, 2026-09-19)
+
+- nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade
+  are active and enabled. The Pi had been up about 50 minutes and the arcade
+  service had started at boot with 0 restarts.
+- `Avrana Party` is an AP on `wlan1` (5 GHz, channel 149 per the NetworkManager
+  profile) in shared mode at 10.42.0.1/24, autoconnect. `wlan0` is the home
+  Wi-Fi / management link and default route. `eth0` has no active connection.
+  `party.local` is advertised by Avahi.
+- The live nginx site, portal HTML, captive DNS config and arcade unit match their
+  sources in this repo.
+- Portal: the Apple probe returns 200 with `Cache-Control: no-store`, and both
+  `captive.apple.com` and `captive.g.aaplimg.com` resolve to 10.42.0.1 via the AP's
+  DNS. The owner confirmed the portal works on an iPhone.
+- Arcade: 2 player slots enabled (`MAX_PLAYERS = 2`). P1 is verified for basic
+  gameplay and streaming on a real iPhone.
+
+## Not yet verified / open
+
+- Input-to-photon latency and gameplay performance have **not** been formally
+  measured.
+- Two-phone behavior is **not** verified, even though 2 slots are enabled.
+- Service startup after boot is verified. Phone-side behavior after boot and a
+  true offline test (wlan0 currently provides internet) are **not** verified.
+- **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot,
+  meaning under-voltage and throttling have occurred. This is an open
+  hardware/power issue.
+- Platform probes other than Apple's (Android, Microsoft, Firefox) are intercepted
+  but their captive flows are untested.
+- The Pi checkout has no git remote, so there is no defined deploy method yet.
+
+## Portal install and history
 
 Run locally on the Pi:
 
@@ -30,52 +66,43 @@ Run locally on the Pi:
 sudo python3 /home/cody/avrana-party/install-portal.py
 ```
 
-The installer saves originals in a timestamped backups directory, installs both
-files, runs nginx -t, and reloads nginx. On failure it restores the originals.
-The owner installed the change successfully. Post-install verification confirmed
-both live files match these sources, normal and conditional Apple probes return
-200 with the complete landing page and Cache-Control: no-store, the launcher and
-health endpoint return 200, and the WebSocket proxy upgrades with 101. All four
-services remain active. Backup: backups/20260919T032818520554Z.
-The physical iPhone and fully offline acceptance checks remain pending.
+The installer saves originals in a timestamped `backups/` directory, installs
+the portal HTML and nginx site, runs `nginx -t`, reloads nginx, and restores the
+originals on failure.
 
-## Follow-up: iPhone still displayed Success
+The mobile landing page is entirely local: embedded CSS, no JavaScript, fonts or
+external dependencies. Its ordinary same-window Play link goes to
+`http://party.local/`; it does not try to launch Safari automatically. The exact
+nginx probe location adds `no-store`, disables ETag and ignores
+If-Modified-Since so repeat probes get the page body. See
+https://nginx.org/en/docs/http/ngx_http_core_module.html#if_modified_since and
+https://nginx.org/en/docs/http/ngx_http_headers_module.html#add_header.
 
-A packet capture at 20:31 on September 18 proved the phone queried
-captive.g.aaplimg.com directly and fetched /hotspot-detect.html with Host:
-captive.apple.com from Apple's public server. The response was Apple's Success
-HTML. The original address-only DNS rule also leaked public CNAME/AAAA answers.
+Captive DNS: `avrana-captive.conf` intercepts **both** `captive.apple.com` and
+`captive.g.aaplimg.com`, with `local=` rules that stop upstream AAAA/HTTPS
+answers for those names. A packet capture on 2026-09-18 showed the iPhone querying
+`captive.g.aaplimg.com` directly and receiving Apple's real Success page through
+upstream internet, which is why both names are required. Do not remove either.
+See https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html.
 
-Installed avrana-captive.conf now intercepts
-both captive.apple.com and captive.g.aaplimg.com, with local= rules preventing
-upstream AAAA/HTTPS resolution for those two names. This follows dnsmasq's
-documented address/local behavior: https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html
+| Date | Change | Backup |
+|---|---|---|
+| 2026-09-18/19 | Landing page and probe caching headers installed | `backups/20260919T032818520554Z` |
+| 2026-09-18/19 | Captive DNS alias fix installed (`install-captive-dns.py`) | `backups/20260919T033200228715Z` |
 
-The installer install-captive-dns.py validated the configuration, backed up the
-original to backups/20260919T033200228715Z, and reactivated only Avrana Party.
-wlan0 remained connected. Both A answers now point to 10.42.0.1; AAAA/HTTPS
-queries return NOERROR with no answers. Portal HTTP remains 200. A fresh iPhone
-visual confirmation after this DNS fix is still needed.
+## Portal acceptance checks
 
-## Acceptance checks after installation
-
-1. Request http://10.42.0.1/hotspot-detect.html with Host: captive.apple.com.
-   Expect 200, Content-Type text/html, Cache-Control no-store, the Avrana page,
-   and no Apple Success response. Repeat with If-Modified-Since set in the future;
+1. Request `http://10.42.0.1/hotspot-detect.html` with `Host: captive.apple.com`.
+   Expect 200, `Content-Type: text/html`, `Cache-Control: no-store`, the Avrana
+   page, and no Apple Success response. Repeat with a future `If-Modified-Since`;
    expect 200 with the page body, not 304.
 2. Join Avrana Party on the iPhone. If it remembers the old connection and no
    popup appears, forget that Wi-Fi network and rejoin.
-3. Confirm the new landing page appears, tap Let's play, and play a game.
-   Specifically test name entry, room joining, and reconnecting after screen lock.
+3. Confirm the landing page appears, tap Let's play, and play a game. Test name
+   entry, room joining and reconnecting after screen lock.
 4. If the captive assistant cannot play reliably, use the displayed Safari
    fallback while remaining connected to Avrana Party.
 5. Verify with two phones, then four. An HTTP/WebSocket check alone does not
-   establish that games work correctly inside the iPhone captive assistant.
-6. Schedule a full offline test with management access available. Ethernet is
-   already disconnected, but wlan0 still provides internet, so that alone does
-   not constitute an offline test. Do not disable wlan0 during a remote session.
-
-Reboot behavior was reported working by the owner; this change does not modify
-startup configuration. A fresh reboot and fully offline phone test remain to be
-observed. Only the existing Apple probe is handled specially; other intercepted
-platform probe paths still need separate testing before claiming support.
+   establish that games work inside the iPhone captive assistant.
+6. Schedule a full offline test with management access available. Do not disable
+   `wlan0` during a remote session.

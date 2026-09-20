@@ -21,6 +21,9 @@ Passwords, API keys, SSH private keys, ROMs, emulator cores, runtime data, or an
 
 ## Repo pointers
 
-- `README.md` and `CLAUDE-HANDOFF.md` hold existing project context.
-- `portal/`, `arcade/`: application code.
+- `README.md` and `CLAUDE-HANDOFF.md` hold existing project context. `arcade/README.md` covers the streaming prototype.
+- BookStack shelf **Avrana Party**: http://10.0.0.218:6875/shelves/avrana-party. Do not confuse it with the **Avrana Homelab** shelf, which documents the separate media server.
+- `portal/`, `arcade/`: application code. The LAN Games server source is not in this repo (`/home/cody/LAN-Games` on `party`).
 - `avrana-party.nginx`, `avrana-captive.conf`, `install-*.py`: deploy and system config. Treat them as live-system-adjacent.
+- `avrana-party.nginx`, `arcade/nginx-site` and the live `/etc/nginx/sites-available/avrana-party` must stay byte-identical (check with `cmp`). `arcade/install-service.py` overwrites the live site from `arcade/nginx-site`.
+- The checkout on `party` has no git remote, so no deploy method is defined yet. Confirm the method with the user before deploying.

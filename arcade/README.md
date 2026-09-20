@@ -1,17 +1,25 @@
 # Avrana Party Gauntlet II streaming prototype
 
-## Current state
+## Current state (updated 2026-09-19)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.
-The prototype admits **one player** until the physical phone test passes.
+
+- **Players:** `MAX_PLAYERS = 2` in `stream.py`, so two slots are enabled. P1 is
+  verified for basic gameplay and streaming on a real iPhone. **Two-phone
+  behavior (independent slots, simultaneous play) is not verified.** Do not raise
+  beyond 2 until a two-phone test passes.
+- **Measurement:** input-to-photon latency and performance under real gameplay
+  have **not** been formally measured.
+- **Boot:** service startup after a reboot is verified (all services active,
+  arcade 0 restarts). Phone-side behavior after a boot is not verified.
 
 One RetroArch process runs MAME 2010 (`0.139 dff8aad`). One GStreamer
 `v4l2h264enc` uses /dev/video11 to encode the 640x480 display at 60 fps.
 Encoded H.264 and one Opus audio encode feed bounded, nonblocking appsrc queues
 in independent WebRTC transport pipelines. Adding a transport does not instantiate
-another emulator or encoder. Only one phone is admitted in this phase, so actual
-2/4-phone resource scaling remains unmeasured. No public STUN/TURN is used.
+another emulator or encoder. Multi-phone resource scaling remains unmeasured.
+No public STUN/TURN is used.
 
 Open the page in a regular phone browser, tap Play, then Add coin. Use arrows to
 select a character and Fire to confirm/attack; Magic is the second action.
@@ -57,15 +65,36 @@ the downloaded core. No ROMs were downloaded, padded, patched or renamed.
   encoded fps, ~2.01 CPU cores, summed RSS ~332 MiB (shared pages counted more
   than once), encoded stream ~1.50 Mbit/s during that scene. Configured target
   bitrate 2.5 Mbit/s. Wi-Fi counters include unrelated AP traffic.
-- One process was observed owning /dev/video11. No active thermal/undervoltage
-  flags; historical flags remain 0x50000, temperature 49.1 C at that check.
+- One process was observed owning /dev/video11. Temperature 49.1 C at that check;
+  see Open work for the power flags.
 - nginx syntax validated; /arcade/ and existing LAN Games return 200; wrong-Origin
   WebSocket requests return 403. Existing network configuration was not changed.
+- 2026-09-19 read-only inspection of the Pi (up about 50 minutes): nginx,
+  NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade all
+  active and enabled; arcade started at boot with 0 restarts; ~60 fps encoded
+  with 0 viewers; `/stats` reported `max_players: 2`; live nginx site, portal,
+  captive DNS config and arcade unit matched their repo sources.
 
-Pending: real iPhone decoding/playback/touch confirmation, input-to-photon
-latency, sustained gameplay speed while streaming, full offline test and reboot
-observation. Only after P1 succeeds: admit P2 and validate independent slots,
-then expand to four and measure CPU, RAM, Wi-Fi and encode count across viewers.
+## Open work
+
+- **Latency and performance:** measure input-to-photon latency during real
+  gameplay (high-frame-rate filming of touch and screen; report median/p95). RTT
+  and jitter-buffer stats are not input-to-photon latency.
+- **Two phones:** verify independent slots, coin/start, reconnect and screen lock
+  with two real phones before raising `MAX_PLAYERS`; then four phones and
+  CPU/RAM/Wi-Fi/encoder-count scaling.
+- **Boot and offline:** phone-side behavior after a reboot; a true offline test
+  (wlan0 provides internet, so Ethernet being idle is not an offline test).
+- **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot
+  on 2026-09-19: under-voltage and throttling have occurred since boot. Treat
+  this as an open hardware/power issue (check supply, cable and USB load) before
+  attributing performance problems to software.
+- **A/V sync:** `/stats` reported audio `capture_age_ms` p50 about 152 ms against
+  about 10 ms for video on 2026-09-19. Investigate audio buffering before
+  drawing conclusions.
+- **Robustness:** a fatal pipeline error may not exit the process, so
+  `Restart=on-failure` may not fire; normal stop logs exit 143. The emulator and
+  encoder run continuously with zero viewers.
 
 ## Installed infrastructure
 
@@ -94,9 +123,14 @@ To stop the experiment without affecting LAN Games:
 The arcade URL then returns 502 until the service is started or that location
 is removed. Do not blindly restore old nginx backups after making later edits.
 
-## Earlier hardware investigation (runtime choice superseded above)
+## History (superseded)
 
-## Measured host state
+The sections marked superseded below record earlier plans and investigation.
+They do not describe the running system. The current stack is RetroArch with
+MAME 2010, one GStreamer capture/encode pipeline, appsink/appsrc fan-out to
+per-phone `webrtcbin` pipelines, and `uinput` pads (see Current state).
+
+### Measured host state (pre-install, superseded)
 
 - Raspberry Pi 4 Model B Rev 1.5, ARM64, Debian 13 Trixie, kernel 6.18.39+rpt-rpi-v8.
 - 3.7 GiB total RAM, approximately 3.3 GiB available at inspection; 108 GiB storage free.
@@ -107,12 +141,13 @@ is removed. Do not blindly restore old nginx backups after making later edits.
   baseline/constrained-baseline and repeat sequence headers. This is device
   capability evidence, NOT a successful encoding benchmark.
 - cody belongs to video/render/input groups; `/dev/uinput` is root-only (0600).
-- Temperature 37.9 C. `get_throttled=0x50000`: historical undervoltage and
-  throttling, no active flags at inspection. Recheck during load before attributing
-  poor performance to the emulator or encoder.
+- Temperature 37.9 C. `get_throttled=0x50000` (under-voltage and throttling have
+  occurred). This is an open power issue, not a historical curiosity: on
+  2026-09-19 it read `0x50000` again about 50 minutes after boot. Check the power
+  supply before attributing poor performance to the emulator or encoder.
 - wlan1 remains the party AP; wlan0 remains management/upstream; eth0 disconnected.
 
-## Decision
+### Decision (superseded: standalone MAME 0.276 rejected the ROM set; RetroArch + MAME 2010 is used)
 
 Start with the distribution's standalone MAME (candidate 0.276), a private
 640x480 Xvfb display, and the Pi H.264 hardware encoder. Gauntlet II is a 4:3 game;
@@ -134,7 +169,7 @@ Sunshine release inspected: v2026.914.233613, including
 sunshine_2026.914.233613-1+debiantrixie_arm64.deb. Selkies release: 2.0.0rc0.
 Downloaded source/documentation in evidence contains no game ROM data.
 
-## Proposed shared pipeline (not implemented yet)
+### Proposed shared pipeline (superseded: implemented with appsink/appsrc fan-out, not a tee)
 
 One MAME process -> private X display -> ximagesrc -> conversion to encoder format
 -> ONE v4l2h264enc -> h264parse -> tee of encoded H.264 access units.
@@ -172,7 +207,12 @@ once, fan out to clients. A silent video-only transport test is useful but is
 not complete gameplay. Use a user gesture for playback on iPhone. Avoid multiple
 phones loudly reproducing the same audio during latency comparisons.
 
-## Run the gates in order
+## Original test gates (reference; steps 1-4 passed, step 5 done for P1 only)
+
+Status: steps 1-4 passed; step 5 is done for P1 only (see Current state). Step 6
+metrics and step 7 boot/offline testing are still open (see Open work).
+`probe.py verify/benchmark` use standalone MAME 0.276 and are NOT the chosen
+runtime or compatibility gate; use `audit-legacy-rom.py` for the ROM.
 
 1. Install prerequisites locally:
 
@@ -233,7 +273,7 @@ phones loudly reproducing the same audio during latency comparisons.
 - https://gstreamer.freedesktop.org/documentation/webrtc/
 - https://gstreamer.freedesktop.org/documentation/rtp/rtph264pay.html
 
-## ROM selection correction
+## History: ROM selection correction (superseded by the MAME 2010 audit)
 
 The user confirmed Gauntlet II arcade (`gaunt2`), not Gauntlet (1985).
 The probe defaults now use gaunt2 and /srv/avrana/roms/arcade.
