@@ -4,11 +4,14 @@
   "description": "A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts the games; phones join its Wi-Fi (\"Avrana Party\") and act as screens and controllers. Core play needs no internet, accounts or app installs.",
   "main": "index.js",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "test:chromium": "playwright test --project=chromium",
-    "test:iphone": "playwright test --project=iphone-safari",
+    "test": "playwright test --grep-invert @heavy",
+    "test:all": "playwright test",
+    "test:headed": "playwright test --grep-invert @heavy --headed",
+    "test:chromium": "playwright test --grep-invert @heavy --project=chromium",
+    "test:iphone": "playwright test --grep-invert @heavy --project=iphone-safari",
     "test:ui": "playwright test --ui",
+    "soak": "playwright test tests/soak.spec.ts --project=chromium",
+    "fault": "playwright test tests/fault.spec.ts --project=chromium",
     "report": "playwright show-report",
     "install-browsers": "playwright install chromium webkit"
   },
