@@ -7,7 +7,16 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 Status of the Gauntlet II phone-streaming prototype, from a read-only inspection of the Pi and the current code:
 
 - **P1 is verified** for basic gameplay and streaming on a real iPhone (see the comment at `arcade/stream.py:23`). An earlier report said the experience was “super laggy”; that predates the P1 phone verification. **Input-to-photon latency and gameplay performance have NOT been formally measured.** Do not describe latency as solved or low, and do not mistake 60 encoded frames per second for low latency. Measure before choosing a major rewrite.
-- **`MAX_PLAYERS = 2`**: two player slots are enabled. **Two-phone behavior is not verified.** Do not raise beyond 2 until a two-phone test passes.
+- **`MAX_PLAYERS = 2`**: two player slots are enabled. **Two-phone play is now
+  VERIFIED on two real iPhones (2026-09-20).** A 3-min captured session
+  (`arcade/capture-load.py`, 177 samples, both phones connected throughout) held
+  both phones at **~60 fps, 0 median packet loss, ~26 ms jitter buffer, ~3 ms pair
+  RTT, ~6-7 ms input-ack RTT, 2-3 freezes total**; server video capture-age p50
+  ~11 ms (one shared encode). One brief (~3 s) under-voltage/throttle event early,
+  otherwise clean (temp 47-51 C). Independent slot assignment / third-client
+  rejection / slot reclaim are also covered by the Playwright suite. Caveats: this
+  is a 3-min window (not a soak test) and audio capture-age was ~1.5 s (the still-
+  open drift). **Do not raise beyond 2 without a longer multi-phone soak.**
 - **Boot:** service startup after a reboot is verified (Pi up about 50 minutes at inspection; nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade all active and enabled; arcade started at boot with 0 restarts). **Phone-side behavior after a boot and fully offline operation are not verified.**
 - **Power (OPEN, gating):** the earlier "0x50000 ~50 min after boot" reading was
   **not** a one-time boot inrush. On 2026-09-19 the kernel journal

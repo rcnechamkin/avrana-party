@@ -71,7 +71,10 @@ authoritative for iOS Safari and captive-portal behaviour.
 
 - Input-to-photon latency and gameplay performance have **not** been formally
   measured.
-- Two-phone behavior is **not** verified, even though 2 slots are enabled.
+- Two-phone play is **verified** on two real iPhones (2026-09-20): a 3-min
+  captured session held both phones at ~60 fps, 0 median loss, ~26 ms jitter
+  buffer, ~3 ms pair RTT and ~6-7 ms input-ack RTT (capture tool:
+  `arcade/capture-load.py`). Not yet soak-tested, so `MAX_PLAYERS` stays at 2.
 - Service startup after boot is verified. Phone-side behavior after boot and a
   true offline test (wlan0 currently provides internet) are **not** verified.
 - **Power (open, gating):** `get_throttled` = `0x50000` is the sticky
