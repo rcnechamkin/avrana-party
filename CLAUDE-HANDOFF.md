@@ -31,7 +31,20 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   hypotheses - isolate experimentally, one variable at a time, over matched
   >=10 min windows using the kernel dip count (method in `telemetry/README.md`).
   Config is stock (`arm_freq=1800`, `over_voltage=0`); idle temps ~40 C.
-- **A/V:** `/stats` showed audio `capture_age_ms` p50 about 152 ms versus about 10 ms for video. Unexplained; investigate audio buffering and sync.
+- **A/V (CHARACTERIZED 2026-09-20):** the audio `capture_age_ms` "drift" is a
+  **per-streaming-session ratchet**, not a clock drift: flat ~13 ms at idle, steps
+  up ~300–690 ms on each client session and never recovers until restart
+  (13→313→1003 ms measured); video stays ~10 ms. Root-cause hypotheses + low-risk
+  fix candidates in `docs/findings/2026-09-20-audio-ratchet-and-recovery.md`. Fix
+  needs a `stream.py` change + service restart (root); not yet deployed.
+- **Load/soak/fault harness (NEW 2026-09-20):** `npm run soak` / `npm run fault`
+  drive N real WebRTC clients against the live Pi (regression gates + JSON
+  artifacts), with fault-injection/recovery coverage. Design + threshold rationale
+  in `docs/adr/0001-load-soak-fault-harness.md`. It reproduces the audio ratchet
+  and is the before/after tool for the audio + recovery fixes.
+- **Recovery gap (CONFIRMED 2026-09-20):** `Stream.watch()` returns instead of
+  exiting on a fatal pipeline/emulator error, so systemd never restarts the unit
+  (zombie 503s). Fix plan in the same findings doc.
 - **Documentation:** the BookStack shelf “Avrana Party”
   (http://10.0.0.218:6875/shelves/avrana-party) now has the **Avrana Party book**
   with Overview, Architecture, Runbook, and Decisions & Current State pages, and

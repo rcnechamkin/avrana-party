@@ -41,14 +41,24 @@ profile, for iOS-oriented layout).
 ```sh
 npm install                # once
 npm run install-browsers   # chromium + webkit
-npm test                   # both projects
-npm run test:chromium      # includes the live WebRTC streaming test
+npm test                   # fast suite (both projects; excludes @heavy)
+npm run soak               # load/soak: 2 clients, 90s (SOAK_CLIENTS / SOAK_SECONDS to change)
+npm run fault              # fault injection & recovery (abrupt drop, churn, over-subscription)
 npm run report             # open the HTML report
 ```
 
+The load/soak/fault harness (`tests/soak.spec.ts`, `tests/fault.spec.ts`, pure
+logic in `tests/lib/soak-metrics.ts`, unit-tested) drives N real WebRTC clients,
+gates on server health + connectivity + loss + fps, and writes JSON artifacts to
+`test-results/soak/`. See `docs/adr/0001-load-soak-fault-harness.md` for the
+design and threshold philosophy. **Run harness tests from a machine on the Avrana
+Party Wi-Fi.**
+
 Playwright's WebKit is only a proxy for iOS Safari and lacks a reliable WebRTC
 media path, so the streaming test is Chromium-only; a real iPhone stays
-authoritative for iOS Safari and captive-portal behaviour.
+authoritative for iOS Safari and captive-portal behaviour. Co-located Chromium
+clients are also pessimistic for client-side jitter/RTT, so those are reported,
+not gated.
 
 ## Current state (read-only inspection of the Pi, 2026-09-19)
 
