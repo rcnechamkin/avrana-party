@@ -80,8 +80,42 @@ that window, and the dip counts. `throttled` is the raw `get_throttled` hex.
 
 | Window | Date | temp C (med/max) | ARM MHz (min) | V3D MHz | core V (min) | throttled | live-throttle seen? | undervolt dips in window | CPU % (Beszel) | net Tx (Beszel) | arcade fps / kbps (/stats) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 idle |  |  |  |  |  |  |  |  |  |  | n/a |
+| 1 idle | 2026-09-19 | 40.9 / 49.1 | 600 | 500 | 0.86 | 0x50000 | no | 0 (60 s window) | pending | pending | n/a |
 | 2 arcade, no viewer |  |  |  |  |  |  |  |  |  |  |  |
 | 3 arcade + 1 iPhone |  |  |  |  |  |  |  |  |  |  |  |
 
+Idle notes: ARM 600 MHz min / core 0.86 V min are the **normal idle DVFS floor**,
+not throttling (full 1800 MHz was available in the same window). `0x50000` is the
+sticky "occurred since boot" flag; it cannot clear without a reboot. CPU %/net
+are "pending" until party is added in the hub. **0 dips in 60 s is not proof of a
+clean idle** - at the ~1 dip / 3-4 min seen under load, a 60 s window expects <1
+dip regardless, so idle needs a longer window (see below).
+
 Note the PSU/cable in use when these were taken:
+
+## Isolating the recurring under-voltage
+
+The cause is **not yet identified**. Treat these as independent hypotheses and
+change **one variable at a time**, holding load and window length constant, using
+the kernel dip count as the metric:
+
+```bash
+# dips per fixed window (run the same window length each time)
+sudo journalctl -k --since "<window start>" | grep -icE 'undervoltage|voltage normalis'
+```
+
+- **Load** (CPU + USB/Wi-Fi TX): compare a long idle window vs. arcade-no-viewer
+  vs. arcade + phone streaming. If dips scale with load, power delivery is
+  marginal under draw. Use windows of **>=10 min each** so the ~1/3-4 min rate is
+  visible (the 60 s baseline above is too short to conclude anything about rate).
+- **PSU**: swap to a known-good official 5.1 V / 3 A supply, nothing else changed;
+  re-measure the same window/load.
+- **Cable**: swap the USB-C cable only (short, thick); re-measure.
+- **USB load isolation**: the Realtek Wi-Fi 6 + BT adapter is a *hypothesis*, not
+  the confirmed cause. Test it by comparing dip rate at Wi-Fi idle vs. under
+  sustained TX, and (as a separate change) by powering the adapter from a powered
+  hub so its draw is off the Pi's 5 V rail.
+
+Record each run as a row: {change made, load, window length, dips, temp, min ARM,
+min core V}. Only after a change drives dips to zero across a full arcade-load
+window is the fault considered resolved.
