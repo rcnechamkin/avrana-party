@@ -150,11 +150,7 @@ class Stream:
             'video/x-h264,profile=constrained-baseline,level=(string)3.1 ! '
             'h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! '
             'appsink name=video_out emit-signals=true sync=false max-buffers=2 drop=true '
-            # do-timestamp=true: stamp audio buffers with the pipeline running-clock
-            # at capture (like ximagesrc), NOT pulsesrc's sample-continuous timeline.
-            # Without it, any audio-thread stall makes PTS fall permanently behind
-            # the clock (capture_age ratchets up per session, never recovering).
-            f'pulsesrc server={os.environ["PULSE_SERVER"]} device=avrana_arcade.monitor do-timestamp=true ! '
+            f'pulsesrc server={os.environ["PULSE_SERVER"]} device=avrana_arcade.monitor ! '
             'audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! '
             'opusenc bitrate=64000 frame-size=10 ! '
             'appsink name=audio_out emit-signals=true sync=false max-buffers=4 drop=true')
@@ -177,6 +173,19 @@ class Stream:
         buffer = sample.get_buffer()
         if buffer.pts != Gst.CLOCK_TIME_NONE:
             now = self.pipeline.get_clock().get_time() - self.pipeline.get_base_time()
+            # pulsesrc (a GstAudioBaseSrc) timestamps audio from its sample-position
+            # ringbuffer clock and ignores do-timestamp; the pipeline runs on the
+            # system clock. When the audio thread stalls, the sample clock falls
+            # permanently behind wall-clock, so buffer.pts lags and capture_age
+            # ratchets up per session (13->313->1003->2800ms measured). The Pulse
+            # monitor latency stays ~0, so the samples are FRESH — only the PTS is
+            # mislabelled. Re-stamp audio to the running clock so peers get
+            # correctly-timed audio and the lag cannot accumulate. Video (ximagesrc)
+            # is already clock-stamped and is left untouched.
+            if media == 'audio' and now >= 0:
+                buffer = buffer.copy()  # writable copy (shares memory); safe to re-stamp
+                buffer.pts = now
+                buffer.dts = Gst.CLOCK_TIME_NONE
             self.age[media].add((now - buffer.pts) / 1e6)
         if media == 'video':
             self.video_frames += 1
