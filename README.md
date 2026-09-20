@@ -29,6 +29,27 @@ The LAN Games server source is not in this repo. It lives on the Pi at
 - `http://party.local/hotspot-detect.html` : captive-portal landing page
 - `http://10.0.0.218:8093` : Beszel hub (telemetry dashboard, hosted on avrana)
 
+## Testing (Playwright)
+
+End-to-end browser tests live in `tests/`, targeting the live appliance at
+`http://party.avrana` (10.42.0.1). **Run them from a machine joined to the
+Avrana Party Wi-Fi** — the Pi's home-LAN address (10.0.0.143) is not a valid
+client-facing target. Two projects: `chromium` (general regression + the live
+WebRTC connect/stream/control path) and `iphone-safari` (WebKit on an iPhone
+profile, for iOS-oriented layout).
+
+```sh
+npm install                # once
+npm run install-browsers   # chromium + webkit
+npm test                   # both projects
+npm run test:chromium      # includes the live WebRTC streaming test
+npm run report             # open the HTML report
+```
+
+Playwright's WebKit is only a proxy for iOS Safari and lacks a reliable WebRTC
+media path, so the streaming test is Chromium-only; a real iPhone stays
+authoritative for iOS Safari and captive-portal behaviour.
+
 ## Current state (read-only inspection of the Pi, 2026-09-19)
 
 - nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade

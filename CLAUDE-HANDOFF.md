@@ -72,14 +72,22 @@ Preserve LAN Games, nginx, Avahi, systemd, NetworkManager and management access.
 
 ### Captive portal: user confirmed it works perfectly
 
-- Live landing HTML: `/var/www/avrana-portal/index.html`.
-- Editable source: `/home/cody/avrana-party/portal/index.html`.
-- nginx exact `/hotspot-detect.html` serves this file with 200 and `Cache-Control: no-store`, `etag off`, `if_modified_since off`.
-- Play links to `http://party.local/`.
+- **DESIGN CHANGED 2026-09-18 (reversal):** `/hotspot-detect.html` now returns
+  Apple's literal `Success` page (served locally, `Cache-Control: no-store`) ON
+  PURPOSE, so the iPhone marks the network usable and connects **silently with no
+  captive popup**. See `avrana-party.nginx:7`. The player then opens the browser
+  to `http://party.local/` (the LAN Games hub) themselves.
+- The old landing page (`portal/index.html`; live copy
+  `/var/www/avrana-portal/index.html`) is therefore **no longer wired to the
+  probe** — it is an artifact of the previous "intercept probe with a landing
+  page" design and is not currently served at any route. Don't assume it renders
+  on connect.
 - Captive DNS config: `/etc/NetworkManager/dnsmasq-shared.d/avrana-captive.conf`.
 - Important fix: intercept BOTH `captive.apple.com` AND `captive.g.aaplimg.com` to 10.42.0.1, with `local=/.../` rules for both. Without the alias/local rules, iPhone queried Apple's alias directly and fetched Apple's actual Success page through upstream internet. A packet capture proved this. Do not regress that fix.
 - Other existing interception names include Google/Android, Microsoft and Firefox, but their complete captive flows have not been validated.
-- Do not return Apple's expected Success page or intentionally break the working portal.
+- Returning Apple's `Success` page at the probe is now **intentional** (the
+  no-popup design above); do **not** "fix" it back to serving the landing page.
+  Do not otherwise break the working portal.
 - iOS captive assistant does not provide a dependable webpage-controlled handoff to the preferred browser. User accepted manually opening the regular browser. Arcade testing was requested in the regular browser.
 - Earlier boot test of LAN Games/AP/nginx/Avahi worked according to owner. On 2026-09-19 the Pi was observed about 50 minutes after a reboot with the arcade service active at boot (0 restarts), so service startup after boot is verified. Phone-side behavior after a boot and a true offline test have NOT been done.
 - Server-side re-check on 2026-09-19: the Apple probe returns 200 with `Cache-Control: no-store`, and both `captive.apple.com` and `captive.g.aaplimg.com` resolve to 10.42.0.1 via the AP's DNS.

@@ -1,0 +1,30 @@
+{
+  "name": "avrana-party",
+  "version": "1.0.0",
+  "description": "A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts the games; phones join its Wi-Fi (\"Avrana Party\") and act as screens and controllers. Core play needs no internet, accounts or app installs.",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:chromium": "playwright test --project=chromium",
+    "test:iphone": "playwright test --project=iphone-safari",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "install-browsers": "playwright install chromium webkit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rcnechamkin/avrana-party.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rcnechamkin/avrana-party/issues"
+  },
+  "homepage": "https://github.com/rcnechamkin/avrana-party#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2"
+  }
+}
