@@ -1,0 +1,20 @@
+[Unit]
+Description=Beszel Agent (Avrana Party telemetry -> hub on avrana)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=beszel
+Group=beszel
+# KEY (hub public key) and LISTEN port live here; written by install-beszel-agent.sh.
+EnvironmentFile=/etc/beszel-agent.env
+ExecStart=/opt/beszel-agent/beszel-agent
+Restart=on-failure
+RestartSec=10
+# Read-only telemetry: reads /proc and /sys, talks to the hub. No writes needed.
+NoNewPrivileges=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

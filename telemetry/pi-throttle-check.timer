@@ -1,0 +1,10 @@
+[Unit]
+Description=Sample Avrana Pi throttle/clock telemetry every 60s
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

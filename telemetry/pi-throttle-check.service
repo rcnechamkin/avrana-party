@@ -1,0 +1,7 @@
+[Unit]
+Description=Avrana Pi throttle/clock telemetry sample (one shot)
+
+[Service]
+Type=oneshot
+# Runs as root: vcgencmd needs /dev/vchiq access for volts/throttle.
+ExecStart=/opt/avrana-telemetry/pi-throttle-check.sh --append /var/log/avrana/pi-throttle.jsonl

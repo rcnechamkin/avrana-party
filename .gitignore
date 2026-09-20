@@ -25,6 +25,9 @@ arcade/evidence/*
 !arcade/evidence/gaunt2-mame2010-audit.json
 !arcade/evidence/mame2010-gauntlet.c
 
+# Local agent/editor config (no project-shared settings; both files are default)
+.claude/
+
 # Safety net
 .env*
 *.pem
