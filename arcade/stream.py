@@ -150,7 +150,11 @@ class Stream:
             'video/x-h264,profile=constrained-baseline,level=(string)3.1 ! '
             'h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! '
             'appsink name=video_out emit-signals=true sync=false max-buffers=2 drop=true '
-            f'pulsesrc server={os.environ["PULSE_SERVER"]} device=avrana_arcade.monitor ! '
+            # do-timestamp=true: stamp audio buffers with the pipeline running-clock
+            # at capture (like ximagesrc), NOT pulsesrc's sample-continuous timeline.
+            # Without it, any audio-thread stall makes PTS fall permanently behind
+            # the clock (capture_age ratchets up per session, never recovering).
+            f'pulsesrc server={os.environ["PULSE_SERVER"]} device=avrana_arcade.monitor do-timestamp=true ! '
             'audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! '
             'opusenc bitrate=64000 frame-size=10 ! '
             'appsink name=audio_out emit-signals=true sync=false max-buffers=4 drop=true')
