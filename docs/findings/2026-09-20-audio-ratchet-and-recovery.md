@@ -1,81 +1,96 @@
 # Findings 2026-09-20 — audio capture-age ratchet & fatal-error non-restart
 
-Two code-level reliability issues confirmed during the harness sprint. Both need
-a `stream.py` change + `avranaparty-arcade` restart to fix (root required); that
-was **not deployed** this session because passwordless `sudo` was unavailable and
-shipping to the live WebRTC path unverified was out of scope. Each has a concrete,
-low-risk fix plan below.
+Two confirmed reliability defects. #1 was root-caused and a fix implemented
+(commit `6acf0b0`) but **NOT yet verified** — the session ended before a
+verifying restart. #2 is characterized with a fix plan but not started.
 
-## 1. Audio `capture_age` ratchet (was "audio latency drift")
+---
 
-### What it actually is
-Not a slow uptime clock-drift. It is a **per-streaming-session ratchet**: audio
-`capture_age` is flat at idle and steps up on each session, never recovering until
-the process restarts. Measured on a fresh boot with a read-only /stats poller:
+## 1. Audio `capture_age` ratchet — ROOT CAUSE CONFIRMED, fix UNVERIFIED
 
-| uptime (s) | players | audio p50 (ms) | video p50 (ms) | note |
-|---|---|---|---|---|
-| 616 – 936 | 0 | **~12–14 (flat)** | ~10 | idle: no drift for 5+ min |
-| 956 | 2 | 135 (p95 395) | 22 | soak session #1 (under load) |
-| 976 – 1136 | 0 | **~313 (plateau)** | ~10 | stepped up, did NOT recover |
-| 1156 | 2 | 641 | 13 | soak session #2 |
-| 1176 – 1236 | 0 | **~1003 (plateau)** | ~10 | stepped up again |
+### Symptom
+Audio `capture_age` (from `/arcade/stats`) is flat at idle but steps up per
+streaming session and never recovers until restart: **13 → 313 → 1003 → 2142 ms**
+across sessions; video stays ~10 ms.
 
-So: 13 ms → 313 ms → 1003 ms, ~+300–690 ms per streaming session, persistent.
-Video (`ximagesrc → v4l2h264enc`) never ratchets. This explains the earlier
-session's 152 → 1553 ms climb (it tracked session count, not clock time).
+### Root cause (confirmed by direct evidence)
+The capture pipeline runs on the **system (wall) clock**, but `pulsesrc` — a
+`GstAudioBaseSrc` — timestamps audio from its **sample-position ringbuffer
+clock**. When the audio streaming thread stalls during a client session, the
+sample clock falls behind wall-clock and **never catches up** (a live source
+resumes at 1×; it does not fast-forward). `capture_age = now − buffer.pts` is
+that permanent offset. Video is immune because `ximagesrc` stamps each grab with
+the current clock.
 
-### Reproducer
-`npm run soak` (or any client session), then poll `/arcade/stats` at idle:
-audio `capture_age_ms.p50` will have stepped up and stay there. Restart clears it.
+Evidence:
+- **`AUDIODBG` trace across a ~4 s stall:** `now` (wall) advanced **+6739 ms**
+  while audio `pts` advanced only **+3140 ms** → pts fell ~3.6 s behind, then
+  settled at a permanent ~2100 ms plateau (pts and now advancing at equal rate
+  thereafter).
+- **PulseAudio latencies ~0** (`pactl`: null-sink 6 ms, monitor 0 µs, pulsesrc
+  source-output Buffer/Source latency 0). So the samples are **fresh** — only the
+  PTS *label* lags. This rules out a PulseAudio/queue backlog.
+- All GStreamer buffering stages are bounded (appsink `max-buffers=4` ≈ 40 ms), so
+  the ~1.5–2.8 s can only live in the PTS-vs-clock relationship.
 
-### Where it lives
-`stream.py` audio branch: `pulsesrc device=avrana_arcade.monitor ! audioconvert !
-audioresample ! opusenc ! appsink sync=false max-buffers=4 drop=true`. Age is
-`pipeline_running_clock − buffer.pts` measured in `distribute()` (stream.py:174).
-Video uses the same measurement and is fine, so the metric is sound — the audio
-*buffer timeline* falls progressively behind the running clock, one step per
-session, and the step persists after peers detach.
+### Fix journey (systematic-debugging)
+1. **Hypothesis 1 — `pulsesrc do-timestamp=true`** (commit `fb84471`): **FAILED,
+   no-op.** `GstAudioBaseSrc` ignores `do-timestamp` and always uses its
+   ringbuffer timestamps. Ratchet unchanged (14 → 2796 ms). Reverted.
+2. **Hypothesis 2 — re-timestamp audio to the running clock in `distribute()`**
+   (current, commit `6acf0b0`): stamp each audio buffer `pts = now` (the pipeline
+   running-clock) before pushing to peers, so a stall drops/gaps audio instead of
+   banking permanent latency. First attempt used `buffer.make_writable()` →
+   `AttributeError` (no such method in PyGObject) which **broke audio** for one
+   restart; corrected to **`buffer.copy()`** (writable copy, shares memory).
 
-### Hypotheses (ranked) to confirm with `GST_DEBUG` when deployable
-1. **PulseAudio monitor latency grows when the null sink gains/loses a consumer.**
-   Each peer transport adds/removes flow; the `avrana_arcade.monitor` source's
-   reported latency may increase and not shrink, offsetting PTS. Check
-   `pulsesrc` `actual-buffer-time`/latency across a session, and null-sink latency.
-2. **Shared-clock / base-time interaction** between the capture pipeline and the
-   per-peer transport pipelines (which call `use_clock(capture.get_clock())` +
-   `set_base_time(...)`, stream.py:301–303). A re-latency event on attach could
-   shift the audio segment.
-3. **opusenc / resampler buffering** accumulating on live latency renegotiation.
+### STATUS — action required next session
+- `6acf0b0` is on `main` and pulled onto party's checkout, but the **running
+  service still has the broken `make_writable` build** (audio down) until a
+  restart. It is **UNVERIFIED**: do not claim the ratchet is fixed.
+- **To restore audio + load the fix, then verify:**
+  ```bash
+  # on party:
+  sudo systemctl restart avranaparty-arcade
+  # from a laptop on the Avrana Party Wi-Fi:
+  SOAK_SECONDS=60 npx playwright test tests/soak.spec.ts --project=chromium
+  #   PASS + server audio-age drift ~0 (was +2782 ms) + no server error  => good
+  ```
+- **Rollback if worse** (restores known-good audio, ratchet returns):
+  ```bash
+  git revert 6acf0b0 && git push        # then git pull + restart on party
+  ```
+- **Metric caveat:** after re-stamp, `capture_age['audio'] = now − now ≈ 0` by
+  construction. This is *honest* (PulseAudio latency ~0 proves the content is
+  fresh; the pre-fix value measured the mislabel, not true staleness), but it
+  means `capture_age` can no longer detect a future audio-staleness regression.
+  Follow-up: verify with a **real iPhone** (A/V sync by ear) and/or measure
+  **client-side audio jitter-buffer** in the harness instead.
+- **Deeper root (optional):** the underlying audio-thread *stall* still occurs
+  (cause not isolated — likely GIL contention / a heavy synchronous GStreamer op
+  during peer connect/teardown). The re-timestamp makes the ratchet harmless;
+  eliminating the stall itself is a separate, larger effort. An alternative fix
+  worth evaluating is forcing the pipeline onto `pulsesrc`'s audio clock
+  (`pipeline.use_clock(pulsesrc.provide_clock())`) so `now` and `pts` share one
+  domain and `capture_age` stays honest — riskier (touches clock selection for
+  video/WebRTC), so only with the harness as a safety net.
 
-### Fix candidates (low-risk first)
-- **Re-timestamp audio to the running clock at distribution** (set `buffer.pts =
-  now` for audio in `distribute()` before push). Decouples peers from any capture
-  offset; for an arcade, low-latency recent audio ≫ exact lip-sync. Cheapest, and
-  bounds the symptom regardless of root cause.
-- **Bound the audio branch**: insert `queue max-size-time=100ms leaky=downstream`
-  before `opusenc`, and/or pin `pulsesrc buffer-time/latency-time` low, so latency
-  cannot ratchet.
-- Confirm root cause (hypothesis 1/2) with `GST_DEBUG=pulsesrc:5,*clock*:5` across
-  a connect/disconnect, then fix at the source if it's the null-sink latency.
+### Reproducer / tooling
+`npm run soak` (or any client session) then poll `/arcade/stats`. Temporary
+instrumentation lived on branch `debug/audio-ratchet` (an `AUDIODBG` log of
+age/pts/now/peers in `distribute`); delete that branch once no longer needed.
 
-**Verification:** restart to clear, capture idle baseline, run `npm run soak`,
-confirm audio p50 no longer steps up and stays bounded. The harness already
-measures `audioAgeMs.drift` per run.
+---
 
-## 2. Fatal pipeline/emulator error does not trigger a restart
+## 2. Fatal pipeline/emulator error does not restart — NOT STARTED
 
-`Stream.watch()` (stream.py:216–232) on a pipeline ERROR or emulator exit sets
-`self.error`, closes peers, and **`return`s** — the process keeps running. New
-connections then get `HTTPServiceUnavailable` (stream.py:253) forever: a zombie
-serving 503s instead of crashing so systemd's `Restart=on-failure` recovers it.
-Not appliance-grade.
+`Stream.watch()` (`stream.py`) on a pipeline ERROR or emulator exit sets
+`self.error`, closes peers, and `return`s — the process keeps running and serves
+`HTTPServiceUnavailable` forever, so systemd `Restart=on-failure` never fires.
 
-### Fix
+### Fix plan
 On a fatal, unrecoverable error, exit non-zero after cleanup so systemd restarts
-the unit (or add `watchdog`/`Restart=always` semantics). Distinguish intentional
-stop (SIGTERM) from a crash so a normal `systemctl stop` doesn't loop. Add a
-harness/fault test that asserts `/arcade/stats` recovers (harder: needs a way to
-induce a fatal error without root — candidate: a test hook, or observe after a
-real crash). Currently `tests/fault.spec.ts` covers *client* faults; *server*
-fault recovery needs deploy access to test end-to-end.
+the unit; distinguish an intentional SIGTERM stop (clean exit) from a crash so a
+normal `systemctl stop` does not loop. Add a recovery test (inducing a server
+fatal error needs deploy access; `tests/fault.spec.ts` currently covers only
+*client* faults). Ran out of session time before starting this.

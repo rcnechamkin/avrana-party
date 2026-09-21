@@ -31,12 +31,24 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   hypotheses - isolate experimentally, one variable at a time, over matched
   >=10 min windows using the kernel dip count (method in `telemetry/README.md`).
   Config is stock (`arm_freq=1800`, `over_voltage=0`); idle temps ~40 C.
-- **A/V (CHARACTERIZED 2026-09-20):** the audio `capture_age_ms` "drift" is a
-  **per-streaming-session ratchet**, not a clock drift: flat ~13 ms at idle, steps
-  up ~300–690 ms on each client session and never recovers until restart
-  (13→313→1003 ms measured); video stays ~10 ms. Root-cause hypotheses + low-risk
-  fix candidates in `docs/findings/2026-09-20-audio-ratchet-and-recovery.md`. Fix
-  needs a `stream.py` change + service restart (root); not yet deployed.
+- **A/V audio ratchet — ROOT CAUSE CONFIRMED, fix UNVERIFIED (2026-09-20).**
+  Cause: pipeline runs on the system (wall) clock while `pulsesrc`
+  (a `GstAudioBaseSrc`) timestamps from its sample-position ringbuffer clock and
+  ignores `do-timestamp`; on an audio-thread stall the sample clock falls
+  permanently behind wall-clock, so `capture_age = now − pts` ratchets per session
+  (13→313→1003→2142 ms measured). PulseAudio latency ~0 (content fresh, only the
+  PTS is mislabelled); video immune (ximagesrc clock-stamped). Full evidence +
+  fix journey: `docs/findings/2026-09-20-audio-ratchet-and-recovery.md`.
+  - **Fix `6acf0b0` on main** re-stamps audio `pts=now` in `distribute()`
+    (`buffer.copy()`), deployed to party's checkout. **⚠ The RUNNING service still
+    has a broken interim build (audio down) until a restart loads `6acf0b0`.**
+  - **First action next session:** `sudo systemctl restart avranaparty-arcade`,
+    then `SOAK_SECONDS=60 npx playwright test tests/soak.spec.ts --project=chromium`
+    → expect audio-age drift ~0 (was +2782 ms) + no server error. Real iPhone
+    confirms A/V by ear. Rollback if worse: `git revert 6acf0b0` + redeploy.
+- **Recovery gap (defect #2, NOT STARTED):** `Stream.watch()` returns instead of
+  exiting on a fatal error, so systemd never restarts the zombie 503 service. Fix
+  plan in the same findings doc.
 - **Load/soak/fault harness (NEW 2026-09-20):** `npm run soak` / `npm run fault`
   drive N real WebRTC clients against the live Pi (regression gates + JSON
   artifacts), with fault-injection/recovery coverage. Design + threshold rationale
