@@ -1,6 +1,6 @@
 # Avrana Party — Roadmap
 
-Last updated: 2026-09-23. This is the working plan for the next several milestones.
+Last updated: 2026-09-23 (N2 status). This is the working plan for the next several milestones.
 If it disagrees with an older document, this file and the newest dated `docs/findings/`
 entry govern.
 
@@ -97,8 +97,26 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 ### N1. Repository docs are the working source of truth — **DONE (2026-09-22)**
 
-### N2. Smallest playable baseline game — **IN PROGRESS**
-A clean LAN Games module in `~/avrana-lab/avrana-party-games/`, run on port 8196.
+### N2. Smallest playable baseline game — **AUTOMATED CRITERIA MET; REAL-PHONE TEST PENDING**
+A clean LAN Games module (`games/bluff/`, working title **BLUFF**) in
+`~/avrana-lab/avrana-party-games/` (local only, not published), run on port 8196.
+
+Status (2026-09-23, after a six-workstream review: rules audit, mobile UX, lifecycle,
+security, simulator, code quality):
+- Criteria 1–7 are met in automated testing. That covers ~1,190 tests (rules/fuzz, security
+  matrix, lifecycle with a fake clock, and the upstream suite), protocol-level privacy and
+  attack scripts, and a full-game simulator with a rules oracle (2–6 players, adversarial,
+  timeouts; 0 violations). Phone-size Chromium screenshots cover 2–6 players.
+- A phone lifecycle was added:
+  - reconnect keeps the seat;
+  - a passive autopilot plays for away seats;
+  - an empty table pauses, and is abandoned after 5 min (a newcomer may take over after
+    60 s);
+  - players can Leave game or End game.
+- **Still open:** real-iPhone Safari testing, and the known limitations listed in
+  `games/bluff/README.md` in that repo.
+
+Developer notes, architecture and test commands: `games/bluff/README.md`.
 
 **Success criteria:**
 1. Two to six phones join one game. Each sees its own two hidden cards, and only its own.
