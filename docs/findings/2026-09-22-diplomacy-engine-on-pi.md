@@ -1,5 +1,10 @@
 # diplomacy/diplomacy on the Avrana Party Pi: validation (2026-09-22)
 
+> **ABANDONED EXPERIMENT (2026-09-23).** Classic map-based Diplomacy is **not** the
+> Avrana target; it was pursued from a misunderstanding. The target is a Coup-inspired
+> bluffing card game (see `docs/ROADMAP.md`). This record is kept only for reference; don't
+> build on it.
+
 **Result: works.** The engine runs on the Pi and adjudicates correctly. It is fast enough
 that performance is a non-issue for a 7-player game.
 

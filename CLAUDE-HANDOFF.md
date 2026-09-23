@@ -2,13 +2,16 @@
 
 You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
 
-> **2026-09-22 update. Read `docs/ROADMAP.md` first.**
+> **2026-09-23 update. Read `docs/ROADMAP.md` first.**
 > - The **repository is now the documentation source of truth**. The BookStack API/MCP is
 >   unreliable; do **not** try to repair it unless the owner asks.
-> - The first native-game target is **classic Diplomacy**, a purpose-built Avrana web game
->   backed by `diplomacy/diplomacy`. It is *not* VirtualTabletop's "Diplomacy", which is
->   actually Coup.
-> - The engine is validated on the Pi: `docs/findings/2026-09-22-diplomacy-engine-on-pi.md`.
+> - The first native-game target is a **Coup-inspired Avrana bluffing card game**, built as
+>   a LAN Games module in the Avrana Party Games fork (dev clone
+>   `~/avrana-lab/avrana-party-games/` on `party`, port 8196). Reference:
+>   `docs/findings/2026-09-23-vtt-coup-reference.md`.
+> - **Classic map-based Diplomacy and `diplomacy/diplomacy` are ABANDONED** (a
+>   misunderstanding). Don't continue them. The local commit is on branch
+>   `abandoned/classic-diplomacy`, never pushed.
 > - The arcade items below are still open and unchanged.
 
 ## Current status and priorities (updated 2026-09-19)

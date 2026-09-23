@@ -7,7 +7,7 @@
 - **SSH `party`** is the Raspberry Pi running Avrana Party. It is the deployment and test target, not the place to develop.
 - **SSH `avrana`** is the mini-PC hosting infrastructure (BookStack, Beszel, etc.).
 - **Documentation source of truth (since 2026-09-22): this repository.** The BookStack API/MCP integration is unreliable, so record decisions, findings and progress in the repo (`docs/ROADMAP.md`, `docs/findings/`, `docs/adr/`, `CLAUDE-HANDOFF.md`). **Do not try to repair BookStack or its MCP unless the owner explicitly asks**, and never block work on it. BookStack may return as the main wiki later; the repo docs will then be reconciled into it. See `docs/ROADMAP.md`.
-- **Current plan:** `docs/ROADMAP.md` (Now / Next / Later). Classic Diplomacy, as a purpose-built Avrana web game backed by `diplomacy/diplomacy`, is the first native-game target.
+- **Current plan:** `docs/ROADMAP.md` (Now / Next / Later). The first native-game target is a **Coup-inspired Avrana bluffing card game**, built as a LAN Games module in the Avrana Party Games fork. **Classic Diplomacy and `diplomacy/diplomacy` are abandoned experiments**; don't continue them.
 
 ## Workflow
 
