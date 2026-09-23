@@ -2,6 +2,15 @@
 
 You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
 
+> **2026-09-22 update. Read `docs/ROADMAP.md` first.**
+> - The **repository is now the documentation source of truth**. The BookStack API/MCP is
+>   unreliable; do **not** try to repair it unless the owner asks.
+> - The first native-game target is **classic Diplomacy**, a purpose-built Avrana web game
+>   backed by `diplomacy/diplomacy`. It is *not* VirtualTabletop's "Diplomacy", which is
+>   actually Coup.
+> - The engine is validated on the Pi: `docs/findings/2026-09-22-diplomacy-engine-on-pi.md`.
+> - The arcade items below are still open and unchanged.
+
 ## Current status and priorities (updated 2026-09-19)
 
 Status of the Gauntlet II phone-streaming prototype, from a read-only inspection of the Pi and the current code:
@@ -59,12 +68,13 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   (zombie 503s). Fix plan in the same findings doc.
 - **Documentation:** the BookStack shelf “Avrana Party”
   (http://10.0.0.218:6875/shelves/avrana-party) now has the **Avrana Party book**
-  with Overview, Architecture, Runbook, and Decisions & Current State pages, and
-  is the source of truth. NOTE: the BookStack MCP server failed to connect during
-  the 2026-09-19 telemetry session, so those pages may not yet reflect the
-  telemetry work or the recurring-under-voltage finding below — reconcile
-  BookStack early next session. Don’t confuse it with the “Avrana Homelab” shelf
-  (the separate media server).
+  with Overview, Architecture, Runbook, and Decisions & Current State pages.
+  **SUPERSEDED 2026-09-22:** the repository is now the working source of truth,
+  because the BookStack MCP is unreliable (it failed on 2026-09-19 and 2026-09-20).
+  Do **not** try to repair it or "reconcile BookStack early" unless the owner asks.
+  The pages are stale. `docs/bookstack-update-2026-09-20.md` holds a paste-ready
+  update for when it's reliable. See `docs/ROADMAP.md`. Don't confuse it with the
+  “Avrana Homelab” shelf (the separate media server).
 - **Telemetry (NEW 2026-09-19):** party now reports to the existing Beszel hub on
   avrana (`http://10.0.0.218:8093`) via a pinned systemd agent, plus a small
   `vcgencmd` sampler/timer for Pi-only metrics. See the Telemetry section below.

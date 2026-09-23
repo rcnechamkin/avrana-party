@@ -1,0 +1,159 @@
+{
+ "python": "3.13.5",
+ "machine": "aarch64",
+ "engine_version": "?",
+ "phase_at_start": "S1901M",
+ "france_orderable": [
+  "BRE",
+  "MAR",
+  "PAR"
+ ],
+ "legal_orders_per_france_unit": {
+  "BRE": 9,
+  "MAR": 10,
+  "PAR": 11
+ },
+ "spring_results_nonempty": {
+  "A VIE": [
+   "bounce"
+  ],
+  "A MUN": [
+   "bounce"
+  ],
+  "A WAR": [
+   "bounce"
+  ],
+  "F SEV": [
+   "bounce"
+  ],
+  "F ANK": [
+   "bounce"
+  ]
+ },
+ "saved_game_bytes": 4695,
+ "svg_bytes": 104249,
+ "invalid_orders": {
+  "non_adjacent_move": {
+   "raised": null,
+   "orders_before": [
+    "A PAR H"
+   ],
+   "orders_after": [
+    "A PAR H"
+   ],
+   "engine_error_attr": [
+    "CONVOYING UNIT MUST REACH COAST: A PAR - MUN"
+   ]
+  },
+  "other_powers_unit": {
+   "raised": null,
+   "orders_before": [
+    "A PAR H"
+   ],
+   "orders_after": [
+    "A PAR H"
+   ],
+   "engine_error_attr": [
+    "CONVOYING UNIT MUST REACH COAST: A PAR - MUN",
+    "UNORDERABLE UNIT: A MUN - BUR"
+   ]
+  },
+  "no_unit_there": {
+   "raised": null,
+   "orders_before": [
+    "A PAR H"
+   ],
+   "orders_after": [
+    "A PAR H"
+   ],
+   "engine_error_attr": [
+    "UNORDERABLE UNIT: A MUN - BUR",
+    "UNORDERABLE UNIT: A GAS - SPA"
+   ]
+  },
+  "garbage_syntax": {
+   "raised": "IndexError: list index out of range",
+   "orders_before": [
+    "A PAR H"
+   ],
+   "orders_after": [
+    "A PAR H"
+   ],
+   "engine_error_attr": [
+    "UNKNOWN POWER OR PLACENAME: AN",
+    "UNKNOWN POWER OR PLACENAME: ORDER"
+   ]
+  },
+  "fleet_inland": {
+   "raised": null,
+   "orders_before": [
+    "A PAR H"
+   ],
+   "orders_after": [
+    "A PAR H"
+   ],
+   "engine_error_attr": [
+    "UNKNOWN POWER OR PLACENAME: ORDER",
+    "CONVOYING UNIT MUST REACH COAST: F BRE - PAR"
+   ]
+  }
+ },
+ "retreat_phase": "S1901R",
+ "retreat_orderable_france": [
+  "BUR"
+ ],
+ "retreat_options": [
+  "A BUR D",
+  "A BUR R BEL",
+  "A BUR R GAS",
+  "A BUR R MAR",
+  "A BUR R PIC"
+ ],
+ "winter_phase": "W1901A",
+ "germany_centers": [
+  "BER",
+  "KIE",
+  "MUN",
+  "DEN"
+ ],
+ "germany_build_options": [
+  "A BER B",
+  "A KIE B",
+  "A MUN B",
+  "F BER B",
+  "F KIE B"
+ ],
+ "after_build_phase": "S1902M",
+ "timings_ms_median_max": {
+  "new_game": [
+   2.9,
+   321.7
+  ],
+  "all_possible_orders": [
+   3.5,
+   4.0
+  ],
+  "process_spring_1901": [
+   3.8
+  ],
+  "render_svg": [
+   76.5,
+   217.7
+  ]
+ },
+ "checks": {
+  "1_create": true,
+  "2_seven_powers": true,
+  "3_legal_orders": true,
+  "4_orders_accepted": true,
+  "5_adjudicated": true,
+  "6_support_beats_bounce": true,
+  "6b_mutual_bounce_BLA": true,
+  "7_save_restore": true,
+  "8_svg_render": true,
+  "10_invalid_orders_never_accepted": true,
+  "extra_retreat": true,
+  "extra_build": true
+ },
+ "all_passed": true
+}
