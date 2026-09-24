@@ -33,6 +33,55 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 >   `abandoned/classic-diplomacy`, never pushed.
 > - The arcade items below are still open and unchanged.
 
+## PS1 shared stream (added 2026-09-23): BLOCKED ON POWER
+
+Read `ps1/README.md`, `docs/findings/2026-09-23-ps1-shared-stream.md` (state of proof) and
+`docs/findings/2026-09-23-ps1-post-power-test-plan.md` (the only allowed way to resume load).
+The code is on local branch `ps1-emulation` in `~/avrana-lab/avrana-party-docs` on party
+(commit `f23ff60`, not pushed). Don't develop in the deploy checkout.
+
+- **Stack:** RetroArch 1.20.0 (Debian) with PCSX-ReARMed `r26l-111-g94e8a03` from the libretro
+  buildbot, sha256-pinned in `ps1/evidence/selected-core.json`.
+  - Real BIOS: `/srv/avrana/roms/psx/SCPH1001.BIN` (log: `found US BIOS file, crc32 37157331`).
+  - Games: Worms Armageddon (USA) and Bomberman Party Edition (USA), bin/cue in
+    `/srv/avrana/roms/psx/`.
+  - State: `~/avrana-lab/ps1/` (core, BIOS symlink, saves, logs, evidence), never in git.
+- **Model:** ONE RetroArch in a private Xvfb → ONE capture → ONE v4l2h264enc + ONE Opus
+  encode → the same encoded buffers to every viewer's webrtcbin (`ps1/stream_ps1.py`, which
+  reuses the unchanged `arcade/stream.py`). Each phone owns one server-assigned slot (token,
+  30 s grace), and extra phones spectate.
+  - Input is XTest key banks into the PS1 instance's private display. It is deliberately not
+    uinput, because the live arcade RetroArch hot-plugs uinput pads into Gauntlet P3/P4.
+- **Proven:**
+  - Both games boot on the real BIOS.
+  - Worms: audio works, it is hot-seat on port 1 (1 slot), and it ran about 13 minutes and
+    exited cleanly.
+  - Bomberman: 5 independent players with `pcsx_rearmed_multitap = "port 2"` using keyboard
+    banks. `"port 1"` makes the game ignore input.
+  - The stream ran with 4 slots plus a spectator, and Player 1's page drove the menus.
+- **Not proven:**
+  - Players 2–4 moving their own bombers from phone pages.
+  - Encode cost as the number of viewers grows.
+  - Latency, soak, real iPhones, and TV/KMS mode.
+  - The review fixes in `f23ff60` have not been run against a live stream.
+- **Reboot, 2026-09-23 ~18:44:40:** it happened during a 4-player + spectator stream test.
+  There was live under-voltage 7×/h before it, `rsts=0x20`, the root fs was not cleanly
+  unmounted, and the journal is volatile. Power is likely (~75%), not proven. Thermal and OOM
+  are ruled out. The current boot already shows sticky `0x50000`.
+- **Owner actions before resuming:**
+  1. Install a known-good 5.1 V 3 A USB-C PSU with a short cable.
+  2. Fresh boot, then check that `get_throttled=0x0` holds (Stage 0 of the test plan).
+  3. Decide on `over_voltage_avs=-20000` and on persistent journald.
+  4. Stop `avranaparty-arcade` for PS1 test windows. Only the owner can, because sudo needs
+     their password.
+- **Gotchas:**
+  - Start does not confirm Bomberman menus; Cross does.
+  - CD loads make presses during fades vanish.
+  - `xvfb-run -a` may hand PS1 the display `:99` when the arcade is stopped.
+  - Run the server as `python3 -X faulthandler stream_ps1.py bomberman`.
+  - `/stats` is localhost-only.
+  - Simulated phones (`ps1/tools/viewers.py`) run on avrana, never on the Pi.
+
 ## Current status and priorities (updated 2026-09-19)
 
 Status of the Gauntlet II phone-streaming prototype, from a read-only inspection of the Pi and the current code:
@@ -61,7 +110,8 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   load (the Realtek Wi-Fi 6 + BT adapter), and Pi power delivery are all
   hypotheses - isolate experimentally, one variable at a time, over matched
   >=10 min windows using the kernel dip count (method in `telemetry/README.md`).
-  Config is stock (`arm_freq=1800`, `over_voltage=0`); idle temps ~40 C.
+  Config is NOT stock: `arm_freq=1800`, but `over_voltage_avs=-20000` (a core undervolt,
+  found 2026-09-23; this lowers the margin against supply dips). Idle temps are ~40 C.
 - **A/V audio ratchet — ROOT CAUSE CONFIRMED, fix UNVERIFIED (2026-09-20).**
   Cause: pipeline runs on the system (wall) clock while `pulsesrc`
   (a `GstAudioBaseSrc`) timestamps from its sample-position ringbuffer clock and
