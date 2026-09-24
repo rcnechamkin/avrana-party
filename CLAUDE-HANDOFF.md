@@ -1,6 +1,13 @@
 # Claude Code handoff: Avrana Party
 
-You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
+> **Read this first (2026-09-24 evening).** This file is mostly a **historical log** of the arcade
+> work (2026-09-19/20) with dated banners. Current truth lives elsewhere — start at `README.md` →
+> "Start here": status and the next action in `docs/ROADMAP.md`, machines/repos/branches in
+> `docs/SYSTEM.md`, networking in `docs/runbooks/network.md`, tests in `docs/TESTING.md`.
+> **Since 2026-09-24:** the USB Wi-Fi adapter is gone; the party AP runs on the Pi's internal radio
+> (`wlan0`, `10.42.0.1`) and the Pi reaches home over `eth0` (`10.0.0.142`). Anything below that
+> says `wlan1` is the AP or `wlan0` is the home link, or `10.0.0.143`, is historical. Power is clean
+> without the adapter (`docs/findings/2026-09-24-no-usb-power-baseline.md`).
 
 > **2026-09-24 update: product direction.** Avrana Party is now explicitly **one party
 > platform with many games** ("the game may change; the party does not"). Avrana is designed
@@ -14,10 +21,8 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 > (`experiments/` on branch `experiment/party-sim`): don't change BLUFF's identity code or live
 > services for it. Development runs laptop → GitHub → Pi; the Pi is a deploy/test target. The
 > games fork is backed up on the laptop (`~/avrana-party-games.git`); its GitHub repo is not
-> created yet. **Current blocker for N2 and PS1:** power. A replacement PSU (2026-09-24)
-> reduced but did not eliminate under-voltage with the USB Wi-Fi adapter (party AP) plugged in:
-> `docs/findings/2026-09-24-new-psu-power-baseline.md`. Next isolation step: the adapter on a
-> powered USB hub. BLUFF playtest runbook: `docs/runbooks/bluff-playtest.md`.
+> created yet. ~~Current blocker: power~~ — resolved for the tested workloads by removing the USB adapter
+> (see the banner above). BLUFF playtest runbook: `docs/runbooks/bluff-playtest.md`.
 
 > **2026-09-23 update. Read `docs/ROADMAP.md` first.**
 > - The **repository is now the documentation source of truth**. The BookStack API/MCP is

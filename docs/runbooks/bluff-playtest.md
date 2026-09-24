@@ -13,15 +13,28 @@ wasn't measured — never estimate after the fact.
   (`journalctl -k -b | grep -icE 'undervoltage|voltage normalis'`) recorded at start and end. BLUFF
   is light; the arcade stream (Gauntlet II, load 2.4–3.9) is not. Stopping the arcade is a service
   change → owner's call; note whether it ran.
-- Offline mode on (`docs/findings/2026-09-24-party-network-and-offline-mode.md`), or record that
-  the test ran with home internet behind the Pi.
+- Offline mode on (`tools/avrana-offline on 2h`, owner, sudo — `docs/runbooks/network.md`), or
+  record that the test ran with home internet behind the Pi. (The older recipe in the 2026-09-24
+  network findings targets `wlan1` and no longer blocks anything.)
+- **Use the `playtest-readiness` branch of the games fork** (below), not `main`: `main` has a
+  reconnect bug that breaks E3/E4.
 
 ## What exists (facts, 2026-09-24)
 
 - Dev fork: `~/avrana-lab/avrana-party-games` on `party`, `main` @ `2cf4831` (laptop backup
   identical). 391 BLUFF unit tests pass on the Pi. **Not running** after the reboot.
-- **Everything happens on one origin: `http://10.42.0.1:8196/`.** Identity lives in per-origin
-  browser storage, so a phone that also opens the port-80 hub is a *different player* there.
+- **Branch `playtest-readiness`** (laptop backup repo, 2026-09-24; 1198 tests pass) adds two
+  playtest fixes without changing the game: (1) **reconnect bug** — on `main`, a phone offline for
+  ~5 s (sleep, airplane mode, Wi-Fi rejoining) used up three "room full" retries and **stopped
+  reconnecting for good** behind a stale screen; now only real refusals count, and the page
+  reconnects at once on wake/online; (2) **structured lifecycle log lines** — `EVENT {json}` per
+  join, rejoin, disconnect, ready/start/leave/end and phase change, plus BLUFF's public table log,
+  keyed by player id (tokens never logged). Deliver it to the Pi dev clone with
+  `git push <pi-dev-clone> playtest-readiness` from the laptop, then check it out there.
+- **Everything happens on ONE origin for the whole playtest** — either `http://10.42.0.1:8196/`
+  (the fork directly) or `http://10.42.0.1:8190/` (the dev front door with the party service,
+  `experiments/party-service`). Identity lives in per-origin browser storage, so a phone that opens
+  a second origin is a *different player* there. Write the chosen address into E1.
 - Second game for the switch: **WORD RUSH** (1–12 players, 5–10 min, TV optional). Backup: CATEGORY
   BLITZ. Avoid Trivia (late-answer bug), Werewolf (needs 5), TV games.
 - Behaviour to expect:
@@ -37,6 +50,8 @@ wasn't measured — never estimate after the fact.
     autopilot. All seated humans gone → pause; ≥ 10 s on resume; a newcomer may end it after 60 s;
     abandoned after 5 min.
   - **Late join:** spectator (public view), a seat next game.
+  - **Lobby vs game:** a phone that drops **in the lobby** is removed and comes back as a *new*
+    player (new pid); only **in-game** seats survive a disconnect. Expect this in E1–E2.
   - **No host exists.** The "starter" is only recorded. Their disconnect → reconnecting → away →
     autopilot; nobody gains powers.
 - Logs today **cannot reconstruct a session**: `srv.sh` writes untimestamped uvicorn output to
@@ -46,20 +61,27 @@ wasn't measured — never estimate after the fact.
 
 1. Record the Pi clock next to a phone clock (`date` on the Pi; the Pi has no RTC and can't sync
    offline — note the offset).
-2. Start the dev server **with a timestamped log** (quoting checked 2026-09-24; `srv.sh stop 8196`
-   still stops it, it matches by port and working directory):
+2. Start the dev server **with a timestamped log** (checked on the Pi 2026-09-24; stop it by port,
+   below — `srv.sh stop` only stops servers started from the main dev clone). `-W interactive` matters: the Pi's
+   `awk` is mawk, which otherwise buffers its input and stamps lines with the time a buffer arrived
+   (seconds late) instead of the time they were written. Run it from the `playtest-readiness`
+   worktree (`~/avrana-lab/wt/playtest`) or change the `cd`:
 
    ```bash
    mkdir -p ~/avrana-lab/playtest
    RUN=~/avrana-lab/playtest/$(date +%Y%m%dT%H%M%S)
-   setsid -f sh -c 'cd ~/avrana-lab/avrana-party-games && LANGAMES_PORT=8196 .venv/bin/python -u server.py 2>&1 | awk "{ print strftime(\"%F %T\"), \$0; fflush() }" >> "$1-server.log"' sh "$RUN" < /dev/null
+   setsid -f sh -c 'cd ~/avrana-lab/wt/playtest && LANGAMES_PORT=8196 ~/avrana-lab/avrana-party-games/.venv/bin/python -u server.py 2>&1 | awk -W interactive "{ print strftime(\"%F %T\"), \$0; fflush() }" >> "$1-server.log"' sh "$RUN" < /dev/null
    ```
 3. Start the 1 s state poller (per-game phase and player counts):
 
    ```bash
    setsid -f sh -c 'while :; do echo "$(date +%T) $(curl -s -m 2 http://127.0.0.1:8196/health)"; sleep 1; done >> "$1-health.log"' sh "$RUN" < /dev/null
    ```
-   Stop both afterwards: `~/avrana-lab/srv.sh stop 8196` and `pkill -f '[8]196/health'`.
+   Stop both afterwards: `kill $(ss -ltnp | grep ':8196 ' | grep -oE 'pid=[0-9]+' | cut -d= -f2)` and
+   `pkill -f '[8]196/health'`.
+   `/health` counts all players incl. bots and disconnected seats, so it can't show connects — the
+   `EVENT` lines can: `grep -o 'EVENT {.*' "$RUN-server.log" | cut -c7-` gives one JSON object per
+   line (each also carries its own `ts`).
 4. `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8196/games/bluff/` → 200.
 5. Phones: 3–6, **at least one Android**. Per phone: model, OS, browser, mobile data on/off. No TV,
    no app installs.
@@ -108,7 +130,7 @@ results up as a dated `docs/findings/` entry; they set the platform timers and t
 
 ## Known risks
 
-One room per server — never restart it mid-test · private tabs lose the token when closed · no
+The reconnect bug if `main` is used instead of `playtest-readiness` · one room per server — never restart it mid-test · private tabs lose the token when closed · no
 target confirmation (a mis-tap can spend a Coup) · Android's probe gets 404 (expect "no internet";
 with mobile data on, traffic may go cellular — see the network findings) · real iPhone Safari
 (toolbar, safe areas, locking during someone's claim) untested.
