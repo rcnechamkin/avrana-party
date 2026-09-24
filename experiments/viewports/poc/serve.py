@@ -13,7 +13,7 @@ Endpoints (all JSON unless noted):
   GET  /layouts               {"keys": [...], "default": "4"}
   GET  /layout?key=4&seat=2   crop for that seat: rect, aspect, css, orientation
   POST /claim   {"client": "<random id>", "layout": "4"}   -> {"seat": n, "layout": ...}
-  POST /release {"client": "<random id>"}                  -> {"released": n|null}
+  POST /release {"client": "<random id>"}                  -> {"released": [seats freed]}
   GET  /state                 who holds which seat (ids truncated)
 
 Seat assignment mirrors the party-model rules at toy scale: a client id (random, kept in the
@@ -82,11 +82,9 @@ class Seats:
             return free[0]
 
     def release(self, client):
+        """Leave: give up this client's seat in EVERY layout. Returns the seats freed."""
         with self.lock:
-            for held in self.by_layout.values():
-                if client in held:
-                    return held.pop(client)
-        return None
+            return [held.pop(client) for held in self.by_layout.values() if client in held]
 
     def snapshot(self):
         with self.lock:
@@ -98,6 +96,7 @@ SEATS = Seats()
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'viewport-poc'
+    timeout = 10                          # a slow/idle connection can't hold a thread forever
 
     def log_message(self, fmt, *args):      # quiet; the page shows what matters
         pass
@@ -113,8 +112,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self):
         n = int(self.headers.get('Content-Length') or 0)
-        if n > 4096:
-            raise ValueError('body too large')
+        if not 0 <= n <= 4096:            # a negative length would make read() unbounded
+            raise ValueError('bad body length')
         data = json.loads(self.rfile.read(n) or b'{}')
         return data if isinstance(data, dict) else {}
 
@@ -149,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         try:
             data = self._body()
-        except (ValueError, json.JSONDecodeError):
+        except (ValueError, RecursionError):  # JSONDecodeError is a ValueError
             return self._json({'error': 'bad request'}, 400)
         client = str(data.get('client', ''))[:CLIENT_ID_MAX]
         if len(client) < 8:

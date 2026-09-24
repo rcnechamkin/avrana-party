@@ -47,29 +47,44 @@ and hold — the full frame appears, showing that every phone has the whole pict
 
 ```bash
 python experiments/viewports/test_viewport_geometry.py         # 16 geometry vectors
-python experiments/viewports/poc/test_poc_server.py            # 5 server tests (seats, geometry, input, offline page)
-npx playwright test -c experiments/viewports/poc/playwright.config.ts   # 4 browser tests × Chromium + WebKit
+python experiments/viewports/poc/test_poc_server.py            # 7 server tests
+npx playwright test -c experiments/viewports/poc/playwright.config.ts   # 6 browser tests × Chromium + WebKit
 ```
 
 (From this worktree, point Node at the main checkout's `node_modules`, e.g.
 `NODE_PATH=<repo>/node_modules <repo>/node_modules/.bin/playwright test -c …`.)
 
-The browser tests read **real rendered pixels**: four clients get four distinct seats and each crop
-shows only its own colour (centre and all four edges — the 2-px inset trims dividers and bleed),
-while the same client's full view shows all four regions of the one source frame; a reload keeps
-the seat and crop; an 8:3 crop fits by width in landscape and shows the rotate hint in portrait;
-the crop CSS is static across frames.
+- **Server (7):** distinct seats that survive reconnects; a spectator when full; Leave frees the
+  seat in every layout; geometry served equals the tested vectors; bad input (short id, unknown
+  layout, bad JSON, negative Content-Length) refused; the page loads nothing from outside.
+- **Browser (6 × 2 engines), on real rendered pixels:** for layouts 4, 2h, 2v and 3, every client
+  gets a distinct seat and its crop shows only its own colour — including a ring scan 1–2 CSS px
+  inside every edge, where divider or neighbour bleed would appear — while a full view shows every
+  region of the one frame; the Leave button frees a seat that a spectator then gets; a reload keeps
+  seat and crop; an 8:3 crop fits by width in landscape and hints in portrait; a 4:3 quadrant in
+  portrait does not nag; the crop CSS is static across frames, and crop-vs-full frame gaps are
+  recorded (Chromium, headless: identical — p50 16.7 ms, p95 33.4 ms both ways; not asserted).
 
 ## What this proves — and what it does not
 
-**Proves:** identical source imagery per instant on every client; a different crop per client from
-metadata alone; the crop is a one-time CSS change with no per-frame application work (so no
-application-side latency is added); contain-fit and orientation behaviour for 4:3, 8:3 and 2:3
-crops; seat stability across reconnects; spectators fall back to the full frame.
+| Owner's assertion | Status |
+|---|---|
+| 1. All clients may receive identical source imagery | **Simulated.** Each client *draws* the same frame from a server-synced clock, so imagery is identical by construction — nothing is actually shared. Real proof is stage B (the Pi's one encoded stream to several phones). |
+| 2. Each client can show a different crop | **Proven** (pixel tests, every layout and seat, both engines). |
+| 3. Cropping adds no meaningful application-side latency | **Supported, not measured.** The crop is one static CSS rule (no per-frame work, test-verified), and headless frame gaps are identical crop vs full. Input-to-photon latency is not measured here. |
+| 4. Orientation / aspect behaviour understood | **Tested for 8:3 and 4:3** (contain-fit; the rotate hint appears only when rotating makes the picture ≥ 1.5× bigger). 2:3 portrait crops fit by the same code but have no dedicated test. |
+| 5. Reconnect doesn't change a player's view | **Proven for a reload in the same browser.** Not held across: a server restart (seats are in memory and re-issued in reconnect order), a private tab that was closed (new id), or a URL without the same `?layout=`. |
 
-**Does not prove:** the real WebRTC path from the Pi (stage B, after the power problem is fixed);
-H.264 edge bleed and bitrate per quadrant (the synthetic frame is perfect; the Pi encoder is not);
-readability of a 160×120-native-pixel quadrant of a real PS1 game; decode behaviour on older phones.
-In CI-style runs, Playwright's Windows WebKit has no `captureStream`, so WebKit exercised the
-canvas fallback; Chromium exercised the MediaStream `<video>` path. Real iOS Safari supports
-`captureStream` — confirm on a phone.
+**Deviations from stage A in the design doc:** the source is a canvas stream, not an H.264 test
+video, so encoder edge bleed and bitrate per quadrant are untested (the Pi encoder must be tested in
+stage B); dividers are 2 px, not 1 px; the doc's canvas `drawImage` crop mode is not built (the
+canvas path here crops the canvas element with the same CSS); there is no `seat=` URL parameter
+(the server assigns seats); layout `3` is one half + two quarters (the design doc's alternative
+"three quadrants + shared map" is covered only by the geometry tests).
+
+**Known limits of the toy server:** seats never expire — a phone that closes the tab without
+pressing Leave keeps its seat until the server restarts, and anyone on the LAN could take every
+seat with made-up ids (it's a demo, not the party service). In CI-style runs, Playwright's Windows
+WebKit has no `captureStream`, so WebKit exercised the canvas fallback and Chromium the MediaStream
+`<video>` path; real iOS Safari supports `captureStream` — confirm on a phone. If autoplay is
+blocked (e.g. Low Power Mode) the page shows a "Tap to start video" button.

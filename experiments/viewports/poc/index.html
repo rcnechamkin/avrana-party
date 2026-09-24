@@ -19,8 +19,10 @@
     position: relative; overflow: hidden; }
   /* The crop window: its aspect equals the crop's display aspect; the video inside is scaled
      and offset so exactly the seat's rectangle fills it (numbers come from /layout). */
-  #vp { position: relative; overflow: hidden; background: #222; touch-action: none; }
-  #vp video, #vp canvas { position: absolute; display: block; }
+  #vp { position: relative; overflow: hidden; background: #222; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #vp video, #vp canvas { position: absolute; display: block; object-fit: fill; }
+  #tap { position: absolute; inset: 0; margin: auto; width: 60%; height: 3em; display: none; }
   #hint { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); background: #000c;
     border: 1px solid var(--accent); padding: 6px 10px; border-radius: 8px; display: none; }
   button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid #555;
@@ -37,6 +39,7 @@
 <div id="stage">
   <div id="vp"><video id="video" muted playsinline autoplay></video></div>
   <div id="hint"></div>
+  <button id="tap">Tap to start video</button>
 </div>
 <footer>
   <button id="full">Full view</button>
@@ -60,7 +63,7 @@ function clientId() {
 }
 const params = new URLSearchParams(location.search);
 const state = { client: clientId(), layout: params.get('layout'), seat: null, full: false,
-                crop: null, offset: 0, ready: false };
+                crop: null, offset: 0, ready: false, paused: false, gaps: [] };
 window.__poc = state;                      // read by the automated tests
 
 const $ = id => document.getElementById(id);
@@ -93,10 +96,11 @@ const SPLITS = {                            // per layout: rectangles in the 640
 };
 const cv = $('src'), g = cv.getContext('2d');
 function drawFrame() {
+  if (state.paused) { requestAnimationFrame(drawFrame); return; }   // tests pause idle pages
   const t = now(), frame = Math.floor(t / (1000 / 60)) % 1000000;
   const clock = new Date(t).toISOString().slice(11, 23);
   g.fillStyle = '#fff'; g.fillRect(0, 0, 640, 480);                 // divider colour
-  (SPLITS[state.layout] || SPLITS['4']).forEach(([x, y, w, h], i) => {
+  (Object.hasOwn(SPLITS, state.layout) ? SPLITS[state.layout] : SPLITS['4']).forEach(([x, y, w, h], i) => {
     g.fillStyle = COLORS[i]; g.fillRect(x + 1, y + 1, w - 2, h - 2);  // 2-px white dividers
     const bx = x + 20 + ((t / 8 + i * 70) % (w - 40)), by = y + h / 2 + Math.sin(t / 300 + i) * (h / 3);
     g.fillStyle = '#fff'; g.beginPath(); g.arc(bx, by, 10, 0, 7); g.fill();
@@ -119,15 +123,23 @@ function fit() {
                                left: `${c.left}%`, top: `${c.top}%` });
   const landscape = stage.width > stage.height, want = state.crop && !state.full ? state.crop.orientation : null;
   $('orient').textContent = `screen ${landscape ? 'landscape' : 'portrait'}` + (want ? ` · crop prefers ${want}` : '');
+  // Hint only when rotating would make the picture at least 1.5x bigger (a 4:3 quadrant in
+  // portrait is barely smaller than in landscape, so nagging there helps nobody).
+  // Rotating swaps the window's width and height, but the header/footer bars keep their height.
+  const fitArea = (bw, bh) => { let fw = bw, fh = fw / aspect; if (fh > bh) { fh = bh; fw = fh * aspect; } return fw * fh; };
+  const bars = innerHeight - stage.height;
+  const gain = fitArea(innerHeight, innerWidth - bars) / Math.max(1, fitArea(stage.width, stage.height));
   const hint = $('hint');
-  if (want && (want === 'landscape') !== landscape) {
+  if (want && (want === 'landscape') !== landscape && gain >= 1.5) {
     hint.textContent = `Rotate your phone to ${want} for a bigger view`; hint.style.display = 'block';
   } else hint.style.display = 'none';
 }
 
 async function claim() {
-  if (!state.layout) state.layout = (await (await fetch('/layouts')).json()).default;
+  const known = await (await fetch('/layouts')).json();
+  if (!known.keys.includes(state.layout)) state.layout = known.default;   // bad/missing ?layout=
   const r = await post('/claim', { client: state.client, layout: state.layout });
+  if (r.error) { $('who').textContent = 'Could not get a seat'; $('geom').textContent = r.error; return; }
   state.seat = r.seat;
   state.crop = r.seat ? await (await fetch(`/layout?key=${state.layout}&seat=${r.seat}`)).json() : null;
   $('who').textContent = r.seat ? `Seat ${r.seat}` : 'Spectator (full view)';
@@ -143,7 +155,8 @@ function watchGaps(video) {
   if (!video.requestVideoFrameCallback) { $('gap').textContent = 'rVFC n/a'; return; }
   const gaps = []; let last = null;
   const cb = (tnow) => {
-    if (last !== null) { gaps.push(tnow - last); if (gaps.length > 120) gaps.shift(); }
+    if (last !== null) { gaps.push(tnow - last); if (gaps.length > 120) gaps.shift();
+                         state.gaps.push(tnow - last); if (state.gaps.length > 600) state.gaps.shift(); }
     last = tnow;
     if (gaps.length >= 30) {
       const s = [...gaps].sort((a, b) => a - b);
@@ -164,7 +177,10 @@ function attachSource() {
   if (typeof cv.captureStream === 'function' && params.get('source') !== 'canvas') {
     video.srcObject = cv.captureStream(60);
     video.addEventListener('playing', markReady);
-    video.play().catch(() => {});
+    video.play().catch(() => {                  // e.g. iOS Low Power Mode blocks autoplay
+      const tap = $('tap'); tap.style.display = 'block';
+      tap.onclick = () => video.play().then(() => { tap.style.display = 'none'; }).catch(() => {});
+    });
     watchGaps(video);
     state.sourceEl = video; state.sourceKind = 'video';
     $('kind').textContent = 'source: MediaStream <video>';
@@ -186,7 +202,8 @@ async function main() {
   fit();
   $('full').onclick = () => { state.full = !state.full; $('full').textContent = state.full ? 'My view' : 'Full view'; fit(); };
   const vp = $('vp');                        // hold to peek at the full frame
-  vp.addEventListener('pointerdown', () => { state.peek = state.full; state.full = true; fit(); });
+  vp.addEventListener('pointerdown', () => {
+    if (state.peek === undefined) { state.peek = state.full; state.full = true; fit(); } });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => vp.addEventListener(e, () => {
     if (state.peek !== undefined) { state.full = state.peek; state.peek = undefined; fit(); } }));
   $('leave').onclick = async () => {

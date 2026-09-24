@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 30_000,
   use: { baseURL: 'http://127.0.0.1:8765' },
   webServer: {
-    command: 'python serve.py --host 127.0.0.1 --port 8765',
+    command: 'python -B serve.py --host 127.0.0.1 --port 8765',
     cwd: __dirname,
     url: 'http://127.0.0.1:8765/layouts',
     reuseExistingServer: false,

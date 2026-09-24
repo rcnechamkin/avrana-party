@@ -55,7 +55,7 @@ class Server(unittest.TestCase):
         for i in range(4):
             self.post('/claim', {'client': f'client-{i:04d}', 'layout': '4'})
         self.assertIsNone(self.post('/claim', {'client': 'late-viewer', 'layout': '4'})[1]['seat'])
-        self.assertEqual(self.post('/release', {'client': 'client-0001'})[1]['released'], 2)
+        self.assertEqual(self.post('/release', {'client': 'client-0001'})[1]['released'], [2])
         self.assertEqual(self.post('/claim', {'client': 'late-viewer', 'layout': '4'})[1]['seat'], 2)
 
     def test_layout_endpoint_serves_the_tested_geometry(self):
@@ -81,6 +81,21 @@ class Server(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as e:
             urllib.request.urlopen(req)
         self.assertEqual(e.exception.code, 400)
+
+    def test_release_frees_every_layout(self):
+        for key in ('4', '2h'):
+            self.post('/claim', {'client': 'client-9999', 'layout': key})
+        self.assertEqual(sorted(self.post('/release', {'client': 'client-9999'})[1]['released']), [1, 1])
+        self.assertEqual(serve.SEATS.snapshot(), {'4': {}, '2h': {}})
+
+    def test_negative_content_length_is_rejected(self):
+        import http.client
+        c = http.client.HTTPConnection('127.0.0.1', self.srv.server_address[1], timeout=5)
+        c.putrequest('POST', '/claim')
+        c.putheader('Content-Length', '-1')
+        c.endheaders()
+        self.assertEqual(c.getresponse().status, 400)
+        c.close()
 
     def test_page_is_served_and_self_contained(self):
         status, body, headers = self.get('/')

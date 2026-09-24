@@ -69,36 +69,79 @@ async function done(page: Page) {
   await page.context().close();
 }
 
-test('four clients: same source, four different crops (pixel check)', async ({ browser }) => {
-  test.setTimeout(120_000);                         // 4 live pages + 8 screenshot decodes
-  const pages = [];
-  for (let i = 0; i < 4; i++) pages.push(await openSeat(await browser.newContext(), '4'));
-  const seats = await Promise.all(pages.map(seatOf));
-  expect(new Set(seats).size).toBe(4);
-  for (const page of pages) {
-    const seat = await seatOf(page), img = await viewportImage(page);
-    const want = SEAT_RGB[seat - 1];
-    // The crop shows ONLY this seat's quadrant: centre and all four edges are its colour
-    // (the 2-px inset trims the white dividers and neighbour bleed).
-    for (const [fx, fy] of [[0.5, 0.25], [0.03, 0.5], [0.97, 0.5], [0.5, 0.03], [0.5, 0.97]]) {
-      const got = img.px(img.width * fx, img.height * fy);
-      // allow for the moving white ball / black text: sample a small neighbourhood
-      const ok = [0, 3, -3].some(d => near(img.px(img.width * fx + d, img.height * fy + d), want));
-      expect(ok, `seat ${seat} at ${fx},${fy} got ${got}`).toBeTruthy();
-    }
-    // Full view on the same client shows all four quadrants of the identical source frame.
-    await page.click('#full');
-    await page.waitForTimeout(150);
-    const full = await viewportImage(page);
-    SEAT_RGB.forEach((rgb, i) => {
-      // several points per quadrant; the moving ball or text can cover one of them
-      const ox = (i % 2) * 0.5, oy = Math.floor(i / 2) * 0.5;
-      const pts = [[0.30, 0.10], [0.70, 0.10], [0.85, 0.50], [0.70, 0.60], [0.45, 0.35]];
-      const hits = pts.filter(([u, v]) => near(full.px(full.width * (ox + u / 2), full.height * (oy + v / 2)), rgb)).length;
-      expect(hits, `full view quadrant ${i + 1}`).toBeGreaterThanOrEqual(3);
-    });
+/** Every pixel on the rings 1 and 2 px inside the crop edges must be the seat's colour:
+ *  that is where divider lines or a neighbour's pixels would bleed in. */
+/** The ring is measured in CSS pixels: at devicePixelRatio 2 an element screenshot rounds its
+ *  box outward by up to a device pixel or two, which shows the page's black background. */
+function ringIsClean(img: ReturnType<typeof decodePng>, want: number[], dpr = 1) {
+  let bad = 0, total = 0;
+  const edges: Record<string, number> = { top: 0, bottom: 0, left: 0, right: 0 };
+  let sample: number[] | null = null;
+  const check = (x: number, y: number, edge: string) => {
+    total++;
+    const c = img.px(x, y);
+    if (!near(c, want, 60)) { bad++; edges[edge]++; sample = sample || c; }
+  };
+  for (const css of [1, 2]) {
+    const d = Math.ceil(css * dpr) + (dpr > 1 ? 1 : 0);
+    for (let x = d; x < img.width - d; x += 2) { check(x, d, 'top'); check(x, img.height - 1 - d, 'bottom'); }
+    for (let y = d; y < img.height - d; y += 2) { check(d, y, 'left'); check(img.width - 1 - d, y, 'right'); }
   }
-  for (const p of pages) await done(p);
+  return { bad, total, edges, sample };
+}
+
+async function setPaused(pages: Page[], active: Page | null) {
+  for (const p of pages) await p.evaluate(v => { (window as any).__poc.paused = v; }, p !== active);
+}
+
+test('each seat shows only its own region; the full view shows every region', async ({ browser }) => {
+  test.setTimeout(180_000);
+  for (const layout of ['4', '2h', '2v', '3']) {
+    const n = layout === '4' ? 4 : layout === '3' ? 3 : 2;
+    const pages: Page[] = [];
+    for (let i = 0; i < n; i++) pages.push(await openSeat(await browser.newContext(), layout));
+    expect(new Set(await Promise.all(pages.map(seatOf))).size).toBe(n);
+    for (const page of pages) {
+      await setPaused(pages, page);                   // one live page at a time (WebKit is slow)
+      await page.waitForTimeout(100);
+      const seat = await seatOf(page), img = await viewportImage(page);
+      const want = SEAT_RGB[seat - 1];
+      expect(near(img.px(img.width * 0.5, img.height * 0.25), want) ||
+             near(img.px(img.width * 0.75, img.height * 0.25), want), `layout ${layout} seat ${seat} centre`).toBeTruthy();
+      const box = (await page.locator('#vp').boundingBox())!;
+      const ring = ringIsClean(img, want, img.width / box.width);
+      expect(ring.bad / ring.total, `layout ${layout} seat ${seat} edge ring ${ring.bad}/${ring.total} ${JSON.stringify(ring.edges)} e.g. ${ring.sample} img ${img.width}x${img.height}`).toBeLessThan(0.02);
+    }
+    if (layout === '4') {                             // full view: the whole shared frame
+      const page = pages[0];
+      await setPaused(pages, page);
+      await page.click('#full');
+      await page.waitForTimeout(150);
+      const full = await viewportImage(page);
+      SEAT_RGB.forEach((rgb, i) => {
+        const ox = (i % 2) * 0.5, oy = Math.floor(i / 2) * 0.5;
+        const pts = [[0.30, 0.10], [0.70, 0.10], [0.85, 0.50], [0.70, 0.60], [0.45, 0.35]];
+        const hits = pts.filter(([u, v]) => near(full.px(full.width * (ox + u / 2), full.height * (oy + v / 2)), rgb)).length;
+        expect(hits, `full view region ${i + 1}`).toBeGreaterThanOrEqual(3);
+      });
+    }
+    for (const p of pages) await done(p);
+  }
+});
+
+test('Leave button frees the seat for a spectator, who then gets a crop', async ({ browser }) => {
+  const pages: Page[] = [];
+  for (let i = 0; i < 2; i++) pages.push(await openSeat(await browser.newContext(), '2v'));
+  const spectator = await openSeat(await browser.newContext(), '2v');
+  expect(await seatOf(spectator)).toBe(0);                    // all seats taken
+  expect(await spectator.locator('#who').textContent()).toContain('Spectator');
+  const leaver = pages[0], freed = await seatOf(leaver);
+  await leaver.click('#leave');
+  await expect(leaver.locator('#who')).toHaveText(/Left/);
+  await spectator.reload();
+  await spectator.waitForFunction(() => document.body.dataset.seat !== undefined && (window as any).__poc?.ready);
+  expect(await seatOf(spectator)).toBe(freed);
+  for (const p of [...pages, spectator]) await done(p);
 });
 
 test('a reload (reconnect) keeps the same seat and crop', async ({ browser }) => {
@@ -114,25 +157,29 @@ test('a reload (reconnect) keeps the same seat and crop', async ({ browser }) =>
   await done(page);
 });
 
-test('orientation: a wide 8:3 crop fits by width in landscape and warns in portrait', async ({ browser }) => {
+test('orientation: an 8:3 crop fits by width in landscape and hints in portrait', async ({ browser }) => {
   for (const [w, h, expectHint] of [[844, 390, false], [390, 844, true]] as const) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h } });
-    const page = await openSeat(ctx, '2h');
-    const seat = await seatOf(page);
-    if (seat === 1) {                                 // seat 1 of 2h is the top half: aspect 8:3
-      const box = (await page.locator('#vp').boundingBox())!;
-      expect(box.width / box.height).toBeGreaterThan(2.5);
-      expect(box.width / box.height).toBeLessThan(2.8);
-      const stage = (await page.locator('#stage').boundingBox())!;
-      expect(box.width).toBeLessThanOrEqual(stage.width + 1);   // contain: never overflows
-      expect(box.height).toBeLessThanOrEqual(stage.height + 1);
-      expect(await page.locator('#hint').isVisible()).toBe(expectHint);
-    }
+    const page = await openSeat(ctx, '2h');          // both 2h seats are 8:3 halves
+    const box = (await page.locator('#vp').boundingBox())!;
+    expect(box.width / box.height).toBeGreaterThan(2.5);
+    expect(box.width / box.height).toBeLessThan(2.8);
+    const stage = (await page.locator('#stage').boundingBox())!;
+    expect(box.width).toBeLessThanOrEqual(stage.width + 1);   // contain: never overflows
+    expect(box.height).toBeLessThanOrEqual(stage.height + 1);
+    expect(await page.locator('#hint').isVisible()).toBe(expectHint);
     await done(page);
   }
 });
 
-test('crop mode does no per-frame work: the crop is static CSS on the video element', async ({ browser }) => {
+test('a 4:3 quadrant in portrait does not nag to rotate', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await openSeat(ctx, '4');
+  expect(await page.locator('#hint').isVisible()).toBe(false);
+  await done(page);
+});
+
+test('crop is static CSS; frame gaps recorded for crop vs full view (not asserted)', async ({ browser, browserName }) => {
   const ctx = await browser.newContext();
   const page = await openSeat(ctx, '2v');
   const src = page.locator('#vp > video, #vp > canvas').first();
@@ -140,5 +187,17 @@ test('crop mode does no per-frame work: the crop is static CSS on the video elem
   await page.waitForTimeout(500);
   expect(await src.getAttribute('style')).toBe(style);                      // unchanged across frames
   expect(style).toMatch(/width: 2\d\d(\.\d+)?%/);                          // scaled ~2x for a half
+  const sample = async () => {
+    await page.evaluate(() => { (window as any).__poc.gaps.length = 0; });
+    await page.waitForTimeout(2000);
+    const g: number[] = await page.evaluate(() => [...(window as any).__poc.gaps]);
+    g.sort((a, b) => a - b);
+    return g.length ? { n: g.length, p50: g[g.length >> 1], p95: g[Math.floor(g.length * 0.95)] } : null;
+  };
+  const crop = await sample();
+  await page.click('#full');
+  const full = await sample();
+  // Headless timing is too noisy to gate on; the numbers are printed as evidence.
+  console.log(`[${browserName}] frame gaps ms — crop: ${JSON.stringify(crop)} full: ${JSON.stringify(full)}`);
   await done(page);
 });
