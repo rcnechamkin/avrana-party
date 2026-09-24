@@ -35,8 +35,11 @@ sudo bash telemetry/install-pi-throttle-check.sh
 ```
 
 Then in the hub UI (`http://10.0.0.218:8093`) → **Add System**:
-name `party`, host `10.0.0.143`, port `45876`. (party's `10.0.0.143` is a DHCP
-lease; a router reservation for it is worth adding so the hub keeps finding it.)
+name `party`, host `10.0.0.142`, port `45876`. (Since 2026-09-24 the Pi reaches the home LAN over
+**eth0 = `10.0.0.142`**; the old `10.0.0.143` was the Wi-Fi address before the internal radio became the
+party AP. Both are DHCP leases; a router reservation for eth0 is worth adding. **On 2026-09-24 the agent
+had no connection from the hub** (it was set up with `10.0.0.143`; the hub's config was not read) —
+check the `party` system's host in the hub UI and change it to `10.0.0.142`.)
 
 Confirm in the dashboard that CPU, RAM, load, temperature, disk and network are
 all graphing for `party`.

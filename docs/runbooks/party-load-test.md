@@ -6,8 +6,9 @@ dips measures the supply, not the software. Complements ADR 0001 (the arcade str
 
 ## What it must answer
 
-1. **How many phones can the party AP actually hold?** The party AP is the RTL8851BU USB adapter
-   (`rtw89`), not the onboard radio (reportedly ~7 clients); its ceiling is unknown.
+1. **How many phones can the party AP actually hold?** Since 2026-09-24 the party AP is the Pi's
+   **internal** radio (`wlan0`, brcmfmac; the USB adapter was removed). It is widely reported to top
+   out around 8 stations on the standard firmware (~19 on the "minimal" firmware) — unmeasured here.
 2. **Does a native game stay correct and responsive** with 4, 6 and 8 phones (BLUFF max 6 seats +
    spectators; WORD RUSH up to 12)?
 3. **Does power hold** under that radio and CPU load?
@@ -29,9 +30,9 @@ L1 can run many times; L2 is expensive, so it runs once per hardware change.
 
 - **Power:** kernel dip count before/after (`journalctl -k -b | grep -icE 'undervoltage|voltage
   normalis'`), `pi-throttle-check.sh --interval 1` for the whole run, temperature.
-- **Radio (every 5 s):** `iw dev wlan1 station dump` → stations, signal, `tx retries`, `tx failed`,
-  `inactive time`, bitrate; `ip -s link show wlan1` errors/drops; kernel `rtw89` warnings; USB
-  disconnects. Redact MAC addresses before committing anything (phones randomise them anyway).
+- **Radio (every 5 s):** `iw dev wlan0 station dump` → stations, signal, `tx retries`, `tx failed`,
+  `inactive time`, bitrate; `ip -s link show wlan0` errors/drops; kernel `brcmfmac` warnings (e.g. "firmware
+  halted"). Redact MAC addresses before committing anything (phones randomise them anyway).
 - **Server:** `/health` every 1 s (per-game phase, player count); process CPU and RSS; open sockets
   (`ss -tn state established '( sport = :8196 )' | wc -l`).
 - **Game (L1):** action → broadcast latency measured in the harness (timestamp the click, wait for
@@ -46,7 +47,7 @@ L1 can run many times; L2 is expensive, so it runs once per hardware change.
 2. For N in 4, 6, 8 (L2 up to the number of phones available; L1 continues to 12):
    join all N; play one full BLUFF game (≤ 6 seated, the rest spectate), then one WORD RUSH round;
    each step 10 min; lock/unlock two phones mid-step; one phone walks to the edge of range and back.
-3. Abort on: a live under-voltage bit, > 2 dips in a step, > 75 °C, a wlan1 or USB drop, a Pi reboot,
+3. Abort on: a live under-voltage bit, > 2 dips in a step, > 75 °C, a `wlan0` drop or AP restart, a Pi reboot,
    or any privacy violation.
 4. Write the results as a dated `docs/findings/` entry with the raw logs under
    `docs/findings/evidence/`.

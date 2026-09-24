@@ -1,5 +1,11 @@
 # Party network: what phones get today, and a reversible offline test mode
 
+> **Historical for interface names (2026-09-24, later that day):** the USB Wi-Fi adapter was removed
+> and the AP moved to the Pi's internal radio. Read `wlan1` below as today's `wlan0`, and the "Pi's
+> own `wlan0`" upstream as today's `eth0`. The offline-mode recipe below targets `wlan1` and would
+> **not** block anything now — use `tools/avrana-offline` instead. Current, canonical network facts:
+> `docs/runbooks/network.md`. The captive-probe, DNS and nginx observations below still apply.
+
 Date: 2026-09-24, Pi uptime ~31 min on the new PSU (boot b90bd6d2). **Read-only audit; nothing was
 changed.** `sudo -n` is refused, so the nftables ruleset and the DHCP lease file were not read.
 Live nginx site and captive DNS drop-in are byte-identical to `main` (`cmp`).

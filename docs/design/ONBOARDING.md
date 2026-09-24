@@ -155,7 +155,7 @@ Change nginx, dnsmasq, NetworkManager, Avahi, connectivity-check handling, or Wi
 without approval · put identity or games inside the captive popup · redirect the IP to
 `party.local` before Android is verified · remove the `captive.g.aaplimg.com` rule · put device
 tokens in QR/NFC links · rely on HTTPS-only features · judge onboarding at home with internet behind
-the Pi · disable `wlan0` during a remote session · ship unlocked NFC tags.
+the Pi · take `eth0` down during a remote session (since 2026-09-24 eth0 is the only management link) · ship unlocked NFC tags.
 
 **Still uncertain:** Android's NFC Wi-Fi prompt on
 current Samsung/Pixel; Android routing before the prompt is answered; Private Relay with Pi-DNS names;

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# avrana-topology-check [REPO]  — read-only, no sudo, ~2 s. Asserts the development topology:
+#   Home LAN ── eth0 ── Pi ── wlan0 (AP "Avrana Party Internal", 10.42.0.1/24) ── phones
+# Prints PASS / FAIL / WARN / INFO lines; exit status = number of FAILs. Never prints Wi-Fi
+# passwords or home network names. Safe to run any time EXCEPT during a power measurement
+# (every SSH session is a CPU burst — see docs/findings/2026-09-24-new-psu-power-baseline.md).
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+REPO=${1:-/home/cody/avrana-party}; AP=wlan0; ADDR=10.42.0.1; APN="Avrana Party Internal"; F=0
+pass(){ echo "PASS $*"; }; fail(){ echo "FAIL $*"; F=$((F+1)); }; warn(){ echo "WARN $*"; }; info(){ echo "INFO $*"; }
+ok(){ local m=$1; shift; if "$@" >/dev/null 2>&1; then pass "$m"; else fail "$m"; fi; }
+
+ok "wlan1 absent (no USB Wi-Fi dependency)" test ! -e /sys/class/net/wlan1
+drv=$(basename "$(readlink -f /sys/class/net/$AP/device/driver 2>/dev/null)")
+[ "$drv" = brcmfmac ] && pass "$AP is the internal radio (brcmfmac)" || fail "$AP driver is '$drv'"
+iwi=$(iw dev $AP info 2>/dev/null)
+grep -q "type AP" <<<"$iwi" && pass "$AP is in AP mode" || fail "$AP not in AP mode"
+info "$AP $(grep -o 'channel [^,]*, width: [0-9]* MHz' <<<"$iwi") reg=$(iw reg get 2>/dev/null | awk '/^country/{print $2; exit}')"
+v4=$(ip -4 -o addr show dev $AP)
+[ "$(grep -c . <<<"$v4")" = 1 ] && grep -q "inet $ADDR/24 " <<<"$v4" && pass "$AP holds only $ADDR/24" || fail "$AP IPv4 is not exactly $ADDR/24"
+[ "$(nmcli -g GENERAL.CONNECTION device show $AP 2>/dev/null)" = "$APN" ] && pass "$AP runs profile '$APN'" || fail "$AP is not running '$APN'"
+grep -q " dev eth0 " <<<"$(ip -4 route get 1.1.1.1 2>/dev/null)" && pass "upstream path via eth0" || fail "upstream path not via eth0"
+[ -z "$(ip -4 route show default dev $AP)" ] && pass "no default route on $AP" || fail "default route on $AP"
+info "eth0 $(ip -4 -o addr show dev eth0 | awk '{print $4}') gw $(ip -4 route show default dev eth0 | awk '{print $3; exit}')"
+
+apa=0; cla=0
+while IFS=: read -r uuid type; do
+  case $type in wifi|802-11-wireless) ;; *) continue;; esac
+  mapfile -t v < <(nmcli -g connection.autoconnect,802-11-wireless.mode,connection.interface-name connection show uuid "$uuid" 2>/dev/null)
+  [ "${v[0]:-}" = yes ] || continue
+  if [ "${v[1]:-}" = ap ]; then apa=$((apa+1)); elif [ -z "${v[2]:-}" ] || [ "${v[2]}" = "$AP" ]; then cla=$((cla+1)); fi
+done < <(nmcli -t -f UUID,TYPE connection show 2>/dev/null)
+[ $apa = 1 ] && pass "exactly one AP profile autoconnects" || fail "$apa AP profiles autoconnect"
+[ $cla = 0 ] && pass "no Wi-Fi client profile can autoconnect on $AP" || warn "$cla Wi-Fi client profile(s) can autoconnect on $AP (boot race; see docs/runbooks/network.md)"
+info "AP autoconnect-priority $(nmcli -g connection.autoconnect-priority connection show "$APN" 2>/dev/null)"
+
+l=$( { ss -Hlnu 'sport = :53'; ss -Hlnt 'sport = :53'; } | awk 'NF{print $4}' | sed 's/%[^:]*//; s/:53$//' | sort -u | tr '\n' ' ')
+[ "$l" = "$ADDR " ] && pass "DNS (port 53) listens only on $ADDR" || fail "port 53 listeners: $l"
+pid=$(cat /run/nm-dnsmasq-$AP.pid 2>/dev/null); cmd=$(tr '\0' ' ' < /proc/${pid:-0}/cmdline 2>/dev/null)
+grep -q -- "--listen-address=$ADDR " <<<"$cmd" && pass "NM dnsmasq serves $ADDR" || fail "NM dnsmasq command line unexpected"
+grep -q -- "--dhcp-range=10.42.0.10,10.42.0.254" <<<"$cmd" && pass "DHCP range 10.42.0.10-254" || fail "DHCP range unexpected"
+u=$(ps -o user= -p "${pid:-0}" 2>/dev/null | tr -d ' '); n=$(pgrep -u "${u:-root}" 2>/dev/null | grep -c .)
+info "dnsmasq user=$u ($n process(es) as that user; offline mode needs exactly 1, non-root)"
+drop=/etc/NetworkManager/dnsmasq-shared.d
+info "dnsmasq drop-ins: $(ls $drop 2>/dev/null | tr '\n' ' ')"
+ok "captive DNS drop-in == repo" cmp -s $drop/avrana-captive.conf "$REPO/avrana-captive.conf"
+ok "live nginx site == repo" cmp -s /etc/nginx/sites-available/avrana-party "$REPO/avrana-party.nginx"
+ok "repo nginx == arcade/nginx-site" cmp -s "$REPO/avrana-party.nginx" "$REPO/arcade/nginx-site"
+ok "nginx site enabled" test "$(readlink -f /etc/nginx/sites-enabled/avrana-party)" = /etc/nginx/sites-available/avrana-party
+
+q(){ dig +short +time=2 +tries=1 @$ADDR "$1" "${2:-A}" 2>/dev/null | tail -n1; }
+for h in captive.apple.com captive.g.aaplimg.com connectivitycheck.gstatic.com clients3.google.com www.msftconnecttest.com detectportal.firefox.com; do
+  r=$(q $h); [ "$r" = "$ADDR" ] && pass "DNS $h -> $ADDR" || fail "DNS $h -> '$r'"; done
+[ -z "$(q captive.apple.com AAAA)" ] && pass "DNS captive.apple.com has no AAAA" || fail "captive.apple.com has an AAAA answer"
+c=$(curl -s -m3 -H 'Host: captive.apple.com' http://$ADDR/hotspot-detect.html)
+grep -q Success <<<"$c" && pass "HTTP Apple probe -> Success" || fail "HTTP Apple probe"
+[ "$(curl -s -m3 -o /dev/null -w '%{http_code}' http://$ADDR/)" = 200 ] && pass "HTTP hub at http://$ADDR/ -> 200" || fail "HTTP hub not 200"
+[ "$(systemctl is-enabled nftables 2>/dev/null)" != enabled ] && pass "nftables.service not enabled (offline table cannot persist)" || warn "nftables.service enabled"
+info "offline mode: $([ -e /run/avrana-offline ] && echo ON || echo off); ip_forward=$(cat /proc/sys/net/ipv4/ip_forward); stations=$(iw dev $AP station dump 2>/dev/null | grep -c '^Station')"
+exit $(( F > 99 ? 99 : F ))

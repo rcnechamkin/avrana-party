@@ -1,5 +1,12 @@
 # Avrana Party Gauntlet II streaming prototype
 
+> **Network note (2026-09-24):** mentions below of `wlan1` as the party AP and `wlan0` as the
+> home/management link are from before the USB Wi-Fi adapter was removed. Today the AP is the internal
+> `wlan0` (`10.42.0.1`) and management is `eth0` (`docs/runbooks/network.md`). Side effect: `/stats`
+> labels every peer's path `other` because `ap_addresses()` looks for `wlan1`; the fix (find the AP
+> by its address) is on branch `fix/arcade-ap-interface`, not merged or deployed. Streaming itself
+> is unaffected.
+
 ## Current state (updated 2026-09-19)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
