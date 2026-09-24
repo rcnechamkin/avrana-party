@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Personal Viewports PoC</title>
+<style>
+  :root { color-scheme: dark; --bar: #111; --fg: #eee; --muted: #9aa; --accent: #ffd54a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--fg);
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  header, footer { background: var(--bar); padding: 6px 10px; display: flex; gap: 8px;
+    align-items: center; flex-wrap: wrap; }
+  header b { color: var(--accent); font-size: 18px; }
+  .muted { color: var(--muted); }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0;
+    position: relative; overflow: hidden; }
+  /* The crop window: its aspect equals the crop's display aspect; the video inside is scaled
+     and offset so exactly the seat's rectangle fills it (numbers come from /layout). */
+  #vp { position: relative; overflow: hidden; background: #222; touch-action: none; }
+  #vp video, #vp canvas { position: absolute; display: block; }
+  #hint { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); background: #000c;
+    border: 1px solid var(--accent); padding: 6px 10px; border-radius: 8px; display: none; }
+  button { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid #555;
+    background: #2a2a2a; color: var(--fg); }
+  #src { position: absolute; left: -9999px; top: 0; }     /* the source canvas stays off-screen */
+</style>
+</head>
+<body>
+<header>
+  <b id="who">…</b>
+  <span id="geom" class="muted"></span>
+  <span id="orient" class="muted"></span>
+</header>
+<div id="stage">
+  <div id="vp"><video id="video" muted playsinline autoplay></video></div>
+  <div id="hint"></div>
+</div>
+<footer>
+  <button id="full">Full view</button>
+  <button id="leave">Leave seat</button>
+  <span id="sync" class="muted"></span>
+  <span id="gap" class="muted"></span>
+  <span id="kind" class="muted"></span>
+</footer>
+<canvas id="src" width="640" height="480"></canvas>
+<script>
+'use strict';
+// ---- identity: a random id kept in this browser, so a reload/reconnect gets the SAME seat ----
+function clientId() {
+  const fresh = () => Array.from(crypto.getRandomValues(new Uint8Array(12)),
+                                 b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    let id = localStorage.getItem('vp-poc-client');
+    if (!id) { id = fresh(); localStorage.setItem('vp-poc-client', id); }
+    return id;
+  } catch (e) { return fresh(); }          // private mode: works, but a reload is a new viewer
+}
+const params = new URLSearchParams(location.search);
+const state = { client: clientId(), layout: params.get('layout'), seat: null, full: false,
+                crop: null, offset: 0, ready: false };
+window.__poc = state;                      // read by the automated tests
+
+const $ = id => document.getElementById(id);
+const post = (path, body) => fetch(path, { method: 'POST', body: JSON.stringify(body),
+  headers: { 'Content-Type': 'application/json' } }).then(r => r.json());
+
+// ---- clock sync: every phone draws the frame for the same server time ----
+async function syncClock() {
+  let best = null;
+  for (let i = 0; i < 5; i++) {
+    const t0 = Date.now(); const { ms } = await (await fetch('/time')).json(); const t1 = Date.now();
+    const rtt = t1 - t0, off = ms - (t0 + rtt / 2);
+    if (!best || rtt < best.rtt) best = { rtt, off };
+  }
+  state.offset = best.off;
+  $('sync').textContent = `clock ±${Math.ceil(best.rtt / 2)} ms`;
+}
+const now = () => Date.now() + state.offset;
+
+// ---- the shared source: a deterministic split-screen "game" frame for time t ----
+// Every client renders identical pixels for the same t, standing in for the one encoded frame
+// the Pi sends to every phone. It is fed into a <video> through a MediaStream, the same kind of
+// element a WebRTC stream plays in, so the crop path is the real one.
+const COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231'];
+const SPLITS = {                            // per layout: rectangles in the 640x480 source
+  '2h': [[0, 0, 640, 240], [0, 240, 640, 240]],
+  '2v': [[0, 0, 320, 480], [320, 0, 320, 480]],
+  '3':  [[0, 0, 640, 240], [0, 240, 320, 240], [320, 240, 320, 240]],
+  '4':  [[0, 0, 320, 240], [320, 0, 320, 240], [0, 240, 320, 240], [320, 240, 320, 240]],
+};
+const cv = $('src'), g = cv.getContext('2d');
+function drawFrame() {
+  const t = now(), frame = Math.floor(t / (1000 / 60)) % 1000000;
+  const clock = new Date(t).toISOString().slice(11, 23);
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 640, 480);                 // divider colour
+  (SPLITS[state.layout] || SPLITS['4']).forEach(([x, y, w, h], i) => {
+    g.fillStyle = COLORS[i]; g.fillRect(x + 1, y + 1, w - 2, h - 2);  // 2-px white dividers
+    const bx = x + 20 + ((t / 8 + i * 70) % (w - 40)), by = y + h / 2 + Math.sin(t / 300 + i) * (h / 3);
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(bx, by, 10, 0, 7); g.fill();
+    g.fillStyle = '#000'; g.font = 'bold 40px system-ui'; g.fillText(`P${i + 1}`, x + 12, y + 46);
+    g.font = '16px ui-monospace, monospace';
+    g.fillText(clock, x + 12, y + h - 30); g.fillText(`frame ${frame}`, x + 12, y + h - 10);
+  });
+  requestAnimationFrame(drawFrame);
+}
+
+// ---- crop: apply the /layout CSS numbers; fit the window inside the stage (contain) ----
+function fit() {
+  const vp = $('vp'), video = state.sourceEl || $('video'), stage = $('stage').getBoundingClientRect();
+  const aspect = state.full || !state.crop ? 4 / 3 : state.crop.aspect;
+  let w = stage.width, h = w / aspect;
+  if (h > stage.height) { h = stage.height; w = h * aspect; }
+  vp.style.width = `${w}px`; vp.style.height = `${h}px`;
+  const c = state.full || !state.crop ? { width: 100, height: 100, left: 0, top: 0 } : state.crop.css;
+  Object.assign(video.style, { width: `${c.width}%`, height: `${c.height}%`,
+                               left: `${c.left}%`, top: `${c.top}%` });
+  const landscape = stage.width > stage.height, want = state.crop && !state.full ? state.crop.orientation : null;
+  $('orient').textContent = `screen ${landscape ? 'landscape' : 'portrait'}` + (want ? ` · crop prefers ${want}` : '');
+  const hint = $('hint');
+  if (want && (want === 'landscape') !== landscape) {
+    hint.textContent = `Rotate your phone to ${want} for a bigger view`; hint.style.display = 'block';
+  } else hint.style.display = 'none';
+}
+
+async function claim() {
+  if (!state.layout) state.layout = (await (await fetch('/layouts')).json()).default;
+  const r = await post('/claim', { client: state.client, layout: state.layout });
+  state.seat = r.seat;
+  state.crop = r.seat ? await (await fetch(`/layout?key=${state.layout}&seat=${r.seat}`)).json() : null;
+  $('who').textContent = r.seat ? `Seat ${r.seat}` : 'Spectator (full view)';
+  $('geom').textContent = r.seat
+    ? `layout ${state.layout} · crop ${state.crop.rect.map(v => v.toFixed(3)).join(',')} · ${state.crop.aspect_text}`
+    : `layout ${state.layout} · all seats taken`;
+  document.body.dataset.seat = r.seat || 0;
+  fit();
+}
+
+// ---- frame-gap stats (evidence that cropping adds no per-frame work: CSS mode has none) ----
+function watchGaps(video) {
+  if (!video.requestVideoFrameCallback) { $('gap').textContent = 'rVFC n/a'; return; }
+  const gaps = []; let last = null;
+  const cb = (tnow) => {
+    if (last !== null) { gaps.push(tnow - last); if (gaps.length > 120) gaps.shift(); }
+    last = tnow;
+    if (gaps.length >= 30) {
+      const s = [...gaps].sort((a, b) => a - b);
+      $('gap').textContent = `frame gap p50 ${s[s.length >> 1].toFixed(1)} / p95 ${s[Math.floor(s.length * .95)].toFixed(1)} ms`;
+    }
+    video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
+}
+
+function markReady() { state.ready = true; document.body.dataset.ready = '1'; }
+
+// Source element: a <video> playing a MediaStream (the same element type a WebRTC stream uses)
+// when the browser has canvas.captureStream (Chrome, Firefox, Safari incl. iOS); otherwise the
+// canvas itself is cropped with the identical CSS, so the crop logic is exercised either way.
+function attachSource() {
+  const video = $('video');
+  if (typeof cv.captureStream === 'function' && params.get('source') !== 'canvas') {
+    video.srcObject = cv.captureStream(60);
+    video.addEventListener('playing', markReady);
+    video.play().catch(() => {});
+    watchGaps(video);
+    state.sourceEl = video; state.sourceKind = 'video';
+    $('kind').textContent = 'source: MediaStream <video>';
+  } else {
+    video.remove();
+    cv.style.position = 'absolute'; cv.style.left = ''; $('vp').appendChild(cv);
+    state.sourceEl = cv; state.sourceKind = 'canvas';
+    $('kind').textContent = 'source: canvas (no captureStream here)';
+    requestAnimationFrame(markReady);
+  }
+}
+
+async function main() {
+  await syncClock();
+  drawFrame();
+  if (params.get('mode') === 'full') state.full = true;
+  await claim();                               // the seat never depends on the video path
+  attachSource();
+  fit();
+  $('full').onclick = () => { state.full = !state.full; $('full').textContent = state.full ? 'My view' : 'Full view'; fit(); };
+  const vp = $('vp');                        // hold to peek at the full frame
+  vp.addEventListener('pointerdown', () => { state.peek = state.full; state.full = true; fit(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => vp.addEventListener(e, () => {
+    if (state.peek !== undefined) { state.full = state.peek; state.peek = undefined; fit(); } }));
+  $('leave').onclick = async () => {
+    await post('/release', { client: state.client });
+    state.seat = null; state.crop = null; document.body.dataset.seat = 0;
+    $('who').textContent = 'Left (full view)'; $('geom').textContent = 'reload to take a seat again'; fit();
+  };
+  addEventListener('resize', fit);
+  addEventListener('orientationchange', () => setTimeout(fit, 200));
+}
+main();
+</script>
+</body>
+</html>
