@@ -1,11 +1,11 @@
 # Avrana Party
 
-A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts the games; phones
+A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 runs the games; phones
 join its Wi-Fi ("Avrana Party") and play in a normal browser — no internet, accounts or app
 installs. It is designed as **one party platform with many games**: *the game may change; the party
 does not* (identity, host, seats and history carry from game to game — design stage).
 
-Not to be confused with the Avrana Homelab media server (host `avrana`).
+Not to be confused with the Avrana Homelab media server (the machine `avrana`).
 
 ## Start here
 
@@ -15,6 +15,7 @@ Not to be confused with the Avrana Homelab media server (host `avrana`).
 | which machine, repo, branch and checkout does what; runtime-only paths; how to sync | `docs/SYSTEM.md` |
 | the network (eth0 upstream, internal-Wi-Fi AP, offline mode, checks) | `docs/runbooks/network.md` |
 | how to run every test suite | `docs/TESTING.md` |
+| how to add a game | `docs/runbooks/add-a-game.md` |
 | the platform design (party, identity, games, viewports, onboarding, accessibility) | `docs/design/README.md` → `PARTY-PLATFORM.md` |
 | decisions | `docs/adr/` (0002 party platform, 0003 identifiers and credentials) |
 | measured facts | `docs/findings/` (newest dated file wins) |
@@ -31,7 +32,7 @@ Labels: **LIVE** = running on the appliance · **TESTED** = automated tests, not
 | LAN Games hub (~28 browser games) | **LIVE** (port 8096 behind nginx `/`) | `/home/cody/LAN-Games` on the Pi (upstream retired; not in this repo) |
 | Gauntlet II arcade stream (1 encode → WebRTC, 2 players) | **LIVE** prototype | `arcade/` |
 | Captive probe: Apple gets "Success" (no popup) | **LIVE** | `avrana-party.nginx`, `avrana-captive.conf` |
-| Party AP on the Pi's internal Wi-Fi, eth0 upstream | **LIVE** since 2026-09-24 | `docs/runbooks/network.md` |
+| Party AP on the Pi's internal Wi-Fi, eth0 upstream | **LIVE** since 2026-09-24 (boot determinism pending: an owner fix in the runbook) | `docs/runbooks/network.md` |
 | BLUFF (first native game) in the Avrana Party Games fork | **TESTED** (1197–1198 tests), not live, no real-phone playtest yet | separate repo, see `docs/SYSTEM.md` |
 | PS1 on one shared stream; title profiles | **EXPERIMENT**, power-gated | branches `ps1-emulation`, `experiment/ps1-title-profiles` |
 | Party lifecycle model; Personal Viewports PoC (incl. shared WebRTC source) | **EXPERIMENT** | branch `experiment/party-sim` (`experiments/`) |
@@ -39,8 +40,9 @@ Labels: **LIVE** = running on the appliance · **TESTED** = automated tests, not
 | Party platform, onboarding, accessibility expectations | **PROPOSED** | `docs/design/` |
 
 Power: with the USB Wi-Fi adapter removed and the new PSU, **zero under-voltage** through idle, SSH,
-all-core CPU bursts and AP transmit load (`docs/findings/2026-09-24-no-usb-power-baseline.md`);
-with the adapter, the same PSU dipped 9 times in 87 min.
+all-core CPU bursts and AP transmit load to one (sleeping) phone — several active phones, PS1 and
+long sessions are untested (`docs/findings/2026-09-24-no-usb-power-baseline.md`); with the adapter,
+the same PSU dipped 9 times in ~91 min.
 
 ## URLs (on the Avrana Party Wi-Fi)
 
@@ -49,7 +51,7 @@ with the adapter, the same PSU dipped 9 times in 87 min.
 - `http://10.42.0.1/hotspot-detect.html`: Apple connectivity probe (deliberately `Success`)
 - `http://10.0.0.218:8093`: Beszel telemetry hub (home LAN, on `avrana`)
 
-## Repo contents (branch `main`; experiment branches add `experiments/`, `ps1/`, `tools/`)
+## Repo contents (branch `main`; `docs/party-platform` adds `docs/` content and `tools/`; experiment branches add `experiments/`, `ps1/`)
 
 | Path | Purpose |
 |---|---|

@@ -7,7 +7,8 @@ and per-minute context logs; they contain only flags, temperatures, clocks and c
 
 **Verdict: FAIL.** The success bar was `0x0`, zero new under-voltage events, a stable USB Wi-Fi
 adapter, no resets and reasonable thermals. Everything held **except** the first: the kernel
-logged **8 under-voltage dips** in the first 1 h 27 min of this boot (≈ 5.5/h). The PS1/stream gate stays closed; the recurring
+logged **8 under-voltage dips** in the first 1 h 27 min of this boot (≈ 5.5/h), and a 9th at 09:52
+(~91 min after boot; see the addendum). The PS1/stream gate stays closed; the recurring
 under-voltage stays open (`CLAUDE-HANDOFF.md`).
 
 ## How to read the counters

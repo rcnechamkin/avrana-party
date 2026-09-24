@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Target is the live appliance on the Avrana Party Wi-Fi, reached at
  * http://party.avrana (-> 10.42.0.1). This machine must be joined to the
  * "Avrana Party" SSID for these tests to reach the Pi. Do NOT use the Pi's
- * home-LAN address (10.0.0.143) for client-facing tests — that path does not
+ * home-LAN address (10.0.0.142 on eth0 since 2026-09-24) for client-facing tests — that path does not
  * exercise the AP interface the phones actually use.
  *
  * Two projects, per the testing brief:

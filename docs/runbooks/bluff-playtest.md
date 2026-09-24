@@ -1,15 +1,16 @@
 # Runbook: first real-phone BLUFF playtest (N2)
 
-Status: **ready to run**, subject to the owner's power decision (see "Gate" below). Prepared 2026-09-24 from a read-only
+Status: **ready to run** (power is clean without the USB adapter since 2026-09-24; see "Gate"). Prepared 2026-09-24 from a read-only
 audit of the Pi and the BLUFF code; no server was started. Leave any result cell **blank** if it
 wasn't measured — never estimate after the fact.
 
 ## Gate
 
-**Owner decision (open, `PARTY-PLATFORM.md` §16):** either (a) wait for a clean power run first, or
-(b) run on the current setup and record the dips (ROADMAP "Next action" item 2). Either way:
+Power is clean for the tested workloads since the USB Wi-Fi adapter was removed
+(`docs/findings/2026-09-24-no-usb-power-baseline.md`), so the earlier "wait for clean power or run
+anyway" question is settled. Still record:
 
-- Power: note `vcgencmd get_throttled` at the start (`0x0` under option a) **and** the kernel under-voltage count
+- Power: note `vcgencmd get_throttled` at the start (expect `0x0`) **and** the kernel under-voltage count
   (`journalctl -k -b | grep -icE 'undervoltage|voltage normalis'`) recorded at start and end. BLUFF
   is light; the arcade stream (Gauntlet II, load 2.4–3.9) is not. Stopping the arcade is a service
   change → owner's call; note whether it ran.
@@ -29,8 +30,9 @@ wasn't measured — never estimate after the fact.
   reconnecting for good** behind a stale screen; now only real refusals count, and the page
   reconnects at once on wake/online; (2) **structured lifecycle log lines** — `EVENT {json}` per
   join, rejoin, disconnect, ready/start/leave/end and phase change, plus BLUFF's public table log,
-  keyed by player id (tokens never logged). Deliver it to the Pi dev clone with
-  `git push <pi-dev-clone> playtest-readiness` from the laptop, then check it out there.
+  keyed by player id (tokens never logged). **Already delivered (2026-09-24):** the branch is in the
+  Pi dev clone and checked out as the worktree `~/avrana-lab/wt/playtest` (392 BLUFF + lifecycle
+  tests pass there).
 - **Everything happens on ONE origin for the whole playtest** — either `http://10.42.0.1:8196/`
   (the fork directly) or `http://10.42.0.1:8190/` (the dev front door with the party service,
   `experiments/party-service`). Identity lives in per-origin browser storage, so a phone that opens

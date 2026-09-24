@@ -54,12 +54,13 @@ powered even from a wall supply (see `CLAUDE-HANDOFF.md`, power).
 
 ## Where Avrana loses today
 
-- **Power.** Recurring under-voltage on a wall supply. Battery operation (needed for most target
+- **Power.** Recurring under-voltage on a wall supply *(2026-09-24 evening: resolved for the tested
+  workloads by removing the USB Wi-Fi adapter — `2026-09-24-no-usb-power-baseline.md`)*. Battery operation (needed for most target
   settings) is untested and likely harder.
 - **Capacity.** The Pi 4's *onboard* Broadcom Wi-Fi reportedly caps AP mode at ~7 clients
-  (home-assistant/operating-system#3502). The party AP currently runs on a **USB** adapter
-  (RTL8851BU, `wlan1`), so the limit may not apply — **unverified; measure the real client
-  ceiling** before promising a 10-person bar party.
+  (home-assistant/operating-system#3502). *(Since 2026-09-24 the party AP **is** the onboard radio — the USB adapter was
+  removed — so this limit now applies; reported ~8 on the standard firmware, `docs/runbooks/network.md`.)*
+  **Measure the real client ceiling** before promising a 10-person bar party.
 - **Latency.** Not formally measured (the ~26 ms jitter buffer was 2 phones at home).
 - **Content.** One person cannot out-write Jackbox. The real moat is a content pipeline.
 - **Hardware cost vs a laptop hotspot.** The Pi earns its place only as an *appliance*: battery,

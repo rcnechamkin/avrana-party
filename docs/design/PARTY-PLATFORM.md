@@ -116,7 +116,7 @@ UI, WebRTC video, WebSocket input, chat, private information, voting, achievemen
 profile settings and reconnection. Onboarding details, the party address and the party-LAN vs
 optional-upstream model are in `ONBOARDING.md`.
 
-- **One canonical origin.** Everything a player uses is served from one host through nginx. A
+- **One canonical origin.** Everything a player uses is served from one origin through nginx. A
   different host name (`10.42.0.1` vs `party.local`) gets a separate cookie jar; a different port
   (`:8198`) shares cookies but has separate localStorage and a different Origin. Either way a player
   can look like two devices — two presences, two seats, two votes. Cookies ignore ports, so a dev
@@ -482,7 +482,7 @@ core) · proprietary store (no) · native app required (no) · captive portal re
     party teams vs in-game teams; whether an admin PIN exists before any web
     admin (ROADMAP near-term vs §13); whether a hot-seat setting may give one device several presences
     (ADR 0003 allows it, the model forbids it); what `ps1-bomberman` declares for `late_join`;
-    the BLUFF playtest's power bar (clean power first, or run now and record dips); name length/Unicode (LAN Games caps names at 14 ASCII characters);
+    name length/Unicode (LAN Games caps names at 14 ASCII characters);
     profile database location and backups; admin surface on the guest Wi-Fi vs home LAN only;
     host-less kiosk parties.
 
@@ -501,14 +501,19 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 | **Screen presence** | A TV joined to the party that sees the public view (proposed); never host, seat or voter. "TV view" means what it shows |
 | **WORDCLASH, FIFTH SIGNAL, …** | Individual LAN Games titles (WORDCLASH has its own room engine) |
 | **Arcade** | The live Gauntlet II stream: one RetroArch → one hardware H.264 encode → WebRTC to phones |
-| **PS1 stream** | The same shared-stream design for PlayStation titles (branch `ps1-emulation`, with title profiles on `experiment/ps1-title-profiles`; blocked on power) |
+| **PS1 stream** | The same shared-stream design for PlayStation titles (branch `ps1-emulation`, with title profiles on `experiment/ps1-title-profiles`; power-gated — awaiting the owner's go-ahead for a supervised stage since power is clean without the USB adapter) |
 | **Multitap** | A PlayStation adapter that gives one controller port four pads; how 4-player PS1 games get their players |
 | **`hello`** | The first WebSocket message a LAN Games client sends; where identity enters a game today |
 | **`wc-token`** | LAN Games' browser-held identity token (client-mintable today) |
 | **Game key** | The secret per-(game session, participant) key the platform gives a game instead of any device identity (ADR 0003) |
 | **Grant** | The appliance's record of what an installed game may do (trust tier, permissions, assigned path) — decided by the admin, never by the game |
 | **Fork cutover** | Replacing the live LAN Games service with the fork plus the party bridge (a gated, owner-approved step) |
-| **N2, N5, F1–F8** | Roadmap item numbers in `docs/ROADMAP.md` |
+| **N2, N4, N5, F1–F8** | Roadmap item numbers in `docs/ROADMAP.md` (N2 = the BLUFF playtest, N4 = PS1, N5 = the platform, F = its foundations) |
+| **AP** | The Wi-Fi access point the phones join (the Pi's internal radio, `wlan0`, at `10.42.0.1`) |
+| **E1–E8, L1/L2** | Event numbers in the BLUFF playtest runbook; the server (L1) and radio (L2) layers of the load-test plan |
+| **PoC** | Proof of concept (an experiment, never production) |
+| **PMF** | Wi-Fi Protected Management Frames (an AP security setting some phones dislike) |
+| **`party.avrana`** | A test-only name for `10.42.0.1` in the laptop's hosts file (Playwright E2E); unrelated to the machine `avrana` |
 
 ---
 

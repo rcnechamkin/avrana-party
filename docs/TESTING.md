@@ -9,8 +9,8 @@ root of the branch named; "Pi" means `ssh party` (only for suites that need Linu
 
 | Suite | Branch | Command | Where | Needs | Result 2026-09-24 |
 |---|---|---|---|---|---|
-| Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm test` (fast), `npm run test:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; `party.avrana` → `10.42.0.1` in the laptop's hosts file | not run today (would take the laptop off the home network) |
-| Soak / fault harness (`@heavy`) | `main` | `npm run soak`, `npm run fault` | laptop on the Party Wi-Fi | live Pi; **power gate** (ROADMAP) | not run (power) |
+| Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm test` (fast), `npm run test:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; a hosts-file line `10.42.0.1 party.avrana` (Windows: `C:\Windows\System32\drivers\etc\hosts`, edited as administrator) | not run today (would take the laptop off the home network) |
+| Soak / fault harness (`@heavy`) | `main` | `npm run soak`, `npm run fault` | laptop on the Party Wi-Fi | live Pi; owner go-ahead for load | not run |
 | Soak metric maths | `main` | `npx playwright test tests/soak-metrics.spec.ts` | laptop | — | — |
 | Arcade AP-address detection | `fix/arcade-ap-interface` | `python arcade/test_ap_addresses.py` | laptop or Pi | — | 3 pass |
 | PS1 title profiles | `experiment/ps1-title-profiles` | `python ps1/tests/test_profiles.py` | laptop, Pi | — | 11 pass |
@@ -20,7 +20,7 @@ root of the branch named; "Pi" means `ssh party` (only for suites that need Linu
 | Personal Viewport geometry | `experiment/party-sim` | `python experiments/viewports/test_viewport_geometry.py` | laptop | — | 16 pass |
 | Viewport PoC server | `experiment/party-sim` | `python experiments/viewports/poc/test_poc_server.py` | laptop | — | 8 pass |
 | Viewport PoC browser (pixels, seats, reload, orientation, shared WebRTC source) | `experiment/party-sim` | `npx playwright test -c experiments/viewports/poc/playwright.config.ts` | laptop | Playwright browsers | 13 pass + 1 skip (WebRTC on WebKit) |
-| Party service + dev front door | `experiment/party-service` | `python experiments/party-service/test_party_service.py` | laptop | — | 22 pass |
+| Party service + dev front door | `experiment/party-service` | `python experiments/party-service/test_party_service.py` | laptop | — | 23 pass |
 | Party Home page (two phones, a11y smoke) | `experiment/party-service` | `npx playwright test -c experiments/party-service/playwright.config.ts` | laptop | Playwright browsers | 4 pass (2 × Chromium, WebKit) |
 | Manifest v0 validator | `experiment/party-service` | `python experiments/manifests/test_manifest.py` | laptop | — | 10 pass |
 | Topology check (read-only) | `docs/party-platform` | `tools/avrana-topology-check` | **Pi** | — | see `docs/runbooks/network.md` |
@@ -38,7 +38,7 @@ branch.
 | Suite | Branch | Command | Result 2026-09-24 |
 |---|---|---|---|
 | All Python tests (BLUFF 391 of them) | `main` @ 2cf4831 | `.venv/bin/python -m pytest -q tests/` | 1197 pass |
-| … plus lifecycle log events | `playtest-readiness` @ 68c0aa3 | same | 1198 pass |
+| … plus lifecycle log events | `playtest-readiness` @ 6d795a7 | same | 1198 pass (laptop); BLUFF + lifecycle subset 392 pass on the Pi |
 | hubnet reconnect (fake WebSocket, Node) | `playtest-readiness` | `node tests/hubnet_reconnect_test.mjs` | 3/3 (fails on `main`: the bug it pins) |
 | Browser playtests (puppeteer-core) | `main` | `node tests/playtest_<game>.mjs` | not run today; there is no BLUFF browser playtest yet |
 

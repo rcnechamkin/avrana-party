@@ -291,7 +291,7 @@ No public ICE servers. Per-peer WebRTC connections are unicast: one encode does 
 9. Wrong-Origin WebSocket request returns 403; arcade UI and existing LAN Games return 200. Captive probe continued returning landing HTML *(at that time; since changed — Apple's probe now gets "Success", see `docs/design/ONBOARDING.md`)*.
 10. User could reach UI and start the stream and first reported the experience as SUPER LAGGY. P1 has since been verified for basic gameplay and streaming on a real iPhone (per the `stream.py` comment). End-to-end latency, real-phone frame timing, audio drift and sustained control responsiveness are still unmeasured. Do not declare low latency from local tests or from “it plays”.
 
-Useful evidence files in `arcade/evidence/`:
+Useful evidence files in `arcade/evidence/` *(2026-09-24: these were Pi-side working files and are **not in the repository** — `.gitignore` keeps only the small provenance files; treat the numbers above as reported, not reproducible from the repo)*:
 - `gaunt2-paced-run.json`, `gaunt2-paced-run.log`, `gaunt2-paced.png`
 - `gaunt2-player1.png`
 - `receiver-test.log`, `receiver-controls-test.log`
@@ -393,12 +393,12 @@ now has the GitHub `origin` and tracks `origin/main`. Deploy = commit + push fro
 the laptop, then `git pull --ff-only` on party. Verified working (party pulled up
 to `df3763c`). System files under `/etc` and `/opt` are still installed by the
 repo’s install scripts run with sudo on party; the byte-identical nginx invariant
-still applies (`cmp`). Passwordless sudo worked from the SSH session on
-2026-09-19 — do not assume it always will; never request a password in chat.
+still applies (`cmp`). *(Historical: passwordless sudo worked on 2026-09-19; since 2026-09-23 `sudo -n`
+fails and the owner types every sudo command — see `CLAUDE.md`.)*
 
 Normal systemd stop currently logs shell exit 143 / XIO because the whole process group is stopped. Clean shutdown/reporting could be improved; distinguish intentional stops from real crashes. Fatal pipeline error handling also needs review: it can mark an error and close peers without necessarily exiting the process to trigger Restart=on-failure. Not yet appliance-grade.
 
-The prior session sometimes needed the owner to run sudo locally, but `sudo -n` later worked. Test current privileges; never request passwords in chat. Use reversible scoped changes, backups and nginx validation. No need to ask permission repeatedly for already authorized diagnostic/development work.
+*(Historical, 2026-09-19; superseded by `CLAUDE.md`: no sudo from agents — the owner types it; ask before live changes.)* The prior session sometimes needed the owner to run sudo locally. Never request passwords in chat. Use reversible scoped changes, backups and nginx validation.
 
 Do not spawn additional agents unless the user or applicable local instructions explicitly authorize it. The user values direct action, clear evidence and short progress updates. If you reach a physical-phone test gate, prepare everything first and ask one concrete test question.
 

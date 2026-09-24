@@ -11,7 +11,7 @@ Boot `0d18f4ca` (owner reboot 11:16 PDT) on the replacement PSU (cable unchanged
 workloads.** Zero kernel under-voltage events and `get_throttled` = `0x0` for the whole boot
 (3 h 26 min at the last check, 14:42), through an idle hour, light activity, deliberate SSH connections
 (the trigger seen this morning), all-core CPU bursts and Wi-Fi transmit load. The same PSU with the
-adapter attached logged 9 dips in 1 h 27 min this morning (`2026-09-24-new-psu-power-baseline.md`).
+adapter attached logged 9 dips in ~91 minutes this morning (`2026-09-24-new-psu-power-baseline.md`).
 
 This is not universal proof: see "Not tested" below.
 
@@ -27,7 +27,7 @@ This is not universal proof: see "Not tested" below.
 Whole boot at the end: `0x0`, 0 kernel under-voltage lines, no reboot, `wlan0` up, 2 stations. Core
 voltage read 0.926 V in every one of the 7,260 samples (this morning it dropped to 0.86 V during dips).
 
-**Contrast with this morning (adapter attached, same PSU):** 9 dips in 87 minutes, 7 of them within
+**Contrast with this morning (adapter attached, same PSU):** 9 dips in ~91 minutes, 7 of them within
 2 s of an SSH session opening; each dip cut the ARM clock to 600 MHz. This afternoon, 12 SSH sessions in phase B and
 23 over the whole boot produced none.
 

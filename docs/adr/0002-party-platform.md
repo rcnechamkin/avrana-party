@@ -7,7 +7,8 @@ Design reference: `docs/design/PARTY-PLATFORM.md`
 
 Avrana Party grew as separate runtimes on one Raspberry Pi: LAN Games (28 browser games, live),
 the Avrana Party Games fork with the native game BLUFF (in development), the Gauntlet II arcade
-stream (live) and the PS1 shared stream (blocked on power). Each owns its own notion of a player:
+stream (live) and the PS1 shared stream (power-gated at the time of this ADR; power has been clean
+since the USB adapter was removed on 2026-09-24). Each owns its own notion of a player:
 
 - LAN Games keys every game, chat and avatar by a `wc-token` that the **browser can mint itself**;
   names and avatars live only in the browser. Any ready player can start a game; anyone can change

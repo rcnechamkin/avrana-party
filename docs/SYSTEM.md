@@ -23,7 +23,7 @@ Networking of the Pi: `docs/runbooks/network.md`.
 | main checkout | laptop `~/Projects/avrana-party` | varies (was `experiment/ps1-title-profiles`) | editing; has `node_modules` for Playwright |
 | worktrees | laptop `~/Projects/avrana-party.wt-*` (`wt-platform`, `wt-sim`, `wt-svc`, `wt-fix`) | one branch each | parallel work without switching branches |
 | **production** | Pi `/home/cody/avrana-party` | `main` (tracks `origin/main`) | **live**: nginx site, arcade service code. Deploy = `git pull --ff-only` here. **Never edit or commit here.** Pulling changes live arcade code (a restart applies it; ask first). |
-| dev/test | Pi `~/avrana-lab/avrana-party-docs` | a feature branch (`ps1-emulation` on 2026-09-24) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here |
+| dev/test | Pi `~/avrana-lab/avrana-party-docs` | a feature branch (`ps1-emulation` on 2026-09-24) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here. Holds one old stash (a rescued handoff edit already in history; safe to drop) |
 
 The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch only in practice).
 
@@ -32,8 +32,9 @@ The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch
 | Copy | Where | State (2026-09-24) |
 |---|---|---|
 | GitHub | `rcnechamkin/avrana-party-games` | **does not exist yet** (owner creates it; push `main` only) |
-| laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `68c0aa3` (2 fixes, 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
-| Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; runs BLUFF on port 8196 when started (`~/avrana-lab/srv.sh start 8196`) |
+| laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `6d795a7` (reconnect fix, lifecycle log lines, the Pi's `ops/lab` helpers; 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
+| Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; also has `playtest-readiness`, checked out as the worktree **`~/avrana-lab/wt/playtest`** (use it for the playtest); old `agent/*` worktrees under `~/avrana-lab/wt/`. Runs BLUFF on port 8196 when started |
+| laptop working clone | any scratch clone of the bare backup | **edit here** (laptop is the only editing environment); push branches to the bare backup, then to the Pi dev clone (`git push ssh://party/home/cody/avrana-lab/avrana-party-games <branch>`) |
 | **live** LAN Games | Pi `/home/cody/LAN-Games` | upstream `main` @ `5da1764` (retired upstream); service `avranaparty-games`, port 8096. **Never edited.** |
 
 AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on the fork's
@@ -47,7 +48,7 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 | `main` | GitHub + Pi production | **production** | — (only the owner merges into it) |
 | `docs/party-platform` | GitHub | all current docs: roadmap, design, ADRs, findings + evidence, runbooks, this file, `tools/` | not merged |
 | `experiment/party-sim` | GitHub | `experiments/`: party model, viewport geometry, Personal Viewports PoC | not merged |
-| `experiment/party-service` | GitHub (from 2026-09-24) | party service + device identity + dev front door, manifest v0 (built on `experiment/party-sim`) | not merged |
+| `experiment/party-service` | GitHub (from 2026-09-24) | party service + device identity + dev front door, manifest v0 (branched from `experiment/party-sim` @ `7d4fdfd`, so it lacks the later shared-WebRTC viewport commit) | not merged |
 | `experiment/ps1-title-profiles` | GitHub | PS1 title profiles, token-in-hello, explicit Leave (built on `ps1-emulation`) | not merged |
 | `ps1-emulation` | GitHub + Pi dev/test checkout | PS1 shared-stream work (N4, power-gated) | not merged |
 | `fix/arcade-ap-interface` | GitHub (from 2026-09-24) | arcade `/stats` path label after the Wi-Fi change (off `main`) | not merged, not deployed |

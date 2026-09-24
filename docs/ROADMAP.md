@@ -18,7 +18,7 @@ Until further notice:
 
 - **Treat the documentation in this Git repository as the working source of truth.**
   Record decisions, findings and progress here (`docs/ROADMAP.md`, `docs/findings/`,
-  `docs/adr/`, `CLAUDE-HANDOFF.md`).
+  `docs/adr/`, `docs/SYSTEM.md`, `docs/runbooks/`). `CLAUDE-HANDOFF.md` is a frozen historical log.
 - **Do not try to repair BookStack or its MCP** unless the owner explicitly asks.
 - Development must never be blocked on BookStack.
 - When BookStack is reliable again, reconcile the repo docs back into it.
@@ -28,7 +28,7 @@ Until further notice:
 
 ## Where the project stands
 
-Avrana Party is a portable local-multiplayer appliance: a Raspberry Pi 4 hosts games, and
+Avrana Party is a portable local-multiplayer appliance: a Raspberry Pi 4 runs the games, and
 phones join its Wi-Fi. Game runtimes in view:
 
 | Runtime | Status | Role |
@@ -37,8 +37,9 @@ phones join its Wi-Fi. Game runtimes in view:
 | **Avrana Party Games** (fork of LAN Games; dev clone `~/avrana-lab/avrana-party-games/` on `party`; GitHub repo `rcnechamkin/avrana-party-games`, planned private, not yet created; verified full backup on the laptop at `~/avrana-party-games.git`) | **In development**, isolated on port 8196 | Source of Avrana's native games |
 | **Arcade streaming** (`arcade/`, `party.local/arcade/`) | **Live prototype.** Gauntlet II via RetroArch + MAME 2010, one shared encode, WebRTC to phones; two iPhones verified. | Traditional/emulated games. **Preserved; not being redesigned.** |
 
-The open arcade work in `CLAUDE-HANDOFF.md` (under-voltage, audio-ratchet fix verification,
-recovery gap) stays open and is independent of the game work below.
+Open arcade work (independent of the game work below): verify the audio-ratchet fix `6acf0b0`,
+the recovery gap (`docs/findings/2026-09-20-audio-ratchet-and-recovery.md`), and merging
+`fix/arcade-ap-interface`. Under-voltage is resolved for the tested workloads (no USB adapter).
 
 ### Product direction (accepted 2026-09-24): one party, many games
 
@@ -130,13 +131,13 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 **Power is no longer blocking.** With the USB Wi-Fi adapter removed (the party AP now runs on the
 Pi's internal radio, eth0 upstream), the same PSU showed **zero** under-voltage through an idle hour,
-SSH bursts, all-core CPU bursts and AP transmit load; with the adapter it had dipped 9 times in 87
-minutes (`docs/findings/2026-09-24-no-usb-power-baseline.md`). Network verified:
+SSH bursts, all-core CPU bursts and AP transmit load (one sleeping phone; several active phones
+untested); with the adapter it had dipped 9 times in ~91 minutes (`docs/findings/2026-09-24-no-usb-power-baseline.md`). Network verified:
 `docs/runbooks/network.md` (every topology check passes; one warning, below).
 
 1. **Owner (10 min, sudo):** make the AP win every boot (raise its priority, turn off the old
    home-Wi-Fi client profiles — commands in `docs/runbooks/network.md`), reboot once, run
-   `tools/avrana-topology-check`. Fix the Beszel hub's `party` host (`10.0.0.142`; the agent had no
+   `tools/avrana-topology-check`. Fix the Beszel hub's address for `party` (`10.0.0.142`; the agent had no
    hub connection after the change — `telemetry/README.md`).
 2. **The N2 BLUFF playtest** — ready: `docs/runbooks/bluff-playtest.md`, using the games fork's
    `playtest-readiness` branch (fixes a reconnect bug that would have broken the sleep/wake and
@@ -146,7 +147,8 @@ minutes (`docs/findings/2026-09-24-no-usb-power-baseline.md`). Network verified:
    `docs/runbooks/network.md`, and the Personal Viewports shared-source test on 2–4 phones
    (`experiments/viewports/poc/README.md`, laptop only).
 4. **Agents (laptop, experiment branches):** F5 seat tickets + the fork bridge on top of
-   `experiment/party-service`; a BLUFF browser playtest test in the fork; the accessibility fixes in
+   `experiment/party-service` (**owner OK needed first**: it touches the fork's identity path, which
+   the N5 rule keeps untouched until the playtest); a BLUFF browser playtest test in the fork; the accessibility fixes in
    `docs/design/ACCESSIBILITY.md` once a second game needs the shared helpers. The PS1/stream gate
    (N4) can move to a **supervised emulation-only stage** with the owner's go-ahead.
 
@@ -191,7 +193,10 @@ No changes to nginx, dnsmasq/captive portal, NetworkManager/AP, systemd units, t
 Games service or venv, RetroArch/arcade or telemetry without an explicit proposal that
 states the blast radius.
 
-*(N4, "PS1 on one shared stream", lives on branch `ps1-emulation` until that branch is merged.)*
+### N4. PS1 on one shared stream — **EXPERIMENT, power-gated (awaiting the owner's go-ahead)**
+Full text on branch `ps1-emulation` (`docs/ROADMAP.md` there); title profiles, the token-in-hello
+and explicit Leave on `experiment/ps1-title-profiles`. The gate: power is clean without the USB
+adapter (2026-09-24), so the next step is a **supervised emulation-only stage** when the owner says so.
 
 ### N5. Party platform — **design DONE (2026-09-24); F1–F8 open; build starts after N2**
 
@@ -240,8 +245,8 @@ Things whose absence would force rework later. Keep this list short.
 | # | Item | Done when |
 |---|---|---|
 | F1 | **IDs and keys ADR** — **drafted 2026-09-24** as `docs/adr/0003-ids-and-keys.md` (invariants accepted; encodings and storage open) | ADR merged with an "id → what it authorizes" table |
-| F2a | **Single origin, dev:** a dev-only front (e.g. the party service proxying the fork on 8196) that puts party + games under one host and a `/party/` namespace, without touching live nginx — **experiment built 2026-09-24** (`experiments/party-service/front.py`; verified on the Pi in front of BLUFF) | The vertical slice runs on one origin |
-| F2b | **Single origin, live** (with the fork cutover): one canonical origin (**open**: `10.42.0.1` with `party.local` redirecting is the leading option, `PARTY-PLATFORM.md` §4/§16.1; `party.local` canonical needs Android verification first), `/party/` namespace, PS1 behind nginx, app Host allowlist while the default server keeps answering captive-portal probes; any redirect between the two names only after the offline phone tests | Every runtime reachable under one host (owner-approved nginx change) |
+| F2a | **Single origin, dev:** a dev-only front (e.g. the party service proxying the fork on 8196) that puts party + games under one origin and a `/party/` namespace, without touching live nginx — **experiment built 2026-09-24** (`experiments/party-service/front.py`; verified on the Pi in front of BLUFF) | The vertical slice runs on one origin |
+| F2b | **Single origin, live** (with the fork cutover): one canonical origin (**open**: `10.42.0.1` with `party.local` redirecting is the leading option, `PARTY-PLATFORM.md` §4/§16.1; `party.local` canonical needs Android verification first), `/party/` namespace, PS1 behind nginx, app Host allowlist while the default server keeps answering captive-portal probes; any redirect between the two names only after the offline phone tests | Every runtime reachable under one origin (owner-approved nginx change) |
 | F3 | **Device token:** server-issued, HttpOnly SameSite=Lax cookie, hashed at rest; Origin checks on WebSocket/POST (on the F2a origin first) — **experiment built 2026-09-24** (`identity.py`; iPhone Safari not yet tested) | Survives reload and sleep on iPhone Safari; a client cannot mint one |
 | F4 | **Party service:** one Party per appliance (v0), party socket, versioned snapshot + append-only event log — **skeleton built 2026-09-24** (`service.py` drives the reference model; Server-Sent Events instead of a socket) | A reconnecting phone gets the current party state in one message |
 | F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence reclaim; tickets bound to one game; the fork bridge hands the game a per-(session, participant) game key at `hello` and turns off the "any client token" path; seats are bound where each game binds them | Fabricated tokens cannot take seats; a reload keeps the same seat |
@@ -312,8 +317,8 @@ emulated result adapters.
 
 Power first (stable on a wall supply, then a battery pack that holds 5.1 V / 3 A, with measured
 runtime) · boot-to-joinable time (target < 45 s) · surviving power loss (SD protection; the
-party-survives-reboot question) · the AP's real client ceiling (the Pi 4's onboard Wi-Fi reportedly
-caps near 7; the party AP runs on a USB adapter — measure) · noisy-venue UX (visual/haptic cues,
+party-survives-reboot question) · the AP's real client ceiling (the Pi 4's onboard Wi-Fi — the party AP since 2026-09-24 —
+is reported to cap near 8 stations on its standard firmware; see `docs/runbooks/network.md` — measure) · noisy-venue UX (visual/haptic cues,
 big targets, glanceable state) · phone battery drain per streamed hour · a content pipeline after
 BLUFF · a travel compliance sheet (airline power-bank rules, cruise-line router bans, legal Wi-Fi
 channels per country) · an enclosure and cooling that survive a bag · a QR/NFC join card or e-ink

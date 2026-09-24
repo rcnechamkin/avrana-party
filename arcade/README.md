@@ -13,9 +13,9 @@ Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.l
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.
 
 - **Players:** `MAX_PLAYERS = 2` in `stream.py`, so two slots are enabled. P1 is
-  verified for basic gameplay and streaming on a real iPhone. **Two-phone
-  behavior (independent slots, simultaneous play) is not verified.** Do not raise
-  beyond 2 until a two-phone test passes.
+  verified for basic gameplay and streaming on a real iPhone. Two-phone play was **verified on two
+  real iPhones on 2026-09-20** (a 3-minute session; see `CLAUDE-HANDOFF.md`). Do not raise beyond 2
+  without a longer multi-phone soak.
 - **Measurement:** input-to-photon latency and performance under real gameplay
   have **not** been formally measured.
 - **Boot:** service startup after a reboot is verified (all services active,
