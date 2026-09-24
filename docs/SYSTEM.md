@@ -1,0 +1,102 @@
+# System map: machines, repositories, branches, runtime paths
+
+The **canonical answer to "what lives where"**. Verified 2026-09-24 (laptop + Pi read-only
+comparison). If you change where something lives, update this file in the same commit.
+
+## Machines
+
+| Machine | Role | Reach it | Edit code here? |
+|---|---|---|---|
+| **Laptop** (Windows) | the **only editing environment**; runs laptop-only tests | — | **yes** |
+| **GitHub** `rcnechamkin/avrana-party` | canonical history of this repo | `origin` | via push (never force) |
+| **Pi `party`** (Raspberry Pi 4, Debian 13, user `cody`) | the appliance: production services + a dev/test area | `ssh party` → `10.0.0.142` (eth0) | **no** (deploy/test target) |
+| **Mini-PC `avrana`** (`10.0.0.218`) | home infrastructure: BookStack (stale docs), Beszel telemetry hub | `ssh avrana` | no (not part of this project's code) |
+
+Networking of the Pi: `docs/runbooks/network.md`.
+
+## Repositories and checkouts
+
+### This repository (`avrana-party`)
+
+| Checkout | Machine / path | Branch | Purpose |
+|---|---|---|---|
+| main checkout | laptop `~/Projects/avrana-party` | varies (was `experiment/ps1-title-profiles`) | editing; has `node_modules` for Playwright |
+| worktrees | laptop `~/Projects/avrana-party.wt-*` (`wt-platform`, `wt-sim`, `wt-svc`, `wt-fix`) | one branch each | parallel work without switching branches |
+| **production** | Pi `/home/cody/avrana-party` | `main` (tracks `origin/main`) | **live**: nginx site, arcade service code. Deploy = `git pull --ff-only` here. **Never edit or commit here.** Pulling changes live arcade code (a restart applies it; ask first). |
+| dev/test | Pi `~/avrana-lab/avrana-party-docs` | a feature branch (`ps1-emulation` on 2026-09-24) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here |
+
+The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch only in practice).
+
+### The games fork: Avrana Party Games (LAN Games + BLUFF) — a separate repository
+
+| Copy | Where | State (2026-09-24) |
+|---|---|---|
+| GitHub | `rcnechamkin/avrana-party-games` | **does not exist yet** (owner creates it; push `main` only) |
+| laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `68c0aa3` (2 fixes, 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
+| Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; runs BLUFF on port 8196 when started (`~/avrana-lab/srv.sh start 8196`) |
+| **live** LAN Games | Pi `/home/cody/LAN-Games` | upstream `main` @ `5da1764` (retired upstream); service `avranaparty-games`, port 8096. **Never edited.** |
+
+AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on the fork's
+`abandoned/classic-diplomacy` branch (and `~/avrana-lab/diplomacy-spike` on the Pi). `main` and
+`playtest-readiness` do not contain it.
+
+## Branches of this repository
+
+| Branch | Where | What | Merge status |
+|---|---|---|---|
+| `main` | GitHub + Pi production | **production** | — (only the owner merges into it) |
+| `docs/party-platform` | GitHub | all current docs: roadmap, design, ADRs, findings + evidence, runbooks, this file, `tools/` | not merged |
+| `experiment/party-sim` | GitHub | `experiments/`: party model, viewport geometry, Personal Viewports PoC | not merged |
+| `experiment/party-service` | GitHub (from 2026-09-24) | party service + device identity + dev front door, manifest v0 (built on `experiment/party-sim`) | not merged |
+| `experiment/ps1-title-profiles` | GitHub | PS1 title profiles, token-in-hello, explicit Leave (built on `ps1-emulation`) | not merged |
+| `ps1-emulation` | GitHub + Pi dev/test checkout | PS1 shared-stream work (N4, power-gated) | not merged |
+| `fix/arcade-ap-interface` | GitHub (from 2026-09-24) | arcade `/stats` path label after the Wi-Fi change (off `main`) | not merged, not deployed |
+| `docs/current-state` | laptop only | an old docs commit **already contained in `main`** | safe to delete (`git branch -d`) |
+
+## Services and ports on the Pi
+
+| Port | Service (systemd) | Code |
+|---|---|---|
+| 80 | nginx (`/etc/nginx/sites-available/avrana-party`) | `avrana-party.nginx` |
+| 8096 | LAN Games (`avranaparty-games`) | `/home/cody/LAN-Games` |
+| 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
+| 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
+| 5353 | avahi (`party.local`) | system |
+| 5201 | iperf3 | system |
+| 45876 | beszel-agent | `telemetry/` |
+| 22 | sshd | system |
+| 8196 (when started) | BLUFF dev server | games fork dev clone |
+| 8198 (when started) | PS1 stream (power-gated) | `ps1/` on the dev/test checkout |
+| 8190 (when started) | dev front door + party service | `experiments/party-service` |
+
+## Runtime-only paths (never in Git)
+
+| Path (Pi) | What |
+|---|---|
+| `/var/log/avrana/pi-throttle.jsonl` | minute power telemetry (the journal itself is volatile: lost at reboot) |
+| `~/avrana-lab/power-watch/` | power-test samples; copy the ones worth keeping into `docs/findings/evidence/` |
+| `~/avrana-lab/playtest/` | playtest logs (runbook) |
+| `/srv/…` | ROMs and BIOS (read-only; **never** copied or committed) |
+| `/etc/NetworkManager/system-connections/` | Wi-Fi profiles incl. passwords (owner only; never read into chat or Git) |
+| `/var/lib/NetworkManager/dnsmasq-wlan0.leases` | DHCP leases (phones' addresses) |
+| `experiments/party-service/dev-data/` | dev device-token hashes (git-ignored) |
+| `.venv/`, `node_modules/`, `__pycache__/`, `test-results/` | tooling caches |
+
+## Compare and sync safely (next time)
+
+```bash
+# 1. production checkout = GitHub main?  (clean, same hash)
+ssh party 'cd ~/avrana-party && git fetch -q && git status -sb && git rev-parse HEAD origin/main'
+# 2. live config = repo?
+ssh party 'cmp /etc/nginx/sites-available/avrana-party ~/avrana-party/avrana-party.nginx && cmp /etc/NetworkManager/dnsmasq-shared.d/avrana-captive.conf ~/avrana-party/avrana-captive.conf && echo same'
+# 3. games fork: Pi dev clone vs laptop backup (hash only; nothing is copied)
+ssh party 'git -C ~/avrana-lab/avrana-party-games rev-parse main'; git -C ~/avrana-party-games.git rev-parse main
+# 4. any Pi-only edits?  (must be empty)
+ssh party 'git -C ~/avrana-party status --porcelain; git -C ~/avrana-lab/avrana-party-games status --porcelain'
+```
+
+Direction of travel is always **laptop → GitHub → Pi**: edit and commit on the laptop, push, then
+`git pull --ff-only` (production) or `git merge --ff-only` (dev/test) on the Pi. If a Pi checkout ever
+has legitimate uncommitted work, copy it to the laptop (e.g. `git diff > patch`, `scp`), commit it
+there on a branch, and reset nothing on the Pi until the owner agrees. Never sync credentials,
+ROMs, logs, telemetry, databases, caches or `/etc` into Git.

@@ -50,6 +50,12 @@ never see device tokens; the party never runs game rules.
 
 ## 1. Capability manifest v0 (draft)
 
+> **Implemented as an experiment (2026-09-24):** `experiments/manifests/` on branch
+> `experiment/party-service` — a strict stdlib validator, builtin manifests for the arcade and PS1,
+> LAN Games titles **derived** from the games server's `/api/games`, and the party catalog built from
+> them. It trims this draft to the fields with two consumers today and adds a display-only
+> accessibility block (`ACCESSIBILITY.md`); its README lists the differences from this draft.
+
 ```json
 {
   "manifest": 0,

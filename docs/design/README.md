@@ -15,7 +15,11 @@ Read in this order:
    - `PERSONAL-VIEWPORTS.md` — per-phone crops of one shared split-screen stream
    - `ONBOARDING.md` — tap/scan to join, the party address, party LAN vs upstream internet
    - `GAME-INSTALLATION.md` — open installation without a store; trust tiers
+   - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
+     the hub/BLUFF audit
 
-Nothing described here is built unless a document says so. Sequencing lives in `../ROADMAP.md`
+Nothing described here is built unless a document says so. Built as **experiments** (not live):
+the party model and viewport PoC (`experiment/party-sim`), the party service, device identity, dev
+front door and manifest v0 (`experiment/party-service`) — see `../TESTING.md`. Sequencing lives in `../ROADMAP.md`
 (item N5). Offline executable checks of the lifecycle rules and viewport geometry live in
 `experiments/` on branch `experiment/party-sim`.
