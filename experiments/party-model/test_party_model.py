@@ -598,6 +598,7 @@ class ProfileOwnership(unittest.TestCase):
         other_phone = app.issue_device()
         app.connect(other_phone)
         second = party.create_profile(other_phone)
+        party.leave(other_phone)                          # `second` is free: only the A2 guard stops it
         app.profiles[second]['trusted'].add(app.devices[_hash(tokens[0])])
         with self.assertRaises(Refused):
             party.claim_profile(tokens[0], second)
