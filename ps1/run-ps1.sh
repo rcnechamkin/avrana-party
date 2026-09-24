@@ -79,7 +79,13 @@ cleanup() {
   if [ -n "$launched" ]; then
     # Stopped mid-run. The pid file appears just before the inner shell exec's retroarch,
     # so wait briefly for a proven identity instead of trusting any recorded number.
-    for _ in $(seq 50); do ra_pid=$("$PS1PID" 2>/dev/null) && break; ra_pid=; sleep 0.1; done
+    for _ in $(seq 50); do
+      ra_pid=$("$PS1PID" 2>/dev/null); r=$?
+      [ "$r" = 0 ] && break
+      ra_pid=
+      [ "$r" = 1 ] && [ -e "$RUN/retroarch.pid" ] && break   # recorded, and already gone
+      sleep 0.1
+    done
   fi
   if [ -n "$ra_pid" ]; then   # in xvfb mode RetroArch is a grandchild: poll, don't wait
     kill -TERM "$ra_pid" 2>/dev/null
@@ -111,15 +117,17 @@ if [ "$MODE" = xvfb ]; then
   # (tools/ps1-pid.sh), then exec's into retroarch, which keeps that PID and start time.
   # -n 110 before -a: xvfb-run's -a searches up from the current number when parsed, so
   # this starts above the arcade's :99 and PS1 never takes it.
+  launched=1   # before the launch, so a signal in between still waits for the proof
   xvfb-run -n 110 -a -s '-screen 0 640x480x24 -nolisten tcp' \
     sh -c 'printf "%s\n" "$DISPLAY" > "$0/display"; printf "%s\n" "$XAUTHORITY" > "$0/xauthority"
       "$1" --record $$ > "$0/retroarch.pid.new" && mv -f "$0/retroarch.pid.new" "$0/retroarch.pid"
       shift; exec "$@"' "$RUN" "$PS1PID" "${RA[@]}" &
-  wait_pid=$! launched=1
+  wait_pid=$!
   rc=0; wait "$wait_pid" || rc=$?
 else
+  launched=1
   "${RA[@]}" &
-  child=$! launched=1
+  child=$!
   "$PS1PID" --record "$child" > "$RUN/retroarch.pid.new" && mv -f "$RUN/retroarch.pid.new" "$RUN/retroarch.pid"
   rc=0; wait "$child" || rc=$?
 fi

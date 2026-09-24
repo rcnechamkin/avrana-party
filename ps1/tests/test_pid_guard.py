@@ -70,7 +70,9 @@ try:
     record(arcade.pid, 'x 1 y\n');                        check(2, 'malformed pid file')
     if os.geteuid() != 0:   # root reads a mode-000 file anyway
         record(arcade.pid); os.chmod(os.path.join(run, 'retroarch.pid'), 0)
-        check(2, 'unreadable pid file'); stop(1, 'unreadable pid file'); arcade_untouched()
+        r = subprocess.run([PID_TOOL], env=env, capture_output=True, text=True)
+        assert r.returncode == 2 and 'cannot read' in r.stderr, f'unreadable pid file: {r}'
+        stop(1, 'unreadable pid file'); arcade_untouched()
         os.chmod(os.path.join(run, 'retroarch.pid'), 0o644)
 
     other = spawn(None, cmd=['sleep', '30']); record(other.pid)
