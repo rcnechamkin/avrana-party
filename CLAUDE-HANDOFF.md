@@ -5,10 +5,19 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 > **2026-09-23 update. Read `docs/ROADMAP.md` first.**
 > - The **repository is now the documentation source of truth**. The BookStack API/MCP is
 >   unreliable; do **not** try to repair it unless the owner asks.
-> - The first native-game target is a **Coup-inspired Avrana bluffing card game**, built as
->   a LAN Games module in the Avrana Party Games fork (dev clone
->   `~/avrana-lab/avrana-party-games/` on `party`, port 8196). Reference:
+> - The first native-game target is a **Coup-inspired Avrana bluffing card game**, working
+>   title **BLUFF**, built as a LAN Games module (`games/bluff/`) in the Avrana Party Games
+>   fork. Dev clone: `~/avrana-lab/avrana-party-games/` on `party`, running on port 8196
+>   (`http://10.42.0.1:8196/games/bluff/` from the party Wi-Fi). Reference:
 >   `docs/findings/2026-09-23-vtt-coup-reference.md`.
+> - **BLUFF status (2026-09-23):** the baseline game plus a phone lifecycle passed a
+>   six-workstream robustness pass: 1,197 tests, protocol privacy and attack checks, a
+>   full-game simulator (0 violations), and 2–6 player screenshots. **Next milestone: a real
+>   3–4 iPhone playtest.** Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
+>   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md`.
+> - **Not yet published:** the public repo `rcnechamkin/avrana-party-games` must be created by
+>   the owner (empty, not a fork), and `party` needs push access to it. Push `main` only,
+>   never `abandoned/classic-diplomacy`.
 > - **Classic map-based Diplomacy and `diplomacy/diplomacy` are ABANDONED** (a
 >   misunderstanding). Don't continue them. The local commit is on branch
 >   `abandoned/classic-diplomacy`, never pushed.
