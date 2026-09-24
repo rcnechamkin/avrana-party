@@ -6,6 +6,8 @@ __pycache__/
 *.jsonl
 *.tmp
 *.tmp.*
+# ...except committed measurement evidence (small, text, checked secret-free; see docs/findings/)
+!docs/findings/evidence/**
 *.lpl
 portal-trace.txt
 
