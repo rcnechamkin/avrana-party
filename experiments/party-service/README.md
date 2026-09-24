@@ -23,6 +23,10 @@ python3 front.py --port 8190 --upstream 127.0.0.1:8196 --host 10.42.0.1:8190
 # phones on the Avrana Party Wi-Fi: http://10.42.0.1:8190/party/  (games at http://10.42.0.1:8190/games/bluff/)
 ```
 
+With `--upstream`, the game catalog is **derived from the games server's own `/api/games`**
+(manifest v0, `../manifests/`), so the host can start exactly the games that server serves
+(BLUFF, WORD RUSH, …). Without an upstream a two-entry demo catalog is used.
+
 Device hashes persist in `dev-data/devices.json` (0600, git-ignored) so phones keep their identity
 across restarts; the **party itself is memory-only** (whether a party survives a reboot is OPEN).
 Reset one phone: its "forget me" POST (`/party/dev/forget-me`) or clear site data. Reset all:
@@ -32,7 +36,7 @@ use it for a playtest (any guest could end the party).
 ## Tests
 
 ```bash
-python experiments/party-service/test_party_service.py        # 21 tests, ~10 s, binds 127.0.0.1 only
+python experiments/party-service/test_party_service.py        # 22 tests, ~13 s, binds 127.0.0.1 only
 npx playwright test -c experiments/party-service/playwright.config.ts   # 2 tests × Chromium (Pixel 7) + WebKit (iPhone 13)
 ```
 

@@ -36,8 +36,9 @@ MAX_BODY = 4096
 MESSAGES = 10
 
 DEFAULT_CATALOG = [
-    # Minimal game entries until manifest v0 exists (GAME-INTEGRATION.md §1). `href` is where
-    # followers go on the same origin; always_on = no launch step (LAN Games modules).
+    # Used only without a games upstream (tests, a laptop demo). With one, front.py builds the
+    # catalog from manifest v0 entries derived from the games server's /api/games
+    # (../manifests). `href` is where followers go on the same origin; always_on = no launch step.
     {'id': 'bluff', 'name': 'BLUFF', 'max_players': 6, 'late_join': 'spectator_only',
      'launch': 'always_on', 'href': '/games/bluff/'},
     {'id': 'hub', 'name': 'LAN Games hub', 'max_players': 12, 'late_join': 'supported',

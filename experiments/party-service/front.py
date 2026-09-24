@@ -25,6 +25,9 @@ sys.path.insert(0, HERE)
 import identity  # noqa: E402
 import service  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'manifests'))
+import manifest  # noqa: E402
+
 HOP = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers',
        'transfer-encoding', 'upgrade', 'cookie', 'host', 'content-length'}
 MAX_UPLOAD = 16 * 1024 * 1024
@@ -132,6 +135,25 @@ class Front(BaseHTTPRequestHandler):
         self.close_connection = True
 
 
+def lan_catalog(upstream):
+    """Catalog entries for the games the upstream server actually serves, derived from its own
+    GET /api/games (manifest v0: never hand-written). Returns (entries, problems)."""
+    host, port = upstream
+    c = http.client.HTTPConnection(host, port, timeout=5)
+    try:
+        c.request('GET', '/api/games', headers={'Host': f'{host}:{port}'})
+        r = c.getresponse()
+        if r.status != 200:
+            return [], [f'/api/games answered {r.status}']
+        api = manifest.parse(r.read().decode())
+    except (OSError, manifest.ManifestError) as e:
+        return [], [f'/api/games unreachable: {e}']
+    finally:
+        c.close()
+    ms, problems = manifest.derive_lan(api, manifest.load_overlay())
+    return manifest.catalog(ms), problems
+
+
 class FrontServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -160,12 +182,16 @@ def main():
     store = identity.DeviceStore(path)
     if args.reset_devices:
         store.reset()
-    party = service.PartyService(store)
-    threading.Thread(target=party.run_timer, daemon=True).start()
-    upstream = None
+    upstream, catalog = None, None
     if args.upstream:
         h, _, p = args.upstream.rpartition(':')
         upstream = (h, int(p))
+        catalog, problems = lan_catalog(upstream)
+        for line in problems:
+            print('manifest:', line)
+        print(f'catalog: {len(catalog)} games from the upstream registry')
+    party = service.PartyService(store, catalog=catalog or None)
+    threading.Thread(target=party.run_timer, daemon=True).start()
     srv = FrontServer((args.bind, args.port), party, service.Config(hosts, dev_commands=args.dev_commands), upstream)
     print(f'dev front on :{args.port} for {", ".join(hosts)}; games upstream: {args.upstream or "none"}')
     try:

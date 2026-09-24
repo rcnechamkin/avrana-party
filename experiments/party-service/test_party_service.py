@@ -321,7 +321,40 @@ def ws_echo_upstream():
     return lst.getsockname(), seen
 
 
+class ApiGames(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        with open(os.path.join(os.path.dirname(HERE), 'manifests', 'fixtures', 'api-games.sample.json'), 'rb') as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 class FrontDoor(Harness):
+    def test_catalog_is_derived_from_the_upstream_registry(self):
+        up = ThreadingHTTPServer(('127.0.0.1', 0), ApiGames)
+        threading.Thread(target=up.serve_forever, daemon=True).start()
+        try:
+            catalog, problems = front.lan_catalog(up.server_address)
+        finally:
+            up.shutdown()
+            up.server_close()
+        ids = {c['id'] for c in catalog}
+        self.assertTrue({'bluff', 'wordrush', 'blitz', 'wordclash'} <= ids)
+        self.assertNotIn('_template', ids)
+        self.assertEqual(problems, ['mystery: no min_p/max_p in the registry'])
+        self.party.catalog = {c['id']: c for c in catalog}
+        a = self.device()
+        self.join(a)
+        _, v, _, _ = self.req('POST', '/party/host/select', {'game': 'wordrush'}, cookie=a)
+        self.assertEqual(v['party']['nav']['href'], '/games/wordrush/')
+        self.assertEqual(front.lan_catalog(('127.0.0.1', 9))[0], [])      # unreachable: empty, not a crash
+
     def test_game_paths_are_proxied_without_cookies(self):
         up = ThreadingHTTPServer(('127.0.0.1', 0), Recorder)
         threading.Thread(target=up.serve_forever, daemon=True).start()

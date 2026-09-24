@@ -1,0 +1,15 @@
+{
+  "manifest": 0,
+  "id": "arcade-gauntlet2",
+  "name": "Gauntlet II",
+  "kind": "emulated",
+  "runtime": {"type": "external", "start": "always_on", "entry": "/arcade/"},
+  "players": {"min": 1, "max": 2},
+  "screen": "tv_optional",
+  "input": {"model": "controller_slots", "slots": 2},
+  "late_join": "supported",
+  "spectators": "none",
+  "shared_video": true,
+  "private_player_ui": false,
+  "accessibility": {"timing_pressure": true, "text_scalable": false, "reduced_motion_respected": false}
+}

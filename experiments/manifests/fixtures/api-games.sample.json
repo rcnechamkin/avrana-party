@@ -1,0 +1,15 @@
+{
+  "games": [
+    {"slug": "bluff", "title": "BLUFF", "min_p": 1, "max_p": 6, "tv": false, "hidden": false},
+    {"slug": "wordrush", "title": "WORD RUSH", "min_p": 1, "max_p": 12, "tv": false, "hidden": false},
+    {"slug": "blitz", "title": "CATEGORY BLITZ", "min_p": 2, "max_p": 10, "tv": false, "hidden": false},
+    {"slug": "trivia", "title": "TRIVIA BUZZER", "min_p": 2, "max_p": 10, "tv": false, "hidden": false},
+    {"slug": "smelterskelter", "title": "SMELTER SKELTER", "min_p": 2, "max_p": 8, "tv": true, "hidden": false},
+    {"slug": "_template", "title": "Template", "min_p": 2, "max_p": 8, "tv": false, "hidden": true},
+    {"slug": "mystery", "title": "No counts", "min_p": null, "max_p": null, "tv": false, "hidden": false}
+  ],
+  "external": [
+    {"slug": "wordclash", "title": "WORDCLASH", "min_p": 2, "max_p": 8, "url": "/games/wordclash/"}
+  ],
+  "coming_soon": []
+}

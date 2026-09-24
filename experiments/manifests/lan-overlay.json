@@ -1,0 +1,5 @@
+{
+  "bluff": {"private_player_ui": true, "accessibility": {"timing_pressure": true, "audio_required": false}},
+  "trivia": {"accessibility": {"timing_pressure": true}},
+  "wordrush": {"accessibility": {"timing_pressure": true}}
+}
