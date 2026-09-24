@@ -55,6 +55,10 @@ itself varies — with radio activity, the arcade's load, or something not logge
 - **Remote polling perturbs the measurement.** Future power runs log on the Pi and are read once at
   the end — no SSH polling during the window.
 
+**Addendum (09:52):** a 9th dip at 09:52:29, **+0.75 s** after an SSH session that ran the PS1 unit
+tests (~5 s of Python on the Pi; no emulator). That makes 7 of 9 dips this boot within 2 s of an SSH
+session start. `kernel-dips.txt` and `ssh-session-opens.txt` include it.
+
 ## History for context (`/var/log/avrana/pi-throttle.jsonl`, minute samples; kernel counts where known)
 
 | Setup | Hours | Result |

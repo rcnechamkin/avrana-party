@@ -14,3 +14,5 @@
 09:44:12.887717 Voltage normalised
 09:48:47.065457 Undervoltage detected!
 09:48:51.099709 Voltage normalised
+09:52:29.027867 Undervoltage detected!
+09:52:35.063784 Voltage normalised
