@@ -25,7 +25,11 @@ python3 front.py --port 8190 --upstream 127.0.0.1:8196 --host 10.42.0.1:8190
 
 With `--upstream`, the game catalog is **derived from the games server's own `/api/games`**
 (manifest v0, `../manifests/`), so the host can start exactly the games that server serves
-(BLUFF, WORD RUSH, …). Without an upstream a two-entry demo catalog is used.
+(BLUFF, WORD RUSH, …); it retries in the background while the games server is still starting.
+Without an upstream a two-entry demo catalog is used. **Verified on the Pi 2026-09-24** in front of the
+BLUFF dev server (`playtest-readiness`): 30 games derived, HTTP and a WebSocket join through the
+front door, Host allowlist 421, Join over HTTP, and neither the token nor the cookie reached the
+games server's log.
 
 Device hashes persist in `dev-data/devices.json` (0600, git-ignored) so phones keep their identity
 across restarts; the **party itself is memory-only** (whether a party survives a reboot is OPEN).
@@ -36,7 +40,7 @@ use it for a playtest (any guest could end the party).
 ## Tests
 
 ```bash
-python experiments/party-service/test_party_service.py        # 22 tests, ~13 s, binds 127.0.0.1 only
+python experiments/party-service/test_party_service.py        # 23 tests, ~20 s, binds 127.0.0.1 only
 npx playwright test -c experiments/party-service/playwright.config.ts   # 2 tests × Chromium (Pixel 7) + WebKit (iPhone 13)
 ```
 

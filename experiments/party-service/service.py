@@ -164,6 +164,12 @@ class PartyService:
         else:
             raise KeyError(name)
 
+    def set_catalog(self, entries):
+        """Replace the selectable games (e.g. once the games server's registry is reachable)."""
+        with self.lock:
+            self.catalog = {g['id']: g for g in entries}
+            self.changed.notify_all()
+
     def reset_party(self):
         """Dev/test only (front.py --dev-commands): end the current party for everyone."""
         with self.lock:

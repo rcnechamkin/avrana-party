@@ -355,6 +355,24 @@ class FrontDoor(Harness):
         self.assertEqual(v['party']['nav']['href'], '/games/wordrush/')
         self.assertEqual(front.lan_catalog(('127.0.0.1', 9))[0], [])      # unreachable: empty, not a crash
 
+    def test_catalog_retries_until_the_games_server_is_up(self):
+        up = ThreadingHTTPServer(('127.0.0.1', 0), ApiGames)
+        addr = up.server_address
+        up.server_close()                                  # not listening yet
+        tries = []
+
+        def sleep(_):                                       # the games server comes up on retry 3
+            tries.append(1)
+            if len(tries) == 2:
+                later = ThreadingHTTPServer(addr, ApiGames)
+                threading.Thread(target=later.serve_forever, daemon=True).start()
+                self.addCleanup(later.server_close)
+                self.addCleanup(later.shutdown)
+        self.assertTrue(front.load_catalog(self.party, addr, attempts=5, sleep=sleep))
+        self.assertIn('wordrush', self.party.catalog)
+        self.assertEqual(len(tries), 2)
+        self.assertFalse(front.load_catalog(self.party, ('127.0.0.1', 9), attempts=2, sleep=lambda _: None))
+
     def test_game_paths_are_proxied_without_cookies(self):
         up = ThreadingHTTPServer(('127.0.0.1', 0), Recorder)
         threading.Thread(target=up.serve_forever, daemon=True).start()

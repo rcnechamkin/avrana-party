@@ -154,6 +154,24 @@ def lan_catalog(upstream):
     return manifest.catalog(ms), problems
 
 
+def load_catalog(party, upstream, attempts=60, delay=2.0, sleep=None):
+    """Derive the catalog from the upstream registry, retrying while the games server is still
+    starting (it often starts after this front door). Until then the demo catalog is used."""
+    import time
+    sleep = sleep or time.sleep
+    for i in range(attempts):
+        catalog, problems = lan_catalog(upstream)
+        if catalog:
+            for line in problems:
+                print('manifest:', line, flush=True)
+            party.set_catalog(catalog)
+            print(f'catalog: {len(catalog)} games from the upstream registry', flush=True)
+            return True
+        sleep(delay)
+    print('catalog: upstream registry unreachable; keeping the demo catalog', flush=True)
+    return False
+
+
 class FrontServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -182,16 +200,13 @@ def main():
     store = identity.DeviceStore(path)
     if args.reset_devices:
         store.reset()
-    upstream, catalog = None, None
+    upstream = None
+    party = service.PartyService(store)
+    threading.Thread(target=party.run_timer, daemon=True).start()
     if args.upstream:
         h, _, p = args.upstream.rpartition(':')
         upstream = (h, int(p))
-        catalog, problems = lan_catalog(upstream)
-        for line in problems:
-            print('manifest:', line)
-        print(f'catalog: {len(catalog)} games from the upstream registry')
-    party = service.PartyService(store, catalog=catalog or None)
-    threading.Thread(target=party.run_timer, daemon=True).start()
+        threading.Thread(target=load_catalog, args=(party, upstream), daemon=True).start()
     srv = FrontServer((args.bind, args.port), party, service.Config(hosts, dev_commands=args.dev_commands), upstream)
     print(f'dev front on :{args.port} for {", ".join(hosts)}; games upstream: {args.upstream or "none"}')
     try:
