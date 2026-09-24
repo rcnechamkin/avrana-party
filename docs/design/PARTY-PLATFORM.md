@@ -320,7 +320,8 @@ Host selects Bomberman → (streamed games: the service starts; "Starting…") �
 - Native games can report authoritative events; **emulated games produce no results** unless a
   per-game adapter exists; hot-seat games can't even attribute turns. **Participation is never a
   win.** Flags that change meaning travel with results: bot seats, autopilot, forfeits, abandoned
-  games. Community games carry a `community` provenance label.
+  games. Community games carry a `community` **trust-tier** label beside their provenance (not a fourth
+  provenance value; ADR 0003).
 - **Achievements:** platform (N games, N titles, N people, tournaments), game-defined, and
   social/party (wins across games in one party, team feats, rivalry milestones); may unlock local
   cosmetics; no monetization; only from stats whose provenance supports them.
@@ -354,7 +355,8 @@ has mobile data; and — once open installation exists — **a malicious or bugg
 SD-card or SSH access is an admin by design. Parameters are suggestions to confirm when built.
 
 **Accepted risk (Friends parties):** the party network runs plain HTTP. The party Wi-Fi should
-never be open (WPA2 at least — recommended, not yet decided), but **anyone who has the Wi-Fi
+never be open (it is WPA2-Personal today, observed 2026-09-24; *requiring* WPA2+ is recommended,
+not yet decided), but **anyone who has the Wi-Fi
 password can read and alter other guests' traffic**: hidden roles, device cookies (i.e. that
 phone's presence, host included) and any PIN typed over Wi-Fi. That is accepted for a friends
 party; client isolation on the AP (`wifi.ap-isolation`, a live change needing approval) is a cheap
@@ -422,7 +424,8 @@ with systemd sandboxing and no network (`GAME-INSTALLATION.md`).
 
 **Known gaps today:** the arcade's `/stats` is reachable through nginx and shows peer IPs; PS1's
 localhost-only `/stats` check will stop working once PS1 sits behind nginx; PS1 sends its token in
-the URL (`?token=`), which nginx would log.
+the URL (`?token=`), which nginx would log — *fixed on branch `experiment/ps1-title-profiles`
+(token in a `hello` message), not merged*.
 
 **Deliberately not doing** — TLS on guests' phones, JWTs, token rotation schedules, encrypted
 databases, Argon2 dependencies, device fingerprinting, email recovery, CAPTCHAs.
@@ -474,9 +477,12 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 9. Exact Personal Viewport metadata format.
 10. How hot-seat emulation attributes results (probably: it doesn't).
 11. Final V1 hardware (power, battery, enclosure, display for QR codes).
-12. Forced-navigation policy during detours; confirming the proposed TV "screen" presence; how far a
-    kick reaches beyond the current party; spectator nominating;
-    party teams vs in-game teams; name length/Unicode (LAN Games caps names at 14 ASCII characters);
+12. Forced-navigation policy during detours; confirming the proposed TV "screen" presence; whether a kick
+    should ever reach beyond the current party (v0: this party only — `PARTY-LIFECYCLE.md`); spectator nominating;
+    party teams vs in-game teams; whether an admin PIN exists before any web
+    admin (ROADMAP near-term vs §13); whether a hot-seat setting may give one device several presences
+    (ADR 0003 allows it, the model forbids it); what `ps1-bomberman` declares for `late_join`;
+    the BLUFF playtest's power bar (clean power first, or run now and record dips); name length/Unicode (LAN Games caps names at 14 ASCII characters);
     profile database location and backups; admin surface on the guest Wi-Fi vs home LAN only;
     host-less kiosk parties.
 
@@ -488,10 +494,14 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 |---|---|
 | **BLUFF** | Working title of the first native Avrana game: a Coup-inspired hidden-role card game, built as a LAN Games module in the Avrana Party Games fork |
 | **LAN Games** | The retired-upstream (BEACNpool, MIT) browser party-game server running live on the Pi (~28 games); Avrana maintains a fork |
-| **Avrana Party Games** | Avrana's fork of LAN Games, where native games such as BLUFF are developed |
+| **Avrana Party Games** | Avrana's fork of LAN Games, where native games such as BLUFF are developed (also called "the fork" or "the games fork" — same repo) |
+| **Party Home** | The platform's own screen for the whole party (who is here, host, current game, what next); not built yet |
+| **Hub** | Today's LAN Games start page (`/`) with its game tiles — the thing Party Home would replace |
+| **Lobby** | A single game's pre-game waiting room (ready/start), inside that game; also the Party state before any game (`PARTY-LIFECYCLE.md`) |
+| **Screen presence** | A TV joined to the party that sees the public view (proposed); never host, seat or voter. "TV view" means what it shows |
 | **WORDCLASH, FIFTH SIGNAL, …** | Individual LAN Games titles (WORDCLASH has its own room engine) |
 | **Arcade** | The live Gauntlet II stream: one RetroArch → one hardware H.264 encode → WebRTC to phones |
-| **PS1 stream** | The same shared-stream design for PlayStation titles (branch `ps1-emulation`; blocked on power) |
+| **PS1 stream** | The same shared-stream design for PlayStation titles (branch `ps1-emulation`, with title profiles on `experiment/ps1-title-profiles`; blocked on power) |
 | **Multitap** | A PlayStation adapter that gives one controller port four pads; how 4-player PS1 games get their players |
 | **`hello`** | The first WebSocket message a LAN Games client sends; where identity enters a game today |
 | **`wc-token`** | LAN Games' browser-held identity token (client-mintable today) |

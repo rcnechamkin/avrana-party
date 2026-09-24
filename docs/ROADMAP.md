@@ -1,6 +1,6 @@
 # Avrana Party — Roadmap
 
-Last updated: 2026-09-24 (platform direction and overnight decisions; N5). This is the working
+Last updated: 2026-09-24 (platform direction and overnight decisions; N5; new-PSU power baseline). This is the working
 plan for the next several milestones. If documents disagree: **this file governs sequencing and
 status**, `docs/design/` governs platform design detail, and the newest dated `docs/findings/`
 entry governs measured facts.
@@ -126,19 +126,24 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 ## NOW
 
-### Next action (2026-09-24)
+### Next action (2026-09-24, after the new-PSU baseline)
 
-1. **Owner — power:** fit a known-good 5.1 V / 3 A supply and a short, thick USB-C cable, plug
-   the USB Wi-Fi adapter back in (it carries the party AP), and repeat the 15-minute baseline
-   (`get_throttled` stays `0x0`, zero kernel under-voltage lines). This unblocks N2 and N4.
-2. **Then — the N2 playtest** with the measurement list in N5 ("Rule for now"): 3–6 phones
-   including at least one Android, tested truly offline, including one manual switch to another
-   game and back.
-3. **While blocked, agents may do only (in this order):** (a) move PS1's hard-coded title lists
-   into data profiles on the `ps1-emulation` branch (laptop edit, Pi dev-checkout test, no
-   emulator run); (b) the laptop-only Personal Viewports stage A proof of concept
-   (`docs/design/PERSONAL-VIEWPORTS.md`); (c) extend the offline simulations in `experiments/`.
-   Nothing that touches live services, networking or the production checkout.
+The replacement PSU **reduced but did not eliminate** under-voltage with the USB Wi-Fi adapter
+attached (kernel-logged dips on the first boot; evidence and verdict in
+`docs/findings/2026-09-24-new-psu-power-baseline.md`). Power is still open.
+
+1. **Owner — power isolation, one variable at a time:** put the adapter on a **powered USB hub**
+   (cheapest discriminating test), then try a short, thick USB-C cable; each ≥ 20 min with the
+   kernel dip count before and after and **no agent work or SSH polling on the Pi** (dips were
+   seen to follow SSH session starts: the Pi is close to the margin and short CPU bursts tip it). Until one is clean:
+   the PS1/stream gate and any load test stay closed.
+2. **The N2 BLUFF playtest** can run on the current setup **if the owner accepts the power risk**
+   (BLUFF is light; the dips so far caused no reset, but on 09-23 a brownout reset the Pi during PS1
+   streaming). Runbook: `docs/runbooks/bluff-playtest.md`; run it truly offline with the reversible
+   mode in `docs/findings/2026-09-24-party-network-and-offline-mode.md`, and record the dip count.
+3. **Agents meanwhile (laptop only, experiment branches, nothing live):** port the party-model
+   scenarios toward the F2a dev front and F3 cookie tests; stage B of Personal Viewports is gated
+   on power. Nothing that touches live services, networking or the production checkout.
 
 ### N1. Repository docs are the working source of truth — **DONE (2026-09-22)**
 
@@ -148,7 +153,7 @@ A clean LAN Games module (`games/bluff/`, working title **BLUFF**) in
 
 Status (2026-09-23, after a six-workstream review: rules audit, mobile UX, lifecycle,
 security, simulator, code quality):
-- Criteria 1–7 are met in automated testing. That covers ~1,190 tests (rules/fuzz, security
+- Criteria 1–7 are met in automated testing. That covers 1,197 tests (rules/fuzz, security
   matrix, lifecycle with a fake clock, and the upstream suite), protocol-level privacy and
   attack scripts, and a full-game simulator with a rules oracle (2–6 players, adversarial,
   timeouts; 0 violations). Phone-size Chromium screenshots cover 2–6 players.
@@ -187,8 +192,9 @@ states the blast radius.
 
 Design: `docs/design/PARTY-PLATFORM.md` (hub) and the focused docs it links. Decisions:
 `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md`. Executable design checks
-(offline, stdlib only): `experiments/party-model/` (lifecycle rules, 44 tests incl. a 300-seed
-fuzz) and `experiments/viewports/` (Personal Viewport geometry) on branch `experiment/party-sim`.
+(offline, stdlib only): `experiments/party-model/` (lifecycle rules, 52 tests incl. a 300-seed
+fuzz) and `experiments/viewports/` (Personal Viewport geometry, 16 tests; stage A proof of concept in
+`experiments/viewports/poc/`) on branch `experiment/party-sim`.
 
 **Rule for now:** documents and offline simulations only. Do **not** touch BLUFF's identity code
 or the live services before the N2 real-phone playtest; the playtest must measure the game, not a
@@ -197,13 +203,16 @@ build order): power-on → first game time; share of phones that join unaided (Q
 tested **truly offline** (today the Pi shares its home internet with Avrana clients); seats lost to
 sleep/reload; who-starts confusion; the time and confusion of one manual switch to another game and
 back (if a switch costs > 60 s or loses a player, "party follows host" goes first); whether anyone
-wanted chat; "one more game?" requests; a fun rating. The playtest needs the party AP, whose USB
-adapter is unplugged while the power problem is open — so N2 is currently gated on power too.
+wanted chat; "one more game?" requests; a fun rating. The playtest needs the party AP (USB adapter,
+re-attached 2026-09-24), and power is not yet clean — see "Next action" for the owner's choice.
 
-**Safe now (no Pi, no live changes):** extend the offline simulations; a laptop-only Personal
-Viewports proof of concept with a synthetic test video (stage A in
-`docs/design/PERSONAL-VIEWPORTS.md`); moving PS1's two hard-coded title lists into data profiles
-(also the path community emulator content will take); preparing the games-repo publication.
+**Safe now (no Pi, no live changes):** extend the offline simulations; preparing the games-repo
+publication. *Done 2026-09-24 on experiment branches (not merged):* the laptop-only Personal
+Viewports stage A proof of concept — **partly**: crop, seat and orientation logic proven in headless
+Chromium/WebKit; the H.264 test video and real-phone checks are still to do
+(`experiments/viewports/poc/`, branch `experiment/party-sim`; details in its README) and PS1 title profiles as data
+(`ps1/titles/*.json`, branch `experiment/ps1-title-profiles`, also moving the slot token out of the
+URL and adding an explicit Leave).
 
 **Where the party layer lives (recommended):** a separate small party service on the **same
 origin** as everything else (e.g. `party.local/party/`), plus a thin bridge in the Avrana Party
@@ -222,7 +231,7 @@ Things whose absence would force rework later. Keep this list short.
 |---|---|---|
 | F1 | **IDs and keys ADR** — **drafted 2026-09-24** as `docs/adr/0003-ids-and-keys.md` (invariants accepted; encodings and storage open) | ADR merged with an "id → what it authorizes" table |
 | F2a | **Single origin, dev:** a dev-only front (e.g. the party service proxying the fork on 8196) that puts party + games under one host and a `/party/` namespace, without touching live nginx | The vertical slice runs on one origin |
-| F2b | **Single origin, live** (with the fork cutover): canonical `party.local`, `/party/` namespace, PS1 behind nginx, app Host allowlist while the default server keeps answering captive-portal probes; `10.42.0.1` redirects only after `party.local` is verified to resolve on iPhone and Android | Every runtime reachable under one host (owner-approved nginx change) |
+| F2b | **Single origin, live** (with the fork cutover): one canonical origin (**open**: `10.42.0.1` with `party.local` redirecting is the leading option, `PARTY-PLATFORM.md` §4/§16.1; `party.local` canonical needs Android verification first), `/party/` namespace, PS1 behind nginx, app Host allowlist while the default server keeps answering captive-portal probes; any redirect between the two names only after the offline phone tests | Every runtime reachable under one host (owner-approved nginx change) |
 | F3 | **Device token:** server-issued, HttpOnly SameSite=Lax cookie, hashed at rest; Origin checks on WebSocket/POST (on the F2a origin first) | Survives reload and sleep on iPhone Safari; a client cannot mint one |
 | F4 | **Party service:** one Party per appliance (v0), party socket, versioned snapshot + append-only event log | A reconnecting phone gets the current party state in one message |
 | F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence reclaim; tickets bound to one game; the fork bridge hands the game a per-(session, participant) game key at `hello` and turns off the "any client token" path; seats are bound where each game binds them | Fabricated tokens cannot take seats; a reload keeps the same seat |
@@ -248,6 +257,8 @@ navigation. The live cutover (F2b) comes later, together with the fork cutover.
 - **Spectator role** as a presence with no seat (late joiners, overflow).
 - **Admin PIN** (no default; set over SSH or a one-time code on the TV; scrypt; global backoff;
   recovery by deleting a file over SSH). Required before profiles or any destructive control.
+  (**Open:** `PARTY-PLATFORM.md` §13 says v0 has no web admin at all — whether a PIN exists before
+  a web admin does is undecided; §16.)
 - **Fork cutover + live single origin (F2b):** the fork plus bridge replaces the live LAN Games
   service and nginx gets the single-origin layout (owner-approved; full regression run of all
   games; captive-portal probes verified unchanged).
@@ -344,7 +355,8 @@ player?" only after the first game).
 - Repairing BookStack (unless asked)
 - **A universal gameplay framework or engine.** Avrana provides *platform services around* games
   (identity, party, seats, navigation, chat, stats) through a small versioned contract: a
-  manifest, a seat ticket, an event record and the `party.js` follow client. Rules, state,
+  manifest plus the party contract — a seat ticket, an event sink, the `party.js` follow client and
+  host checks (canonical list: `docs/design/GAME-INTEGRATION.md` §3). Rules, state,
   rendering and turn logic stay with each game. (See `docs/design/PARTY-PLATFORM.md` §1.)
 - Cloud accounts, email sign-up, or anything that needs the internet
 - Several simultaneous parties on one appliance (one appliance = one party)

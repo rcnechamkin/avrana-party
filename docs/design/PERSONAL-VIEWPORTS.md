@@ -1,6 +1,8 @@
 # Personal Viewports (split-screen extraction)
 
-Status: **concept + feasibility analysis (2026-09-24). Not built.** Metadata format is OPEN.
+Status: **concept + feasibility analysis (2026-09-24).** Stage A is **partly** done as a laptop proof
+of concept (`experiments/viewports/poc/`: crop/seat/orientation logic in headless browsers, synthetic
+canvas source — no H.264 video, no real phones yet). Metadata format is OPEN.
 Geometry test vectors: `experiments/viewports/` (branch `experiment/party-sim`). Code paths under
 `ps1/` are on branch `ps1-emulation` until it is merged.
 
@@ -56,7 +58,7 @@ The stream is same-origin, so canvas isn't tainted (nothing reads pixels back an
 Crops are rectangles `(x, y, w, h)` normalized to the active **content area** of the capture;
 the crop's display aspect is **a = (w/h) · D**, where D is the content's display aspect (4:3 for
 PS1/N64-era). RetroArch already maps every PS1 video mode to square-pixel 4:3 in the 640×480
-capture, so this holds regardless of the game's internal resolution.
+capture (unverified here — check it in stage B), so this holds regardless of the game's internal resolution.
 
 | Layout | Seat rectangles | Crop aspect | Best phone orientation |
 |---|---|---|---|
@@ -70,8 +72,9 @@ Fit rule: **contain** by default (the whole crop visible, bars elsewhere); cover
 Wide crops (a > 1) want landscape, tall crops want portrait. The test vectors pin these numbers.
 
 **Detail reality check:** a 4-player quadrant of a native 320×240 PS1 game is **160×120 native
-pixels** (Game Boy Advance-class detail, ~3 CSS px per native pixel on a phone). It is playable
-because it is exactly what each player saw on a split-screen TV, but it is not HD.
+pixels** (Game Boy Advance-class detail, ~3 CSS px per native pixel on a phone). It is expected to
+be playable because it is exactly what each player saw on a split-screen TV — **untested on a phone**
+— and it is not HD.
 
 ## Menus and full-screen moments (no auto-detection)
 

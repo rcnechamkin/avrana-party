@@ -5,7 +5,7 @@ when the first two consumers use them. Context: `PARTY-PLATFORM.md`, `docs/adr/0
 `GAME-INSTALLATION.md`, `PERSONAL-VIEWPORTS.md`. Code references: `core/…`, `web/…`, `games/…` and
 `server.py` are in the Avrana Party Games fork (not published yet; Pi dev clone
 `~/avrana-lab/avrana-party-games`); `arcade/…` is in this repo; `ps1/…` is on branch
-`ps1-emulation` of this repo.
+`ps1-emulation` of this repo (title profiles and the `hello` token: `experiment/ps1-title-profiles`).
 
 A game touches the platform through three **separate** things. Keeping them separate is the point:
 
@@ -73,6 +73,9 @@ never see device tokens; the party never runs game rules.
 }
 ```
 
+*(`late_join` here is illustrative: today PS1 fills any free slot — see the per-game table below —
+and which policy `ps1-bomberman` declares in v0 is open, `PARTY-PLATFORM.md` §16.)*
+
 | Field | Values | Meaning |
 |---|---|---|
 | `kind` | `native` \| `emulated` \| `other` | What the game *is* (not how it runs — that is the runtime) |
@@ -139,8 +142,8 @@ Without any of them a game keeps working exactly as today. With them it joins th
 - The party issues a **short-lived, single-use ticket** bound to one presence and **one game**
   (an audience `game_id`, so it can't be replayed into another game).
 - The game page sends it as the **first WebSocket message** — never in the URL (nginx logs query
-  strings; PS1 currently puts its token in `?token=`, which must change before PS1 goes behind
-  nginx).
+  strings; PS1 put its token in `?token=` — changed to a `hello` message on branch
+  `experiment/ps1-title-profiles`, not merged).
 - The game verifies it with the party service over a **per-game unix socket** (which also
   identifies the caller) or with a **per-game** key — never a key shared by all games, which would
   let any game mint tickets for any other.
@@ -161,10 +164,10 @@ Without any of them a game keeps working exactly as today. With them it joins th
 
 The game (or a thin observer beside it) reports lifecycle events. Draft envelope:
 `{v, party_id, game_id, instance, ts, kind, presence_id, seat_id, provenance, data}`; kinds:
-`session_started`, `session_ended{completed|abandoned}`, `seat_joined`, `seat_left`, `result`,
+`session_started`, `session_ended{completed|abandoned|crashed|switched}`, `seat_joined`, `seat_left`, `result`,
 `stat`. **Provenance comes from the grant**, not the manifest's own `results` claim; emulated games
-can emit only `platform_observed` unless a per-game adapter exists; community games are labelled
-`community`. Flags travel with results: bot seats, autopilot turns, forfeits, abandoned games
+can emit only `platform_observed` unless a per-game adapter exists; community games carry a
+`community` trust-tier label (not a provenance value). Flags travel with results: bot seats, autopilot turns, forfeits, abandoned games
 (never a win).
 
 ### 3.3 `party.js` follow client

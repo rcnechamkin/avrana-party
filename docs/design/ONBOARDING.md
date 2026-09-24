@@ -19,11 +19,16 @@ power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL brows
 
 ## What is true today (read from the repo)
 
-- **iPhones join silently:** nginx answers Apple's connectivity probe with Apple's "Success" page,
+- **iPhones join silently** (observed only with home internet behind the Pi; offline it is
+  *expected*, not tested): nginx answers Apple's connectivity probe with Apple's "Success" page,
   so iOS shows no captive popup; `portal/index.html` is no longer served anywhere.
-- **Android is unknown:** Android probe hostnames are redirected to the Pi, but the request falls
-  through to nginx `location /` (LAN Games). Nobody has checked what Android receives. If it looks
-  like a login page, Android opens the hub in its own sign-in window (separate cookies from Chrome).
+- **Android gets a 404** (observed 2026-09-24): its probe hostnames resolve to the Pi and
+  `/generate_204` falls through to LAN Games, which answers `404 {"detail":"Not Found"}` — neither
+  success nor a login page, so **no sign-in popup is expected**. Today Android's parallel HTTPS probe
+  still reaches Google through the Pi's NAT; truly offline, expect "Connected, no internet". Windows
+  and Firefox probes also get 404. Full audit, and a reversible offline test mode:
+  `docs/findings/2026-09-24-party-network-and-offline-mode.md`.
+- **The party Wi-Fi is WPA2-Personal** on 5 GHz channel 149 (so the join QR is `WIFI:T:WPA;…`).
 - **Test blind spots:** the Playwright tests use `party.avrana`, which resolves only through this
   laptop's hosts file; and the Pi currently shares its home-network internet with Avrana clients,
   so **every phone test so far had internet behind it**. Onboarding must be judged truly offline.
@@ -114,7 +119,8 @@ NFC first-record rule; which browser the camera opens.
 
 ## The device and the join card
 
-- **Card:** network name, password, both QR codes, "then open party.local", NFC marks, the
+- **Card:** network name, password, both QR codes, "then open <the party address>" (which address is canonical is open —
+  `PARTY-PLATFORM.md` §16.1), NFC marks, the
   troubleshooting lines.
 - **Screen:** a ≥ 2.9-inch e-ink panel fits both QR codes side by side; a 128×64 OLED is too small.
 - **Per-party codes (Public/Demo mode only; not in v0):** the join link may carry a short
@@ -127,8 +133,8 @@ NFC first-record rule; which browser the camera opens.
 
 ## Tests to run with real phones (truly offline, management access kept)
 
-1. From the laptop on Avrana: `curl -i -H 'Host: connectivitycheck.gstatic.com' http://10.42.0.1/generate_204`
-   (what Android receives today).
+1. ~~What Android receives today~~ — **done 2026-09-24:** 404 (see the network findings). The
+   offline phone checklist there covers the network half of tests 2 and 4 (not the QR scans).
 2. iPhone: ① → ② → the party loads in Safari; do iMessage and mobile data still work?
 3. Lab only, probe not faked: popup → "Use Without Internet" → do `party.local`, the IP and a
    Pi-DNS name each load?
@@ -151,7 +157,7 @@ without approval · put identity or games inside the captive popup · redirect t
 tokens in QR/NFC links · rely on HTTPS-only features · judge onboarding at home with internet behind
 the Pi · disable `wlan0` during a remote session · ship unlocked NFC tags.
 
-**Still uncertain:** whether the Wi-Fi is open or WPA (the QR differs); Android's NFC Wi-Fi prompt on
+**Still uncertain:** Android's NFC Wi-Fi prompt on
 current Samsung/Pixel; Android routing before the prompt is answered; Private Relay with Pi-DNS names;
 address-bar handling of `.home.arpa` and `.internal`.
 

@@ -72,8 +72,9 @@ not gated.
 - nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade
   are active and enabled. The Pi had been up about 50 minutes and the arcade
   service had started at boot with 0 restarts.
-- *(2026-09-24: the USB adapter that provides `wlan1` is unplugged during the power
-  investigation, so the AP is currently down.)*
+- *(2026-09-24: the USB adapter that provides `wlan1` was unplugged overnight during the power
+  investigation and re-attached on the new PSU the same morning; the AP is up. Power is still not
+  clean: `docs/findings/2026-09-24-new-psu-power-baseline.md`.)*
 - `Avrana Party` is an AP on `wlan1` (5 GHz, channel 149 per the NetworkManager
   profile) in shared mode at 10.42.0.1/24, autoconnect. `wlan0` is the home
   Wi-Fi / management link and default route. `eth0` has no active connection.

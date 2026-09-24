@@ -1,7 +1,7 @@
 # Party lifecycle: party, presence, host, seats
 
 Status: **design (2026-09-24). Rules are proposals checked by an offline simulation; nothing is
-built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim` (44 tests incl. a
+built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim` (52 tests incl. a
 300-seed fuzz). Concepts: `PARTY-PLATFORM.md` §5; identifiers: `docs/adr/0003-ids-and-keys.md`.
 
 ## Locked decisions this document implements
@@ -14,7 +14,7 @@ built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim`
 - **Physical seating is not a platform concept.** "Seating" below means *who holds which game slot*,
   carried from one game to the next — never table position or airplane rows.
 
-## Three global rules
+## Global rules
 
 - **R1 — one change at a time, with a version.** The party service applies changes serially. Every
   host action carries the party version the client saw (`if_version`); host rights are re-checked
@@ -23,6 +23,15 @@ built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim`
   actually started or ended, never on intent. Nothing ever has to "revert".
 - **R3 — a disconnected or away seat is never "free".** Only a released seat can be refilled, and a
   refill always gets a new seat id and a new game key.
+- **R4 — deadlines hold at apply time.** Every due timer (host grace, launch timeout, seat grace and
+  release, table abandon, vote close, party idle) is applied *before* each operation, not only by a
+  background tick. A vote after its deadline, a "ready" after the launch timed out, or a request from
+  a host whose grace ran out is refused even if no tick has run. Timer-driven changes bump the
+  version like any other change.
+- **R5 — navigation is keyed by `(party_id, nav_seq)`.** `nav_seq` restarts in a new party, so a
+  phone must never compare the counter alone.
+- **R6 — a saved profile has at most one live presence.** A presence can't hold two profiles; an old
+  phone that rejoins after its profile moved to another phone comes back as a guest (proposal).
 
 ## State machines
 
@@ -30,7 +39,7 @@ built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim`
 
 ```mermaid
 stateDiagram-v2
-  [*] --> lobby: first device connects (party created)
+  [*] --> lobby: first Join (party created; opening the page only observes)
   lobby --> launching: host selects a game (launch_id; always-on games are ready at once)
   launching --> in_game: ready AND launch_id matches → deal seats, nav+1
   launching --> lobby: failed / timeout / host cancels (nav unchanged)
@@ -48,7 +57,7 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-  [*] --> connected: a device token connects (new presence "Player N")
+  [*] --> connected: Join with a device token (new presence "Player N")
   connected --> reconnecting: last tab/socket closes
   reconnecting --> connected: same device (or a trusted profile move)
   reconnecting --> away: PRESENCE_GRACE elapsed
@@ -68,7 +77,7 @@ stateDiagram-v2
   held --> host_grace: holder reconnecting
   host_grace --> held: holder back within HOST_GRACE, or grace over and a successor chosen
   host_grace --> vacant: grace over, no eligible player connected
-  vacant --> held: next eligible player connects (may be the old host)
+  vacant --> held: next eligible player connects (from vacant, may be the old host)
 ```
 
 "Eligible" = a connected player presence: not a TV/"screen" presence, not someone who left.
@@ -99,7 +108,7 @@ stateDiagram-v2
 | Two taps, or the host changes mid-request | R1 (version check); "select" while launching is refused: "starting X — cancel first" |
 | Vote open when the host changes | The round keeps its deadline and voters; the new host inherits final authority |
 | Spectator promoted while the owner of the last seat reconnects | The owner always reclaims their own seat (R3); only a released seat is contested; first committed request wins, the loser spectates with priority next deal |
-| The only player disconnects mid-game | Neutral → away → the game pauses; if every seat is away for TABLE_ABANDON the session ends as `abandoned`, the party goes home with seating saved, and an emulator is stopped to save power |
+| The only player disconnects mid-game | Neutral → away → the game pauses; TABLE_ABANDON after the **last occupied seat emptied** (disconnected or away — counted from that moment, not from a tick) the session ends as `abandoned`, the party goes home with seating saved, and an emulator is stopped to save power |
 | Every phone sleeps | Host becomes vacant after grace; the party waits; it ends after PARTY_IDLE with nobody connected |
 | Same phone, two tabs | One presence; disconnected only when the last tab closes; the newest tab owns seat input, older ones show "opened elsewhere" |
 | Seat owner returns after the host gave the seat away | Spectator, with priority at the next deal; their old game key is dead |
@@ -109,7 +118,7 @@ stateDiagram-v2
 | An emulated game refuses to start (power gate, port busy) | Back to the previous screen; `nav_seq` never moved; a system message says why; the title is greyed out |
 | Switching between emulated games | End A (everyone sees "Starting B…"), stop A's service, launch B; a late "ready" from a cancelled launch is ignored by `launch_id` and that service is stopped |
 | A profile moves to a new phone mid-game | The old device's sockets close; the seat gets a new game key |
-| A phone was asleep when the host started the game | It is still dealt a seat (neutral until it returns): a lobby member is not a late joiner |
+| A phone was asleep when the host started the game | Dealt a seat (neutral until it returns) if it dropped **less than PRESENCE_GRACE ago**: a lobby member is not a late joiner. Asleep longer ("away") → spectator, seat at the next deal. **OPEN:** always deal lobby members instead? (risk: seats held for people who left without saying so) |
 
 ## Proposed defaults (proposals, not decisions)
 
@@ -138,9 +147,17 @@ Tune the grace timers from the N2 real-phone playtest.
 
 B (with C as a fallback) fits the known failure mode — under-voltage resets — but the decision is
 the owner's. Also open: the exact succession policy, the detour policy for forced navigation,
-spectator voting/nominating, host-less kiosk parties.
+spectator voting/nominating, host-less kiosk parties, and:
 
-**Kick (decided for v0):** a kick removes the presence from the current party and bars that
+- **`if_version` scope.** The version is party-wide, so a guest joining or a phone reconnecting
+  makes the host's in-flight request stale ("the party changed — try again"). Safe but occasionally
+  annoying; the alternative is a narrower version covering only lobby/seat/launch state.
+
+(Not open, for reference: opening the party page — or a captive-portal WebView loading it — only
+*observes*; only an explicit Join creates a presence, per `PARTY-PLATFORM.md` §13. The model checks
+this as `observe()`.)
+
+**Kick (proposed for v0; owner to confirm — not in the locked decisions or an ADR):** a kick removes the presence from the current party and bars that
 *device token* from rejoining this party. It is **not a ban**: a private tab is a new device, so
 only the Wi-Fi password — or host admission in Public/Demo mode — keeps someone out
 (`PARTY-PLATFORM.md` §7, §13).

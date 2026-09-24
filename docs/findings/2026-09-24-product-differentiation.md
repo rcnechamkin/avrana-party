@@ -7,8 +7,9 @@ sources noted at the end and were **not** individually verified with each airlin
 
 ## Bottom line
 
-Only one thing is both **proven** and **different** today: phones join a local Wi-Fi network with
-**no TV, no internet and no app**. Everything that would make someone choose Avrana over a Switch
+Only one thing is both **working** and **different** today: phones join a local Wi-Fi network with
+**no TV and no app** — and, by design, no internet (not yet tested with the upstream actually cut;
+see `2026-09-24-party-network-and-offline-mode.md`). Everything that would make someone choose Avrana over a Switch
 or Jackbox — a fun no-TV native game, Personal Viewports, one party carried across games — is
 unbuilt or unmeasured. And the hardware is the weakest link: the Pi can't yet stay reliably
 powered even from a wall supply (see `CLAUDE-HANDOFF.md`, power).
@@ -27,7 +28,7 @@ powered even from a wall supply (see `CLAUDE-HANDOFF.md`, power).
 
 ## Real differentiators
 
-- **Offline + no TV + no app, simultaneously.** True today; no listed competitor does all three.
+- **Offline + no TV + no app, simultaneously.** True by design (offline untested on real phones); no listed competitor does all three.
 - **A private, server-masked screen per player.** BLUFF already proves the masking discipline.
 - **Players who are physically apart** (plane rows, across a room) — the one setting where cards
   and Switch tabletop mode both fail.

@@ -25,7 +25,9 @@ app-store backend.
   untrusted code.
 - **Dependencies:** the fork's deploy script already refuses releases that change dependencies,
   because a live virtualenv can't be cleanly rolled back.
-- **PS1 titles** (branch `ps1-emulation`) are hard-coded in two places (`run-ps1.sh` and `stream_ps1.py`); each title's `.cfg`
+- **PS1 titles** (branch `ps1-emulation`) are hard-coded in two places (`run-ps1.sh` and `stream_ps1.py`)
+  — *moved to validated `ps1/titles/*.json` profiles on branch `experiment/ps1-title-profiles`, not
+  merged*; each title's `.cfg`
   is appended raw to RetroArch; the core is sha256-pinned; ROMs live read-only under `/srv`.
 
 ## Three layers, one rule
@@ -127,7 +129,8 @@ read-only ROM view).
 - Games live in a directory; each has an `avrana.json` manifest; the owner copies them in. The game
   list = built-in manifests (LAN Games derived from its registry) + that folder.
 - Runtimes accepted: built-in `lan_games_module`, `emulator_profile`, and `external` (today's
-  arcade and PS1 servers). **Moving the two hard-coded PS1 title lists into profiles pays off now**,
+  arcade and PS1 servers). **Moving the two hard-coded PS1 title lists into profiles pays off now** (done on
+  `experiment/ps1-title-profiles`),
   and it is the path community content will take later.
 - Build in from the start: a manifest version; the capabilities/runtime split; platform-assigned
   URL paths; namespaced ids (nothing can shadow a built-in); a grant record; code folder separate
