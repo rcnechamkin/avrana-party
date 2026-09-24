@@ -66,6 +66,7 @@ journalctl -k -f -n0 | grep --line-buffered -iE 'undervoltage|voltage normalis' 
 #!/bin/bash
 # ps1-sample.sh [INTERVAL_S]  -> CSV on stdout. Read-only.
 INT=${1:-5}; H=${AVRANA_PS1_HOME:-$HOME/avrana-lab/ps1}; RUN=$H/runtime; TCK=$(getconf CLK_TCK)
+D=${D:-$HOME/avrana-lab/avrana-party-docs/ps1}   # $D from the SSH shell is not exported to this script
 ticks() { [ -n "$1" ] && [ -r /proc/$1/stat ] && sed 's/^.*) //' /proc/$1/stat | awk '{print $12+$13}' || echo 0; }
 sysj()  { awk '/^cpu /{i=$5+$6; t=0; for(k=2;k<=NF;k++) t+=$k; print t, i}' /proc/stat; }
 calc()  { awk "BEGIN{printf \"%.1f\", $*}"; }   # awk math (bc is not installed on party)
@@ -133,7 +134,7 @@ From here on, `get_throttled` must stay exactly `0x0`. Any sticky bit that appea
 
 **Purpose:** the reference row every later stage is compared against.
 
-**Setup:** **stale-file preflight.** (Since 2026-09-23, `run-ps1.sh` clears these files as soon as it takes the lock, and `xkeys.py` and `shot.sh` refuse to run unless the recorded pid is a live PS1 RetroArch. Keep the manual check anyway.) An unclean reset leaves `~/avrana-lab/ps1/runtime/{display,xauthority,retroarch.pid}` behind. On 2026-09-23 the stale `display` was `:99`, which is the *arcade's* Xvfb number, so `tools/xkeys.py` and `tools/shot.sh` (both default to that file) would have targeted the arcade. With no PS1 running, run `rm -f ~/avrana-lab/ps1/runtime/{display,xauthority,retroarch.pid}`. Before any xkeys/shot call in later stages, check that `cat runtime/display` matches the Xvfb that is a sibling of the PS1 RetroArch (`pgrep -a -P $(ps -o ppid= $(cat runtime/retroarch.pid)) Xvfb`). Then confirm no PS1 is running with `pgrep -a 'retroarch|Xvfb|stream_ps1'` (it should print nothing, or only unrelated lines). Start the sampler: `bash $L/ps1-sample.sh 5 > $L/stage1.csv`.
+**Setup:** **stale-file preflight.** (Since 2026-09-23, `run-ps1.sh` clears these files as soon as it takes the lock. Since 2026-09-24, every tool goes through `tools/ps1-pid.sh`, which proves boot ID, start time, command line and display before trusting the pid file, and `run-ps1.sh` starts its display search at `:110`, so it can no longer take the arcade's `:99`. Keep the manual check anyway.) An unclean reset leaves `~/avrana-lab/ps1/runtime/{display,xauthority,retroarch.pid}` behind. On 2026-09-23 the stale `display` was `:99`, which is the *arcade's* Xvfb number, so `tools/xkeys.py` and `tools/shot.sh` (both default to that file) would have targeted the arcade. With no PS1 running, run `rm -f ~/avrana-lab/ps1/runtime/{display,xauthority,retroarch.pid}`. Before any xkeys/shot call in later stages, check that `cat runtime/display` matches the Xvfb that is a sibling of the PS1 RetroArch (`pgrep -a -P $(ps -o ppid= $($D/tools/ps1-pid.sh)) Xvfb`; `retroarch.pid` now holds `PID STARTTIME BOOT_ID`, so never `cat` it into `ps`). Then confirm no PS1 is running with `pgrep -a 'retroarch|Xvfb|stream_ps1'` (it should print nothing, or only unrelated lines). Start the sampler: `bash $L/ps1-sample.sh 5 > $L/stage1.csv`.
 
 **Duration:** 5 min.
 

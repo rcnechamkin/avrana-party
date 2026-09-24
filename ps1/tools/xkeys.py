@@ -21,6 +21,8 @@ else:
     if subprocess.run([os.path.join(here, "ps1-pid.sh")], stdout=subprocess.DEVNULL).returncode:
         sys.exit("no proven PS1 RetroArch (stale runtime files?); refusing to guess a display")
     run = os.path.join(home, "runtime")
+    if not os.path.isfile(os.path.join(run, "display")):
+        sys.exit("PS1 is not on a headless display (KMS/TV mode?)")
     disp = open(os.path.join(run, "display")).read().strip()
     os.environ["XAUTHORITY"] = open(os.path.join(run, "xauthority")).read().strip()
 

@@ -69,16 +69,19 @@ RA=(retroarch --verbose --log-file="$LOG" -c "$RUN/retroarch.cfg"
     --appendconfig="$HERE/mode-$MODE.cfg|$HERE/games/$GAME.cfg"
     -L "$CORE" "$@" "$CUE")
 
-pulse_pid= ra_pid= wait_pid=
-# True while ps1-pid.sh still proves $ra_pid is this instance's RetroArch. In xvfb
-# mode it is a grandchild, so once it exits its PID may be reused (e.g. by the
-# arcade's RetroArch): never signal it on the strength of the number alone.
+pulse_pid= ra_pid= wait_pid= launched=
+# ps1-pid.sh proves a PID is this instance's RetroArch, and we hold the lock, so a proven
+# instance is the one we launched. Never signal on the strength of a number alone: once
+# RetroArch exits its PID may be reused (e.g. by the arcade's RetroArch).
 ours() { [ -n "$ra_pid" ] && [ "$("$PS1PID" 2>/dev/null)" = "$ra_pid" ]; }
 cleanup() {
   set +e   # never abort half-way: every step below must run
-  # The pid file is written just before the inner shell exec's retroarch: allow for that.
-  [ -n "$ra_pid" ] && for _ in $(seq 10); do ours && break; sleep 0.1; done
-  if ours; then   # in xvfb mode RetroArch is a grandchild: poll, don't wait
+  if [ -n "$launched" ]; then
+    # Stopped mid-run. The pid file appears just before the inner shell exec's retroarch,
+    # so wait briefly for a proven identity instead of trusting any recorded number.
+    for _ in $(seq 50); do ra_pid=$("$PS1PID" 2>/dev/null) && break; ra_pid=; sleep 0.1; done
+  fi
+  if [ -n "$ra_pid" ]; then   # in xvfb mode RetroArch is a grandchild: poll, don't wait
     kill -TERM "$ra_pid" 2>/dev/null
     for _ in $(seq 100); do ours || break; sleep 0.1; done
     ours && kill -KILL "$ra_pid" 2>/dev/null
@@ -106,20 +109,20 @@ if [ "$MODE" = xvfb ]; then
   # Inner shell records the display and its Xauthority file so tools/ can reach this
   # private display, then (last, atomically) its identity "PID STARTTIME BOOT_ID"
   # (tools/ps1-pid.sh), then exec's into retroarch, which keeps that PID and start time.
-  xvfb-run -a -s '-screen 0 640x480x24 -nolisten tcp' \
-    sh -c 'echo "$DISPLAY" > "$0/display"; echo "$XAUTHORITY" > "$0/xauthority"
+  # -n 110 before -a: xvfb-run's -a searches up from the current number when parsed, so
+  # this starts above the arcade's :99 and PS1 never takes it.
+  xvfb-run -n 110 -a -s '-screen 0 640x480x24 -nolisten tcp' \
+    sh -c 'printf "%s\n" "$DISPLAY" > "$0/display"; printf "%s\n" "$XAUTHORITY" > "$0/xauthority"
       "$1" --record $$ > "$0/retroarch.pid.new" && mv -f "$0/retroarch.pid.new" "$0/retroarch.pid"
       shift; exec "$@"' "$RUN" "$PS1PID" "${RA[@]}" &
-  wait_pid=$!
-  for _ in $(seq 50); do [ -s "$RUN/retroarch.pid" ] && break; sleep 0.1; done
-  ra_pid=$(cut -d' ' -f1 "$RUN/retroarch.pid" 2>/dev/null || true)
+  wait_pid=$! launched=1
   rc=0; wait "$wait_pid" || rc=$?
 else
   "${RA[@]}" &
-  ra_pid=$!   # our unreaped child, so this PID cannot be reused before we wait
-  "$PS1PID" --record "$ra_pid" > "$RUN/retroarch.pid.new" && mv -f "$RUN/retroarch.pid.new" "$RUN/retroarch.pid"
-  rc=0; wait "$ra_pid" || rc=$?
+  child=$! launched=1
+  "$PS1PID" --record "$child" > "$RUN/retroarch.pid.new" && mv -f "$RUN/retroarch.pid.new" "$RUN/retroarch.pid"
+  rc=0; wait "$child" || rc=$?
 fi
-ra_pid= wait_pid=
+launched= ra_pid= wait_pid=
 echo "run-ps1: $GAME exited rc=$rc"
 exit "$rc"

@@ -11,6 +11,8 @@ case $rc in
           "Check 'ps -fp PID' and stop it by hand if it really is PS1." >&2
      exit 1 ;;
 esac
+# Still running = /proc entry present and not a zombie (exited, awaiting its parent).
+running() { st=$(sed 's/^.*) //' "/proc/$pid/stat" 2>/dev/null | cut -d' ' -f1); [ -n "$st" ] && [ "$st" != Z ]; }
 kill -TERM "$pid"
-for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || exit 0; sleep 0.5; done
+for _ in 1 2 3 4 5 6 7 8 9 10; do running || exit 0; sleep 0.5; done
 echo "retroarch $pid did not exit after 5 s" >&2; exit 1

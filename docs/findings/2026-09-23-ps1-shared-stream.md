@@ -159,4 +159,5 @@ tokens are not exposed in `/stats`.
   object. Reverted. The server now runs with `-X faulthandler`.
 - **Stats crash:** `/stats` crashed on spectators because `slot` was None. Rewritten.
 - **Wrong assumption about the arcade display:** PS1 is not guaranteed `:99`. With the arcade
-  stopped, `xvfb-run -a` handed out `:99`.
+  stopped, `xvfb-run -a` handed out `:99`. (Fixed 2026-09-24: `run-ps1.sh` now searches from
+  `:110`.)

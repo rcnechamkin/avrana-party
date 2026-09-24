@@ -35,15 +35,16 @@ set -- $line
 pid=$1 start=$2 boot=$3
 case $pid$start in ''|*[!0-9]*) refuse "malformed pid file";; esac
 
-[ "$boot" = "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)" ] \
-  || gone "pid file is from another boot (stale; PID $pid is not ours)"
+now_boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+[ -n "$now_boot" ] || refuse "cannot read the current boot ID"
+[ "$boot" = "$now_boot" ] || gone "pid file is from another boot (stale; PID $pid is not ours)"
 [ -e "/proc/$pid/stat" ] || gone "recorded PS1 RetroArch $pid has exited (stale pid file)"
 [ "$(starttime "$pid")" = "$start" ] || gone "PID $pid now belongs to a newer process (stale pid file)"
 
 # Same process that run-ps1.sh recorded. Now prove it is still the PS1 RetroArch.
 [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = retroarch ] || refuse "PID $pid is not retroarch"
 [ "$(stat -c %u "/proc/$pid" 2>/dev/null)" = "$(id -u)" ] || refuse "PID $pid belongs to another user"
-tr '\0' '\n' 2>/dev/null < "/proc/$pid/cmdline" | grep -qxF "$RUN/retroarch.cfg" \
+tr '\0' '\n' 2>/dev/null < "/proc/$pid/cmdline" | grep -qxF -e "$RUN/retroarch.cfg" \
   || refuse "PID $pid was not started with $RUN/retroarch.cfg (another RetroArch, e.g. the arcade)"
 
 # In xvfb mode the tools reach the private display through runtime/display and
@@ -53,7 +54,9 @@ for pair in display:DISPLAY xauthority:XAUTHORITY; do
   [ -e "$RUN/$f" ] || continue
   want=$(cat "$RUN/$f" 2>/dev/null)
   [ -n "$want" ] || refuse "$RUN/$f is empty"
+  # One line only: grep -F treats a multi-line pattern as "any of these lines".
+  [ "$(printf '%s\n' "$want" | wc -l)" -eq 1 ] || refuse "$RUN/$f has more than one line"
   env=$(tr '\0' '\n' 2>/dev/null < "/proc/$pid/environ") || refuse "cannot read the environment of PID $pid"
-  printf '%s\n' "$env" | grep -qxF "$var=$want" || refuse "$RUN/$f does not match $var of PID $pid"
+  printf '%s\n' "$env" | grep -qxF -e "$var=$want" || refuse "$RUN/$f does not match $var of PID $pid"
 done
 echo "$pid"

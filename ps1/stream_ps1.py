@@ -15,6 +15,7 @@ client can never name a key, a device or another player's slot.
 import argparse
 import asyncio
 import ctypes
+import errno
 import hmac
 import json
 import os
@@ -183,8 +184,11 @@ class PS1Stream(stream.Stream):
         """True once tools/ps1-pid.sh proves the PS1 RetroArch's identity AND it runs in
         the session of OUR run-ps1.sh child, so the runtime/display of a stale or
         foreign instance (possibly the arcade's display) is never captured."""
-        r = subprocess.run([str(HERE / 'tools' / 'ps1-pid.sh')], env=env,
-                           capture_output=True, text=True)
+        try:  # /proc reads of a stuck process can stall: never hang startup on them
+            r = subprocess.run([str(HERE / 'tools' / 'ps1-pid.sh')], env=env,
+                               capture_output=True, text=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            return False
         if r.returncode:
             return False
         try:  # /proc/PID/stat fields after the last ") ": state ppid pgrp session ...
@@ -483,6 +487,18 @@ class PS1Stream(stream.Stream):
             self.emulator_log.close()
 
 
+def check_bind(host, port):
+    """Bind every address `host` resolves to, as asyncio's server will (SO_REUSEADDR,
+    IPV6_V6ONLY), and release it again. Raises OSError if aiohttp could not bind."""
+    for family, kind, proto, _, addr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM,
+                                                           flags=socket.AI_PASSIVE):
+        with socket.socket(family, kind, proto) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6:
+                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            s.bind(addr)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('game', choices=sorted(GAMES))
@@ -490,17 +506,18 @@ if __name__ == '__main__':
                         help='bind address (repeatable; default 10.42.0.1 = party AP, and 127.0.0.1)')
     parser.add_argument('--port', type=int, default=8198)
     args = parser.parse_args()
+    if not 0 <= args.port <= 65535:
+        parser.error(f'--port {args.port} is not a TCP port')
     hosts = args.host or ['10.42.0.1', '127.0.0.1']
     # aiohttp binds only after on_startup has launched the emulator and the encoder, so an
     # unusable address (e.g. 10.42.0.1 while the party AP is down) must fail before that.
     for host in hosts:
         try:
-            with socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind((host, args.port))
+            check_bind(host, args.port)
         except OSError as e:
-            parser.error(f'cannot bind {host}:{args.port} ({e.strerror}); '
-                         'is the party AP up? choose addresses with --host')
+            why = {errno.EADDRNOTAVAIL: 'not an address of this machine; is the party AP up?',
+                   errno.EADDRINUSE: 'port already in use'}.get(e.errno, e.strerror or str(e))
+            parser.error(f'cannot bind {host}:{args.port} ({why}); choose addresses with --host')
     ps1 = PS1Stream(args.game)
     app = web.Application(client_max_size=4096)
     app.router.add_get('/', lambda request: web.FileResponse(HERE / 'index.html'))

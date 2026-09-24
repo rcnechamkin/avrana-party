@@ -79,7 +79,11 @@ The code is on local branch `ps1-emulation` in `~/avrana-lab/avrana-party-docs` 
 - **Gotchas:**
   - Start does not confirm Bomberman menus; Cross does.
   - CD loads make presses during fades vanish.
-  - `xvfb-run -a` may hand PS1 the display `:99` when the arcade is stopped.
+  - PS1's Xvfb display search starts at `:110` (since 2026-09-24), so it no longer takes the
+    arcade's `:99` when the arcade is stopped.
+  - **Process identity (2026-09-24):** every PS1 tool trusts `runtime/retroarch.pid` only via
+    `ps1/tools/ps1-pid.sh`, which fails closed (see `ps1/README.md`, "Process identity").
+    `ps1/tests/test_pid_guard.py` is the Linux regression test for it.
   - Run the server as `python3 -X faulthandler stream_ps1.py bomberman`.
   - `/stats` is localhost-only.
   - Simulated phones (`ps1/tools/viewers.py`) run on avrana, never on the Pi.
