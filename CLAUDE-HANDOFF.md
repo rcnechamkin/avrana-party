@@ -1,5 +1,15 @@
 # Claude Code handoff: Avrana Party
 
+> **PS1 PERFORMANCE / MULTI-VIEWER LOAD TESTING BLOCKED (2026-09-23):** Replace/verify Pi
+> power first. After clean power is installed, confirm `get_throttled=0x0` from a fresh boot
+> before repeating the staged test matrix in
+> `docs/findings/2026-09-23-ps1-post-power-test-plan.md`.
+> - Until then: no sustained PS1 streaming, no viewer-scaling or soak runs, no 4-player stream
+>   runs, and no tuning of settings from throttled runs.
+> - Why: the Pi (also the AP/router) reset at ~18:44 during a PS1 4-player + spectator stream
+>   test, after heavy live under-voltage. State of proof:
+>   `docs/findings/2026-09-23-ps1-shared-stream.md`. Code: `ps1/` (branch `ps1-emulation`).
+
 You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
 
 > **2026-09-23 update. Read `docs/ROADMAP.md` first.**

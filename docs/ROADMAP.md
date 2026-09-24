@@ -136,6 +136,38 @@ No changes to nginx, dnsmasq/captive portal, NetworkManager/AP, systemd units, t
 Games service or venv, RetroArch/arcade or telemetry without an explicit proposal that
 states the blast radius.
 
+### N4. PS1 on one shared stream (RetroArch + PCSX-ReARMed) — **BLOCKED ON POWER**
+
+> **PS1 PERFORMANCE / MULTI-VIEWER LOAD TESTING BLOCKED:** Replace/verify Pi power first.
+> After clean power is installed, confirm `get_throttled=0x0` from a fresh boot before
+> repeating the staged test matrix (`docs/findings/2026-09-23-ps1-post-power-test-plan.md`).
+> Until then: no sustained PS1 streaming, no viewer-scaling or soak runs, no 4-player stream
+> runs, and no tuning of emulator/encoder settings from throttled data.
+
+Goal: one PS1 game, one render, one encode, the same stream to every phone, with each
+phone's input kept separate. Code: `ps1/` on branch `ps1-emulation` (local, not pushed).
+Details: `ps1/README.md` and `docs/findings/2026-09-23-ps1-shared-stream.md`.
+
+- **Proven:**
+  - Both games boot with the real SCPH-1001 BIOS (RetroArch 1.20.0 + PCSX-ReARMed
+    r26l-111-g94e8a03).
+  - Worms: audio works, it is hot-seat on port 1, and it survived 16 minutes and exited
+    cleanly.
+  - Bomberman: 5 independent players on Multitap port 2, using keyboard-bank input.
+  - The stream server ran one encoder with 4 player slots plus a spectator. Player 1's phone
+    drove the menus through the web input path.
+- **Not proven:**
+  - 4 phones each moving their own character in a match. This stopped at the menus when the
+    Pi rebooted.
+  - Encode cost as the number of viewers grows.
+  - Latency on real phones.
+  - A soak run.
+- **The 2026-09-23 18:44 reboot:** it happened during a 4-player + spectator stream test.
+  Live under-voltage was running at 7×/hour beforehand, `rsts=0x20`, the root filesystem
+  was not cleanly unmounted, and the journal is not persistent. Power is the likely cause
+  (about 75% confidence, not proven). Thermal is ruled out. `config.txt` has
+  `over_voltage_avs=-20000` (a core undervolt), which is an owner decision to revisit.
+
 ---
 
 ## NEXT (after the baseline plays cleanly on real phones)
