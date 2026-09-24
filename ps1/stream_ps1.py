@@ -311,6 +311,21 @@ class PS1Stream(stream.Stream):
             owner['ws'] = None
             owner['grace'] = self.loop.call_later(GRACE, self.expire_slot, slot, owner['token'])
 
+    def leave(self, slot, ws):
+        """Explicit Leave from the slot's current socket: free it now, with no grace period.
+        (A dropped connection keeps the slot for GRACE seconds so a reload can reclaim it; a
+        player who pressed Leave has given the token up, so holding the slot would only block
+        the next player — for Worms, the only pad.)"""
+        owner = self.owners[slot]
+        if not owner or owner['ws'] is not ws:
+            return False                # a replaced socket can't release the new owner's slot
+        if owner['grace']:
+            owner['grace'].cancel()
+        self.owners[slot] = None
+        self.pads[slot].release_all()
+        log.info('Slot %d released by its player', slot + 1)
+        return True
+
     def expire_slot(self, slot, token):
         owner = self.owners[slot]
         if owner and owner['token'] == token and owner['ws'] is None:
@@ -447,6 +462,11 @@ class PS1Stream(stream.Stream):
                         rtc.emit('add-ice-candidate', mline, candidate)
                     elif len(peer['ice']) < 32:
                         peer['ice'].append((mline, candidate))
+                elif kind == 'leave':
+                    if slot is not None:
+                        self.leave(slot, ws)
+                    await ws.close(code=1000, message=b'Left')
+                    break
                 elif kind == 'ping' and isinstance(data.get('id'), int):
                     await ws.send_json(dict(type='pong', id=data['id']))
                 elif kind == 'stats' and isinstance(data.get('s'), dict):

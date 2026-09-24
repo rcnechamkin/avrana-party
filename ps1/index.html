@@ -75,7 +75,9 @@ buttons.forEach(button=>{
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAll()});
 window.addEventListener('blur',releaseAll);window.addEventListener('pagehide',()=>disconnect());
-leave.onclick=()=>{store.set(null);disconnect('Controller released.')};
+// Leave frees the controller at once (the server skips its 30 s reconnect grace); closing or
+// reloading the page (pagehide) keeps the token so a reload can reclaim the same slot.
+leave.onclick=()=>{if(ws?.readyState===WebSocket.OPEN&&mySlot)ws.send(JSON.stringify({type:'leave'}));store.set(null);disconnect('Controller released.')};
 sound.onclick=async()=>{video.muted=!video.muted;try{await video.play();sound.textContent=video.muted?'Enable sound':'Mute sound'}catch(e){status.textContent='Tap Enable sound again to start playback.'}};
 let vf=null,prev=null,pingId=0;const pingAt=new Map(),pingRtts=[];
 const pct=(a,q)=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);return +b[Math.min(b.length-1,Math.floor(q*b.length))].toFixed(1)};
