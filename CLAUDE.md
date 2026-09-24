@@ -9,9 +9,21 @@
 - **Documentation source of truth (since 2026-09-22): this repository.** The BookStack API/MCP integration is unreliable, so record decisions, findings and progress in the repo (`docs/ROADMAP.md`, `docs/findings/`, `docs/adr/`, `CLAUDE-HANDOFF.md`). **Do not try to repair BookStack or its MCP unless the owner explicitly asks**, and never block work on it. BookStack may return as the main wiki later; the repo docs will then be reconciled into it. See `docs/ROADMAP.md`.
 - **Current plan:** `docs/ROADMAP.md` (Now / Next / Later). The first native-game target is a **Coup-inspired Avrana bluffing card game**, built as a LAN Games module in the Avrana Party Games fork. **Classic Diplomacy and `diplomacy/diplomacy` are abandoned experiments**; don't continue them.
 
+## Product direction: one party, many games (read before designing anything players touch)
+
+Avrana Party is a **unified local multiplayer platform whose games plug into a shared party system**: *the game may change; the party does not.* Avrana owns identity, session, social, progression, navigation and player management; games consume them. Before designing a game, lobby, login, chat, stat or navigation feature, read **`docs/design/PARTY-PLATFORM.md`** (concepts and principles) and **`docs/adr/0002-party-platform.md`**; phasing is ROADMAP **N5**. The rules agents most often need:
+
+- **Guest-first, browser-first, offline-first.** Never require a profile, a captive portal or the internet.
+- **Device ≠ Profile ≠ Presence ≠ Seat ≠ Role ≠ Persona.** Games get a seat key and a persona, never a device token. Names never authorize anything.
+- **Admin ≠ Host.** The admin is PIN-protected and appliance-wide; the host is a temporary party role with no system powers.
+- **Navigation is party-synchronized**, and a game must not reinvent profiles, chat, reconnect, teams, spectators or session lifecycle.
+- **Never claim what can't be observed:** every stat carries provenance; emulated games produce no results unless a per-game adapter exists, and participation is never a win.
+- **Not a gameplay framework:** platform services around games, through a small contract (manifest, seat ticket, event record, `party.js`).
+- Until the BLUFF real-phone playtest (N2) is done, the platform is **documents only**.
+
 ## Workflow
 
-1. Edit locally, commit to Git, then deploy to and test on `party`.
+1. Edit locally, commit to Git, then deploy to and test on `party` (laptop → GitHub → Pi; see "Deploy" below).
 2. Inspect remote state (files, services, configs) before changing it.
 3. Back up any live configuration before modifying it.
 4. Do not casually modify networking, the captive portal, systemd units, nginx, or other live system configuration. Ask first.
@@ -27,4 +39,4 @@ Passwords, API keys, SSH private keys, ROMs, emulator cores, runtime data, or an
 - `portal/`, `arcade/`: application code. The LAN Games server source is not in this repo (`/home/cody/LAN-Games` on `party`).
 - `avrana-party.nginx`, `avrana-captive.conf`, `install-*.py`: deploy and system config. Treat them as live-system-adjacent.
 - `avrana-party.nginx`, `arcade/nginx-site` and the live `/etc/nginx/sites-available/avrana-party` must stay byte-identical (check with `cmp`). `arcade/install-service.py` overwrites the live site from `arcade/nginx-site`.
-- Deploy: the checkout on `party` (`/home/cody/avrana-party`) tracks `origin/main`. Commit and push off-Pi, then `git pull --ff-only` on `party`. Don't edit or commit in that checkout. Experiments on the Pi live under `~/avrana-lab/`.
+- Deploy: the checkout on `party` (`/home/cody/avrana-party`) tracks `origin/main`. Commit and push off-Pi, then `git pull --ff-only` on `party`. Don't edit or commit in that checkout. Feature branches are tested in the Pi dev checkout `~/avrana-lab/avrana-party-docs` (`git fetch && git merge --ff-only origin/<branch>`), never developed there. Experiments on the Pi live under `~/avrana-lab/`.

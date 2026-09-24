@@ -2,6 +2,16 @@
 
 You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
 
+> **2026-09-24 update: product direction.** Avrana Party is now explicitly **one party
+> platform with many games** ("the game may change; the party does not"). Avrana is designed
+> to own identity, party, seats, host, navigation, chat and stats (none of it is built yet);
+> games consume them. Read
+> `docs/design/PARTY-PLATFORM.md` and `docs/adr/0002-party-platform.md` before designing any
+> player-facing feature; phasing is ROADMAP **N5**. Until the BLUFF real-phone playtest, the
+> platform is documents only: don't change BLUFF's identity code or live services for it.
+> Development now runs laptop → GitHub → Pi; the Pi is a deploy/test target. Full backups of
+> the games fork are on the laptop (`~/avrana-party-games.git`).
+
 > **2026-09-23 update. Read `docs/ROADMAP.md` first.**
 > - The **repository is now the documentation source of truth**. The BookStack API/MCP is
 >   unreliable; do **not** try to repair it unless the owner asks.
@@ -14,10 +24,11 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 >   six-workstream robustness pass: 1,197 tests, protocol privacy and attack checks, a
 >   full-game simulator (0 violations), and 2–6 player screenshots. **Next milestone: a real
 >   3–4 iPhone playtest.** Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
->   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md`.
-> - **Not yet published:** the public repo `rcnechamkin/avrana-party-games` must be created by
->   the owner (empty, not a fork), and `party` needs push access to it. Push `main` only,
->   never `abandoned/classic-diplomacy`.
+>   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md` (partly superseded
+>   2026-09-24; see the banner at its top).
+> - **Not yet published:** the repo `rcnechamkin/avrana-party-games` must be created by the
+>   owner (empty, not a fork). The laptop pushes `main` from its backup, never
+>   `abandoned/classic-diplomacy`; `party` should become pull-only later.
 > - **Classic map-based Diplomacy and `diplomacy/diplomacy` are ABANDONED** (a
 >   misunderstanding). Don't continue them. The local commit is on branch
 >   `abandoned/classic-diplomacy`, never pushed.

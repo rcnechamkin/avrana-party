@@ -4,6 +4,11 @@ A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts
 the games; phones join its Wi-Fi ("Avrana Party") and act as screens and
 controllers. Core play needs no internet, accounts or app installs.
 
+It is designed as **one party platform with many games**: *the game may change; the party
+does not.* People join a party once, and Avrana is designed to carry their identity, seats, host,
+teams and history from game to game (design stage; see `docs/design/PARTY-PLATFORM.md` and
+`docs/ROADMAP.md`).
+
 This is separate from the Avrana Homelab media server (host `avrana`); do not
 confuse them. Detailed technical context is in `CLAUDE-HANDOFF.md`, and the
 arcade prototype is documented in `arcade/README.md`.
