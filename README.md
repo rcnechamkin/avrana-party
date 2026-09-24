@@ -4,6 +4,8 @@ A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts
 the games; phones join its Wi-Fi ("Avrana Party") and act as screens and
 controllers. Core play needs no internet, accounts or app installs.
 
+**Start here:** `docs/ROADMAP.md` (status and the next action) → `docs/design/README.md`.
+
 It is designed as **one party platform with many games**: *the game may change; the party
 does not.* People join a party once, and Avrana is designed to carry their identity, seats, host,
 teams and history from game to game (design stage; see `docs/design/PARTY-PLATFORM.md` and
@@ -17,7 +19,7 @@ arcade prototype is documented in `arcade/README.md`.
 
 | Path | Purpose |
 |---|---|
-| `portal/index.html` | Captive-portal landing page (live copy: `/var/www/avrana-portal/index.html`) |
+| `portal/index.html` | Old captive-portal landing page (live copy: `/var/www/avrana-portal/index.html`); no longer served since 2026-09-18 |
 | `avrana-party.nginx` | nginx site: portal probe, `/arcade/`, LAN Games proxy |
 | `avrana-captive.conf` | Captive DNS rules (live: `/etc/NetworkManager/dnsmasq-shared.d/`) |
 | `install-portal.py`, `install-captive-dns.py` | Installers kept for provenance and recovery; do not rerun blindly |
@@ -31,7 +33,7 @@ The LAN Games server source is not in this repo. It lives on the Pi at
 
 - `http://party.local/` : LAN Games
 - `http://party.local/arcade/` : Gauntlet II streaming prototype
-- `http://party.local/hotspot-detect.html` : captive-portal landing page
+- `http://party.local/hotspot-detect.html` : Apple connectivity probe (deliberately returns `Success`, so iPhones join with no popup)
 - `http://10.0.0.218:8093` : Beszel hub (telemetry dashboard, hosted on avrana)
 
 ## Testing (Playwright)
@@ -70,6 +72,8 @@ not gated.
 - nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade
   are active and enabled. The Pi had been up about 50 minutes and the arcade
   service had started at boot with 0 restarts.
+- *(2026-09-24: the USB adapter that provides `wlan1` is unplugged during the power
+  investigation, so the AP is currently down.)*
 - `Avrana Party` is an AP on `wlan1` (5 GHz, channel 149 per the NetworkManager
   profile) in shared mode at 10.42.0.1/24, autoconnect. `wlan0` is the home
   Wi-Fi / management link and default route. `eth0` has no active connection.
@@ -140,6 +144,12 @@ See https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html.
 | 2026-09-18/19 | Captive DNS alias fix installed (`install-captive-dns.py`) | `backups/20260919T033200228715Z` |
 
 ## Portal acceptance checks
+
+> **Superseded (design changed 2026-09-18):** `/hotspot-detect.html` now deliberately returns
+> Apple's `Success` page so iPhones join silently with no captive popup, and `portal/index.html` is
+> no longer served (see `CLAUDE-HANDOFF.md`, "DESIGN CHANGED", and `avrana-party.nginx`). The
+> checks below describe the old landing-page design; the current onboarding plan and its test
+> list are in `docs/design/ONBOARDING.md`.
 
 1. Request `http://10.42.0.1/hotspot-detect.html` with `Host: captive.apple.com`.
    Expect 200, `Content-Type: text/html`, `Cache-Control: no-store`, the Avrana

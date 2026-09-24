@@ -122,9 +122,11 @@ or anonymous answer at all.
 ## 6. Privacy and anonymity
 
 - **Filter on the server only**: never hide with CSS, never leave private data in the page, never
-  put private fields in broadcast events. Limit: this stops other *browsers*, not a Wi-Fi
-  eavesdropper; on an open plain-HTTP network, hidden roles travel unencrypted. Real secrecy on the
-  network needs WPA2 on the party LAN (or HTTPS later).
+  put private fields in broadcast events. Limit: this stops other *browsers*, not someone sniffing
+  the Wi-Fi. The party network is plain HTTP, and WPA2 does **not** protect guests from each other:
+  anyone with the Wi-Fi password can read and alter plain-HTTP traffic, hidden roles included. That
+  is an accepted risk for friends parties (`PARTY-PLATFORM.md` §13); AP client isolation is a cheap
+  extra, and real network secrecy would need HTTPS, which offline guest phones can't easily have.
 - **Side channels:** show identical screens to everyone not acting; push state to every socket on
   every change; no role-specific sounds or vibrations others could notice.
 - **Anonymity levels** (each game states which it offers): *to other players* (no author in anyone

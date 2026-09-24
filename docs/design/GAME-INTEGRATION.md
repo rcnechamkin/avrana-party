@@ -2,7 +2,10 @@
 
 Status: **draft contract (2026-09-24); nothing here is built.** Field names and enums will change
 when the first two consumers use them. Context: `PARTY-PLATFORM.md`, `docs/adr/0003-ids-and-keys.md`,
-`GAME-INSTALLATION.md`, `PERSONAL-VIEWPORTS.md`.
+`GAME-INSTALLATION.md`, `PERSONAL-VIEWPORTS.md`. Code references: `core/…`, `web/…`, `games/…` and
+`server.py` are in the Avrana Party Games fork (not published yet; Pi dev clone
+`~/avrana-lab/avrana-party-games`); `arcade/…` is in this repo; `ps1/…` is on branch
+`ps1-emulation` of this repo.
 
 A game touches the platform through three **separate** things. Keeping them separate is the point:
 
@@ -14,6 +17,34 @@ A game touches the platform through three **separate** things. Keeping them sepa
 
 Rule: **the package describes and requests; the appliance decides.** A manifest can never set its
 own trust tier, URL path or id namespace. Installation is covered in `GAME-INSTALLATION.md`.
+
+### How the pieces connect (target shape, not built)
+
+```mermaid
+flowchart LR
+  subgraph Phones["Phones (normal browsers, one origin)"]
+    PJ["party.js<br/>(party socket, follows nav)"]
+    GP["game page<br/>(LAN Games / arcade / PS1 / native)"]
+  end
+  subgraph Pi["Avrana appliance"]
+    NG["nginx<br/>one canonical host"]
+    PS["party service<br/>party · presence · host · seats · votes · chat · events"]
+    LG["LAN Games fork<br/>(+ bridge: ticket at hello,<br/>lifecycle observer)"]
+    ST["stream services<br/>arcade / PS1<br/>(one emulator at a time)"]
+    DB[("party + profile store")]
+  end
+  PJ -- "party socket" --> NG --> PS
+  GP -- "first WS message: seat ticket" --> NG
+  NG --> LG
+  NG --> ST
+  LG -- "verify ticket (per-game key/socket)<br/>events with provenance" --> PS
+  ST -- "verify ticket · ready/failed<br/>platform_observed events" --> PS
+  PS -- "launch / stop" --> ST
+  PS --- DB
+```
+
+The party service decides *who* and *what next*; each game decides *how the game plays*. Games
+never see device tokens; the party never runs game rules.
 
 ---
 
@@ -121,6 +152,10 @@ Without any of them a game keeps working exactly as today. With them it joins th
   arcade bind a controller slot at connect time. The bridge reports the resulting seat/slot back.
 - LAN Games also keys **avatar photos** (`x-wc-token`) and **chat identity** by the same token, so
   the bridge must map those too.
+- **Honest limit:** built-in LAN Games modules share one process, so the ticket audience and any
+  per-game key are per *process* there — any module could read any game's keys. That is acceptable
+  only because built-in code is trusted; per-game isolation starts with sandboxed third-party games
+  (`GAME-INSTALLATION.md`).
 
 ### 3.2 Event sink
 
@@ -159,7 +194,7 @@ From a read-only audit of the LAN Games fork, BLUFF, the arcade and PS1 (2026-09
 | **Presence** | `Player.connected`, BLUFF's five states, chat online count, `/api/games` counts, PS1 `/stats` | BLUFF's vocabulary + spectator, owned by the party | — | `Player.public()` |
 | **Seats / late join** | 5 policies: LAN locked at countdown; Duel 2 seats + bench; BLUFF 6 + bots; PS1 any open slot; arcade first free or HTTP 409 | spectator by default; `late_join` in the manifest | seat → slot mapping (colours, key banks, bots) | the countdown lock-in; `claim()` |
 | **Spectators** | LAN unlimited; BLUFF cap 6; PS1 unlimited (each costs a WebRTC transport); arcade none | a presence without a seat; a party-wide cap; server drops their input | per-viewer masking | `state_for(None)` |
-| **Host** | nobody: any ready player starts; anyone changes settings, clears chat, sends `again`; BLUFF lets a spectator end a paused table after 60 s; PS1 title chosen on the command line | host-only start/settings/end/rematch; host succession replaces BLUFF's takeover rule | rule gates | `may(token, verb)` in `GameBinding.dispatch` |
+| **Host** | nobody: any ready player starts; anyone changes settings, clears chat, sends `again`; BLUFF lets a spectator end a paused table after 60 s; PS1 title chosen on the command line | host-only start/settings/end/rematch; host succession replaces BLUFF's takeover rule | rule gates | `may(participant, verb)` in `GameBinding.dispatch` |
 | **Navigation** | per-page home links; PS1 has no way out; LAN game end returns to *that game's* lobby | `party.js` + Party Home | — | `hubnet.js`; one line each in arcade/PS1 pages |
 | **Launch** | LAN always on (one process); arcade a boot service with a fixed ROM; PS1 by hand over SSH; nothing enforces one emulator at a time | a party launcher owning the emulator slot; PS1's "port bound only after startup" is a free readiness signal | — | systemd/nginx changes → owner approval |
 | **Other** | near-identical WebSocket/push code in `net.py` and WORDCLASH; 5 different rate limits and message caps; Origin checks only in the stream servers; name sanitizing copied; two `/stats`, two `/health`; preferences duplicated | origin allowlist, per-presence rate limits, names, participation stats | key banks, uinput, WebRTC stats | — |

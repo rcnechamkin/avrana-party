@@ -29,8 +29,8 @@ Continuing per-game identity would multiply exactly the systems the product is m
    game, queue, teams, chat) outlives any single game. Navigation is party-synchronized.
 2. **Identity is layered, not one "player" object:** Device (recognized browser) ≠ Profile
    (persistent human, optional) ≠ Presence (in this party) ≠ Seat (in this game) ≠ Role (Host /
-   Player / Spectator; Admin is separate) ≠ Persona (display identity). Games receive a **seat key
-   and persona**, never a device token or profile secret.
+   Player / Spectator; Admin is separate) ≠ Persona (display identity). Games receive a **game key
+   and persona** (ADR 0003), never a device token or profile secret.
 3. **Guest-first, browser-first, offline-first.** Profiles are optional; the captive portal is a
    convenience, not a dependency; nothing needs the internet.
 4. **Admin ≠ Host.** The System Admin is a PIN-protected appliance role; the Party Host is a

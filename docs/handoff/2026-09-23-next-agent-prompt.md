@@ -1,10 +1,14 @@
 # Handoff prompt: next agent (written 2026-09-23)
 
 > **Partly superseded (2026-09-24).** Read `docs/design/PARTY-PLATFORM.md` and ROADMAP N5 first.
+> - **Playtest scope:** 3–6 phones including at least one Android, truly offline, with the
+>   measurements in ROADMAP N5 ("Rule for now"); and it needs the party AP, which is gated on power.
 > - **Games repo publishing:** the owner plans `rcnechamkin/avrana-party-games` as a *private*
 >   repo; the **laptop** pushes `main` from its verified backup (`~/avrana-party-games.git`).
 >   `party` does **not** need push access (it should become pull-only).
-> - **Workflow:** edit on the laptop, not in a clone on `party`; the Pi is a deploy/test target.
+> - **Workflow:** the target is laptop → GitHub → Pi, with the Pi as a deploy/test target. Until
+>   the games GitHub repo exists there is no laptop working clone, so BLUFF edits stay in the Pi dev
+>   clone as below (see `CLAUDE.md`, Repo pointers).
 > - **Chat and launcher/portal integration** are now party-platform features (N5), not BLUFF work.
 >   BLUFF should not grow its own chat, profiles or teams. "Seat squatting with made-up tokens" is
 >   addressed by the platform's server-issued device token and seat tickets (N5 F3/F5).

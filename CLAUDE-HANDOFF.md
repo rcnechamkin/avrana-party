@@ -28,7 +28,7 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 > - **BLUFF status (2026-09-23):** the baseline game plus a phone lifecycle passed a
 >   six-workstream robustness pass: 1,197 tests, protocol privacy and attack checks, a
 >   full-game simulator (0 violations), and 2–6 player screenshots. **Next milestone: a real
->   3–4 iPhone playtest.** Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
+>   3–4 iPhone playtest** (2026-09-24: widened to 3–6 phones including an Android, tested truly offline, with the measurements in ROADMAP N5). Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
 >   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md` (partly superseded
 >   2026-09-24; see the banner at its top).
 > - **Not yet published:** the repo `rcnechamkin/avrana-party-games` must be created by the
@@ -40,6 +40,10 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 > - The arcade items below are still open and unchanged.
 
 ## Current status and priorities (updated 2026-09-19)
+
+*Historical snapshot of the arcade work as of 2026-09-19/20. For current status read the banners
+above and `docs/ROADMAP.md`; some items below were later superseded (e.g. two-phone play is now
+verified, and the recovery gap appears twice). The arcade items are otherwise still open.*
 
 Status of the Gauntlet II phone-streaming prototype, from a read-only inspection of the Pi and the current code:
 

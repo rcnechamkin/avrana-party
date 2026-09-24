@@ -1,8 +1,9 @@
 # Avrana Party — Roadmap
 
-Last updated: 2026-09-24 (platform direction; N5). This is the working plan for the next several milestones.
-If it disagrees with an older document, this file and the newest dated `docs/findings/`
-entry govern.
+Last updated: 2026-09-24 (platform direction and overnight decisions; N5). This is the working
+plan for the next several milestones. If documents disagree: **this file governs sequencing and
+status**, `docs/design/` governs platform design detail, and the newest dated `docs/findings/`
+entry governs measured facts.
 
 ---
 
@@ -33,7 +34,7 @@ phones join its Wi-Fi. Game runtimes in view:
 | Runtime | Status | Role |
 |---|---|---|
 | **LAN Games** (`/home/cody/LAN-Games`, `party.local/`, port 8096) | **Live.** 28 browser-native games; lobby, identity, reconnect, per-player views, bots. Upstream (BEACNpool) **retired it in Sept 2026**. It is MIT-licensed and still runs, but gets no updates. | Existing native web-game platform, and the **foundation for new Avrana games** |
-| **Avrana Party Games** (fork of LAN Games; dev clone `~/avrana-lab/avrana-party-games/` on `party`; public repo `rcnechamkin/avrana-party-games` not yet created) | **In development**, isolated on port 8196 | Source of Avrana's native games |
+| **Avrana Party Games** (fork of LAN Games; dev clone `~/avrana-lab/avrana-party-games/` on `party`; GitHub repo `rcnechamkin/avrana-party-games`, planned private, not yet created; verified full backup on the laptop at `~/avrana-party-games.git`) | **In development**, isolated on port 8196 | Source of Avrana's native games |
 | **Arcade streaming** (`arcade/`, `party.local/arcade/`) | **Live prototype.** Gauntlet II via RetroArch + MAME 2010, one shared encode, WebRTC to phones; two iPhones verified. | Traditional/emulated games. **Preserved; not being redesigned.** |
 
 The open arcade work in `CLAUDE-HANDOFF.md` (under-voltage, audio-ratchet fix verification,
@@ -124,6 +125,20 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 ---
 
 ## NOW
+
+### Next action (2026-09-24)
+
+1. **Owner — power:** fit a known-good 5.1 V / 3 A supply and a short, thick USB-C cable, plug
+   the USB Wi-Fi adapter back in (it carries the party AP), and repeat the 15-minute baseline
+   (`get_throttled` stays `0x0`, zero kernel under-voltage lines). This unblocks N2 and N4.
+2. **Then — the N2 playtest** with the measurement list in N5 ("Rule for now"): 3–6 phones
+   including at least one Android, tested truly offline, including one manual switch to another
+   game and back.
+3. **While blocked, agents may do only (in this order):** (a) move PS1's hard-coded title lists
+   into data profiles on the `ps1-emulation` branch (laptop edit, Pi dev-checkout test, no
+   emulator run); (b) the laptop-only Personal Viewports stage A proof of concept
+   (`docs/design/PERSONAL-VIEWPORTS.md`); (c) extend the offline simulations in `experiments/`.
+   Nothing that touches live services, networking or the production checkout.
 
 ### N1. Repository docs are the working source of truth — **DONE (2026-09-22)**
 
@@ -315,8 +330,9 @@ player?" only after the first game).
 - Original art and assets, animations and sound.
 - ~~Integrate into the main Avrana launcher / `party.local` hub~~ — superseded by the platform's
   single origin (F2a dev, F2b live) and synchronized navigation (N5 vertical slice).
-- An optional shared TV/table view (spectator only; must never show hidden cards). Proposed: in
-  platform terms this is the spectator role (N5 near-term).
+- An optional shared TV/table view (public view only; must never show hidden cards). Proposed:
+  the TV joins as a **screen presence** — it sees the public view like a spectator but is never
+  host, never holds a seat and never votes (`docs/design/PARTY-PLATFORM.md` §5).
 - VirtualTabletop as a separate generic tabletop runtime. Its HTTP endpoints are
   unauthenticated (`PUT /state/:room`, `POST /quit`), so it must be fenced first.
 - Additional native Avrana web games.

@@ -1,7 +1,7 @@
 # ADR 0003 — Identifiers, credentials and what they authorize (F1)
 
 Status: accepted as invariants · proposed for formats and storage · Date: 2026-09-24
-Context documents: `docs/design/PARTY-PLATFORM.md` §4 (concepts), `docs/adr/0002-party-platform.md`.
+Context documents: `docs/design/PARTY-PLATFORM.md` §5 (concepts), `docs/adr/0002-party-platform.md`.
 
 ## Context
 
@@ -25,7 +25,7 @@ wrong key. This ADR fixes the **invariants** and leaves formats and storage open
 | Kind | Examples | Secret? | May authorize anything? |
 |---|---|---|---|
 | **Identifier** (stable, opaque, server-issued) | `party_id`, `device_id`, `profile_id`, `presence_id`, `seat_id`, `game_session_id`, `team_id` | No | **No.** Knowing an id grants nothing. |
-| **Credential** (bearer secret or knowledge factor) | device token, seat ticket, per-seat game key, pairing code, admin session, profile PIN, admin PIN | **Yes** | Yes, and only what the table in §3 says |
+| **Credential** (bearer secret or knowledge factor) | device token, seat ticket, game key, pairing code, admin session, profile PIN, admin PIN | **Yes** | Yes, and only what the table in §3 says |
 | **Display value** | display name, persona, avatar, "Player 3", controller / slot number, team colour | No | **Never** |
 
 ### 2. Invariants
@@ -38,10 +38,12 @@ wrong key. This ADR fixes the **invariants** and leaves formats and storage open
 3. **Authorization only through credentials resolved on the server.** A client may *mention* an
    id (e.g. "I vote for seat X"); the server decides who the client *is* only from a credential.
    Display values never authorize.
-4. **Secrets never leave their lane.** Credentials never appear in URLs, query strings, logs,
+4. **Secrets never leave their lane.** Credentials never appear in a URL path or query string
+   (a short-lived pairing code in the URL *fragment*, which browsers don't send, is allowed), logs,
    exports, other players' payloads, TV views, or game servers that don't need them. The device
-   token never reaches a game server. The server stores only a hash of long-lived bearer secrets
-   (device token) and a slow hash of PINs.
+   token never reaches a game server: its cookie is scoped to the party path and nginx strips
+   cookies on game locations. The server stores only a hash of long-lived bearer secrets (device
+   token) and a slow hash of PINs.
 5. **Games receive a game key and a persona, nothing else of identity.** The game key is an
    opaque **secret** scoped to one (game session, participant): it is only ever sent to that
    participant's own client, because in LAN Games the token a client presents *is* its
@@ -64,7 +66,7 @@ wrong key. This ADR fixes the **invariants** and leaves formats and storage open
 | Value | Scope | Lifetime | Issued by | Authorizes | May appear in |
 |---|---|---|---|---|---|
 | `device_id` | appliance | until the device is forgotten/revoked | platform | nothing | admin UI, device lists |
-| **device token** (cookie) | one browser | long (e.g. ~400 days), revocable | platform | "this is device X": offer its trusted profiles, resume its presence | cookie only (HttpOnly) |
+| **device token** (cookie) | one browser | long (e.g. ~400 days), revocable | platform | "this is device X": offer its trusted profiles, resume its presence | cookie only (HttpOnly, party path only; never sent to game servers) |
 | `profile_id` | appliance | until deleted or merged | platform | nothing | records, exports |
 | **profile PIN** (optional) | one profile | until changed | the person | claim the profile on an untrusted device | never stored in clear |
 | `presence_id` | one party | the party (whether it survives a reboot is OPEN) | platform | nothing | party state, records |
@@ -110,9 +112,14 @@ presence 0..1──1 team           (per party)
 
 - The fork bridge (ROADMAP N5, F5) must disable the arbitrary-token path for party-launched
   sessions, or a client could present someone else's game key as its "token".
-- Seat tickets carry an audience (`game_id`) and are verified with a per-game key or a per-game
-  unix socket, never one key shared by every game (which would let any game mint tickets for any
-  other).
+- Seat tickets carry an audience (`game_id`). Sandboxed third-party games verify them with a
+  per-game key or a per-game unix socket, never one key shared by every game (which would let any
+  game mint tickets for any other). **Built-in LAN Games modules share one process**, so per-game
+  keys add nothing there: any module could read any game's keys. That is acceptable only because
+  built-in code is trusted; the process is the real boundary.
+- Device tokens are free (a private tab is a new device), so device-level identity can't stop one
+  person holding several presences. Kicks are not bans, and votes are advisory (the host decides);
+  admission control belongs to the Public/Demo preset (`docs/design/PARTY-PLATFORM.md` §7).
 - Games that persist anything about players must key it by `seat_id`/`presence_id` handed to them
   as opaque strings, not by names or their own tokens.
 - Stats/achievements stay attributable after renames, persona changes, guest promotion and merges.

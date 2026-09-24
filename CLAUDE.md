@@ -11,17 +11,11 @@
 
 ## Product direction: one party, many games (read before designing anything players touch)
 
-Avrana Party is a **portable local multiplayer platform whose games plug into a shared party system**: *the game may change; the party does not* — the Party is a long-lived object that outlives every game session. Avrana owns identity, session, social, progression, navigation and player management; games consume them. Before designing a game, lobby, login, chat, stat or navigation feature, start at **`docs/design/PARTY-PLATFORM.md`** (the hub; it links the focused design docs) and the ADRs `0002-party-platform` and `0003-ids-and-keys`; phasing is ROADMAP **N5**. The rules agents most often need:
+Avrana Party is **one party platform with many games** (*the game may change; the party does not*: the Party outlives every game session). Before designing anything players touch (a game, lobby, login, chat, stat, navigation), read `docs/design/README.md` → `docs/design/PARTY-PLATFORM.md` (the hub) and ADRs `0002`/`0003`. Keep in mind:
 
-- **Guest-first, browser-first, offline-first; no app and no captive portal required; TV optional.**
-- **One appliance = one party.** The host is disposable (grace, then succession); late joiners spectate unless the game opts in; physical seating is not a platform concept.
-- **Device ≠ Profile ≠ Presence ≠ Seat ≠ Role ≠ Persona** (ids and credentials: ADR 0003). Games get a game key and a persona, never a device token. Names never authorize anything.
-- **Admin ≠ Host.** The admin is PIN-protected and appliance-wide; the host is a temporary party role with no system powers.
-- **Navigation is party-synchronized**, and a game must not reinvent profiles, chat, reconnect, teams, spectators or session lifecycle.
-- **The phone is not just a controller**: native games should use each player's private screen (`docs/design/NATIVE-GAMES.md`).
-- **Never claim what can't be observed:** every stat carries provenance; emulated games produce no results unless a per-game adapter exists, and participation is never a win.
-- **Not a gameplay framework and not a store:** platform services around games through a small contract (`docs/design/GAME-INTEGRATION.md`); open installation (`docs/design/GAME-INSTALLATION.md`).
-- Until the BLUFF real-phone playtest (N2) is done, the platform is **documents and offline simulations only** (`experiments/party-model/`, `experiments/viewports/` on branch `experiment/party-sim`).
+- **Device ≠ Profile ≠ Presence ≠ Seat; Admin ≠ Host** (ADR 0003). Names never authorize; games never see device tokens.
+- One appliance = one party; guest-first; browser-first; offline-first; TV, app and captive portal all optional.
+- **Hard stops:** ROADMAP **N3** (no live-system changes without approval), N5 "Rule for now" (the platform is documents and offline simulations only until the BLUFF real-phone playtest, N2; BLUFF is the working title of the first native card game), and ROADMAP "Explicitly not doing". The current next action is at the top of ROADMAP "NOW".
 
 ## Workflow
 
@@ -41,4 +35,5 @@ Passwords, API keys, SSH private keys, ROMs, emulator cores, runtime data, or an
 - `portal/`, `arcade/`: application code. The LAN Games server source is not in this repo (`/home/cody/LAN-Games` on `party`).
 - `avrana-party.nginx`, `avrana-captive.conf`, `install-*.py`: deploy and system config. Treat them as live-system-adjacent.
 - `avrana-party.nginx`, `arcade/nginx-site` and the live `/etc/nginx/sites-available/avrana-party` must stay byte-identical (check with `cmp`). `arcade/install-service.py` overwrites the live site from `arcade/nginx-site`.
-- Deploy: the checkout on `party` (`/home/cody/avrana-party`) tracks `origin/main`. Commit and push off-Pi, then `git pull --ff-only` on `party`. Don't edit or commit in that checkout. Feature branches are tested in the Pi dev checkout `~/avrana-lab/avrana-party-docs` (`git fetch && git merge --ff-only origin/<branch>`), never developed there. Experiments on the Pi live under `~/avrana-lab/`.
+- Deploy: the checkout on `party` (`/home/cody/avrana-party`) tracks `origin/main`. Commit and push off-Pi, then `git pull --ff-only` on `party`. Don't edit or commit in that checkout, and remember that pulling there changes **live** arcade code (the service needs a restart to pick it up; ask first). Feature branches are tested in the Pi dev checkout `~/avrana-lab/avrana-party-docs` (despite its name, used for every feature branch: `git fetch && git merge --ff-only origin/<branch>`), never developed there. Experiments on the Pi live under `~/avrana-lab/`.
+- Games fork (LAN Games + BLUFF): the Pi dev clone is `~/avrana-lab/avrana-party-games` (runs on port 8196); the live service `/home/cody/LAN-Games` is never edited. A verified bare backup is on the laptop (`~/avrana-party-games.git`); once the GitHub repo exists, work moves to a laptop clone with the same laptop → GitHub → Pi flow. Never push `abandoned/classic-diplomacy`.

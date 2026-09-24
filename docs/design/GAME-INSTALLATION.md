@@ -3,7 +3,7 @@
 Status: **conceptual (2026-09-24). Nothing here is built; no package manager, no marketplace.**
 The third-party trust/sandbox model is a separate future design problem; this document only makes
 sure today's choices don't create dead ends. Context: `GAME-INTEGRATION.md` (capabilities vs
-runtime vs grant), `PARTY-PLATFORM.md` §15 (security).
+runtime vs grant), `PARTY-PLATFORM.md` §13 (security).
 
 ## Philosophy
 
@@ -25,7 +25,7 @@ app-store backend.
   untrusted code.
 - **Dependencies:** the fork's deploy script already refuses releases that change dependencies,
   because a live virtualenv can't be cleanly rolled back.
-- **PS1 titles** are hard-coded in two places (`run-ps1.sh` and `stream_ps1.py`); each title's `.cfg`
+- **PS1 titles** (branch `ps1-emulation`) are hard-coded in two places (`run-ps1.sh` and `stream_ps1.py`); each title's `.cfg`
   is appended raw to RetroArch; the core is sha256-pinned; ROMs live read-only under `/srv`.
 
 ## Three layers, one rule
@@ -80,13 +80,26 @@ cross-game achievements except under a `community` provenance label.
   active.
 - **Browser side — the real risk.** HttpOnly stops scripts *reading* the party cookie, but JavaScript
   on the party origin can still *send requests as the viewer* (host controls; even admin actions,
-  by fetching the admin page and reading its anti-CSRF token). A separate **port** doesn't help
-  (cookies ignore ports); a separate **host name** needs DNS work. The cheapest fix: serve untrusted
-  game pages with `Content-Security-Policy: sandbox allow-scripts` (an opaque "null" origin: Lax
-  cookies aren't sent and `Origin: null` fails the Origin checks) plus `default-src 'self'`, embed
-  them in a platform frame, and pass the seat ticket and storage via `postMessage`. The single origin
-  still holds identity; untrusted pages hold none. Keep platform controls outside the frame and only
-  ever take PINs there, so a game can't fake an "enter admin PIN" prompt.
+  by fetching an admin page on the same origin and reading its anti-CSRF token). A separate
+  **port** is a separate origin for reads and Origin checks (which is why a future web admin should
+  live on its own port — `PARTY-PLATFORM.md` §13), but cookies set on either port go to both, so it
+  is no cookie boundary; a separate **host name** needs DNS work. The cheapest fix for untrusted
+  game pages:
+  - **every** response under an untrusted game's path gets `Content-Security-Policy: sandbox
+    allow-scripts` and `X-Content-Type-Options: nosniff` (a single file served without the header —
+    a direct link to `/games/x/raw.html`, an uploaded SVG — would run unsandboxed on the party
+    origin), plus `default-src 'self'`;
+  - the sandbox gives the page an opaque "null" origin: Lax cookies aren't sent. The game's **own**
+    endpoints authenticate by seat ticket and accept `Origin: null`; party and admin endpoints reject
+    it;
+  - embed the page in a platform frame and pass the ticket and storage via `postMessage`; the frame
+    exposes **no host verbs**; platform controls stay outside the frame, and PINs are only ever
+    entered there (so a game can't fake an "enter admin PIN" prompt);
+  - avatars and other uploads are re-encoded (PNG/JPEG), never served as uploaded.
+
+  The single origin still holds identity; untrusted pages hold none. The cost: sandboxed games are
+  second-class (no localStorage, harder fullscreen and audio unlock — the same drawbacks ADR 0002
+  lists for iframes).
 
 ## Emulated titles are content plus a small profile
 

@@ -2,7 +2,7 @@
 
 Status: **design (2026-09-24). Rules are proposals checked by an offline simulation; nothing is
 built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim` (43 tests incl. a
-300-seed fuzz). Concepts: `PARTY-PLATFORM.md` §4; identifiers: `docs/adr/0003-ids-and-keys.md`.
+300-seed fuzz). Concepts: `PARTY-PLATFORM.md` §5; identifiers: `docs/adr/0003-ids-and-keys.md`.
 
 ## Locked decisions this document implements
 
@@ -56,7 +56,7 @@ stateDiagram-v2
   connected --> left: "Leave party" / kicked
   reconnecting --> left: kicked
   away --> left: kicked
-  left --> connected: same device rejoins (unless kicked) — same presence, late-join rules
+  left --> connected: same device rejoins (unless kicked from this party) — same presence, late-join rules
 ```
 
 ### Host role
@@ -115,8 +115,8 @@ stateDiagram-v2
 
 | Timer | Value | Precedent |
 |---|---|---|
-| HOST_GRACE | 30 s | BLUFF/PS1 |
-| PRESENCE_GRACE, SEAT_GRACE | 60 s (a game may set longer) | BLUFF 30/60 s |
+| HOST_GRACE | 30 s | none (no existing game has a host); a proposal |
+| PRESENCE_GRACE, SEAT_GRACE | 60 s (a game may set longer) | PS1 holds a slot 30 s; BLUFF waits 30 s (prompts) / 60 s (own turn) before autopilot |
 | Succession | earliest-joined connected eligible player (deterministic, explainable); random is acceptable | owner: "random/simple" |
 | LAUNCH_TIMEOUT | 60 s | — |
 | TABLE_ABANDON | 5 min | BLUFF |
@@ -137,6 +137,10 @@ Tune the grace timers from the N2 real-phone playtest.
 - **C. Ask** — the first player to connect after boot chooses "Resume the 21:40 party" or "New party".
 
 B (with C as a fallback) fits the known failure mode — under-voltage resets — but the decision is
-the owner's. Also open: the exact succession policy, the detour policy for forced navigation, how
-far a kick reaches (this party only, or the device), spectator voting/nominating, host-less
-kiosk parties.
+the owner's. Also open: the exact succession policy, the detour policy for forced navigation,
+spectator voting/nominating, host-less kiosk parties.
+
+**Kick (decided for v0):** a kick removes the presence from the current party and bars that
+*device token* from rejoining this party. It is **not a ban**: a private tab is a new device, so
+only the Wi-Fi password — or host admission in Public/Demo mode — keeps someone out
+(`PARTY-PLATFORM.md` §7, §13).

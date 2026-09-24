@@ -23,7 +23,7 @@ powered even from a wall supply (see `CLAUDE-HANDOFF.md`, power).
 | Steam Remote Play Together | a real PC library | no PC, no internet | nothing worth chasing |
 | Retro handhelds | cheap, battery, screen, stronger SoC than a Pi 4 | multiplayer where each player has their own screen | Personal Viewports on a split-screen title |
 | Kahoot | quiz authoring, hundreds of players | offline, hidden information | probably nothing (AP capacity, below) |
-| A deck of cards | $3, no boot, no battery, no radio | players physically apart; server-enforced hidden hands | power-on to first game < 2 min, reliable on battery |
+| A deck of cards | $3, no boot, no battery, no radio | players physically apart; server-enforced hidden hands | power-on to first game < 3 min, reliable on battery |
 
 ## Real differentiators
 

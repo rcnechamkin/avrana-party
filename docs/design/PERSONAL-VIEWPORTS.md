@@ -1,7 +1,8 @@
 # Personal Viewports (split-screen extraction)
 
 Status: **concept + feasibility analysis (2026-09-24). Not built.** Metadata format is OPEN.
-Geometry test vectors: `experiments/viewports/` (branch `experiment/party-sim`).
+Geometry test vectors: `experiments/viewports/` (branch `experiment/party-sim`). Code paths under
+`ps1/` are on branch `ps1-emulation` until it is merged.
 
 ## The idea
 
@@ -20,7 +21,7 @@ seat 1 sees the top-left quarter full-screen on their phone, seat 2 the top-righ
 Four people get their own "screen" from a game that was designed for one TV — with no TV.
 
 This could become a real differentiator: it turns the whole back catalogue of couch split-screen
-games into private-screen phone games, which neither a Switch nor Jackbox nor AirConsole does.
+games into own-screen phone games, which neither a Switch nor Jackbox nor AirConsole does.
 
 ## Why it fits the current architecture
 
@@ -117,7 +118,7 @@ chosen seat).
 ## Metadata (draft; format OPEN)
 
 ```json
-"viewports": {"v": 0, "grid": [640, 480], "content": [0, 0, 640, 480], "aspect": "4:3",
+"personal_viewports": {"v": 0, "grid": [640, 480], "content": [0, 0, 640, 480], "aspect": "4:3",
   "inset": 2, "default": "full",
   "layouts": {
     "2h": {"seats": {"1": [0, 0, 640, 240], "2": [0, 240, 640, 240]}},
@@ -128,7 +129,7 @@ chosen seat).
 ```
 
 Rectangles are authored in the pixel grid of a reference screenshot and normalized by the client.
-It lives in a title's *capabilities* (see `GAME-INTEGRATION.md`), next to `video: shared_stream`.
+It lives in a title's *capabilities* (see `GAME-INTEGRATION.md`), next to `shared_video: true`.
 
 ## Smallest proof of concept (when ready)
 

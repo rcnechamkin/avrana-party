@@ -33,7 +33,8 @@ Technically, that sentence means: **the Party is a long-lived object that outliv
 session.** People join the *party* once. Its members, their names and personas, the host, the
 seating, teams, chat, queue and running history live in the party layer. A game is a session the
 party starts and ends; when it ends, everyone returns to the party, and the next game starts with
-the same people already seated — no one re-joins, re-names or re-navigates.
+the same people already seated — no one re-joins, re-names or re-navigates. (Whether the party
+also survives an appliance *reboot* is still open: §16.)
 
 Avrana owns the **party lifecycle, profiles, guests, device recognition, presence, seats, roles,
 personas, host and admin authority, synchronized navigation, reconnect, spectators, teams, chat,
@@ -118,10 +119,12 @@ optional-upstream model are in `ONBOARDING.md`.
 - **One canonical origin.** Everything a player uses is served from one host through nginx. A
   different host name (`10.42.0.1` vs `party.local`) gets a separate cookie jar; a different port
   (`:8198`) shares cookies but has separate localStorage and a different Origin. Either way a player
-  can look like a different device per game. Cookies ignore ports, so a dev instance on another port
-  of the same host receives production cookies.
-- **The address must resolve.** `party.local` resolves only over mDNS today; Android support is
-  uneven. QR codes should carry the IP until names are verified (`ONBOARDING.md`).
+  can look like two devices — two presences, two seats, two votes. Cookies ignore ports, so a dev
+  instance on another port of the same host receives production cookies.
+- **Which origin is still open**, but the leading option is **`http://10.42.0.1` as the canonical
+  origin**, because it always resolves (QR codes carry it) — with `party.local` (mDNS; uneven on
+  Android) redirecting to it for people who type the name (`ONBOARDING.md`). Mixing the two without
+  a redirect is the thing to avoid.
 - **Plain HTTP on a LAN** is a non-secure context: no `Secure` cookies, no secure-context-only APIs,
   no TLS on guests' phones.
 - **Captive portal = convenience.** Never select a profile, trust a device or run a game inside the
@@ -137,11 +140,11 @@ Do not collapse "player" into one object. Identifier rules are in ADR 0003.
 
 | Concept | What it is | Lifetime | Key |
 |---|---|---|---|
-| **Party** | The persistent unit people join: members, host, seating, current game, queue, teams, chat. Exactly one active per appliance. | From first join until ended (reboot survival OPEN) | `party_id` |
+| **Party** | The persistent unit people join: members, host, *seating* (who holds which game slot, carried from one game to the next — never physical position), current game, queue, teams, chat. Exactly one active per appliance. | From first join until ended (reboot survival OPEN) | `party_id` |
 | **Device** | A recognized browser installation. | Months; revocable | server-issued random token in a cookie (hash stored) |
 | **Profile** | A persistent human identity: name, avatar, preferences, history, stats, achievements. Optional. | Until deleted/merged | `profile_id` |
 | **Guest** | A participant with no saved profile ("Player 3", renamed "Megan"). | The party | `presence_id` |
-| **Presence** | A profile or guest participating in the party, on one or more tabs/devices. A TV joins as a *screen* presence (never host, seat or voter). | The party | `presence_id` |
+| **Presence** | A profile or guest participating in the party, from one device at a time (possibly several tabs; a profile moving to a new phone closes the old phone's connections). Proposed: a TV joins as a *screen* presence (sees the public view; never host, seat or voter). | The party | `presence_id` |
 | **Seat** | A temporary binding: presence → a player/controller slot in the current game session. | One game session; the party's *seating* (who holds which slot) carries forward | `seat_id` |
 | **Game session** | One launch of one game by the party. | Until the game ends | `game_session_id` |
 | **Role** | Host, Player, Spectator (party roles); Admin (appliance role); game-specific roles. | Varies | — |
@@ -202,7 +205,7 @@ Entirely separate. A host can never escalate to admin.
 | | **System Admin** | **Party Host** |
 |---|---|---|
 | What | Persistent privileged appliance identity | Temporary, disposable role inside the party |
-| Credential | **PIN required** (no default) | None |
+| Credential | **PIN required** (no default); v0 is an SSH command-line tool, a PIN-protected web admin comes later (§13) | None |
 | Powers | Network, updates, storage, game installation and trust, profile management (merge, delete, reset PINs), **moderation defaults**, kick and revoke/clear guest identities | Select/start games; game rules; pause/restart/end; manage spectators; remove/reassign seats; moderate party chat; rematch/next game; run votes; kick from the current party |
 | Cannot | — | Touch profiles, devices, PINs, installation or admin settings; see other players' hidden game state |
 
@@ -213,9 +216,17 @@ Entirely separate. A host can never escalate to admin.
   accessibility preferences.
 - **Moderation is configurable, not hard-coded.** The admin eventually sets defaults such as:
   profanity filtering, profile visibility, custom avatar uploads, guest naming rules, whispers, chat
-  availability, kicking/banning for the current party, whether persistent profiles can be created,
-  and whether saved profiles are shown to guests. A simple preset pair may bundle them —
-  **Friends / Private party** vs **Public / Demo party** — without any enterprise role system.
+  availability, kicking for the current party, whether persistent profiles can be created, and
+  whether saved profiles are shown to guests. A simple preset pair may bundle them — without any
+  enterprise role system:
+  - **Friends / Private party** (default): the Wi-Fi password is the only gate; no join code in v0.
+  - **Public / Demo party:** new presences wait for **host admission** (covers strangers, kick
+    evasion and duplicate presences); an optional short party code in the QR's URL fragment with a
+    typed fallback; the admin (over SSH in v0) picks the first host, also after idle or reboot; no
+    web admin on the guest Wi-Fi.
+- **Kick ≠ ban.** A kick removes a presence from the current party and says so publicly. Because a
+  private tab is a new device, it is not a ban; only the Wi-Fi password or Public-mode admission
+  keeps someone out.
 
 ---
 
@@ -281,13 +292,16 @@ Host selects Bomberman → (streamed games: the service starts; "Starting…") �
 ## 10. Social layer
 
 - **Chat channels:** public party chat, team chat, private whispers, game-defined channels, and
-  **system events** (`SYSTEM: Audrey is now Host.`) — a separate server-only message type that no
-  player name can impersonate. The host moderates party chat within the admin's defaults.
+  **system events** (`SYSTEM: Audrey is now Host.`) — a separate server-only message type rendered
+  in its own element, backed by the name rule in §13 (normalization, no look-alike alphabets, no
+  reserved words, duplicates numbered) so no player name can pass for it. The host moderates party
+  chat within the admin's defaults.
 - **Private player panel:** hidden roles, cards, inventory, secret objectives, private prompts, votes
   and decisions on each phone, alongside the shared public view (phones or an optional TV). Private
   data is filtered on the server, never hidden with CSS (`NATIVE-GAMES.md`).
 - **Queue and voting:** coordinate what to play next — valuable when players are apart and can't
-  talk. Anyone nominates; the party votes; **the host decides**. Public or hidden votes; spectator
+  talk. Anyone nominates; the party votes; **the host decides** (votes are advisory — see §13 on
+  why ballot stuffing is possible and accepted for Friends parties). Public or hidden votes; spectator
   voting per party setting. The list filters itself by player count, TV requirement, control model,
   session length and capability (manifests). Modes: **casual queue**, **vote round** (timed),
   **playlist**. Early completion when every eligible voter present has voted. **Votes belong to
@@ -339,33 +353,72 @@ grabbing); cookie sniffing on an open or shared-password network; web pages on a
 has mobile data; and — once open installation exists — **a malicious or buggy game**. Anyone with
 SD-card or SSH access is an admin by design. Parameters are suggestions to confirm when built.
 
+**Accepted risk (Friends parties):** the party network runs plain HTTP. The party Wi-Fi should
+never be open (WPA2 at least — recommended, not yet decided), but **anyone who has the Wi-Fi
+password can read and alter other guests' traffic**: hidden roles, device cookies (i.e. that
+phone's presence, host included) and any PIN typed over Wi-Fi. That is accepted for a friends
+party; client isolation on the AP (`wifi.ap-isolation`, a live change needing approval) is a cheap
+extra that blocks guest-to-guest spoofing.
+
 **MUST before profiles ship**
-- Server-issued device token (`secrets.token_urlsafe(32)`) in an `HttpOnly; SameSite=Lax; Path=/`
-  cookie; store only its SHA-256; revoke = delete. It only unlocks the "Welcome back" picker; it
-  never grants admin and never skips a PIN.
-- One canonical host; nginx allowlists the app's host names (also defeats DNS rebinding), while the
-  default server keeps answering the captive-portal probe paths exactly as today (returning 444 only
-  for everything else).
-- Origin checks on every WebSocket upgrade and POST once identity rides on a cookie; GET never mutates.
+- Server-issued device token (`secrets.token_urlsafe(32)`) in an `HttpOnly; SameSite=Lax` cookie
+  scoped to the party path (e.g. `Path=/party/`), and nginx strips the `Cookie` header on every game
+  location, so **game servers never receive device tokens** (path scoping keeps cookies from
+  servers, not from same-origin JavaScript). Store only its SHA-256; revoke = delete. It unlocks the
+  "Welcome back" picker; it never grants admin or skips the admin PIN; on a device the owner chose
+  to trust, it skips that profile's PIN.
+- One canonical origin (see §4; leading option: `http://10.42.0.1`); nginx allowlists the app's
+  host names (also defeats DNS rebinding), while the default server keeps answering the
+  captive-portal probe paths exactly as today (returning 444 only for everything else).
+- Origin checks on every WebSocket upgrade and POST to party and admin endpoints once identity
+  rides on a cookie; GET never mutates. A presence is created only by an explicit **Join** (a POST),
+  never on page load or socket open — so captive-portal WebViews don't create ghost presences.
 - Authorization only from server-resolved ids; never from names or client-sent ids.
-- Admin PIN: no default, ≥ 6 digits; first set over SSH/console or via a one-time code shown on a
-  screen (whoever reaches the Wi-Fi first must not claim it); `hashlib.scrypt`; global backoff (never
-  permanent lockout); its own 0600 file; recovery = delete it over SSH/SD. Short admin sessions,
-  `SameSite=Strict`, separate path, anti-CSRF token.
-- Host ≠ Admin; server-only system messages; reserved names (SYSTEM, Admin, Host, Avrana).
+- **Admin:** v0 has **no web admin** — administration is an SSH command-line tool (V1.0 is for the
+  owner), so there is nothing for a guest to brute-force or cross-site-request. A later web admin:
+  PIN required (no default, ≥ 6 digits, set over SSH); runs on its **own port** (a separate origin,
+  so party-page JavaScript can't read its anti-CSRF token and exact Origin checks reject it);
+  `frame-ancestors 'none'`; a short backoff capped at ~60 s so a guest can't lock the owner out all
+  night; off on the guest Wi-Fi in Public/Demo mode; recovery = delete the PIN file over SSH/SD;
+  an SSH `login` command can always issue a one-time link. PIN hash with `hashlib.scrypt` in its own
+  0600 file owned by the party service's **own system user** (a unit change needing approval).
+- Host ≠ Admin; system messages are a separate server-only type rendered in their own element.
+- **Names** (display values only): NFKC-normalize; strip control/format characters (zero-width,
+  bidi overrides); collapse spaces; 1–16 characters; no mixing of look-alike alphabets (Latin,
+  Cyrillic, Greek); reject anything that is or starts with a reserved word (SYSTEM, Admin, Host,
+  Avrana, Moderator), compared on a casefolded letters-and-digits key; duplicates get " 2"; render
+  names as text inside `<bdi>`. (Checked in `experiments/party-model`.)
 - Votes per round per presence; one controlling connection per seat; spectator input rejected.
-- Seat tickets bound to one game and verified with **per-game** keys or sockets (never a key shared
-  by all games).
+- Seat tickets bound to one game (audience). For **sandboxed** third-party games, verify them with
+  per-game keys or sockets; built-in LAN Games modules share one process, so that process is their
+  real boundary (below).
+- Dev instances use a **different cookie name** and never the production host (cookies are keyed by
+  name, host and path — not port — so a same-named dev cookie would overwrite production's).
 
-**SHOULD** — optional profile PIN (4–6 digits, scrypt) protected by rate limits that can't lock the
-owner out; QR pairing with single-use 3-minute codes in the URL fragment; tokens never in URLs or
-logs; SQLite with WAL and regular backups (power-loss history); store only names, avatars,
-preferences and stats.
+**SHOULD** — optional profile PIN (4–6 digits; scrypt is kept but a short PIN can be cracked
+offline in seconds, so file ownership is the real control; the UI says "don't reuse your bank or
+phone PIN"); backoff only on **untrusted** devices (trusted ones skip the PIN, so the owner is never
+locked out; the owner sees failed attempts); a PIN or honour-system pick lasts this party only
+unless "Trust this phone" is ticked; a profile moving to another phone notifies the old phone and
+posts a system event. QR pairing with single-use 3-minute codes in the URL fragment, confirmed on
+the issuing phone (a photographed QR is not enough), fragment cleared after use. Tokens never in a
+URL path or query string or in logs. SQLite with WAL and regular backups (power-loss history).
+Store only names, avatars (re-encoded to PNG/JPEG), preferences and stats.
 
-**For untrusted games (later):** no untrusted in-process code; untrusted game pages sandboxed
-(`Content-Security-Policy: sandbox`) inside a platform frame, because same-origin JavaScript can act
-as the viewer even with HttpOnly cookies; server processes isolated with systemd sandboxing and no
-network (`GAME-INSTALLATION.md`).
+**Honest limits.** Device tokens are free (a private tab is a new device), so: a **kick removes a
+presence and says so publicly — it is not a ban**; one person can hold several presences, so a vote
+can be stuffed — eligibility freezes when a round opens and **the host decides**, so votes stay
+advisory; that is accepted for Friends parties. Only the Wi-Fi password — or host admission in
+Public/Demo mode (§7) — keeps someone out. **Built-in games are not isolated from each other:** the
+LAN Games fork is one process, so any module could read any game's keys; this is acceptable only
+because built-in code is trusted.
+
+**For untrusted games (later):** no untrusted in-process code; every response under an untrusted
+game's path gets `Content-Security-Policy: sandbox allow-scripts` and `nosniff`, inside a platform
+frame that exposes no host verbs over `postMessage`; game endpoints authenticate by ticket and
+accept the sandbox's `null` Origin, while party and admin endpoints reject it; sandboxed games are
+second-class (no localStorage, harder fullscreen and audio unlock). Server processes are isolated
+with systemd sandboxing and no network (`GAME-INSTALLATION.md`).
 
 **Known gaps today:** the arcade's `/stats` is reachable through nginx and shows peer IPs; PS1's
 localhost-only `/stats` check will stop working once PS1 sits behind nginx; PS1 sends its token in
@@ -410,6 +463,7 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 
 **Still open:**
 1. Exact party URL/origin layout (`/` = Party Home? LAN Games under a prefix?) — a live nginx change.
+   Leading option: `http://10.42.0.1` as the canonical origin with `party.local` redirecting to it (§4).
 2. Device-token migration from LAN Games' client-minted `wc-token` without breaking the live service.
 3. Whether a party survives an appliance reboot (options in `PARTY-LIFECYCLE.md`).
 4. Exact host succession policy (proposal: earliest-joined connected player).
@@ -420,16 +474,37 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 9. Exact Personal Viewport metadata format.
 10. How hot-seat emulation attributes results (probably: it doesn't).
 11. Final V1 hardware (power, battery, enclosure, display for QR codes).
-12. Forced-navigation policy during detours; TV as a "screen" presence; spectator nominating;
+12. Forced-navigation policy during detours; confirming the proposed TV "screen" presence; how far a
+    kick reaches beyond the current party; spectator nominating;
     party teams vs in-game teams; name length/Unicode (LAN Games caps names at 14 ASCII characters);
     profile database location and backups; admin surface on the guest Wi-Fi vs home LAN only;
     host-less kiosk parties.
 
 ---
 
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **BLUFF** | Working title of the first native Avrana game: a Coup-inspired hidden-role card game, built as a LAN Games module in the Avrana Party Games fork |
+| **LAN Games** | The retired-upstream (BEACNpool, MIT) browser party-game server running live on the Pi (~28 games); Avrana maintains a fork |
+| **Avrana Party Games** | Avrana's fork of LAN Games, where native games such as BLUFF are developed |
+| **WORDCLASH, FIFTH SIGNAL, …** | Individual LAN Games titles (WORDCLASH has its own room engine) |
+| **Arcade** | The live Gauntlet II stream: one RetroArch → one hardware H.264 encode → WebRTC to phones |
+| **PS1 stream** | The same shared-stream design for PlayStation titles (branch `ps1-emulation`; blocked on power) |
+| **Multitap** | A PlayStation adapter that gives one controller port four pads; how 4-player PS1 games get their players |
+| **`hello`** | The first WebSocket message a LAN Games client sends; where identity enters a game today |
+| **`wc-token`** | LAN Games' browser-held identity token (client-mintable today) |
+| **Game key** | The secret per-(game session, participant) key the platform gives a game instead of any device identity (ADR 0003) |
+| **Grant** | The appliance's record of what an installed game may do (trust tier, permissions, assigned path) — decided by the admin, never by the game |
+| **Fork cutover** | Replacing the live LAN Games service with the fork plus the party bridge (a gated, owner-approved step) |
+| **N2, N5, F1–F8** | Roadmap item numbers in `docs/ROADMAP.md` |
+
+---
+
 ## References
 
-ADRs `0002-party-platform.md`, `0003-ids-and-keys.md` · roadmap `docs/ROADMAP.md` (N5) · BLUFF
+ADRs `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md` · roadmap `docs/ROADMAP.md` (N5) · BLUFF
 lifecycle/security precedent `docs/findings/2026-09-23-bluff-multi-agent-pass.md` · PS1 slots
 `ps1/README.md`, `ps1/stream_ps1.py` (branch `ps1-emulation`) · arcade `arcade/README.md` ·
 simulations `experiments/party-model/`, `experiments/viewports/` (branch `experiment/party-sim`).

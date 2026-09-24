@@ -61,13 +61,16 @@ power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL brows
 
 ## The party address (proposal only; nothing changed)
 
-- **Codes carry the IP; people type `party.local`.** Keep `party.local` as the official name.
-- Later, with approval, also have the Pi's DNS answer `party.local` so Androids without mDNS
-  resolve it (iPhones only use mDNS for `.local`, so this shouldn't conflict in practice, though it
-  bends the standard).
-- Until then, the page served at the IP may check whether `party.local` loads and redirect only if
-  it does; phones that can't reach it stay on the IP (with separate cookies — see
-  `PARTY-PLATFORM.md` §3 on one canonical origin).
+- **One canonical origin, or one phone becomes two presences.** A QR code that carries the IP plus
+  people typing `party.local` would give each phone two cookie jars (two presences, two seats, two
+  votes) — see `PARTY-PLATFORM.md` §4.
+- **Leading option: `http://10.42.0.1` is the canonical origin** (it always resolves; QR codes and
+  NFC tags carry it), and `party.local` **redirects** to it for people who type the name. This keeps
+  one cookie jar per phone without depending on mDNS. (Still OPEN; the alternative — `party.local`
+  canonical, with the Pi's DNS also answering it for Androids without mDNS — needs Android
+  verification first and a live DNS change.)
+- iPhones only use mDNS for `.local`, so having the Pi's DNS also answer `party.local` shouldn't
+  conflict in practice, though it bends the standard.
 - Backup: `party.home.arpa` (RFC 8375's home-network name) works only via the Pi's DNS and is long.
 - Avoid `avrana.party` (`.party` is a public TLD), `party.avrana` (phones can't resolve it; browsers
   treat it as a search), and `party.internal` (reserved since 2024; address-bar handling untested).
@@ -114,8 +117,10 @@ NFC first-record rule; which browser the camera opens.
 - **Card:** network name, password, both QR codes, "then open party.local", NFC marks, the
   troubleshooting lines.
 - **Screen:** a ≥ 2.9-inch e-ink panel fits both QR codes side by side; a 128×64 OLED is too small.
-- **Per-party codes:** the join link may carry a single-use code per party in the URL fragment
-  (never a device token). Changing the Wi-Fi password disconnects everyone: only between parties.
+- **Per-party codes (Public/Demo mode only; not in v0):** the join link may carry a short
+  **multi-use** code, valid for one party, in the URL fragment (never a device token) with a typed
+  fallback — one printed QR serves many guests, so it can't be single-use. Changing the Wi-Fi
+  password disconnects everyone: only between parties.
 - **NFC:** cheap passive stickers, **locked** (or anyone can rewrite them). An NFC reader on the Pi
   adds nothing without an app.
 - **Never identify phones by MAC address** — both OSes randomize it per network.
