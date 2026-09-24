@@ -11,7 +11,8 @@ The Pi 4 (`party`) reset at about 18:44 PDT on 2026-09-23 while it was streaming
 - Live under-voltage (`0x50005`) was logged 7 times in the hour before the reset. That is the worst rate in the log.
 - Under-voltage came back 15 s into the next boot, with no load running.
 - Heat is ruled out: the maximum was about 55 °C.
-- `config.txt` has `over_voltage_avs=-20000` (a core undervolt) and `arm_freq=1800`.
+- `config.txt` is stock apart from `arm_boost=1` (1800 MHz). `vcgencmd get_config` shows
+  `over_voltage_avs=-20000`, but it is firmware-internal, not set in `config.txt` (corrected 2026-09-23).
 - The journal is not persistent, so the reset left no log behind.
 
 This plan brings the load back in small steps. Each stage adds one thing, and every stage has hard abort rules. It also checks the cost model the design depends on: **one emulator and one encoder, whatever the viewer count.** Adding a viewer should add only a small WebRTC cost for that viewer.
@@ -107,8 +108,8 @@ done
 
 1. Fit a known-good official 5.1 V / 3 A PSU with a short, thick USB-C cable. Record the model.
 2. Recommended before testing (owner's decision, one change at a time, noted in the results):
-   - Enable a persistent journal (`sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald`) so that another reset leaves evidence.
-   - Remove or relax `over_voltage_avs=-20000` in `/boot/firmware/config.txt`. A core undervolt makes the Pi more sensitive to supply droop. If the owner keeps it, the plan still runs, but a failure cannot then be pinned on the PSU alone.
+   - Enable a persistent journal so that another reset leaves evidence. Pi OS forces volatile storage in `/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf`, so creating `/var/log/journal` alone does nothing (it already exists). Add a drop-in such as `/etc/systemd/journald.conf.d/50-persistent.conf` containing `[Journal]` and `Storage=persistent`, then `sudo systemctl restart systemd-journald`.
+   - (`over_voltage_avs=-20000` needs no action: it is firmware-internal, not a line in `config.txt`. Corrected 2026-09-23.)
 3. Reboot. Stop the arcade: `sudo systemctl stop avranaparty-arcade`. Start instruments A and B.
 
 **Duration:** 10 min idle.

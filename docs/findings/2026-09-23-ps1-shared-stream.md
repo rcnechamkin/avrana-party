@@ -111,8 +111,9 @@ per-phone movement.
 - **Verdict:** a power problem, then a hang, then a watchdog reset is most likely, at about
   75% confidence. A software hang or panic from another cause is about 15%. The pre-reset
   kernel log is lost because the journal is volatile.
-- **Contributing config (owner decision):** `over_voltage_avs=-20000` (a core undervolt) and
-  `arm_freq=1800`. `vcgencmd pmic_read_adc` is not available on this firmware, so the 5 V rail
+- **Config:** stock apart from `arm_boost=1` (1800 MHz). `vcgencmd get_config` reports
+  `over_voltage_avs=-20000`, but it is firmware-internal and not set in `config.txt` (corrected
+  2026-09-23), so it is not an owner undervolt. `vcgencmd pmic_read_adc` is not available on this firmware, so the 5 V rail
   can't be read.
 - **Recommended, not applied:**
   - persistent journald (`Storage=persistent`);
@@ -120,7 +121,6 @@ per-phone movement.
   - an inline USB-C power meter;
   - a known-good 5.1 V 3 A supply and a short cable, and a powered hub for the Realtek Wi-Fi
     dongle;
-  - revisiting `over_voltage_avs`;
   - `kernel.panic=10`.
 
 ## Architecture review (Agent 2), and fixes applied without load

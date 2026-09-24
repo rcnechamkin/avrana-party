@@ -165,8 +165,9 @@ Details: `ps1/README.md` and `docs/findings/2026-09-23-ps1-shared-stream.md`.
 - **The 2026-09-23 18:44 reboot:** it happened during a 4-player + spectator stream test.
   Live under-voltage was running at 7×/hour beforehand, `rsts=0x20`, the root filesystem
   was not cleanly unmounted, and the journal is not persistent. Power is the likely cause
-  (about 75% confidence, not proven). Thermal is ruled out. `config.txt` has
-  `over_voltage_avs=-20000` (a core undervolt), which is an owner decision to revisit.
+  (about 75% confidence, not proven). Thermal is ruled out. `vcgencmd get_config` reports
+  `over_voltage_avs=-20000`, but it is firmware-internal, not set in `config.txt` (corrected
+  2026-09-23), so there is no config change to revisit.
 
 ---
 

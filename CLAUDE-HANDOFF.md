@@ -71,7 +71,9 @@ The code is on local branch `ps1-emulation` in `~/avrana-lab/avrana-party-docs` 
 - **Owner actions before resuming:**
   1. Install a known-good 5.1 V 3 A USB-C PSU with a short cable.
   2. Fresh boot, then check that `get_throttled=0x0` holds (Stage 0 of the test plan).
-  3. Decide on `over_voltage_avs=-20000` and on persistent journald.
+  3. Decide on persistent journald (Pi OS forces volatile storage, so this needs a drop-in in
+     `/etc/systemd/journald.conf.d/`). `over_voltage_avs=-20000` needs no decision: it is
+     firmware-internal, not a `config.txt` setting (corrected 2026-09-23).
   4. Stop `avranaparty-arcade` for PS1 test windows. Only the owner can, because sudo needs
      their password.
 - **Gotchas:**
@@ -110,8 +112,9 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   load (the Realtek Wi-Fi 6 + BT adapter), and Pi power delivery are all
   hypotheses - isolate experimentally, one variable at a time, over matched
   >=10 min windows using the kernel dip count (method in `telemetry/README.md`).
-  Config is NOT stock: `arm_freq=1800`, but `over_voltage_avs=-20000` (a core undervolt,
-  found 2026-09-23; this lowers the margin against supply dips). Idle temps are ~40 C.
+  Config is stock apart from `arm_boost=1` (1800 MHz). `vcgencmd get_config` reports
+  `over_voltage_avs=-20000`, but it is not set in `config.txt` or any other boot config: it is
+  a firmware-internal value, not an owner undervolt (corrected 2026-09-23). Idle temps are ~40 C.
 - **A/V audio ratchet — ROOT CAUSE CONFIRMED, fix UNVERIFIED (2026-09-20).**
   Cause: pipeline runs on the system (wall) clock while `pulsesrc`
   (a `GstAudioBaseSrc`) timestamps from its sample-position ringbuffer clock and
