@@ -11,20 +11,18 @@ release), 'sleep:MS', 'shot:NAME' (PNG via tools/shot.sh), or 'KEY1,KEY2[:MS]'
 import ctypes, os, subprocess, sys, time
 
 home = os.environ.get("AVRANA_PS1_HOME", os.path.expanduser("~/avrana-lab/ps1"))
+here = os.path.dirname(os.path.abspath(__file__))
 args = sys.argv[1:]
 if args[:1] == ["--display"]:
     disp, args = args[1], args[2:]
 else:
+    # Only trust runtime/display once ps1-pid.sh proves it belongs to the live PS1
+    # RetroArch (the arcade's RetroArch has the same name; stale files can point at it).
+    if subprocess.run([os.path.join(here, "ps1-pid.sh")], stdout=subprocess.DEVNULL).returncode:
+        sys.exit("no proven PS1 RetroArch (stale runtime files?); refusing to guess a display")
     run = os.path.join(home, "runtime")
-    try:  # only trust runtime/display while the PS1 RetroArch that wrote it is alive
-        pid = open(os.path.join(run, "retroarch.pid")).read().strip()
-        alive = open(f"/proc/{pid}/comm").read().strip() == "retroarch"
-    except OSError:
-        alive = False
-    if not alive:
-        sys.exit("no running PS1 RetroArch (stale runtime files?); refusing to guess a display")
     disp = open(os.path.join(run, "display")).read().strip()
-    os.environ["XAUTHORITY"] = open(os.path.join(home, "runtime/xauthority")).read().strip()
+    os.environ["XAUTHORITY"] = open(os.path.join(run, "xauthority")).read().strip()
 
 x11 = ctypes.CDLL("libX11.so.6")
 xtst = ctypes.CDLL("libXtst.so.6")
@@ -52,7 +50,6 @@ def key(names, down):
         xtst.XTestFakeKeyEvent(dpy, code(n), 1 if down else 0, 0)
     x11.XFlush(dpy)
 
-here = os.path.dirname(os.path.abspath(__file__))
 for item in args:
     if item.startswith("sleep:"):
         time.sleep(int(item[6:]) / 1000)

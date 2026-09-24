@@ -178,11 +178,25 @@ class PS1Stream(stream.Stream):
             await self.cleanup(app)   # aiohttp skips on_cleanup when startup fails
             raise
 
+    def own_retroarch(self, env):
+        """True once tools/ps1-pid.sh proves the PS1 RetroArch's identity AND it runs in
+        the session of OUR run-ps1.sh child, so the runtime/display of a stale or
+        foreign instance (possibly the arcade's display) is never captured."""
+        r = subprocess.run([str(HERE / 'tools' / 'ps1-pid.sh')], env=env,
+                           capture_output=True, text=True)
+        if r.returncode:
+            return False
+        try:  # /proc/PID/stat fields after the last ") ": state ppid pgrp session ...
+            session = int(Path(f'/proc/{r.stdout.strip()}/stat').read_text().rsplit(') ', 1)[1].split()[3])
+        except (OSError, IndexError, ValueError):
+            return False
+        return session == self.emulator.pid   # start_new_session=True: it leads its own session
+
     async def start_session(self):
         self.loop = asyncio.get_running_loop()
-        for name in ('display', 'xauthority', 'retroarch.pid'):
-            (RUN / name).unlink(missing_ok=True)
-        env = dict(os.environ, AVRANA_PS1_VIDEO='xvfb')
+        # Never delete runtime files here: until run-ps1.sh holds the lock they may belong
+        # to a running instance. Stale ones are ignored below and removed under the lock.
+        env = dict(os.environ, AVRANA_PS1_VIDEO='xvfb', AVRANA_PS1_HOME=str(PS1_HOME))
         self.emulator_log = open(RUN / 'logs' / f'launcher-{self.game}.out', 'w')
         # run-ps1.sh owns preflight, the single-instance lock, private Xvfb + Pulse.
         self.emulator = subprocess.Popen([str(HERE / 'run-ps1.sh'), self.game], env=env,
@@ -191,8 +205,7 @@ class PS1Stream(stream.Stream):
         for _ in range(100):
             if self.emulator.poll() is not None:
                 raise RuntimeError(f'run-ps1.sh exited; see {self.emulator_log.name}')
-            if all((RUN / n).exists() and (RUN / n).read_text().strip()
-                   for n in ('display', 'xauthority', 'retroarch.pid')):
+            if self.own_retroarch(env):
                 break
             await asyncio.sleep(0.1)
         else:

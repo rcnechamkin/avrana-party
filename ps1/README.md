@@ -51,7 +51,8 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
 |---|---|
 | `run-ps1.sh <worms\|bomberman> [retroarch args]` | Preflight (core checksum, BIOS, cue/bin), single-instance lock, private Pulse + Xvfb, RetroArch; cleans up on exit/SIGTERM |
 | `launch-worms-ps1.sh`, `launch-bomberman-ps1.sh` | Thin wrappers around `run-ps1.sh` |
-| `stop-ps1.sh` | SIGTERMs the running RetroArch, which flushes the memory card |
+| `stop-ps1.sh` | SIGTERMs the running PS1 RetroArch, which flushes the memory card. Signals nothing unless `tools/ps1-pid.sh` proves the identity |
+| `tools/ps1-pid.sh` | The one identity check every tool uses before trusting `runtime/retroarch.pid` or `runtime/display` (see below). Exit 0 = proven (PID on stdout), 1 = no live instance, 2 = not proven |
 | `stream_ps1.py <game> [--host A]... [--port 8198]` | Shared-stream server: spawns `run-ps1.sh`, then capture/encode/fanout plus slot-owned input |
 | `index.html` | Phone page: PS1 pad, Play/Watch, stats |
 | `retroarch.cfg` | Base config template (`@PS1_HOME@`), isolated from `arcade/retroarch.cfg` |
@@ -73,6 +74,26 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
   - `states/`: save states (none are made automatically)
   - `runtime/`: generated cfg/opt, logs (`logs/<game>-latest.log`), Pulse socket, pid/display/xauthority files, lock
   - `screenshots/`, `evidence/`
+
+## Process identity (never trust a bare PID)
+
+The live arcade RetroArch is also called `retroarch`, and a crash or reboot leaves
+`runtime/retroarch.pid` and `runtime/display` behind. The display number can then belong to the
+arcade's Xvfb (`:99`), and the PID can belong to the arcade's RetroArch. So `run-ps1.sh` records
+`PID STARTTIME BOOT_ID` (written atomically, last), and `tools/ps1-pid.sh` returns the PID only if
+all of these hold:
+
+- the boot ID matches the current boot, and the process start time matches (so the PID was not reused);
+- `comm` is `retroarch`, the process is owned by this user, and one of its arguments is exactly
+  `$AVRANA_PS1_HOME/runtime/retroarch.cfg` (the arcade uses `arcade/retroarch.cfg`);
+- `runtime/display` and `runtime/xauthority`, when present, equal that process's own `DISPLAY` and
+  `XAUTHORITY`.
+
+Otherwise it refuses, and callers fail closed: `stop-ps1.sh` signals nothing (exit 1 when something
+unproven is at the recorded PID), `shot.sh` and `xkeys.py` refuse to pick a display, `monitor.sh`
+reports the emulator as `-`, and `run-ps1.sh`'s cleanup re-checks the identity before each signal.
+`stream_ps1.py` also requires the proven process to be in the session of the `run-ps1.sh` it started,
+and it never deletes runtime files itself (`run-ps1.sh` does that under the lock).
 
 ## Setup on a fresh Pi
 

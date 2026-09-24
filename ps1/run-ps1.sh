@@ -46,7 +46,9 @@ exec 9>"$RUN/ps1.lock"
 flock -n 9 || die "a PS1 game is already running (see $RUN/retroarch.pid; stop with stop-ps1.sh)"
 # Anything left here predates this lock: a crash or power loss. The display number in
 # particular may now belong to another X server (e.g. the arcade's :99), so drop it.
-rm -f "$RUN/retroarch.pid" "$RUN/display" "$RUN/xauthority"
+rm -f "$RUN/retroarch.pid" "$RUN/retroarch.pid.new" "$RUN/display" "$RUN/xauthority"
+PS1PID=$HERE/tools/ps1-pid.sh
+export AVRANA_PS1_HOME=$PS1_HOME   # ps1-pid.sh must check the same runtime dir
 
 MODE=${AVRANA_PS1_VIDEO:-auto}
 if [ "$MODE" = auto ]; then
@@ -68,16 +70,22 @@ RA=(retroarch --verbose --log-file="$LOG" -c "$RUN/retroarch.cfg"
     -L "$CORE" "$@" "$CUE")
 
 pulse_pid= ra_pid= wait_pid=
+# True while ps1-pid.sh still proves $ra_pid is this instance's RetroArch. In xvfb
+# mode it is a grandchild, so once it exits its PID may be reused (e.g. by the
+# arcade's RetroArch): never signal it on the strength of the number alone.
+ours() { [ -n "$ra_pid" ] && [ "$("$PS1PID" 2>/dev/null)" = "$ra_pid" ]; }
 cleanup() {
   set +e   # never abort half-way: every step below must run
-  if [ -n "$ra_pid" ]; then   # in xvfb mode RetroArch is a grandchild: poll, don't wait
+  # The pid file is written just before the inner shell exec's retroarch: allow for that.
+  [ -n "$ra_pid" ] && for _ in $(seq 10); do ours && break; sleep 0.1; done
+  if ours; then   # in xvfb mode RetroArch is a grandchild: poll, don't wait
     kill -TERM "$ra_pid" 2>/dev/null
-    for _ in $(seq 100); do kill -0 "$ra_pid" 2>/dev/null || break; sleep 0.1; done
-    kill -KILL "$ra_pid" 2>/dev/null
+    for _ in $(seq 100); do ours || break; sleep 0.1; done
+    ours && kill -KILL "$ra_pid" 2>/dev/null
   fi
   [ -n "$wait_pid" ] && wait "$wait_pid" 2>/dev/null   # xvfb-run removes its Xvfb
   if [ -n "$pulse_pid" ]; then kill "$pulse_pid" 2>/dev/null; wait "$pulse_pid" 2>/dev/null; fi
-  rm -f "$RUN/retroarch.pid" "$RUN/display" "$RUN/xauthority"
+  rm -f "$RUN/retroarch.pid" "$RUN/retroarch.pid.new" "$RUN/display" "$RUN/xauthority"
 }
 trap cleanup EXIT
 trap 'exit 143' TERM INT HUP
@@ -95,17 +103,21 @@ if [ "$MODE" = xvfb ]; then
   pulse_pid=$!
   for _ in $(seq 25); do pactl info >/dev/null 2>&1 && break; sleep 0.2; done
   pactl info >/dev/null 2>&1 || die "private PulseAudio did not start (see $RUN/logs/pulse.log)"
-  # Inner shell records its PID (exec'd into retroarch), the display and its
-  # Xauthority file so tools/ can reach this private display.
+  # Inner shell records the display and its Xauthority file so tools/ can reach this
+  # private display, then (last, atomically) its identity "PID STARTTIME BOOT_ID"
+  # (tools/ps1-pid.sh), then exec's into retroarch, which keeps that PID and start time.
   xvfb-run -a -s '-screen 0 640x480x24 -nolisten tcp' \
-    sh -c 'echo "$DISPLAY" > "$0/display"; echo "$XAUTHORITY" > "$0/xauthority"; echo $$ > "$0/retroarch.pid"; exec "$@"' "$RUN" "${RA[@]}" &
+    sh -c 'echo "$DISPLAY" > "$0/display"; echo "$XAUTHORITY" > "$0/xauthority"
+      "$1" --record $$ > "$0/retroarch.pid.new" && mv -f "$0/retroarch.pid.new" "$0/retroarch.pid"
+      shift; exec "$@"' "$RUN" "$PS1PID" "${RA[@]}" &
   wait_pid=$!
   for _ in $(seq 50); do [ -s "$RUN/retroarch.pid" ] && break; sleep 0.1; done
-  ra_pid=$(cat "$RUN/retroarch.pid" 2>/dev/null || true)
+  ra_pid=$(cut -d' ' -f1 "$RUN/retroarch.pid" 2>/dev/null || true)
   rc=0; wait "$wait_pid" || rc=$?
 else
   "${RA[@]}" &
-  ra_pid=$!; echo "$ra_pid" > "$RUN/retroarch.pid"
+  ra_pid=$!   # our unreaped child, so this PID cannot be reused before we wait
+  "$PS1PID" --record "$ra_pid" > "$RUN/retroarch.pid.new" && mv -f "$RUN/retroarch.pid.new" "$RUN/retroarch.pid"
   rc=0; wait "$ra_pid" || rc=$?
 fi
 ra_pid= wait_pid=

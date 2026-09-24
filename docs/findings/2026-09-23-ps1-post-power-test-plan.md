@@ -70,9 +70,9 @@ sysj()  { awk '/^cpu /{i=$5+$6; t=0; for(k=2;k<=NF;k++) t+=$k; print t, i}' /pro
 calc()  { awk "BEGIN{printf \"%.1f\", $*}"; }   # awk math (bc is not installed on party)
 net()   { awk -v i="$1:" '$1==i{print $2, $10}' /proc/net/dev; }
 # Only trust runtime/retroarch.pid if it is really the PS1 RetroArch (a crash leaves stale files,
-# and the arcade's own Xvfb/RetroArch can reuse the same display number).
-pids()  { RA=$(cat $RUN/retroarch.pid 2>/dev/null)
-          grep -qs "$RUN/retroarch.cfg" /proc/$RA/cmdline 2>/dev/null || RA=
+# and the arcade's own Xvfb/RetroArch can reuse the same display number): tools/ps1-pid.sh
+# proves boot ID, start time, cmdline and display before printing a PID.
+pids()  { RA=$($D/tools/ps1-pid.sh 2>/dev/null) || RA=
           XV=$([ -n "$RA" ] && pgrep -x -P "$(awk '{print $4}' /proc/$RA/stat)" Xvfb | head -1)
           PU=$(pgrep -f "socket=$RUN/pulse/native" | head -1); ST=$(pgrep -f 'stream_ps1.py' | head -1); }
 echo "ts,throttled,temp_c,arm_mhz,load1,mem_avail_mb,sys_busy_pct,ra_cpu,stream_cpu,xvfb_cpu,pulse_cpu,ra_rss_mb,stream_rss_mb,wlan0_rx_kbps,wlan0_tx_kbps,wlan1_rx_kbps,wlan1_tx_kbps,ap_stations,dnsmasq,dns_ok,uv_kernel,enc_fps,players,spectators,stats_err"
