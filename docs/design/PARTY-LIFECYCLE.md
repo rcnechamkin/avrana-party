@@ -1,7 +1,7 @@
 # Party lifecycle: party, presence, host, seats
 
 Status: **design (2026-09-24). Rules are proposals checked by an offline simulation; nothing is
-built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim` (43 tests incl. a
+built.** Simulation: `experiments/party-model/` on branch `experiment/party-sim` (44 tests incl. a
 300-seed fuzz). Concepts: `PARTY-PLATFORM.md` §5; identifiers: `docs/adr/0003-ids-and-keys.md`.
 
 ## Locked decisions this document implements

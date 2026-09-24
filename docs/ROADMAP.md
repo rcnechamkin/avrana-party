@@ -187,7 +187,7 @@ states the blast radius.
 
 Design: `docs/design/PARTY-PLATFORM.md` (hub) and the focused docs it links. Decisions:
 `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md`. Executable design checks
-(offline, stdlib only): `experiments/party-model/` (lifecycle rules, 43 tests incl. a 300-seed
+(offline, stdlib only): `experiments/party-model/` (lifecycle rules, 44 tests incl. a 300-seed
 fuzz) and `experiments/viewports/` (Personal Viewport geometry) on branch `experiment/party-sim`.
 
 **Rule for now:** documents and offline simulations only. Do **not** touch BLUFF's identity code
