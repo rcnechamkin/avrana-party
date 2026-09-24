@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -489,6 +490,17 @@ if __name__ == '__main__':
                         help='bind address (repeatable; default 10.42.0.1 = party AP, and 127.0.0.1)')
     parser.add_argument('--port', type=int, default=8198)
     args = parser.parse_args()
+    hosts = args.host or ['10.42.0.1', '127.0.0.1']
+    # aiohttp binds only after on_startup has launched the emulator and the encoder, so an
+    # unusable address (e.g. 10.42.0.1 while the party AP is down) must fail before that.
+    for host in hosts:
+        try:
+            with socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind((host, args.port))
+        except OSError as e:
+            parser.error(f'cannot bind {host}:{args.port} ({e.strerror}); '
+                         'is the party AP up? choose addresses with --host')
     ps1 = PS1Stream(args.game)
     app = web.Application(client_max_size=4096)
     app.router.add_get('/', lambda request: web.FileResponse(HERE / 'index.html'))
@@ -496,5 +508,5 @@ if __name__ == '__main__':
     app.router.add_get('/stats', ps1.stats)
     app.on_startup.append(ps1.startup)
     app.on_cleanup.append(ps1.cleanup)
-    web.run_app(app, host=args.host or ['10.42.0.1', '127.0.0.1'], port=args.port,
+    web.run_app(app, host=hosts, port=args.port,
                 access_log=None)  # /ws?token=... must never reach a log
