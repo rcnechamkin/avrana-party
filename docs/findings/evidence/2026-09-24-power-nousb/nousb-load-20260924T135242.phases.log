@@ -1,0 +1,53 @@
+13:52:42.624 START dip_lines=0 temp=49.1 thr=throttled=0x0
+13:52:42.633 PHASE B light activity (15 min)
+13:52:42.854 B burst 1 core 5 s
+13:53:52.834 B burst 1 core 5 s
+13:54:59.661 B burst 1 core 5 s
+13:56:06.568 B burst 1 core 5 s
+13:57:13.479 B burst 1 core 5 s
+13:58:20.454 B burst 1 core 5 s
+13:59:27.407 B burst 1 core 5 s
+14:00:34.360 B burst 1 core 5 s
+14:01:41.233 B burst 1 core 5 s
+14:02:48.097 B burst 1 core 5 s
+14:03:55.003 B burst 1 core 5 s
+14:05:01.871 B burst 1 core 5 s
+14:06:08.879 B burst 1 core 5 s
+14:07:15.771 B burst 1 core 5 s
+14:08:01.078 PHASE B end dip_lines=0 temp=48.7
+14:08:01.083 PHASE C all-core CPU bursts (15 min)
+14:08:01.160 C burst 4 cores 20 s (temp 49.6)
+14:08:21.386 C burst end (temp 54.5)
+14:09:31.466 C burst 4 cores 20 s (temp 49.6)
+14:09:51.681 C burst end (temp 55.5)
+14:11:01.741 C burst 4 cores 20 s (temp 49.1)
+14:11:21.964 C burst end (temp 56.0)
+14:12:32.026 C burst 4 cores 20 s (temp 48.7)
+14:12:52.263 C burst end (temp 56.4)
+14:14:02.322 C burst 4 cores 20 s (temp 49.1)
+14:14:22.556 C burst end (temp 56.0)
+14:15:32.619 C burst 4 cores 20 s (temp 49.1)
+14:15:52.817 C burst end (temp 56.0)
+14:17:02.880 C burst 4 cores 20 s (temp 49.6)
+14:17:23.061 C burst end (temp 56.9)
+14:18:33.122 C burst 4 cores 20 s (temp 49.6)
+14:18:53.322 C burst end (temp 56.0)
+14:20:03.418 C burst 4 cores 20 s (temp 48.7)
+14:20:23.620 C burst end (temp 56.4)
+14:21:33.697 C burst 4 cores 20 s (temp 49.1)
+14:21:54.032 C burst end (temp 56.0)
+14:23:04.085 PHASE C end dip_lines=0 temp=49.6
+14:23:04.090 PHASE D Wi-Fi traffic to associated phones (10 min)
+14:23:04.109 D peers: 1 (addresses not logged)
+14:24:04.190 D ping 60 s @50/s 1200 B: 2463 packets transmitted, 0 received
+14:25:04.265 D ping 60 s @50/s 1200 B: 2424 packets transmitted, 0 received
+14:26:04.336 D ping 60 s @50/s 1200 B: 2448 packets transmitted, 0 received
+14:27:04.405 D ping 60 s @50/s 1200 B: 2412 packets transmitted, 0 received
+14:28:04.472 D ping 60 s @50/s 1200 B: 2460 packets transmitted, 0 received
+14:29:04.548 D ping 60 s @50/s 1200 B: 2427 packets transmitted, 0 received
+14:30:04.617 D ping 60 s @50/s 1200 B: 2464 packets transmitted, 148 received
+14:31:04.685 D ping 60 s @50/s 1200 B: 2425 packets transmitted, 0 received
+14:32:04.757 D ping 60 s @50/s 1200 B: 2442 packets transmitted, 0 received
+14:33:04.825 D ping 60 s @50/s 1200 B: 2420 packets transmitted, 0 received
+14:33:04.884 PHASE D end dip_lines=0 temp=48.7
+14:33:04.945 END dip_lines=0 thr=throttled=0x0 temp=49.6

@@ -1,0 +1,12 @@
+13:52:53 ssh 1
+13:53:54 ssh 2
+13:54:54 ssh 3
+13:55:55 ssh 4
+13:56:55 ssh 5
+13:57:56 ssh 6
+13:58:56 ssh 7
+13:59:57 ssh 8
+14:00:57 ssh 9
+14:01:58 ssh 10
+done
+14:02:25 ssh extra (unplanned 'ssh party true' inside an ffmpeg check; phase B)
