@@ -85,13 +85,22 @@ def flatten_stats(reply):
     return out
 
 
+PARTY_ADDRESS = '10.42.0.1'
+
+
 def ap_addresses():
-    """Addresses of the Avrana Party access point interface (wlan1)."""
+    """Addresses of the Avrana Party access point interface: whichever interface holds the party
+    address (wlan1 with the old USB adapter; the internal wlan0 since 2026-09-24). Used only to
+    label a peer's network path in /stats."""
     found = set()
     try:
-        for line in subprocess.run(['ip', '-o', 'addr', 'show', 'dev', 'wlan1'], capture_output=True,
-                                   text=True, timeout=2).stdout.splitlines():
-            found.add(line.split()[3].split('/')[0])
+        lines = subprocess.run(['ip', '-o', 'addr', 'show'], capture_output=True,
+                               text=True, timeout=2).stdout.splitlines()
+        ifaces = {line.split()[1] for line in lines if f' {PARTY_ADDRESS}/' in line}
+        for line in lines:
+            parts = line.split()
+            if len(parts) > 3 and parts[1] in ifaces:
+                found.add(parts[3].split('/')[0])
     except Exception:
         pass
     return found
