@@ -14,14 +14,14 @@ one profile on two devices, an idle party ending.
   disconnected with neutral input / away-reserved; released = gone).
 
 ```bash
-python experiments/party-model/test_party_model.py      # 52 tests, ~1 s
+python experiments/party-model/test_party_model.py      # 53 tests, ~1 s
 ```
 
 ## What the tests pin down
 
 | Area | Scenarios |
 |---|---|
-| Identity | guests become Player 1…N; fabricated tokens get nothing; renames are display-only; the name rule blocks SYSTEM look-alikes (Cyrillic letters, zero-width and bidi characters, fullwidth forms, reserved prefixes) and numbers duplicates; party/device/presence/seat/session ids, device tokens and game keys are all distinct; a TV ("screen" presence) never becomes host, gets a seat or votes |
+| Identity | guests become Player 1…N (or the name chosen at Join, checked and announced); fabricated tokens get nothing; renames are display-only; the name rule blocks SYSTEM look-alikes (Cyrillic letters, zero-width and bidi characters, fullwidth forms, reserved prefixes) and numbers duplicates; party/device/presence/seat/session ids, device tokens and game keys are all distinct; a TV ("screen" presence) never becomes host, gets a seat or votes |
 | Host | reconnect within grace keeps it; after grace the earliest-joined connected player (or a random one) takes over; a returning old host is an ordinary member; everyone gone → first eligible back; a disconnected host can't act; transfer only to a connected player; an explicit leave hands over at once, skipping people who left; stale requests (`if_version`) refused |
 | Launch | a service game navigates only when *ready*; late joiners during launch get seats; failure keeps `nav_seq` and reports why; a cancelled launch's late "ready" is ignored; select-while-launching refused; the host leaving mid-launch doesn't stop it; launch timeout |
 | Seats | new seats per game, pre-filled from the last game's seating; switching games ends the old session first; extras spectate; disconnect → neutral → away → reclaimed; a phone asleep through a game change still gets a (neutral) seat if it dropped less than `PRESENCE_GRACE` ago (longer asleep → spectator); newest tab owns input; late-join policies (spectator / supported / next round); promoting or queueing a disconnected player gives a neutral seat; a released-and-refilled seat gets a new key and its old owner returns as a spectator; open-seat games auto-release long-away seats; an empty table is abandoned with seating saved; crash → home with seating |

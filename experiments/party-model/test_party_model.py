@@ -72,6 +72,18 @@ class JoinAndIdentity(unittest.TestCase):
         with self.assertRaises(Refused):                      # ...and grants no host power
             party.transfer_host(tokens[1], people[1].id)
 
+    def test_persona_chosen_at_join_is_announced_and_checked(self):
+        app, party, _, tokens, people = setup(1)
+        t = app.issue_device()
+        p = app.connect(t, persona='Megan')
+        self.assertEqual(p.persona, 'Megan')
+        self.assertIn('Megan joined the party.', texts(party))
+        self.assertEqual(app.connect(app.issue_device(), persona='Megan').persona, 'Megan 2')
+        before = dict(party.presences)
+        with self.assertRaises(Refused):                  # a bad name creates nothing
+            app.connect(app.issue_device(), persona='SYSTEM')
+        self.assertEqual(party.presences, before)
+
     def test_names_cannot_impersonate_system_or_each_other(self):
         _, party, _, tokens, people = setup(3)
         spoofs = ['SYSTEM', 'admin', '  Host ', '', 'SYSTEM:', 'System Message', 'Sуstem',

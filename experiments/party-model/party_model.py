@@ -63,6 +63,13 @@ def _name_key(name):
     return ''.join(ch for ch in name.casefold() if ch.isalnum())
 
 
+def _checked_name(raw):
+    try:
+        return clean_name(raw)
+    except ValueError as e:
+        raise Refused(str(e))
+
+
 def clean_name(raw):
     """Display-name rule (proposal): NFKC; drop control/format characters (zero-width, bidi
     overrides); collapse spaces; 1..NAME_MAX characters; letters from one script only (blocks
@@ -158,13 +165,15 @@ class Appliance:
             raise Refused('unknown device token')   # fabricated tokens never create identity
         return device_id
 
-    def connect(self, token, kind='player'):
-        """Open the party page. After a party ended, the next connect starts a new party."""
+    def connect(self, token, kind='player', persona=None):
+        """Join. After a party ended, the next connect starts a new party."""
         self.device_of(token)
+        if persona is not None:
+            _checked_name(persona)                        # refuse before any side effect
         if self.party.state == 'ended':
             self.past_parties.append(self.party)
             self.party = Party(self)
-        return self.party.connect(token, kind)
+        return self.party.connect(token, kind, persona)
 
     def tick(self):
         self.party.tick()
@@ -252,8 +261,10 @@ class Party:
                 'players': sum(1 for p in self.presences.values() if p.eligible and p.connected)}
 
     @_timed
-    def connect(self, token, kind='player'):
+    def connect(self, token, kind='player', persona=None):
+        """Join (or re-attach a tab). A persona chosen at Join is announced instead of 'Player N'."""
         self._alive()
+        clean = _checked_name(persona) if persona is not None else None
         device_id = self.appliance.device_of(token)
         p = self._by_device(device_id)
         conn = next(self._conn_ids)
@@ -261,6 +272,8 @@ class Party:
             p = Presence(_new_id('presence'), device_id,
                          next(self._numbers) if kind == 'player' else 0, kind, self._now())
             self.presences[p.id] = p
+            if clean and kind == 'player':
+                p.persona = self._unique_persona(p, clean)
             p.conns.append(conn)
             self._event('presence_joined', presence=p.id, presence_kind=kind)
             if kind == 'player':
@@ -344,18 +357,17 @@ class Party:
     def rename(self, token, name):
         """Set a persona. Duplicates get ' 2', ' 3'… so host menus never show two identical names."""
         p = self._presence_for(token)
-        try:
-            clean = clean_name(name)
-        except ValueError as e:
-            raise Refused(str(e))
+        p.persona = self._unique_persona(p, _checked_name(name))   # display value: authorizes nothing
+        self._commit()
+        return p
+
+    def _unique_persona(self, p, clean):
         taken = {_name_key(o.persona) for o in self.presences.values() if o is not p and not o.left}
         final, n = clean, 2
         while _name_key(final) in taken:
             final = f'{clean[:NAME_MAX - len(str(n)) - 1]} {n}'
             n += 1
-        p.persona = final                                 # display value: authorizes nothing
-        self._commit()
-        return p
+        return final
 
     # ---- profiles (only what "same profile on two devices" needs) -----------------------------
     @_timed
