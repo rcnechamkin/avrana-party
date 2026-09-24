@@ -5,12 +5,17 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 > **2026-09-24 update: product direction.** Avrana Party is now explicitly **one party
 > platform with many games** ("the game may change; the party does not"). Avrana is designed
 > to own identity, party, seats, host, navigation, chat and stats (none of it is built yet);
-> games consume them. Read
-> `docs/design/PARTY-PLATFORM.md` and `docs/adr/0002-party-platform.md` before designing any
-> player-facing feature; phasing is ROADMAP **N5**. Until the BLUFF real-phone playtest, the
-> platform is documents only: don't change BLUFF's identity code or live services for it.
-> Development now runs laptop → GitHub → Pi; the Pi is a deploy/test target. Full backups of
-> the games fork are on the laptop (`~/avrana-party-games.git`).
+> games consume them. Start at `docs/design/PARTY-PLATFORM.md` (the hub, with links to the
+> lifecycle, integration, native-games, Personal Viewports, onboarding and installation docs) and
+> the ADRs `0002-party-platform` and `0003-ids-and-keys` before designing any player-facing
+> feature; phasing is ROADMAP **N5**. Locked: one appliance = one party; TV optional; host
+> disposable; late joiners spectate by default; no app/captive portal/store required. Until the
+> BLUFF real-phone playtest, the platform is documents and offline simulations only
+> (`experiments/` on branch `experiment/party-sim`): don't change BLUFF's identity code or live
+> services for it. Development runs laptop → GitHub → Pi; the Pi is a deploy/test target. The
+> games fork is backed up on the laptop (`~/avrana-party-games.git`); its GitHub repo is not
+> created yet. **Current blocker for N2 and PS1:** power — the USB Wi-Fi adapter carrying the
+> party AP stays unplugged until the PSU/cable question is resolved.
 
 > **2026-09-23 update. Read `docs/ROADMAP.md` first.**
 > - The **repository is now the documentation source of truth**. The BookStack API/MCP is

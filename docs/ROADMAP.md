@@ -50,8 +50,19 @@ Avrana owns identity, session, social, progression, navigation and player manage
 consume those services. Browser-first, guest-first, offline-first; the captive portal is only a
 convenience. The runtimes above are the first *consumers* of that platform, not separate products.
 
-Read **`docs/design/PARTY-PLATFORM.md`** (concepts, principles, integration contract, security)
-and **`docs/adr/0002-party-platform.md`** (the decision). Phasing is in **N5** below.
+Locked on 2026-09-24: **one appliance = one party**; **TV optional** (games may require one);
+**host is disposable** (grace, then succession); **late joiners spectate by default** (games may
+opt in to more); **physical seating is not a platform concept**; **open installation, no store**;
+**no app and no captive portal required**. **V1.0 is for the owner** — to prove the whole
+experience works and is fun; a crowdfunded appliance is a possible later path that must not
+distort the near-term plan. Showcase hooks: native no-TV Jackbox-like games, native action games
+designed around Avrana, and emulated multiplayer with **Personal Viewports**. BLUFF is an early
+native testbed, not the product.
+
+Start at **`docs/design/PARTY-PLATFORM.md`** (the hub: thesis, principles, decisions, concepts,
+links to every focused design doc), then **`docs/adr/0002-party-platform.md`** and
+**`docs/adr/0003-ids-and-keys.md`**. Phasing is in **N5** below. A blunt outside view of what is
+and isn't a real differentiator: `docs/findings/2026-09-24-product-differentiation.md`.
 
 ---
 
@@ -159,13 +170,25 @@ states the blast radius.
 
 ### N5. Party platform — **design DONE (2026-09-24); F1–F8 open; build starts after N2**
 
-Design: `docs/design/PARTY-PLATFORM.md`. Decision: `docs/adr/0002-party-platform.md`.
+Design: `docs/design/PARTY-PLATFORM.md` (hub) and the focused docs it links. Decisions:
+`docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md`. Executable design checks
+(offline, stdlib only): `experiments/party-model/` (lifecycle rules, 43 tests incl. a 300-seed
+fuzz) and `experiments/viewports/` (Personal Viewport geometry) on branch `experiment/party-sim`.
 
-**Rule for now:** documents only. Do **not** touch BLUFF's identity code or the live services
-before the N2 real-phone playtest; the playtest must measure the game, not a moving platform.
-Add these observations to the playtest instead, because they set the platform's timers and
-defaults: how people got into the game, what happened on sleep and reload, any lost seats,
-confusion about who starts, whether anyone wanted chat.
+**Rule for now:** documents and offline simulations only. Do **not** touch BLUFF's identity code
+or the live services before the N2 real-phone playtest; the playtest must measure the game, not a
+moving platform. **Measure during the playtest** (these set the platform's timers, defaults and
+build order): power-on → first game time; share of phones that join unaided (QR vs typed address),
+tested **truly offline** (today the Pi shares its home internet with Avrana clients); seats lost to
+sleep/reload; who-starts confusion; the time and confusion of one manual switch to another game and
+back (if a switch costs > 60 s or loses a player, "party follows host" goes first); whether anyone
+wanted chat; "one more game?" requests; a fun rating. The playtest needs the party AP, whose USB
+adapter is unplugged while the power problem is open — so N2 is currently gated on power too.
+
+**Safe now (no Pi, no live changes):** extend the offline simulations; a laptop-only Personal
+Viewports proof of concept with a synthetic test video (stage A in
+`docs/design/PERSONAL-VIEWPORTS.md`); moving PS1's two hard-coded title lists into data profiles
+(also the path community emulator content will take); preparing the games-repo publication.
 
 **Where the party layer lives (recommended):** a separate small party service on the **same
 origin** as everything else (e.g. `party.local/party/`), plus a thin bridge in the Avrana Party
@@ -182,15 +205,15 @@ Things whose absence would force rework later. Keep this list short.
 
 | # | Item | Done when |
 |---|---|---|
-| F1 | **IDs and keys ADR:** opaque server-issued ids for party, device, presence, seat (profile reserved); names never authorize; map today's `wc-token`, PS1 slot token and arcade slot onto seats | ADR merged with an "id → what it authorizes" table |
+| F1 | **IDs and keys ADR** — **drafted 2026-09-24** as `docs/adr/0003-ids-and-keys.md` (invariants accepted; encodings and storage open) | ADR merged with an "id → what it authorizes" table |
 | F2a | **Single origin, dev:** a dev-only front (e.g. the party service proxying the fork on 8196) that puts party + games under one host and a `/party/` namespace, without touching live nginx | The vertical slice runs on one origin |
 | F2b | **Single origin, live** (with the fork cutover): canonical `party.local`, `/party/` namespace, PS1 behind nginx, app Host allowlist while the default server keeps answering captive-portal probes; `10.42.0.1` redirects only after `party.local` is verified to resolve on iPhone and Android | Every runtime reachable under one host (owner-approved nginx change) |
 | F3 | **Device token:** server-issued, HttpOnly SameSite=Lax cookie, hashed at rest; Origin checks on WebSocket/POST (on the F2a origin first) | Survives reload and sleep on iPhone Safari; a client cannot mint one |
 | F4 | **Party service:** one Party per appliance (v0), party socket, versioned snapshot + append-only event log | A reconnecting phone gets the current party state in one message |
-| F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence takeover; the fork bridge substitutes a per-seat key at `session.join` | Fabricated tokens cannot take seats; a reload keeps the same seat |
+| F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence reclaim; tickets bound to one game; the fork bridge hands the game a per-(session, participant) game key at `hello` and turns off the "any client token" path; seats are bound where each game binds them | Fabricated tokens cannot take seats; a reload keeps the same seat |
 | F6 | **Host authority:** host is a presence; voluntary transfer; grace then succession; no "claim host"; Host ≠ Admin | Host-only actions rejected for others; a sleeping host is succeeded and returns as a player |
 | F7 | **Manifest v0:** derived from the LAN Games registry; static JSON for BLUFF, arcade, PS1 titles | One API lists every runtime with players, TV need and control model |
-| F8 | **Event record with provenance** (draft envelope in `docs/design/PARTY-PLATFORM.md` §14) | Every lifecycle event carries provenance; emulated games can only emit `platform_observed` unless a per-game adapter exists |
+| F8 | **Event record with provenance** (draft envelope in `docs/design/GAME-INTEGRATION.md` §3.2; provenance taken from the grant, not the game's claim) | Every lifecycle event carries provenance; emulated games can only emit `platform_observed` unless a per-game adapter exists |
 
 Critical path: dev origin (F2a) → device token → party state → presence → seats + host →
 navigation. The live cutover (F2b) comes later, together with the fork cutover.
@@ -230,8 +253,35 @@ needs it.
 
 Achievements and cosmetics · party history and rivalries · optional profile PIN · device trust and
 revocation UI · QR pairing · profile merge/export/import · whispers and team chat · the full
-profile-settings categories · playlists and tournaments · result adapters for emulated games ·
-several parties per appliance.
+profile-settings categories · moderation presets (Friends/Private vs Public/Demo) · playlists and
+tournaments · result adapters for emulated games · Personal Viewport auto-detection · untrusted
+community games (sandboxed; `docs/design/GAME-INSTALLATION.md`) · an optional companion app.
+
+*Deprioritized until a party night has been measured* (per the differentiation review): profiles
+and PINs beyond the admin PIN, achievements, cosmetics, rivalries, cross-game teams, whispers and
+team chat, moderation presets, packaging/trust for open installation, distributed display,
+emulated result adapters.
+
+#### Proof prototypes, ranked (what would actually prove the concept for V1.0)
+
+1. **BLUFF on real phones, one evening** (N2) with the measurements above, including one round with
+   players in different rooms (a stand-in for plane rows).
+2. **Personal Viewports** — laptop-only stage A now; then 2, then 4 players on the Pi after the power
+   fix, measuring latency (240 fps camera, crop vs full), readability, crop vs full-frame preference
+   and stream stability. Kill it if cropped play rates worse than everyone watching the full frame.
+3. **A content-light native no-TV game** where players generate the content (drawing-telephone or
+   hidden-role voting): laughs at the reveal without a shared screen, sessions per party.
+
+#### Appliance readiness (what a buyer — and the owner on a trip — would notice first)
+
+Power first (stable on a wall supply, then a battery pack that holds 5.1 V / 3 A, with measured
+runtime) · boot-to-joinable time (target < 45 s) · surviving power loss (SD protection; the
+party-survives-reboot question) · the AP's real client ceiling (the Pi 4's onboard Wi-Fi reportedly
+caps near 7; the party AP runs on a USB adapter — measure) · noisy-venue UX (visual/haptic cues,
+big targets, glanceable state) · phone battery drain per streamed hour · a content pipeline after
+BLUFF · a travel compliance sheet (airline power-bank rules, cruise-line router bans, legal Wi-Fi
+channels per country) · an enclosure and cooling that survive a bag · a QR/NFC join card or e-ink
+display (`docs/design/ONBOARDING.md`).
 
 #### UX risks the phasing is designed around
 
@@ -281,6 +331,11 @@ player?" only after the first game).
   manifest, a seat ticket, an event record and the `party.js` follow client. Rules, state,
   rendering and turn logic stay with each game. (See `docs/design/PARTY-PLATFORM.md` §1.)
 - Cloud accounts, email sign-up, or anything that needs the internet
+- Several simultaneous parties on one appliance (one appliance = one party)
+- A game store: no marketplace, payments, reviews, DRM or app-store backend (open installation instead)
+- Requiring a native app or the captive portal
+- Physical seating (rows, table position, neighbours) as a platform concept
+- A distributed multi-phone display (experimental idea only)
 - An iframe shell or a single-page rewrite that absorbs every game (iframes may return later
   only for overlays such as chat on same-origin games; see ADR 0002)
 - Copying Coup's branding, art or card text

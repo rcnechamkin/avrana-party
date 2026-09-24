@@ -50,6 +50,25 @@ top-level navigation driven by `party.js` (not an iframe shell, not a single-pag
 a thin bridge in the LAN Games fork at the connect handshake and the lifecycle push, and manifests
 derived from the existing LAN Games registry.
 
+## Amendment (2026-09-24, same day): locked product decisions
+
+The owner closed several open questions; they refine, not reverse, the decision above:
+
+- **One appliance = one party** (not a multi-tenant server).
+- **TV optional**; a game may declare `tv_required` / `tv_optional` / `no_tv_needed`.
+- **The host is disposable:** reconnect grace, then simple succession; voluntary transfer; a
+  returning former host does not take the role back.
+- **Late joiners spectate by default**; games opt into more through their manifest.
+- **Physical seating is not a platform concept.**
+- **Open installation, no store** (no marketplace, payments, reviews, DRM). Trust for third-party
+  games is a separate future design (`docs/design/GAME-INSTALLATION.md`).
+- **No app and no captive portal required**; both may exist only as optional conveniences.
+- **The phone is not just a controller**: native games should use each player's private screen.
+- **V1.0 is for the owner**, to prove the experience; commercialization comes after that proof.
+
+Identifiers and what they authorize: `docs/adr/0003-ids-and-keys.md`. Lifecycle rules:
+`docs/design/PARTY-LIFECYCLE.md`.
+
 ## Consequences
 
 - New games must not build their own login, profile store, chat, reconnect, team or spectator

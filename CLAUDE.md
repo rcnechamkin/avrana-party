@@ -11,15 +11,17 @@
 
 ## Product direction: one party, many games (read before designing anything players touch)
 
-Avrana Party is a **unified local multiplayer platform whose games plug into a shared party system**: *the game may change; the party does not.* Avrana owns identity, session, social, progression, navigation and player management; games consume them. Before designing a game, lobby, login, chat, stat or navigation feature, read **`docs/design/PARTY-PLATFORM.md`** (concepts and principles) and **`docs/adr/0002-party-platform.md`**; phasing is ROADMAP **N5**. The rules agents most often need:
+Avrana Party is a **portable local multiplayer platform whose games plug into a shared party system**: *the game may change; the party does not* — the Party is a long-lived object that outlives every game session. Avrana owns identity, session, social, progression, navigation and player management; games consume them. Before designing a game, lobby, login, chat, stat or navigation feature, start at **`docs/design/PARTY-PLATFORM.md`** (the hub; it links the focused design docs) and the ADRs `0002-party-platform` and `0003-ids-and-keys`; phasing is ROADMAP **N5**. The rules agents most often need:
 
-- **Guest-first, browser-first, offline-first.** Never require a profile, a captive portal or the internet.
-- **Device ≠ Profile ≠ Presence ≠ Seat ≠ Role ≠ Persona.** Games get a seat key and a persona, never a device token. Names never authorize anything.
+- **Guest-first, browser-first, offline-first; no app and no captive portal required; TV optional.**
+- **One appliance = one party.** The host is disposable (grace, then succession); late joiners spectate unless the game opts in; physical seating is not a platform concept.
+- **Device ≠ Profile ≠ Presence ≠ Seat ≠ Role ≠ Persona** (ids and credentials: ADR 0003). Games get a game key and a persona, never a device token. Names never authorize anything.
 - **Admin ≠ Host.** The admin is PIN-protected and appliance-wide; the host is a temporary party role with no system powers.
 - **Navigation is party-synchronized**, and a game must not reinvent profiles, chat, reconnect, teams, spectators or session lifecycle.
+- **The phone is not just a controller**: native games should use each player's private screen (`docs/design/NATIVE-GAMES.md`).
 - **Never claim what can't be observed:** every stat carries provenance; emulated games produce no results unless a per-game adapter exists, and participation is never a win.
-- **Not a gameplay framework:** platform services around games, through a small contract (manifest, seat ticket, event record, `party.js`).
-- Until the BLUFF real-phone playtest (N2) is done, the platform is **documents only**.
+- **Not a gameplay framework and not a store:** platform services around games through a small contract (`docs/design/GAME-INTEGRATION.md`); open installation (`docs/design/GAME-INSTALLATION.md`).
+- Until the BLUFF real-phone playtest (N2) is done, the platform is **documents and offline simulations only** (`experiments/party-model/`, `experiments/viewports/` on branch `experiment/party-sim`).
 
 ## Workflow
 
