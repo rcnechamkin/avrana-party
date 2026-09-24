@@ -30,7 +30,7 @@ cd experiments/viewports/poc
 python serve.py                 # listens on 0.0.0.0:8765 (Windows may ask to allow Python through the firewall)
 ```
 
-Find the laptop's IP (`ipconfig` → Wi-Fi IPv4, e.g. `10.0.0.174`) and open on each phone:
+Find the laptop's IP (`ipconfig` → Wi-Fi IPv4, e.g. `192.168.1.23`) and open on each phone:
 
 - `http://<laptop-ip>:8765/?layout=4` — four quadrants (4 phones get seats 1–4; a 5th spectates)
 - `?layout=2h` — two players, top/bottom (8:3 crops: hold the phone in **landscape**)
