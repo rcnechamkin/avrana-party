@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Avrana Party</title>
+<style>
+  /* Accessibility defaults (docs/design/ACCESSIBILITY.md): rem-based text that follows the phone's
+     text size, 44 px minimum targets, visible focus, no colour-only cues, reduced motion honoured. */
+  :root { --bg:#fff; --fg:#111; --muted:#555; --line:#ccc; --accent:#0b57d0; --accent-fg:#fff;
+          --warn:#8a4b00; --card:#f4f4f6; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121214; --fg:#f2f2f2; --muted:#b8b8c0; --line:#44444c; --accent:#8ab4f8;
+            --accent-fg:#0b0b0e; --warn:#ffb74d; --card:#1d1d22; }
+  }
+  @media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--fg); } }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; padding: 1rem max(1rem, env(safe-area-inset-left)); background: var(--bg);
+         color: var(--fg); font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 36rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: .25rem 0 1rem; }
+  h2 { font-size: 1.15rem; margin: 1.25rem 0 .5rem; }
+  button, input, select { font: inherit; min-height: 44px; border-radius: .5rem; }
+  button { padding: .5rem 1rem; border: 2px solid var(--accent); background: var(--accent);
+           color: var(--accent-fg); cursor: pointer; }
+  button.secondary { background: transparent; color: var(--fg); border-color: var(--line); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  input, select { padding: .4rem .6rem; border: 2px solid var(--line); background: var(--bg); color: var(--fg); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: .75rem; padding: 1rem; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  ul.members { list-style: none; padding: 0; margin: 0; }
+  ul.members li { display: flex; justify-content: space-between; gap: .5rem; padding: .6rem 0;
+                  border-bottom: 1px solid var(--line); }
+  .badge { font-size: .85rem; border: 1px solid currentColor; border-radius: 1rem; padding: 0 .5rem; }
+  .muted { color: var(--muted); }
+  .status { font-weight: 600; }
+  .banner { border: 2px solid var(--warn); color: var(--fg); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .skip { position: absolute; left: -999px; } .skip:focus { left: 1rem; top: 1rem; }
+  @media (prefers-reduced-motion: no-preference) { .card { transition: border-color .2s; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to party</a>
+<main id="main">
+  <h1>Avrana Party</h1>
+  <p id="conn" class="muted" role="status">Connecting…</p>
+
+  <section id="observer" class="card" hidden aria-labelledby="obs-h">
+    <h2 id="obs-h">A party is running</h2>
+    <p id="obs-text"></p>
+    <form id="join-form" class="row">
+      <label for="join-name">Your name <span class="muted">(optional)</span></label>
+      <input id="join-name" name="persona" maxlength="16" autocomplete="nickname" inputmode="text">
+      <button type="submit">Join the party</button>
+    </form>
+  </section>
+
+  <section id="member" hidden aria-labelledby="me-h">
+    <div id="nav-banner" class="card banner" hidden>
+      <p id="nav-text" class="status"></p>
+      <a id="nav-go" class="row"><button type="button" id="nav-go-btn">Go</button></a>
+    </div>
+    <h2 id="me-h">You</h2>
+    <div class="card">
+      <p><span id="me-name" class="status"></span> <span id="me-role"></span></p>
+      <form id="rename-form" class="row">
+        <label for="rename">Change name</label>
+        <input id="rename" maxlength="16" autocomplete="nickname">
+        <button type="submit" class="secondary">Save name</button>
+      </form>
+      <p class="row"><button type="button" id="leave" class="secondary">Leave party</button></p>
+    </div>
+
+    <h2 id="people-h">People here</h2>
+    <ul id="members" class="members card" aria-labelledby="people-h"></ul>
+
+    <section id="host-tools" hidden aria-labelledby="host-h">
+      <h2 id="host-h">Host controls</h2>
+      <div class="card">
+        <form id="select-form" class="row">
+          <label for="game">Game</label>
+          <select id="game"></select>
+          <button type="submit">Start for everyone</button>
+        </form>
+        <p class="row"><button type="button" id="end-game" class="secondary">End game (everyone home)</button></p>
+        <form id="transfer-form" class="row">
+          <label for="transfer-to">Hand host to</label>
+          <select id="transfer-to"></select>
+          <button type="submit" class="secondary">Hand over</button>
+        </form>
+        <p class="row"><button type="button" id="end-party" class="secondary">End the party</button></p>
+      </div>
+    </section>
+  </section>
+
+  <h2 id="msgs-h">Party messages</h2>
+  <!-- System messages come from the server only and render as text, never as a player's name. -->
+  <ol id="messages" class="card muted" aria-labelledby="msgs-h" aria-live="polite" aria-relevant="additions"></ol>
+  <p id="error" role="alert" class="status"></p>
+</main>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let view = null;
+const FOLLOWED = 'avrana-followed-nav';            // per-tab: the (party, seq) we already followed
+
+async function post(cmd, body = {}) {
+  $('error').textContent = '';
+  const r = await fetch('/party/' + cmd, { method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { $('error').textContent = data.error || ('Request failed (' + r.status + ')'); return; }
+  render(data);
+}
+
+function text(el, s) { el.textContent = s; return el; }
+
+function render(v) {
+  view = v;
+  const joined = !!v.me;
+  $('observer').hidden = joined;
+  $('member').hidden = !joined;
+  if (!joined) {
+    const n = v.players;
+    text($('obs-text'), (v.host ? v.host + ' is host. ' : 'Nobody is host yet. ') +
+         n + (n === 1 ? ' person is' : ' people are') + ' here.');
+  } else {
+    text($('me-name'), v.me.persona);
+    text($('me-role'), v.me.is_host ? '— you are the host' :
+         v.me.spectator ? '— watching (no seat this game)' :
+         v.me.seat_slot ? '— seat ' + v.me.seat_slot : '');
+    const ul = $('members'); ul.replaceChildren();
+    for (const m of v.members) {
+      const li = document.createElement('li');
+      const name = document.createElement('bdi'); name.textContent = m.persona;   // names are text only
+      const tags = document.createElement('span');
+      const words = [];
+      if (m.is_host) words.push('Host');
+      if (m.kind === 'screen') words.push('Screen');
+      if (m.state !== 'connected') words.push(m.state === 'reconnecting' ? 'Reconnecting' : 'Away');
+      for (const w of words) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = w; tags.append(b, ' '); }
+      li.append(name, tags); ul.append(li);
+    }
+    $('host-tools').hidden = !v.me.is_host;
+    if (v.me.is_host) {
+      const game = $('game'); const keep = game.value; game.replaceChildren();
+      for (const g of v.catalog) { const o = new Option(g.name + ' (up to ' + g.max_players + ')', g.id); game.append(o); }
+      if (keep) game.value = keep;
+      const to = $('transfer-to'); to.replaceChildren();
+      for (const m of v.members) if (!m.is_host && m.kind === 'player' && m.state === 'connected') to.append(new Option(m.persona, m.presence_id));
+      $('transfer-form').querySelector('button').disabled = !to.options.length;
+      $('end-game').disabled = v.party.state !== 'in_game';
+    }
+    follow(v);
+  }
+  const ol = $('messages'); const have = ol.children.length; const msgs = v.messages || [];
+  if (msgs.length < have) ol.replaceChildren();
+  for (const m of msgs.slice(ol.children.length)) { const li = document.createElement('li'); li.textContent = m; ol.append(li); }
+}
+
+function follow(v) {
+  // Synchronized navigation (PARTY-PLATFORM.md §8): seated players follow a NEW transition once;
+  // everyone else — or anyone who came back here on purpose — gets a banner with a Go button.
+  const nav = v.party.nav, banner = $('nav-banner');
+  if (nav.target === 'home' || !nav.href) { banner.hidden = true; return; }
+  const key = v.party.id + ':' + nav.seq;
+  let followed = null; try { followed = sessionStorage.getItem(FOLLOWED); } catch (e) {}
+  text($('nav-text'), 'The party is playing ' + nav.target + '.');
+  $('nav-go').href = nav.href; banner.hidden = false;
+  if (v.me.seat_slot && followed !== key) {
+    try { sessionStorage.setItem(FOLLOWED, key); } catch (e) {}
+    location.assign(nav.href);
+  }
+}
+
+$('join-form').addEventListener('submit', (e) => { e.preventDefault(); post('join', { persona: $('join-name').value.trim() || undefined }); });
+$('rename-form').addEventListener('submit', (e) => { e.preventDefault(); post('rename', { name: $('rename').value }); });
+$('leave').addEventListener('click', () => post('leave'));
+$('select-form').addEventListener('submit', (e) => { e.preventDefault(); post('host/select', { game: $('game').value, if_version: view.party.version }); });
+$('end-game').addEventListener('click', () => post('host/end-game', { if_version: view.party.version }));
+$('transfer-form').addEventListener('submit', (e) => { e.preventDefault(); post('host/transfer', { to: $('transfer-to').value, if_version: view.party.version }); });
+$('end-party').addEventListener('click', () => { if (confirm('End the party for everyone?')) post('host/end-party'); });
+$('nav-go-btn').addEventListener('click', () => { if (view) location.assign(view.party.nav.href); });
+
+function connect() {
+  const es = new EventSource('/party/events');
+  es.addEventListener('state', (e) => { $('conn').textContent = 'Connected'; render(JSON.parse(e.data)); });
+  es.onerror = () => { $('conn').textContent = 'Reconnecting…'; };   // EventSource retries by itself
+}
+fetch('/party/state', { credentials: 'same-origin' }).then((r) => r.json()).then(render).finally(connect);
+</script>
+</body>
+</html>
