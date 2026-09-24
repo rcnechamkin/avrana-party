@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "bomberman",
+  "name": "Bomberman - Party Edition (USA)",
+  "serial": "SLUS-01189",
+  "cue": "Bomberman - Party Edition (USA)/Bomberman - Party Edition (USA)/Bomberman - Party Edition (USA).cue",
+  "retroarch_users": 5,
+  "stream_slots": 4,
+  "multitap": "port 2",
+  "notes": "Up to 5 players with a Multitap in PORT 2. RetroArch users: 1 = port 1, 2-5 = Multitap pads 2A-2D ('port 1' makes the game ignore input, verified 2026-09-23). The stream offers 4 slots because stream_ps1.py has 4 key banks; user 5 (pad 2D) is unused by the stream."
+}

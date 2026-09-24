@@ -38,10 +38,12 @@ stream.ROOT = PS1_HOME  # client-stats.jsonl / webrtc samples land in PS1_HOME/r
 _AP = stream.ap_addresses()
 stream.ap_addresses = lambda: _AP  # stream.summarize() would run `ip` per peer per second
 
-# Controller slots per game. Worms is hot-seat on PS1 (only port 1 is read), so
-# one phone holds the pad and everyone else watches. Bomberman Party Edition uses
-# the Multitap on port 2: user 1 = port 1, users 2-4 = Multitap 2A-2C.
-GAMES = {'worms': 1, 'bomberman': 4}
+# Controller slots per title come from the data profiles in ps1/titles/ (profiles.py).
+# E.g. Worms is hot-seat (only port 1 is read), so one phone holds the pad and everyone
+# else watches; Bomberman uses the Multitap on port 2 (user 1 = port 1, users 2-4 = 2A-2C).
+sys.path.insert(0, str(HERE))
+import profiles  # noqa: E402
+GAMES = profiles.stream_slots()
 
 # Bit order of the client's 14-bit button mask (PS1 digital pad).
 BUTTONS = ('up', 'down', 'left', 'right', 'cross', 'circle', 'square', 'triangle',
@@ -56,6 +58,7 @@ BANKS = (
     ('F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F11', 'F12', 'Prior', 'Next', 'F9', 'F10'),
 )
 MASK_LIMIT = 1 << len(BUTTONS)
+assert profiles.MAX_SLOTS <= len(BANKS), 'a profile could ask for more slots than there are key banks'
 MIN_HOLD = 0.040      # RetroArch polls the keymap once per frame; shorter taps vanish.
 STALE = 0.3           # release a slot's buttons if its phone goes quiet (as the arcade)
 GRACE = 30.0          # a disconnected player's slot stays reserved for its token

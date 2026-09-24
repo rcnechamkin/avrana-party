@@ -49,7 +49,7 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
 
 | File | Purpose |
 |---|---|
-| `run-ps1.sh <worms\|bomberman> [retroarch args]` | Preflight (core checksum, BIOS, cue/bin), single-instance lock, private Pulse + Xvfb, RetroArch; cleans up on exit/SIGTERM |
+| `run-ps1.sh <title> [retroarch args]` (titles: `python3 profiles.py list`) | Preflight (core checksum, BIOS, cue/bin), single-instance lock, private Pulse + Xvfb, RetroArch; cleans up on exit/SIGTERM |
 | `launch-worms-ps1.sh`, `launch-bomberman-ps1.sh` | Thin wrappers around `run-ps1.sh` |
 | `stop-ps1.sh` | SIGTERMs the running PS1 RetroArch, which flushes the memory card. Signals nothing unless `tools/ps1-pid.sh` proves the identity |
 | `tools/ps1-pid.sh` | The one identity check every tool uses before trusting `runtime/retroarch.pid` or `runtime/display` (see below). Exit 0 = proven (PID on stdout), 1 = no live instance, 2 = not proven |
@@ -58,7 +58,8 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
 | `retroarch.cfg` | Base config template (`@PS1_HOME@`), isolated from `arcade/retroarch.cfg` |
 | `mode-xvfb.cfg` | Headless mode: private Xvfb, Pulse null sink, X keyboard banks per user, hotkeys gated behind scroll_lock, joypads pinned to a nonexistent index |
 | `mode-kms.cfg` | TV mode via KMS/ALSA/udev pads. **Untested** (no HDMI display attached) |
-| `games/<game>.cfg`, `games/<game>.opt` | Per-game users and core options (copied fresh on every launch) |
+| `titles/<title>.json` | **Title profiles** (data only): cue path relative to the ROM folder, RetroArch users, stream slots, Multitap setting, notes |
+| `profiles.py` | Loads and validates profiles against an allowlist (only hardware-verified values; no raw RetroArch keys) and GENERATES `runtime/core-options.opt` and `runtime/game.cfg` on every launch |
 | `evidence/selected-core.json` | Core provenance and pinned sha256 (the launcher refuses a mismatch) |
 | `tools/` | Test tools: `xkeys.py` (keys into the private display), `shot.sh`, `audio-level.sh`, `monitor.sh`, `viewers.py` (Playwright simulated phones) |
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Launch one PS1 game with RetroArch + PCSX-ReARMed.
-#   run-ps1.sh <worms|bomberman> [extra retroarch args, e.g. --max-frames=600]
+#   run-ps1.sh <title> [extra retroarch args, e.g. --max-frames=600]
+#   Titles are data profiles in ps1/titles/<title>.json (python3 profiles.py list).
 # Env: AVRANA_PS1_HOME (state: core, BIOS link, saves, logs; default ~/avrana-lab/ps1)
 #      AVRANA_PS1_ROMS (read-only game/BIOS files; default /srv/avrana/roms/psx)
 #      AVRANA_PS1_VIDEO=xvfb|kms|auto (auto: kms if an HDMI connector is connected)
@@ -17,13 +18,10 @@ RUN=$PS1_HOME/runtime
 die() { echo "run-ps1: $*" >&2; exit 1; }
 
 [ "$(id -u)" != 0 ] || die "refusing to run as root"
-[ $# -ge 1 ] || die "usage: run-ps1.sh <worms|bomberman> [retroarch args]"
+[ $# -ge 1 ] || die "usage: run-ps1.sh <title> [retroarch args]  (titles: $(python3 "$HERE/profiles.py" list | paste -sd " "))"
 GAME=$1; shift
-case $GAME in
-  worms)     CUE="$ROMS/Worms Armageddon (USA)/Worms Armageddon (USA)/Worms Armageddon (USA).cue" ;;
-  bomberman) CUE="$ROMS/Bomberman - Party Edition (USA)/Bomberman - Party Edition (USA)/Bomberman - Party Edition (USA).cue" ;;
-  *) die "unknown game '$GAME' (expected worms or bomberman)" ;;
-esac
+# The profile validates the title id and the cue path (relative, under $ROMS, no "..").
+CUE=$(python3 "$HERE/profiles.py" cue "$GAME" --roms "$ROMS") || die "no usable title profile for '$GAME'"
 
 # --- preflight: fail clearly before anything starts -------------------------
 command -v retroarch >/dev/null || die "retroarch not installed (apt install retroarch)"
@@ -58,7 +56,9 @@ fi
 case $MODE in xvfb|kms) ;; *) die "AVRANA_PS1_VIDEO must be xvfb, kms or auto" ;; esac
 
 sed "s|@PS1_HOME@|$PS1_HOME|g" "$HERE/retroarch.cfg" > "$RUN/retroarch.cfg"
-cp "$HERE/games/$GAME.opt" "$RUN/core-options.opt"   # fresh copy each launch
+# Core options and the per-title RetroArch override are GENERATED from the profile on every
+# launch (never raw config from a title), into $RUN/core-options.opt and $RUN/game.cfg.
+python3 "$HERE/profiles.py" write "$GAME" "$RUN" || die "could not write title config for '$GAME'"
 LOG=$RUN/logs/$GAME-$(date +%Y%m%dT%H%M%S).log
 ln -sfn "$LOG" "$RUN/logs/$GAME-latest.log"
 export XDG_CONFIG_HOME=$RUN/xdg   # keep RetroArch out of ~/.config/retroarch
@@ -66,7 +66,7 @@ mkdir -p "$XDG_CONFIG_HOME"
 echo "run-ps1: $GAME mode=$MODE log=$LOG"
 
 RA=(retroarch --verbose --log-file="$LOG" -c "$RUN/retroarch.cfg"
-    --appendconfig="$HERE/mode-$MODE.cfg|$HERE/games/$GAME.cfg"
+    --appendconfig="$HERE/mode-$MODE.cfg|$RUN/game.cfg"
     -L "$CORE" "$@" "$CUE")
 
 pulse_pid= ra_pid= wait_pid= launched=
