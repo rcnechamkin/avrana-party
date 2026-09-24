@@ -28,7 +28,9 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
 - **Each phone owns at most one controller slot.** The server assigns the lowest free slot
   and a random token. The client stores the token in localStorage and uses it to reclaim the
   same slot within 30 s of a disconnect. Phones that join when every slot is taken, or that
-  choose Watch (`?role=watch`), are spectators, and their input never reaches a pad.
+  choose Watch, are spectators, and their input never reaches a pad. The first message on every
+  socket is `{type:'hello', role:'play'|'watch', token}` (5 s deadline, otherwise closed with 1008):
+  the token never appears in a URL, so it can't reach an access log.
 - **The client only sends `{type:'state', b:<14-bit mask>, seq}`.** Bits, in order: up, down,
   left, right, cross, circle, square, triangle, L1, R1, L2, R2, start, select.
   - The server replays the mask as XTest key events from that slot's fixed key bank (`BANKS`

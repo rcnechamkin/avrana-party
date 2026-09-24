@@ -106,8 +106,9 @@ function start(watching){
  pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;leave.disabled=false;sound.disabled=false;pad.hidden=!mySlot;
    status.textContent=mySlot?`You are Player ${mySlot} in ${game}.`:`Watching ${game}. Every controller is taken (or you chose Watch).`;sendInput()}
   else if(['failed','closed'].includes(pc.connectionState))disconnect('Connection lost. Tap Play to reconnect.')};
- const q=new URLSearchParams();if(watching)q.set('role','watch');else if(store.get())q.set('token',store.get());
- ws=new WebSocket(new URL('ws?'+q,location.href).href.replace(/^http/,'ws'));
+ // The token goes in the first message (hello), never in the URL: URLs end up in access logs.
+ ws=new WebSocket(new URL('ws',location.href).href.replace(/^http/,'ws'));
+ ws.onopen=()=>ws.send(JSON.stringify({type:'hello',role:watching?'watch':'play',token:watching?null:store.get()}));
  ws.onmessage=e=>{signalChain=signalChain.then(async()=>{
   const message=JSON.parse(e.data);
   if(message.type==='ack'){const t=sentAt.get(message.seq);if(t!==undefined){ackRtts.push(performance.now()-t);sentAt.delete(message.seq)}return}

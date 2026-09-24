@@ -64,6 +64,24 @@ STALE = 0.3           # release a slot's buttons if its phone goes quiet (as the
 GRACE = 30.0          # a disconnected player's slot stays reserved for its token
 RATE_LIMIT = 120      # messages/s per socket: beyond this, state messages are dropped
 FLOOD_LIMIT = 1200    # messages/s per socket that close it (Wi-Fi/tunnels burst, so be lenient)
+HELLO_TIMEOUT = 5.0   # s a new socket has to send its hello before it is closed
+
+
+def parse_hello(text):
+    """The first message on every socket: {"type": "hello", "role": "play"|"watch", "token": str|null}.
+    Returns (watch, token). The token travels here, never in the URL, so it can't end up in an
+    access log (nginx logs query strings). Raises ValueError on anything else."""
+    if not isinstance(text, str) or len(text) > 512:
+        raise ValueError('hello must be a short text message')
+    data = json.loads(text)
+    if not isinstance(data, dict) or data.get('type') != 'hello':
+        raise ValueError('first message must be a hello')
+    role, token = data.get('role'), data.get('token')
+    if role not in ('play', 'watch'):
+        raise ValueError('role must be play or watch')
+    if token is not None and not isinstance(token, str):
+        raise ValueError('token must be a string or null')
+    return role == 'watch', (None if role == 'watch' else token)
 
 
 def die_with_parent():
@@ -300,6 +318,17 @@ class PS1Stream(stream.Stream):
             self.pads[slot].release_all()
             log.info('Slot %d released after grace period', slot + 1)
 
+    async def read_hello(self, ws):
+        """Wait for the socket's hello; close it (1008) on timeout or anything else."""
+        try:
+            message = await asyncio.wait_for(ws.receive(), HELLO_TIMEOUT)
+            if message.type != web.WSMsgType.TEXT:
+                raise ValueError('hello must be text')
+            return parse_hello(message.data)
+        except (asyncio.TimeoutError, ValueError) as e:     # json errors are ValueErrors
+            await ws.close(code=1008, message=f'Bad hello: {e}'.encode()[:120])
+            return None
+
     async def websocket(self, request):
         if request.headers.get('Origin') != 'http://' + request.host:
             raise web.HTTPForbidden()
@@ -307,7 +336,11 @@ class PS1Stream(stream.Stream):
             raise web.HTTPServiceUnavailable(text='Stream unavailable')
         ws = web.WebSocketResponse(max_msg_size=4096, heartbeat=5)
         await ws.prepare(request)
-        slot, token = self.claim(ws, request.query.get('token'), request.query.get('role') == 'watch')
+        hello = await self.read_hello(ws)
+        if hello is None:
+            return ws
+        watch, token = hello
+        slot, token = self.claim(ws, token, watch)
         try:
             return await self.serve_peer(request, ws, slot, token)
         finally:
