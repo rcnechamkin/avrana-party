@@ -15,8 +15,10 @@ Shape:
 import hashlib
 import itertools
 import secrets
+import unicodedata
 
-RESERVED_NAMES = {'system', 'admin', 'host', 'avrana'}
+RESERVED_NAMES = {'system', 'admin', 'host', 'avrana', 'moderator'}
+NAME_MAX = 16
 HOST_GRACE = 30.0          # s a disconnected host keeps the role
 PRESENCE_GRACE = 60.0      # s "reconnecting" before "away"
 SEAT_GRACE = 60.0          # s a disconnected seat stays "disconnected" before "away"
@@ -36,6 +38,30 @@ def _hash(token):
 
 def _new_id(kind):
     return f'{kind}-{secrets.token_hex(8)}'     # opaque; never derived from anything
+
+
+def _name_key(name):
+    """Comparison key for reserved/duplicate checks: casefolded letters and digits only."""
+    return ''.join(ch for ch in name.casefold() if ch.isalnum())
+
+
+def clean_name(raw):
+    """Display-name rule (proposal): NFKC; drop control/format characters (zero-width, bidi
+    overrides); collapse spaces; 1..NAME_MAX characters; letters from one script only (blocks
+    look-alikes such as a Cyrillic 'у' inside 'System'); nothing that is or starts with a
+    reserved word. Raises ValueError. Names stay display values: they never authorize."""
+    text = unicodedata.normalize('NFKC', str(raw))
+    text = ''.join(ch for ch in text if unicodedata.category(ch) not in ('Cc', 'Cf'))
+    text = ' '.join(text.split())
+    if not 1 <= len(text) <= NAME_MAX:
+        raise ValueError('name must be 1-16 characters')
+    scripts = {unicodedata.name(ch, 'UNKNOWN').split()[0] for ch in text if ch.isalpha()}
+    if len(scripts & {'LATIN', 'CYRILLIC', 'GREEK'}) > 1:     # look-alike alphabets only;
+        raise ValueError('mixed look-alike scripts')          # e.g. kana + kanji stay allowed
+    key = _name_key(text)
+    if not key or any(key.startswith(word) for word in RESERVED_NAMES):
+        raise ValueError('reserved name')
+    return text
 
 
 class Presence:
@@ -266,11 +292,18 @@ class Party:
         self._commit()
 
     def rename(self, token, name):
+        """Set a persona. Duplicates get ' 2', ' 3'… so host menus never show two identical names."""
         p = self._presence_for(token)
-        clean = ' '.join(str(name).split())[:24]
-        if not clean or clean.lower() in RESERVED_NAMES:
-            raise Refused('name not allowed')
-        p.persona = clean                                 # display value: authorizes nothing
+        try:
+            clean = clean_name(name)
+        except ValueError as e:
+            raise Refused(str(e))
+        taken = {_name_key(o.persona) for o in self.presences.values() if o is not p and not o.left}
+        final, n = clean, 2
+        while _name_key(final) in taken:
+            final = f'{clean[:NAME_MAX - len(str(n)) - 1]} {n}'
+            n += 1
+        p.persona = final                                 # display value: authorizes nothing
         self._commit()
         return p
 

@@ -67,12 +67,27 @@ class JoinAndIdentity(unittest.TestCase):
         _, party, _, tokens, people = setup(3)
         party.rename(tokens[2], 'Megan')
         self.assertEqual(people[2].persona, 'Megan')
-        for bad in ('SYSTEM', 'admin', '  Host ', ''):
-            with self.assertRaises(Refused):
-                party.rename(tokens[1], bad)
-        party.rename(tokens[1], people[0].persona)          # same name as the host...
-        with self.assertRaises(Refused):                     # ...grants no host power
+        party.rename(tokens[1], people[0].persona)           # copying the host's name...
+        self.assertEqual(people[1].persona, 'Player 1 2')     # ...is disambiguated
+        with self.assertRaises(Refused):                      # ...and grants no host power
             party.transfer_host(tokens[1], people[1].id)
+
+    def test_names_cannot_impersonate_system_or_each_other(self):
+        _, party, _, tokens, people = setup(3)
+        spoofs = ['SYSTEM', 'admin', '  Host ', '', 'SYSTEM:', 'System Message', 'Sуstem',
+                  'SYS​TEM', 'ＳＹＳＴＥＭ', 'Avrana Party',
+                  'x' * 17]
+        for bad in spoofs:
+            with self.assertRaises(Refused, msg=repr(bad)):
+                party.rename(tokens[1], bad)
+        party.rename(tokens[1], '‮METSYS')               # a bidi override is stripped...
+        self.assertEqual(people[1].persona, 'METSYS')          # ...so it can't display as SYSTEM
+        for good, shown in [('José', 'José'), ('Zoë  Q', 'Zoë Q'), ('たなか太郎', 'たなか太郎'),
+                            ('megan', 'megan')]:
+            party.rename(tokens[1], good)
+            self.assertEqual(people[1].persona, shown)
+        party.rename(tokens[2], 'Megan')
+        self.assertEqual(people[2].persona, 'Megan 2')         # case-insensitive duplicate
 
     def test_ids_and_credentials_are_distinct(self):
         _, party, _, tokens, people = setup(2)
