@@ -201,3 +201,43 @@ test('crop is static CSS; frame gaps recorded for crop vs full view (not asserte
   console.log(`[${browserName}] frame gaps ms — crop: ${JSON.stringify(crop)} full: ${JSON.stringify(full)}`);
   await done(page);
 });
+
+test('shared WebRTC source: one source page streams to four viewers, each crops its own seat', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Playwright WebKit on Windows has no usable WebRTC; real iPhones test this by hand');
+  test.setTimeout(90_000);
+  const src = await (await browser.newContext()).newPage();
+  await src.goto('/?role=source&layout=4');
+  await src.waitForFunction(() => (window as any).__poc?.ready);
+  const viewers: Page[] = [];
+  for (let i = 0; i < 4; i++) {
+    const p = await (await browser.newContext({ viewport: { width: 480, height: 400 } })).newPage();
+    await p.goto('/?layout=4&source=rtc');
+    viewers.push(p);
+  }
+  for (const p of viewers) {
+    await p.waitForFunction(() => (window as any).__poc?.ready && (window as any).__poc.latency.length >= 30,
+                            null, { timeout: 45_000 });
+  }
+  const report: string[] = [];
+  const seats = new Set<number>();
+  for (const p of viewers) {
+    const seat = await seatOf(p);
+    seats.add(seat);
+    const img = await viewportImage(p);
+    const want = SEAT_RGB[seat - 1];
+    let bad = 0, total = 0;                       // the inner 60 %: the seat's colour through a real codec
+    for (let fx = 0.2; fx <= 0.8; fx += 0.05) for (let fy = 0.2; fy <= 0.6; fy += 0.05) {
+      total++; if (!near(img.px(img.width * fx, img.height * fy), want, 60)) bad++;
+    }
+    const ring = ringIsClean(img, want, img.width / (await p.locator('#vp').boundingBox())!.width);
+    const lat: number[] = await p.evaluate(() => [...(window as any).__poc.latency].sort((a: number, b: number) => a - b));
+    report.push(`seat ${seat}: centre off-colour ${bad}/${total}, edge ring off-colour ${ring.bad}/${ring.total} ` +
+                `(${JSON.stringify(ring.edges)}), latency p50 ${lat[lat.length >> 1]} p95 ${lat[Math.floor(lat.length * 0.95)]} ms`);
+    expect(bad / total).toBeLessThan(0.1);        // balls/labels move through the centre: allow a little
+    expect(lat[lat.length >> 1]).toBeLessThan(1000);
+  }
+  console.log('[webrtc] ' + report.join('\n[webrtc] '));
+  expect([...seats].sort()).toEqual([1, 2, 3, 4]);
+  for (const p of viewers) await done(p);
+  await src.context().close();
+});

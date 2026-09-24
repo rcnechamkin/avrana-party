@@ -29,6 +29,7 @@ class Server(unittest.TestCase):
 
     def setUp(self):
         serve.SEATS.by_layout.clear()
+        serve.SIGNALS = serve.Signals()
 
     def get(self, path):
         with urllib.request.urlopen(self.base + path) as r:
@@ -96,6 +97,24 @@ class Server(unittest.TestCase):
         c.endheaders()
         self.assertEqual(c.getresponse().status, 400)
         c.close()
+
+    def test_rtc_signalling_round_trip_and_limits(self):
+        sdp = 'v=0' + chr(13) + chr(10) + 'o=- 1 1 IN IP4 127.0.0.1' + chr(13) + chr(10)
+        self.assertEqual(self.post('/rtc/offer', {'client': 'viewer-0001', 'sdp': sdp})[0], 200)
+        _, body, _ = self.get('/rtc/offers?since=0')
+        offers = json.loads(body)['offers']
+        self.assertEqual([o['client'] for o in offers], ['viewer-0001'])
+        _, body, _ = self.get(f"/rtc/offers?since={offers[0]['n']}")
+        self.assertEqual(json.loads(body)['offers'], [])                  # nothing newer
+        self.assertIsNone(json.loads(self.get('/rtc/answer?client=viewer-0001')[1])['sdp'])
+        self.assertEqual(self.post('/rtc/answer', {'client': 'viewer-0001', 'sdp': sdp})[0], 200)
+        self.assertEqual(json.loads(self.get('/rtc/answer?client=viewer-0001')[1])['sdp'], sdp)
+        self.assertEqual(self.post('/rtc/answer', {'client': 'nobody-00', 'sdp': sdp})[0], 404)
+        self.assertEqual(self.post('/rtc/offer', {'client': 'viewer-0001', 'sdp': 'hello'})[0], 400)
+        self.assertEqual(self.post('/rtc/offer', {'client': 'viewer-0001', 'sdp': 'v=0' + 'x' * serve.SDP_MAX})[0], 400)
+        for i in range(serve.RTC_MAX + 5):                                  # bounded memory
+            self.post('/rtc/offer', {'client': f'flood-{i:04d}', 'sdp': sdp})
+        self.assertLessEqual(len(serve.SIGNALS.offers), serve.RTC_MAX)
 
     def test_page_is_served_and_self_contained(self):
         status, body, headers = self.get('/')

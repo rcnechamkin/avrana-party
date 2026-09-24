@@ -46,6 +46,7 @@
   <button id="leave">Leave seat</button>
   <span id="sync" class="muted"></span>
   <span id="gap" class="muted"></span>
+  <span id="lat" class="muted"></span>
   <span id="kind" class="muted"></span>
 </footer>
 <canvas id="src" width="640" height="480"></canvas>
@@ -63,7 +64,9 @@ function clientId() {
 }
 const params = new URLSearchParams(location.search);
 const state = { client: clientId(), layout: params.get('layout'), seat: null, full: false,
-                crop: null, offset: 0, ready: false, paused: false, gaps: [] };
+                crop: null, offset: 0, ready: false, paused: false, gaps: [],
+                role: params.get('role') === 'source' ? 'source' : 'viewer',
+                latency: [], peers: 0 };
 window.__poc = state;                      // read by the automated tests
 
 const $ = id => document.getElementById(id);
@@ -108,7 +111,90 @@ function drawFrame() {
     g.font = '16px ui-monospace, monospace';
     g.fillText(clock, x + 12, y + h - 30); g.fillText(`frame ${frame}`, x + 12, y + h - 10);
   });
+  if (state.role === 'source') drawStamp(t);
   requestAnimationFrame(drawFrame);
+}
+
+// ---- timestamp barcode (source only): the bottom 8 rows carry the server-synced draw time ----
+// 40 blocks of 16x8 px: 4 sync blocks (1010), then 32 bits of (ms mod 2^32), MSB first, then 0101.
+// A viewer decodes it from each received frame: latency = its synced clock - the stamped time,
+// i.e. draw -> encode -> network -> decode -> frame callback on the phone (not glass-to-glass).
+const STAMP_BITS = 32, BLOCK = 16, STAMP_Y = 472;
+function stampBits(t) {
+  const v = Math.floor(t) % 4294967296, bits = [1, 0, 1, 0];
+  for (let i = STAMP_BITS - 1; i >= 0; i--) bits.push(Math.floor(v / 2 ** i) % 2);
+  return bits.concat([0, 1, 0, 1]);
+}
+function drawStamp(t) {
+  stampBits(t).forEach((b, i) => { g.fillStyle = b ? '#fff' : '#000'; g.fillRect(i * BLOCK, STAMP_Y, BLOCK, 8); });
+}
+function watchLatency(video) {
+  if (!video.requestVideoFrameCallback) { $('lat').textContent = 'latency: rVFC n/a'; return; }
+  const strip = document.createElement('canvas'); strip.width = 640; strip.height = 8;
+  const sg = strip.getContext('2d', { willReadFrequently: true });
+  const cb = () => {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (vw && vh) {
+      sg.drawImage(video, 0, vh * STAMP_Y / 480, vw, vh * 8 / 480, 0, 0, 640, 8);   // any received size
+      const px = sg.getImageData(0, 0, 640, 8).data;
+      const bit = (i) => { const o = (4 * 640 + i * BLOCK + BLOCK / 2) * 4;
+                           return (px[o] * 0.299 + px[o + 1] * 0.587 + px[o + 2] * 0.114) > 128 ? 1 : 0; };
+      if (bit(0) === 1 && bit(1) === 0 && bit(2) === 1 && bit(3) === 0) {
+        let v = 0; for (let i = 0; i < STAMP_BITS; i++) v = v * 2 + bit(4 + i);
+        let d = (Math.floor(now()) % 4294967296) - v; if (d < -2147483648) d += 4294967296;
+        if (d > -50 && d < 10000) {                      // ignore misreads
+          state.latency.push(d); if (state.latency.length > 600) state.latency.shift();
+          const s = [...state.latency].sort((a, b) => a - b);
+          if (s.length >= 10) $('lat').textContent = `latency p50 ${s[s.length >> 1]} / p95 ${s[Math.floor(s.length * .95)]} ms`;
+        }
+      }
+    }
+    video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
+}
+
+// ---- WebRTC: one shared source page -> every ?source=rtc viewer (LAN only: no STUN/TURN) ----
+const iceDone = (pc) => new Promise((ok) => {
+  if (pc.iceGatheringState === 'complete') return ok();
+  pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') ok(); });
+  setTimeout(ok, 3000);                                 // LAN host candidates come fast; don't hang
+});
+async function serveViewers(stream) {                   // source role: answer each viewer's offer
+  let since = 0; const pcs = {};
+  for (;;) {
+    try {
+      const { offers } = await (await fetch(`/rtc/offers?since=${since}`)).json();
+      for (const o of offers) {
+        since = Math.max(since, o.n);
+        if (pcs[o.client]) pcs[o.client].close();
+        const pc = pcs[o.client] = new RTCPeerConnection({ iceServers: [] });
+        stream.getTracks().forEach((tr) => pc.addTrack(tr, stream));
+        await pc.setRemoteDescription({ type: 'offer', sdp: o.sdp });
+        await pc.setLocalDescription(await pc.createAnswer());
+        await iceDone(pc);
+        await post('/rtc/answer', { client: o.client, sdp: pc.localDescription.sdp });
+      }
+      state.peers = Object.values(pcs).filter((pc) => pc.connectionState !== 'closed' && pc.connectionState !== 'failed').length;
+      $('kind').textContent = `SOURCE · sending to ${state.peers} viewer(s)`;
+    } catch (e) { $('kind').textContent = 'SOURCE · signalling error: ' + e; }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+async function receiveFromSource(video) {               // viewer role with ?source=rtc
+  const pc = new RTCPeerConnection({ iceServers: [] });
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.ontrack = (e) => { video.srcObject = e.streams[0] || new MediaStream([e.track]); video.play().catch(() => {}); };
+  await pc.setLocalDescription(await pc.createOffer());
+  await iceDone(pc);
+  await post('/rtc/offer', { client: state.client, sdp: pc.localDescription.sdp });
+  for (let i = 0; i < 60; i++) {
+    const { sdp } = await (await fetch(`/rtc/answer?client=${encodeURIComponent(state.client)}`)).json();
+    if (sdp) { await pc.setRemoteDescription({ type: 'answer', sdp }); break; }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  pc.onconnectionstatechange = () => { $('kind').textContent = `source: shared WebRTC stream (${pc.connectionState})`; };
+  state.pc = pc;
 }
 
 // ---- crop: apply the /layout CSS numbers; fit the window inside the stage (contain) ----
@@ -174,6 +260,14 @@ function markReady() { state.ready = true; document.body.dataset.ready = '1'; }
 // canvas itself is cropped with the identical CSS, so the crop logic is exercised either way.
 function attachSource() {
   const video = $('video');
+  if (params.get('source') === 'rtc' && typeof RTCPeerConnection === 'function') {
+    video.addEventListener('playing', markReady);
+    watchGaps(video); watchLatency(video);
+    state.sourceEl = video; state.sourceKind = 'rtc';
+    $('kind').textContent = 'source: shared WebRTC stream (connecting)';
+    receiveFromSource(video).catch((e) => { $('kind').textContent = 'WebRTC failed: ' + e; });
+    return;
+  }
   if (typeof cv.captureStream === 'function' && params.get('source') !== 'canvas') {
     video.srcObject = cv.captureStream(60);
     video.addEventListener('playing', markReady);
@@ -195,7 +289,18 @@ function attachSource() {
 
 async function main() {
   await syncClock();
-  drawFrame();
+  if (!(state.role === 'viewer' && params.get('source') === 'rtc')) drawFrame();   // rtc viewers only receive
+  if (state.role === 'source') {                 // the one shared source: not a player, no seat
+    state.full = true;
+    $('who').textContent = 'SOURCE'; $('geom').textContent = `layout ${Object.hasOwn(SPLITS, state.layout) ? state.layout : '4'} · open viewers with ?source=rtc`;
+    const stream = cv.captureStream(30), video = $('video');
+    video.srcObject = stream; video.play().catch(() => {});
+    state.sourceEl = video; fit(); markReady();
+    addEventListener('resize', fit);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => fit()).observe($('stage'));
+    serveViewers(stream);
+    return;
+  }
   if (params.get('mode') === 'full') state.full = true;
   await claim();                               // the seat never depends on the video path
   attachSource();
@@ -213,6 +318,9 @@ async function main() {
   };
   addEventListener('resize', fit);
   addEventListener('orientationchange', () => setTimeout(fit, 200));
+  // Header/footer text can wrap to more lines later (e.g. when latency stats appear) and shrink
+  // the stage without a window resize: re-fit on any stage size change, or the crop gets clipped.
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => fit()).observe($('stage'));
 }
 main();
 </script>

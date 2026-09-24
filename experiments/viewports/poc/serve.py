@@ -15,6 +15,11 @@ Endpoints (all JSON unless noted):
   POST /claim   {"client": "<random id>", "layout": "4"}   -> {"seat": n, "layout": ...}
   POST /release {"client": "<random id>"}                  -> {"released": [seats freed]}
   GET  /state                 who holds which seat (ids truncated)
+  WebRTC signalling for the shared source (?role=source page → every ?source=rtc viewer):
+  POST /rtc/offer  {"client", "sdp"}   a viewer's offer (non-trickle: ICE already gathered)
+  GET  /rtc/offers?since=N             the source page polls for offers newer than N
+  POST /rtc/answer {"client", "sdp"}   the source's answer
+  GET  /rtc/answer?client=ID           the viewer polls for its answer ({"sdp": null} until ready)
 
 Seat assignment mirrors the party-model rules at toy scale: a client id (random, kept in the
 browser's localStorage) always gets its own seat back; a new id gets the lowest free seat;
@@ -46,6 +51,8 @@ PROFILE = {
 }
 DEFAULT_LAYOUT = '4'
 CLIENT_ID_MAX = 64
+SDP_MAX = 64 * 1024          # a LAN-only SDP with host candidates is a few KB
+RTC_MAX = 32                 # offers/answers kept (oldest dropped): a demo, not a service
 
 
 def layout_for(key, seat):
@@ -94,6 +101,45 @@ class Seats:
 SEATS = Seats()
 
 
+class Signals:
+    """In-memory offer/answer exchange between viewers and the one source page."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.seq = 0
+        self.offers = {}             # client -> (seq, sdp)
+        self.answers = {}            # client -> sdp
+
+    def offer(self, client, sdp):
+        with self.lock:
+            self.seq += 1
+            self.offers[client] = (self.seq, sdp)
+            self.answers.pop(client, None)              # a new offer invalidates the old answer
+            while len(self.offers) > RTC_MAX:
+                self.offers.pop(min(self.offers, key=lambda c: self.offers[c][0]))
+
+    def offers_since(self, n):
+        with self.lock:
+            return [{'client': c, 'n': q, 'sdp': sdp}
+                    for c, (q, sdp) in sorted(self.offers.items(), key=lambda kv: kv[1][0]) if q > n]
+
+    def answer(self, client, sdp):
+        with self.lock:
+            if client not in self.offers:
+                return False
+            self.answers[client] = sdp
+            while len(self.answers) > RTC_MAX:
+                self.answers.pop(next(iter(self.answers)))
+            return True
+
+    def answer_for(self, client):
+        with self.lock:
+            return self.answers.get(client)
+
+
+SIGNALS = Signals()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = 'viewport-poc'
     timeout = 10                          # a slow/idle connection can't hold a thread forever
@@ -110,9 +156,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _body(self):
+    def _body(self, limit=4096):
         n = int(self.headers.get('Content-Length') or 0)
-        if not 0 <= n <= 4096:            # a negative length would make read() unbounded
+        if not 0 <= n <= limit:           # a negative length would make read() unbounded
             raise ValueError('bad body length')
         data = json.loads(self.rfile.read(n) or b'{}')
         return data if isinstance(data, dict) else {}
@@ -141,13 +187,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({'error': 'no such layout/seat'}, 404)
         elif url.path == '/state':
             self._json(SEATS.snapshot())
+        elif url.path == '/rtc/offers':
+            try:
+                since = int(q.get('since', ['0'])[0])
+            except ValueError:
+                return self._json({'error': 'bad since'}, 400)
+            self._json({'offers': SIGNALS.offers_since(since)})
+        elif url.path == '/rtc/answer':
+            self._json({'sdp': SIGNALS.answer_for(q.get('client', [''])[0])})
         else:
             self._json({'error': 'not found'}, 404)
 
     def do_POST(self):
         url = urlparse(self.path)
         try:
-            data = self._body()
+            data = self._body(SDP_MAX + 1024 if url.path.startswith('/rtc/') else 4096)
         except (ValueError, RecursionError):  # JSONDecodeError is a ValueError
             return self._json({'error': 'bad request'}, 400)
         client = str(data.get('client', ''))[:CLIENT_ID_MAX]
@@ -160,6 +214,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json({'seat': SEATS.claim(client, key), 'layout': key})
         elif url.path == '/release':
             self._json({'released': SEATS.release(client)})
+        elif url.path in ('/rtc/offer', '/rtc/answer'):
+            sdp = data.get('sdp')
+            if not isinstance(sdp, str) or not sdp.startswith('v=0') or len(sdp) > SDP_MAX:
+                return self._json({'error': 'bad sdp'}, 400)
+            if url.path == '/rtc/offer':
+                SIGNALS.offer(client, sdp)
+                self._json({'ok': True})
+            elif SIGNALS.answer(client, sdp):
+                self._json({'ok': True})
+            else:
+                self._json({'error': 'no such offer'}, 404)
         else:
             self._json({'error': 'not found'}, 404)
 
