@@ -493,6 +493,117 @@ class PartyEnd(unittest.TestCase):
         self.assertFalse(back.left)
 
 
+class ApplyTime(unittest.TestCase):
+    """Deadlines hold when an operation is APPLIED, even if no background tick ran (Jerry review)."""
+
+    def test_deadlines_enforced_at_apply_time(self):
+        app, party, clock, tokens, people = setup(3)
+        party.open_vote(tokens[0], 'r', seconds=10)
+        clock.advance(10)
+        with self.assertRaises(Refused):                  # no tick: the vote is closed anyway
+            party.vote(tokens[1], 'r', 'a')
+        launch = party.select_game(tokens[0], BOMBER)
+        clock.advance(LAUNCH_TIMEOUT)
+        self.assertFalse(party.game_ready(launch))        # a late ready cannot resurrect it
+        self.assertEqual(party.state, 'lobby')
+        party.drop(tokens[0])
+        clock.advance(HOST_GRACE)
+        app.connect(tokens[0])                            # succession applies before the reconnect
+        self.assertEqual(party.host_id, people[1].id)
+        with self.assertRaises(Refused):
+            party.select_game(tokens[0], BLUFF)
+
+    def test_timer_changes_bump_version(self):
+        _, party, clock, tokens, _ = setup(2)
+        started(party, tokens[0], BLUFF)
+        party.drop(tokens[1])
+        before = party.version
+        clock.advance(SEAT_GRACE)
+        party.tick()                                      # seat disconnected -> away
+        self.assertGreater(party.version, before)
+        party.open_vote(tokens[0], 'r', seconds=10)
+        before = party.version
+        clock.advance(10)
+        party.tick()                                      # vote closes at its deadline
+        self.assertTrue(party.votes['r']['closed'])
+        self.assertGreater(party.version, before)
+        before = party.version
+        party.tick()                                      # nothing due: no spurious bump
+        self.assertEqual(party.version, before)
+
+    def test_table_abandon_counts_from_when_the_last_seat_emptied(self):
+        _, party, clock, tokens, _ = setup(2)
+        started(party, tokens[0], BLUFF)
+        for t in tokens:
+            party.drop(t)
+        for _ in range(int(TABLE_ABANDON // 30) - 1):     # ticks along the way must not reset it
+            clock.advance(30)
+            party.tick()
+        self.assertEqual(party.state, 'in_game')
+        clock.advance(TABLE_ABANDON - clock.t + 1000.0)   # exactly TABLE_ABANDON after the drops
+        party.tick()
+        self.assertEqual(party.state, 'intermission')
+        self.assertEqual(party.events[-1][1], 'session_ended')
+        self.assertEqual(party.events[-1][2]['outcome'], 'abandoned')
+
+    def test_screen_only_party_idles(self):
+        app, _, clock, _, _ = setup(0)
+        tv = app.issue_device()
+        app.connect(tv, kind='screen')                    # a TV alone does not keep a party alive
+        clock.advance(PARTY_IDLE)
+        app.tick()
+        self.assertEqual(app.party.state, 'ended')
+
+    def test_observe_does_not_create_presence(self):
+        app, party, _, tokens, _ = setup(1)
+        visitor = app.issue_device()
+        before = (dict(party.presences), party.version)
+        seen = party.observe(visitor)                     # captive-portal WebView / page open
+        self.assertEqual(seen['players'], 1)
+        self.assertEqual(seen['host'], 'Player 1')
+        self.assertEqual((dict(party.presences), party.version), before)
+        with self.assertRaises(Refused):
+            party.observe('made-up')
+
+    def test_nav_is_keyed_by_party_and_seq(self):
+        """nav_seq restarts in a new party, so a phone must key navigation on (party_id, nav_seq)."""
+        app, party, clock, tokens, _ = setup(2)
+        started(party, tokens[0], BLUFF)
+        old = (party.id, party.nav_seq)
+        party.end_party(tokens[0])
+        app.connect(tokens[0])
+        started(app.party, tokens[0], BLUFF)
+        new = (app.party.id, app.party.nav_seq)
+        self.assertEqual(new[1], old[1])                  # the counter alone would look "already seen"
+        self.assertNotEqual(new, old)
+
+
+class ProfileOwnership(unittest.TestCase):
+    def test_profile_single_live_presence(self):
+        app, party, _, tokens, people = setup(3)
+        profile = party.create_profile(tokens[1])
+        party.leave(tokens[1])
+        extra = app.issue_device()
+        app.profiles[profile]['trusted'].add(app.devices[_hash(extra)])
+        party.claim_profile(extra, profile)               # the profile moves on while phone 2 is gone
+        back = app.connect(tokens[1])                     # A1: the old phone rejoins as a guest
+        self.assertIsNone(back.profile_id)
+        self.assertIn('profile_unlinked', [k for _, k, _, _ in party.events])
+        live = [p for p in party.presences.values() if not p.left and p.profile_id == profile]
+        self.assertEqual(len(live), 1)
+
+    def test_presence_cannot_hold_two_profiles(self):
+        app, party, _, tokens, _ = setup(1)
+        first = party.create_profile(tokens[0])
+        other_phone = app.issue_device()
+        app.connect(other_phone)
+        second = party.create_profile(other_phone)
+        app.profiles[second]['trusted'].add(app.devices[_hash(tokens[0])])
+        with self.assertRaises(Refused):
+            party.claim_profile(tokens[0], second)
+        self.assertEqual(party._by_device(app.devices[_hash(tokens[0])]).profile_id, first)
+
+
 class Fuzz(unittest.TestCase):
     """Random sequences of every operation; invariants after every step."""
 
@@ -525,6 +636,8 @@ class Fuzz(unittest.TestCase):
                 self.assertEqual(s.state == 'occupied', p.connected)        # occupied ⇔ connected
         for r in party.votes.values():
             self.assertLessEqual(set(r['ballots']), r['eligible'])
+        profiles = [p.profile_id for p in party.presences.values() if p.profile_id and not p.left]
+        self.assertEqual(len(profiles), len(set(profiles)))               # one live presence per profile
 
     def test_fuzz(self):
         steps = [5, 29, 30, 59, 60, 61, 300, PARTY_IDLE]

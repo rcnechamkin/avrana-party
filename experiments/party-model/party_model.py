@@ -12,6 +12,7 @@ Shape:
   Presence   — connected / reconnecting (grace) / away / left; kind 'player' or 'screen'
   Seat       — occupied / disconnected (neutral input) / away (reserved); released = gone
 """
+import functools
 import hashlib
 import itertools
 import secrets
@@ -37,7 +38,24 @@ def _hash(token):
 
 
 def _new_id(kind):
-    return f'{kind}-{secrets.token_hex(8)}'     # opaque; never derived from anything
+    return f'{kind}-{secrets.token_hex(16)}'    # 128-bit, opaque; never derived from anything
+
+
+def _timed(fn):
+    """Apply due timers before the operation, as the real service would when a request arrives:
+    a deadline is enforced at the moment something tries to act after it, not only when a
+    background timer happens to run."""
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        if self._in_op:
+            return fn(self, *args, **kwargs)
+        self._in_op = True
+        try:
+            self._run_timers()
+            return fn(self, *args, **kwargs)
+        finally:
+            self._in_op = False
+    return wrapper
 
 
 def _name_key(name):
@@ -168,8 +186,9 @@ class Party:
         self.game = None
         self.launch = None                # {'id', 'manifest', 'started', 'from'} while launching
         self.last_seating = []            # presence_ids in slot order, carried to the next game
-        self.table_empty_since = None
-        self.idle_since = None
+        self.table_empty_since = None     # when the last occupied seat was vacated (event time)
+        self.idle_since = self.clock()    # nobody eligible connected yet: the idle clock runs
+        self._in_op = False
         self.votes = {}                   # round_id -> {'eligible', 'ballots', 'deadline', 'closed'}
         self.events = []                  # (ts, kind, data, provenance)
 
@@ -212,7 +231,27 @@ class Party:
     def _eligible_connected(self):
         return [p for p in self.presences.values() if p.eligible and p.connected]
 
+    def _update_table(self):
+        """Record when the last occupied seat was vacated (event time), or clear it."""
+        if not self.game:
+            return
+        if any(s.state == 'occupied' for s in self.game.seats.values()):
+            self.table_empty_since = None
+        elif self.table_empty_since is None:
+            self.table_empty_since = self._now()
+
     # ---- presence ----------------------------------------------------------------------------
+    @_timed
+    def observe(self, token):
+        """Opening the party page (or a captive-portal WebView loading it) only OBSERVES: it
+        never creates a presence. Only an explicit Join (connect) does (PARTY-PLATFORM §13)."""
+        self.appliance.device_of(token)
+        host = self.presences.get(self.host_id)
+        return {'party_id': self.id, 'state': self.state, 'nav_seq': self.nav_seq,
+                'target': self.nav_target, 'host': host.persona if host else None,
+                'players': sum(1 for p in self.presences.values() if p.eligible and p.connected)}
+
+    @_timed
     def connect(self, token, kind='player'):
         self._alive()
         device_id = self.appliance.device_of(token)
@@ -235,6 +274,10 @@ class Party:
             if p.left:
                 p.left = False
                 self._event('presence_rejoined', presence=p.id)
+                if p.profile_id and any(o is not p and not o.left and o.profile_id == p.profile_id
+                                        for o in self.presences.values()):
+                    p.profile_id = None           # the profile moved on meanwhile: back as a guest
+                    self._event('profile_unlinked', presence=p.id, reason='held by another presence')
             p.conns.append(conn)
             if was_away:
                 p.disconnected_at = None
@@ -247,6 +290,7 @@ class Party:
         self._commit()
         return p
 
+    @_timed
     def drop(self, token, conn=None):
         """One tab/socket closed (sleep, reload, network loss). Default: the newest."""
         p = self._presence_for(token)
@@ -259,17 +303,21 @@ class Party:
             seat = self.game.seats.get(p.id) if self.game else None
             if seat:
                 seat.state, seat.since = 'disconnected', self._now()   # neutral input at once
+                self._update_table()
             if not self._eligible_connected():
                 self.idle_since = self._now()
         self._commit()
 
+    @_timed
     def leave(self, token):
         """Explicit 'Leave party'. Seat released; if host, succession happens at once."""
         p = self._presence_for(token)
         self._depart(p)
 
+    @_timed
     def kick(self, token, presence_id):
-        """Host removes someone from the current party (how far a kick reaches is OPEN)."""
+        """Host removes someone from THIS party and bars that device token from rejoining it.
+        Not a ban: a private tab is a new device (docs: PARTY-PLATFORM.md §7, §13)."""
         self._require_host(token)
         target = self.presences.get(presence_id)
         if target is None or target.id == self.host_id:
@@ -283,6 +331,7 @@ class Party:
             self.game.seats.pop(p.id, None)
             if p.id in self.game.waiting:
                 self.game.waiting.remove(p.id)
+            self._update_table()
         self._event('presence_left', presence=p.id)
         if p.id == self.host_id:
             nxt = self._pick_successor()
@@ -291,6 +340,7 @@ class Party:
             self.idle_since = self._now()
         self._commit()
 
+    @_timed
     def rename(self, token, name):
         """Set a persona. Duplicates get ' 2', ' 3'… so host menus never show two identical names."""
         p = self._presence_for(token)
@@ -308,6 +358,7 @@ class Party:
         return p
 
     # ---- profiles (only what "same profile on two devices" needs) -----------------------------
+    @_timed
     def create_profile(self, token):
         """'Save Player': the guest becomes a saved profile; its records link, not copy."""
         p = self._presence_for(token)
@@ -320,6 +371,7 @@ class Party:
         self._commit()
         return profile_id
 
+    @_timed
     def claim_profile(self, token, profile_id):
         """Pick a saved profile from 'Welcome back'. Only a trusted device may take it over."""
         self._alive()
@@ -332,6 +384,8 @@ class Party:
         mine = self._by_device(device_id)
         if owner is not None and owner is mine:
             return self.connect(token)                   # same phone: just a reconnect/new tab
+        if mine and not mine.left and mine.profile_id and mine.profile_id != profile_id:
+            raise Refused('this presence already plays as another saved profile')
         if owner and mine:
             raise Refused('this device already has another presence in the party')
         if owner is None:
@@ -347,6 +401,7 @@ class Party:
         if seat:
             seat.state, seat.since = 'occupied', self._now()
             seat.game_key = secrets.token_urlsafe(16)    # the old phone's key dies
+            self._update_table()
         self._event('presence_moved_device', presence=owner.id)
         if self.host_id is None:
             self._set_host(owner.id, 'first eligible to connect')
@@ -361,6 +416,7 @@ class Party:
         if presence_id:
             self._system(f'{self.presences[presence_id].persona} is now Host.')
 
+    @_timed
     def transfer_host(self, token, to_presence_id):
         self._require_host(token)
         target = self.presences.get(to_presence_id)
@@ -380,38 +436,51 @@ class Party:
 
     # ---- time ---------------------------------------------------------------------------------------
     def tick(self):
-        """Apply timers. The real service would run this from a scheduler."""
+        """Background timer entry point (the real service runs this from a scheduler). Every
+        public operation also applies due timers first (@_timed), so deadlines hold at apply time."""
+        if self._in_op:
+            return self._run_timers()
+        self._in_op = True
+        try:
+            self._run_timers()
+        finally:
+            self._in_op = False
+
+    def _run_timers(self):
         if self.state == 'ended':
             return
-        now = self._now()
+        now, before, changed = self._now(), self.version, False
         host = self.presences.get(self.host_id)
         if host and not host.connected and now - host.disconnected_at >= HOST_GRACE:
             nxt = self._pick_successor()
             self._set_host(nxt.id if nxt else None, 'previous host timed out')
+            changed = True
         if self.state == 'launching' and now - self.launch['started'] >= LAUNCH_TIMEOUT:
             self.game_failed(self.launch['id'], 'timed out')
         if self.game:
             for pid, seat in list(self.game.seats.items()):
                 if seat.state == 'disconnected' and now - seat.since >= SEAT_GRACE:
                     seat.state, seat.since = 'away', now  # still reserved; the game may autopilot
+                    changed = True
                 elif (seat.state == 'away' and self.game.manifest.get('open_seat')
                       and now - seat.since >= SEAT_RELEASE):
                     del self.game.seats[pid]
                     self._event('seat_released', presence=pid, reason='away too long')
-            occupied = any(s.state == 'occupied' for s in self.game.seats.values())
-            if occupied:
-                self.table_empty_since = None
-            elif self.table_empty_since is None:
-                self.table_empty_since = now
-            elif now - self.table_empty_since >= TABLE_ABANDON:
-                self._end_session('abandoned')
+                    changed = True
+            self._update_table()
+            if self.table_empty_since is not None and now - self.table_empty_since >= TABLE_ABANDON:
+                self._end_session('abandoned')    # TABLE_ABANDON after the last seat was vacated
         for r in self.votes.values():
             if not r['closed'] and now >= r['deadline']:
                 r['closed'] = True
+                changed = True
         if self.idle_since is not None and now - self.idle_since >= PARTY_IDLE:
             self._end_party('idle')
+        if changed and self.version == before:
+            self.version += 1                     # timer-driven changes are observable changes too
 
     # ---- games, launch and navigation --------------------------------------------------------
+    @_timed
     def select_game(self, token, manifest, if_version=None):
         """Host picks a game. Emulated/service games launch first; nav moves only when ready."""
         self._require_host(token, if_version)
@@ -429,6 +498,7 @@ class Party:
             self.game_ready(launch_id)
         return launch_id
 
+    @_timed
     def game_ready(self, launch_id):
         """The launcher reports the game service is up. Deal seats and move everyone there."""
         if self.state != 'launching' or self.launch['id'] != launch_id:
@@ -450,12 +520,14 @@ class Party:
             self.game.seats[pid] = seat
         self.state = 'in_game'
         self.table_empty_since = None
+        self._update_table()                      # all dealt seats may still be reconnecting
         self.nav_seq += 1
         self.nav_target = manifest['id']
         self._event('session_started', session=self.game.id, game=manifest['id'])
         self._commit()
         return True
 
+    @_timed
     def game_failed(self, launch_id, reason):
         """The service could not start (power gate, port busy, timeout). nav never moved."""
         if self.state != 'launching' or self.launch['id'] != launch_id:
@@ -468,6 +540,7 @@ class Party:
         self._commit()
         return True
 
+    @_timed
     def cancel_launch(self, token):
         self._require_host(token)
         if self.state != 'launching':
@@ -479,17 +552,20 @@ class Party:
         self.last_seating = [s.presence_id for s in seats]
         self._event('session_ended', session=self.game.id, outcome=outcome)
         self.game = None
+        self.table_empty_since = None
         self.state = 'intermission'
         self.nav_seq += 1
         self.nav_target = 'home'
         self._commit()
 
+    @_timed
     def end_game(self, token, outcome='completed'):
         self._require_host(token)
         if self.state != 'in_game':
             raise Refused('no game running')
         self._end_session(outcome)
 
+    @_timed
     def game_crashed(self):
         """Reported by the launcher; back home with the seating kept. Retry is the host's call."""
         if self.state == 'in_game':
@@ -505,6 +581,7 @@ class Party:
         if not p.connected:
             seat.since = p.disconnected_at
         self.game.seats[presence_id] = seat              # a refill is always a NEW seat and key
+        self._update_table()
         self._event('seat_joined', session=self.game.id, presence=presence_id, slot=seat.slot)
 
     def _admit_late(self, p):
@@ -523,9 +600,11 @@ class Party:
         seat = self.game.seats.get(p.id)
         if seat:
             seat.state, seat.since = 'occupied', self._now()   # reclaim: same seat, same slot
+            self._update_table()
         elif p.id not in self.game.waiting:
             self._admit_late(p)                         # seatless return = late-joiner rules
 
+    @_timed
     def next_round(self, token):
         self._require_host(token)
         if self.state != 'in_game':
@@ -537,6 +616,7 @@ class Party:
                 self._seat(pid)
         self._commit()
 
+    @_timed
     def promote_spectator(self, token, presence_id):
         """Host moves a spectator toward a seat, within what the game's policy allows."""
         self._require_host(token)
@@ -559,6 +639,7 @@ class Party:
         self._commit()
         return 'seated'
 
+    @_timed
     def remove_seat(self, token, presence_id):
         """Host frees a seat (e.g. someone gone for good). The person becomes a spectator."""
         self._require_host(token)
@@ -567,6 +648,7 @@ class Party:
         self._event('seat_released', presence=presence_id, reason='host')
         self._commit()
 
+    @_timed
     def what_is_my_party_doing(self, token):
         """A phone waking from sleep asks this and navigates accordingly (idempotent)."""
         p = self._presence_for(token)
@@ -583,6 +665,7 @@ class Party:
         return p.conns[-1] if p.conns else None
 
     # ---- voting ------------------------------------------------------------------------------------
+    @_timed
     def open_vote(self, token, round_id, seconds=60, spectators_vote=False):
         self._require_host(token)
         r = self.votes.get(round_id)
@@ -594,6 +677,7 @@ class Party:
                                 'deadline': self._now() + seconds}
         self._commit()
 
+    @_timed
     def vote(self, token, round_id, choice):
         p = self._presence_for(token)
         r = self.votes.get(round_id)
@@ -608,6 +692,7 @@ class Party:
             counts[choice] = counts.get(choice, 0) + 1
         return counts
 
+    @_timed
     def vote_complete(self, round_id):
         """Done at the deadline, or early once every eligible voter still present has voted."""
         r = self.votes[round_id]
@@ -615,6 +700,7 @@ class Party:
         return r['closed'] or set(r['ballots']) >= present
 
     # ---- end -------------------------------------------------------------------------------------------
+    @_timed
     def end_party(self, token):
         self._require_host(token)
         self._end_party('host ended the party')
