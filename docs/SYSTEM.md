@@ -23,7 +23,9 @@ Networking of the Pi: `docs/runbooks/network.md`.
 | main checkout | laptop `~/Projects/avrana-party` | varies (was `experiment/ps1-title-profiles`) | editing; has `node_modules` for Playwright |
 | worktrees | laptop `~/Projects/avrana-party.wt-*` (`wt-platform`, `wt-sim`, `wt-svc`, `wt-fix`) | one branch each | parallel work without switching branches |
 | **production** | Pi `/home/cody/avrana-party` | `main` (tracks `origin/main`) | **live**: nginx site, arcade service code. Deploy = `git pull --ff-only` here. **Never edit or commit here.** Pulling changes live arcade code (a restart applies it; ask first). |
-| dev/test | Pi `~/avrana-lab/avrana-party-docs` | a feature branch (`ps1-emulation` on 2026-09-24) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here. Holds one old stash (a rescued handoff edit already in history; safe to drop) |
+| dev/test | Pi `~/avrana-lab/avrana-party-docs` | a feature branch (`experiment/ps1-title-profiles` since 2026-09-24 night) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here. Holds one old stash (a rescued handoff edit already in history; safe to drop) |
+
+| dev/test worktree | Pi `~/avrana-lab/party-svc` (worktree of the dev/test checkout) | `experiment/party-service` | runs the dev front door on 8190 (`--ps1 ~/avrana-lab/avrana-party-docs/ps1`); `experiments/party-service/dev-data/` holds runtime logs (git-ignored) |
 
 The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch only in practice).
 
@@ -48,9 +50,9 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 | `main` | GitHub + Pi production | **production** | — (only the owner merges into it) |
 | `docs/party-platform` | GitHub | all current docs: roadmap, design, ADRs, findings + evidence, runbooks, this file, `tools/` | not merged |
 | `experiment/party-sim` | GitHub | `experiments/`: party model, viewport geometry, Personal Viewports PoC | not merged |
-| `experiment/party-service` | GitHub (from 2026-09-24) | party service + device identity + dev front door, manifest v0 (branched from `experiment/party-sim` @ `7d4fdfd`, so it lacks the later shared-WebRTC viewport commit) | not merged |
-| `experiment/ps1-title-profiles` | GitHub | PS1 title profiles, token-in-hello, explicit Leave (built on `ps1-emulation`) | not merged |
-| `ps1-emulation` | GitHub + Pi dev/test checkout | PS1 shared-stream work (N4, power-gated) | not merged |
+| `experiment/party-service` | GitHub + Pi worktree `~/avrana-lab/party-svc` | party service + device identity + dev front door, manifest v0, **service-game launcher (PS1) + seat tickets v1** (branched from `experiment/party-sim` @ `7d4fdfd`, so it lacks the later shared-WebRTC viewport commit) | not merged |
+| `experiment/ps1-title-profiles` | GitHub + Pi dev/test checkout | **current PS1 line**: title profiles, token-in-hello, explicit Leave, supervised runs, `--capture`, party mode (seat tickets, return home), `--viewports` (built on `ps1-emulation`) | not merged |
+| `ps1-emulation` | GitHub | older PS1 shared-stream base (superseded by `experiment/ps1-title-profiles`) | not merged |
 | `fix/arcade-ap-interface` | GitHub (from 2026-09-24) | arcade `/stats` path label after the Wi-Fi change (off `main`) | not merged, not deployed |
 | `docs/current-state` | laptop only | an old docs commit **already contained in `main`** | safe to delete (`git branch -d`) |
 
@@ -67,8 +69,8 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 | 45876 | beszel-agent | `telemetry/` |
 | 22 | sshd | system |
 | 8196 (when started) | BLUFF dev server | games fork dev clone |
-| 8198 (when started) | PS1 stream (power-gated) | `ps1/` on the dev/test checkout |
-| 8190 (when started) | dev front door + party service | `experiments/party-service` |
+| 8198 (when started) | PS1 stream: standalone (`ps1/tools/supervised-run.sh`, binds 10.42.0.1) or started by the front door (binds 127.0.0.1 only) | `ps1/` on the dev/test checkout |
+| 8190 (when started) | dev front door + party service; proxies `/ps1/<title>/` to the running PS1 | `experiments/party-service` (Pi worktree `~/avrana-lab/party-svc`) |
 
 ## Runtime-only paths (never in Git)
 

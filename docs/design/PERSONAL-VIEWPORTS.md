@@ -4,7 +4,16 @@ Status: **concept + feasibility analysis (2026-09-24).** Stage A is **partly** d
 of concept (`experiments/viewports/poc/`: crop/seat/orientation logic in headless browsers, synthetic
 canvas source — no H.264 video, no real phones yet). Metadata format is OPEN.
 Geometry test vectors: `experiments/viewports/` (branch `experiment/party-sim`). Code paths under
-`ps1/` are on branch `ps1-emulation` until it is merged.
+`ps1/` are on branch `experiment/ps1-title-profiles`.
+
+**Stage B, partly (2026-09-24):** `stream_ps1.py --viewports split2|quad` issues each slot's crop
+rectangle in its `player` message (`{layout, rect: [x,y,w,h] normalised, aspect}`; spectators get
+none = full view); `ps1/index.html` crops with CSS and offers Full view. On the Pi with 4 simulated
+phones + 1 watcher: every phone showed exactly its quadrant of the one shared H.264 encode; still
+1 video + 1 audio encoder. **Frame-rate criterion not met** (31–47 fps with the arcade co-running).
+Findings: `docs/findings/2026-09-24-ps1-bomberman-party-slice.md`. This is the server-issued
+metadata in its smallest form; the manifest's `personal_viewports` field stays `null` until a real
+split-screen title needs it.
 
 ## The idea
 

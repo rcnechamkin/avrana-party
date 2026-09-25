@@ -31,7 +31,9 @@ measurement, and a proposal is not a decision.
 - `avrana-party.nginx`, `arcade/nginx-site` and the live site must stay byte-identical (`cmp`).
 - **Power measurements:** sample on the Pi and read once at the end — no SSH polling and no parallel
   agent work during one (each SSH session is a CPU burst).
-- PS1/emulator or stream load only with the owner's go-ahead (ROADMAP N4).
+- PS1/emulator runs: bounded and supervised only (`ps1/tools/supervised-run.sh`, or a party-launched
+  session you stop yourself); never unattended. Soak, viewer scaling past 5 or stopping the arcade
+  need the owner (ROADMAP N4).
 - **Never commit or print:** passwords, Wi-Fi keys or home network names, tokens, keys, ROMs, BIOS,
   emulator cores, saves, runtime data. Before every push: inspect the diff, scan for secrets and
   binaries, confirm the branch.

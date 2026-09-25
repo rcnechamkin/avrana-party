@@ -145,6 +145,15 @@ Without any of them a game keeps working exactly as today. With them it joins th
 
 ### 3.1 Seat ticket handshake (v1)
 
+> **As built for PS1 (2026-09-24, experiment):** `experiments/party-service/seat_ticket.py` (branch
+> `experiment/party-service`) and party mode in `ps1/stream_ps1.py` (`experiment/ps1-title-profiles`).
+> Per-launch random key passed to the game in its environment; ticket
+> `v1.<slot>.<exp>.<game>.<HMAC-SHA256[:32]>`, 5-minute expiry, only in the seated phone's own party
+> view, sent in the WebSocket hello; the game assigns exactly that slot and turns first-come off.
+> **Deviations from the text below:** tickets are not single-use (reuse within 5 minutes returns the
+> same seat to the same phone; a leaked ticket could take that seat until it expires), and there is
+> no separate game key — the slot is bound directly. The LAN Games bridge is not built.
+
 - The party issues a **short-lived, single-use ticket** bound to one presence and **one game**
   (an audience `game_id`, so it can't be replayed into another game).
 - The game page sends it as the **first WebSocket message** — never in the URL (nginx logs query

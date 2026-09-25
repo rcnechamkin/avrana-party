@@ -1,6 +1,6 @@
 # Avrana Party — Roadmap
 
-Last updated: 2026-09-24 evening (USB adapter removed: power clean; internal-Wi-Fi AP; foundation experiments). This is the working
+Last updated: 2026-09-24 night (Bomberman playable end to end through Party Home with simulated phones; seat tickets v1; CPU, not power, is the PS1 limit). This is the working
 plan for the next several milestones. If documents disagree: **this file governs sequencing and
 status**, `docs/design/` governs platform design detail, and the newest dated `docs/findings/`
 entry governs measured facts.
@@ -127,30 +127,27 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 ## NOW
 
-### Next action (2026-09-24 evening: USB adapter removed, power clean)
+### Next action (2026-09-24 night: Bomberman through Party Home works with simulated phones)
 
-**Power is no longer blocking.** With the USB Wi-Fi adapter removed (the party AP now runs on the
-Pi's internal radio, eth0 upstream), the same PSU showed **zero** under-voltage through an idle hour,
-SSH bursts, all-core CPU bursts and AP transmit load (one sleeping phone; several active phones
-untested); with the adapter it had dipped 9 times in ~91 minutes (`docs/findings/2026-09-24-no-usb-power-baseline.md`). Network verified:
-`docs/runbooks/network.md` (every topology check passes; one warning, below).
+**Read first:** `docs/findings/2026-09-24-ps1-bomberman-party-slice.md`. Party Home → host picks
+Bomberman → the party starts the emulator → phones follow → each phone is its own seat's controller
+(seat tickets v1) → End game → everyone home: **all of it runs on the Pi** (simulated phones over
+eth0). Power stayed `0x0` with 0 kernel dips through every run. **The limit is CPU:** the always-on
+arcade (~1.7 cores with nobody playing) starves the PS1 emulator (~65–70% speed at 5 viewers).
 
-1. **Owner (10 min, sudo):** make the AP win every boot (raise its priority, turn off the old
-   home-Wi-Fi client profiles — commands in `docs/runbooks/network.md`), reboot once, run
-   `tools/avrana-topology-check`. Fix the Beszel hub's address for `party` (`10.0.0.142`; the agent had no
-   hub connection after the change — `telemetry/README.md`).
-2. **The N2 BLUFF playtest** — ready: `docs/runbooks/bluff-playtest.md`, using the games fork's
-   `playtest-readiness` branch (fixes a reconnect bug that would have broken the sleep/wake and
-   network-drop events, and adds structured lifecycle logs; delivered to the Pi as a worktree), run
-   **truly offline** with `sudo tools/avrana-offline on 2h`. Record the kernel dip count at start and end.
-3. **Owner, when convenient:** the offline phone checklist (iPhone + Android) in
-   `docs/runbooks/network.md`, and the Personal Viewports shared-source test on 2–4 phones
-   (`experiments/viewports/poc/README.md`, laptop only).
-4. **Agents (laptop, experiment branches):** F5 seat tickets + the fork bridge on top of
-   `experiment/party-service` (**owner OK needed first**: it touches the fork's identity path, which
-   the N5 rule keeps untouched until the playtest); a BLUFF browser playtest test in the fork; the accessibility fixes in
-   `docs/design/ACCESSIBILITY.md` once a second game needs the shared helpers. The PS1/stream gate
-   (N4) can move to a **supervised emulation-only stage** with the owner's go-ahead.
+1. **Owner (30 min, sudo once): Bomberman on real phones** — `docs/runbooks/ps1-bomberman-party-test.md`
+   (stop the arcade for the test, 2–4 phones on the party Wi-Fi, record FPS, input feel, sound, seats).
+2. **The N2 BLUFF playtest** — ready: `docs/runbooks/bluff-playtest.md` (unchanged; BLUFF untouched).
+3. **Agents next (ranked):** (a) make "only the active game's runtime runs" real — the party
+   service stops/starts the arcade the way it starts PS1 (needs an owner decision on how a dev
+   process may stop a systemd unit: a polkit rule or a sudoers line for exactly that unit);
+   (b) cut per-viewer stream cost (shared RTP payloading; the audio half is done) so spectators are
+   cheap; (c) Party Home: game start/end system messages, Worms in the flow, a TV-required flag
+   shown in the catalog; (d) the capacity test with `tools/radio-watch` at 4 / 6 / 8 phones;
+   (e) Personal Viewports stage C needs a split-screen PS1 title the owner owns.
+4. **Still open from before:** the owner's topology items (`docs/runbooks/network.md`; the home
+   Wi-Fi profiles now have autoconnect off), the Beszel hub address (`10.0.0.142`), the offline phone
+   checklist.
 
 ### N1. Repository docs are the working source of truth — **DONE (2026-09-22)**
 
@@ -193,10 +190,12 @@ No changes to nginx, dnsmasq/captive portal, NetworkManager/AP, systemd units, t
 Games service or venv, RetroArch/arcade or telemetry without an explicit proposal that
 states the blast radius.
 
-### N4. PS1 on one shared stream — **EXPERIMENT, power-gated (awaiting the owner's go-ahead)**
-Full text on branch `ps1-emulation` (`docs/ROADMAP.md` there); title profiles, the token-in-hello
-and explicit Leave on `experiment/ps1-title-profiles`. The gate: power is clean without the USB
-adapter (2026-09-24), so the next step is a **supervised emulation-only stage** when the owner says so.
+### N4. PS1 on one shared stream — **EXPERIMENT; supervised stage PASSED (2026-09-24); real phones next**
+Code: branch `experiment/ps1-title-profiles` (builds on `ps1-emulation`). 7 bounded supervised runs
+(`ps1/tools/supervised-run.sh`) with up to 5 simulated viewers: `0x0`, 0 kernel dips, clean exits;
+4 phone slots proven independent in a real Bomberman match. Blocker for "feels like a console": CPU
+with the arcade co-running (findings `2026-09-24-ps1-bomberman-party-slice.md`). Still gated on the
+owner: sustained soak, viewer scaling beyond 5, unattended runs.
 
 ### N5. Party platform — **design DONE (2026-09-24); F1–F8 open; build starts after N2**
 
@@ -249,9 +248,9 @@ Things whose absence would force rework later. Keep this list short.
 | F2b | **Single origin, live** (with the fork cutover): one canonical origin (**open**: `10.42.0.1` with `party.local` redirecting is the leading option, `PARTY-PLATFORM.md` §4/§16.1; `party.local` canonical needs Android verification first), `/party/` namespace, PS1 behind nginx, app Host allowlist while the default server keeps answering captive-portal probes; any redirect between the two names only after the offline phone tests | Every runtime reachable under one origin (owner-approved nginx change) |
 | F3 | **Device token:** server-issued, HttpOnly SameSite=Lax cookie, hashed at rest; Origin checks on WebSocket/POST (on the F2a origin first) — **experiment built 2026-09-24** (`identity.py`; iPhone Safari not yet tested) | Survives reload and sleep on iPhone Safari; a client cannot mint one |
 | F4 | **Party service:** one Party per appliance (v0), party socket, versioned snapshot + append-only event log — **skeleton built 2026-09-24** (`service.py` drives the reference model; Server-Sent Events instead of a socket) | A reconnecting phone gets the current party state in one message |
-| F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence reclaim; tickets bound to one game; the fork bridge hands the game a per-(session, participant) game key at `hello` and turns off the "any client token" path; seats are bound where each game binds them | Fabricated tokens cannot take seats; a reload keeps the same seat |
+| F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence reclaim; tickets bound to one game; the fork bridge hands the game a per-(session, participant) game key at `hello` and turns off the "any client token" path; seats are bound where each game binds them — **v1 built for PS1 2026-09-24** (`experiments/party-service/seat_ticket.py` + `ps1/stream_ps1.py` party mode: per-launch key, 5-min HMAC ticket, first-come off; proven on the Pi). **Not yet:** single-use tickets, the LAN Games fork bridge (BLUFF untouched until N2) | Fabricated tokens cannot take seats; a reload keeps the same seat |
 | F6 | **Host authority:** host is a presence; voluntary transfer; grace then succession; no "claim host"; Host ≠ Admin | Host-only actions rejected for others; a sleeping host is succeeded and returns as a player |
-| F7 | **Manifest v0:** derived from the LAN Games registry; static JSON for BLUFF, arcade, PS1 titles — **experiment built 2026-09-24** (`experiments/manifests/`; the party catalog is derived from the registry) | One API lists every runtime with players, TV need and control model |
+| F7 | **Manifest v0:** derived from the LAN Games registry; static JSON for BLUFF, arcade, PS1 titles — **experiment built 2026-09-24** (`experiments/manifests/`; the party catalog is derived from the registry; PS1 titles now have entries and launch through `runtime.start: service`) | One API lists every runtime with players, TV need and control model |
 | F8 | **Event record with provenance** (draft envelope in `docs/design/GAME-INTEGRATION.md` §3.2; provenance taken from the grant, not the game's claim) | Every lifecycle event carries provenance; emulated games can only emit `platform_observed` unless a per-game adapter exists |
 
 Critical path: dev origin (F2a) → device token → party state → presence → seats + host →
