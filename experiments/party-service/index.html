@@ -59,6 +59,10 @@
   </section>
 
   <section id="member" hidden aria-labelledby="me-h">
+    <div id="launch" class="card banner" role="status" hidden>
+      <p id="launch-text" class="status"></p>
+      <p class="row"><button type="button" id="cancel-launch" class="secondary" hidden>Cancel starting</button></p>
+    </div>
     <div id="nav-banner" class="card banner" hidden>
       <p id="nav-text" class="status"></p>
       <a id="nav-go" class="row"><button type="button" id="nav-go-btn">Go</button></a>
@@ -154,6 +158,11 @@ function render(v) {
       $('transfer-form').querySelector('button').disabled = !to.options.length;
       $('end-game').disabled = v.party.state !== 'in_game';
     }
+    const launching = v.party.launching;
+    $('launch').hidden = !launching;
+    if (launching) text($('launch-text'), 'Starting ' + launching.name + '… everyone with a seat goes there when it is ready.');
+    $('cancel-launch').hidden = !(launching && v.me.is_host);
+    $('select-form').querySelector('button').disabled = !!launching;
     follow(v);
   }
   const ol = $('messages'); const have = ol.children.length; const msgs = v.messages || [];
@@ -168,7 +177,8 @@ function follow(v) {
   if (nav.target === 'home' || !nav.href) { banner.hidden = true; return; }
   const key = v.party.id + ':' + nav.seq;
   let followed = null; try { followed = sessionStorage.getItem(FOLLOWED); } catch (e) {}
-  text($('nav-text'), 'The party is playing ' + nav.target + '.');
+  const game = (v.catalog || []).find((g) => g.id === nav.target);
+  text($('nav-text'), 'The party is playing ' + (game ? game.name : nav.target) + '.');
   $('nav-go').href = nav.href; banner.hidden = false;
   if (v.me.seat_slot && followed !== key) {
     try { sessionStorage.setItem(FOLLOWED, key); } catch (e) {}
@@ -180,6 +190,7 @@ $('join-form').addEventListener('submit', (e) => { e.preventDefault(); post('joi
 $('rename-form').addEventListener('submit', (e) => { e.preventDefault(); post('rename', { name: $('rename').value }); });
 $('leave').addEventListener('click', () => post('leave'));
 $('select-form').addEventListener('submit', (e) => { e.preventDefault(); post('host/select', { game: $('game').value, if_version: view.party.version }); });
+$('cancel-launch').addEventListener('click', () => post('host/cancel-launch'));
 $('end-game').addEventListener('click', () => post('host/end-game', { if_version: view.party.version }));
 $('transfer-form').addEventListener('submit', (e) => { e.preventDefault(); post('host/transfer', { to: $('transfer-to').value, if_version: view.party.version }); });
 $('end-party').addEventListener('click', () => { if (confirm('End the party for everyone?')) post('host/end-party'); });

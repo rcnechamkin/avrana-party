@@ -3,7 +3,7 @@
   "id": "ps1-bomberman",
   "name": "Bomberman Party Edition",
   "kind": "emulated",
-  "runtime": {"type": "emulator_profile", "profile": "bomberman", "start": "service", "entry": null},
+  "runtime": {"type": "emulator_profile", "profile": "bomberman", "start": "service", "entry": "/ps1/bomberman/"},
   "players": {"min": 1, "max": 4},
   "screen": "tv_optional",
   "input": {"model": "controller_slots", "slots": 4},

@@ -408,5 +408,148 @@ class FrontDoor(Harness):
         self.assertEqual(self.req('GET', '/games/bluff/', host='evil.example')[0], 421)
 
 
+FAKE_STREAM = r"""
+import http.server, os, sys, time
+args = sys.argv[1:]
+profile, port = args[0], int(args[args.index('--port') + 1])
+here = os.path.dirname(os.path.abspath(__file__))
+mode = open(os.path.join(here, 'mode')).read().strip()
+if mode == 'die':
+    sys.exit(3)
+if mode == 'slow':
+    time.sleep(60)
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        with open(os.path.join(here, 'seen.log'), 'a') as f:
+            f.write(self.path + ' cookie=' + str(self.headers.get('Cookie')) + '\n')
+        body = ('fake ps1 ' + profile).encode()
+        self.send_response(200); self.send_header('Content-Length', str(len(body))); self.end_headers()
+        self.wfile.write(body)
+http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
+"""
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+class ServiceGames(Harness):
+    """A 'service' game (PS1) end to end: launch -> ready -> routed -> stopped, with a stand-in
+    stream_ps1.py so it runs anywhere (the real one needs the Pi)."""
+
+    def setUp(self):
+        super().setUp()
+        self.dir = tempfile.mkdtemp()
+        with open(os.path.join(self.dir, 'stream_ps1.py'), 'w') as f:
+            f.write(FAKE_STREAM)
+        os.makedirs(os.path.join(self.dir, 'titles'))
+        for name, slots in (('bomberman', 4), ('worms', 1)):
+            with open(os.path.join(self.dir, 'titles', name + '.json'), 'w') as f:
+                json.dump({'id': name, 'stream_slots': slots}, f)
+        self.mode('ok')
+        self.rt = front.runtimes.PS1Runtime(self.dir, port=free_port(), ready_timeout=4)
+        self.party.runtimes = [self.rt]
+        self.party.set_catalog(list(self.party.catalog.values()) + front.ps1_catalog(self.dir))
+        self.addCleanup(self.rt.stop)
+
+    def mode(self, m):
+        with open(os.path.join(self.dir, 'mode'), 'w') as f:
+            f.write(m)
+
+    def seen(self):
+        try:
+            with open(os.path.join(self.dir, 'seen.log')) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ''
+
+    def until(self, pred, timeout=8):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            self.party.tick()
+            if pred():
+                return True
+            time.sleep(0.05)
+        self.fail('condition not reached')
+
+    def state(self, token):
+        return self.req('GET', '/party/state', cookie=token)[1]
+
+    def test_catalog_offers_ps1_titles_with_their_seats(self):
+        cat = {c['id']: c for c in front.ps1_catalog(self.dir)}
+        self.assertEqual(cat['ps1-bomberman']['max_players'], 4)
+        self.assertEqual(cat['ps1-bomberman']['href'], '/ps1/bomberman/')
+        self.assertEqual(cat['ps1-worms']['max_players'], 1)
+
+    def test_launch_waits_for_ready_then_routes_only_the_page_and_socket(self):
+        a = self.device()
+        self.join(a)
+        self.assertEqual(self.req('GET', '/ps1/bomberman/')[0], 503)          # not started yet
+        _, v, _, _ = self.req('POST', '/party/host/select', {'game': 'ps1-bomberman'}, cookie=a)
+        self.assertEqual(v['party']['state'], 'launching')                     # nav has NOT moved
+        self.assertEqual(v['party']['launching']['name'], 'Bomberman Party Edition')
+        self.assertEqual(v['party']['nav']['target'], 'home')
+        self.until(lambda: self.state(a)['party']['state'] == 'in_game')
+        v = self.state(a)
+        self.assertEqual(v['party']['nav']['href'], '/ps1/bomberman/')
+        self.assertEqual(v['me']['seat_slot'], 1)
+        status, _, _, raw = self.req('GET', '/ps1/bomberman/', cookie=a)
+        self.assertEqual((status, raw), (200, b'fake ps1 bomberman'))
+        for refused in ('/ps1/bomberman/stats', '/ps1/bomberman/../stats', '/ps1/worms/',
+                        '/ps1/bomberman/ws?t=1', '/ps1/bomberman/ws/x'):
+            self.assertEqual(self.req('GET', refused)[0], 503, refused)
+        self.assertEqual(set(self.seen().splitlines()), {'/ cookie=None'})    # readiness probe + page only
+        self.req('POST', '/party/host/end-game', cookie=a)
+        self.until(lambda: self.rt.running() == (None, False))                 # the emulator is stopped
+        self.assertEqual(self.state(a)['party']['nav']['target'], 'home')
+        self.assertEqual(self.req('GET', '/ps1/bomberman/')[0], 503)
+
+    def test_a_game_that_cannot_start_leaves_nav_home_with_a_reason(self):
+        self.mode('die')
+        a = self.device()
+        self.join(a)
+        self.req('POST', '/party/host/select', {'game': 'ps1-bomberman'}, cookie=a)
+        self.until(lambda: self.state(a)['party']['state'] != 'launching')
+        v = self.state(a)
+        self.assertEqual(v['party']['nav']['target'], 'home')
+        self.assertTrue(any('could not start' in m and 'code 3' in m for m in v['messages']), v['messages'])
+
+    def test_host_can_cancel_a_slow_start_and_the_process_is_stopped(self):
+        self.mode('slow')
+        a, b = self.device(), self.device()
+        self.join(a)
+        self.join(b)
+        self.req('POST', '/party/host/select', {'game': 'ps1-bomberman'}, cookie=a)
+        self.until(lambda: self.rt.running()[0] == 'ps1-bomberman')
+        self.assertEqual(self.req('POST', '/party/host/cancel-launch', cookie=b)[0], 409)   # host only
+        self.assertEqual(self.req('POST', '/party/host/cancel-launch', cookie=a)[0], 200)
+        self.until(lambda: self.rt.running() == (None, False))
+        self.assertNotEqual(self.state(a)['party']['state'], 'launching')
+
+    def test_a_crash_mid_game_brings_everyone_home(self):
+        a = self.device()
+        self.join(a)
+        self.req('POST', '/party/host/select', {'game': 'ps1-bomberman'}, cookie=a)
+        self.until(lambda: self.state(a)['party']['state'] == 'in_game')
+        self.rt.proc.kill()
+        self.until(lambda: self.state(a)['party']['nav']['target'] == 'home')
+        self.assertTrue(any('stopped unexpectedly' in m for m in self.state(a)['messages']))
+
+    def test_switching_games_stops_the_first_emulator(self):
+        a = self.device()
+        self.join(a)
+        self.req('POST', '/party/host/select', {'game': 'ps1-bomberman'}, cookie=a)
+        self.until(lambda: self.state(a)['party']['state'] == 'in_game')
+        first = self.rt.proc
+        self.req('POST', '/party/host/select', {'game': 'ps1-worms'}, cookie=a)
+        self.until(lambda: self.state(a)['party']['nav']['target'] == 'ps1-worms')
+        self.assertIsNotNone(first.poll())                                     # one emulator at a time
+        self.assertEqual(self.req('GET', '/ps1/worms/')[3], b'fake ps1 worms')
+        self.assertEqual(self.req('GET', '/ps1/bomberman/')[0], 503)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

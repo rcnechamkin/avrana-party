@@ -239,6 +239,8 @@ def catalog(manifests):
                     'max_players': slots or m['players']['max'],
                     'late_join': m['late_join'], 'launch': m['runtime']['start'],
                     'href': m['runtime']['entry'],
+                    # what a launcher needs to start a 'service' game (never a command line)
+                    'runtime': {k: m['runtime'][k] for k in ('type', 'profile') if k in m['runtime']},
                     'open_seat': m['late_join'] == 'supported' and m['input']['model'] == 'controller_slots',
                     'screen': m['screen']})
     return out

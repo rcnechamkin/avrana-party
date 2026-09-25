@@ -83,7 +83,7 @@ class Sources(unittest.TestCase):
         ms = {m['id']: m for m in mf.load_builtin()}
         self.assertEqual(set(ms), {'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'})
         self.assertEqual(ms['ps1-worms']['input'], {'model': 'hotseat', 'slots': 1})
-        self.assertIsNone(ms['ps1-bomberman']['runtime']['entry'])   # no nginx location yet: not selectable
+        self.assertEqual(ms['ps1-bomberman']['runtime']['entry'], '/ps1/bomberman/')   # the dev front door routes it
 
     def test_file_name_must_match_id(self):
         with tempfile.TemporaryDirectory() as d:
@@ -117,7 +117,11 @@ class Sources(unittest.TestCase):
         with open(os.path.join(HERE, 'fixtures', 'api-games.sample.json'), encoding='utf-8') as f:
             lan, _ = mf.derive_lan(json.load(f), mf.load_overlay())
         cat = {c['id']: c for c in mf.catalog(mf.load_builtin() + lan)}
-        self.assertNotIn('ps1-bomberman', cat)                  # entry null: not reachable yet
+        self.assertEqual(cat['ps1-bomberman']['launch'], 'service')        # a launch step that reports ready
+        self.assertEqual(cat['ps1-bomberman']['runtime'], {'type': 'emulator_profile', 'profile': 'bomberman'})
+        self.assertEqual(cat['ps1-bomberman']['max_players'], 4)
+        self.assertEqual(cat['bluff']['runtime'], {'type': 'lan_games_module'})
+        self.assertNotIn('ghost', {c['id'] for c in mf.catalog([mf.validate(with_('runtime.entry', None) | {'id': 'ghost'})])})
         self.assertEqual(cat['arcade-gauntlet2']['max_players'], 2)     # seats = controller slots
         self.assertTrue(cat['arcade-gauntlet2']['open_seat'])
         self.assertEqual(cat['bluff']['href'], '/games/bluff/')

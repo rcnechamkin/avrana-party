@@ -3,7 +3,7 @@
   "id": "ps1-worms",
   "name": "Worms Armageddon",
   "kind": "emulated",
-  "runtime": {"type": "emulator_profile", "profile": "worms", "start": "service", "entry": null},
+  "runtime": {"type": "emulator_profile", "profile": "worms", "start": "service", "entry": "/ps1/worms/"},
   "players": {"min": 1, "max": 4},
   "screen": "tv_optional",
   "input": {"model": "hotseat", "slots": 1},

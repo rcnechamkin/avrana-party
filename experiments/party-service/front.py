@@ -4,6 +4,8 @@
     python front.py --port 8190 --upstream 127.0.0.1:8196 --host 10.42.0.1:8190 --host 127.0.0.1:8190
 
   /party/…  → the party service (service.py), in this process
+  /ps1/<title>/ and /ps1/<title>/ws → the PS1 stream the party started (--ps1; runtimes.py), only
+               while that title is running and ready; nothing else there is reachable (no /stats)
   anything else → the games server (`--upstream`, e.g. the Avrana Party Games fork on 8196),
                HTTP proxied and WebSocket upgrades tunnelled, with the Cookie header STRIPPED so
                game servers never see the device token (ADR 0003 §2.4)
@@ -23,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import identity  # noqa: E402
+import runtimes  # noqa: E402
 import service  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'manifests'))
@@ -49,6 +52,14 @@ class Front(BaseHTTPRequestHandler):
             return service.handle(self, self.server.party, self.server.cfg)
         if self.headers.get('Host', '') not in self.server.cfg.hosts:
             return service._send(self, 421, {'error': 'unknown host'})
+        for rt in self.server.party.runtimes:
+            target = rt.route(self.path)
+            if target == 'unavailable':
+                return service._send(self, 503, {'error': 'that game is not running; open Party Home at /party/'})
+            if target:
+                if self.headers.get('Upgrade', '').lower() == 'websocket':
+                    return self._tunnel(target)
+                return self._proxy(target)
         if not self.server.upstream:
             return service._send(self, 404, {'error': 'no games upstream configured'})
         if self.headers.get('Upgrade', '').lower() == 'websocket':
@@ -63,15 +74,15 @@ class Front(BaseHTTPRequestHandler):
         out.append(('X-Forwarded-For', self.client_address[0]))
         return out
 
-    def _proxy(self):
-        host, port = self.server.upstream
+    def _proxy(self, target=None):
+        host, port, path = target or (*self.server.upstream, self.path)
         n = int(self.headers.get('Content-Length') or 0)
         if not 0 <= n <= MAX_UPLOAD:
             return service._send(self, 413, {'error': 'too large'})
         body = self.rfile.read(n) if n else None
         try:
             up = http.client.HTTPConnection(host, port, timeout=30)
-            up.putrequest(self.command, self.path, skip_host=True, skip_accept_encoding=True)
+            up.putrequest(self.command, path, skip_host=True, skip_accept_encoding=True)
             for k, v in self._upstream_headers():
                 up.putheader(k, v)
             if body is not None:
@@ -94,14 +105,14 @@ class Front(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
         up.close()
 
-    def _tunnel(self):
+    def _tunnel(self, target=None):
         """Replay the upgrade request (minus cookies) upstream, then pipe bytes both ways."""
-        host, port = self.server.upstream
+        host, port, path = target or (*self.server.upstream, self.path)
         try:
             up = socket.create_connection((host, port), timeout=10)
         except OSError:
             return service._send(self, 502, {'error': 'games server unreachable'})
-        lines = [f'{self.command} {self.path} HTTP/1.1']
+        lines = [f'{self.command} {path} HTTP/1.1']
         for k, v in self.headers.items():
             if k.lower() not in ('cookie', 'host'):
                 lines.append(f'{k}: {v}')
@@ -154,7 +165,17 @@ def lan_catalog(upstream):
     return manifest.catalog(ms), problems
 
 
-def load_catalog(party, upstream, attempts=60, delay=2.0, sleep=None):
+def ps1_catalog(ps1_dir):
+    """Catalog entries for the PS1 builtin manifests whose title profile exists and agrees."""
+    ms = [m for m in manifest.load_builtin() if m['runtime']['type'] == 'emulator_profile']
+    problems = manifest.cross_check_ps1(ms, os.path.join(ps1_dir, 'titles'))
+    bad = {p.split(':')[0] for p in problems}
+    for line in problems:
+        print('manifest:', line, flush=True)
+    return manifest.catalog([m for m in ms if m['id'] not in bad])
+
+
+def load_catalog(party, upstream, attempts=60, delay=2.0, sleep=None, extra=()):
     """Derive the catalog from the upstream registry, retrying while the games server is still
     starting (it often starts after this front door). Until then the demo catalog is used."""
     import time
@@ -164,7 +185,7 @@ def load_catalog(party, upstream, attempts=60, delay=2.0, sleep=None):
         if catalog:
             for line in problems:
                 print('manifest:', line, flush=True)
-            party.set_catalog(catalog)
+            party.set_catalog(catalog + list(extra))
             print(f'catalog: {len(catalog)} games from the upstream registry', flush=True)
             return True
         sleep(delay)
@@ -187,6 +208,10 @@ def main():
     ap.add_argument('--host', action='append', default=[],
                     help='allowed Host header, e.g. 10.42.0.1:8190 (repeatable); default: 127.0.0.1:PORT, localhost:PORT')
     ap.add_argument('--upstream', help='games server host:port, e.g. 127.0.0.1:8196')
+    ap.add_argument('--ps1', metavar='DIR', help='a PS1 checkout (the ps1/ folder with stream_ps1.py): '
+                    'PS1 titles join the catalog and the party starts/stops their stream')
+    ap.add_argument('--ps1-port', type=int, default=8198, help='localhost port for the PS1 stream')
+    ap.add_argument('--ps1-capture', default='320x240', help='PS1 capture size (see stream_ps1.py)')
     ap.add_argument('--devices', default=os.path.join(HERE, 'dev-data', 'devices.json'),
                     help='device-token hash store (JSON, 0600); "" = memory only')
     ap.add_argument('--reset-devices', action='store_true', help='forget every device, then start')
@@ -201,18 +226,30 @@ def main():
     if args.reset_devices:
         store.reset()
     upstream = None
-    party = service.PartyService(store)
+    rts, extra = [], []
+    if args.ps1:
+        rts.append(runtimes.PS1Runtime(os.path.abspath(args.ps1), port=args.ps1_port, capture=args.ps1_capture,
+                                       log_dir=os.path.join(HERE, 'dev-data', 'runtime-logs')))
+        extra = ps1_catalog(args.ps1)
+        print(f'ps1: {len(extra)} title(s) from {args.ps1}', flush=True)
+    party = service.PartyService(store, runtimes=rts)
+    if extra:
+        party.set_catalog(list(party.catalog.values()) + extra)
     threading.Thread(target=party.run_timer, daemon=True).start()
     if args.upstream:
         h, _, p = args.upstream.rpartition(':')
         upstream = (h, int(p))
-        threading.Thread(target=load_catalog, args=(party, upstream), daemon=True).start()
+        threading.Thread(target=load_catalog, args=(party, upstream), kwargs={'extra': extra},
+                         daemon=True).start()
     srv = FrontServer((args.bind, args.port), party, service.Config(hosts, dev_commands=args.dev_commands), upstream)
     print(f'dev front on :{args.port} for {", ".join(hosts)}; games upstream: {args.upstream or "none"}')
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        for rt in rts:
+            rt.stop()
 
 
 if __name__ == '__main__':

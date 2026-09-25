@@ -13,7 +13,7 @@ Routes (all under /party/; every other path belongs to games — see front.py):
   POST /party/join         {persona?}         explicit Join: the ONLY way a presence is created
   POST /party/leave | /party/rename {name}
   POST /party/host/transfer {to, if_version?} | /party/host/select {game, if_version?}
-  POST /party/host/end-game | /party/host/end-party
+  POST /party/host/end-game | /party/host/end-party | /party/host/cancel-launch
   POST /party/dev/forget-me                 revoke this browser's own device token (reset one phone)
   POST /party/dev/reset-party               end the party for everyone — only with --dev-commands
 Every POST must carry an allowed Origin; every request an allowed Host (DNS-rebinding guard).
@@ -55,8 +55,10 @@ class Stream:
 
 
 class PartyService:
-    def __init__(self, store, clock=time.monotonic, catalog=None, succession='earliest_joined'):
+    def __init__(self, store, clock=time.monotonic, catalog=None, succession='earliest_joined',
+                 runtimes=()):
         self.store = store
+        self.runtimes = list(runtimes)        # launchers for 'service' games (runtimes.py)
         self.clock = clock
         self.app = Appliance(clock, succession=succession)
         self.app.devices = store.by_hash      # one table: the model resolves tokens through it
@@ -120,7 +122,9 @@ class PartyService:
 
     def _party_part(self, party):
         target = party.nav_target
+        launch = party.launch['manifest'] if party.state == 'launching' and party.launch else None
         return {'id': party.id, 'state': party.state, 'version': party.version,
+                'launching': {'id': launch['id'], 'name': launch['name']} if launch else None,
                 'nav': {'seq': party.nav_seq, 'target': target,
                         'href': self.catalog.get(target, {}).get('href')}}
 
@@ -131,6 +135,7 @@ class PartyService:
             before = self._marker()
             try:
                 self._apply(token, name, body)
+                self._reconcile()
             finally:
                 if self._marker() != before:
                     self.changed.notify_all()
@@ -156,13 +161,69 @@ class PartyService:
             game = self.catalog.get(str(body.get('game', '')))
             if game is None:
                 raise Refused('no such game')
-            party.select_game(token, dict(game))
+            if game.get('launch') == 'service' and self._runtime_for(game) is None:
+                raise Refused(f"{game['name']} has no launcher on this appliance")
+            launch_id = party.select_game(token, dict(game))
+            if game.get('launch') == 'service':
+                self._launch(launch_id, game)
+        elif name == 'host/cancel-launch':
+            party.cancel_launch(token)
+            self._reconcile()
         elif name == 'host/end-game':
             party.end_game(token)
         elif name == 'host/end-party':
             party.end_party(token)
         else:
             raise KeyError(name)
+
+    # ---- service games: launch, readiness, stop (runtimes.py does the processes) ---------------
+    def _runtime_for(self, game):
+        return next((r for r in self.runtimes if r.handles(game)), None)
+
+    def _launch(self, launch_id, game):
+        rt = self._runtime_for(game)
+        party_id = self.app.party.id
+
+        def report(ok, reason=None):
+            with self.lock:
+                before = self._marker()
+                party = self.app.party
+                current = (party.id == party_id and party.state == 'launching' and party.launch
+                           and party.launch['id'] == launch_id)
+                if current and ok:
+                    party.game_ready(launch_id)
+                elif current:
+                    party.game_failed(launch_id, reason)
+                elif ok:                              # cancelled or superseded while it started
+                    threading.Thread(target=rt.stop, args=(game['id'],), daemon=True).start()
+                if self._marker() != before:
+                    self.changed.notify_all()
+
+        def run():                                # never under the party lock: stops can take 15 s
+            for other in self.runtimes:           # one emulator at a time
+                if other is not rt:
+                    other.stop()
+            rt.start(game, on_ready=lambda: report(True), on_fail=lambda why: report(False, why))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _reconcile(self):
+        """Runtimes follow the party: stop what the party no longer wants; report crashes."""
+        party = self.app.party
+        want = None
+        if party.state == 'in_game' and party.game:
+            want = party.game.manifest['id']
+        elif party.state == 'launching' and party.launch:
+            want = party.launch['manifest']['id']
+        for rt in self.runtimes:
+            if rt.crashed(want) and party.state == 'in_game':
+                name = party.game.manifest.get('name', want)
+                party._system(f'{name} stopped unexpectedly. Everyone is back at Party Home.')
+                party.game_crashed()              # back home, seating kept; retry is the host's call
+                continue
+            game_id, _ = rt.running()
+            if game_id is not None and game_id != want:
+                threading.Thread(target=rt.stop, args=(game_id,), daemon=True).start()
 
     def set_catalog(self, entries):
         """Replace the selectable games (e.g. once the games server's registry is reachable)."""
@@ -234,6 +295,7 @@ class PartyService:
                     del self.pending[token]
                     self._drop(token, party_id, conn)
             self.app.tick()
+            self._reconcile()
             if self._marker() != before:
                 self.changed.notify_all()
 
