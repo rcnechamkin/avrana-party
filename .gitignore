@@ -6,8 +6,8 @@ __pycache__/
 *.jsonl
 *.tmp
 *.tmp.*
-# ...except committed measurement evidence (small, text, checked secret-free; see docs/findings/)
-!docs/findings/evidence/**
+# Raw measurement evidence stays outside Git; prose summaries and scripts remain tracked.
+docs/findings/evidence/**/*.txt
 *.lpl
 portal-trace.txt
 

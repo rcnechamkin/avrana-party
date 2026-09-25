@@ -1,5 +1,10 @@
 # Power evidence, 2026-09-24 afternoon (boot 0d18f4ca, new PSU, NO USB Wi-Fi adapter)
 
+The raw files listed below are archived outside Git in the laptop's
+`avrana-party-raw-evidence-backup-20260925` directory. Their measurements
+are summarized in the linked finding. Historical commits still contain
+the files; the current branch tip does not track them.
+
 Analysis: `../../2026-09-24-no-usb-power-baseline.md`. JSONL timestamps are UTC (`Z`); logs are PDT.
 
 | File | What |
