@@ -15,6 +15,7 @@ client can never name a key, a device or another player's slot.
 """
 import argparse
 import asyncio
+import collections
 import ctypes
 import errno
 import hashlib
@@ -47,6 +48,7 @@ stream.ap_addresses = lambda: _AP  # stream.summarize() would run `ip` per peer 
 sys.path.insert(0, str(HERE))
 import profiles  # noqa: E402
 GAMES = profiles.stream_slots()
+TITLES = {i: profiles.load(i).get('title') or i for i in GAMES}   # what players see
 
 # Bit order of the client's 14-bit button mask (PS1 digital pad).
 BUTTONS = ('up', 'down', 'left', 'right', 'cross', 'circle', 'square', 'triangle',
@@ -75,6 +77,42 @@ HELLO_TIMEOUT = 5.0   # s a new socket has to send its hello before it is closed
 SEAT_KEY = os.environ.get('AVRANA_SEAT_KEY')
 SEAT_GAME = os.environ.get('AVRANA_SEAT_GAME')
 TICKET_RE = re.compile(r'^v1\.([1-9][0-9]?)\.([0-9]{10})\.([a-z][a-z0-9_-]{0,39})\.([0-9a-f]{32})$')
+
+
+# Latency measurement (docs/findings/*-ps1-latency.md). AVRANA_PS1_MEASURE=1 turns on the costly
+# parts: a 32-bit barcode in every frame (8x8-px blocks, top-left 256x8 px: 24 bits = server
+# wall-clock ms at capture, 8 bits = the input-injection counter), a 5 Hz kernel ping to each phone,
+# and a per-session log. Clock-sync pongs, ack timestamps and the event-loop lag monitor are always
+# on (they cost nothing measurable).
+MEASURE = os.environ.get('AVRANA_PS1_MEASURE') == '1'
+STAMP_BITS, STAMP_BLOCK = 32, 8
+ICMP_RE = re.compile(rb'icmp_seq=(\d+) .*time=([\d.]+) ms')
+
+
+def now_ms():
+    return time.time() * 1000
+
+
+def stamp_i420(data, width, height, value):
+    """Write `value` (32 bits, MSB first) as black/white 8x8 blocks into the top-left of an I420
+    frame held in `data` (bytearray), with neutral chroma under the strip."""
+    row = bytearray()
+    for i in range(STAMP_BITS):
+        row += bytes([235 if value >> (STAMP_BITS - 1 - i) & 1 else 16]) * STAMP_BLOCK
+    for r in range(STAMP_BLOCK):
+        data[r * width:r * width + len(row)] = row
+    cw, grey = width // 2, bytes([128]) * (len(row) // 2)
+    for plane in (width * height, width * height + cw * (height // 2)):
+        for r in range(STAMP_BLOCK // 2):
+            data[plane + r * cw:plane + r * cw + len(grey)] = grey
+
+
+def read_stamp(data, width):
+    """The inverse (tests; the phone decodes the same strip from the decoded video)."""
+    value = 0
+    for i in range(STAMP_BITS):
+        value = value << 1 | (data[(STAMP_BLOCK // 2) * width + i * STAMP_BLOCK + STAMP_BLOCK // 2] > 128)
+    return value
 
 
 # Personal Viewports (experiment): the rectangle of the ONE shared frame each slot's phone shows,
@@ -169,8 +207,8 @@ class X11:
 
 class XTestPad:
     """One controller slot. Only ever touches its own bank of keycodes."""
-    def __init__(self, x11, slot, loop):
-        self.x11, self.loop = x11, loop
+    def __init__(self, x11, slot, loop, on_inject=None):
+        self.x11, self.loop, self.on_inject = x11, loop, on_inject
         self.codes = [x11.keycode(k) for k in BANKS[slot]]
         self.mask = 0            # what the owner wants held
         self.down = 0            # what is actually held in the X server
@@ -188,12 +226,14 @@ class XTestPad:
     def apply(self):
         now = time.monotonic()
         wait = None
+        sent = False
         for bit, code in enumerate(self.codes):
             want, have = self.mask >> bit & 1, self.down >> bit & 1
             if want and not have:
                 self.x11.key(code, True)
                 self.down |= 1 << bit
                 self.pressed_at[bit] = now
+                sent = True
             elif have and not want:
                 left = self.pressed_at[bit] + MIN_HOLD - now
                 if left > 0:
@@ -201,7 +241,10 @@ class XTestPad:
                     continue
                 self.x11.key(code, False)
                 self.down &= ~(1 << bit)
+                sent = True
         self.x11.flush()
+        if sent and self.on_inject:
+            self.on_inject()
         if wait is not None and self.timer is None:
             self.timer = self.loop.call_later(wait, self.expire)
 
@@ -231,6 +274,11 @@ class PS1Stream(stream.Stream):
         super().__init__()
         self.game = game
         self.viewports = viewports
+        self.measure = MEASURE
+        self.inj, self.inj_t = 0, 0.0          # input-injection counter and its server time (ms)
+        self.loop_lag = collections.deque(maxlen=400)   # (monotonic, ms late) of 20 ms sleeps
+        self.latency_log = None
+        self.stamped = None
         self.seat_key = seat_key              # party mode when set: slots only from seat tickets
         self.seat_game = seat_game or f'ps1-{game}'
         self.capture = capture                # the private screen = the encoded video's size
@@ -283,11 +331,13 @@ class PS1Stream(stream.Stream):
             raise RuntimeError('PS1 display did not appear')
         display = (RUN / 'display').read_text().strip()
         self.x11 = X11(display, (RUN / 'xauthority').read_text().strip())
-        self.pads = [XTestPad(self.x11, slot, self.loop) for slot in range(self.players)]
+        self.pads = [XTestPad(self.x11, slot, self.loop, self.injected) for slot in range(self.players)]
         await asyncio.sleep(2)  # let RetroArch map its window before capture starts
         self.pipeline = Gst.parse_launch(
             f'ximagesrc display-name={display} use-damage=false show-pointer=false ! '
             'video/x-raw,framerate=60/1 ! videoconvert ! video/x-raw,format=I420 ! '
+            + ('appsink name=raw emit-signals=true sync=false max-buffers=1 drop=true '
+               'appsrc name=stamped is-live=true format=time do-timestamp=false ! ' if self.measure else '') +
             'v4l2h264enc name=video_encoder extra-controls="controls,video_bitrate=2500000,'
             'h264_i_frame_period=60,repeat_sequence_header=1" ! '
             'video/x-h264,profile=constrained-baseline,level=(string)3.1 ! '
@@ -299,10 +349,97 @@ class PS1Stream(stream.Stream):
             'appsink name=audio_out emit-signals=true sync=false max-buffers=4 drop=true')
         for media in ('video', 'audio'):
             self.pipeline.get_by_name(media + '_out').connect('new-sample', self.distribute, media)
+        self.latency_log = RUN / 'client-stats.jsonl'           # always: one line per viewer per second
+        if self.measure:
+            self.stamped = self.pipeline.get_by_name('stamped')
+            self.pipeline.get_by_name('raw').connect('new-sample', self.stamp_frame)
+            (RUN / 'latency').mkdir(exist_ok=True)
+            self.latency_log = RUN / 'latency' / f"{time.strftime('%Y%m%dT%H%M%S')}-{self.game}.jsonl"
+        self.lag_task = asyncio.create_task(self.watch_loop_lag())
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError('Could not start capture pipeline')
         self.monitor = asyncio.create_task(self.watch())
-        log.info('PS1 %s streaming: %d controller slot(s), display %s', self.game, self.players, display)
+        log.info('PS1 %s streaming: %d controller slot(s), display %s%s', self.game, self.players, display,
+                 f', MEASURING -> {self.latency_log}' if self.measure else '')
+
+    # --- latency instrumentation ------------------------------------------------
+    def injected(self):
+        self.inj += 1
+        self.inj_t = now_ms()
+
+    def stamp_frame(self, sink):
+        """Measure mode, streaming thread: copy the raw frame, write the barcode, feed the encoder."""
+        sample = sink.emit('pull-sample')
+        buf = sample.get_buffer()
+        ok, info = buf.map(Gst.MapFlags.READ)
+        if not ok:
+            return Gst.FlowReturn.OK
+        data = bytearray(info.data)
+        buf.unmap(info)
+        w, h = self.capture
+        stamp_i420(data, w, h, (int(now_ms()) & 0xFFFFFF) << 8 | (self.inj & 0xFF))
+        out = Gst.Buffer.new_wrapped(bytes(data))
+        out.pts, out.dts, out.duration = buf.pts, buf.dts, buf.duration
+        if self.stamped.get_property('caps') is None:
+            self.stamped.set_property('caps', sample.get_caps())
+        self.stamped.emit('push-buffer', out)
+        return Gst.FlowReturn.OK
+
+    async def watch_loop_lag(self):
+        """How late a 20 ms sleep wakes: a direct measure of event-loop stalls (GIL, blocking I/O)."""
+        while True:
+            t = time.monotonic()
+            await asyncio.sleep(0.02)
+            self.loop_lag.append((time.monotonic(), (time.monotonic() - t - 0.02) * 1000))
+
+    def recent_lag(self, seconds=1.0):
+        cut = time.monotonic() - seconds
+        lags = [lag for t, lag in self.loop_lag if t >= cut]
+        return dict(n=len(lags), max=round(max(lags), 1) if lags else None,
+                    over20=sum(1 for lag in lags if lag > 20))
+
+    async def icmp(self, peer, ws):
+        """Measure mode: kernel-level ping to the phone (5 Hz). The phone's OS answers ICMP even
+        when its browser is stalled, so this separates radio/network stalls from browser stalls."""
+        ip = None
+        while ip is None and not ws.closed:
+            await asyncio.sleep(0.5)
+            ip = (peer['server'].get('ice') or {}).get('remote')
+        if ip is None or not re.fullmatch(r'[0-9.]+', str(ip)):
+            return
+        peer['icmp'] = collections.deque(maxlen=100)
+        proc = await asyncio.create_subprocess_exec('ping', '-n', '-O', '-i', '0.2', '-W', '1', str(ip),
+                                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            async for line in proc.stdout:
+                m = ICMP_RE.search(line)
+                if m or b'no answer' in line:
+                    peer['icmp'].append((time.monotonic(), float(m[2]) if m else None))   # None = no answer
+        finally:
+            if proc.returncode is None:
+                proc.terminate()
+
+    def log_client(self, peer, values):
+        """Per viewer per second: the phone's own measurements plus the server's view of the same
+        second (event-loop lag, kernel ping to that phone in measure mode, capture age). The file
+        write happens off the event loop (an SD-card stall must not delay input)."""
+        if not self.latency_log:
+            return
+        cut = time.monotonic() - 1.0
+        pings = [r for t, r in (peer.get('icmp') or ()) if t >= cut]
+        ok = sorted(r for r in pings if r is not None)
+        record = dict(t=round(time.time(), 2), slot=None if peer['slot'] is None else peer['slot'] + 1,
+                      client=values, server=peer['server'],
+                      srv=dict(loop_lag=self.recent_lag(),
+                               icmp=dict(n=len(pings), lost=len(pings) - len(ok), ok=ok),
+                               capture_age_ms=self.age['video'].summary() if 'video' in self.age else None))
+        line, path = json.dumps(record) + '\n', self.latency_log
+
+        def write():
+            if not path.exists() or path.stat().st_size < 20_000_000:
+                with path.open('a') as f:
+                    f.write(line)
+        self.loop.run_in_executor(None, write)
 
     async def watch(self):
         while True:
@@ -470,13 +607,15 @@ class PS1Stream(stream.Stream):
             await ws.send_json(dict(type='player', slot=0 if slot is None else slot + 1,
                                     token=token, game=self.game, slots=self.players,
                                     video=dict(width=self.capture[0], height=self.capture[1]),
-                                    viewport=viewport_for(self.viewports, slot, self.capture)))
+                                    viewport=viewport_for(self.viewports, slot, self.capture),
+                                    title=TITLES.get(self.game, self.game), measure=self.measure))
             reply = await self.promise(rtc, 'create-offer', None)
             offer = reply.get_value('offer').copy()
             await self.promise(rtc, 'set-local-description', offer)
             await ws.send_json(dict(type='offer', sdp=offer.sdp.as_text()))
             log.info('Offer sent to %s (%s)', request.remote, f'player {slot + 1}' if slot is not None else 'spectator')
             stats_task = asyncio.create_task(self.peer_stats(peer, ws))
+            icmp_task = asyncio.create_task(self.icmp(peer, ws)) if self.measure else None
             async for message in ws:
                 if message.type != web.WSMsgType.TEXT:
                     break
@@ -504,8 +643,12 @@ class PS1Stream(stream.Stream):
                     if seq <= last_seq:
                         continue            # stale or replayed
                     last_seq = seq
+                    rx, before = now_ms(), self.inj
                     self.pads[slot].set(b)
-                    await ws.send_json(dict(type='ack', seq=seq))
+                    ack = dict(type='ack', seq=seq, rx=round(rx, 1))    # server times, for the phone's stages
+                    if self.inj != before:
+                        ack.update(id=self.inj & 0xFF, inj=round(self.inj_t, 1))
+                    await ws.send_json(ack)
                 elif kind == 'answer' and not peer['remote']:
                     result, sdp = GstSdp.SDPMessage.new()
                     if not isinstance(data.get('sdp'), str) or \
@@ -531,7 +674,7 @@ class PS1Stream(stream.Stream):
                     await ws.close(code=1000, message=b'Left')
                     break
                 elif kind == 'ping' and isinstance(data.get('id'), int):
-                    await ws.send_json(dict(type='pong', id=data['id']))
+                    await ws.send_json(dict(type='pong', id=data['id'], st=round(now_ms(), 1)))
                 elif kind == 'stats' and isinstance(data.get('s'), dict):
                     peer['client'] = data['s']
                     self.log_client(peer, data['s'])
@@ -540,6 +683,8 @@ class PS1Stream(stream.Stream):
         finally:
             if 'stats_task' in locals():
                 stats_task.cancel()
+            if locals().get('icmp_task'):
+                icmp_task.cancel()
             log.info('Peer %s (%s) gone: close code %s', request.remote,
                      f'player {slot + 1}' if slot is not None else 'spectator', ws.close_code)
             self.peers.pop(ws, None)
@@ -585,8 +730,9 @@ class PS1Stream(stream.Stream):
                         server=p['server'], client=p['client']) for p in self.peers.values()]))
 
     async def cleanup(self, app):
-        if hasattr(self, 'monitor'):
-            self.monitor.cancel()
+        for task in ('monitor', 'lag_task'):
+            if hasattr(self, task):
+                getattr(self, task).cancel()
         for ws in list(self.peers):
             await ws.close()
         if self.pipeline:

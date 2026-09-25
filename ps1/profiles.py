@@ -22,9 +22,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 TITLES = os.path.join(HERE, 'titles')
 ID_RE = re.compile(r'^[a-z][a-z0-9_-]{0,31}$')
-KEYS = {'version', 'id', 'name', 'serial', 'cue', 'retroarch_users', 'stream_slots',
+KEYS = {'version', 'id', 'name', 'title', 'serial', 'cue', 'retroarch_users', 'stream_slots',
         'multitap', 'notes'}
-REQUIRED = KEYS - {'notes', 'serial'}
+REQUIRED = KEYS - {'notes', 'serial', 'title'}
 MULTITAP = ('disabled', 'port 2')          # verified values only
 MAX_USERS = 5                              # mode-xvfb.cfg binds keyboard banks for players 1-5
 MAX_SLOTS = 4                              # stream_ps1.py has 4 key banks (BANKS)
@@ -94,6 +94,8 @@ def load(title_id, titles_dir=TITLES):
     for k in ('name', 'serial', 'notes'):
         if k in p and not isinstance(p[k], str):
             raise ProfileError(f'{title_id}: {k} must be a string')
+    if 'title' in p and not (isinstance(p['title'], str) and 1 <= len(p['title']) <= 40):
+        raise ProfileError(f'{title_id}: title (what players see) must be 1-40 characters')
     return p
 
 
