@@ -120,7 +120,8 @@ class PartyService:
                 'members': [{'presence_id': o.id, 'persona': o.persona, 'kind': o.kind,
                              'is_host': o.id == party.host_id, 'state': o.state(now)}
                             for o in party.presences.values() if not o.left],
-                'catalog': [{'id': g['id'], 'name': g['name'], 'max_players': g['max_players']}
+                'catalog': [{'id': g['id'], 'name': g['name'], 'max_players': g['max_players'],
+                             'screen': g.get('screen')}
                             for g in self.catalog.values()],
                 'messages': [d['text'] for _, kind, d, _ in party.events
                              if kind == 'system_message'][-MESSAGES:],

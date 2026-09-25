@@ -53,7 +53,7 @@ log('outsider (never joined) taps Play:', await play(out));
 await ben.reload();
 log('Ben after reload taps Play:', await play(ben));
 // Clean up: Ana goes home and ends the game.
-await ana.click('#party-bar a');
+await ana.click('#party-bar');
 await ana.waitForURL('**/party/');
 await ana.waitForSelector('#nav-banner:not([hidden])');
 log('host at Party Home gets a banner, not yanked back:', await ana.textContent('#nav-text'));

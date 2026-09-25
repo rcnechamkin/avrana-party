@@ -3,182 +3,295 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0c1d">
 <title>Avrana Party</title>
 <style>
   /* Accessibility defaults (docs/design/ACCESSIBILITY.md): rem-based text that follows the phone's
-     text size, 44 px minimum targets, visible focus, no colour-only cues, reduced motion honoured. */
-  :root { --bg:#fff; --fg:#111; --muted:#555; --line:#ccc; --accent:#0b57d0; --accent-fg:#fff;
-          --warn:#8a4b00; --card:#f4f4f6; color-scheme: light dark; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#121214; --fg:#f2f2f2; --muted:#b8b8c0; --line:#44444c; --accent:#8ab4f8;
-            --accent-fg:#0b0b0e; --warn:#ffb74d; --card:#1d1d22; }
+     text size, 44 px minimum targets, visible focus, no colour-only cues, reduced motion honoured.
+     Consumer copy: never "session", "seat", "runtime", "server" — people, games, playing, watching. */
+  :root { --bg:#0e0c1d; --fg:#f4f2ff; --muted:#b9b3d6; --line:#2e2a4d; --card:#1b1833; --accent:#c7b8ff;
+          --accent-fg:#15132b; --warn:#ffcf70; color-scheme: dark; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f5fb; --fg:#15132b; --muted:#514b6e; --line:#d8d4ea; --card:#fff; --accent:#4b3bb5;
+            --accent-fg:#fff; --warn:#8a4b00; color-scheme: light; }
   }
   @media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--fg); } }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; padding: 1rem max(1rem, env(safe-area-inset-left)); background: var(--bg);
-         color: var(--fg); font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 36rem; margin: 0 auto; }
-  h1 { font-size: 1.6rem; margin: .25rem 0 1rem; }
-  h2 { font-size: 1.15rem; margin: 1.25rem 0 .5rem; }
-  button, input, select { font: inherit; min-height: 44px; border-radius: .5rem; }
-  button { padding: .5rem 1rem; border: 2px solid var(--accent); background: var(--accent);
-           color: var(--accent-fg); cursor: pointer; }
-  button.secondary { background: transparent; color: var(--fg); border-color: var(--line); }
-  button:disabled { opacity: .55; cursor: not-allowed; }
-  input, select { padding: .4rem .6rem; border: 2px solid var(--line); background: var(--bg); color: var(--fg); }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+         padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+                  calc(6rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+  main { max-width: 30rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; margin: .5rem 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1rem; margin: 1.5rem 0 .6rem; color: var(--muted); font-weight: 600; }
+  p { margin: .25rem 0; }
+  button, input { font: inherit; min-height: 48px; border-radius: 14px; }
+  button { padding: .6rem 1.2rem; border: 0; background: var(--accent); color: var(--accent-fg);
+           font-weight: 700; cursor: pointer; }
+  button.quiet { background: transparent; color: var(--fg); border: 1px solid var(--line); font-weight: 600; }
+  button.link { background: none; color: var(--muted); text-decoration: underline; text-underline-offset: 3px;
+                font-weight: 500; padding: .5rem .25rem; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input { width: 100%; padding: .6rem .9rem; border: 2px solid var(--line); background: var(--card); color: var(--fg); }
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: .75rem; padding: 1rem; }
-  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  ul.members { list-style: none; padding: 0; margin: 0; }
-  ul.members li { display: flex; justify-content: space-between; gap: .5rem; padding: .6rem 0;
-                  border-bottom: 1px solid var(--line); }
-  .badge { font-size: .85rem; border: 1px solid currentColor; border-radius: 1rem; padding: 0 .5rem; }
   .muted { color: var(--muted); }
-  .status { font-weight: 600; }
-  .banner { border: 2px solid var(--warn); color: var(--fg); }
-  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 1.1rem; }
+  .stack { display: grid; gap: .75rem; }
+  .wide { width: 100%; }
   .skip { position: absolute; left: -999px; } .skip:focus { left: 1rem; top: 1rem; }
-  @media (prefers-reduced-motion: no-preference) { .card { transition: border-color .2s; } }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* people */
+  ul.people { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .9rem 1rem; }
+  ul.people li { display: grid; justify-items: center; gap: .2rem; width: 4.6rem; text-align: center; }
+  .avatar { width: 3.2rem; height: 3.2rem; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
+            font-size: 1.25rem; color: #15132b; position: relative; }
+  .away .avatar { opacity: .45; }
+  .crown { position: absolute; top: -.55rem; right: -.35rem; font-size: 1rem; }
+  .pname { font-size: .9rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ptag { font-size: .75rem; color: var(--muted); }
+
+  /* games */
+  .games { display: grid; gap: .7rem; }
+  .game { display: flex; align-items: center; gap: .9rem; padding: .9rem 1rem; border-radius: 18px; border: 2px solid var(--line);
+          background: var(--card); color: var(--fg); text-align: left; font-weight: 500; min-height: 64px; width: 100%; }
+  .game[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .game .gicon { width: 2.6rem; height: 2.6rem; border-radius: 12px; display: grid; place-items: center; font-size: 1.35rem;
+                 background: var(--line); flex: none; }
+  .game .gname { font-weight: 700; display: block; }
+  .game .gmeta { font-size: .85rem; color: var(--muted); display: block; }
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; padding: .75rem max(1rem, env(safe-area-inset-right))
+          calc(.75rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+          background: linear-gradient(to top, var(--bg) 70%, transparent); }
+  .dock > * { max-width: 30rem; margin: 0 auto; display: block; }
+
+  /* states */
+  .hero { text-align: center; padding: 1.6rem 1rem; }
+  .hero .big { font-size: 1.35rem; font-weight: 750; margin: .3rem 0; }
+  .spinner { width: 2.4rem; height: 2.4rem; margin: .5rem auto; border-radius: 50%; border: 4px solid var(--line);
+             border-top-color: var(--accent); }
+  @media (prefers-reduced-motion: no-preference) { .spinner { animation: spin 1s linear infinite; }
+    .dots::after { content: '…'; animation: blink 1.4s steps(3) infinite; } }
+  @keyframes spin { to { transform: rotate(1turn); } }
+  @keyframes blink { 50% { opacity: .3; } }
+  .latest { min-height: 1.5rem; color: var(--muted); font-size: .9rem; text-align: center; margin-top: 1rem; }
+  details { margin-top: 1rem; } summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--muted); }
+  ol.activity { margin: .25rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .9rem; }
+  .error { color: var(--warn); font-weight: 600; text-align: center; min-height: 1.5rem; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 </style>
 </head>
 <body>
-<a class="skip" href="#main">Skip to party</a>
+<a class="skip" href="#main">Skip to the party</a>
 <main id="main">
   <h1>Avrana Party</h1>
   <p id="conn" class="muted" role="status">Connecting…</p>
 
-  <section id="observer" class="card" hidden aria-labelledby="obs-h">
-    <h2 id="obs-h">A party is running</h2>
-    <p id="obs-text"></p>
-    <form id="join-form" class="row">
-      <label for="join-name">Your name <span class="muted">(optional)</span></label>
-      <input id="join-name" name="persona" maxlength="16" autocomplete="nickname" inputmode="text">
-      <button type="submit">Join the party</button>
-    </form>
+  <!-- 1. Not in the party yet: one field, one button -->
+  <section id="observer" hidden aria-labelledby="obs-h">
+    <div class="card stack">
+      <h2 id="obs-h" class="sr-only">Join the party</h2>
+      <p id="obs-text" class="big" style="font-size:1.2rem;font-weight:700;margin:0"></p>
+      <form id="join-form" class="stack">
+        <label for="join-name">What should we call you?</label>
+        <input id="join-name" name="persona" maxlength="16" autocomplete="nickname" inputmode="text" placeholder="Your name" enterkeyhint="go">
+        <button type="submit" class="wide">Join the party</button>
+      </form>
+    </div>
   </section>
 
-  <section id="member" hidden aria-labelledby="me-h">
-    <div id="launch" class="card banner" role="status" hidden>
-      <p id="launch-text" class="status"></p>
-      <p class="row"><button type="button" id="cancel-launch" class="secondary" hidden>Cancel starting</button></p>
-    </div>
-    <div id="nav-banner" class="card banner" role="status" hidden>
-      <p id="nav-text" class="status"></p>
-      <p class="row"><button type="button" id="nav-go-btn">Go</button></p>
-    </div>
-    <h2 id="me-h">You</h2>
-    <div class="card">
-      <p><span id="me-name" class="status"></span> <span id="me-role"></span></p>
-      <form id="rename-form" class="row">
-        <label for="rename">Change name</label>
-        <input id="rename" maxlength="16" autocomplete="nickname">
-        <button type="submit" class="secondary">Save name</button>
-      </form>
-      <p class="row"><button type="button" id="leave" class="secondary">Leave party</button></p>
+  <!-- 2. In the party -->
+  <section id="member" hidden aria-labelledby="me-name">
+    <p><strong id="me-name"></strong> <span id="me-role" class="muted"></span></p>
+
+    <div id="launch" class="card hero" role="status" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="launch-text" class="big"></p>
+      <p class="muted">Everyone playing will go there automatically.</p>
+      <button type="button" id="cancel-launch" class="quiet" hidden>Cancel</button>
     </div>
 
-    <h2 id="people-h">People here</h2>
-    <ul id="members" class="members card" aria-labelledby="people-h"></ul>
+    <div id="nav-banner" class="card hero" role="status" hidden>
+      <p id="nav-text" class="big"></p>
+      <button type="button" id="nav-go-btn" class="wide">Join in</button>
+      <button type="button" id="end-game" class="quiet wide" hidden style="margin-top:.6rem">End the game for everyone</button>
+    </div>
+
+    <h2 id="people-h">Players</h2>
+    <ul id="members" class="people" aria-labelledby="people-h"></ul>
 
     <section id="host-tools" hidden aria-labelledby="host-h">
-      <h2 id="host-h">Host controls</h2>
-      <div class="card">
-        <form id="select-form" class="row">
-          <label for="game">Game</label>
-          <select id="game"></select>
-          <button type="submit">Start for everyone</button>
-        </form>
-        <p class="row"><button type="button" id="end-game" class="secondary">End game (everyone home)</button></p>
-        <form id="transfer-form" class="row">
-          <label for="transfer-to">Hand host to</label>
-          <select id="transfer-to"></select>
-          <button type="submit" class="secondary">Hand over</button>
-        </form>
-        <p class="row"><button type="button" id="end-party" class="secondary">End the party</button></p>
-      </div>
+      <h2 id="host-h">Pick a game</h2>
+      <div id="games" class="games" role="group" aria-labelledby="host-h"></div>
     </section>
+    <div id="waiting" class="card hero" hidden>
+      <p class="big"><span id="waiting-text"></span><span class="dots" aria-hidden="true"></span></p>
+      <p class="muted">You'll go to the game automatically.</p>
+    </div>
+
+    <p class="latest" id="latest" aria-live="polite"></p>
+
+    <details>
+      <summary>Name, party options and activity</summary>
+      <div class="stack" style="margin-top:.5rem">
+        <form id="rename-form" class="stack">
+          <label for="rename">Change your name</label>
+          <input id="rename" maxlength="16" autocomplete="nickname" enterkeyhint="done">
+          <button type="submit" class="quiet">Save name</button>
+        </form>
+        <div id="host-extra" class="stack" hidden>
+          <form id="transfer-form" class="stack">
+            <label for="transfer-to">Make someone else the host</label>
+            <select id="transfer-to" style="min-height:48px;border-radius:14px;padding:.5rem;background:var(--card);color:var(--fg);border:2px solid var(--line);font:inherit"></select>
+            <button type="submit" class="quiet">Hand over</button>
+          </form>
+          <button type="button" id="end-party" class="quiet">End the party</button>
+        </div>
+        <button type="button" id="leave" class="quiet">Leave the party</button>
+        <h2 id="msgs-h">Activity</h2>
+        <!-- System messages come from the server only and render as text, never as a player's name. -->
+        <ol id="messages" class="activity" aria-labelledby="msgs-h"></ol>
+      </div>
+    </details>
   </section>
 
-  <h2 id="msgs-h">Party messages</h2>
-  <!-- System messages come from the server only and render as text, never as a player's name. -->
-  <ol id="messages" class="card muted" aria-labelledby="msgs-h" aria-live="polite" aria-relevant="additions"></ol>
-  <p id="error" role="alert" class="status"></p>
+  <p id="error" role="alert" class="error"></p>
 </main>
+
+<div class="dock" id="dock" hidden>
+  <button type="button" id="start-game" class="wide">Start</button>
+</div>
+
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
-let view = null;
+let view = null, picked = null;
 const FOLLOWED = 'avrana-followed-nav';            // per-tab: the (party, seq) we already followed
+const NAME_KEY = 'avrana-name';                    // a convenience only: names never authorize anything
+
+// What people see instead of the machinery's words.
+const FRIENDLY = [
+  [/reserved name/, 'That name is reserved. Please pick another.'],
+  [/name must be/, 'Names can be 1 to 16 characters.'],
+  [/look-alike/, 'Please use letters from one alphabet in your name.'],
+  [/stale request/, 'Things just changed. Have another look and try again.'],
+  [/only the connected host/, 'Only the host can do that.'],
+  [/party has ended/, 'This party has ended.'],
+  [/no launcher|could not start/, 'That game can’t start right now.'],
+  [/cancel it first/, 'A game is already starting.'],
+  [/can only hand host/, 'They need to be here to become the host.'],
+];
+function friendly(msg) { for (const [re, text] of FRIENDLY) if (re.test(msg || '')) return text; return 'That didn’t work. Please try again.'; }
 
 async function post(cmd, body = {}) {
   $('error').textContent = '';
-  const r = await fetch('/party/' + cmd, { method: 'POST', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) { $('error').textContent = data.error || ('Request failed (' + r.status + ')'); return; }
+  let r, data = {};
+  try {
+    r = await fetch('/party/' + cmd, { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    data = await r.json().catch(() => ({}));
+  } catch (e) { $('error').textContent = 'Can’t reach the party. Are you on the Avrana Party Wi-Fi?'; return; }
+  if (!r.ok) { $('error').textContent = friendly(data.error); return; }
   render(data);
 }
 
 function text(el, s) { el.textContent = s; return el; }
+function hue(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+function person(name, id, { host = false, you = false, away = false } = {}) {
+  const li = document.createElement('li'); if (away) li.className = 'away';
+  const av = document.createElement('span'); av.className = 'avatar'; av.setAttribute('aria-hidden', 'true');
+  av.style.background = `hsl(${hue(id)} 70% 72%)`; av.textContent = (name.trim()[0] || '?').toUpperCase();
+  if (host) { const c = document.createElement('span'); c.className = 'crown'; c.textContent = '👑'; av.append(c); }
+  const n = document.createElement('bdi'); n.className = 'pname'; n.textContent = name + (you ? ' (you)' : '');   // names are text only
+  const tags = [host && 'host', away && 'away'].filter(Boolean);
+  li.append(av, n);
+  if (tags.length) { const t = document.createElement('span'); t.className = 'ptag'; t.textContent = tags.join(' · '); li.append(t); }
+  return li;
+}
+function gameMeta(g) {
+  const bits = [g.max_players > 1 ? `Up to ${g.max_players} players` : '1 player at a time'];
+  if (g.screen === 'tv_required') bits.push('needs the TV');
+  return bits.join(' · ');
+}
+function gameIcon(g) { return /ps1|arcade/.test(g.id) ? '🎮' : '🃏'; }
 
 function render(v) {
   view = v;
-  const joined = !!v.me;
+  const joined = !!v.me, state = v.party.state;
+  $('conn').textContent = '';
   $('observer').hidden = joined;
   $('member').hidden = !joined;
   if (!joined) {
     const n = v.players;
-    text($('obs-text'), (v.host ? v.host + ' is host. ' : 'Nobody is host yet. ') +
-         n + (n === 1 ? ' person is' : ' people are') + ' here.');
-  } else {
-    text($('me-name'), v.me.persona);
-    text($('me-role'), v.me.is_host ? '— you are the host' :
-         v.me.spectator ? '— watching (no seat this game)' :
-         v.me.seat_slot ? '— seat ' + v.me.seat_slot : '');
-    const ul = $('members'); ul.replaceChildren();
-    for (const m of v.members) {
-      const li = document.createElement('li');
-      const name = document.createElement('bdi'); name.textContent = m.persona;   // names are text only
-      const tags = document.createElement('span');
-      const words = [];
-      if (m.is_host) words.push('Host');
-      if (m.kind === 'screen') words.push('Screen');
-      if (m.state !== 'connected') words.push(m.state === 'reconnecting' ? 'Reconnecting' : 'Away');
-      for (const w of words) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = w; tags.append(b, ' '); }
-      li.append(name, tags); ul.append(li);
-    }
-    $('host-tools').hidden = !v.me.is_host;
-    if (v.me.is_host) {
-      const game = $('game'); const keep = game.value; game.replaceChildren();
-      for (const g of v.catalog) { const o = new Option(g.name + ' (up to ' + g.max_players + ')', g.id); game.append(o); }
-      if (keep) game.value = keep;
-      const to = $('transfer-to'); to.replaceChildren();
-      for (const m of v.members) if (!m.is_host && m.kind === 'player' && m.state === 'connected') to.append(new Option(m.persona, m.presence_id));
-      $('transfer-form').querySelector('button').disabled = !to.options.length;
-      $('end-game').disabled = v.party.state !== 'in_game';
-    }
-    const launching = v.party.launching;
-    $('launch').hidden = !launching;
-    if (launching) text($('launch-text'), 'Starting ' + launching.name + '… everyone with a seat goes there when it is ready.');
-    $('cancel-launch').hidden = !(launching && v.me.is_host);
-    $('select-form').querySelector('button').disabled = !!launching;
-    follow(v);
+    text($('obs-text'), n ? (n === 1 ? '1 person is here.' : `${n} people are here.`) + (v.host ? ` ${v.host} is hosting.` : '')
+                          : 'Be the first to join. You’ll be the host.');
+    $('dock').hidden = true;
+    return;
   }
-  const ol = $('messages'); const have = ol.children.length; const msgs = v.messages || [];
-  if (msgs.length < have) ol.replaceChildren();
+  const me = v.me, playing = state === 'in_game';
+  text($('me-name'), `Hi, ${me.persona}`);
+  text($('me-role'), me.is_host ? '— you’re the host' : me.spectator ? '— watching this round' : playing && me.seat_slot ? '— playing' : '');
+  const ul = $('members'); ul.replaceChildren();
+  for (const m of v.members) ul.append(person(m.persona, m.presence_id,
+    { host: m.is_host, you: m.presence_id === me.presence_id, away: m.state !== 'connected' }));
+
+  const launching = v.party.launching;
+  $('launch').hidden = !launching;
+  if (launching) text($('launch-text'), `Starting ${launching.name}…`);
+  $('cancel-launch').hidden = !(launching && me.is_host);
+
+  const lobby = !launching && !playing;
+  $('host-tools').hidden = !(me.is_host && lobby);
+  $('waiting').hidden = me.is_host || !lobby;
+  if (!me.is_host && lobby) {
+    const host = v.members.find((m) => m.is_host);
+    text($('waiting-text'), host ? `Waiting for ${host.persona} to pick a game` : 'Waiting for a host');
+  }
+  if (me.is_host) {
+    const box = $('games'); box.replaceChildren();
+    if (!picked || !v.catalog.some((g) => g.id === picked)) picked = v.catalog[0]?.id || null;
+    for (const g of v.catalog) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'game'; b.dataset.game = g.id;
+      b.setAttribute('aria-pressed', String(g.id === picked));
+      const icon = document.createElement('span'); icon.className = 'gicon'; icon.textContent = gameIcon(g); icon.setAttribute('aria-hidden', 'true');
+      const t = document.createElement('span');
+      const nm = document.createElement('span'); nm.className = 'gname'; nm.textContent = g.name;
+      const mt = document.createElement('span'); mt.className = 'gmeta'; mt.textContent = gameMeta(g);
+      t.append(nm, mt); b.append(icon, t);
+      b.addEventListener('click', () => { picked = g.id; render(view); });
+      box.append(b);
+    }
+    const g = v.catalog.find((x) => x.id === picked);
+    $('dock').hidden = !lobby || !g;
+    if (g) text($('start-game'), `Start ${g.name}`);
+  } else $('dock').hidden = true;
+  $('host-extra').hidden = !me.is_host;
+  $('end-game').hidden = !(me.is_host && playing);
+  if (me.is_host) {
+    const to = $('transfer-to'); to.replaceChildren();
+    for (const m of v.members) if (!m.is_host && m.kind === 'player' && m.state === 'connected') to.append(new Option(m.persona, m.presence_id));
+    $('transfer-form').hidden = !to.options.length;
+  }
+  follow(v);
+  const ol = $('messages'); const msgs = v.messages || [];
+  if (msgs.length < ol.children.length) ol.replaceChildren();
   for (const m of msgs.slice(ol.children.length)) { const li = document.createElement('li'); li.textContent = m; ol.append(li); }
+  const last = msgs[msgs.length - 1] || '';
+  if ($('latest').textContent !== last) text($('latest'), last);
 }
 
 function follow(v) {
-  // Synchronized navigation (PARTY-PLATFORM.md §8): seated players follow a NEW transition once;
-  // everyone else — or anyone who came back here on purpose — gets a banner with a Go button.
+  // Synchronized navigation (PARTY-PLATFORM.md §8): players follow a NEW transition once;
+  // everyone else — or anyone who came back here on purpose — gets a banner with a Join in button.
   const nav = v.party.nav, banner = $('nav-banner');
   if (nav.target === 'home' || !nav.href) { banner.hidden = true; return; }
   const key = v.party.id + ':' + nav.seq;
   let followed = null; try { followed = sessionStorage.getItem(FOLLOWED); } catch (e) {}
   const game = (v.catalog || []).find((g) => g.id === nav.target);
-  text($('nav-text'), 'The party is playing ' + (game ? game.name : nav.target) + '.');
+  text($('nav-text'), `${game ? game.name : 'A game'} is on`);
+  text($('nav-go-btn'), v.me.seat_slot ? 'Back to the game' : 'Watch');
   banner.hidden = false;
   if (v.me.seat_slot && followed !== key) {
     try { sessionStorage.setItem(FOLLOWED, key); } catch (e) {}
@@ -186,10 +299,16 @@ function follow(v) {
   }
 }
 
-$('join-form').addEventListener('submit', (e) => { e.preventDefault(); post('join', { persona: $('join-name').value.trim() || undefined }); });
-$('rename-form').addEventListener('submit', (e) => { e.preventDefault(); post('rename', { name: $('rename').value }); });
+try { $('join-name').value = localStorage.getItem(NAME_KEY) || ''; } catch (e) {}
+$('join-form').addEventListener('submit', (e) => {
+  e.preventDefault(); const name = $('join-name').value.trim();
+  try { if (name) localStorage.setItem(NAME_KEY, name); } catch (err) {}
+  post('join', { persona: name || undefined });
+});
+$('rename-form').addEventListener('submit', (e) => { e.preventDefault(); post('rename', { name: $('rename').value });
+  try { localStorage.setItem(NAME_KEY, $('rename').value.trim()); } catch (err) {} });
 $('leave').addEventListener('click', () => post('leave'));
-$('select-form').addEventListener('submit', (e) => { e.preventDefault(); post('host/select', { game: $('game').value, if_version: view.party.version }); });
+$('start-game').addEventListener('click', () => { if (picked) post('host/select', { game: picked, if_version: view.party.version }); });
 $('cancel-launch').addEventListener('click', () => post('host/cancel-launch'));
 $('end-game').addEventListener('click', () => post('host/end-game', { if_version: view.party.version }));
 $('transfer-form').addEventListener('submit', (e) => { e.preventDefault(); post('host/transfer', { to: $('transfer-to').value, if_version: view.party.version }); });
@@ -198,10 +317,11 @@ $('nav-go-btn').addEventListener('click', () => { if (view) location.assign(view
 
 function connect() {
   const es = new EventSource('/party/events');
-  es.addEventListener('state', (e) => { $('conn').textContent = 'Connected'; render(JSON.parse(e.data)); });
+  es.addEventListener('state', (e) => { $('conn').textContent = ''; render(JSON.parse(e.data)); });
   es.onerror = () => { $('conn').textContent = 'Reconnecting…'; };   // EventSource retries by itself
 }
-fetch('/party/state', { credentials: 'same-origin' }).then((r) => r.json()).then(render).finally(connect);
+fetch('/party/state', { credentials: 'same-origin' }).then((r) => r.json()).then(render)
+  .catch(() => { $('conn').textContent = 'Can’t reach the party. Are you on the Avrana Party Wi-Fi?'; }).finally(connect);
 </script>
 </body>
 </html>
