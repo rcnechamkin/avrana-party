@@ -9,6 +9,7 @@
 # Stop it yourself with:  touch <run dir>/stop
 # Results (read once, at the end): $AVRANA_PS1_HOME/evidence/runs/<timestamp>-<title>/
 #   power.jsonl  one line per second      stream.log  the server's output
+#   stats.jsonl  the stream's /stats every 10 s (frames captured, peers, capture age)
 #   summary.txt  verdict, dips, max temp, min clock, cleanup check
 set -u
 HERE=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
@@ -27,7 +28,7 @@ note() { echo "$(date +%T) $*" >> "$OUT/summary.txt"; }
 
 run() {
   local start_dips thr hex temp arm load now reason= n=0 maxt=0 minarm=9999999999
-  start_dips=$(dips)
+  start_dips=$(dips); local t0=$SECONDS
   note "START $GAME max=${MAX}s dips=$start_dips $(vcgencmd get_throttled) $(vcgencmd measure_temp)"
   cd "$HERE" || exit 1
   timeout --signal=TERM --kill-after=20 "$MAX" python3 -X faulthandler stream_ps1.py "$GAME" "$@" \
@@ -40,6 +41,13 @@ run() {
     arm=$(vcgencmd measure_clock arm | cut -d= -f2)
     load=$(cut -d' ' -f1 /proc/loadavg)
     now=$(dips)
+    if [ $((n % 10)) = 0 ]; then   # the stream's own view: frames captured, peers, capture age
+      curl -s -m 2 "127.0.0.1:${PORT:-8198}/stats" | python3 -c 'import json,sys,time
+s=json.load(sys.stdin); a=s["capture_age_ms"]["video"]
+print(json.dumps(dict(ts=time.strftime("%T"), frames=s["video_frames"], uptime=round(s["uptime"],1),
+  players=s["players"], spectators=s["spectators"], age_p50=a.get("p50"), age_p95=a.get("p95"), error=s["error"])))' \
+        >> "$OUT/stats.jsonl" 2>/dev/null
+    fi
     printf '{"t":%d,"ts":"%s","throttled":"%s","temp":%s,"arm_hz":%s,"load1":%s,"dip_lines":%s}\n' \
       "$n" "$(date +%T)" "$hex" "$temp" "$arm" "$load" "$now" >> "$OUT/power.jsonl"
     awk -v t="$temp" -v m="$maxt" 'BEGIN{exit !(t > m)}' && maxt=$temp
@@ -57,7 +65,7 @@ run() {
   sleep 2
   local left
   left=$("$HERE/tools/ps1-pid.sh" >/dev/null 2>&1; echo $?)
-  note "END rc=$rc seconds=$n reason=${reason:-none} dips=$(dips) (start $start_dips) max_temp=$maxt min_arm=$minarm $(vcgencmd get_throttled)"
+  note "END rc=$rc elapsed=$((SECONDS - t0))s samples=$n reason=${reason:-none} dips=$(dips) (start $start_dips) max_temp=$maxt min_arm=$minarm $(vcgencmd get_throttled)"
   note "cleanup: ps1-pid.sh exit $left (1 = no PS1 RetroArch left), leftover processes: $(pgrep -u "$(id -u)" -fc "$PS1_HOME/runtime" || true)"
   [ "$rc" = 124 ] && note "(rc 124 = reached the time limit)"
   note "VERDICT $([ -z "$reason" ] || [ "$reason" = 'operator stop file' ] && echo clean || echo ABORTED)"

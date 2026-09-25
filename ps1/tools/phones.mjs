@@ -10,6 +10,7 @@
 //   sleep 500          pause the script
 //   shot PATH.png      screenshot the decoded <video> of the last phone (a watcher if any)
 //   status             print each phone's role and status line
+//   metrics            print each phone's last-second video stats (fps, loss, jitter, ack RTT)
 //   leave P            player P presses Disconnect (frees the slot at once)
 //   reload I           phone I (0-based, join order) reloads and taps Play (slot-reclaim test)
 //   quit
@@ -64,6 +65,11 @@ while (Date.now() < deadline) {
       else if (cmd === 'sleep') await new Promise(r => setTimeout(r, +a || 1000));
       else if (cmd === 'shot') { await phones.at(-1).page.locator('video').screenshot({ path: a }); log('shot', a); }
       else if (cmd === 'status') for (const p of phones) log(`phone ${p.i}`, p.role, '|', await p.page.textContent('#status'), p.errors.slice(0, 2).join(' '));
+      else if (cmd === 'metrics') for (const p of phones) {
+        const m = JSON.parse(await p.page.textContent('#metrics').catch(() => 'null') || 'null');
+        log(`phone ${p.i}`, p.role, m ? JSON.stringify({ fps: m.video?.fps, decoded: m.video?.decoded, lost: m.video?.pktLostD,
+          jitterMs: m.video?.jitterBufMs, freezes: m.video?.freezes, gapP95: m.present?.gapP95, ackP50: m.ackRtt?.p50 }) : 'no metrics');
+      }
       else if (cmd === 'leave') { const p = bySlot(+a); await p.page.click('#leave'); log(`player ${a} left:`, await p.page.textContent('#status')); p.role = 'left'; }
       else if (cmd === 'reload') { const p = phones[+a]; await p.page.reload(); p.role = await join(p.page, false); log(`phone ${a} reloaded ->`, p.role); }
       else { const ms = +b || 150; await Promise.all(cmd.split('+').map(n => press(bySlot(+n).page, a, ms))); }
