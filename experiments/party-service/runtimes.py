@@ -11,6 +11,7 @@ front door proxies exactly two paths to it (the page and its WebSocket), never /
 import ctypes
 import http.client
 import os
+import queue
 import signal
 import subprocess
 import sys
@@ -43,6 +44,28 @@ class Runtime:
         self.game_id = None
         self.ready = False
         self.stopping = False
+        # Every spawn and stop runs on this one long-lived thread: the kernel's parent-death signal
+        # (PR_SET_PDEATHSIG) fires when the SPAWNING THREAD exits, so spawning from a short-lived
+        # thread would kill the emulator at once. It also serialises start/stop.
+        self.jobs = queue.Queue()
+        threading.Thread(target=self._worker, daemon=True, name=f'runtime-{port}').start()
+
+    def _worker(self):
+        while True:
+            fn, done = self.jobs.get()
+            try:
+                fn()
+            except Exception as e:                 # a failed job must not kill the worker
+                print('runtime:', type(e).__name__, e, flush=True)
+            finally:
+                done.set()
+
+    def _call(self, fn):
+        if threading.current_thread().name == f'runtime-{self.port}':
+            return fn()
+        done = threading.Event()
+        self.jobs.put((fn, done))
+        done.wait()
 
     # subclasses
     def handles(self, game):
@@ -60,9 +83,12 @@ class Runtime:
 
     # lifecycle
     def start(self, game, on_ready, on_fail):
-        """Start `game` in a thread; exactly one of on_ready() / on_fail(reason) is called, unless
-        stop() cancelled it first (then neither)."""
-        self.stop()
+        """Start `game` (stopping any other first); exactly one of on_ready() / on_fail(reason) is
+        called later, unless stop() cancelled it first (then neither). Blocks while stopping."""
+        self._call(lambda: self._start(game, on_ready, on_fail))
+
+    def _start(self, game, on_ready, on_fail):
+        self._stop(None)
         error = None
         with self.lock:
             log = None
@@ -139,6 +165,9 @@ class Runtime:
     def stop(self, only=None):
         """Stop the runtime (blocking, up to STOP_TIMEOUT_S). With `only`, stop it only while it
         still runs that game, so a late stop can never kill the game started after it."""
+        self._call(lambda: self._stop(only))
+
+    def _stop(self, only):
         with self.lock:
             if only is not None and self.game_id != only:
                 return
