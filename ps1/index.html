@@ -11,7 +11,7 @@ body{margin:0;background:#15132b;color:#eee;font-family:system-ui,sans-serif;pad
 header{display:flex;justify-content:space-between;align-items:center;gap:12px}h1{font-size:18px;margin:8px 0}p{font-size:14px;color:#cbc5e0}a{color:#c7b8ff}
 video{display:block;width:100%;max-height:56vh;aspect-ratio:4/3;background:#000;object-fit:contain;margin:10px auto}
 .stage,.controls,.controls *{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-.stage{position:relative}.start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#15132bcc}.start-overlay[hidden]{display:none}.start-overlay button{font-size:20px;padding:16px 28px}
+.stage{position:relative}.stage.cropped{overflow:hidden;margin:10px auto;background:#000}.stage.cropped video{position:absolute;max-height:none;aspect-ratio:auto;margin:0;object-fit:fill}.start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#15132bcc}.start-overlay[hidden]{display:none}.start-overlay button{font-size:20px;padding:16px 28px}
 button{font:inherit;font-weight:700;background:#c7b8ff;color:#15132b;border:0;border-radius:12px;min-height:44px;padding:8px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 button:active,button.held{background:#fff}button:disabled{opacity:.45}
 .controls{display:grid;grid-template-columns:auto 1fr auto;gap:12px;max-width:760px;margin:auto;align-items:center}.controls[hidden]{display:none}
@@ -23,7 +23,7 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}
 <header><h1 id="title">Avrana Party · PS1</h1><span id="role"></span></header>
 <p id="party-bar" hidden><a href="/party/">← Party Home</a></p>
 <p id="status" role="status">Tap Play to take a controller, or Watch to spectate.</p>
-<button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Disconnect</button>
+<button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Disconnect</button> <button id="fullview" aria-pressed="false" hidden>Full view</button>
 <div class="stage">
 <video id="screen" autoplay playsinline muted></video>
 <div class="start-overlay" id="start-overlay"><button id="connect">▶ Play</button><button id="watch">👀 Watch</button></div>
@@ -62,10 +62,19 @@ function sendInput(){if(ws?.readyState!==WebSocket.OPEN||!ready||!mySlot)return;
  const m=mask(),msg={type:'state',b:m,seq:++seq};if(m!==lastMask){lastMask=m;sentAt.set(seq,performance.now());if(sentAt.size>200)sentAt.delete(sentAt.keys().next().value)}
  ws.send(JSON.stringify(msg))}
 function releaseAll(){held.clear();buttons.forEach(b=>b.classList.remove('held'));sendInput()}
+// Personal Viewports (experiment): the server may give this seat a rectangle of the ONE shared
+// frame; show just that part (CSS crop, no extra encode). Full view shows the whole frame.
+let viewport=null,fullView=false;const stage=$('.stage'),fullBtn=$('#fullview');
+function applyView(){const r=viewport&&!fullView?viewport.rect:null;fullBtn.hidden=!viewport;fullBtn.setAttribute('aria-pressed',String(fullView));
+ stage.classList.toggle('cropped',!!r);
+ if(!r){stage.style.width=stage.style.aspectRatio='';Object.assign(video.style,{width:'',height:'',left:'',top:''});return}
+ const [x,y,w,h]=r;stage.style.aspectRatio=String(viewport.aspect);stage.style.width=`min(100%, calc(56vh * ${viewport.aspect}))`;
+ Object.assign(video.style,{width:`${100/w}%`,height:`${100/h}%`,left:`${-x/w*100}%`,top:`${-y/h*100}%`})}
+fullBtn.onclick=()=>{fullView=!fullView;applyView()};
 function disconnect(message='Disconnected. Tap Play to reconnect.'){
  releaseAll();ready=false;mySlot=0;clearInterval(heartbeat);clearInterval(statsTimer);pad.hidden=true;$('#role').textContent='';
  if(ws){ws.onclose=null;ws.close();ws=null}if(pc){pc.close();pc=null}video.srcObject=null;
- connect.disabled=watchBtn.disabled=false;overlay.hidden=false;leave.disabled=true;sound.disabled=true;status.textContent=message;
+ connect.disabled=watchBtn.disabled=false;overlay.hidden=false;leave.disabled=true;sound.disabled=true;status.textContent=message;viewport=null;applyView();
 }
 buttons.forEach(button=>{
  const bit=+button.dataset.bit;
@@ -121,7 +130,7 @@ function start(watching){
   const message=JSON.parse(e.data);
   if(message.type==='ack'){const t=sentAt.get(message.seq);if(t!==undefined){ackRtts.push(performance.now()-t);sentAt.delete(message.seq)}return}
   if(message.type==='pong'){const t=pingAt.get(message.id);if(t!==undefined){pingRtts.push(performance.now()-t);pingAt.delete(message.id)}return}
-  if(message.type==='player'){mySlot=message.slot;game=message.game;if(message.token)store.set(message.token);
+  if(message.type==='player'){mySlot=message.slot;game=message.game;if(message.token)store.set(message.token);viewport=message.viewport||null;applyView();
    $('#title').textContent=`Avrana Party · ${game}`;$('#role').textContent=mySlot?`Player ${mySlot}`:'Spectator';return}
   if(!pc)return;
   if(message.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:message.sdp});for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];await pc.setLocalDescription(await pc.createAnswer());ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription.sdp}))}

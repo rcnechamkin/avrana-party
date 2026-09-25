@@ -11,6 +11,7 @@ devices are created, so nothing can leak into the live arcade RetroArch, and a
 client can never name a key, a device or another player's slot.
 
   stream_ps1.py <worms|bomberman> [--host ADDR ...] [--port 8198] [--capture 320x240]
+                [--viewports split2|quad]
 """
 import argparse
 import asyncio
@@ -74,6 +75,24 @@ HELLO_TIMEOUT = 5.0   # s a new socket has to send its hello before it is closed
 SEAT_KEY = os.environ.get('AVRANA_SEAT_KEY')
 SEAT_GAME = os.environ.get('AVRANA_SEAT_GAME')
 TICKET_RE = re.compile(r'^v1\.([1-9][0-9]?)\.([0-9]{10})\.([a-z][a-z0-9_-]{0,39})\.([0-9a-f]{32})$')
+
+
+# Personal Viewports (experiment): the rectangle of the ONE shared frame each slot's phone shows,
+# normalised [x, y, w, h]. Server-issued in the player message; the phone crops client-side, so
+# the encode stays shared. Spectators and slots beyond the layout get the full frame.
+VIEWPORT_LAYOUTS = {
+    'split2': ((0, 0, 1, .5), (0, .5, 1, .5)),                       # top / bottom halves
+    'quad': ((0, 0, .5, .5), (.5, 0, .5, .5), (0, .5, .5, .5), (.5, .5, .5, .5)),
+}
+
+
+def viewport_for(layout, slot, capture):
+    """The player message's viewport for 0-based `slot`, or None (full view)."""
+    rects = VIEWPORT_LAYOUTS.get(layout) or ()
+    if slot is None or slot >= len(rects):
+        return None
+    x, y, w, h = rects[slot]
+    return dict(layout=layout, rect=[x, y, w, h], aspect=round(w * capture[0] / (h * capture[1]), 4))
 
 
 def verify_ticket(key_hex, ticket, game, max_slot, now=None):
@@ -208,9 +227,10 @@ class XTestPad:
 
 
 class PS1Stream(stream.Stream):
-    def __init__(self, game, capture=(640, 480), seat_key=SEAT_KEY, seat_game=SEAT_GAME):
+    def __init__(self, game, capture=(640, 480), seat_key=SEAT_KEY, seat_game=SEAT_GAME, viewports=None):
         super().__init__()
         self.game = game
+        self.viewports = viewports
         self.seat_key = seat_key              # party mode when set: slots only from seat tickets
         self.seat_game = seat_game or f'ps1-{game}'
         self.capture = capture                # the private screen = the encoded video's size
@@ -449,7 +469,8 @@ class PS1Stream(stream.Stream):
                 raise RuntimeError('Media caps did not reach WebRTC')
             await ws.send_json(dict(type='player', slot=0 if slot is None else slot + 1,
                                     token=token, game=self.game, slots=self.players,
-                                    video=dict(width=self.capture[0], height=self.capture[1])))
+                                    video=dict(width=self.capture[0], height=self.capture[1]),
+                                    viewport=viewport_for(self.viewports, slot, self.capture)))
             reply = await self.promise(rtc, 'create-offer', None)
             offer = reply.get_value('offer').copy()
             await self.promise(rtc, 'set-local-description', offer)
@@ -617,6 +638,8 @@ if __name__ == '__main__':
     parser.add_argument('--capture', type=parse_capture, default=(640, 480), metavar='WxH',
                         help='private screen size to grab and encode (default 640x480; 320x240 = '
                              'the PS1 native size, ~4x cheaper to grab and convert)')
+    parser.add_argument('--viewports', choices=sorted(VIEWPORT_LAYOUTS),
+                        help='experiment: give each slot a crop of the shared frame (Personal Viewports)')
     args = parser.parse_args()
     if not 0 <= args.port <= 65535:
         parser.error(f'--port {args.port} is not a TCP port')
@@ -630,7 +653,7 @@ if __name__ == '__main__':
             why = {errno.EADDRNOTAVAIL: 'not an address of this machine; is the party AP up?',
                    errno.EADDRINUSE: 'port already in use'}.get(e.errno, e.strerror or str(e))
             parser.error(f'cannot bind {host}:{args.port} ({why}); choose addresses with --host')
-    ps1 = PS1Stream(args.game, args.capture)
+    ps1 = PS1Stream(args.game, args.capture, viewports=args.viewports)
     app = web.Application(client_max_size=4096)
     app.router.add_get('/', lambda request: web.FileResponse(HERE / 'index.html'))
     app.router.add_get('/ws', ps1.websocket)

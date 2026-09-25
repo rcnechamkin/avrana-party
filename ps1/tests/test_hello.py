@@ -120,5 +120,15 @@ class Capture(unittest.TestCase):
                 m.parse_capture(bad)
 
 
+class Viewports(unittest.TestCase):
+    def test_each_slot_gets_its_own_crop_and_spectators_the_full_frame(self):
+        q = [m.viewport_for('quad', i, (320, 240)) for i in range(4)]
+        self.assertEqual([v['rect'] for v in q], [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]])
+        self.assertEqual(q[0]['aspect'], round(4 / 3, 4))                 # a quadrant keeps 4:3
+        self.assertEqual(m.viewport_for('split2', 1, (320, 240))['aspect'], round(8 / 3, 4))
+        self.assertIsNone(m.viewport_for('quad', None, (320, 240)))       # spectator: full view
+        self.assertIsNone(m.viewport_for('split2', 2, (320, 240)))        # beyond the layout
+        self.assertIsNone(m.viewport_for(None, 0, (320, 240)))            # viewports off (default)
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)
