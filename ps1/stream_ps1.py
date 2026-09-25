@@ -252,7 +252,7 @@ class PS1Stream(stream.Stream):
             'appsink name=video_out emit-signals=true sync=false max-buffers=2 drop=true '
             f'pulsesrc server=unix:{RUN}/pulse/native device=avrana_ps1.monitor ! '
             'audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! '
-            'opusenc bitrate=64000 frame-size=10 ! '
+            'opusenc bitrate=64000 frame-size=20 ! '  # 20 ms: half the packets per viewer
             'appsink name=audio_out emit-signals=true sync=false max-buffers=4 drop=true')
         for media in ('video', 'audio'):
             self.pipeline.get_by_name(media + '_out').connect('new-sample', self.distribute, media)
