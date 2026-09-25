@@ -21,20 +21,22 @@ cd ~/avrana-lab/avrana-party-docs && git fetch -q && git merge --ff-only origin/
 cd ~/avrana-lab/party-svc && git fetch -q && git merge --ff-only origin/experiment/party-service
 sudo systemctl stop avranaparty-arcade        # frees ~1.7 cores; WITHOUT this Bomberman runs at ~65-70% speed
 cd ~/avrana-lab/party-svc/experiments/party-service
-AVRANA_PS1_SHOW_FPS=1 timeout 2h python3 front.py --port 8190 --host 10.42.0.1:8190 \
+AVRANA_PS1_MEASURE=1 AVRANA_PS1_SHOW_FPS=1 timeout 2h python3 front.py --port 8190 --host 10.42.0.1:8190 \
   --ps1 /home/cody/avrana-lab/avrana-party-docs/ps1 --devices ""
 ```
 
-Leave that terminal open (Ctrl+C ends the party and stops the emulator). `AVRANA_PS1_SHOW_FPS=1`
+Leave that terminal open (Ctrl+C ends the party and stops the emulator). `AVRANA_PS1_MEASURE=1`
+logs every latency stage (a small barcode appears in the picture's top-left corner; that is the
+measurement, not a glitch). `AVRANA_PS1_SHOW_FPS=1`
 prints RetroArch's real frame rate in the corner of the picture: **60 = full speed**.
 
 ## 2. Phones (2–4 people)
 
-1. Join the **Avrana Party** Wi-Fi, open **`http://10.42.0.1:8190/party/`**, type a name, *Join*.
+1. Join the **Avrana Party** Wi-Fi, open **`http://10.42.0.1:8190/party/`**, type a name, *Join the party*.
    The first to join is the host. (Names like "Host" or "System" are refused on purpose.)
-2. Host: *Game* → **Bomberman Party Edition** → *Start for everyone*. Party Home says "Starting…";
+2. Host: tap the **Bomberman Party Edition** card → *Start Bomberman Party Edition*. Party Home says "Starting…";
    after ~5 s every seated phone opens the game by itself.
-3. Everyone taps **▶ Play**, then **Enable sound**. The badge says *Player N* — it should match the
+3. Everyone taps **Play** (sound comes on with it; if not, tap the 🔇 speaker). The badge says *Player N* — it should match the
    seat Party Home showed.
 4. Player 1 drives the menus: Start (skip the intro) → Start at the title → **Down** to BATTLE GAME →
    **✕** (Start does not confirm menus) → Battle Royal ✕ → Beginner ✕ → Single Match ✕ → rules ✕ →
@@ -42,7 +44,29 @@ prints RetroArch's real frame rate in the corner of the picture: **60 = full spe
    Presses during screen fades are ignored; press again.
 5. Play one full match. Then try: lock one phone for 30 s and unlock it (tap Play again: same player?);
    a late fifth phone joins the party (it gets an open seat or watches).
-6. Host: tap **← Party Home**, then *End game (everyone home)*. Every phone should land on Party Home.
+6. Host: tap **‹** (top-left of the game), then *End the game for everyone*. Every phone should land on Party Home.
+   (Everything else a player might need — sound, giving up the controller, Party Home — is in the **⋯** menu.)
+
+## 2b. Latency A/B: is the AP's power save the cause of the stalls? (20 min, sudo)
+
+The first playtest's stalls (0.3–2.2 s, `docs/findings/2026-09-24-ps1-latency.md`) hit TCP and UDP
+together, pointing at the Wi-Fi link; the AP radio reports `Power save: on`.
+
+1. Play **5 minutes** as-is (one phone is enough; keep it awake and in hand). Note the start and end time.
+2. On the Pi, **temporarily** turn the radio's power save off (reverts at the next reboot):
+   `sudo iw dev wlan0 set power_save off` — check with `/usr/sbin/iw dev wlan0 get power_save`.
+3. Play **5 more minutes** the same way. Note the times.
+4. Compare the two halves (read-only, on the Pi):
+   ```bash
+   L=$(ls -t ~/avrana-lab/ps1/runtime/latency/*.jsonl | head -1)
+   python3 ~/avrana-lab/avrana-party-docs/ps1/tools/latency-report.py $L --since HH:MM --until HH:MM
+   ```
+   Look at: WebSocket round trip p99/max, `gap_max` p95, spike seconds and how they are classified
+   (network / server / browser). If the second half is clearly better, make it permanent with
+   `sudo nmcli connection modify "Avrana Party Internal" 802-11-wireless.powersave 2` (a network
+   setting: your call), then reconnect the AP.
+5. Optional: open the game page with `#diag` at the end of its address to see the live numbers on
+   the phone (A touch→sent, B uplink, C inject, E capture→shown, D touch→first frame after the press).
 
 ## 3. Record
 

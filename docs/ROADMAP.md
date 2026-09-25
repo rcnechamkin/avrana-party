@@ -1,6 +1,6 @@
 # Avrana Party — Roadmap
 
-Last updated: 2026-09-24 night (Bomberman playable end to end through Party Home with simulated phones; seat tickets v1; CPU, not power, is the PS1 limit). This is the working
+Last updated: 2026-09-24 late night (first real-phone Bomberman playtest; latency instrumentation; consumer PS1 page and Party Home; communication design). This is the working
 plan for the next several milestones. If documents disagree: **this file governs sequencing and
 status**, `docs/design/` governs platform design detail, and the newest dated `docs/findings/`
 entry governs measured facts.
@@ -127,27 +127,35 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 ## NOW
 
-### Next action (2026-09-24 night: Bomberman through Party Home works with simulated phones)
+### Next action (2026-09-24 late night: after the first real-phone Bomberman playtest)
 
-**Read first:** `docs/findings/2026-09-24-ps1-bomberman-party-slice.md`. Party Home → host picks
-Bomberman → the party starts the emulator → phones follow → each phone is its own seat's controller
-(seat tickets v1) → End game → everyone home: **all of it runs on the Pi** (simulated phones over
-eth0). Power stayed `0x0` with 0 kernel dips through every run. **The limit is CPU:** the always-on
-arcade (~1.7 cores with nobody playing) starves the PS1 emulator (~65–70% speed at 5 viewers).
+The owner's playtest worked end to end (Party Home → Bomberman → phone → video + controls, ~60 fps
+with the arcade stopped, power clean). Three problems came out of it; the state after this sprint:
 
-1. **Owner (30 min, sudo once): Bomberman on real phones** — `docs/runbooks/ps1-bomberman-party-test.md`
-   (stop the arcade for the test, 2–4 phones on the party Wi-Fi, record FPS, input feel, sound, seats).
-2. **The N2 BLUFF playtest** — ready: `docs/runbooks/bluff-playtest.md` (unchanged; BLUFF untouched).
-3. **Agents next (ranked):** (a) make "only the active game's runtime runs" real — the party
-   service stops/starts the arcade the way it starts PS1 (needs an owner decision on how a dev
-   process may stop a systemd unit: a polkit rule or a sudoers line for exactly that unit);
-   (b) cut per-viewer stream cost (shared RTP payloading; the audio half is done) so spectators are
-   cheap; (c) Party Home: game start/end system messages, Worms in the flow, a TV-required flag
-   shown in the catalog; (d) the capacity test with `tools/radio-watch` at 4 / 6 / 8 phones;
-   (e) Personal Viewports stage C needs a split-screen PS1 title the owner owns.
-4. **Still open from before:** the owner's topology items (`docs/runbooks/network.md`; the home
-   Wi-Fi profiles now have autoconnect off), the Beszel hub address (`10.0.0.142`), the offline phone
-   checklist.
+- **Latency/jitter — the top priority.** Typical path fast (6 ms input round trip), but stalls of
+  0.3–2.2 s in ~16% of seconds, hitting TCP and UDP together → Wi-Fi link or phone, not the Pi
+  (wired baseline: capture→shown p99 32 ms, event loop ≤ 10 ms late). Prime suspect: the AP radio's
+  **power save is on**. A full stage-by-stage measurement system now exists (measure mode +
+  `ps1/tools/latency-report.py`). Findings: `docs/findings/2026-09-24-ps1-latency.md`.
+- **PS1 phone UX** — redesigned (handheld layout, nothing over the picture, menu for secondary
+  actions, quiet auto-reconnect); layout tests in Chromium + WebKit at iPhone sizes. Real iPhone
+  feel not yet checked.
+- **Party Home / joining** — redesigned as a consumer path (name → Join → players → the host picks a
+  game card → Start); no machinery words (tested).
+- **Communication** — designed, not built: `docs/design/COMMUNICATION.md`; HUD prototype on
+  `experiment/party-service`.
+
+1. **Owner (30 min, sudo): real-phone test + latency A/B** — `docs/runbooks/ps1-bomberman-party-test.md`
+   (§2b: 5 min with the radio's power save on, 5 min off, then `latency-report.py`). This decides the
+   next latency step.
+2. **Agents next (ranked):** (a) act on the A/B result (power-save off permanently, or chase the next
+   suspect: keyframe interval, bitrate at 320×240, iOS power management); (b) Party chat v1 (layers
+   1–3 of COMMUNICATION.md: incremental SSE event, HUD + feed) on Party Home and the PS1 page;
+   (c) "only the active game's emulator runs" — the party stops the arcade (needs the owner's decision
+   on a narrow service-control mechanism; `docs/findings/2026-09-24-ps1-bomberman-party-slice.md`);
+   (d) cut per-viewer stream cost; (e) the capacity test with `tools/radio-watch`.
+3. **Still open from before:** the N2 BLUFF playtest; the Beszel hub address (`10.0.0.142`); the
+   offline phone checklist; `AVRANA-EXPERIENCE.md` (the owner's product contract) to be added to the repo.
 
 ### N1. Repository docs are the working source of truth — **DONE (2026-09-22)**
 

@@ -17,6 +17,8 @@ Read in this order:
    - `GAME-INSTALLATION.md` — open installation without a store; trust tiers
    - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
      the hub/BLUFF audit
+   - `COMMUNICATION.md` — chat as a platform capability: transport, policy, presentation and
+     game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
 
 Nothing described here is built unless a document says so. Built as **experiments** (not live):
 the party model and viewport PoC (`experiment/party-sim`), the party service, device identity, dev
