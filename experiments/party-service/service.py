@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'party-model'))
 from party_model import Appliance, Refused  # noqa: E402
 
 import identity  # noqa: E402
+import seat_ticket  # noqa: E402
 
 JOIN_BIND_S = 15.0        # a Join's connection must be claimed by an event stream within this
 KEEPALIVE_S = 10.0        # SSE comment interval: also how fast a vanished phone is noticed
@@ -59,6 +60,7 @@ class PartyService:
                  runtimes=()):
         self.store = store
         self.runtimes = list(runtimes)        # launchers for 'service' games (runtimes.py)
+        self.seat_keys = {}                   # game id -> this launch's seat-ticket key (F5 v1)
         self.clock = clock
         self.app = Appliance(clock, succession=succession)
         self.app.devices = store.by_hash      # one table: the model resolves tokens through it
@@ -110,6 +112,10 @@ class PartyService:
                 'party': self._party_part(party),
                 'me': {'presence_id': p.id, 'persona': p.persona, 'is_host': p.id == party.host_id,
                        'seat_slot': seat.slot if seat else None,
+                       # only this phone's own view carries its ticket; the game trusts nothing else
+                       'seat_ticket': seat_ticket.mint(self.seat_keys[party.game.manifest['id']],
+                                                       party.game.manifest['id'], seat.slot)
+                       if seat and party.game.manifest['id'] in self.seat_keys else None,
                        'spectator': party.state == 'in_game' and seat is None},
                 'members': [{'presence_id': o.id, 'persona': o.persona, 'kind': o.kind,
                              'is_host': o.id == party.host_id, 'state': o.state(now)}
@@ -183,6 +189,7 @@ class PartyService:
     def _launch(self, launch_id, game):
         rt = self._runtime_for(game)
         party_id = self.app.party.id
+        key = self.seat_keys[game['id']] = seat_ticket.new_key()   # fresh per launch
 
         def report(ok, reason=None):
             with self.lock:
@@ -203,7 +210,8 @@ class PartyService:
             for other in self.runtimes:           # one emulator at a time
                 if other is not rt:
                     other.stop()
-            rt.start(game, on_ready=lambda: report(True), on_fail=lambda why: report(False, why))
+            rt.start(game, on_ready=lambda: report(True), on_fail=lambda why: report(False, why),
+                     env={'AVRANA_SEAT_KEY': key, 'AVRANA_SEAT_GAME': game['id']})
 
         threading.Thread(target=run, daemon=True).start()
 

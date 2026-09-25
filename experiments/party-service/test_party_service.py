@@ -422,7 +422,8 @@ class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         with open(os.path.join(here, 'seen.log'), 'a') as f:
-            f.write(self.path + ' cookie=' + str(self.headers.get('Cookie')) + '\n')
+            f.write(self.path + ' cookie=' + str(self.headers.get('Cookie'))
+                    + ' key=' + ('yes' if os.environ.get('AVRANA_SEAT_KEY') else 'no') + '\n')
         body = ('fake ps1 ' + profile).encode()
         self.send_response(200); self.send_header('Content-Length', str(len(body))); self.end_headers()
         self.wfile.write(body)
@@ -501,7 +502,7 @@ class ServiceGames(Harness):
         for refused in ('/ps1/bomberman/stats', '/ps1/bomberman/../stats', '/ps1/worms/',
                         '/ps1/bomberman/ws?t=1', '/ps1/bomberman/ws/x'):
             self.assertEqual(self.req('GET', refused)[0], 503, refused)
-        self.assertEqual(set(self.seen().splitlines()), {'/ cookie=None'})    # readiness probe + page only
+        self.assertEqual(set(self.seen().splitlines()), {'/ cookie=None key=yes'})    # readiness probe + page only
         self.req('POST', '/party/host/end-game', cookie=a)
         self.until(lambda: self.rt.running() == (None, False))                 # the emulator is stopped
         self.assertEqual(self.state(a)['party']['nav']['target'], 'home')
@@ -549,6 +550,43 @@ class ServiceGames(Harness):
         self.assertIsNotNone(first.poll())                                     # one emulator at a time
         self.assertEqual(self.req('GET', '/ps1/worms/')[3], b'fake ps1 worms')
         self.assertEqual(self.req('GET', '/ps1/bomberman/')[0], 503)
+
+    def test_only_seated_phones_get_a_ticket_and_the_key_stays_out_of_argv(self):
+        import seat_ticket as st
+        a, b = self.device(), self.device()
+        self.join(a)
+        self.req('POST', '/party/host/select', {'game': 'ps1-worms'}, cookie=a)     # hot-seat: ONE seat
+        self.until(lambda: self.state(a)['party']['state'] == 'in_game')
+        self.join(b)                                                                # late: spectator
+        key = self.party.seat_keys['ps1-worms']
+        mine, theirs = self.state(a)['me'], self.state(b)['me']
+        self.assertEqual(st.verify(key, mine['seat_ticket'], 'ps1-worms', 1), 1)
+        self.assertIsNone(theirs['seat_ticket'])
+        self.assertIsNone(self.req('GET', '/party/state')[1]['me'])                 # observers: no view of seats
+        self.assertNotIn(key, ' '.join(self.rt.command(self.party.catalog['ps1-worms'])))
+        self.assertIn('key=yes', self.seen())                                        # it arrived in the environment
+
+class SeatTickets(unittest.TestCase):
+    def test_round_trip_and_every_refusal(self):
+        import seat_ticket as st
+        key, other = st.new_key(), st.new_key()
+        NOW = 1_900_000_000
+        t = st.mint(key, 'ps1-bomberman', 2, now=NOW)
+        self.assertEqual(st.verify(key, t, 'ps1-bomberman', 4, now=NOW), 2)
+        self.assertIsNone(st.verify(other, t, 'ps1-bomberman', 4, now=NOW))        # another launch
+        self.assertIsNone(st.verify(key, t, 'ps1-worms', 4, now=NOW))              # another game
+        self.assertIsNone(st.verify(key, t, 'ps1-bomberman', 1, now=NOW))          # slot out of range
+        self.assertIsNone(st.verify(key, t, 'ps1-bomberman', 4, now=NOW + st.TTL_S + 1))   # expired
+        forged = t.replace('v1.2.', 'v1.1.')                                        # someone else's seat
+        self.assertIsNone(st.verify(key, forged, 'ps1-bomberman', 4, now=NOW))
+        for junk in (None, '', 'v1', t + 'x', t.upper(), 42, 'v1.2.1900000300.ps1-bomberman.' + 'g' * 32):
+            self.assertIsNone(st.verify(key, junk, 'ps1-bomberman', 4, now=NOW), junk)
+
+    def test_vector_pins_the_format_the_game_verifies(self):
+        import seat_ticket as st
+        key, slot, exp, game, ticket = st.TEST_VECTOR
+        self.assertEqual(st.mint(key, game, slot, now=exp - st.TTL_S), ticket)
+        self.assertEqual(st.verify(key, ticket, game, 4, now=exp - 1), slot)
 
 
 if __name__ == '__main__':

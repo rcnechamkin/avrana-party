@@ -82,12 +82,12 @@ class Runtime:
         raise NotImplementedError
 
     # lifecycle
-    def start(self, game, on_ready, on_fail):
+    def start(self, game, on_ready, on_fail, env=None):
         """Start `game` (stopping any other first); exactly one of on_ready() / on_fail(reason) is
         called later, unless stop() cancelled it first (then neither). Blocks while stopping."""
-        self._call(lambda: self._start(game, on_ready, on_fail))
+        self._call(lambda: self._start(game, on_ready, on_fail, env or {}))
 
-    def _start(self, game, on_ready, on_fail):
+    def _start(self, game, on_ready, on_fail, env):
         self._stop(None)
         error = None
         with self.lock:
@@ -95,7 +95,8 @@ class Runtime:
             if self.log_dir:
                 os.makedirs(self.log_dir, exist_ok=True)
                 log = open(os.path.join(self.log_dir, f"{game['id']}.log"), 'w')
-            kw = dict(stdout=log or subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+            kw = dict(stdout=log or subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                      env=dict(os.environ, **env))          # secrets go here, never in argv
             if sys.platform != 'win32':
                 kw.update(start_new_session=True, preexec_fn=_die_with_parent)
             try:
