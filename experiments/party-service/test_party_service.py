@@ -507,6 +507,9 @@ class ServiceGames(Harness):
         self.until(lambda: self.rt.running() == (None, False))                 # the emulator is stopped
         self.assertEqual(self.state(a)['party']['nav']['target'], 'home')
         self.assertEqual(self.req('GET', '/ps1/bomberman/')[0], 503)
+        msgs = self.state(a)['messages']
+        self.assertIn('Bomberman Party Edition started.', msgs)
+        self.assertIn('Bomberman Party Edition ended. Everyone is back at Party Home.', msgs)
 
     def test_a_game_that_cannot_start_leaves_nav_home_with_a_reason(self):
         self.mode('die')

@@ -176,7 +176,10 @@ class PartyService:
             party.cancel_launch(token)
             self._reconcile()
         elif name == 'host/end-game':
+            ending = party.game.manifest.get('name') if party.game else None
             party.end_game(token)
+            if ending:
+                party._system(f'{ending} ended. Everyone is back at Party Home.')
         elif name == 'host/end-party':
             party.end_party(token)
         else:
@@ -199,6 +202,7 @@ class PartyService:
                            and party.launch['id'] == launch_id)
                 if current and ok:
                     party.game_ready(launch_id)
+                    party._system(f"{game['name']} started.")
                 elif current:
                     party.game_failed(launch_id, reason)
                 elif ok:                              # cancelled or superseded while it started
