@@ -67,6 +67,25 @@ shared frame in its `player` message; the page crops client-side). Launcher env:
 reliable speed meter). Each viewer costs ~14% of a core (its own payload + SRTP); capture + encode
 ~20% in total.
 
+## Latency measurement
+
+Always on: pongs carry server time (clock sync), acks carry receive/inject times, an event-loop lag
+monitor, and a per-viewer per-second log (`runtime/client-stats.jsonl`, written off the event loop).
+`AVRANA_PS1_MEASURE=1` (on `stream_ps1.py`, `supervised-run.sh` or the party's `front.py`) adds a
+32-bit barcode in each frame's top-left (capture time + input-injection counter), a 5 Hz kernel ping
+to each phone and a per-session log `runtime/latency/<time>-<title>.jsonl`. Then:
+`python3 tools/latency-report.py <log> [--since HH:MM --until HH:MM]` — per-stage percentiles and
+spike seconds classified network / server / browser. The phone page shows live numbers with `#diag`
+at the end of its address. What each stage can prove: `docs/findings/2026-09-24-ps1-latency.md`
+(branch `docs/party-platform`).
+
+## The phone page
+
+Portrait: slim bar, edge-to-edge picture, controller below. Landscape: the picture as tall as it
+fits beside the side gutters, where the controls live. Nothing is drawn over the picture. Sound,
+giving up the controller and Party Home are in the ⋯ menu; drops reconnect quietly. Layout tests:
+`npx playwright test -c ps1/tests/playwright.config.ts` (static; no Pi).
+
 ## Files
 
 | File | Purpose |
@@ -83,7 +102,7 @@ reliable speed meter). Each viewer costs ~14% of a core (its own payload + SRTP)
 | `titles/<title>.json` | **Title profiles** (data only): cue path relative to the ROM folder, RetroArch users, stream slots, Multitap setting, notes |
 | `profiles.py` | Loads and validates profiles against an allowlist (only hardware-verified values; no raw RetroArch keys) and GENERATES `runtime/core-options.opt` and `runtime/game.cfg` on every launch |
 | `evidence/selected-core.json` | Core provenance and pinned sha256 (the launcher refuses a mismatch) |
-| `tools/` | Test tools: `supervised-run.sh` (bounded run + power guard + verdict), `phones.mjs` (laptop simulated phones: presses, screenshots, metrics, leave/reload, per-phone crops), `xkeys.py` (keys into the private display), `shot.sh`, `audio-level.sh`, `monitor.sh`, `viewers.py` (older Python simulated phones) |
+| `tools/` | Test tools: `latency-report.py` (latency log → stage percentiles + spike causes), `supervised-run.sh` (bounded run + power guard + verdict), `phones.mjs` (laptop simulated phones: presses, screenshots, metrics, leave/reload, per-phone crops), `xkeys.py` (keys into the private display), `shot.sh`, `audio-level.sh`, `monitor.sh`, `viewers.py` (older Python simulated phones) |
 
 ## Where things live (never in git)
 
