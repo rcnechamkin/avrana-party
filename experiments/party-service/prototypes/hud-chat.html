@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<!-- PROTOTYPE (frontend only, fake messages, no network). How default Party chat could sit on top of
+     a game: a 2-4 message HUD that fades, a full feed on demand, system messages visually distinct,
+     and one example of a game overriding the default (a "clue" as a game-native action, not chat).
+     Design: docs/design/COMMUNICATION.md (branch docs/party-platform). Open the file in a browser. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HUD chat prototype</title>
+<style>
+:root{--bg:#0e0c1d;--fg:#f4f2ff;--muted:#b9b3d6;--card:#1b1833;--line:#2e2a4d;--accent:#c7b8ff;--sys:#8fe3c9}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,sans-serif;height:100dvh;overflow:hidden}
+.game{position:absolute;inset:0;display:grid;place-items:center;background:repeating-linear-gradient(45deg,#1d3a2a 0 20px,#234632 20px 40px)}
+.game p{background:rgba(0,0,0,.5);padding:.5rem 1rem;border-radius:12px}
+/* HUD: bottom-left, never over the centre of the game, fades, tap to open the feed */
+.hud{position:absolute;left:max(10px,env(safe-area-inset-left));bottom:calc(76px + env(safe-area-inset-bottom));width:min(78vw,340px);
+  display:grid;gap:6px;border:0;background:none;padding:0;text-align:left;color:inherit;font:inherit}
+.hud .m{background:rgba(14,12,29,.78);border-radius:14px;padding:6px 10px;font-size:.9rem;transition:opacity .6s}
+.hud .m.old{opacity:0}
+.who{font-weight:700;margin-right:.35rem}
+.sys{color:var(--sys);font-style:italic}.sys .who{display:none}
+.sys::before{content:'★ ';font-style:normal}
+.chatbtn{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));min-width:52px;min-height:52px;
+  border-radius:26px;border:0;background:var(--accent);color:#15132b;font:inherit;font-weight:700;padding:0 16px}
+.badge{display:inline-block;min-width:1.4em;border-radius:1em;background:#15132b;color:var(--accent);margin-left:.4rem;font-size:.8rem}
+dialog.feed{border:0;border-radius:20px 20px 0 0;margin:auto auto 0;width:min(100%,520px);height:min(70dvh,560px);padding:0;background:var(--card);color:var(--fg);
+  display:grid;grid-template-rows:auto 1fr auto}
+dialog.feed:not([open]){display:none}
+dialog.feed::backdrop{background:rgba(0,0,0,.4)}
+.feed header{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 16px;border-bottom:1px solid var(--line)}
+.feed header button{min-width:48px;min-height:48px;border:0;background:none;color:var(--fg);font-size:1.4rem}
+.feed ol{list-style:none;margin:0;padding:10px 14px;overflow:auto;display:grid;gap:8px;align-content:end}
+.feed form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.feed input{flex:1;min-height:48px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;padding:0 12px}
+.feed form button{min-height:48px;border-radius:14px;border:0;background:var(--accent);color:#15132b;font:inherit;font-weight:700;padding:0 16px}
+.policy{font-size:.85rem;color:var(--muted);padding:10px 14px;border-top:1px solid var(--line)}
+.clue{position:absolute;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:#ffe58a;color:#2b2200;
+  border-radius:14px;padding:8px 16px;font-weight:800;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+.demo{position:absolute;top:calc(8px + env(safe-area-inset-top));left:8px;display:flex;gap:6px;flex-wrap:wrap;max-width:60vw}
+.demo button{min-height:44px;border-radius:12px;border:1px solid var(--line);background:rgba(14,12,29,.8);color:var(--fg);font:inherit;font-size:.85rem;padding:0 10px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.hud .m{transition:none}}
+</style>
+<div class="game" aria-hidden="true"><p>(the game)</p></div>
+<div class="demo">
+  <button id="fake">Fake message</button>
+  <button id="mode" aria-pressed="false">Spymaster rules</button>
+</div>
+<div class="clue" id="clue" role="status" hidden></div>
+<!-- The HUD is a button: tapping it opens the feed. Screen readers get new messages from the feed's log. -->
+<button class="hud" id="hud" aria-label="Open party chat"></button>
+<button class="chatbtn" id="open" aria-haspopup="dialog">Chat<span class="badge" id="unread" hidden>0</span></button>
+<dialog class="feed" id="feed" aria-labelledby="feed-h">
+  <header><strong id="feed-h">Party chat</strong><button id="close" aria-label="Back to the game">✕</button></header>
+  <ol id="log" role="log" aria-live="polite"></ol>
+  <form id="send">
+    <input id="text" maxlength="200" placeholder="Say something" autocomplete="off" aria-label="Message"><button>Send</button></form>
+  <p class="policy" id="policy" hidden></p>
+</dialog>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const HUD_MAX=3,HUD_MS=5000;const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const people={p1:{name:'Ana',hue:170},p2:{name:'Ben',hue:300},p3:{name:'Cy',hue:40}};
+let messages=[],unread=0,spymaster=false,lastSent=0;
+// A message as the platform would deliver it: sender identity from the party, never typed by the client.
+function add(m){messages.push(m);if(messages.length>100)messages.shift();hud(m);feedLine(m);
+  if(!$('feed').open){unread++;$('unread').textContent=unread;$('unread').hidden=false}}
+function line(m){const li=document.createElement('li');li.className='m'+(m.system?' sys':'');
+  const who=document.createElement('span');who.className='who';who.textContent=m.system?'':people[m.from].name;
+  if(!m.system)who.style.color=`hsl(${people[m.from].hue} 70% 75%)`;
+  const t=document.createElement('span');t.textContent=m.text;li.append(who,t);return li}
+function hud(m){if($('feed').open)return;const el=line(m);el.setAttribute('aria-hidden','true');$('hud').append(el);
+  while($('hud').children.length>HUD_MAX)$('hud').firstChild.remove();
+  setTimeout(()=>{el.classList.add('old');setTimeout(()=>el.remove(),reduce?0:600)},HUD_MS)}
+function feedLine(m){$('log').append(line(m));$('log').scrollTop=1e9}
+function openFeed(){$('hud').replaceChildren();unread=0;$('unread').hidden=true;$('feed').showModal();$('log').scrollTop=1e9}
+$('hud').onclick=openFeed;$('open').onclick=openFeed;$('close').onclick=()=>$('feed').close();
+$('send').onsubmit=e=>{e.preventDefault();const t=$('text').value.trim();if(!t)return;
+  if(Date.now()-lastSent<1500){$('policy').hidden=false;$('policy').textContent='Slow down a little.';return}   // a rate limit is policy, shown as plain words
+  lastSent=Date.now();add({from:'p1',text:t});$('text').value=''};
+// Example of a game overriding the default: the spymaster gives ONE clue through a game action; the
+// clue is a game element (pinned at the top), not a chat line; afterwards they can read but not type.
+$('mode').onclick=()=>{spymaster=!spymaster;$('mode').setAttribute('aria-pressed',String(spymaster));
+  $('send').hidden=spymaster;$('policy').hidden=!spymaster;
+  $('policy').textContent=spymaster?'You’re the spymaster: give your clue with the Clue button. You can read your team’s chat.':'';
+  if(spymaster&&$('clue').hidden){setTimeout(()=>{$('clue').textContent='Clue: OCEAN · 2';$('clue').hidden=false;
+    add({system:true,text:'Ana gave the clue.'})},800)}};
+const fakes=[{from:'p2',text:'that was close 😅'},{from:'p3',text:'left side is open'},{system:true,text:'Cy joined the party.'},
+  {from:'p2',text:'gg'},{system:true,text:'Ben is now Host.'},{from:'p3',text:'one more round?'}];let fi=0;
+$('fake').onclick=()=>add(fakes[fi++%fakes.length]);
+setTimeout(()=>add({system:true,text:'Bomberman Party Edition started.'}),600);
+setTimeout(()=>add(fakes[0]),1800);setTimeout(()=>add(fakes[1]),3200);
+</script>
+</html>
