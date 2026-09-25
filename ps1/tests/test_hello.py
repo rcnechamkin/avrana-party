@@ -110,5 +110,15 @@ class NoTokenInUrls(unittest.TestCase):
         self.assertFalse(re.search(r"request\.query\.get\('token'\)", server))
 
 
+class Capture(unittest.TestCase):
+    def test_sizes(self):
+        import argparse
+        self.assertEqual(m.parse_capture('320x240'), (320, 240))
+        self.assertEqual(m.parse_capture('640X480'), (640, 480))
+        for bad in ('321x240', 'abc', '100x100', '320x', '4000x3000', '-320x240'):
+            with self.assertRaises(argparse.ArgumentTypeError, msg=bad):
+                m.parse_capture(bad)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

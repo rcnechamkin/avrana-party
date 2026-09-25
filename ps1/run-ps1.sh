@@ -5,6 +5,8 @@
 # Env: AVRANA_PS1_HOME (state: core, BIOS link, saves, logs; default ~/avrana-lab/ps1)
 #      AVRANA_PS1_ROMS (read-only game/BIOS files; default /srv/avrana/roms/psx)
 #      AVRANA_PS1_VIDEO=xvfb|kms|auto (auto: kms if an HDMI connector is connected)
+#      AVRANA_PS1_CAPTURE=WxH  headless screen/window size (default 640x480; 320x240 is the PS1's
+#                              native size and costs the stream ~4x less CPU to grab and convert)
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -54,19 +56,28 @@ if [ "$MODE" = auto ]; then
   grep -qx connected /sys/class/drm/card*-HDMI-A-*/status 2>/dev/null && MODE=kms
 fi
 case $MODE in xvfb|kms) ;; *) die "AVRANA_PS1_VIDEO must be xvfb, kms or auto" ;; esac
+CAPTURE=${AVRANA_PS1_CAPTURE:-640x480}
+[[ $CAPTURE =~ ^([0-9]{3,4})x([0-9]{3,4})$ ]] || die "AVRANA_PS1_CAPTURE must look like 320x240"
+CAP_W=${BASH_REMATCH[1]} CAP_H=${BASH_REMATCH[2]}
 
 sed "s|@PS1_HOME@|$PS1_HOME|g" "$HERE/retroarch.cfg" > "$RUN/retroarch.cfg"
 # Core options and the per-title RetroArch override are GENERATED from the profile on every
 # launch (never raw config from a title), into $RUN/core-options.opt and $RUN/game.cfg.
 python3 "$HERE/profiles.py" write "$GAME" "$RUN" || die "could not write title config for '$GAME'"
+APPEND="$HERE/mode-$MODE.cfg|$RUN/game.cfg"
+if [ "$MODE" = xvfb ]; then   # the window fills the private screen exactly: ximagesrc grabs all of it
+  printf 'video_window_width = "%s"\nvideo_window_height = "%s"\nvideo_scale = "1.0"\n' \
+    "$CAP_W" "$CAP_H" > "$RUN/capture.cfg"
+  APPEND="$APPEND|$RUN/capture.cfg"
+fi
 LOG=$RUN/logs/$GAME-$(date +%Y%m%dT%H%M%S).log
 ln -sfn "$LOG" "$RUN/logs/$GAME-latest.log"
 export XDG_CONFIG_HOME=$RUN/xdg   # keep RetroArch out of ~/.config/retroarch
 mkdir -p "$XDG_CONFIG_HOME"
-echo "run-ps1: $GAME mode=$MODE log=$LOG"
+echo "run-ps1: $GAME mode=$MODE capture=$CAPTURE log=$LOG"
 
 RA=(retroarch --verbose --log-file="$LOG" -c "$RUN/retroarch.cfg"
-    --appendconfig="$HERE/mode-$MODE.cfg|$RUN/game.cfg"
+    --appendconfig="$APPEND"
     -L "$CORE" "$@" "$CUE")
 
 pulse_pid= ra_pid= wait_pid= launched=
@@ -118,7 +129,7 @@ if [ "$MODE" = xvfb ]; then
   # -n 110 before -a: xvfb-run's -a searches up from the current number when parsed, so
   # this starts above the arcade's :99 and PS1 never takes it.
   launched=1   # before the launch, so a signal in between still waits for the proof
-  xvfb-run -n 110 -a -s '-screen 0 640x480x24 -nolisten tcp' \
+  xvfb-run -n 110 -a -s "-screen 0 ${CAP_W}x${CAP_H}x24 -nolisten tcp" \
     sh -c 'printf "%s\n" "$DISPLAY" > "$0/display"; printf "%s\n" "$XAUTHORITY" > "$0/xauthority"
       "$1" --record $$ > "$0/retroarch.pid.new" && mv -f "$0/retroarch.pid.new" "$0/retroarch.pid"
       shift; exec "$@"' "$RUN" "$PS1PID" "${RA[@]}" &

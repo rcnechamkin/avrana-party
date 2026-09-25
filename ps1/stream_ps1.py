@@ -10,7 +10,7 @@ the PS1 instance's PRIVATE Xvfb display (mode-xvfb.cfg binds the banks). No inpu
 devices are created, so nothing can leak into the live arcade RetroArch, and a
 client can never name a key, a device or another player's slot.
 
-  stream_ps1.py <worms|bomberman> [--host ADDR ...] [--port 8198]
+  stream_ps1.py <worms|bomberman> [--host ADDR ...] [--port 8198] [--capture 320x240]
 """
 import argparse
 import asyncio
@@ -187,9 +187,10 @@ class XTestPad:
 
 
 class PS1Stream(stream.Stream):
-    def __init__(self, game):
+    def __init__(self, game, capture=(640, 480)):
         super().__init__()
         self.game = game
+        self.capture = capture                # the private screen = the encoded video's size
         self.players = GAMES[game]
         self.owners = [None] * self.players   # slot -> dict(token, ws, grace)
         self.x11 = None
@@ -222,7 +223,8 @@ class PS1Stream(stream.Stream):
         self.loop = asyncio.get_running_loop()
         # Never delete runtime files here: until run-ps1.sh holds the lock they may belong
         # to a running instance. Stale ones are ignored below and removed under the lock.
-        env = dict(os.environ, AVRANA_PS1_VIDEO='xvfb', AVRANA_PS1_HOME=str(PS1_HOME))
+        env = dict(os.environ, AVRANA_PS1_VIDEO='xvfb', AVRANA_PS1_HOME=str(PS1_HOME),
+                   AVRANA_PS1_CAPTURE='%dx%d' % self.capture)
         self.emulator_log = open(RUN / 'logs' / f'launcher-{self.game}.out', 'w')
         # run-ps1.sh owns preflight, the single-instance lock, private Xvfb + Pulse.
         self.emulator = subprocess.Popen([str(HERE / 'run-ps1.sh'), self.game], env=env,
@@ -407,7 +409,8 @@ class PS1Stream(stream.Stream):
             else:
                 raise RuntimeError('Media caps did not reach WebRTC')
             await ws.send_json(dict(type='player', slot=0 if slot is None else slot + 1,
-                                    token=token, game=self.game, slots=self.players))
+                                    token=token, game=self.game, slots=self.players,
+                                    video=dict(width=self.capture[0], height=self.capture[1])))
             reply = await self.promise(rtc, 'create-offer', None)
             offer = reply.get_value('offer').copy()
             await self.promise(rtc, 'set-local-description', offer)
@@ -543,6 +546,17 @@ class PS1Stream(stream.Stream):
             self.emulator_log.close()
 
 
+def parse_capture(text):
+    """'320x240' -> (320, 240). Even sizes only: the encoder takes 4:2:0 frames."""
+    try:
+        w, h = (int(v) for v in text.lower().split('x'))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'{text!r} is not WxH') from None
+    if not (160 <= w <= 1280 and 120 <= h <= 960 and w % 2 == 0 and h % 2 == 0):
+        raise argparse.ArgumentTypeError(f'{text!r}: need even sizes, 160x120 to 1280x960')
+    return w, h
+
+
 def check_bind(host, port):
     """Bind every address `host` resolves to, as asyncio's server will (SO_REUSEADDR,
     IPV6_V6ONLY), and release it again. Raises OSError if aiohttp could not bind."""
@@ -561,6 +575,9 @@ if __name__ == '__main__':
     parser.add_argument('--host', action='append',
                         help='bind address (repeatable; default 10.42.0.1 = party AP, and 127.0.0.1)')
     parser.add_argument('--port', type=int, default=8198)
+    parser.add_argument('--capture', type=parse_capture, default=(640, 480), metavar='WxH',
+                        help='private screen size to grab and encode (default 640x480; 320x240 = '
+                             'the PS1 native size, ~4x cheaper to grab and convert)')
     args = parser.parse_args()
     if not 0 <= args.port <= 65535:
         parser.error(f'--port {args.port} is not a TCP port')
@@ -574,7 +591,7 @@ if __name__ == '__main__':
             why = {errno.EADDRNOTAVAIL: 'not an address of this machine; is the party AP up?',
                    errno.EADDRINUSE: 'port already in use'}.get(e.errno, e.strerror or str(e))
             parser.error(f'cannot bind {host}:{args.port} ({why}); choose addresses with --host')
-    ps1 = PS1Stream(args.game)
+    ps1 = PS1Stream(args.game, args.capture)
     app = web.Application(client_max_size=4096)
     app.router.add_get('/', lambda request: web.FileResponse(HERE / 'index.html'))
     app.router.add_get('/ws', ps1.websocket)
