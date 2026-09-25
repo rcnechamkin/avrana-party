@@ -7,7 +7,7 @@
 <style>
 *{box-sizing:border-box;touch-action:manipulation}
 html{overscroll-behavior:none}
-body{margin:0;background:#15132b;color:#eee;font-family:system-ui,sans-serif;padding:12px;padding-bottom:env(safe-area-inset-bottom);overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#15132b;color:#eee;font-family:system-ui,sans-serif;padding:12px;padding-bottom:max(12px,env(safe-area-inset-bottom));overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px}h1{font-size:18px;margin:8px 0}p{font-size:14px;color:#cbc5e0}a{color:#c7b8ff}
 video{display:block;width:100%;max-height:56vh;aspect-ratio:4/3;background:#000;object-fit:contain;margin:10px auto}
 .stage,.controls,.controls *{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
@@ -18,7 +18,7 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}
 .shoulders{grid-column:1/-1;display:flex;justify-content:space-between}.shoulders div{display:flex;gap:6px}.shoulders button{min-width:56px}
 .dpad,.face{display:grid;grid-template-columns:repeat(3,52px);gap:4px}.dpad button,.face button{height:52px}.face button{border-radius:26px;font-size:22px}
 .mid{display:flex;justify-content:center;gap:8px}#status{min-height:22px}#metrics{font-family:monospace;font-size:12px}
-@media(orientation:landscape) and (max-height:600px){video{max-height:70vh}.controls{position:fixed;bottom:8px;left:8px;right:8px;max-width:none;pointer-events:none}.controls button{pointer-events:auto;opacity:.85}header h1{font-size:15px}}
+@media(orientation:landscape) and (max-height:600px){video{max-height:70vh}.controls{position:fixed;bottom:max(8px,env(safe-area-inset-bottom));left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));max-width:none;pointer-events:none}.controls button{pointer-events:auto;opacity:.85}header h1{font-size:15px}}
 </style>
 <header><h1 id="title">Avrana Party · PS1</h1><span id="role"></span></header>
 <p id="party-bar" hidden><a href="/party/">← Party Home</a></p>
@@ -30,13 +30,13 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}
 </div>
 <div class="controls" id="controls" hidden>
  <div class="shoulders"><div><button data-bit="10">L2</button><button data-bit="8">L1</button></div><div><button data-bit="9">R1</button><button data-bit="11">R2</button></div></div>
- <div class="dpad" aria-label="Movement">
+ <div class="dpad" role="group" aria-label="Movement">
   <span></span><button data-bit="0" aria-label="Up">▲</button><span></span>
   <button data-bit="2" aria-label="Left">◀</button><span></span><button data-bit="3" aria-label="Right">▶</button>
   <span></span><button data-bit="1" aria-label="Down">▼</button><span></span>
  </div>
  <div class="mid"><button data-bit="13">Select</button><button data-bit="12">Start</button></div>
- <div class="face" aria-label="Buttons">
+ <div class="face" role="group" aria-label="Buttons">
   <span></span><button data-bit="7" aria-label="Triangle">△</button><span></span>
   <button data-bit="6" aria-label="Square">□</button><span></span><button data-bit="5" aria-label="Circle">○</button>
   <span></span><button data-bit="4" aria-label="Cross">✕</button><span></span>
