@@ -74,7 +74,7 @@ while (Date.now() < deadline) {
         log(`phone ${p.i}`, p.role, m ? JSON.stringify({ fps: m.video?.fps, decoded: m.video?.decoded, lost: m.video?.pktLostD,
           jitterMs: m.video?.jitterBufMs, freezes: m.video?.freezes, gapP95: m.present?.gapP95, ackP50: m.ackRtt?.p50 }) : 'no metrics');
       }
-      else if (cmd === 'leave') { const p = bySlot(+a); await p.page.click('#leave'); log(`player ${a} left:`, await p.page.textContent('#status')); p.role = 'left'; }
+      else if (cmd === 'leave') { const p = bySlot(+a); await p.page.click('#more'); await p.page.click('#leave'); log(`player ${a} left:`, await p.page.textContent('#status')); p.role = 'left'; }
       else if (cmd === 'reload') { const p = phones[+a]; await p.page.reload(); p.role = await join(p.page, false); log(`phone ${a} reloaded ->`, p.role); }
       else { const ms = +b || 150; await Promise.all(cmd.split('+').map(n => press(bySlot(+n).page, a, ms))); }
     } catch (e) { log('control line failed:', line, '-', e.message.split('\n')[0]); }

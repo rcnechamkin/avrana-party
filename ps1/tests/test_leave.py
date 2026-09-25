@@ -102,7 +102,7 @@ class Leave(unittest.TestCase):
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'index.html'),
                   encoding='utf-8') as f:
             page = f.read()
-        self.assertIn("leave.onclick=()=>{if(ws?.readyState===WebSocket.OPEN&&mySlot)ws.send(JSON.stringify({type:'leave'}))", page)
+        self.assertIn("$('#leave').onclick=()=>{if(ws?.readyState===WebSocket.OPEN&&mySlot)ws.send(JSON.stringify({type:'leave'}))", page)
         self.assertEqual(page.count("{type:'leave'}"), 1)        # not on pagehide / reload
 
 
