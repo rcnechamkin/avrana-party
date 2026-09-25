@@ -1,6 +1,28 @@
 # Claude Code handoff: Avrana Party
 
-You are taking over an active Raspberry Pi project. Read this, inspect the actual files and processes, and continue from the current state. Do not reinstall or rebuild working infrastructure merely because another architecture is possible.
+> **Read this first (2026-09-24 evening).** This file is mostly a **historical log** of the arcade
+> work (2026-09-19/20) with dated banners. Current truth lives elsewhere — start at `README.md` →
+> "Start here": status and the next action in `docs/ROADMAP.md`, machines/repos/branches in
+> `docs/SYSTEM.md`, networking in `docs/runbooks/network.md`, tests in `docs/TESTING.md`.
+> **Since 2026-09-24:** the USB Wi-Fi adapter is gone; the party AP runs on the Pi's internal radio
+> (`wlan0`, `10.42.0.1`) and the Pi reaches home over `eth0` (`10.0.0.142`). Anything below that
+> says `wlan1` is the AP or `wlan0` is the home link, or `10.0.0.143`, is historical. Power is clean
+> without the adapter (`docs/findings/2026-09-24-no-usb-power-baseline.md`).
+
+> **2026-09-24 update: product direction.** Avrana Party is now explicitly **one party
+> platform with many games** ("the game may change; the party does not"). Avrana is designed
+> to own identity, party, seats, host, navigation, chat and stats (none of it is built yet);
+> games consume them. Start at `docs/design/PARTY-PLATFORM.md` (the hub, with links to the
+> lifecycle, integration, native-games, Personal Viewports, onboarding and installation docs) and
+> the ADRs `0002-party-platform` and `0003-ids-and-keys` before designing any player-facing
+> feature; phasing is ROADMAP **N5**. Locked: one appliance = one party; TV optional; host
+> disposable; late joiners spectate by default; no app/captive portal/store required. Until the
+> BLUFF real-phone playtest, the platform is documents and offline simulations only
+> (`experiments/` on branch `experiment/party-sim`): don't change BLUFF's identity code or live
+> services for it. Development runs laptop → GitHub → Pi; the Pi is a deploy/test target. The
+> games fork is backed up on the laptop (`~/avrana-party-games.git`); its GitHub repo is not
+> created yet. ~~Current blocker: power~~ — resolved for the tested workloads by removing the USB adapter
+> (see the banner above). BLUFF playtest runbook: `docs/runbooks/bluff-playtest.md`.
 
 > **2026-09-23 update. Read `docs/ROADMAP.md` first.**
 > - The **repository is now the documentation source of truth**. The BookStack API/MCP is
@@ -13,17 +35,22 @@ You are taking over an active Raspberry Pi project. Read this, inspect the actua
 > - **BLUFF status (2026-09-23):** the baseline game plus a phone lifecycle passed a
 >   six-workstream robustness pass: 1,197 tests, protocol privacy and attack checks, a
 >   full-game simulator (0 violations), and 2–6 player screenshots. **Next milestone: a real
->   3–4 iPhone playtest.** Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
->   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md`.
-> - **Not yet published:** the public repo `rcnechamkin/avrana-party-games` must be created by
->   the owner (empty, not a fork), and `party` needs push access to it. Push `main` only,
->   never `abandoned/classic-diplomacy`.
+>   3–4 iPhone playtest** (2026-09-24: widened to 3–6 phones including an Android, tested truly offline, with the measurements in ROADMAP N5). Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
+>   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md` (partly superseded
+>   2026-09-24; see the banner at its top).
+> - **Not yet published:** the repo `rcnechamkin/avrana-party-games` must be created by the
+>   owner (empty, not a fork). The laptop pushes `main` from its backup, never
+>   `abandoned/classic-diplomacy`; `party` should become pull-only later.
 > - **Classic map-based Diplomacy and `diplomacy/diplomacy` are ABANDONED** (a
 >   misunderstanding). Don't continue them. The local commit is on branch
 >   `abandoned/classic-diplomacy`, never pushed.
 > - The arcade items below are still open and unchanged.
 
 ## Current status and priorities (updated 2026-09-19)
+
+*Historical snapshot of the arcade work as of 2026-09-19/20. For current status read the banners
+above and `docs/ROADMAP.md`; some items below were later superseded (e.g. two-phone play is now
+verified, and the recovery gap appears twice). The arcade items are otherwise still open.*
 
 Status of the Gauntlet II phone-streaming prototype, from a read-only inspection of the Pi and the current code:
 
@@ -61,13 +88,15 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   PTS is mislabelled); video immune (ximagesrc clock-stamped). Full evidence +
   fix journey: `docs/findings/2026-09-20-audio-ratchet-and-recovery.md`.
   - **Fix `6acf0b0` on main** re-stamps audio `pts=now` in `distribute()`
-    (`buffer.copy()`), deployed to party's checkout. **⚠ The RUNNING service still
-    has a broken interim build (audio down) until a restart loads `6acf0b0`.**
-  - **First action next session:** `sudo systemctl restart avranaparty-arcade`,
-    then `SOAK_SECONDS=60 npx playwright test tests/soak.spec.ts --project=chromium`
+    (`buffer.copy()`), deployed to party's checkout. ~~The RUNNING service still has a broken interim build (audio down) until a restart loads
+    `6acf0b0`.~~ *Superseded: the Pi has rebooted since (latest 2026-09-24); the deploy checkout
+    (`f93f0fc`) contains `6acf0b0` and the arcade service started at that boot. The fix is loaded
+    but still **unverified** (the soak below has not been run).*
+  - **To verify** (no restart needed now): `SOAK_SECONDS=60 npx playwright test tests/soak.spec.ts --project=chromium`
     → expect audio-age drift ~0 (was +2782 ms) + no server error. Real iPhone
     confirms A/V by ear. Rollback if worse: `git revert 6acf0b0` + redeploy.
-- **Recovery gap (defect #2, NOT STARTED):** `Stream.watch()` returns instead of
+- *(Duplicate of the "CONFIRMED" entry below: the defect is confirmed, the fix is not started.)*
+  **Recovery gap (defect #2):** `Stream.watch()` returns instead of
   exiting on a fatal error, so systemd never restarts the zombie 503 service. Fix
   plan in the same findings doc.
 - **Load/soak/fault harness (NEW 2026-09-20):** `npm run soak` / `npm run fault`
@@ -91,7 +120,8 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   avrana (`http://10.0.0.218:8093`) via a pinned systemd agent, plus a small
   `vcgencmd` sampler/timer for Pi-only metrics. See the Telemetry section below.
 
-Your next jobs, in order: **(1) resolve the recurring under-voltage** (isolate
+*Superseded 2026-09-24 — current next steps are in `docs/ROADMAP.md` "Next action"; (4) is done.*
+Your next jobs (as of 2026-09-20), in order: **(1) resolve the recurring under-voltage** (isolate
 PSU/cable/USB-load/power-delivery experimentally — do this before trusting any
 latency numbers); (2) confirm Beszel history for `party` and finish the three
 baseline snapshots; (3) measure real one-phone latency; (4) verify two phones
@@ -224,7 +254,7 @@ No public ICE servers. Per-peer WebRTC connections are unicast: one encode does 
 
 ### Controller path
 
-- **`MAX_PLAYERS = 2`** in stream.py: two slots enabled. P1 is verified on a real iPhone; P2 and two-phone behavior are not. Do not raise beyond 2 until a two-phone test passes.
+- **`MAX_PLAYERS = 2`** in stream.py: two slots enabled. P1 is verified on a real iPhone; P2 and two-phone behavior were verified on 2026-09-20 (see "Current status" above). Do not raise beyond 2 without a longer multi-phone soak.
 - Creates one named evdev/uinput pad per slot (P1 is `Avrana Player 1`) BEFORE starting RetroArch.
 - RetroArch joypad driver is `udev`; explicit axis/button mappings are in retroarch.cfg.
 - Directions use ABS_X/ABS_Y. Fire/Magic/Coin/Start map to BTN_SOUTH/BTN_EAST/BTN_SELECT/BTN_START.
@@ -258,10 +288,10 @@ No public ICE servers. Per-peer WebRTC connections are unicast: one encode does 
 6. Kernel input capture proved coin/fire/right events. After stopping updates while held, fire and axis released after ~310 ms. Evidence `controller-events.json`. Screenshot shows the red player's character-selection state responding.
 7. 10-second full-service baseline with ZERO viewers: ~59.96 encoded fps, ~2.01 of four CPU cores, summed process RSS ~332 MiB (shared pages double-counted), actual encoded bitrate ~1.50 Mbit/s during that scene. File `evidence/service-measurement.json`.
 8. `/dev/video11` was owned by one service Python process. The stats field `video_encoders: 1` is hardcoded descriptive metadata, NOT an independent encoder-count measurement.
-9. Wrong-Origin WebSocket request returns 403; arcade UI and existing LAN Games return 200. Captive probe continues returning landing HTML.
+9. Wrong-Origin WebSocket request returns 403; arcade UI and existing LAN Games return 200. Captive probe continued returning landing HTML *(at that time; since changed — Apple's probe now gets "Success", see `docs/design/ONBOARDING.md`)*.
 10. User could reach UI and start the stream and first reported the experience as SUPER LAGGY. P1 has since been verified for basic gameplay and streaming on a real iPhone (per the `stream.py` comment). End-to-end latency, real-phone frame timing, audio drift and sustained control responsiveness are still unmeasured. Do not declare low latency from local tests or from “it plays”.
 
-Useful evidence files in `arcade/evidence/`:
+Useful evidence files in `arcade/evidence/` *(2026-09-24: these were Pi-side working files and are **not in the repository** — `.gitignore` keeps only the small provenance files; treat the numbers above as reported, not reproducible from the repo)*:
 - `gaunt2-paced-run.json`, `gaunt2-paced-run.log`, `gaunt2-paced.png`
 - `gaunt2-player1.png`
 - `receiver-test.log`, `receiver-controls-test.log`
@@ -285,7 +315,7 @@ Latency was reported as poor earlier and P1 has since been verified playable, bu
 7. Try a controlled lower-cost profile (e.g. encode/capture 480p30 or near-native size, while keeping emulation full speed), measure benefit before changing defaults. The software GL/Xvfb capture path consumes significant CPU; evaluate simpler capture/render approaches only if measurements justify them.
 8. Check touch/UI and input latency separately. WebSocket snapshots are simple but can suffer TCP ordering delays; a small unordered WebRTC data channel with full-state snapshots and timeout release is a candidate improvement if input transport is the bottleneck. Do not assume it fixes video buffering.
 9. Measure real input-to-photon latency with high-frame-rate filming of touch and screen response if possible. Report limitations and median/p95 rather than invented numbers.
-10. P2 is already enabled (`MAX_PLAYERS = 2`) but unverified: with two real phones, verify independent controller/coin/player assignment with one emulator and one encoder; only then consider P3/P4 and viewer-scaling metrics. Finally phone-side cold boot and full offline acceptance.
+10. *(Two-phone assignment verified 2026-09-20.)* P2 is enabled (`MAX_PLAYERS = 2`): with two real phones, verify independent controller/coin/player assignment with one emulator and one encoder; only then consider P3/P4 and viewer-scaling metrics. Finally phone-side cold boot and full offline acceptance.
 
 Power: `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot on 2026-09-19 (under-voltage and throttling have occurred since boot); temperature was about 49.6 C. This is a current open power/hardware issue. Check the supply, cable and USB load, and re-read the flags during load, before attributing lag to software.
 
@@ -363,12 +393,12 @@ now has the GitHub `origin` and tracks `origin/main`. Deploy = commit + push fro
 the laptop, then `git pull --ff-only` on party. Verified working (party pulled up
 to `df3763c`). System files under `/etc` and `/opt` are still installed by the
 repo’s install scripts run with sudo on party; the byte-identical nginx invariant
-still applies (`cmp`). Passwordless sudo worked from the SSH session on
-2026-09-19 — do not assume it always will; never request a password in chat.
+still applies (`cmp`). *(Historical: passwordless sudo worked on 2026-09-19; since 2026-09-23 `sudo -n`
+fails and the owner types every sudo command — see `CLAUDE.md`.)*
 
 Normal systemd stop currently logs shell exit 143 / XIO because the whole process group is stopped. Clean shutdown/reporting could be improved; distinguish intentional stops from real crashes. Fatal pipeline error handling also needs review: it can mark an error and close peers without necessarily exiting the process to trigger Restart=on-failure. Not yet appliance-grade.
 
-The prior session sometimes needed the owner to run sudo locally, but `sudo -n` later worked. Test current privileges; never request passwords in chat. Use reversible scoped changes, backups and nginx validation. No need to ask permission repeatedly for already authorized diagnostic/development work.
+*(Historical, 2026-09-19; superseded by `CLAUDE.md`: no sudo from agents — the owner types it; ask before live changes.)* The prior session sometimes needed the owner to run sudo locally. Never request passwords in chat. Use reversible scoped changes, backups and nginx validation.
 
 Do not spawn additional agents unless the user or applicable local instructions explicitly authorize it. The user values direct action, clear evidence and short progress updates. If you reach a physical-phone test gate, prepare everything first and ask one concrete test question.
 

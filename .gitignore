@@ -32,6 +32,29 @@ arcade/evidence/*
 .env*
 *.pem
 *.key
+*.db
+*.sqlite
+*.sqlite3
+*.srm
+*.state*
+*.mcr
+*.mcd
+*.cue
+*.chd
+*.pbp
+*.iso
+*.ecm
+*.bin
+*.BIN
+*.img
+docs/findings/evidence/
+/brag-output/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+experiments/**/dev-data/
+ps1/runtime/
 
 # Playwright
 node_modules/

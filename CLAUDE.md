@@ -1,30 +1,63 @@
 # CLAUDE.md
 
-## Environment
+Avrana Party: a Raspberry Pi 4 party appliance — phones join its Wi-Fi and play in a normal browser;
+designed as **one party platform with many games**. Start at `README.md` → "Start here".
 
-- **This laptop** is the primary dev machine. This local Git repo is where code is normally edited.
-- **GitHub `origin`** is the canonical remote and history.
-- **SSH `party`** is the Raspberry Pi running Avrana Party. It is the deployment and test target, not the place to develop.
-- **SSH `avrana`** is the mini-PC hosting infrastructure (BookStack, Beszel, etc.).
-- **Documentation source of truth (since 2026-09-22): this repository.** The BookStack API/MCP integration is unreliable, so record decisions, findings and progress in the repo (`docs/ROADMAP.md`, `docs/findings/`, `docs/adr/`, `CLAUDE-HANDOFF.md`). **Do not try to repair BookStack or its MCP unless the owner explicitly asks**, and never block work on it. BookStack may return as the main wiki later; the repo docs will then be reconciled into it. See `docs/ROADMAP.md`.
-- **Current plan:** `docs/ROADMAP.md` (Now / Next / Later). The first native-game target is a **Coup-inspired Avrana bluffing card game**, built as a LAN Games module in the Avrana Party Games fork. **Classic Diplomacy and `diplomacy/diplomacy` are abandoned experiments**; don't continue them.
+## Machines and network (details: `docs/SYSTEM.md`, `docs/runbooks/network.md`)
+
+- **GitHub `origin`**: canonical source and history. Edit in a local checkout or Claude Code Cloud
+  on a branch; push that branch for review. The laptop is optional, not a required runtime path.
+- **SSH `party`** (`10.0.0.142`, eth0): the Pi — a deploy/test target; never develop there.
+- **SSH `avrana`**: home infrastructure (Beszel telemetry hub; BookStack — stale, don't repair it
+  unless the owner asks; the repo is the documentation source of truth).
+- Pi network: **eth0 = upstream + management; wlan0 = the "Avrana Party" access point at
+  `10.42.0.1/24`** (NetworkManager profile "Avrana Party Internal"). There is no `wlan1` / USB Wi-Fi.
+
+## Where truth lives
+
+Status and the next action: `docs/ROADMAP.md` · what runs where: `docs/SYSTEM.md` · every test:
+`docs/TESTING.md` · design: `docs/design/README.md` · decisions: `docs/adr/` · measured facts:
+`docs/findings/` (newest dated file wins). Record new decisions and findings there, not only in chat.
+Label claims honestly: LIVE / TESTED / EXPERIMENT / PROPOSED / OPEN; a simulation is not a
+measurement, and a proposal is not a decision.
+
+## Hard rules
+
+- **`main` is production.** Develop on `docs/*`, `experiment/*`, `fix/*` or `chore/*` branches;
+  review and test before merging to `main`. Never force-push, rewrite history or deploy experiments.
+- **Pi:** inspect before changing; no `sudo` (the owner types it); no changes to NetworkManager,
+  nginx, dnsmasq, systemd units, the live services (`avranaparty-games` :8096,
+  `avranaparty-arcade` :8097) or the production checkout `/home/cody/avrana-party` without asking.
+  Experiments live under `~/avrana-lab/` on dev ports (8190 party front, 8196 BLUFF, 8198 PS1).
+- `avrana-party.nginx`, `arcade/nginx-site` and the live site must stay byte-identical (`cmp`).
+- **Power measurements:** sample on the Pi and read once at the end — no SSH polling and no parallel
+  agent work during one (each SSH session is a CPU burst).
+- PS1/emulator runs: bounded and supervised only (`ps1/tools/supervised-run.sh`, or a party-launched
+  session you stop yourself); never unattended. Soak, viewer scaling past 5 or stopping the arcade
+  need the owner (ROADMAP N4).
+- **Never commit or print:** passwords, Wi-Fi keys or home network names, tokens, keys, ROMs, BIOS,
+  emulator cores, saves, runtime data. Before every push: inspect the diff, scan for secrets and
+  binaries, confirm the branch.
+- Classic Diplomacy / `diplomacy/diplomacy` is abandoned (AGPL): never continue it, and never push
+  or merge the games fork's `abandoned/classic-diplomacy` branch.
+- The games fork (LAN Games + BLUFF) is a **separate repository** (laptop bare backup
+  `~/avrana-party-games.git`, Pi dev clone `~/avrana-lab/avrana-party-games`); the live
+  `/home/cody/LAN-Games` is never edited.
+
+## Product rules (`docs/design/PARTY-PLATFORM.md`, ADRs 0002/0003)
+
+- Device ≠ Profile ≠ Presence ≠ Seat; Admin ≠ Party Host. Names never authorize; games never see
+  device tokens; credentials never appear in URLs or logs.
+- One appliance = one party; guest-first, browser-first, offline-first; TV, app and captive portal
+  are optional. Accessibility is infrastructure (`docs/design/ACCESSIBILITY.md`).
+- Words: "host" means the **Party Host** (a player role). Call the machine "the Pi" or "the
+  appliance", and say "Host header" for HTTP.
 
 ## Workflow
 
-1. Edit locally, commit to Git, then deploy to and test on `party`.
-2. Inspect remote state (files, services, configs) before changing it.
-3. Back up any live configuration before modifying it.
-4. Do not casually modify networking, the captive portal, systemd units, nginx, or other live system configuration. Ask first.
-
-## Never commit
-
-Passwords, API keys, SSH private keys, ROMs, emulator cores, runtime data, or any other secrets. See `.gitignore`. When in doubt, leave it out.
-
-## Repo pointers
-
-- `README.md` and `CLAUDE-HANDOFF.md` hold existing project context. `arcade/README.md` covers the streaming prototype.
-- BookStack shelf **Avrana Party**: http://10.0.0.218:6875/shelves/avrana-party (currently secondary; see above). Do not confuse it with the **Avrana Homelab** shelf, which documents the separate media server.
-- `portal/`, `arcade/`: application code. The LAN Games server source is not in this repo (`/home/cody/LAN-Games` on `party`).
-- `avrana-party.nginx`, `avrana-captive.conf`, `install-*.py`: deploy and system config. Treat them as live-system-adjacent.
-- `avrana-party.nginx`, `arcade/nginx-site` and the live `/etc/nginx/sites-available/avrana-party` must stay byte-identical (check with `cmp`). `arcade/install-service.py` overwrites the live site from `arcade/nginx-site`.
-- Deploy: the checkout on `party` (`/home/cody/avrana-party`) tracks `origin/main`. Commit and push off-Pi, then `git pull --ff-only` on `party`. Don't edit or commit in that checkout. Experiments on the Pi live under `~/avrana-lab/`.
+Read `CLAUDE-CLOUD-HANDOFF.md` before a Cloud task. Clone from GitHub → make a branch → run
+offline/unit checks first (`docs/TESTING.md`) → push for review. Browser E2E in `tests/` targets
+the live appliance and needs the Party Wi-Fi; Cloud cannot run it. Pi-only validation belongs in
+`~/avrana-lab/` on dev ports. After review, merge to GitHub `main`, then fast-forward the clean
+production checkout `/home/cody/avrana-party` to that exact commit. Restarting services or changing
+live configuration is a separate, owner-approved deployment step.

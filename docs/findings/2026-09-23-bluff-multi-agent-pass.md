@@ -73,4 +73,5 @@ the agent's safety policy, so the owner must:
    `5da1764`, so a fork would diverge.
 2. Give `party` push access, e.g. a deploy key with write access, and push `main` only.
    **Never push `abandoned/classic-diplomacy`**: it contains the abandoned AGPL-dependent
-   prototype.
+   prototype. *(Superseded 2026-09-24: the laptop pushes `main` from its verified backup;
+   `party` needs no push access and should become pull-only.)*

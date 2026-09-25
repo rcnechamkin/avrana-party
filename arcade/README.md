@@ -1,14 +1,21 @@
 # Avrana Party Gauntlet II streaming prototype
 
+> **Network note (2026-09-24):** mentions below of `wlan1` as the party AP and `wlan0` as the
+> home/management link are from before the USB Wi-Fi adapter was removed. Today the AP is the internal
+> `wlan0` (`10.42.0.1`) and management is `eth0` (`docs/runbooks/network.md`). Side effect: `/stats`
+> labels every peer's path `other` because `ap_addresses()` looks for `wlan1`; the fix (find the AP
+> by its address) is on branch `fix/arcade-ap-interface`, not merged or deployed. Streaming itself
+> is unaffected.
+
 ## Current state (updated 2026-09-19)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.
 
 - **Players:** `MAX_PLAYERS = 2` in `stream.py`, so two slots are enabled. P1 is
-  verified for basic gameplay and streaming on a real iPhone. **Two-phone
-  behavior (independent slots, simultaneous play) is not verified.** Do not raise
-  beyond 2 until a two-phone test passes.
+  verified for basic gameplay and streaming on a real iPhone. Two-phone play was **verified on two
+  real iPhones on 2026-09-20** (a 3-minute session; see `CLAUDE-HANDOFF.md`). Do not raise beyond 2
+  without a longer multi-phone soak.
 - **Measurement:** input-to-photon latency and performance under real gameplay
   have **not** been formally measured.
 - **Boot:** service startup after a reboot is verified (all services active,

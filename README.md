@@ -1,108 +1,88 @@
 # Avrana Party
 
-A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts
-the games; phones join its Wi-Fi ("Avrana Party") and act as screens and
-controllers. Core play needs no internet, accounts or app installs.
+A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 runs the games; phones
+join its Wi-Fi ("Avrana Party") and play in a normal browser — no internet, accounts or app
+installs. It is designed as **one party platform with many games**: *the game may change; the party
+does not* (identity, host, seats and history carry from game to game — design stage).
 
-This is separate from the Avrana Homelab media server (host `avrana`); do not
-confuse them. Detailed technical context is in `CLAUDE-HANDOFF.md`, and the
-arcade prototype is documented in `arcade/README.md`.
+Not to be confused with the Avrana Homelab media server (the machine `avrana`).
 
-## Repo contents
+## Start here
+
+| You want to know… | Canonical source |
+|---|---|
+| status, what's next, what not to do | `docs/ROADMAP.md` ("NOW" → "Next action") |
+| which machine, repo, branch and checkout does what; runtime-only paths; how to sync | `docs/SYSTEM.md` |
+| the network (eth0 upstream, internal-Wi-Fi AP, offline mode, checks) | `docs/runbooks/network.md` |
+| how to run every test suite | `docs/TESTING.md` |
+| how to add a game | `docs/runbooks/add-a-game.md` |
+| the platform design (party, identity, games, viewports, onboarding, accessibility) | `docs/design/README.md` → `PARTY-PLATFORM.md` |
+| decisions | `docs/adr/` (0002 party platform, 0003 identifiers and credentials) |
+| measured facts | `docs/findings/` (newest dated file wins) |
+| rules for coding agents | `CLAUDE.md` |
+| starting in Claude Code Cloud | `CLAUDE-CLOUD-HANDOFF.md` |
+| arcade prototype history | `arcade/README.md`; `CLAUDE-HANDOFF.md` (historical log with current banners) |
+
+## What exists today (2026-09-24)
+
+Labels: **LIVE** = running on the appliance · **TESTED** = automated tests, not live ·
+**EXPERIMENT** = on an experiment branch · **PROPOSED** = design only.
+
+| Thing | Status | Where |
+|---|---|---|
+| LAN Games hub (~28 browser games) | **LIVE** (port 8096 behind nginx `/`) | `/home/cody/LAN-Games` on the Pi (upstream retired; not in this repo) |
+| Gauntlet II arcade stream (1 encode → WebRTC, 2 players) | **LIVE** prototype | `arcade/` |
+| Captive probe: Apple gets "Success" (no popup) | **LIVE** | `avrana-party.nginx`, `avrana-captive.conf` |
+| Party AP on the Pi's internal Wi-Fi, eth0 upstream | **LIVE** since 2026-09-24 (boot determinism pending: an owner fix in the runbook) | `docs/runbooks/network.md` |
+| BLUFF (first native game) in the Avrana Party Games fork | **TESTED** (1197–1198 tests), not live, no real-phone playtest yet | separate repo, see `docs/SYSTEM.md` |
+| PS1 on one shared stream; title profiles | **EXPERIMENT**, power-gated | branches `ps1-emulation`, `experiment/ps1-title-profiles` |
+| Party lifecycle model; Personal Viewports PoC (incl. shared WebRTC source) | **EXPERIMENT** | branch `experiment/party-sim` (`experiments/`) |
+| Party service + device identity + dev front door; manifest v0 | **EXPERIMENT** | branch `experiment/party-service` |
+| Party platform, onboarding, accessibility expectations | **PROPOSED** | `docs/design/` |
+
+Power: with the USB Wi-Fi adapter removed and the new PSU, **zero under-voltage** through idle, SSH,
+all-core CPU bursts and AP transmit load to one (sleeping) phone — several active phones, PS1 and
+long sessions are untested (`docs/findings/2026-09-24-no-usb-power-baseline.md`); with the adapter,
+the same PSU dipped 9 times in ~91 min.
+
+## URLs (on the Avrana Party Wi-Fi)
+
+- `http://10.42.0.1/` (also `http://party.local/`): LAN Games hub
+- `http://10.42.0.1/arcade/`: Gauntlet II stream
+- `http://10.42.0.1/hotspot-detect.html`: Apple connectivity probe (deliberately `Success`)
+- `http://10.0.0.218:8093`: Beszel telemetry hub (home LAN, on `avrana`)
+
+## Repo contents (`main`; experiment branches add `experiments/` and `ps1/`)
 
 | Path | Purpose |
 |---|---|
-| `portal/index.html` | Captive-portal landing page (live copy: `/var/www/avrana-portal/index.html`) |
-| `avrana-party.nginx` | nginx site: portal probe, `/arcade/`, LAN Games proxy |
-| `avrana-captive.conf` | Captive DNS rules (live: `/etc/NetworkManager/dnsmasq-shared.d/`) |
-| `install-portal.py`, `install-captive-dns.py` | Installers kept for provenance and recovery; do not rerun blindly |
-| `arcade/` | Gauntlet II streaming prototype and its service and install files |
-| `telemetry/` | Beszel agent + Pi `vcgencmd` sampler installers, systemd units, and baseline runbook |
+| `avrana-party.nginx` | live nginx site (probe, `/arcade/`, LAN Games proxy); must equal `arcade/nginx-site` and the live file |
+| `avrana-captive.conf` | captive DNS rules (live: `/etc/NetworkManager/dnsmasq-shared.d/`) |
+| `install-portal.py`, `install-captive-dns.py` | installers kept for provenance and recovery; do not rerun blindly |
+| `arcade/` | Gauntlet II streaming prototype, service and install files |
+| `telemetry/` | Beszel agent + Pi `vcgencmd` sampler installers, systemd units, baseline runbook |
+| `tests/` | Playwright E2E against the live appliance (run from a laptop on the party Wi-Fi) |
+| `portal/index.html` | old captive landing page; not served since 2026-09-18 |
+| `docs/` | roadmap, system map, runbooks, design, ADRs, findings |
 
-The LAN Games server source is not in this repo. It lives on the Pi at
-`/home/cody/LAN-Games` (service `avranaparty-games`, port 8096).
+## Production end-to-end tests (Playwright)
 
-## URLs
+`tests/` targets the live appliance at `http://party.avrana` (→ `10.42.0.1` via the laptop's hosts
+file), so **run them from a machine joined to the Avrana Party Wi-Fi**. `npm test` (fast),
+`npm run soak` / `npm run fault` (heavy; power-gated). Details and every other suite:
+`docs/TESTING.md`; harness design: `docs/adr/0001-load-soak-fault-harness.md`.
 
-- `http://party.local/` : LAN Games
-- `http://party.local/arcade/` : Gauntlet II streaming prototype
-- `http://party.local/hotspot-detect.html` : captive-portal landing page
-- `http://10.0.0.218:8093` : Beszel hub (telemetry dashboard, hosted on avrana)
+## Open / not yet verified
 
-## Testing (Playwright)
+- Real phones **truly offline** (every phone test so far had internet behind the Pi) — `tools/avrana-offline`
+  on branch `docs/party-platform`, and the phone checklist in `docs/runbooks/network.md`.
+- BLUFF on real phones (ROADMAP N2) — `docs/runbooks/bluff-playtest.md`.
+- Input-to-photon latency; soak with more than two phones; the AP's client ceiling.
+- Android / Windows / Firefox captive flows (their probes get a 404 today).
 
-End-to-end browser tests live in `tests/`, targeting the live appliance at
-`http://party.avrana` (10.42.0.1). **Run them from a machine joined to the
-Avrana Party Wi-Fi** — the Pi's home-LAN address (10.0.0.143) is not a valid
-client-facing target. Two projects: `chromium` (general regression + the live
-WebRTC connect/stream/control path) and `iphone-safari` (WebKit on an iPhone
-profile, for iOS-oriented layout).
+# History
 
-```sh
-npm install                # once
-npm run install-browsers   # chromium + webkit
-npm test                   # fast suite (both projects; excludes @heavy)
-npm run soak               # load/soak: 2 clients, 90s (SOAK_CLIENTS / SOAK_SECONDS to change)
-npm run fault              # fault injection & recovery (abrupt drop, churn, over-subscription)
-npm run report             # open the HTML report
-```
-
-The load/soak/fault harness (`tests/soak.spec.ts`, `tests/fault.spec.ts`, pure
-logic in `tests/lib/soak-metrics.ts`, unit-tested) drives N real WebRTC clients,
-gates on server health + connectivity + loss + fps, and writes JSON artifacts to
-`test-results/soak/`. See `docs/adr/0001-load-soak-fault-harness.md` for the
-design and threshold philosophy. **Run harness tests from a machine on the Avrana
-Party Wi-Fi.**
-
-Playwright's WebKit is only a proxy for iOS Safari and lacks a reliable WebRTC
-media path, so the streaming test is Chromium-only; a real iPhone stays
-authoritative for iOS Safari and captive-portal behaviour. Co-located Chromium
-clients are also pessimistic for client-side jitter/RTT, so those are reported,
-not gated.
-
-## Current state (read-only inspection of the Pi, 2026-09-19)
-
-- nginx, NetworkManager, avahi-daemon, avranaparty-games and avranaparty-arcade
-  are active and enabled. The Pi had been up about 50 minutes and the arcade
-  service had started at boot with 0 restarts.
-- `Avrana Party` is an AP on `wlan1` (5 GHz, channel 149 per the NetworkManager
-  profile) in shared mode at 10.42.0.1/24, autoconnect. `wlan0` is the home
-  Wi-Fi / management link and default route. `eth0` has no active connection.
-  `party.local` is advertised by Avahi.
-- The live nginx site, portal HTML, captive DNS config and arcade unit match their
-  sources in this repo.
-- Portal: the Apple probe returns 200 with `Cache-Control: no-store`, and both
-  `captive.apple.com` and `captive.g.aaplimg.com` resolve to 10.42.0.1 via the AP's
-  DNS. The owner confirmed the portal works on an iPhone.
-- Arcade: 2 player slots enabled (`MAX_PLAYERS = 2`). P1 is verified for basic
-  gameplay and streaming on a real iPhone.
-
-## Not yet verified / open
-
-- Input-to-photon latency and gameplay performance have **not** been formally
-  measured.
-- Two-phone play is **verified** on two real iPhones (2026-09-20): a 3-min
-  captured session held both phones at ~60 fps, 0 median loss, ~26 ms jitter
-  buffer, ~3 ms pair RTT and ~6-7 ms input-ack RTT (capture tool:
-  `arcade/capture-load.py`). Not yet soak-tested, so `MAX_PLAYERS` stays at 2.
-- Service startup after boot is verified. Phone-side behavior after boot and a
-  true offline test (wlan0 currently provides internet) are **not** verified.
-- **Power (open, gating):** `get_throttled` = `0x50000` is the sticky
-  "occurred since boot" flag. The kernel journal on 2026-09-19 showed ~23
-  under-voltage recoveries spread evenly across a ~100-min session (~1 every
-  3-4 min) — a **recurring**, transient under-voltage, not a one-time boot
-  inrush. Cause not yet identified (PSU / cable / USB load / power delivery are
-  hypotheses). Do not trust latency measurements until it is resolved; see
-  `telemetry/README.md` for the isolation method and the idle baseline.
-- Platform probes other than Apple's (Android, Microsoft, Firefox) are intercepted
-  but their captive flows are untested.
-- Deploy is now defined: the Pi checkout has GitHub `origin` and tracks
-  `origin/main` (commit + push from the laptop, then `git pull` on party).
-- Telemetry: the Beszel agent and Pi sampler are installed on party; still
-  **to do** — add system `party` in the Beszel hub UI, and capture the
-  arcade-no-viewer and arcade+1-phone baselines (idle baseline is done).
-
-## Portal install and history
+## Portal install and history (2026-09-18/19)
 
 Run locally on the Pi:
 
@@ -136,6 +116,12 @@ See https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html.
 
 ## Portal acceptance checks
 
+> **Superseded (design changed 2026-09-18):** `/hotspot-detect.html` now deliberately returns
+> Apple's `Success` page so iPhones join silently with no captive popup, and `portal/index.html` is
+> no longer served (see `CLAUDE-HANDOFF.md`, "DESIGN CHANGED", and `avrana-party.nginx`). The
+> checks below describe the old landing-page design; the current onboarding plan and its test
+> list are in `docs/design/ONBOARDING.md`.
+
 1. Request `http://10.42.0.1/hotspot-detect.html` with `Host: captive.apple.com`.
    Expect 200, `Content-Type: text/html`, `Cache-Control: no-store`, the Avrana
    page, and no Apple Success response. Repeat with a future `If-Modified-Since`;
@@ -149,4 +135,4 @@ See https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html.
 5. Verify with two phones, then four. An HTTP/WebSocket check alone does not
    establish that games work inside the iPhone captive assistant.
 6. Schedule a full offline test with management access available. Do not disable
-   `wlan0` during a remote session.
+   `wlan0` during a remote session. *(Since 2026-09-24 the management link is `eth0`.)*
