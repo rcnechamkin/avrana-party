@@ -21,6 +21,7 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}
 @media(orientation:landscape) and (max-height:600px){video{max-height:70vh}.controls{position:fixed;bottom:8px;left:8px;right:8px;max-width:none;pointer-events:none}.controls button{pointer-events:auto;opacity:.85}header h1{font-size:15px}}
 </style>
 <header><h1 id="title">Avrana Party · PS1</h1><span id="role"></span></header>
+<p id="party-bar" hidden><a href="/party/">← Party Home</a></p>
 <p id="status" role="status">Tap Play to take a controller, or Watch to spectate.</p>
 <button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Disconnect</button>
 <div class="stage">
@@ -128,5 +129,15 @@ function start(watching){
  if(video.requestVideoFrameCallback){vf={n:0,last:0,gaps:[]};const tick=now=>{if(vf.last)vf.gaps.push(now-vf.last);vf.last=now;vf.n++;if(pc)video.requestVideoFrameCallback(tick)};video.requestVideoFrameCallback(tick)}
 }
 connect.onclick=()=>start(false);watchBtn.onclick=()=>start(true);
+// Inside a party (served at /ps1/<title>/ by the party's front door): keep this phone's party
+// presence attached while it plays, and go back to Party Home when the host ends or switches
+// the game. Standalone (:8198/) there is no party and this does nothing.
+const partyGame=(location.pathname.match(/^\/ps1\/([a-z0-9_-]+)\/$/)||[])[1];
+if(partyGame&&window.EventSource){
+ $('#party-bar').hidden=false;
+ const es=new EventSource('/party/events');
+ es.addEventListener('state',e=>{const nav=JSON.parse(e.data).party.nav;
+  if(nav.target!=='ps1-'+partyGame){es.close();if(ws?.readyState===WebSocket.OPEN&&mySlot)ws.send(JSON.stringify({type:'leave'}));store.set(null);disconnect('The game ended. Back to Party Home…');location.assign('/party/')}});
+}
 </script>
 </html>
