@@ -7,6 +7,7 @@
 #      AVRANA_PS1_VIDEO=xvfb|kms|auto (auto: kms if an HDMI connector is connected)
 #      AVRANA_PS1_CAPTURE=WxH  headless screen/window size (default 640x480; 320x240 is the PS1's
 #                              native size and costs the stream ~4x less CPU to grab and convert)
+#      AVRANA_PS1_SHOW_FPS=1   draw RetroArch's real emulation FPS into the picture (diagnostics)
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -68,6 +69,8 @@ APPEND="$HERE/mode-$MODE.cfg|$RUN/game.cfg"
 if [ "$MODE" = xvfb ]; then   # the window fills the private screen exactly: ximagesrc grabs all of it
   printf 'video_window_width = "%s"\nvideo_window_height = "%s"\nvideo_scale = "1.0"\n' \
     "$CAP_W" "$CAP_H" > "$RUN/capture.cfg"
+  # Diagnostics: RetroArch draws its real emulation FPS into the picture (so into the stream).
+  [ "${AVRANA_PS1_SHOW_FPS:-0}" = 1 ] && printf 'fps_show = "true"\nfps_update_interval = "60"\n' >> "$RUN/capture.cfg"
   APPEND="$APPEND|$RUN/capture.cfg"
 fi
 LOG=$RUN/logs/$GAME-$(date +%Y%m%dT%H%M%S).log
