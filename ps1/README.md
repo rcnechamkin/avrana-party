@@ -1,12 +1,13 @@
 # PS1 on Avrana Party (RetroArch + PCSX-ReARMed)
 
-> **PS1 PERFORMANCE / MULTI-VIEWER LOAD TESTING BLOCKED (2026-09-23).** The Pi rebooted
-> during a 4-player + spectator stream test while it was also the AP/router, with
-> recurring live under-voltage (`0x50005`) in the minutes before. Replace or verify the Pi's
-> power first (known-good Raspberry Pi 4 supply, 5.1 V 3 A USB-C, short cable). After that,
-> confirm `vcgencmd get_throttled` = `0x0` from a fresh boot, then run the staged matrix
-> in `docs/findings/2026-09-23-ps1-post-power-test-plan.md`. Until then, don't run sustained
-> PS1 streaming, viewer-scaling or soak tests, and don't tune settings from throttled runs.
+> **Status (2026-09-24 night):** the supervised stage passed on clean power (7 bounded runs, `0x0`,
+> 0 kernel dips); 4 phone slots proven independent in a real Bomberman match; the party can launch
+> Bomberman from Party Home with seat tickets. **The limit is CPU:** with the live arcade running,
+> the emulator gets ~65-70% speed at 5 viewers. Findings and numbers:
+> `docs/findings/2026-09-24-ps1-bomberman-party-slice.md` (branch `docs/party-platform`); real-phone
+> runbook: `docs/runbooks/ps1-bomberman-party-test.md` (same branch). Runs stay bounded and
+> supervised (`tools/supervised-run.sh`); no unattended runs, soak or viewer scaling past 5 without
+> the owner.
 
 Two PS1 games run through one shared stream:
 
@@ -47,6 +48,25 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
   - Bomberman: 4 slots, with the Multitap on **port 2**: user 1 is port 1 (in-game P1), and
     users 2–4 are Multitap pads 2A–2C (P2–P4). User 5 is 2D, unused by the stream.
 
+## Two ways to run it
+
+- **Standalone** (tests): `tools/supervised-run.sh <title> <seconds> [stream args]` — the stream binds
+  10.42.0.1 (+ any `--host`), first-come slots with a reclaim token.
+- **In a party** (the product path): the dev front door (`experiments/party-service/front.py --ps1
+  <this folder>`, branch `experiment/party-service`) starts `stream_ps1.py <title> --host 127.0.0.1
+  --capture 320x240` when the host picks the title, proxies only `/ps1/<title>/` and its `ws`, and
+  stops it when the game ends. **Party mode** is on when `AVRANA_SEAT_KEY` is in the environment: a
+  slot comes only from a seat ticket (`v1.<slot>.<exp>.<game>.<hmac>`, sent in the hello; the page
+  fetches its own from `/party/state`), first-come is off, and the page goes back to Party Home when
+  the party's game changes.
+
+Stream options: `--capture WxH` (default 640x480; **use 320x240**, the PS1 native size — the grab and
+colour conversion cost ~4x less), `--viewports split2|quad` (experiment: each slot gets a crop of the
+shared frame in its `player` message; the page crops client-side). Launcher env:
+`AVRANA_PS1_CAPTURE`, `AVRANA_PS1_SHOW_FPS=1` (RetroArch draws its real FPS into the picture — the
+reliable speed meter). Each viewer costs ~14% of a core (its own payload + SRTP); capture + encode
+~20% in total.
+
 ## Files
 
 | File | Purpose |
@@ -63,7 +83,7 @@ RetroArch + PCSX-ReARMed ── private Xvfb ── ximagesrc ── ONE v4l2h26
 | `titles/<title>.json` | **Title profiles** (data only): cue path relative to the ROM folder, RetroArch users, stream slots, Multitap setting, notes |
 | `profiles.py` | Loads and validates profiles against an allowlist (only hardware-verified values; no raw RetroArch keys) and GENERATES `runtime/core-options.opt` and `runtime/game.cfg` on every launch |
 | `evidence/selected-core.json` | Core provenance and pinned sha256 (the launcher refuses a mismatch) |
-| `tools/` | Test tools: `xkeys.py` (keys into the private display), `shot.sh`, `audio-level.sh`, `monitor.sh`, `viewers.py` (Playwright simulated phones) |
+| `tools/` | Test tools: `supervised-run.sh` (bounded run + power guard + verdict), `phones.mjs` (laptop simulated phones: presses, screenshots, metrics, leave/reload, per-phone crops), `xkeys.py` (keys into the private display), `shot.sh`, `audio-level.sh`, `monitor.sh`, `viewers.py` (older Python simulated phones) |
 
 ## Where things live (never in git)
 
@@ -133,7 +153,7 @@ several seconds, and presses during a fade are ignored.
 
 - Headless rendering is software GL (llvmpipe) in Xvfb: about 1.2 cores for RetroArch alone.
   A real HDMI/KMS session would use the GPU instead. This is untested.
-- Sending the stream to more viewers has not been measured on clean power (see the gate above).
+- Viewer cost on clean power: ~14% of a core per viewer; with the live arcade co-running, 5 viewers leave the emulator at ~65-70% speed (stop the arcade for real play).
 - The live arcade must be stopped for PS1 play with physical/uinput pads, because it
   hot-plugs them. The XTest path used by the stream does not have this problem.
 - Worms is hot-seat: one controller slot, and everyone else watches.
