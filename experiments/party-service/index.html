@@ -63,9 +63,9 @@
       <p id="launch-text" class="status"></p>
       <p class="row"><button type="button" id="cancel-launch" class="secondary" hidden>Cancel starting</button></p>
     </div>
-    <div id="nav-banner" class="card banner" hidden>
+    <div id="nav-banner" class="card banner" role="status" hidden>
       <p id="nav-text" class="status"></p>
-      <a id="nav-go" class="row"><button type="button" id="nav-go-btn">Go</button></a>
+      <p class="row"><button type="button" id="nav-go-btn">Go</button></p>
     </div>
     <h2 id="me-h">You</h2>
     <div class="card">
@@ -179,7 +179,7 @@ function follow(v) {
   let followed = null; try { followed = sessionStorage.getItem(FOLLOWED); } catch (e) {}
   const game = (v.catalog || []).find((g) => g.id === nav.target);
   text($('nav-text'), 'The party is playing ' + (game ? game.name : nav.target) + '.');
-  $('nav-go').href = nav.href; banner.hidden = false;
+  banner.hidden = false;
   if (v.me.seat_slot && followed !== key) {
     try { sessionStorage.setItem(FOLLOWED, key); } catch (e) {}
     location.assign(nav.href);
