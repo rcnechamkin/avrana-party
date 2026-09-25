@@ -1,5 +1,13 @@
 # CLAUDE.md
 
+> **STALE ON THIS BRANCH — read the docs branch first.** This is a code branch; its repo-level docs
+> (`CLAUDE.md`, `CLAUDE-HANDOFF.md`, `docs/`) are older copies. Current truth: branch
+> **`docs/party-platform`** (`git show origin/docs/party-platform:CLAUDE.md`, `…:docs/ROADMAP.md`;
+> laptop worktree `../avrana-party.wt-platform`). In particular: power is **not** blocking PS1 any
+> more (2026-09-24; the limit is CPU), and the party AP is **wlan0 / 10.42.0.1** with eth0
+> `10.0.0.142` upstream (no wlan1). Code docs for this branch's own folders stay current
+> (`ps1/README.md`, `experiments/*/README.md`).
+
 ## Environment
 
 - **This laptop** is the primary dev machine. This local Git repo is where code is normally edited.
