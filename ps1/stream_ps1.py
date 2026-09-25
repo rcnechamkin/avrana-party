@@ -336,13 +336,16 @@ class PS1Stream(stream.Stream):
         self.pipeline = Gst.parse_launch(
             f'ximagesrc display-name={display} use-damage=false show-pointer=false ! '
             'video/x-raw,framerate=60/1 ! videoconvert ! video/x-raw,format=I420 ! '
-            + ('appsink name=raw emit-signals=true sync=false max-buffers=1 drop=true '
+            # async=false on both sinks around the hop: otherwise the pipeline waits forever to
+            # preroll (the raw sink hands its first frame over as a preroll, never as a sample)
+            + ('appsink name=raw emit-signals=true sync=false async=false max-buffers=1 drop=true '
                'appsrc name=stamped is-live=true format=time do-timestamp=false ! ' if self.measure else '') +
             'v4l2h264enc name=video_encoder extra-controls="controls,video_bitrate=2500000,'
             'h264_i_frame_period=60,repeat_sequence_header=1" ! '
             'video/x-h264,profile=constrained-baseline,level=(string)3.1 ! '
             'h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au ! '
             'appsink name=video_out emit-signals=true sync=false max-buffers=2 drop=true '
+            + ('async=false ' if self.measure else '') +
             f'pulsesrc server=unix:{RUN}/pulse/native device=avrana_ps1.monitor ! '
             'audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! '
             'opusenc bitrate=64000 frame-size=20 ! '  # 20 ms: half the packets per viewer
