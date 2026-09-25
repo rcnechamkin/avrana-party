@@ -1,5 +1,9 @@
 # Network: topology, checks, offline mode (canonical)
 
+The `tools/avrana-offline`, `tools/avrana-topology-check`, and `tools/radio-watch`
+helpers referenced below remain on the `docs/party-platform` branch. They are
+absent from production `main`; review the exact script before using it on the Pi.
+
 This is the **single source of truth for the Pi's networking**. Status labels: **VERIFIED** (read on
 the Pi, with date), **PROPOSED** (not applied), **OPEN** (owner decision). Older documents that
 describe `wlan1` as the party AP are historical (the USB adapter was removed on 2026-09-24).
