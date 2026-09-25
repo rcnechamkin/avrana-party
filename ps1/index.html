@@ -107,11 +107,16 @@ function start(watching){
  pc.ontrack=e=>{media.addTrack(e.track);try{e.receiver.jitterBufferTarget=0}catch(_){}try{e.receiver.playoutDelayHint=0}catch(_){}video.play().catch(()=>{status.textContent='Tap Enable sound to start playback.'})};
  pc.onicecandidate=e=>{if(e.candidate&&ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ice',candidate:e.candidate.candidate,sdpMLineIndex:e.candidate.sdpMLineIndex}))};
  pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;leave.disabled=false;sound.disabled=false;pad.hidden=!mySlot;
-   status.textContent=mySlot?`You are Player ${mySlot} in ${game}.`:`Watching ${game}. Every controller is taken (or you chose Watch).`;sendInput()}
+   status.textContent=mySlot?`You are Player ${mySlot} in ${game}.`:partyGame?`Watching ${game}: you have no seat in this game.`:`Watching ${game}. Every controller is taken (or you chose Watch).`;sendInput()}
   else if(['failed','closed'].includes(pc.connectionState))disconnect('Connection lost. Tap Play to reconnect.')};
  // The token goes in the first message (hello), never in the URL: URLs end up in access logs.
  ws=new WebSocket(new URL('ws',location.href).href.replace(/^http/,'ws'));
- ws.onopen=()=>ws.send(JSON.stringify({type:'hello',role:watching?'watch':'play',token:watching?null:store.get()}));
+ // In a party the controller comes from this phone's seat ticket (fetched fresh from its own
+ // Party Home view); without a seat it watches. Standalone it is the reclaim token.
+ ws.onopen=async()=>{let hello={type:'hello',role:watching?'watch':'play',token:watching?null:store.get()};
+  if(partyGame&&!watching){let ticket=null;try{ticket=(await (await fetch('/party/state',{credentials:'same-origin'})).json()).me?.seat_ticket||null}catch(_){}
+   hello={type:'hello',role:'play',ticket}}
+  if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(hello))};
  ws.onmessage=e=>{signalChain=signalChain.then(async()=>{
   const message=JSON.parse(e.data);
   if(message.type==='ack'){const t=sentAt.get(message.seq);if(t!==undefined){ackRtts.push(performance.now()-t);sentAt.delete(message.seq)}return}
@@ -137,7 +142,7 @@ if(partyGame&&window.EventSource){
  $('#party-bar').hidden=false;
  const es=new EventSource('/party/events');
  es.addEventListener('state',e=>{const nav=JSON.parse(e.data).party.nav;
-  if(nav.target!=='ps1-'+partyGame){es.close();if(ws?.readyState===WebSocket.OPEN&&mySlot)ws.send(JSON.stringify({type:'leave'}));store.set(null);disconnect('The game ended. Back to Party Home…');location.assign('/party/')}});
+  if(nav.target!=='ps1-'+partyGame){es.close();disconnect('The game ended. Back to Party Home…');location.assign('/party/')}});
 }
 </script>
 </html>

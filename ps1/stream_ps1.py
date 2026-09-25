@@ -16,9 +16,11 @@ import argparse
 import asyncio
 import ctypes
 import errno
+import hashlib
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
@@ -65,18 +67,37 @@ GRACE = 30.0          # a disconnected player's slot stays reserved for its toke
 RATE_LIMIT = 120      # messages/s per socket: beyond this, state messages are dropped
 FLOOD_LIMIT = 1200    # messages/s per socket that close it (Wi-Fi/tunnels burst, so be lenient)
 HELLO_TIMEOUT = 5.0   # s a new socket has to send its hello before it is closed
+# Party mode (started by the party service, experiments/party-service/runtimes.py): a controller
+# slot comes ONLY from a seat ticket the party minted with this per-launch key (F5 v1), so seats
+# can't be taken first-come or stolen. Format, pinned by a test vector on both sides:
+#   v1.<slot>.<expires unix s>.<game id>.<HMAC-SHA256(key, "v1.<slot>.<exp>.<game>")[:32 hex]>
+SEAT_KEY = os.environ.get('AVRANA_SEAT_KEY')
+SEAT_GAME = os.environ.get('AVRANA_SEAT_GAME')
+TICKET_RE = re.compile(r'^v1\.([1-9][0-9]?)\.([0-9]{10})\.([a-z][a-z0-9_-]{0,39})\.([0-9a-f]{32})$')
+
+
+def verify_ticket(key_hex, ticket, game, max_slot, now=None):
+    """The 1-based slot a seat ticket grants in `game`, or None."""
+    m = TICKET_RE.match(ticket) if isinstance(ticket, str) else None
+    if not m or not key_hex:
+        return None
+    slot, exp, tgame, mac = int(m[1]), int(m[2]), m[3], m[4]
+    good = hmac.new(bytes.fromhex(key_hex), f'v1.{slot}.{exp}.{tgame}'.encode(), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(good, mac) or tgame != game or not 1 <= slot <= max_slot:
+        return None
+    return slot if exp >= (time.time() if now is None else now) else None
 
 
 def parse_hello(text):
-    """The first message on every socket: {"type": "hello", "role": "play"|"watch", "token": str|null}.
-    Returns (watch, token). The token travels here, never in the URL, so it can't end up in an
+    """The first message on every socket: {"type": "hello", "role": "play"|"watch", "token": str|null}
+    ({"ticket": str} instead of "token" in party mode). Returns (watch, token or ticket). The token travels here, never in the URL, so it can't end up in an
     access log (nginx logs query strings). Raises ValueError on anything else."""
     if not isinstance(text, str) or len(text) > 512:
         raise ValueError('hello must be a short text message')
     data = json.loads(text)
     if not isinstance(data, dict) or data.get('type') != 'hello':
         raise ValueError('first message must be a hello')
-    role, token = data.get('role'), data.get('token')
+    role, token = data.get('role'), data.get('ticket', data.get('token'))
     if role not in ('play', 'watch'):
         raise ValueError('role must be play or watch')
     if token is not None and not isinstance(token, str):
@@ -187,9 +208,11 @@ class XTestPad:
 
 
 class PS1Stream(stream.Stream):
-    def __init__(self, game, capture=(640, 480)):
+    def __init__(self, game, capture=(640, 480), seat_key=SEAT_KEY, seat_game=SEAT_GAME):
         super().__init__()
         self.game = game
+        self.seat_key = seat_key              # party mode when set: slots only from seat tickets
+        self.seat_game = seat_game or f'ps1-{game}'
         self.capture = capture                # the private screen = the encoded video's size
         self.players = GAMES[game]
         self.owners = [None] * self.players   # slot -> dict(token, ws, grace)
@@ -286,6 +309,8 @@ class PS1Stream(stream.Stream):
         """Return (slot or None, token). Slots come only from this table."""
         if watch:
             return None, None
+        if self.seat_key:
+            return self.claim_seat(ws, token)
         if isinstance(token, str) and 8 <= len(token) <= 64:
             for slot, owner in enumerate(self.owners):
                 if owner and hmac.compare_digest(owner['token'].encode(), token.encode()):
@@ -305,6 +330,20 @@ class PS1Stream(stream.Stream):
         self.owners[slot] = dict(token=token, ws=ws, grace=None)
         self.pads[slot].release_all()
         return slot, token
+
+    def claim_seat(self, ws, ticket):
+        """Party mode: the ticket's seat, and only it. Anything else watches."""
+        n = verify_ticket(self.seat_key, ticket, self.seat_game, self.players)
+        if n is None:
+            return None, None
+        slot, owner = n - 1, self.owners[n - 1]
+        if owner and owner['ws'] is not None and owner['ws'] is not ws and not owner['ws'].closed:
+            asyncio.ensure_future(owner['ws'].close(code=4001, message=b'Replaced by a newer connection'))
+        if owner and owner['grace']:
+            owner['grace'].cancel()
+        self.owners[slot] = dict(token=secrets.token_urlsafe(16), ws=ws, grace=None)
+        self.pads[slot].release_all()
+        return slot, None                     # no reclaim token: the next ticket is the reclaim
 
     def release(self, slot, ws):
         owner = self.owners[slot]
