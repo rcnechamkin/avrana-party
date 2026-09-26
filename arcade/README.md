@@ -17,6 +17,11 @@
 > - Raw stats are visible only with `#diag`.
 > - The page is served from the checkout on every request, so it goes live with the production
 >   fast-forward. The server code changes on the next restart.
+> - **Fatal errors now end the process (branch `fix/arcade-fatal-exit`):** when the emulator exits or
+>   the GStreamer bus reports an error, `stream.py` closes phone sockets (1011), runs its normal
+>   cleanup and exits with status 1, so `Restart=on-failure` can restart it (it used to stay alive
+>   and unusable). A deliberate stop (SIGTERM) still exits 0. Tested with stubs
+>   (`tests/unit/test_arcade_fatal_exit.py`); a real restart on the Pi is not yet verified.
 > - The Selkies row below is out of date: pixelflux 2.1 now has a Pi 4 V4L2 encoder (see the
 >   substrate decision matrix, spike S3).
 
