@@ -1,0 +1,141 @@
+"""Tier 1/2: arcade/stream.py wiring after the provider extraction, with GStreamer and aiohttp stubbed.
+
+It cannot prove streaming works (that needs the Pi's encoder, a phone and the owner); it proves
+the module imports without python-evdev, that its controller layout agrees with the Game
+Contract and the phone page, and that startup/stats/cleanup drive the runtime and input
+providers (a stand-in process instead of RetroArch, a fake uinput).
+"""
+import asyncio
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import types
+import unittest
+from pathlib import Path
+
+from avrana import CONTRACTS_DIR, REPO_ROOT
+from avrana.contracts import game, vocabulary
+from avrana.providers.retroarch import RetroArchRuntime
+from avrana.providers.uinput_gamepad import UInputGamepadProvider
+
+from test_providers import fake_evdev
+
+
+class _Enum(types.SimpleNamespace):
+    pass
+
+
+def stub_modules():
+    gst = types.SimpleNamespace(
+        init=lambda *_: None,
+        State=_Enum(PLAYING='PLAYING', NULL='NULL'),
+        StateChangeReturn=_Enum(FAILURE='FAILURE', SUCCESS='SUCCESS'),
+        MessageType=_Enum(ERROR='ERROR'),
+        CLOCK_TIME_NONE=-1,
+        parse_launch=None,  # set per test
+    )
+    repository = types.SimpleNamespace(Gst=gst, GstVideo=types.SimpleNamespace(), GstWebRTC=types.SimpleNamespace(),
+                                       GstSdp=types.SimpleNamespace())
+    gi = types.ModuleType('gi')
+    gi.require_version = lambda *_: None
+    gi.repository = repository
+    web = types.SimpleNamespace(json_response=lambda data: data)
+    aiohttp = types.ModuleType('aiohttp')
+    aiohttp.web = web
+    return {'gi': gi, 'gi.repository': repository, 'aiohttp': aiohttp}, gst
+
+
+def load_stream():
+    modules, gst = stub_modules()
+    saved = {name: sys.modules.get(name) for name in modules}
+    sys.modules.update(modules)
+    try:
+        spec = importlib.util.spec_from_file_location('arcade_stream_under_test', REPO_ROOT / 'arcade' / 'stream.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        for name, old in saved.items():
+            if old is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = old
+    return module, gst
+
+
+class FakePipeline:
+    def __init__(self):
+        self.states = []
+
+    def get_by_name(self, name):
+        return types.SimpleNamespace(connect=lambda *a: None)
+
+    def set_state(self, state):
+        self.states.append(state)
+        return 'SUCCESS'
+
+    def get_bus(self):
+        return types.SimpleNamespace(pop_filtered=lambda *_: None)
+
+
+class ArcadeStream(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.stream, cls.gst = load_stream()
+        cls.contract = game.load(CONTRACTS_DIR / 'games' / 'arcade-gauntlet2.json', vocabulary.load())
+
+    def test_imports_without_evdev(self):
+        self.assertNotIn('evdev', sys.modules)
+
+    def test_layout_matches_contract_and_page(self):
+        inp = self.contract['input']
+        self.assertEqual(self.stream.LAYOUT.buttons, tuple(inp['buttons']))
+        self.assertEqual(self.stream.LAYOUT.directions, inp['directions'])
+        self.assertEqual(self.stream.MAX_PLAYERS, inp['slots'])
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertEqual(set(re.findall(r'data-key="([a-z]+)"', page)), set(self.stream.LAYOUT.names))
+
+    def test_presentation_provider_shape(self):
+        s = self.stream.Stream()
+        self.assertEqual(s.info.offers, ('presentation.shared_stream',))
+        self.assertEqual(s.status(), {'id': 'shared-webrtc', 'kind': 'presentation',
+                                      'offers': ['presentation.shared_stream'], 'viewers': 0, 'encoders': 1})
+        self.assertEqual(s.runtime.command()[-1], '/srv/avrana/roms/arcade/gaunt2.zip')
+        self.assertTrue(str(s.runtime.core).endswith('arcade/cores/mame2010_libretro.so'))
+
+    def test_startup_stats_cleanup_drive_the_providers(self):
+        log = []
+        s = self.stream.Stream()
+        s.input = UInputGamepadProvider(evdev=fake_evdev(log))
+        s.runtime = RetroArchRuntime(config='c', core='k', content='x', popen=lambda cmd, **kw: subprocess.Popen(
+            [sys.executable, '-c', 'import time; time.sleep(30)'], **kw))
+        pipeline = FakePipeline()
+        self.gst.parse_launch = lambda description: pipeline
+        with tempfile.TemporaryDirectory() as tmp:
+            self.stream.EMULATOR_LOG = Path(tmp) / 'emulator.log'
+            os.environ.setdefault('PULSE_SERVER', 'unix:/nonexistent')
+
+            async def run():
+                await s.startup(None)
+                stats = await s.stats(None)
+                await s.cleanup(None)
+                return stats
+            stats = asyncio.run(run())
+        self.assertTrue(stats['emulator_running'])
+        self.assertEqual(stats['max_players'], 2)
+        self.assertEqual(stats['video_encoders'], 1)
+        self.assertEqual(stats['providers']['runtime']['id'], 'retroarch')
+        self.assertTrue(stats['providers']['runtime']['running'])
+        self.assertEqual(stats['providers']['input']['isolation'], 'global')
+        self.assertEqual(stats['providers']['input']['controllers'], 2)
+        self.assertEqual(stats['providers']['presentation']['viewers'], 0)
+        self.assertEqual([entry[2] for entry in log if entry[0] == 'create'], ['Avrana Player 1', 'Avrana Player 2'])
+        self.assertEqual(sum(1 for entry in log if entry[0] == 'close'), 2)
+        self.assertFalse(s.runtime.running())
+        self.assertEqual(pipeline.states, ['PLAYING', 'NULL'])
+
+
+if __name__ == '__main__':
+    unittest.main()

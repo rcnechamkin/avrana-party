@@ -19,7 +19,7 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}.controls{
 <header><h1>Avrana Party · Gauntlet II</h1><a href="/">Other games</a></header>
 <p id="status" role="status">Ready to play. Tap Play to connect.</p>
 <p id="path-warning" hidden style="background:#4a2b00;color:#ffd699;padding:8px 10px;border-radius:8px">This phone is connected through your home network, not the Avrana Party Wi-Fi. Join <b>Avrana Party</b> in Wi-Fi settings for the lowest lag.</p>
-<button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Disconnect</button>
+<button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Leave</button>
 <div class="stage">
 <video id="screen" autoplay playsinline muted></video>
 <div class="start-overlay" id="start-overlay"><button id="connect">▶ Play Gauntlet II</button></div>
@@ -36,7 +36,7 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}.controls{
  </div>
 </div>
 <p>Tap Add coin to join. Hold a direction to move. Turn your phone sideways for a larger view.</p>
-<details><summary>Connection details</summary><p id="metrics">Not connected</p></details>
+<details id="details" hidden><summary>Connection details</summary><p id="metrics">Not connected</p></details>
 <script>
 'use strict';
 // iOS Safari ignores user-scalable=no for pinch; block its non-standard gesture events.
@@ -44,7 +44,14 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}.controls{
 const status=document.querySelector('#status'), video=document.querySelector('video'), connect=document.querySelector('#connect'), sound=document.querySelector('#sound'), leave=document.querySelector('#leave');
 const overlay=document.querySelector('#start-overlay');
 video.addEventListener('playing',()=>{overlay.hidden=true});
+// Raw connection stats are for testers only: add #diag to the address to see them.
+document.querySelector('#details').hidden=location.hash!=='#diag';
 let ws=null,pc=null,ready=false,heartbeat=null,statsTimer=null,pendingIce=[],signalChain=Promise.resolve(),myPlayer=null;
+// Quiet reconnect after a drop (phone locked, Wi-Fi blip): a few tries while the page is visible.
+let wasConnected=false,reconnecting=false,leaving=false,retries=0,retryTimer=null,attempt=0;const RETRY_MS=[500,1000,2000,4000,6000];
+// Keep the screen on while playing (Full Mode only; /party/lib is the Avrana web shell). Never fatal.
+let awake=null;
+if(window.isSecureContext&&'wakeLock' in navigator)import('/party/lib/keep-awake.js').then(m=>{awake=m.createKeepAwake()}).catch(()=>{});
 const held=new Map(), controls=[...document.querySelectorAll('[data-key]')];
 function enableControls(value){controls.forEach(b=>b.disabled=!value)}
 enableControls(false);
@@ -54,10 +61,38 @@ function sendInput(){if(ws?.readyState===WebSocket.OPEN && ready){if(ws.buffered
  if(key!==lastSent){lastSent=key;msg.seq=++seq;sentAt.set(seq,performance.now());if(sentAt.size>200)sentAt.delete(sentAt.keys().next().value)}
  ws.send(JSON.stringify(msg))}}
 function releaseAll(){held.clear();controls.forEach(b=>b.classList.remove('held'));sendInput()}
-function disconnect(message='Disconnected. Tap Play to reconnect.'){
+function teardown(){
+ attempt++; // late failures of the attempt being torn down are ignored from here on
  releaseAll();ready=false;myPlayer=null;document.querySelector('h1').textContent='Avrana Party · Gauntlet II';clearInterval(heartbeat);clearInterval(statsTimer);enableControls(false);
- if(ws){ws.onclose=null;ws.close();ws=null}if(pc){pc.close();pc=null}video.srcObject=null;
- connect.disabled=false;connect.textContent='▶ Play Gauntlet II';overlay.hidden=false;leave.disabled=true;sound.disabled=true;status.textContent=message;
+ if(ws){ws.onclose=null;ws.onerror=null;ws.close();ws=null}if(pc){pc.onconnectionstatechange=null;pc.close();pc=null}video.srcObject=null;
+ leave.disabled=true;sound.disabled=true;
+}
+function disconnect(message='Disconnected. Tap Play to reconnect.'){
+ clearTimeout(retryTimer);retryTimer=null;wasConnected=false;reconnecting=false;retries=0;awake?.release();teardown();
+ connect.disabled=false;connect.textContent='▶ Play Gauntlet II';overlay.hidden=false;status.textContent=message;
+}
+// Full is not the same as lost: ask the arcade (briefly) before choosing the words.
+async function isFull(){const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),1500);
+ try{const r=await fetch(new URL('stats',location.href),{cache:'no-store',signal:ctl.signal});if(!r.ok)return false;const s=await r.json();
+ return Number.isInteger(s.players)&&Number.isInteger(s.max_players)&&s.players>=s.max_players}catch(_){return false}finally{clearTimeout(t)}}
+async function refused(fallback){
+ connect.disabled=true;overlay.hidden=false;status.textContent='Checking…';const mine=attempt;
+ const full=await isFull();if(mine!==attempt||leaving)return;
+ disconnect(full?'Both controllers are in use. Try again when one is free.':fallback);
+}
+function failed(){
+ const retry=wasConnected||reconnecting;wasConnected=false;teardown();
+ if(leaving)return;
+ // After a drop, keep trying through "full": the arcade frees this phone's own slot only when its
+ // heartbeat notices the old connection is gone (a few seconds).
+ if(retry){reconnecting=true;scheduleRetry();return}
+ refused('Can’t connect right now. Stay on the Avrana Party Wi-Fi, then tap Play.');
+}
+function scheduleRetry(){
+ if(retries>=RETRY_MS.length){refused('Connection lost. Tap Play to reconnect.');return}
+ connect.disabled=true;connect.textContent='Reconnecting…';overlay.hidden=false;status.textContent='Reconnecting…';
+ if(document.hidden||retryTimer)return; // a locked phone resumes on visibilitychange
+ retryTimer=setTimeout(()=>{retryTimer=null;retries++;start()},RETRY_MS[retries]);
 }
 controls.forEach(button=>{
  button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);held.set(e.pointerId,button.dataset.key);button.classList.add('held');sendInput()});
@@ -65,9 +100,11 @@ controls.forEach(button=>{
  button.addEventListener('pointerup',up);button.addEventListener('pointercancel',up);button.addEventListener('lostpointercapture',up);
  button.addEventListener('contextmenu',e=>e.preventDefault());
 });
-document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAll()});
-window.addEventListener('blur',releaseAll);window.addEventListener('pagehide',()=>disconnect());
-leave.onclick=()=>disconnect();
+document.addEventListener('visibilitychange',()=>{if(document.hidden){releaseAll();return}
+ if(reconnecting&&!ws&&!retryTimer){retries=0;scheduleRetry()}});
+window.addEventListener('blur',releaseAll);window.addEventListener('pagehide',()=>{leaving=true;disconnect()});
+window.addEventListener('pageshow',()=>{leaving=false});
+leave.onclick=()=>disconnect('You left the game. Tap Play to join again.');
 sound.onclick=async()=>{video.muted=!video.muted;try{await video.play();sound.textContent=video.muted?'Enable sound':'Mute sound'}catch(e){status.textContent='Tap Enable sound again to start playback.'}};
 let vf=null,prev=null,pingId=0;const pingAt=new Map(),pingRtts=[];
 const pct=(a,q)=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);return +b[Math.min(b.length-1,Math.floor(q*b.length))].toFixed(1)};
@@ -97,12 +134,16 @@ async function collect(){
 }
 connect.onclick=()=>{
  if(!window.RTCPeerConnection){status.textContent='Open '+location.origin+'/arcade/ in your phone’s regular browser to play.';return}
- prev=null;lastSent='';document.querySelector('#path-warning').hidden=true;connect.disabled=true;connect.textContent='Connecting…';status.textContent='Connecting…';pendingIce=[];signalChain=Promise.resolve();
+ retries=0;reconnecting=false;awake?.want();start();
+};
+function start(){
+ const mine=++attempt;
+ prev=null;lastSent='';document.querySelector('#path-warning').hidden=true;connect.disabled=true;connect.textContent=reconnecting?'Reconnecting…':'Connecting…';status.textContent=reconnecting?'Reconnecting…':'Connecting…';pendingIce=[];signalChain=Promise.resolve();
  pc=new RTCPeerConnection({iceServers:[]});
  const media=new MediaStream();video.srcObject=media;
  pc.ontrack=e=>{media.addTrack(e.track);try{e.receiver.jitterBufferTarget=+(new URLSearchParams(location.search).get('jb')||0)}catch(_){}try{e.receiver.playoutDelayHint=0}catch(_){}video.play().catch(()=>{status.textContent='Tap Enable sound to start playback.'})};
  pc.onicecandidate=e=>{if(e.candidate && ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ice',candidate:e.candidate.candidate,sdpMLineIndex:e.candidate.sdpMLineIndex}))};
- pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;enableControls(true);leave.disabled=false;sound.disabled=false;status.textContent=`Player ${myPlayer} connected. Add a coin to join.`}else if(['failed','closed'].includes(pc.connectionState))disconnect('Connection lost. Tap Play to reconnect.')};
+ pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;wasConnected=true;reconnecting=false;retries=0;awake?.want();enableControls(true);leave.disabled=false;sound.disabled=false;status.textContent=`Player ${myPlayer} connected. Add a coin to join.`}else if(['failed','closed'].includes(pc.connectionState))failed()};
  ws=new WebSocket(new URL('ws'+location.search,location.href).href.replace(/^http/,'ws'));
  ws.onmessage=e=>{signalChain=signalChain.then(async()=>{
   const message=JSON.parse(e.data);
@@ -113,12 +154,13 @@ connect.onclick=()=>{
   if(!pc)return;
   if(message.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:message.sdp});for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];await pc.setLocalDescription(await pc.createAnswer());ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription.sdp}))}
   else if(message.type==='ice'){const c={candidate:message.candidate,sdpMLineIndex:message.sdpMLineIndex};if(pc.remoteDescription)await pc.addIceCandidate(c);else pendingIce.push(c)}
- }).catch(e=>{console.error(e);disconnect('Could not start video. Try your regular browser at '+location.origin+'/arcade/.')})};
- ws.onclose=()=>disconnect('Disconnected, or every player slot is in use. Close another controller, then tap Play.');
- ws.onerror=()=>disconnect('Could not connect. Stay on Avrana Party Wi-Fi, and make sure a player slot is free, then try again.');
+ }).catch(e=>{if(mine!==attempt)return; // a step of an older attempt failing after teardown
+  console.error(e);disconnect('Could not start video. Try your regular browser at '+location.origin+'/arcade/.')})};
+ ws.onclose=()=>failed();
+ ws.onerror=()=>failed();
  heartbeat=setInterval(()=>{if(!document.hidden)sendInput()},50);
  statsTimer=setInterval(collect,1000);
  if(video.requestVideoFrameCallback){vf={n:0,last:0,gaps:[]};const tick=(now)=>{if(vf.last)vf.gaps.push(now-vf.last);vf.last=now;vf.n++;if(pc)video.requestVideoFrameCallback(tick)};video.requestVideoFrameCallback(tick)}
-};
+}
 </script>
 </html>

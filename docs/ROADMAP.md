@@ -127,6 +127,35 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 ## NOW
 
+### Sprint update (2026-09-26): foundations on branch `claude/dreamy-carson-sja5mq` (PR, not merged)
+
+Built and tested in Cloud (Tier 1–2), not deployed:
+- platform contracts: capability vocabulary, Game Contract v0 (F7's successor), appliance profile,
+  per-seat Capability Engine v0;
+- provider boundaries: the arcade now runs through the RetroArch and uinput adapters;
+- the Full Mode web shell at `https://party.avrana.net/party/`, with diagnostics;
+- the arcade page's keep-awake, honest "full" message and quiet reconnect;
+- offline CI suites, which include PR #1's lane.
+
+Records: ADR 0004, `docs/design/FULL-MODE.md`, `docs/findings/2026-09-26-architecture-sprint.md`
+and the substrate decision matrix.
+
+**Owner next:**
+1. Review and merge the PR (and PR #1, and `fix/arcade-ap-interface`: it fixes the arcade's
+   false "home network" warning).
+2. Deploy the shell: one nginx step plus `ops/install-party-web.sh`.
+3. Run the phone checklist in `docs/runbooks/party-https.md`.
+4. Decide the certificate-renewal credential before about **2026-11-25**; the certificate expires
+   2026-12-25. Research recommends against a zone-wide Cloudflare token; see the findings.
+
+**Agents next (after the merge):**
+- Make the experiment branches HTTPS-ready: the Origin checks in `service.py:325` and
+  `stream_ps1.py:549`, and the `Secure` cookie.
+- Seat ticket v2, bound to the seat generation.
+- Liveness as the union of a presence's connections.
+- Party Home adopting `web/party/lib/*`.
+- Hardware spikes S1 (GPU headless display) and S3 (Selkies/pixelflux) under `~/avrana-lab/`.
+
 ### Next action (2026-09-24 late night: after the first real-phone Bomberman playtest)
 
 The owner's playtest worked end to end (Party Home → Bomberman → phone → video + controls, ~60 fps
@@ -258,7 +287,7 @@ Things whose absence would force rework later. Keep this list short.
 | F4 | **Party service:** one Party per appliance (v0), party socket, versioned snapshot + append-only event log — **skeleton built 2026-09-24** (`service.py` drives the reference model; Server-Sent Events instead of a socket) | A reconnecting phone gets the current party state in one message |
 | F5 | **Presence + Seat + seat ticket v1:** guests as "Player N" with rename; seat = party × game session × slot with grace and same-presence reclaim; tickets bound to one game; the fork bridge hands the game a per-(session, participant) game key at `hello` and turns off the "any client token" path; seats are bound where each game binds them — **v1 built for PS1 2026-09-24** (`experiments/party-service/seat_ticket.py` + `ps1/stream_ps1.py` party mode: per-launch key, 5-min HMAC ticket, first-come off; proven on the Pi). **Not yet:** single-use tickets, the LAN Games fork bridge (BLUFF untouched until N2) | Fabricated tokens cannot take seats; a reload keeps the same seat |
 | F6 | **Host authority:** host is a presence; voluntary transfer; grace then succession; no "claim host"; Host ≠ Admin | Host-only actions rejected for others; a sleeping host is succeeded and returns as a player |
-| F7 | **Manifest v0:** derived from the LAN Games registry; static JSON for BLUFF, arcade, PS1 titles — **experiment built 2026-09-24** (`experiments/manifests/`; the party catalog is derived from the registry; PS1 titles now have entries and launch through `runtime.start: service`) | One API lists every runtime with players, TV need and control model |
+| F7 | **Manifest v0:** derived from the LAN Games registry; static JSON for BLUFF, arcade, PS1 titles — **experiment built 2026-09-24** (`experiments/manifests/`; the party catalog is derived from the registry; PS1 titles now have entries and launch through `runtime.start: service`). **2026-09-26: Game Contract v0** (`contracts/`, ADR 0004) is the successor on branch `claude/dreamy-carson-sja5mq`: presentations, capability requirements, fallback, grants split out; `lift_manifest_v0()` converts | One API lists every runtime with players, TV need and control model |
 | F8 | **Event record with provenance** (draft envelope in `docs/design/GAME-INTEGRATION.md` §3.2; provenance taken from the grant, not the game's claim) | Every lifecycle event carries provenance; emulated games can only emit `platform_observed` unless a per-game adapter exists |
 
 Critical path: dev origin (F2a) → device token → party state → presence → seats + host →

@@ -66,6 +66,14 @@ power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL brows
 
 ## The party address (proposal only; nothing changed)
 
+> **Update 2026-09-26:** browser-trusted `https://party.avrana.net` has been LIVE since 2026-09-25.
+> It is the canonical origin for Avrana-owned pages (ADR 0004 D1, which puts the Full Mode shell at
+> `/party/`, HTTPS only). The discussion below predates HTTPS.
+> - `http://10.42.0.1` stays the always-resolving HTTP origin for captive probes, LAN Games and
+>   recovery.
+> - The QR target is still OPEN: an HTTP doorway that hands off to HTTPS, or the HTTPS name
+>   directly. That depends on how Party DNS behaves under Private DNS or VPNs.
+
 - **One canonical origin, or one phone becomes two presences.** A QR code that carries the IP plus
   people typing `party.local` would give each phone two cookie jars (two presences, two seats, two
   votes) — see `PARTY-PLATFORM.md` §4.
@@ -154,7 +162,8 @@ NFC first-record rule; which browser the camera opens.
 Change nginx, dnsmasq, NetworkManager, Avahi, connectivity-check handling, or Wi-Fi security/password
 without approval · put identity or games inside the captive popup · redirect the IP to
 `party.local` before Android is verified · remove the `captive.g.aaplimg.com` rule · put device
-tokens in QR/NFC links · rely on HTTPS-only features · judge onboarding at home with internet behind
+tokens in QR/NFC links · rely on HTTPS-only features for anything that must also work on the HTTP
+origin (Full Mode pages may use them and must degrade silently: ADR 0004) · judge onboarding at home with internet behind
 the Pi · take `eth0` down during a remote session (since 2026-09-24 eth0 is the only management link) · ship unlocked NFC tags.
 
 **Still uncertain:** Android's NFC Wi-Fi prompt on

@@ -39,6 +39,9 @@ Labels: **LIVE** = running on the appliance · **TESTED** = automated tests, not
 | PS1 on one shared stream; title profiles | **EXPERIMENT**, power-gated | branches `ps1-emulation`, `experiment/ps1-title-profiles` |
 | Party lifecycle model; Personal Viewports PoC (incl. shared WebRTC source) | **EXPERIMENT** | branch `experiment/party-sim` (`experiments/`) |
 | Party service + device identity + dev front door; manifest v0 | **EXPERIMENT** | branch `experiment/party-service` |
+| Browser-trusted HTTPS at `https://party.avrana.net` (Full Mode origin) | **LIVE** since 2026-09-25 (renewal not automated yet) | `docs/runbooks/party-https.md`, `ops/` |
+| Full Mode web shell at `/party/`: capability-aware game cards, offline copy, diagnostics; arcade keep-awake + quiet reconnect | **TESTED** (Tier 1–2), not deployed; deploying it needs an owner nginx step | `web/party/`, `docs/design/FULL-MODE.md` |
+| Platform contracts: capability vocabulary, Game Contract v0, appliance profile, per-seat Capability Engine v0; provider boundaries (arcade runs through them) | **TESTED**, not deployed | `contracts/`, `avrana/`, ADR 0004 |
 | Party platform, onboarding, accessibility expectations | **PROPOSED** | `docs/design/` |
 
 Power: with the USB Wi-Fi adapter removed and the new PSU, **zero under-voltage** through idle, SSH,
@@ -50,6 +53,8 @@ the same PSU dipped 9 times in ~91 min.
 
 - `https://party.avrana.net/`: browser-trusted Full Mode origin (local Party
   DNS; phone join and HTTPS passed on `fix/party-https`, laptop Wi-Fi check pending)
+- `https://party.avrana.net/party/` and `/party/diag/`: the Full Mode shell and diagnostics
+  (**after** the owner deploys it: `docs/runbooks/party-https.md`, "Full Mode web shell")
 - `http://10.42.0.1/` (also `http://party.local/`): LAN Games hub
 - `http://10.42.0.1/arcade/`: Gauntlet II stream
 - `http://10.42.0.1/hotspot-detect.html`: Apple connectivity probe (deliberately `Success`)
@@ -63,8 +68,12 @@ the same PSU dipped 9 times in ~91 min.
 | `avrana-captive.conf` | captive DNS rules (live: `/etc/NetworkManager/dnsmasq-shared.d/`) |
 | `install-portal.py`, `install-captive-dns.py` | installers kept for provenance and recovery; do not rerun blindly |
 | `arcade/` | Gauntlet II streaming prototype, service and install files |
+| `avrana/` | stdlib Python platform package: `contracts` (validators, catalog build, seat evaluation), `providers` (runtime/input/presentation boundaries + adapters), `web` (shell build, local dev server) |
+| `contracts/` | capability vocabulary, Game Contracts, appliance profile, shared test vectors (`contracts/README.md`) |
+| `web/party/` | the Full Mode web shell (static; served by nginx at `/party/` on HTTPS) |
+| `ops/` | HTTPS certificate scripts and `install-party-web.sh` (Pi only, owner-run) |
 | `telemetry/` | Beszel agent + Pi `vcgencmd` sampler installers, systemd units, baseline runbook |
-| `tests/` | Playwright E2E against the live appliance (run from a laptop on the party Wi-Fi) |
+| `tests/` | Playwright E2E against the live appliance (run from a laptop on the party Wi-Fi); `tests/unit` and `tests/offline` are Tier 1–2 offline suites (`npm run test:offline`, CI) |
 | `portal/index.html` | old captive landing page; not served since 2026-09-18 |
 | `docs/` | roadmap, system map, runbooks, design, ADRs, findings |
 

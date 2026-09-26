@@ -182,3 +182,69 @@ deployment. Recheck HTTP Apple, Android, Windows and Firefox probe behavior,
 Party Wi-Fi join, `party.local`, LAN Games, and the existing service status.
 Keep the new certificate and ACME state on the Pi for diagnosis unless they
 caused the failure; do not copy keys off the Pi.
+
+## Full Mode web shell (`/party/`): deploy, check, roll back
+
+Status: **PROPOSED; not deployed** (branch `claude/dreamy-carson-sja5mq`, ADR 0004,
+`docs/design/FULL-MODE.md`). It adds three `location` blocks to the **443 server only**:
+`= /party`, `= /party/api/origin.json` and `/party/`. The port 80 server is byte-for-byte
+unchanged, which `tests/unit/test_nginx_site.py` checks against a real nginx. The files are static;
+there is no service, port or unit.
+
+Owner steps on the Pi, one time. Every step needs `sudo`, so the owner types it.
+
+1. Put the reviewed commit in a clean checkout: the production checkout after the merge, or a lab
+   checkout for a pre-merge test (`git status --porcelain` must be empty). Record `git rev-parse HEAD`.
+2. Back up the live site as in "Pre-deployment and backup", then check the copies:
+   `cmp avrana-party.nginx arcade/nginx-site`.
+3. Install the static files. This builds a release, stamps it and switches the atomic `current`:
+   `sudo bash ops/install-party-web.sh <checkout>`.
+4. Install the site and reload only after a successful test:
+   `sudo cp <checkout>/avrana-party.nginx /etc/nginx/sites-available/avrana-party && sudo nginx -t && sudo systemctl reload nginx`.
+   Then `cmp` the live file against the repository.
+5. Checks from a Party-connected machine, without `-k` and without a proxy:
+   ```sh
+   curl --noproxy '*' -sI https://party.avrana.net/party/ | grep -iE '^(HTTP|cache-control|content-security-policy)'
+   curl --noproxy '*' -s  https://party.avrana.net/party/api/origin.json      # "serverAddr":"10.42.0.1"
+   curl --noproxy '*' -s  https://party.avrana.net/party/version.json         # the commit you installed
+   curl --noproxy '*' -i -H 'Host: captive.apple.com' http://10.42.0.1/hotspot-detect.html   # still Success
+   ```
+6. Phone checks: the checklist below.
+
+Later releases need only step 3. To roll back the files to the previous release:
+`sudo bash ops/install-party-web.sh --rollback`. To remove offline copies from phones:
+`sudo bash ops/install-party-web.sh --kill <checkout>`. That sets `version.json`
+`serviceWorker:false` and installs a self-destruct worker; open phones clean up on their next visit.
+To remove the feature, restore the backed-up site, run `nginx -t` and reload. Releases live under
+`/var/www/avrana-party/web/releases/`, and the newest five are kept.
+
+**When the arcade changes go live.** This does not depend on the shell deploy above.
+- `arcade/stream.py` reads `index.html` from the production checkout on every request. So once
+  `/home/cody/avrana-party` is fast-forwarded to a commit with this branch, the arcade *phone page*
+  changes at once if the arcade service is running: keep-awake, "full" versus "lost" messages,
+  quiet reconnect, and the "Leave" label.
+- The refactored `stream.py` (provider adapters, `/stats` `providers` block) runs after the next
+  start of the service, and that includes a crash restart or a reboot.
+- The arcade was stopped at the 2026-09-25 deploy. Treat the fast-forward itself as the arcade
+  deploy step, and run the arcade checks in the phone checklist (and `npm test` from the Party
+  Wi-Fi) the next time it runs.
+- Keep-awake needs the shell, because the page loads `/party/lib/keep-awake.js`. Without the shell
+  it is silently off.
+
+### Phone checklist (Tier 3; record the results in `docs/findings/`)
+
+1. On Party Wi-Fi, open `https://party.avrana.net/party/`. Expect no certificate warning, "Connected
+   to the party · 🔒 Secure", and the Gauntlet II and Party games cards.
+2. Open "This phone". Record every line on both an iPhone (Safari) and an Android phone (Chrome).
+3. On `/party/diag/`, tap "Copy report" and paste the `avrana.diagnostics/v0` JSON into a finding.
+   This records the first real `video.h264`, `wake_lock` and `gamepad` observations.
+4. Tap "Test keep-awake" on the diagnostics page. Expect "on", and the screen should not dim for
+   longer than the auto-lock time. Then release.
+5. Reload the page twice (the offline copy installs), then switch the phone to another Wi-Fi or
+   mobile data and reload. Expect "Can’t reach the party" (not a browser error). Rejoin Avrana
+   Party: the page should recover by itself.
+6. If the arcade runs on the new code: Play, lock the phone for 20 s, unlock. Expect
+   "Reconnecting…" and then "Player N connected", with the screen staying on while playing. With
+   two controllers in use, a third phone should read "Both controllers are in use".
+7. Confirm the captive behaviour is unchanged: forget and rejoin the Wi-Fi on the iPhone, and expect
+   no popup.

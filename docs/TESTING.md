@@ -2,7 +2,8 @@
 
 Status: inventory from 2026-09-24 (counts are from that day's runs). Commands run from the repo
 root of the branch named; "Pi" means `ssh party` (only for suites that need Linux or the appliance).
-Claude Code Cloud can run offline tests after `npm ci` and `npx playwright install` where needed.
+Claude Code Cloud can run offline tests after `npm ci` and `npx playwright install` where needed;
+the offline checks on `main` also run in GitHub Actions (see "Offline CI lane" below).
 The `tests/` browser suite targets the live Pi and requires Party Wi-Fi and local name resolution;
 do not run `npm test` in Cloud and treat its failure as a product regression.
 **Never run heavy suites on the Pi during a power measurement** — each SSH session is a CPU burst
@@ -14,7 +15,7 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 |---|---|---|---|---|---|
 | Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm test` (fast), `npm run test:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; a hosts-file line `10.42.0.1 party.avrana` (Windows: `C:\Windows\System32\drivers\etc\hosts`, edited as administrator) | not run today (would take the laptop off the home network) |
 | Soak / fault harness (`@heavy`) | `main` | `npm run soak`, `npm run fault` | laptop on the Party Wi-Fi | live Pi; owner go-ahead for load | not run |
-| Soak metric maths | `main` | `npx playwright test tests/soak-metrics.spec.ts` | laptop | — | — |
+| Soak metric maths | `main` | `npx playwright test tests/soak-metrics.spec.ts` | laptop, Cloud, **CI** | — (no browser binaries) | 10 pass (5 × 2 projects; Cloud 2026-09-26) |
 | Arcade AP-address detection | `fix/arcade-ap-interface` | `python arcade/test_ap_addresses.py` | laptop or Pi | — | 3 pass |
 | PS1 title profiles | `experiment/ps1-title-profiles` | `python ps1/tests/test_profiles.py` | laptop, Pi | — | 11 pass |
 | PS1 hello handshake (+ capture size, viewports) / Leave / slot logic / party-mode seats / latency instrumentation | `experiment/ps1-title-profiles` | `python ps1/tests/test_hello.py`, `test_leave.py`, `test_slots.py`, `test_seats.py`, `test_latency.py` | laptop, Pi | — (aiohttp/GStreamer stubbed) | 10, 4, 5, 4 pass; slots OK |
@@ -35,6 +36,70 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 
 From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 `test-results/` is generated and Git-ignored.
+
+## Offline CI lane and what Cloud can run (`main`, TESTED 2026-09-26)
+
+`.github/workflows/offline-checks.yml` ("Offline checks") runs on every pull request, on pushes to
+`main`, and on demand. It pins Node **22.22.2** (npm 10.9.7), the versions of the validated Cloud
+run, and executes exactly these commands, which also pass in a Claude Code Cloud checkout:
+
+```sh
+npm ci
+npx playwright test tests/soak-metrics.spec.ts
+cmp avrana-party.nginx arcade/nginx-site
+```
+
+`soak-metrics.spec.ts` uses no `page`/`browser` fixture, so no `npx playwright install` is needed;
+the `cmp` step is the repository half of the CLAUDE.md byte-identity rule (the live-site half needs
+the Pi). Under `CI=true` the config retries twice and forbids `test.only`. Evidence:
+`docs/findings/2026-09-26-cloud-offline-ci-lane.md`.
+
+Every other spec in `tests/` on `main` targets the live Pi at `http://party.avrana` and **cannot run
+in Cloud or CI**. None is known to be broken; in Cloud they fail before reaching any product code.
+
+| Spec | Hardware / real-device dependency | Why Cloud fails today |
+|---|---|---|
+| `smoke.spec.ts` | Pi serving the LAN Games hub; OS resolver mapping `party.avrana` → `10.42.0.1` on the Party Wi-Fi | `getaddrinfo ENOTFOUND party.avrana` |
+| `captive.spec.ts` | Pi nginx captive-probe handling on the AP | `ENOTFOUND party.avrana` |
+| `stats.spec.ts` | running arcade service: emulator + one shared hardware encoder | `ENOTFOUND party.avrana` |
+| `arcade.spec.ts` | arcade page served by the Pi | `ENOTFOUND`; also Playwright 1.63 browsers not installed |
+| `streaming.spec.ts`, `multiplayer.spec.ts` | Pi WebRTC stream (emulator, H.264 encoder), live player slots | same as `arcade.spec.ts` |
+| `soak.spec.ts`, `fault.spec.ts` (`@heavy`) | live load on the Pi; owner go-ahead | same; never run from Cloud |
+
+Classification: **hardware/live-appliance-dependent** — all of the rows above.
+**Cloud-environment-incompatible** (on top of that) — `party.avrana` does not resolve outside the
+Party Wi-Fi, and the Cloud image's pre-installed Chromium (revision 1194) does not match Playwright
+1.63 (`chromium_headless_shell-1243`, WebKit); `npx playwright install` fixes only the latter.
+**Failing/broken** — none observed. Python files on `main` (`arcade/*.py`, `install-*.py`,
+`experiments/diplomacy/validate_engine.py`, `arcade/test-receiver.py`) are Pi tools or installers,
+not unit tests (GStreamer, evdev, aiohttp, `/srv` ROM paths, nginx/NetworkManager). The pure suites
+listed above on experiment branches are candidates for this lane once those branches are merged.
+
+## Test tiers and the foundation suites (branch `claude/dreamy-carson-sja5mq`, TESTED 2026-09-26 in Cloud)
+
+| Tier | Meaning | Runs in |
+|---|---|---|
+| **1: pure** | no appliance, no network, no browser (or a VM with fake browser globals) | Cloud, CI, laptop |
+| **2: simulated Party** | localhost only: a real nginx with the committed site and stand-in upstreams; real Chromium against `avrana/web/devserver.py` on 127.0.0.1 (a secure context, like the real origin) | Cloud, CI, laptop |
+| **3: hardware** | the Pi, real phones, the AP, HDMI, the H.264 encoder, power: `tests/*.spec.ts` (live), runbooks | Party Wi-Fi only; never claimed from a lower tier |
+
+| Suite | Tier | Command | Result (Cloud) |
+|---|---|---|---|
+| Contracts (vocabulary, Game Contract v0, appliance profile, catalog freshness, grants, adapters named in the profile) | 1 | `python3 -m unittest discover -s tests/unit` | all pass (with the suites below: 62) |
+| Seat evaluation: 18 shared vectors, fuzzed properties (a weak seat never changes another; unknown ≠ no) | 1 | same | pass |
+| Providers: uinput adapter checked against the original `Pad` over random input; RetroArch lifecycle incl. kill on ignored SIGTERM | 1 | same | pass |
+| `arcade/stream.py` wiring with GStreamer/aiohttp stubbed: imports without evdev; layout = contract = page; startup/`/stats`/cleanup drive the providers | 1–2 | same | pass |
+| Web build, precache completeness, CSP-safe pages, no credentials in URLs, install/kill/rollback script | 1 | same | pass |
+| nginx: static rules + a **real nginx** run (HTTP captive/apps unchanged; `/party/` HTTPS-only with headers; origin JSON) | 1 + 2 | same, with `AVRANA_REQUIRE_NGINX=1` (skips without nginx otherwise) | pass (nginx 1.24) |
+| Browser modules: probe (fake browsers), evaluation vectors, keep-awake lifecycle, service worker in a VM | 1 | `node --test 'tests/offline/*.test.mjs'` | 41 pass |
+| Full Mode page, diagnostics, arcade page states (fake signalling), offline copy with Chromium offline mode | 2 | `npx playwright test -c playwright.offline.config.ts` (Cloud: `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`) | 42 pass (2 Chromium projects) |
+| Catalog is fresh | 1 | `python3 -m avrana.contracts.catalog --check` | clean |
+
+`npm run test:offline` runs the three offline runners in order. `npm run dev` serves the simulated
+Party at `http://127.0.0.1:8180/party/`. CI runs everything in this table (see
+`.github/workflows/offline-checks.yml`). WebKit is not used offline: Playwright's WebKit on
+Linux is not iPhone Safari. Tier 3 for these features is the phone checklist in
+`docs/runbooks/party-https.md`.
 
 ## The games fork (Avrana Party Games — a separate repository)
 

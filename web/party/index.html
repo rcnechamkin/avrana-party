@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0c1d">
+<meta name="color-scheme" content="dark light">
+<meta name="referrer" content="same-origin">
+<title>Avrana Party</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the games</a>
+<main id="main">
+  <header>
+    <h1>Avrana Party</h1>
+    <p id="status" class="status" role="status" data-state="checking">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="status-text">Checking the connection…</span>
+      <span id="secure" class="secure" hidden>🔒 Secure</span>
+    </p>
+  </header>
+
+  <section id="away" class="card hero" hidden aria-labelledby="away-h">
+    <h2 id="away-h" class="big">Can’t reach the party</h2>
+    <p>Make sure this phone is on the <strong>Avrana Party</strong> Wi-Fi, then try again.</p>
+    <button type="button" id="retry" class="wide">Try again</button>
+    <p class="muted small gap-top">Still stuck? <a href="http://10.42.0.1/">Open the basic version</a>.</p>
+  </section>
+
+  <section id="games-section" aria-labelledby="games-h">
+    <h2 id="games-h">Games</h2>
+    <ul id="games" class="games" aria-busy="true">
+      <li class="skeleton" aria-hidden="true"></li>
+      <li class="skeleton" aria-hidden="true"></li>
+    </ul>
+  </section>
+
+  <details id="phone">
+    <summary><h2 id="phone-h">This phone</h2><span id="phone-summary" class="muted small"></span></summary>
+    <ul id="phone-list" class="checks" aria-labelledby="phone-h"></ul>
+    <p class="small"><a href="diag/">Technical details</a></p>
+  </details>
+</main>
+<noscript><p class="center">Avrana Party needs JavaScript. You can still <a href="/">open the party games</a>.</p></noscript>
+</body>
+</html>

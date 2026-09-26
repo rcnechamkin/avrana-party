@@ -127,6 +127,14 @@ optional-upstream model are in `ONBOARDING.md`.
   a redirect is the thing to avoid.
 - **Plain HTTP on a LAN** is a non-secure context: no `Secure` cookies, no secure-context-only APIs,
   no TLS on guests' phones.
+- **Update 2026-09-26 (ADR 0004 D1):** the two bullets above predate HTTPS.
+  - `https://party.avrana.net` (a browser-trusted certificate, resolved by Party DNS) has been LIVE
+    since 2026-09-25. It is the canonical origin for Avrana-owned pages, under `/party/` on the 443
+    server.
+  - `http://10.42.0.1` stays for captive probes, LAN Games and recovery. HTTP and HTTPS are separate
+    origins, so party identity lives on HTTPS and its cookie is `Secure`.
+  - Full Mode features (offline copy, keep-awake, capability probe) are in
+    `docs/design/FULL-MODE.md`.
 - **Captive portal = convenience.** Never select a profile, trust a device or run a game inside the
   captive-portal mini-browser.
 - **Per-player accessibility is free here:** every player has a private UI, so larger text,
@@ -169,6 +177,55 @@ authorize nothing; only credentials resolved on the server do; names never do.
 **What a game sees:** a secret **game key** scoped to (game session, participant) plus the persona
 to display — never a device token or profile secret. Where the seat is bound depends on the game
 (LAN Games at its countdown; PS1 and the arcade at connect) — see `GAME-INTEGRATION.md`.
+
+### 5.1 State model review (2026-09-26, PROPOSED)
+
+This review compared the party model (`experiments/party-model/party_model.py`) with Colyseus,
+boardgame.io, Couch Kit, Hotspot Arcade, AirConsole and Jackbox
+(`docs/findings/2026-09-26-architecture-sprint.md`). None of them models a party, so Avrana keeps
+owning this layer.
+
+The principle: **store facts, derive roles.**
+- A role that can be derived (Player, Spectator) is never stored.
+- A role that must be unique (Party Host) is a pointer on its container (`host_presence_id`).
+- Appliance roles (Owner, Admin, Developer) bind to admin sessions, never to a presence, and never
+  appear in party state.
+
+| Entity | What it adds to the table above |
+|---|---|
+| **Person** | not stored: the system can't observe a human. The UI says "player" |
+| **Connection** | a transport, of kind `party_stream`, `party_socket` or `game_socket`. It authorizes nothing. Presence liveness is **derived** from all of a presence's party-attached connections (plus games reporting the seat live), not from the party stream alone |
+| **InputBinding** | `seat → source` (a connection, an appliance pad or, later, a companion) with an epoch; "newest tab wins" is the highest epoch. Only a Seat has one, so spectators' input is dropped by construction |
+| **Surface** (presentation) | a visual output: `private_phone`, `public_screen` or `personal_viewport`, with scope public, a presence or a seat. **A TV is a public Surface with no Presence**, so it can never be host, seat or voter by construction. **A Personal Viewport is a Surface bound to a seat**; how it is produced (crop, dedicated stream, browser renderer, private panel) is the Game Contract's `presentation.viewport` |
+| **Seat** | adds a `generation` per slot. A refill of the same slot is a new seat with a new generation, and seat tickets must carry it (see gap 1) |
+
+**Roles:**
+- Owner: physical or SSH access.
+- Admin: PIN session.
+- Developer: a mode the owner enables.
+- Party Host: a pointer on the Party.
+- Player: a presence with a Seat in the current game session.
+- Spectator: a presence without one.
+
+Capability evaluation uses only the derived game role (`evaluate_seat(game, caps, role)`,
+`contracts/README.md`).
+
+**Gaps found in branch code** (verified on scratch copies, not fixed here):
+1. Seat ticket v1 binds a *slot*, so the previous occupant's unexpired ticket still works after a
+   refill. Fix: ticket v2 carries the game session and seat generation.
+2. `input_connection()` returns a connection for a spectator.
+3. Liveness counts only the party stream, so players inside a game page without `party.js` look
+   gone after 300 s.
+
+**Pure invariants worth adding to the model's tests:**
+- (1) and (2) above.
+- Released seat ids and keys never reappear.
+- `nav.target` changes only with `nav.seq`.
+- No viewer's view contains another viewer's ticket or key.
+- Every non-acting viewer gets the same public view.
+- The client accepts a view only if its `(party_id, version)` is monotonic.
+- A per-verb `if_version` table (host verbs require it).
+- No credential ever appears in a URL.
 
 ---
 
@@ -354,7 +411,9 @@ grabbing); cookie sniffing on an open or shared-password network; web pages on a
 has mobile data; and — once open installation exists — **a malicious or buggy game**. Anyone with
 SD-card or SSH access is an admin by design. Parameters are suggestions to confirm when built.
 
-**Accepted risk (Friends parties):** the party network runs plain HTTP. The party Wi-Fi should
+**Accepted risk (Friends parties):** the party network runs plain HTTP. *(2026-09-26: Full Mode
+pages and anything moved to `https://party.avrana.net` are now TLS-protected on the Party Wi-Fi;
+LAN Games on port 80 and every HTTP origin are still plain.)* The party Wi-Fi should
 never be open (it is WPA2-Personal today, observed 2026-09-24; *requiring* WPA2+ is recommended,
 not yet decided), but **anyone who has the Wi-Fi
 password can read and alter other guests' traffic**: hidden roles, device cookies (i.e. that
@@ -427,7 +486,8 @@ localhost-only `/stats` check will stop working once PS1 sits behind nginx; PS1 
 the URL (`?token=`), which nginx would log — *fixed on branch `experiment/ps1-title-profiles`
 (token in a `hello` message), not merged*.
 
-**Deliberately not doing** — TLS on guests' phones, JWTs, token rotation schedules, encrypted
+**Deliberately not doing** — ~~TLS on guests' phones~~ (superseded: browser-trusted HTTPS is LIVE,
+ADR 0004; still no private CA on phones), JWTs, token rotation schedules, encrypted
 databases, Argon2 dependencies, device fingerprinting, email recovery, CAPTCHAs.
 
 ---
@@ -466,7 +526,9 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 
 **Still open:**
 1. Exact party URL/origin layout (`/` = Party Home? LAN Games under a prefix?) — a live nginx change.
-   Leading option: `http://10.42.0.1` as the canonical origin with `party.local` redirecting to it (§4).
+   *Partly decided 2026-09-26 (ADR 0004 D1):* the canonical origin is `https://party.avrana.net`, and
+   Avrana pages are under `/party/`. Still open: whether `/` becomes Party Home, an HTTP doorway, and
+   what the QR code carries.
 2. Device-token migration from LAN Games' client-minted `wc-token` without breaking the live service.
 3. Whether a party survives an appliance reboot (options in `PARTY-LIFECYCLE.md`).
 4. Exact host succession policy (proposal: earliest-joined connected player).

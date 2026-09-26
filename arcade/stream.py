@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 import gi
@@ -16,14 +17,22 @@ gi.require_version('GstWebRTC', '1.0')
 gi.require_version('GstSdp', '1.0')
 from gi.repository import Gst, GstVideo, GstWebRTC, GstSdp
 from aiohttp import web
-from evdev import UInput, AbsInfo, ecodes as E
 
 Gst.init(None)
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT.parent))  # the repository root: avrana/ platform package
+from avrana.providers.base import ProviderInfo  # noqa: E402
+from avrana.providers.controller import ControllerLayout  # noqa: E402
+from avrana.providers.retroarch import RetroArchRuntime  # noqa: E402
+from avrana.providers.uinput_gamepad import UInputGamepadProvider  # noqa: E402
+
 MAX_PLAYERS = 2  # P1 verified on a real phone over 5 GHz; raise beyond 2 only after a 2-phone test.
-BUTTONS = {'fire': E.BTN_SOUTH, 'magic': E.BTN_EAST,
-           'coin': E.BTN_SELECT, 'start': E.BTN_START}
-ALLOWED = set(BUTTONS) | {'up', 'down', 'left', 'right'}
+# Must match contracts/games/arcade-gauntlet2.json "input" and index.html's data-key buttons (tested).
+LAYOUT = ControllerLayout(buttons=('fire', 'magic', 'coin', 'start'), directions='dpad')
+ROM = '/srv/avrana/roms/arcade/gaunt2.zip'
+PRESENTATION = ProviderInfo(
+    id='shared-webrtc', kind='presentation', offers=('presentation.shared_stream',),
+    implementation='one v4l2h264enc encode fanned out per phone through GStreamer webrtcbin')
 EMULATOR_LOG = ROOT / 'runtime/emulator.log'
 EMULATOR_LOG_MAX = 20 * 1024 * 1024  # emulator.log.1 keeps the previous 20 MB; total stays under ~45 MB.
 logging.basicConfig(level=logging.INFO)
@@ -86,33 +95,14 @@ def ap_addresses():
     return found
 
 
-class Pad:
-    def __init__(self, slot):
-        self.device = UInput({E.EV_KEY: list(BUTTONS.values()), E.EV_ABS: [
-            (E.ABS_X, AbsInfo(0, -32768, 32767, 0, 0, 0)),
-            (E.ABS_Y, AbsInfo(0, -32768, 32767, 0, 0, 0))]},
-            name=f'Avrana Player {slot + 1}', vendor=0x1209, product=0xA001 + slot)
-        self.state = set()
-        self.updated = time.monotonic()
-
-    def update(self, values):
-        if not isinstance(values, list) or len(values) > 8 or any(not isinstance(x, str) or x not in ALLOWED for x in values):
-            raise ValueError('Invalid controller state')
-        new = set(values)
-        for name, code in BUTTONS.items():
-            if (name in new) != (name in self.state):
-                self.device.write(E.EV_KEY, code, int(name in new))
-        for axis, neg, pos in [(E.ABS_X, 'left', 'right'), (E.ABS_Y, 'up', 'down')]:
-            value = int(pos in new) - int(neg in new)
-            self.device.write(E.EV_ABS, axis, -32768 if value < 0 else 32767 if value else 0)
-        self.device.syn()
-        self.state = new
-        self.updated = time.monotonic()
-
-
 class Stream:
+    info = PRESENTATION
+
     def __init__(self):
         self.pipeline = None
+        self.input = UInputGamepadProvider()
+        self.runtime = RetroArchRuntime(config=ROOT / 'retroarch.cfg',
+                                        core=ROOT / 'cores/mame2010_libretro.so', content=ROM)
         self.pads = []
         self.peers = {}
         self.reserved = set()
@@ -130,16 +120,14 @@ class Stream:
 
     async def startup(self, app):
         self.loop = asyncio.get_running_loop()
-        self.pads = [Pad(slot) for slot in range(MAX_PLAYERS)]
+        self.pads = [self.input.open(slot, LAYOUT) for slot in range(MAX_PLAYERS)]
         await asyncio.sleep(0.5)  # Allow udev to expose the controllers before SDL scans.
         # Truncate at start as before, but O_APPEND so rotate_emulator_log() can truncate in place.
         self.emulator_log = os.fdopen(os.open(
             EMULATOR_LOG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_APPEND, 0o664), 'w')
-        self.emulator = subprocess.Popen(['retroarch', '-v', '-c', str(ROOT / 'retroarch.cfg'),
-            '-L', str(ROOT / 'cores/mame2010_libretro.so'), '/srv/avrana/roms/arcade/gaunt2.zip'],
-            stdout=self.emulator_log, stderr=subprocess.STDOUT)
+        self.emulator = self.runtime.start(stdout=self.emulator_log)
         await asyncio.sleep(2)
-        if self.emulator.poll() is not None:
+        if not self.runtime.running():
             raise RuntimeError('Emulator exited; see runtime/emulator.log')
         self.log_cap = asyncio.create_task(self.cap_emulator_log())
         self.pipeline = Gst.parse_launch(
@@ -226,6 +214,10 @@ class Stream:
             encoder.get_static_pad('src').send_event(event)
             log.info('Forced keyframe (%s)', reason)
 
+    def status(self):
+        """PresentationProvider diagnostics: one shared encode, one transport per viewer."""
+        return dict(self.info.describe(), viewers=len(self.peers), encoders=1)
+
     async def watch(self):
         while True:
             await asyncio.sleep(0.1)
@@ -237,7 +229,7 @@ class Stream:
                 err, debug = msg.parse_error()
                 self.error = str(err)
                 log.error('Pipeline error: %s %s', err, debug)
-            if self.emulator.poll() is not None:
+            if not self.runtime.running():
                 self.error = 'Emulator exited'
             if self.error:
                 for ws in list(self.peers):
@@ -438,9 +430,12 @@ class Stream:
         return web.json_response(dict(players=len(self.peers), max_players=MAX_PLAYERS,
             video_encoders=1, video_frames=self.video_frames, video_bytes=self.video_bytes,
             uptime=time.monotonic() - self.started, error=self.error,
-            emulator_running=self.emulator.poll() is None,
+            emulator_running=self.runtime.running(),
             capture_age_ms={m: w.summary() for m, w in self.age.items()},
             video_frame_kb=self.frame_kb.summary(), keyframes_forced=self.keyframes_forced,
+            providers=dict(runtime=self.runtime.status(),
+                           input=dict(self.input.info.describe(), controllers=len(self.pads)),
+                           presentation=self.status()),
             peers=[dict(slot=p['slot'] + 1, addr=p['addr'], server=p['server'], client=p['client'])
                    for p in self.peers.values()]))
 
@@ -456,13 +451,7 @@ class Stream:
         for pad in self.pads:
             pad.update([])
             pad.device.close()
-        if self.emulator and self.emulator.poll() is None:
-            self.emulator.terminate()
-            try:
-                await asyncio.wait_for(asyncio.to_thread(self.emulator.wait), 5)
-            except asyncio.TimeoutError:
-                self.emulator.kill()
-                await asyncio.to_thread(self.emulator.wait)
+        await asyncio.to_thread(self.runtime.stop, 5)
         if hasattr(self, 'emulator_log'):
             self.emulator_log.close()
 

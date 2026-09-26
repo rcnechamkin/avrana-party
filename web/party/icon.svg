@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Avrana Party">
+  <!-- Hand-drawn mark: a lavender "A" on the party night background. -->
+  <rect width="64" height="64" rx="14" fill="#0e0c1d"/>
+  <path d="M32 11 L50 53 H41.5 L37.8 44 H26.2 L22.5 53 H14 Z M29 37 H35 L32 29.5 Z" fill="#c7b8ff" fill-rule="evenodd"/>
+  <circle cx="48" cy="16" r="4" fill="#8fe3c9"/>
+</svg>

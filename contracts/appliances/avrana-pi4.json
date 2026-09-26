@@ -1,0 +1,73 @@
+{
+  "schema": "avrana.appliance/v0",
+  "id": "avrana-pi4",
+  "name": "Avrana Party (Raspberry Pi 4)",
+  "providers": [
+    {
+      "id": "lan-games",
+      "kind": "runtime",
+      "offers": ["runtime.lan_games"],
+      "status": "live",
+      "adapter": null,
+      "implementation": "LAN Games server (MIT, upstream retired), systemd avranaparty-games on 127.0.0.1:8096; not in this repository"
+    },
+    {
+      "id": "retroarch",
+      "kind": "runtime",
+      "offers": ["runtime.retroarch"],
+      "status": "live",
+      "adapter": "avrana.providers.retroarch:RetroArchRuntime",
+      "implementation": "RetroArch (GPL-3.0) as a child process under Xvfb; pinned libretro cores are never committed"
+    },
+    {
+      "id": "uinput-gamepad",
+      "kind": "input",
+      "offers": ["input.virtual_gamepad"],
+      "status": "live",
+      "adapter": "avrana.providers.uinput_gamepad:UInputGamepadProvider",
+      "implementation": "Linux uinput via python-evdev; devices are system-wide (isolation: global)"
+    },
+    {
+      "id": "xtest-keys",
+      "kind": "input",
+      "offers": ["input.virtual_gamepad"],
+      "status": "experiment",
+      "adapter": null,
+      "implementation": "XTest key banks into a private X display (branch experiment/ps1-title-profiles; isolation: private)"
+    },
+    {
+      "id": "shared-webrtc",
+      "kind": "presentation",
+      "offers": ["presentation.shared_stream"],
+      "status": "live",
+      "adapter": null,
+      "implementation": "arcade/stream.py: one v4l2h264enc encode fanned out per phone through GStreamer webrtcbin"
+    },
+    {
+      "id": "viewport-crop",
+      "kind": "presentation",
+      "offers": ["presentation.personal_viewport.crop"],
+      "status": "experiment",
+      "adapter": null,
+      "implementation": "client-side crop of the shared frame (branch experiment/party-sim, experiments/viewports/poc)"
+    }
+  ],
+  "installed": [
+    {
+      "game": "arcade-gauntlet2",
+      "entry": "/arcade/",
+      "health": "/arcade/stats",
+      "tier": "builtin",
+      "permissions_granted": ["controllers", "host_devices"]
+    }
+  ],
+  "collections": [
+    {
+      "id": "lan-games",
+      "name": "Party games",
+      "summary": "About 28 quick games for the whole group, right in the browser.",
+      "entry": "/",
+      "requires": ["runtime.lan_games"]
+    }
+  ]
+}
