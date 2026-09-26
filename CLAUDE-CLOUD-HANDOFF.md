@@ -4,8 +4,8 @@
 
 GitHub `rcnechamkin/avrana-party` is canonical. At the audit start, GitHub `main`,
 laptop `main`, and the clean Pi production checkout were all at
-`f93f0fcf5c6dc821553996226726a9ec70e31917`. The current deployed **source**
-commit after this handoff is the GitHub `main` commit; confirm the exact SHA with
+`f93f0fcf5c6dc821553996226726a9ec70e31917`. That was a historical synchronization, not an automatic
+deployment policy. Confirm the exact SHA with
 `git rev-parse main` locally and `git -C /home/cody/avrana-party rev-parse HEAD`
 on the Pi. A source fast-forward does not restart live services.
 
@@ -27,7 +27,7 @@ DNS-01 certificate. This is the canonical Full Mode origin (ADR 0004 D1). Status
 renewal blocker and rollback are in `docs/runbooks/party-https.md`. Automatic renewal is still off,
 and the certificate expires 2026-12-25.
 
-The 2026-09-26 foundation sprint (branch `claude/dreamy-carson-sja5mq`, a PR, not merged) added:
+The 2026-09-26 foundation sprint (branch `claude/dreamy-carson-sja5mq`, merged as PR #3 at a671955) added:
 - platform contracts (`contracts/`, `avrana/`);
 - provider adapters, which the arcade now uses;
 - the Full Mode web shell (`web/party/`);
@@ -35,6 +35,14 @@ The 2026-09-26 foundation sprint (branch `claude/dreamy-carson-sja5mq`, a PR, no
 
 It includes PR #1's CI lane. Start from `docs/findings/2026-09-26-architecture-sprint.md` and
 ADR 0004.
+
+The Shell Assimilation sprint builds on merged PR #3. Read
+`docs/design/LAN-GAMES-ASSIMILATION.md` for the donor inventory, compatibility
+keys, metadata provenance and ownership rules. Avrana owns global product
+functionality; LAN Games is a temporary game/service provider. Do not add a second
+profile or chat store. Source on main is not proof of deployment: the Pi has not
+been updated by this sprint. PS1 entries are experimental metadata, not installed
+or hardware-validated runtimes.
 
 ## Start here
 

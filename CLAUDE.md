@@ -36,6 +36,15 @@ alongside `docs/GAME-PLATFORM-ARCHITECTURE.md`,
 `docs/REFERENCE-IMPLEMENTATIONS.md`. The substrate document is current research
 on reusable subsystems and candidates, not a finalized or deployed architecture.
 
+## Product boundary
+
+Avrana Party owns cross-game identity/profile, roster/presence, Party Chat,
+favorites/history, catalog and navigation. LAN Games is legacy MVP infrastructure
+undergoing assimilation, not an independent product boundary. Do not build a second
+platform inside it. Read `docs/design/LAN-GAMES-ASSIMILATION.md` before profile,
+chat, catalog or shell work. The /party/ adapters reuse the existing wc-* / lg-*
+backing keys and donor transports; do not add parallel stores or identity tokens.
+
 ## Hard rules
 
 - **`main` is production.** Develop on `docs/*`, `experiment/*`, `fix/*` or `chore/*` branches;

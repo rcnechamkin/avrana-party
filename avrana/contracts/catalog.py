@@ -15,7 +15,7 @@ from pathlib import Path
 from avrana import CONTRACTS_DIR, WEB_DIR
 from avrana.contracts import appliance as appliance_mod
 from avrana.contracts import game as game_mod
-from avrana.contracts import strictjson, vocabulary
+from avrana.contracts import strictjson, vocabulary, lan_catalog, provider_metadata
 from avrana.contracts.evaluate import compile_presentations
 
 CATALOG = 'avrana.catalog/v0'
@@ -28,6 +28,13 @@ def load_contracts(directory, vocab):
     for path in sorted(Path(directory).glob('*.json')):
         contract = game_mod.load(path, vocab)
         contracts[contract['id']] = contract
+    # The default appliance catalog includes the audited legacy donor library.
+    # Custom --games directories remain self-contained.
+    if Path(directory).resolve() == (CONTRACTS_DIR / 'games').resolve():
+        donor = lan_catalog.load(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
+        if set(donor) & set(contracts):
+            raise ValueError('duplicate donor/game contract ids')
+        contracts.update(donor)
     return contracts
 
 
@@ -57,6 +64,15 @@ def build(vocab, appliance, contracts, include=('live',)):
             'health': grant.get('health') if grant else None,
             'playableHere': playable, 'presentations': presentations,
         }
+        meta = c.get('extensions', {}).get('net.avrana.catalog', {})
+        entry['provider'] = meta.get('provider', 'arcade' if cid.startswith('arcade-') else
+                                     'lan-games' if c['runtime']['type'] == 'lan_games_module' else 'retroarch')
+        if entry['provider'] == 'retroarch-ps1':
+            entry['providerMetadata'] = provider_metadata.ps1(c)
+        entry['status'] = meta.get('status', 'current' if grant else 'not_installed')
+        for key in ('legacySlug', 'icon', 'category', 'hardwareValidationRequired'):
+            if key in meta:
+                entry[key] = meta[key]
         if 'summary' in c:
             entry['summary'] = c['summary']
         games.append(entry)
@@ -102,7 +118,7 @@ def main(argv=None):
             return 1
         print(f'{out} is up to date ({len(contracts)} contracts)')
         return 0
-    out.write_text(text, encoding='utf-8')
+    out.write_text(text, encoding='utf-8', newline='\n')
     print(f'wrote {out} ({len(contracts)} contracts)')
     return 0
 
