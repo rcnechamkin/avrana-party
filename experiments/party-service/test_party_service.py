@@ -143,6 +143,20 @@ class PartyOverHttp(Harness):
         self.assertEqual(self.party.app.party.presences, {})
         self.assertIn(b'"me": null', data)
 
+    def test_event_stream_pings_so_a_page_can_tell_a_live_stream_from_a_dead_one(self):
+        token = self.device()
+        s = socket.create_connection(('127.0.0.1', self.port), timeout=5)
+        s.sendall(f'GET /party/events HTTP/1.1\r\nHost: {self.host}\r\nCookie: avrana_dev_device={token}\r\n\r\n'.encode())
+        data, deadline = b'', time.monotonic() + 3      # KEEPALIVE_S is 0.3 s here
+        while b'\nevent: ping\n' not in data or b'\n\n' not in data.split(b'\nevent: ping\n', 1)[1]:
+            self.assertLess(time.monotonic(), deadline, f'no ping event on the stream: {data[-200:]!r}')
+            data += s.recv(4096)
+        s.close()
+        ping = data.split(b'\nevent: ping\n', 1)[1].split(b'\n\n', 1)[0]
+        # A JavaScript page never sees an SSE comment, and a browser never dispatches an event
+        # without data, so the ping must be a named event with a data line (index.html watchdog).
+        self.assertRegex(ping, rb'^data: \S+$')
+
     def test_forged_cookie_gets_a_fresh_identity_not_the_forged_one(self):
         forged = 'A' * 43
         status, view, issued, _ = self.req('GET', '/party/state', cookie=forged)
