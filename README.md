@@ -14,6 +14,7 @@ Not to be confused with the Avrana Homelab media server (the machine `avrana`).
 | status, what's next, what not to do | `docs/ROADMAP.md` ("NOW" → "Next action") |
 | which machine, repo, branch and checkout does what; runtime-only paths; how to sync | `docs/SYSTEM.md` |
 | the network (eth0 upstream, internal-Wi-Fi AP, offline mode, checks) | `docs/runbooks/network.md` |
+| Party HTTPS, DNS-01 certificates, validation and rollback | `docs/runbooks/party-https.md` |
 | how to run every test suite | `docs/TESTING.md` |
 | how to add a game | `docs/runbooks/add-a-game.md` |
 | the platform design (party, identity, games, viewports, onboarding, accessibility) | `docs/design/README.md` → `PARTY-PLATFORM.md` |
