@@ -31,7 +31,7 @@ export default defineConfig({
     serviceWorkers: 'allow',
   },
   webServer: {
-    command: `python3 -m avrana.web.devserver --port ${PORT} --test-controls`,
+    command: `${process.env.AVRANA_PYTHON || 'python3'} -m avrana.web.devserver --port ${PORT} --test-controls`,
     url: `http://127.0.0.1:${PORT}/party/`,
     reuseExistingServer: false,
     timeout: 15_000,

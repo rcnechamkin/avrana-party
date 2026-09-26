@@ -92,6 +92,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, body, 'application/json', {'Cache-Control': 'no-store'})
         if path.startswith('/party/'):
             return self._file(cfg['web'], path[len('/party/'):], SHELL_HEADERS)
+        if path == '/api/games':
+            # Simulated availability only. Never contacts the Pi or starts donor games/chat.
+            snapshot = json.loads((REPO_ROOT / 'contracts/catalogs/lan-games.json').read_text(encoding='utf-8'))
+            rows = [dict(row, live={'players': 0, 'phase': 'lobby'}, hidden=False)
+                    for row in snapshot['games']]
+            return self._send(200, json.dumps({'games': rows, 'external': []}).encode(),
+                              'application/json', {'Cache-Control': 'no-store'})
         if path == '/arcade/stats':
             stats = cfg['arcade'].stats()
             if stats == 'hang':  # a stuck upstream: answer long after any client timeout

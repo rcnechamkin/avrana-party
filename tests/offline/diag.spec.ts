@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /** The diagnostics page (/party/diag/) against the simulated Party (Tier 2). */
+const catalog = JSON.parse(readFileSync(path.join(__dirname, '../../web/party/catalog.json'), 'utf8'));
 const vocabulary = JSON.parse(readFileSync(path.join(__dirname, '../../contracts/capabilities.v0.json'), 'utf8'));
 
 async function report(page) {
@@ -19,7 +20,8 @@ test('shows every capability and a machine-readable report', async ({ page }) =>
   expect(r.capabilities.schema).toBe('avrana.capabilities/v0');
   expect(r.appliance.id).toBe('avrana-pi4');
   expect(r.origin.serverAddr).toBe('127.0.0.1');
-  expect(r.evaluations.map((e: { game: string }) => e.game).sort()).toEqual(['arcade-gauntlet2', 'bluff', 'ps1-bomberman']);
+  expect(r.evaluations.map((e: { game: string }) => e.game).sort()).toEqual(catalog.games.map((g: { id: string }) => g.id).sort());
+  expect(r.evaluations).toHaveLength(33);
   expect(JSON.stringify(r)).not.toContain('Mozilla/');  // the user agent is shown to people, never reported
   await expect(page.locator('#summary')).toContainText('reached the Pi at 127.0.0.1');
   await expect(page.locator('#providers')).toContainText('uinput-gamepad');
