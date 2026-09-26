@@ -106,6 +106,13 @@ pointer and preferences are reported separately. The report never contains the u
 - "Leave" replaces "Disconnect".
 - The raw stats JSON is shown only with `#diag`.
 - Every id and text the live suite relies on is kept (tested offline).
+- **This goes live with the production fast-forward**, not with the shell deploy: `stream.py`
+  serves `index.html` from the checkout on every request (runbook, "When the arcade changes go
+  live").
+- A reconnect keeps trying while `/stats` still counts the dropped phone. Without seat tickets the
+  arcade has no way to reclaim a slot, so a reconnecting phone can come back as the other player if
+  its old slot hasn't been freed yet (the server notices within a few seconds). Seat tickets (PS1
+  already has them) fix this later.
 
 ## Tested where
 
@@ -130,3 +137,8 @@ used as evidence.
   - whether Safari's 7-day eviction removes the offline copy between parties;
   - what an installed worker does with an expired certificate.
 - **To decide:** PNG icons for iOS home screens (only an SVG icon ships today).
+- **Depends on a public endpoint:** both the game card's live state and the arcade page's "full"
+  check read the public `/arcade/stats`, which also shows players' IP addresses. If it is ever
+  restricted (PS1 already limits its `/stats` to 127.0.0.1), add a small public summary
+  (`players`, `max_players`, `running`) first. Live `tests/multiplayer.spec.ts` depends on the
+  "full" wording.

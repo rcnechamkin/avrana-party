@@ -85,14 +85,14 @@ listed above on experiment branches are candidates for this lane once those bran
 
 | Suite | Tier | Command | Result (Cloud) |
 |---|---|---|---|
-| Contracts (vocabulary, Game Contract v0, appliance profile, catalog freshness, grants, adapters named in the profile) | 1 | `python3 -m unittest discover -s tests/unit` | all pass (with the suites below: 57) |
+| Contracts (vocabulary, Game Contract v0, appliance profile, catalog freshness, grants, adapters named in the profile) | 1 | `python3 -m unittest discover -s tests/unit` | all pass (with the suites below: 62) |
 | Seat evaluation: 18 shared vectors, fuzzed properties (a weak seat never changes another; unknown ≠ no) | 1 | same | pass |
 | Providers: uinput adapter checked against the original `Pad` over random input; RetroArch lifecycle incl. kill on ignored SIGTERM | 1 | same | pass |
 | `arcade/stream.py` wiring with GStreamer/aiohttp stubbed: imports without evdev; layout = contract = page; startup/`/stats`/cleanup drive the providers | 1–2 | same | pass |
 | Web build, precache completeness, CSP-safe pages, no credentials in URLs, install/kill/rollback script | 1 | same | pass |
 | nginx: static rules + a **real nginx** run (HTTP captive/apps unchanged; `/party/` HTTPS-only with headers; origin JSON) | 1 + 2 | same, with `AVRANA_REQUIRE_NGINX=1` (skips without nginx otherwise) | pass (nginx 1.24) |
 | Browser modules: probe (fake browsers), evaluation vectors, keep-awake lifecycle, service worker in a VM | 1 | `node --test 'tests/offline/*.test.mjs'` | 41 pass |
-| Full Mode page, diagnostics, arcade page states (fake signalling), offline copy with Chromium offline mode | 2 | `npx playwright test -c playwright.offline.config.ts` (Cloud: `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`) | 32 pass (2 Chromium projects) |
+| Full Mode page, diagnostics, arcade page states (fake signalling), offline copy with Chromium offline mode | 2 | `npx playwright test -c playwright.offline.config.ts` (Cloud: `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`) | 42 pass (2 Chromium projects) |
 | Catalog is fresh | 1 | `python3 -m avrana.contracts.catalog --check` | clean |
 
 `npm run test:offline` runs the three offline runners in order. `npm run dev` serves the simulated

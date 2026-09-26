@@ -25,9 +25,9 @@ OpenSSL 3.0.13, and Chromium 141.0.7390.37 (the pre-installed Playwright build, 
 
 | Suite | Result |
 |---|---|
-| `python3 -m unittest discover -s tests/unit` (with `AVRANA_REQUIRE_NGINX=1`) | 57 pass |
+| `python3 -m unittest discover -s tests/unit` (with `AVRANA_REQUIRE_NGINX=1`) | 62 pass |
 | `node --test 'tests/offline/*.test.mjs'` | 41 pass |
-| `npx playwright test -c playwright.offline.config.ts` (2 Chromium projects) | 32 pass |
+| `npx playwright test -c playwright.offline.config.ts` (2 Chromium projects) | 42 pass |
 | `npx playwright test tests/soak-metrics.spec.ts` (PR #1 lane) | 10 pass |
 | `python3 -m avrana.contracts.catalog --check`; `cmp avrana-party.nginx arcade/nginx-site` | clean |
 
@@ -54,6 +54,19 @@ What the runs showed:
   the same device and writes the same events in the same order as the pre-extraction `Pad` code.
   A stubbed-GStreamer run of `arcade/stream.py` startup, `/stats` and cleanup drives both providers.
   **The arcade was not streamed**; that needs the Pi.
+
+**Independent review of the diff** (a separate agent, 2026-09-26). It found no defect in the
+`stream.py` refactor, the port 80 server or the service worker's scope. It found, and this branch
+fixes with a regression test each (the tests were checked to fail without the fix):
+- a reconnect that gave up because `/stats` still counted the dropped phone;
+- an unbounded `/stats` wait that left a stale screen;
+- a late failure from an older connection attempt that cancelled the reconnect;
+- card refreshes that stole keyboard focus;
+- a web install that could publish git-ignored or symlinked files: it now builds from
+  `git archive` and refuses symlinks;
+- validators that raised on malformed types;
+- a runbook error: the arcade page goes live with the production fast-forward, not only after a
+  restart.
 
 ## Repository audit (CODE unless marked)
 

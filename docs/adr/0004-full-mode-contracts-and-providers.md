@@ -131,7 +131,9 @@ hardware validation.
 - Deploying the shell is a one-time, owner-approved nginx change (443 block only) plus
   `sudo bash ops/install-party-web.sh <checkout>`. Rollback is `--rollback`, and the kill switch is `--kill`.
 - `arcade/stream.py` now imports `avrana/` from the repository root, which the production checkout
-  contains. `/stats` gains a `providers` block.
+  contains. `/stats` gains a `providers` block. The arcade *page* changes go live with the
+  production fast-forward, because `stream.py` serves `index.html` from the checkout on every
+  request. The server refactor runs on its next start.
 - **Follow-ups:**
   - Party Home should adopt `web/party/lib/*` (capabilities, keep-awake, shell), and its service
     should own the dynamic `/party/` routes, while nginx keeps serving the static files.

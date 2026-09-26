@@ -218,9 +218,18 @@ Later releases need only step 3. To roll back the files to the previous release:
 To remove the feature, restore the backed-up site, run `nginx -t` and reload. Releases live under
 `/var/www/avrana-party/web/releases/`, and the newest five are kept.
 
-The arcade page's keep-awake, "full" versus "lost" messages and quiet reconnect reach phones only
-after the arcade service restarts on the new code. That is a separate owner decision; the arcade
-was stopped at the 2026-09-25 deploy.
+**When the arcade changes go live.** This does not depend on the shell deploy above.
+- `arcade/stream.py` reads `index.html` from the production checkout on every request. So once
+  `/home/cody/avrana-party` is fast-forwarded to a commit with this branch, the arcade *phone page*
+  changes at once if the arcade service is running: keep-awake, "full" versus "lost" messages,
+  quiet reconnect, and the "Leave" label.
+- The refactored `stream.py` (provider adapters, `/stats` `providers` block) runs after the next
+  start of the service, and that includes a crash restart or a reboot.
+- The arcade was stopped at the 2026-09-25 deploy. Treat the fast-forward itself as the arcade
+  deploy step, and run the arcade checks in the phone checklist (and `npm test` from the Party
+  Wi-Fi) the next time it runs.
+- Keep-awake needs the shell, because the page loads `/party/lib/keep-awake.js`. Without the shell
+  it is silently off.
 
 ### Phone checklist (Tier 3; record the results in `docs/findings/`)
 

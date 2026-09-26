@@ -15,6 +15,8 @@
 >   only), says "Both controllers are in use" only when `/stats` says the game is full, and
 >   reconnects quietly after a drop or lock.
 > - Raw stats are visible only with `#diag`.
+> - The page is served from the checkout on every request, so it goes live with the production
+>   fast-forward. The server code changes on the next restart.
 > - The Selkies row below is out of date: pixelflux 2.1 now has a Pi 4 V4L2 encoder (see the
 >   substrate decision matrix, spike S3).
 
