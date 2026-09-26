@@ -71,12 +71,13 @@ using `~/avrana-lab/` and the runbooks. Heavy tests require the owner.
 
 ## Blockers and first Cloud task
 
-Cloud cannot reach the Party LAN or reproduce the Pi's hardware media stack;
-there is no CI workflow or single command that separates all offline checks
-from live appliance tests. The games fork is a separate repo and is not yet
-available through the same GitHub workflow.
+Cloud cannot reach the Party LAN or reproduce the Pi's hardware media stack.
+The first offline CI lane (`.github/workflows/offline-checks.yml`, Node 22.22.2)
+runs the offline checks on `main`; its exact commands and the classification of
+every other test are in `docs/TESTING.md` ("Offline CI lane"). The games fork
+is a separate repo and is not yet available through the same GitHub workflow.
 
-**Recommended first task:** on a new branch, add a small, safe offline CI lane
-for existing pure tests and document its exact setup. Keep the live Playwright
-suite manual and leave production services, network configuration, and
-experimental game behavior untouched.
+**First Cloud task (done 2026-09-26, the lane above):** on a new branch, add a
+small, safe offline CI lane for existing pure tests and document its exact setup.
+Keep the live Playwright suite manual and leave production services, network
+configuration, and experimental game behavior untouched.
