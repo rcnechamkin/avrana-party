@@ -88,6 +88,7 @@
 <main id="main">
   <h1>Avrana Party</h1>
   <p id="conn" class="muted" role="status">Connecting…</p>
+  <button type="button" id="reconnect" class="quiet" hidden style="margin:.5rem 0 1rem">Try again</button>
 
   <!-- 1. Not in the party yet: one field, one button -->
   <section id="observer" hidden aria-labelledby="obs-h">
@@ -220,7 +221,6 @@ function gameIcon(g) { return /ps1|arcade/.test(g.id) ? '🎮' : '🃏'; }
 function render(v) {
   view = v;
   const joined = !!v.me, state = v.party.state;
-  $('conn').textContent = '';
   $('observer').hidden = joined;
   $('member').hidden = !joined;
   if (!joined) {
@@ -315,13 +315,96 @@ $('transfer-form').addEventListener('submit', (e) => { e.preventDefault(); post(
 $('end-party').addEventListener('click', () => { if (confirm('End the party for everyone?')) post('host/end-party'); });
 $('nav-go-btn').addEventListener('click', () => { if (view) location.assign(view.party.nav.href); });
 
-function connect() {
-  const es = new EventSource('/party/events');
-  es.addEventListener('state', (e) => { $('conn').textContent = ''; render(JSON.parse(e.data)); });
-  es.onerror = () => { $('conn').textContent = 'Reconnecting…'; };   // EventSource retries by itself
+// ---- Staying live ------------------------------------------------------------------------------
+// The event stream is how this page hears about changes, and how the party knows this phone is
+// still here. EventSource alone does not keep it up: it retries only after a network error; an
+// HTTP error (a 502 while the party restarts behind nginx) or a wrong content type closes it for
+// good; and a stream whose socket died while the phone slept can stay "open" with nothing
+// arriving. So the page owns the stream: exactly one at a time; any failure is closed and retried
+// with a bounded backoff; a watchdog fed by the party's ping catches a silent stream; coming back
+// to the page checks the stream at once; and if recovery takes too long the page says so and
+// offers Try again. A healthy stream is left alone.
+const PING_MS = 10000;                          // service.py KEEPALIVE_S: something arrives this often
+const SILENT_MS = 25000;                        // nothing for this long: the stream is dead
+const WAKE_SILENT_MS = PING_MS + 2000;          // back on screen and a ping is overdue: rebuild now
+const OPEN_MS = 10000;                          // an attempt that delivers nothing this long failed
+const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];   // then every 15 s, for as long as the page is open
+const STALL_MS = 15000;                         // not live after this long: say so, offer Try again
+const AWAY = 'Can’t reach the party. Are you on the Avrana Party Wi-Fi?';
+const STILL_AWAY = 'Still can’t reach the party. Are you on the Avrana Party Wi-Fi?';   // after Try again
+const live = { es: null, state: 'connecting', delivered: false, heard: 0, opened: 0, failures: 0,
+               watchdog: 0, retry: 0, stall: 0, trying: false, tried: false };
+
+function showLive(state) {
+  live.state = state;
+  const msg = state === 'live' ? '' : state === 'connecting' ? 'Connecting…'
+    : state === 'reconnecting' || live.trying ? 'Reconnecting…' : live.tried ? STILL_AWAY : AWAY;
+  if ($('conn').textContent !== msg) $('conn').textContent = msg;    // a status region: announce changes only
+  const btn = $('reconnect');
+  btn.hidden = state !== 'stalled';
+  btn.textContent = live.trying ? 'Trying…' : 'Try again';
+  btn.setAttribute('aria-disabled', String(live.trying));
 }
+
+function openStream() {                         // the one stream: any older one is closed first
+  clearTimeout(live.retry); live.retry = 0;
+  if (live.es) live.es.close();
+  const es = live.es = new EventSource('/party/events');
+  live.opened = Date.now(); live.delivered = false;
+  watch(OPEN_MS);
+  if (live.state !== 'live' && live.state !== 'stalled' && !live.stall) live.stall = setTimeout(stalled, STALL_MS);
+  es.addEventListener('state', (e) => { if (es === live.es) { heard(); render(JSON.parse(e.data)); } });
+  es.addEventListener('ping', () => { if (es === live.es) heard(); });
+  es.onerror = () => { if (es === live.es) lost(); };
+}
+
+function heard() {
+  live.heard = Date.now(); live.delivered = true; live.failures = 0; live.trying = live.tried = false;
+  clearTimeout(live.stall); live.stall = 0;
+  if (live.state !== 'live') showLive('live');
+  watch(SILENT_MS);
+}
+
+function watch(ms) { clearTimeout(live.watchdog); live.watchdog = setTimeout(lost, ms); }
+
+function lost() {                               // this stream or attempt is over: retry after a pause
+  clearTimeout(live.watchdog);
+  if (live.es) { live.es.close(); live.es = null; }
+  if (live.trying) { live.trying = false; live.tried = true; }
+  showLive(live.state === 'live' || live.state === 'connecting' ? 'reconnecting' : live.state);
+  if (live.state !== 'stalled' && !live.stall) live.stall = setTimeout(stalled, STALL_MS);
+  clearTimeout(live.retry);
+  live.retry = setTimeout(openStream, BACKOFF_MS[Math.min(live.failures++, BACKOFF_MS.length - 1)]);
+}
+
+function stalled() { live.stall = 0; showLive('stalled'); }
+
+function reconnectNow() {
+  live.failures = 0;
+  if (live.state === 'live') showLive('reconnecting');
+  openStream();
+}
+
+function revalidate() {                         // back on screen or back online: is the stream alive?
+  if (document.visibilityState === 'hidden') return;
+  const es = live.es, now = Date.now();
+  if (es && es.readyState !== 2 && (live.delivered ? now - live.heard < WAKE_SILENT_MS
+                                                   : now - live.opened < OPEN_MS)) return;
+  reconnectNow();
+}
+
+$('reconnect').addEventListener('click', () => {
+  if (live.trying) return;
+  live.trying = true;
+  showLive(live.state);
+  reconnectNow();
+});
+document.addEventListener('visibilitychange', revalidate);
+window.addEventListener('online', revalidate);
+window.addEventListener('pageshow', (e) => { if (e.persisted) reconnectNow(); });   // back from the bfcache
+
 fetch('/party/state', { credentials: 'same-origin' }).then((r) => r.json()).then(render)
-  .catch(() => { $('conn').textContent = 'Can’t reach the party. Are you on the Avrana Party Wi-Fi?'; }).finally(connect);
+  .catch(stalled).finally(openStream);
 </script>
 </body>
 </html>
