@@ -48,6 +48,8 @@ the same PSU dipped 9 times in ~91 min.
 
 ## URLs (on the Avrana Party Wi-Fi)
 
+- `https://party.avrana.net/`: browser-trusted Full Mode origin (local Party
+  DNS; direct Party Wi-Fi client validation pending on `fix/party-https`)
 - `http://10.42.0.1/` (also `http://party.local/`): LAN Games hub
 - `http://10.42.0.1/arcade/`: Gauntlet II stream
 - `http://10.42.0.1/hotspot-detect.html`: Apple connectivity probe (deliberately `Success`)

@@ -1,8 +1,9 @@
 # Party HTTPS deployment and recovery
 
-Status: **STAGED on `fix/party-https`; not live until the Pi checks below pass.**
-This runbook records the 2026-09-25 baseline and the narrow deployment path.
-GitHub `main` remains canonical; deploy only a reviewed source commit.
+Status: **LIVE on the Pi from `fix/party-https` as of 2026-09-25; Party Wi-Fi
+client validation and automatic renewal remain open.** This runbook records
+the baseline and the narrow deployment path. GitHub `main` remains unchanged
+until the branch is fully validated and reviewed.
 
 ## Baseline and intended behavior
 
@@ -138,6 +139,37 @@ HTTPS WebSocket upgrades and the active service routes; validate arcade when
 its service is running. Rejoin Party Wi-Fi on a phone to confirm the original
 HTTP captive behavior. Check `journalctl -u nginx`, NetworkManager/dnsmasq
 logs, and certificate timer status after deployment.
+
+`node ops/check-browser-origin.mjs` runs headless Chromium against the real
+hostname using system DNS. For a management-LAN check before a Party Wi-Fi
+client is available, pass the Pi's management address as its argument; the
+script keeps the real hostname and TLS verification but bypasses local DNS.
+Do not treat that override as a Party Wi-Fi validation.
+
+### Deployment evidence (2026-09-25)
+
+- Pi production checkout and live nginx/dnsmasq files matched the branch
+  candidate after deployment. nginx listens on 80 and 443; LAN Games,
+  NetworkManager, nginx and Avahi remained active.
+- The Let's Encrypt `YE1` certificate for `party.avrana.net` is valid from
+  `2026-09-26 00:11:17 UTC` until `2026-12-25 00:11:16 UTC`. Pi curl verified
+  the chain and hostname without `-k`; laptop headless Chromium also loaded
+  the origin without bypassing certificate checks.
+- Local dnsmasq answered `party.avrana.net` and existing captive hosts with
+  `10.42.0.1`; Avahi still answered `party.local` with `10.42.0.1`.
+- HTTP Apple probe remained 200; Android, Windows and Firefox remained 404;
+  `party.local` root remained 200. HTTPS hub, `/games/brickade/`, shared CSS
+  and manifest returned 200. `/chat/ws` upgraded to 101 over WSS.
+- Laptop Chromium over the management route reported `isSecureContext`,
+  `serviceWorker`, `crypto.subtle`, `wakeLock`, `mediaDevices`, and
+  `getGamepads` present, with a WSS connection opened. This records API
+  presence, not permissions or device support.
+- Arcade was inactive before and after; `/arcade/` remains 502. No arcade
+  restart or stream validation was attempted.
+- The laptop could not join Party Wi-Fi during this session, so a direct
+  Party-network DNS/browser check and a real phone join are pending. The
+  Cloudflare DNS API token was unavailable, so the renewal timer is staged
+  but not enabled. The initial certificate was issued by manual DNS-01.
 
 ## Rollback
 
