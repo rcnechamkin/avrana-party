@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Avrana Party certificate renewal daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=2h
+Persistent=true
+Unit=avrana-party-certificate.service
+
+[Install]
+WantedBy=timers.target

@@ -12,6 +12,9 @@ designed as **one party platform with many games**. Start at `README.md` → "St
   unless the owner asks; the repo is the documentation source of truth).
 - Pi network: **eth0 = upstream + management; wlan0 = the "Avrana Party" access point at
   `10.42.0.1/24`** (NetworkManager profile "Avrana Party Internal"). There is no `wlan1` / USB Wi-Fi.
+- The Party's browser-trusted hostname is `https://party.avrana.net/` on the
+  Party network; local dnsmasq resolves it to `10.42.0.1`. Read
+  `docs/runbooks/party-https.md` before changing nginx, DNS or certificates.
 
 ## Where truth lives
 

@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew Avrana Party browser certificate with DNS-01
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/avrana-party/renew-party-certificate.sh

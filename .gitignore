@@ -32,6 +32,9 @@ arcade/evidence/*
 .env*
 *.pem
 *.key
+*.csr
+certs/
+.lego/
 *.db
 *.sqlite
 *.sqlite3

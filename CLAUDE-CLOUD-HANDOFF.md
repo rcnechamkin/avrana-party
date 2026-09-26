@@ -21,6 +21,14 @@ The architecture and experience documents are in `docs/` with status notes.
 `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md` is current project research on proposed
 reusable subsystems and implementation/reference candidates.
 
+As of 2026-09-25, `fix/party-https` is a local validation branch deployed to
+the Pi checkout, while GitHub `main` remains unchanged. It adds
+`https://party.avrana.net/` with local Party DNS and a Pi-only Let's Encrypt
+DNS-01 certificate. See `docs/runbooks/party-https.md` for the exact status,
+validation evidence, renewal blocker and rollback procedure. A phone on Party
+Wi-Fi loaded the HTTPS UI without a warning; the direct laptop Wi-Fi check and
+automatic renewal are still open. Review those gaps before merging.
+
 ## Start here
 
 Read `CLAUDE.md`, `README.md`, `docs/ROADMAP.md`, `docs/SYSTEM.md`,
