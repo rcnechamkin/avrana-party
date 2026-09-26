@@ -1,7 +1,7 @@
 # Codex handoff — LAN Games Providerization & Direct-Launch
 
 Updated: 2026-09-26. This file is the durable continuation record.
-Status: baseline verified; exact original sprint specification requested, not available yet.
+Status: baseline verified; original specification received; cross-repository audit underway.
 
 ## Current goal
 
@@ -11,10 +11,10 @@ document and open coordinated review PRs if both repositories change. Do not mer
 or deploy. Physical iPhone/Android acceptance is owned by the user and is not a
 development gate.
 
-The separate providerization/direct-launch specification is absent from the
-available conversation and project notes. Do not infer its launch semantics,
-migration scope or acceptance criteria from the completed assimilation sprint.
-The owner has been asked to paste the original specification.
+Acceptance: direct individual launches from /party/, one shared local profile and
+library, explicit integrated vs standalone mode, no competing global chat or hub,
+and reload-safe return to /party/. Deterministic authoritative metadata and
+cross-repository behavioral tests must pin this boundary. No merge or deployment.
 
 ## Current branch / repositories
 
@@ -26,7 +26,8 @@ The owner has been asked to paste the original specification.
 - Separate games repository: laptop bare backup
   C:/Users/cnech/avrana-party-games.git, main
   2cf4831064de709feeb31865c5022a3f048e49ef.
-  Inspected read-only; no development checkout or new branch there yet.
+  Development checkout: C:/Users/cnech/Projects/avrana-party-games; branch
+  fix/avrana-provider-integration, created from main 2cf4831.
   Its only configured origin is ssh://party/home/cody/avrana-lab/avrana-party-games,
   not a GitHub remote. The canonical games GitHub target must be established
   before coordinated PR creation; do not push development work to the Pi origin.
@@ -68,7 +69,11 @@ The owner has been asked to paste the original specification.
 - Never include private keys, tokens, photos, ROMs, runtime data or databases in Git.
 - Do not touch the abandoned Classic Diplomacy branch.
 - Read docs/design/LAN-GAMES-ASSIMILATION.md for the completed donor audit.
-- No new providerization/direct-launch decisions have been made without its spec.
+- Versioned non-secret launch context will be advertised by /api/games; old donors
+  must not silently launch with duplicate chrome. Standalone access remains supported.
+- Root donor worker must not register in integration mode or delete Avrana caches.
+- Existing identity and lists remain the backing stores; normalize known aliases
+  within those lists, never introduce a second store or destructive migration.
 
 ## Uncommitted state
 
@@ -92,8 +97,8 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 
 ## Unresolved failures / limitations
 
-- Required original providerization/direct-launch specification is missing.
-  This blocks exact implementation, not the already completed baseline verification.
+- Games GitHub repository rcnechamkin/avrana-party-games currently returns 404;
+  establish a safe private canonical remote before coordinated PR creation.
 - An initial SSH curl command lost wildcard quoting through PowerShell and treated
   local filenames as hostnames, producing DNS errors. Simple hostname-specific
   --noproxy GETs subsequently succeeded with normal TLS verification.
@@ -104,9 +109,14 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 
 ## Exact next action
 
-Obtain the original LAN Games Providerization & Direct-Launch specification from
-the pending user question. Record its exact scope and acceptance criteria here.
-Then inspect the relevant platform and separate donor code, verify the games
-repository's canonical remote, create its isolated development checkout/branch
-if changes are required, and implement only that specified sprint. Maintain this
-record after each material implementation/test checkpoint and before stopping.
+Finish the concrete cross-repository ownership audit and save it before refactoring.
+Implement a versioned provider export and explicit integration bootstrap, including
+WORDCLASH, declarative return links, standalone compatibility and shared storage.
+Then exercise actual donor pages with local cross-repo browser tests, run existing
+suites, document dependency order and hardware checklist, scan before publishing.
+
+## Cross-repository dependency state
+
+No code changes yet. Donor support lands first and remains standalone compatible;
+platform activation must require the advertised version. Neither PR is merged or
+production-deployed. Party Home remains isolated.
