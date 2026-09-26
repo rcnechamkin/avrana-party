@@ -104,3 +104,15 @@ is a separate repo and is not yet available through the same GitHub workflow.
 small, safe offline CI lane for existing pure tests and document its exact setup.
 Keep the live Playwright suite manual and leave production services, network
 configuration, and experimental game behavior untouched.
+
+## Browser provider continuation (2026-09-26)
+
+Assimilation PR #5 merged at 459d4cd; read-only inspection confirmed that installed
+/party/ release on the Pi before this sprint. Providerization is separate review
+work, not deployed. Read docs/design/LAN-GAMES-PROVIDER.md, ADR 0005 and
+CODEX-HANDOFF.md before continuing. Private games source is now
+rcnechamkin/avrana-party-games (existing main 2cf4831; feature work on a branch).
+Review donor first, platform second; platform version-gates integrated launches.
+No experimental branch is required or merged. Party Home remains isolated.
+The full local cross-repo browser harness and hardware checklist are documented in
+docs/findings/2026-09-26-lan-providerization.md. Do not claim Cloud validates phones.

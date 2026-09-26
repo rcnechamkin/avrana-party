@@ -119,3 +119,33 @@ branch.
 Real iPhone Safari and Android Chrome behaviour (captive probes offline, `party.local`, sleep/wake,
 WebRTC on iOS), real Wi-Fi with several phones (the AP's client ceiling), H.264 on the Pi's encoder,
 input-to-photon latency, and power under load. The runbooks in `docs/runbooks/` are the manual tests.
+
+## LAN Games provider cross-repository tests
+
+Private source: rcnechamkin/avrana-party-games. Use two explicit local checkouts,
+never a live donor or production path. In games:
+
+```
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+python ops/export_avrana_catalog.py --check provider/catalog.json
+python ops/export_avrana_catalog.py --check ../avrana-party/contracts/catalogs/lan-games.json
+node --test tests/avrana_worker.test.mjs
+bash ops/check_static.sh
+bash ops/test_release_safety.sh
+```
+
+In Avrana (npm ci and Chromium installed as above):
+
+```
+AVRANA_GAMES_REPO=../avrana-party-games AVRANA_PROVIDER_PYTHON=../avrana-party-games/.venv/bin/python npx playwright test -c playwright.provider.config.ts
+```
+
+Windows uses .venv/Scripts/python.exe and PowerShell $env:NAME assignments. The
+harness binds 127.0.0.1:8182, imports actual donor routes/chat/game sockets and serves
+the real shell with its CSP. Arcade health is simulated. It rejects metadata drift
+before starting. Runtime test avatar/media directories stay ignored in the local
+games checkout. Tests use synthetic identities; no Pi, WLAN, TV, ROM or emulator.
+CI independently checks each repo; private cross-repo checkout credentials are not
+introduced. Linux CI supplies nginx/rsync/bash gates unavailable on this Windows host.

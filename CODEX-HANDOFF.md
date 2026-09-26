@@ -1,7 +1,7 @@
 # Codex handoff — LAN Games Providerization & Direct-Launch
 
 Updated: 2026-09-26. This file is the durable continuation record.
-Status: baseline verified; original specification received; cross-repository audit underway.
+Status: implementation and cross-repository tests complete; final CI/publication pending.
 
 ## Current goal
 
@@ -28,9 +28,9 @@ cross-repository behavioral tests must pin this boundary. No merge or deployment
   2cf4831064de709feeb31865c5022a3f048e49ef.
   Development checkout: C:/Users/cnech/Projects/avrana-party-games; branch
   fix/avrana-provider-integration, created from main 2cf4831.
-  Its only configured origin is ssh://party/home/cody/avrana-lab/avrana-party-games,
-  not a GitHub remote. The canonical games GitHub target must be established
-  before coordinated PR creation; do not push development work to the Pi origin.
+  Private canonical origin is now https://github.com/rcnechamkin/avrana-party-games.
+  Existing main 2cf4831 published only; no experiment/abandoned refs.
+  Laptop bare backup remains a separate read-only remote; never push to Pi.
 - Production donor /home/cody/LAN-Games is never edited.
 - Party Home / Claude Cloud worktrees and experiment branches are isolated:
   do not edit, merge, deploy or use them as the sprint implementation.
@@ -77,10 +77,10 @@ cross-repository behavioral tests must pin this boundary. No merge or deployment
 
 ## Uncommitted state
 
-Before this handoff was created, the feature branch was clean at starting main.
-This handoff is saved as a standalone documentation checkpoint commit.
-No uncommitted feature/code/config edits; run git status to verify on recovery.
-No games repository, experimental branch/worktree or Pi files were changed.
+Platform implementation committed as 6c6917e (catalog) and 60c7db4 (launch/library).
+Documentation and cross-repository harness remain uncommitted pending final review.
+Donor exporter committed febd546; integration/CI/tests committed; final navigation context checkpoint added.
+No production, networking, certificate, Party Home or experiment changes.
 
 ## Tests already run
 
@@ -97,8 +97,11 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 
 ## Unresolved failures / limitations
 
-- Games GitHub repository rcnechamkin/avrana-party-games currently returns 404;
-  establish a safe private canonical remote before coordinated PR creation.
+- Linux-only gates fail locally on Windows: symlinks, bash process/path checks,
+  two arcade subprocess lifecycle tests; real nginx is skipped. Validate current
+  PR with Linux CI before final report. Donor release-safety needs missing rsync.
+- History privacy scan found only old branding/filesystem paths; retained privately.
+  Current tree privacy gate passed; no credential/private-key pattern matches.
 - An initial SSH curl command lost wildcard quoting through PowerShell and treated
   local filenames as hostnames, producing DNS errors. Simple hostname-specific
   --noproxy GETs subsequently succeeded with normal TLS verification.
@@ -107,16 +110,37 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 - Historical Windows-only Linux test failures were resolved by successful Linux CI.
 - No physical phone acceptance required before development; the owner handles it.
 
-## Exact next action
+## Sprint validation
 
-Finish the concrete cross-repository ownership audit and save it before refactoring.
-Implement a versioned provider export and explicit integration bootstrap, including
-WORDCLASH, declarative return links, standalone compatibility and shared storage.
-Then exercise actual donor pages with local cross-repo browser tests, run existing
-suites, document dependency order and hardware checklist, scan before publishing.
+- Games full Python suite: 1200 passed (206.92 seconds).
+- Games provider worker behavior: Node 3 passed; metadata drift check passed.
+- Platform Node modules: 56 passed; contracts/assimilation: 27 passed.
+- Cross-repository real donor + shell Chromium: 10 passed, two phone sizes;
+  all 30 authoritative pages, actual shared identity hello, one chat history,
+  reload return, viewport separation, standalone canonical favorites/cache scope.
+- Soak metric math: 10 passed. nginx source hashes identical.
+- Canonical favorite-alias regression failed against actual origin/main profile.js;
+  current implementation passes. This is evidence the new test pins a real defect.
+- Final offline Chromium suite: 56 passed after updating one old raw-href assertion.
+- Full Windows unit run: 72 total, 61 pass, 5 failures/2 errors/4 skips, Linux-only
+  paths/process/symlink/nginx gates. Existing prior PR #5 Linux CI all passed;
+  current branch must pass new Linux CI before completion.
+- Initial cross-repo failures were assertion mistakes: a game-specific suite-home
+  class already routed correctly, hidden first standalone link, duplicate legacy
+  tile matches and absent aria-pressed. Fixed assertions target actual behavior.
+- Windows local socket shutdown logs can report ConnectionResetError during page
+  changes; browser pageerror checks pass. No production service was touched.
 
 ## Cross-repository dependency state
 
-No code changes yet. Donor support lands first and remains standalone compatible;
-platform activation must require the advertised version. Neither PR is merged or
-production-deployed. Party Home remains isolated.
+Donor support first, backward-compatible standalone. Platform version-gates launches
+and refuses unsupported donor behavior. Both feature PRs remain to be opened;
+no merge/deploy. Each private repo runs independent CI; automatic combined checkout
+would need narrowly scoped read credentials/artifact delivery, not added here.
+
+## Exact next action
+
+Finish final offline tests, inspect diffs and secret/binary scans, commit donor
+integration and platform docs/harness, push dedicated branches and open coordinated
+PRs. Verify Linux CI, update final findings/handoffs with PR URLs and results.
+Do not merge/deploy. Hardware checklist is for the owner after reviewed release.

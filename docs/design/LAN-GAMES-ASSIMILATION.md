@@ -85,3 +85,5 @@ Then extract session-scoped chat/roster authority without losing the existing ch
 
 Catalog attribution: [LAN Games notice](../references/LAN-GAMES-NOTICE.md).
 Validation: [sprint findings](../findings/2026-09-26-shell-assimilation.md).
+
+Providerization now builds on this completed sprint. See [LAN Games provider boundary](LAN-GAMES-PROVIDER.md) and ADR 0005 for direct launch, canonical library aliases and integration mode. Do not repeat assimilation or introduce parallel stores.

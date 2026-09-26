@@ -44,6 +44,12 @@ undergoing assimilation, not an independent product boundary. Do not build a sec
 platform inside it. Read `docs/design/LAN-GAMES-ASSIMILATION.md` before profile,
 chat, catalog or shell work. The /party/ adapters reuse the existing wc-* / lg-*
 backing keys and donor transports; do not add parallel stores or identity tokens.
+Read `docs/design/LAN-GAMES-PROVIDER.md` and ADR 0005 before launch/provider work.
+The games fork is now private GitHub `rcnechamkin/avrana-party-games`. Its registry
+owns browser-title metadata; use its deterministic exporter and drift check.
+Integrated launches use advertised avrana.lan-launch/v1 plus ?avrana=1 and fixed
+/party/ return. Canonical library IDs share the existing lists with lazy alias
+compatibility. Preserve standalone access; no new global features in its legacy hub.
 
 ## Hard rules
 

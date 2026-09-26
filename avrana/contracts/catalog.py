@@ -51,7 +51,9 @@ def build(vocab, appliance, contracts, include=('live',)):
     unknown = sorted(set(grants) - set(contracts))
     if unknown:
         raise ValueError(f'installed games without a contract: {unknown}')
-    donor_launches = lan_catalog.launch_targets(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
+    donor_launches = (lan_catalog.launch_targets(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
+                     if any(c.get('extensions', {}).get('net.avrana.catalog', {}).get('integration')
+                            for c in contracts.values()) else {})
     games = []
     for cid, c in contracts.items():
         grant = grants.get(cid)
