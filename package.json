@@ -13,7 +13,13 @@
     "soak": "playwright test tests/soak.spec.ts --project=chromium",
     "fault": "playwright test tests/fault.spec.ts --project=chromium",
     "report": "playwright show-report",
-    "install-browsers": "playwright install chromium webkit"
+    "install-browsers": "playwright install chromium webkit",
+    "test:unit": "python3 -m unittest discover -s tests/unit",
+    "test:modules": "node --test 'tests/offline/*.test.mjs'",
+    "test:offline-browser": "playwright test -c playwright.offline.config.ts",
+    "test:offline": "npm run test:unit && npm run test:modules && npm run test:offline-browser",
+    "catalog": "python3 -m avrana.contracts.catalog",
+    "dev": "python3 -m avrana.web.devserver --port 8180"
   },
   "repository": {
     "type": "git",

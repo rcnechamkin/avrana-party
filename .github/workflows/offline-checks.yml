@@ -1,6 +1,7 @@
 # Offline CI lane: checks that need no Pi, phones, Party Wi-Fi, HDMI, Bluetooth,
-# streaming/emulator hardware or power telemetry. The live-appliance Playwright
-# suite (`npm test`, soak, fault) stays manual; see docs/TESTING.md.
+# streaming/emulator hardware or power telemetry (Tier 1 and the simulated-Party
+# Tier 2). The live-appliance Playwright suite (`npm test`, soak, fault) stays
+# manual; see docs/TESTING.md.
 name: Offline checks
 
 on:
@@ -15,7 +16,7 @@ permissions:
 jobs:
   offline:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,3 +38,27 @@ jobs:
       # CLAUDE.md: the two committed nginx sites must stay byte-identical.
       - name: nginx site files are identical
         run: cmp avrana-party.nginx arcade/nginx-site
+
+      # Tier 1: platform contracts, provider adapters, arcade wiring (GStreamer stubbed), web build
+      # and install script. Tier 2 inside the same run: a real nginx with the committed site on high
+      # ports (captive probe unchanged on HTTP, /party/ shell on HTTPS). Stdlib Python only.
+      - name: Python unit tests
+        env:
+          AVRANA_REQUIRE_NGINX: '1'
+        run: |
+          command -v nginx >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q nginx; }
+          python3 -m unittest discover -s tests/unit -v
+
+      - name: Web catalog matches its contracts
+        run: python3 -m avrana.contracts.catalog --check
+
+      # The browser modules (capability probe, seat evaluation, keep-awake, service worker) in Node.
+      - name: Browser module unit tests
+        run: node --test 'tests/offline/*.test.mjs'
+
+      # Tier 2: real Chromium against a simulated Party on 127.0.0.1 (a secure context).
+      - name: Install Chromium for the offline browser suite
+        run: npx playwright install --with-deps chromium
+
+      - name: Offline browser tests
+        run: npx playwright test -c playwright.offline.config.ts

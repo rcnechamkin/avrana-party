@@ -19,6 +19,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  // Offline suites have their own runners (playwright.offline.config.ts, node --test, unittest).
+  testIgnore: ['offline/**', 'unit/**'],
   fullyParallel: false, // the appliance has MAX_PLAYERS=2; avoid slot contention
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
