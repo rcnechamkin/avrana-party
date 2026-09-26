@@ -2,7 +2,7 @@
 
 These are machine-readable agreements between Avrana, its games, the Party box and the guests'
 browsers. Decisions: ADR 0004. Status: TESTED (Tier 1 and 2) on branch `claude/dreamy-carson-sja5mq`;
-nothing is deployed.
+foundation merged in PR #3; deployment is a separate action.
 
 | File | Schema | Validated by |
 |---|---|---|
@@ -128,3 +128,15 @@ moves over.
 The result is `{role, outcome: ready|limited|watch|unavailable, seatRole, presentation, method, blockedBy,
 missing[], unverified[], partial[], degraded[]}`. `plan_party(game, seats)` evaluates each seat
 independently. A tested property holds: adding a weak seat never changes another seat's result.
+
+## Provider catalog metadata
+
+The default catalog also normalizes `catalogs/lan-games.json` through
+`avrana/contracts/lan_catalog.py`. Its public donor snapshot includes a source
+commit; hidden/template titles and live/personal data are excluded. Each title
+passes the same Game Contract v0 validator. Installation paths/permissions remain
+in the appliance profile. `net.avrana.catalog` supplies display metadata
+(provider, legacySlug, icon/category, experimental status and validation warning),
+never grants. PS1 contracts record authoritative experiment metadata under
+`net.avrana.ps1`; no installed grant or executable runtime is imported.
+See `docs/design/LAN-GAMES-ASSIMILATION.md`.

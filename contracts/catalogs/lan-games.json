@@ -1,0 +1,302 @@
+{
+  "schema": "avrana.lan-catalog/v0",
+  "source": {
+    "repository": "LAN-Games",
+    "commit": "5da1764b41d32bfb965637a1850344f8f23beb32",
+    "endpoint": "/api/games",
+    "captured": "2026-09-25",
+    "note": "Public metadata only; no live counts, venue configuration, users, or assets."
+  },
+  "games": [
+    {
+      "slug": "brickade",
+      "title": "BRICKADE",
+      "icon": "🧱",
+      "summary": "Pong-royale meets Breakout. Own the ball.",
+      "min_p": 1,
+      "max_p": 8,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "dodgeball",
+      "title": "DODGEBALL",
+      "icon": "🏐",
+      "summary": "Run, throw, dodge. Last one standing.",
+      "min_p": 1,
+      "max_p": 8,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "smelterskelter",
+      "title": "SMELTER SKELTER",
+      "icon": "⛓️",
+      "summary": "Hook. Swing. Steal the cargo.",
+      "min_p": 2,
+      "max_p": 8,
+      "tv": true,
+      "category": "bigscreen"
+    },
+    {
+      "slug": "fifthsignal",
+      "title": "THE FIFTH SIGNAL",
+      "icon": "📡",
+      "summary": "Five consoles. One signal. Nobody has the whole answer.",
+      "min_p": 3,
+      "max_p": 5,
+      "tv": true,
+      "category": "bigscreen"
+    },
+    {
+      "slug": "gridiron",
+      "title": "GRIDIRON",
+      "icon": "🏈",
+      "summary": "Call the play. Make the catch. Own the field.",
+      "min_p": 1,
+      "max_p": 8,
+      "tv": true,
+      "category": "bigscreen"
+    },
+    {
+      "slug": "buzzboard",
+      "title": "BUZZ BOARD",
+      "icon": "🔔",
+      "summary": "Pick a square. Beat them to the buzzer. Risk it all.",
+      "min_p": 2,
+      "max_p": 10,
+      "tv": true,
+      "category": "bigscreen"
+    },
+    {
+      "slug": "bingo",
+      "title": "BINGO",
+      "icon": "🎱",
+      "summary": "Daub your card. First to the pattern shouts BINGO.",
+      "min_p": 1,
+      "max_p": 12,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "pricecheck",
+      "title": "PRICE CHECK",
+      "icon": "🏷️",
+      "summary": "Guess the price. Closest wins.",
+      "min_p": 1,
+      "max_p": 12,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "orbitriot",
+      "title": "ORBIT RIOT",
+      "icon": "🪐",
+      "summary": "Pool meets pinball. Everybody launches at once.",
+      "min_p": 2,
+      "max_p": 8,
+      "tv": true,
+      "category": "bigscreen"
+    },
+    {
+      "slug": "poker",
+      "title": "TEXAS HOLD'EM",
+      "icon": "♠️",
+      "summary": "No-Limit Hold'em. Last stack standing.",
+      "min_p": 1,
+      "max_p": 9,
+      "tv": false,
+      "category": "cards"
+    },
+    {
+      "slug": "spades",
+      "title": "SPADES",
+      "icon": "♠️",
+      "summary": "Partnership trick-taking to 500.",
+      "min_p": 2,
+      "max_p": 4,
+      "tv": false,
+      "category": "cards"
+    },
+    {
+      "slug": "hearts",
+      "title": "HEARTS",
+      "icon": "♥️",
+      "summary": "Duck the queen. Dodge the points.",
+      "min_p": 1,
+      "max_p": 4,
+      "tv": false,
+      "category": "cards"
+    },
+    {
+      "slug": "euchre",
+      "title": "EUCHRE",
+      "icon": "🎴",
+      "summary": "Order it up. Go alone. Get euchred.",
+      "min_p": 1,
+      "max_p": 4,
+      "tv": false,
+      "category": "cards"
+    },
+    {
+      "slug": "charades",
+      "title": "CHARADES",
+      "icon": "🎭",
+      "summary": "One actor. Everyone races to type it.",
+      "min_p": 2,
+      "max_p": 10,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "trivia",
+      "title": "TRIVIA BUZZER",
+      "icon": "🔔",
+      "summary": "Buzz first. Think later.",
+      "min_p": 2,
+      "max_p": 10,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "blitz",
+      "title": "CATEGORY BLITZ",
+      "icon": "🧠",
+      "summary": "Name things. Fast. Don't match.",
+      "min_p": 2,
+      "max_p": 10,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "werewolf",
+      "title": "WEREWOLF",
+      "icon": "🐺",
+      "summary": "Someone here is lying.",
+      "min_p": 5,
+      "max_p": 10,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "famfeud",
+      "title": "FAM FEUD",
+      "icon": "📋",
+      "summary": "Survey says… head-to-head or teams.",
+      "min_p": 2,
+      "max_p": 10,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "wordrush",
+      "title": "WORD RUSH",
+      "icon": "🔤",
+      "summary": "Same 7 letters. Race to find the most words.",
+      "min_p": 1,
+      "max_p": 12,
+      "tv": false,
+      "category": "party"
+    },
+    {
+      "slug": "chess",
+      "title": "CHESS",
+      "icon": "♞",
+      "summary": "Think three moves ahead.",
+      "min_p": 1,
+      "max_p": 2,
+      "tv": false,
+      "category": "board"
+    },
+    {
+      "slug": "checkers",
+      "title": "CHECKERS",
+      "icon": "⛀",
+      "summary": "Jump or be jumped.",
+      "min_p": 1,
+      "max_p": 2,
+      "tv": false,
+      "category": "board"
+    },
+    {
+      "slug": "backgammon",
+      "title": "BACKGAMMON",
+      "icon": "🎲",
+      "summary": "Dice, blots, zero mercy.",
+      "min_p": 1,
+      "max_p": 2,
+      "tv": false,
+      "category": "board"
+    },
+    {
+      "slug": "connect4",
+      "title": "CONNECT FOUR",
+      "icon": "🔴",
+      "summary": "Four in a row. Gravity does the rest.",
+      "min_p": 1,
+      "max_p": 2,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "fortfling",
+      "title": "FORT FLING",
+      "icon": "🏰",
+      "summary": "Pull back. Pick a weapon. Wreck their fort.",
+      "min_p": 2,
+      "max_p": 2,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "tanks",
+      "title": "TANKS",
+      "icon": "🪖",
+      "summary": "Angle. Power. Apologize later.",
+      "min_p": 1,
+      "max_p": 6,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "battleship",
+      "title": "BATTLESHIP FFA",
+      "icon": "🚢",
+      "summary": "Hidden fleets. Everyone's a target.",
+      "min_p": 1,
+      "max_p": 6,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "snake",
+      "title": "SNAKE ARENA",
+      "icon": "🐍",
+      "summary": "Don't hit anything. Especially yourself.",
+      "min_p": 1,
+      "max_p": 8,
+      "tv": false,
+      "category": "battle"
+    },
+    {
+      "slug": "rummikub",
+      "title": "RUMMIKUB",
+      "icon": "🁵",
+      "summary": "Open with 30. Then wreck the table.",
+      "min_p": 2,
+      "max_p": 6,
+      "tv": false,
+      "category": "cards"
+    },
+    {
+      "slug": "wordclash",
+      "title": "WORDCLASH",
+      "icon": "🟩",
+      "summary": "Duel. Relay. Sabotage.",
+      "min_p": 2,
+      "max_p": 8,
+      "tv": false,
+      "category": "party"
+    }
+  ]
+}

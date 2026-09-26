@@ -2,12 +2,17 @@
 //
 // What it does, in order: check that the Pi answers, load the game catalog, observe this phone's
 // capabilities, and show each installed game with what it will be like on *this* phone. Nothing
-// here joins a party or plays a game; the games keep their own pages. Guest copy only.
+// here reserves a seat or runs a game; profiles/chat share donor adapters. Guest copy only.
 
 import { probeCapabilities, statuses } from './lib/capabilities.js';
 import { evaluateSeat, explain } from './lib/evaluate.js';
 import { registerShell } from './lib/shell.js';
 import { capitalize, h, howText, kindIcon, playersText } from './lib/ui.js';
+
+import { createProfile } from './lib/profile.js';
+import { avatarNode, wireProfile } from './lib/profile-ui.js';
+import { createPartyChat } from './lib/party-chat.js';
+import { donorAvailability, visibleGames, filterGames } from './lib/catalog-view.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -15,7 +20,7 @@ const PHONE_CHECKS = ['secure_context', 'webrtc', 'video.h264', 'wake_lock', 'we
 const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
 
-const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null };
+const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all' };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -37,7 +42,7 @@ async function checkReach() {
 async function health(path) {
   if (!path) return null;
   try {
-    const res = await fetch(path, { cache: 'no-store' });
+    const res = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
     if (!res.ok) return { running: false };
     let body = null;
     try { body = await res.json(); } catch { /* health without details */ }
@@ -75,50 +80,67 @@ function liveText(hp) {
 }
 
 function gameCard(game, result, hp) {
-  const labels = state.catalog.labels || {};
-  const note = explain(result, labels);
-  const running = !(hp && !hp.running);
+  const installed = Boolean(game.installed && game.entry);
+  const note = installed ? explain(result, state.catalog.labels || {}) : '';
+  const running = installed && !(hp && !hp.running);
   const fits = result.outcome !== 'unavailable';
-  // The engine advises; it never locks anyone out on a probe alone. A phone that looks unable
-  // still gets a quiet way in, because a real attempt is the final test.
+  const remember = () => {
+    try { profile.remember(game); renderProfile(); }
+    catch (err) { $('profile-note').textContent = err.message; }
+  };
   const action = running && fits
-    ? h('a', { class: 'button', href: game.entry, text: result.outcome === 'watch' ? 'Watch' : 'Play' })
+    ? h('a', { class: 'button', href: game.entry, onclick: remember, text: result.outcome === 'watch' ? 'Watch' : 'Play' })
     : running
-      ? h('a', { class: 'button quiet', href: game.entry, text: 'Try anyway' })
-      : h('button', { type: 'button', class: 'button', disabled: true, text: 'Play' });
-  const live = liveText(hp);
-  return h('li', { class: 'game', 'data-id': game.id, 'data-outcome': result.outcome },
-    h('div', { class: 'gicon', 'aria-hidden': 'true', text: kindIcon(game) }),
-    h('div', {},
-      h('h3', { text: game.name }),
-      h('p', { class: 'gmeta', text: `${playersText(game.players)} · ${howText(game)}` })),
+      ? h('a', { class: 'button quiet', href: game.entry, onclick: remember, text: 'Try anyway' })
+      : h('button', { type: 'button', class: 'button', disabled: true, text: installed ? 'Play' : 'Not installed' });
+  const favorite = profile.isFavorite(game);
+  const star = h('button', { type: 'button', class: 'quiet favorite', text: favorite ? '★' : '☆',
+    'aria-label': (favorite ? 'Remove ' : 'Add ') + game.name + (favorite ? ' from favorites' : ' to favorites'),
+    'aria-pressed': favorite, onclick: () => {
+      try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
+      catch (err) { $('profile-note').textContent = err.message; }
+    } });
+  const live = installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
+  return h('li', { class: 'game', 'data-id': game.id, 'data-outcome': installed ? result.outcome : 'unavailable' },
+    h('div', { class: 'gicon', 'aria-hidden': 'true', text: game.icon || kindIcon(game) }),
+    h('div', {}, h('h3', { text: game.name }),
+      h('p', { class: 'gmeta', text: playersText(game.players) + ' · ' + howText(game) })),
+    star,
     game.summary ? h('p', { class: 'gsummary note', text: game.summary }) : null,
+    game.hardwareValidationRequired ? h('p', { class: 'note', text: 'Needs a device check before use.' }) : null,
     note ? h('p', { class: 'note why', text: note }) : null,
-    h('div', { class: 'gfoot' }, chipFor(result), live ? h('span', { class: 'live', text: live }) : null, action));
+    h('div', { class: 'gfoot' }, installed ? chipFor(result) : null,
+      live ? h('span', { class: 'live', text: live }) : null, action));
 }
 
-function collectionCard(col) {
-  return h('li', { class: 'game', 'data-id': col.id, 'data-outcome': col.available ? 'ready' : 'unavailable' },
-    h('div', { class: 'gicon', 'aria-hidden': 'true', text: '🎉' }),
-    h('div', {}, h('h3', { text: col.name }), h('p', { class: 'gmeta', text: 'play on your phone' })),
-    col.summary ? h('p', { class: 'gsummary note', text: col.summary }) : null,
-    h('div', { class: 'gfoot' },
-      col.available ? h('a', { class: 'button', href: col.entry, text: 'Open' })
-        : h('button', { type: 'button', class: 'button', disabled: true, text: 'Open' })));
-}
-
-async function renderGames() {
-  const list = $('games');
+async function renderGames(refresh = true) {
+  if (!state.catalog || state.reachable === false) return;
+  if (refresh) {
+    const installed = state.catalog.games.filter((g) => g.installed && g.health);
+    const [donor, ...healths] = await Promise.all([
+      getJSON('/api/games', { cache: 'no-store', signal: AbortSignal.timeout(4000) })
+        .then(donorAvailability).catch(() => null),
+      ...installed.map((g) => health(g.health)),
+    ]);
+    state.donor = donor;
+    state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));
+  }
+  if (state.reachable === false) return;
   const caps = statuses(state.report);
-  const installed = state.catalog.games.filter((g) => g.installed && g.entry);
-  const healths = await Promise.all(installed.map((g) => health(g.health)));
-  const items = installed.map((g, i) => gameCard(g, evaluateSeat(g, caps, 'player'), healths[i]));
-  for (const col of state.catalog.collections || []) items.push(collectionCard(col));
-  if (!items.length) items.push(h('li', { class: 'card', text: 'No games are set up on this Party box yet.' }));
-  // Replace only the cards that changed, so a periodic refresh never steals keyboard or
-  // screen-reader focus from a card that stayed the same.
-  const old = [...list.children];
-  if (old.length !== items.length || old.some((el) => !el.dataset.id)) {
+  const games = filterGames(visibleGames(state.catalog), {
+    query: $('game-search').value, players: Number($('game-players').value), view: state.view,
+  }, profile);
+  const items = games.map((g) => {
+    const hp = g.legacySlug ? state.donor?.get(g.legacySlug) || { running: false }
+      : state.healths?.get(g.id);
+    return gameCard(g, evaluateSeat(g, caps, 'player'), hp);
+  });
+  $('game-count').textContent = games.length + (games.length === 1 ? ' game' : ' games');
+  if (!items.length) items.push(h('li', { class: 'card', text:
+    state.view === 'favorites' ? 'Tap a star to save a game here.'
+      : state.view === 'recent' ? 'Games you open will appear here.' : 'No games match. Try another search or group size.' }));
+  const list = $('games'), old = [...list.children];
+  if (old.length !== items.length || old.some((el, i) => el.dataset.id !== items[i].dataset.id)) {
     list.replaceChildren(...items);
   } else {
     items.forEach((item, i) => { if (!old[i].isEqualNode(item)) old[i].replaceWith(item); });
@@ -164,6 +186,8 @@ async function boot() {
   state.catalog = catalog;
   state.report = report;
   $('away').hidden = reachable;
+  $('chat').hidden = !reachable;
+  syncChat();
   $('games-section').hidden = !reachable || !catalog;
   if (!reachable) {
     setStatus('away', 'Not connected to the party');
@@ -182,11 +206,60 @@ async function boot() {
   });
 }
 
+let storage;
+try { storage = window.localStorage; } catch { /* compatibility model reports persistence failure */ }
+const profile = createProfile(storage);
+const chat = createPartyChat({
+  identity: () => profile.identity(), origin: location.origin,
+  onChange: (snapshot) => {
+    const labels = { closed: 'Open to chat', connecting: 'Connecting…',
+      unavailable: 'Chat is reconnecting…', profile_required: 'Save your profile to chat' };
+    $('chat-status').textContent = snapshot.status === 'connected'
+      ? snapshot.online + ' in chat' : labels[snapshot.status];
+    $('chat-send').disabled = snapshot.status !== 'connected';
+    const list = $('chat-messages');
+    const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    list.replaceChildren(...snapshot.messages.map((m) =>
+      h('li', {}, avatarNode(m), h('div', {},
+        h('strong', { text: m.name }), h('p', { text: m.text + (m.photo ? ' 📷 Photo shared' : '') })))));
+    if (atEnd) list.scrollTop = list.scrollHeight;
+  },
+});
+const renderProfile = wireProfile(profile, () => { renderGames(false); syncChat(true); });
+function syncChat(reconnect = false) {
+  if (state.reachable && $('chat').open && profile.snapshot().name) {
+    const opened = chat.open();
+    if (reconnect && !opened) chat.reconnect();
+  } else {
+    chat.close();
+    if ($('chat').open && state.reachable && !profile.snapshot().name)
+      $('chat-status').textContent = 'Choose your name above to chat';
+  }
+}
+$('chat').addEventListener('toggle', () => syncChat());
+$('chat-form').onsubmit = (event) => {
+  event.preventDefault();
+  if (chat.send($('chat-text').value)) {
+    $('chat-text').value = ''; $('chat-feedback').textContent = '';
+  } else $('chat-feedback').textContent = 'Chat is not connected yet. Please try again.';
+};
+$('game-search').oninput = () => renderGames(false);
+$('game-players').onchange = () => renderGames(false);
+$('game-views').onclick = (event) => {
+  const button = event.target.closest('button[data-view]');
+  if (!button) return;
+  state.view = button.dataset.view;
+  for (const item of $('game-views').querySelectorAll('button'))
+    item.setAttribute('aria-pressed', String(item === button));
+  renderGames(false);
+};
+window.addEventListener('pagehide', () => chat.close());
+
 $('retry').addEventListener('click', () => { boot(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') (state.reachable === false ? boot() : refreshHealth());
 });
-window.addEventListener('pageshow', (event) => { if (event.persisted) boot(); });
+window.addEventListener('pageshow', (event) => { if (event.persisted) boot(); else syncChat(); });
 window.addEventListener('online', () => { if (state.reachable === false) boot(); });
 state.healthTimer = setInterval(refreshHealth, HEALTH_EVERY_MS);
 boot();

@@ -262,8 +262,9 @@ class ApplianceAndCatalog(unittest.TestCase):
         built = catalog.build(VOCAB, self.appliance, self.contracts)
         self.assertEqual(built['schema'], 'avrana.catalog/v0')
         installed = [g for g in built['games'] if g['installed']]
-        self.assertEqual([g['id'] for g in installed], ['arcade-gauntlet2'])
-        self.assertEqual(installed[0]['entry'], '/arcade/')
+        self.assertEqual(len(installed), 30)
+        self.assertEqual([g['id'] for g in installed if g['provider'] != 'lan-games'], ['arcade-gauntlet2'])
+        self.assertEqual(next(g for g in installed if g['id'] == 'arcade-gauntlet2')['entry'], '/arcade/')
         bomber = next(g for g in built['games'] if g['id'] == 'ps1-bomberman')
         tv = next(p for p in bomber['presentations'] if p['id'] == 'tv_controller')
         self.assertFalse(tv['available'])
@@ -298,10 +299,12 @@ class ApplianceAndCatalog(unittest.TestCase):
                     continue  # valid: nothing installed; a one-letter id
                 with self.assertRaises(ValueError, msg=f'{key}={value!r}'):
                     appliance.validate(dict(self.appliance, **{key: value}), VOCAB)
+        fixture = copy.deepcopy(self.appliance)
+        fixture['collections'] = [{'id': 'legacy', 'name': 'Legacy', 'entry': '/', 'requires': ['runtime.lan_games']}]
         for section in ('providers', 'installed', 'collections'):
-            for field in list(self.appliance[section][0]):
+            for field in list(fixture[section][0]):
                 for value in junk:
-                    doc = copy.deepcopy(self.appliance)
+                    doc = copy.deepcopy(fixture)
                     doc[section][0][field] = value
                     try:
                         appliance.validate(doc, VOCAB)

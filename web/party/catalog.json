@@ -172,6 +172,692 @@
   },
   "games": [
     {
+      "id": "lan-backgammon",
+      "name": "BACKGAMMON",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 2
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/backgammon/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "backgammon",
+      "icon": "🎲",
+      "category": "board",
+      "summary": "Dice, blots, zero mercy."
+    },
+    {
+      "id": "lan-battleship",
+      "name": "BATTLESHIP FFA",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 6
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/battleship/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "battleship",
+      "icon": "🚢",
+      "category": "battle",
+      "summary": "Hidden fleets. Everyone's a target."
+    },
+    {
+      "id": "lan-bingo",
+      "name": "BINGO",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 12
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/bingo/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "bingo",
+      "icon": "🎱",
+      "category": "party",
+      "summary": "Daub your card. First to the pattern shouts BINGO."
+    },
+    {
+      "id": "lan-brickade",
+      "name": "BRICKADE",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 8
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/brickade/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "brickade",
+      "icon": "🧱",
+      "category": "battle",
+      "summary": "Pong-royale meets Breakout. Own the ball."
+    },
+    {
+      "id": "lan-buzzboard",
+      "name": "BUZZ BOARD",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 10
+      },
+      "screen": "tv_required",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/buzzboard/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "buzzboard",
+      "icon": "🔔",
+      "category": "bigscreen",
+      "summary": "Pick a square. Beat them to the buzzer. Risk it all."
+    },
+    {
+      "id": "lan-blitz",
+      "name": "CATEGORY BLITZ",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 10
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/blitz/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "blitz",
+      "icon": "🧠",
+      "category": "party",
+      "summary": "Name things. Fast. Don't match."
+    },
+    {
+      "id": "lan-charades",
+      "name": "CHARADES",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 10
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/charades/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "charades",
+      "icon": "🎭",
+      "category": "party",
+      "summary": "One actor. Everyone races to type it."
+    },
+    {
+      "id": "lan-checkers",
+      "name": "CHECKERS",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 2
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/checkers/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "checkers",
+      "icon": "⛀",
+      "category": "board",
+      "summary": "Jump or be jumped."
+    },
+    {
+      "id": "lan-chess",
+      "name": "CHESS",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 2
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/chess/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "chess",
+      "icon": "♞",
+      "category": "board",
+      "summary": "Think three moves ahead."
+    },
+    {
+      "id": "lan-connect4",
+      "name": "CONNECT FOUR",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 2
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/connect4/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "connect4",
+      "icon": "🔴",
+      "category": "battle",
+      "summary": "Four in a row. Gravity does the rest."
+    },
+    {
+      "id": "lan-dodgeball",
+      "name": "DODGEBALL",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 8
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/dodgeball/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "dodgeball",
+      "icon": "🏐",
+      "category": "battle",
+      "summary": "Run, throw, dodge. Last one standing."
+    },
+    {
+      "id": "lan-euchre",
+      "name": "EUCHRE",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 4
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/euchre/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "euchre",
+      "icon": "🎴",
+      "category": "cards",
+      "summary": "Order it up. Go alone. Get euchred."
+    },
+    {
+      "id": "lan-famfeud",
+      "name": "FAM FEUD",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 10
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/famfeud/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "famfeud",
+      "icon": "📋",
+      "category": "party",
+      "summary": "Survey says… head-to-head or teams."
+    },
+    {
+      "id": "lan-fortfling",
+      "name": "FORT FLING",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 2
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/fortfling/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "fortfling",
+      "icon": "🏰",
+      "category": "battle",
+      "summary": "Pull back. Pick a weapon. Wreck their fort."
+    },
+    {
       "id": "arcade-gauntlet2",
       "name": "Gauntlet II",
       "kind": "emulated",
@@ -224,7 +910,744 @@
           }
         }
       ],
+      "provider": "arcade",
+      "status": "current",
       "summary": "Two heroes, one dungeon. Every phone is a controller and a screen."
+    },
+    {
+      "id": "lan-gridiron",
+      "name": "GRIDIRON",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 8
+      },
+      "screen": "tv_required",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/gridiron/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "gridiron",
+      "icon": "🏈",
+      "category": "bigscreen",
+      "summary": "Call the play. Make the catch. Own the field."
+    },
+    {
+      "id": "lan-hearts",
+      "name": "HEARTS",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 4
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/hearts/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "hearts",
+      "icon": "♥️",
+      "category": "cards",
+      "summary": "Duck the queen. Dodge the points."
+    },
+    {
+      "id": "lan-orbitriot",
+      "name": "ORBIT RIOT",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 8
+      },
+      "screen": "tv_required",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/orbitriot/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "orbitriot",
+      "icon": "🪐",
+      "category": "bigscreen",
+      "summary": "Pool meets pinball. Everybody launches at once."
+    },
+    {
+      "id": "lan-pricecheck",
+      "name": "PRICE CHECK",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 12
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/pricecheck/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "pricecheck",
+      "icon": "🏷️",
+      "category": "party",
+      "summary": "Guess the price. Closest wins."
+    },
+    {
+      "id": "lan-rummikub",
+      "name": "RUMMIKUB",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 6
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/rummikub/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "rummikub",
+      "icon": "🁵",
+      "category": "cards",
+      "summary": "Open with 30. Then wreck the table."
+    },
+    {
+      "id": "lan-smelterskelter",
+      "name": "SMELTER SKELTER",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 8
+      },
+      "screen": "tv_required",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/smelterskelter/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "smelterskelter",
+      "icon": "⛓️",
+      "category": "bigscreen",
+      "summary": "Hook. Swing. Steal the cargo."
+    },
+    {
+      "id": "lan-snake",
+      "name": "SNAKE ARENA",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 8
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/snake/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "snake",
+      "icon": "🐍",
+      "category": "battle",
+      "summary": "Don't hit anything. Especially yourself."
+    },
+    {
+      "id": "lan-spades",
+      "name": "SPADES",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 4
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/spades/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "spades",
+      "icon": "♠️",
+      "category": "cards",
+      "summary": "Partnership trick-taking to 500."
+    },
+    {
+      "id": "lan-tanks",
+      "name": "TANKS",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 6
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/tanks/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "tanks",
+      "icon": "🪖",
+      "category": "battle",
+      "summary": "Angle. Power. Apologize later."
+    },
+    {
+      "id": "lan-poker",
+      "name": "TEXAS HOLD'EM",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 9
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/poker/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "poker",
+      "icon": "♠️",
+      "category": "cards",
+      "summary": "No-Limit Hold'em. Last stack standing."
+    },
+    {
+      "id": "lan-fifthsignal",
+      "name": "THE FIFTH SIGNAL",
+      "kind": "native",
+      "players": {
+        "min": 3,
+        "max": 5
+      },
+      "screen": "tv_required",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/fifthsignal/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "fifthsignal",
+      "icon": "📡",
+      "category": "bigscreen",
+      "summary": "Five consoles. One signal. Nobody has the whole answer."
+    },
+    {
+      "id": "lan-trivia",
+      "name": "TRIVIA BUZZER",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 10
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/trivia/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "trivia",
+      "icon": "🔔",
+      "category": "party",
+      "summary": "Buzz first. Think later."
+    },
+    {
+      "id": "lan-werewolf",
+      "name": "WEREWOLF",
+      "kind": "native",
+      "players": {
+        "min": 5,
+        "max": 10
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/werewolf/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "werewolf",
+      "icon": "🐺",
+      "category": "party",
+      "summary": "Someone here is lying."
+    },
+    {
+      "id": "lan-wordrush",
+      "name": "WORD RUSH",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 12
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/wordrush/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "wordrush",
+      "icon": "🔤",
+      "category": "party",
+      "summary": "Same 7 letters. Race to find the most words."
+    },
+    {
+      "id": "lan-wordclash",
+      "name": "WORDCLASH",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 8
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/games/wordclash/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone",
+          "method": "browser_native",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "status": "current",
+      "legacySlug": "wordclash",
+      "icon": "🟩",
+      "category": "party",
+      "summary": "Duel. Relay. Sabotage."
     },
     {
       "id": "bluff",
@@ -270,6 +1693,8 @@
           }
         }
       ],
+      "provider": "lan-games",
+      "status": "not_installed",
       "summary": "Hidden roles, bold claims. Your cards stay on your phone."
     },
     {
@@ -350,18 +1775,125 @@
             ],
             "runtime": []
           }
+        },
+        {
+          "id": "phone_crop",
+          "method": "personal_viewport",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": false,
+          "runtimeMissing": [
+            "presentation.personal_viewport.crop"
+          ],
+          "requires": {
+            "device": [
+              "websocket",
+              "webrtc",
+              "video.h264"
+            ]
+          },
+          "optional": {
+            "device": [],
+            "runtime": []
+          },
+          "viewport": "crop"
         }
       ],
+      "provider": "retroarch-ps1",
+      "providerMetadata": {
+        "profile": "bomberman",
+        "serial": "SLUS-01189",
+        "streamSlots": 4
+      },
+      "status": "experimental",
+      "hardwareValidationRequired": true,
       "summary": "Up to four bombers on one arena. Phones are the controllers."
+    },
+    {
+      "id": "ps1-worms",
+      "name": "Worms Armageddon",
+      "kind": "emulated",
+      "players": {
+        "min": 1,
+        "max": 4
+      },
+      "screen": "tv_optional",
+      "input": {
+        "model": "hotseat",
+        "slots": 1,
+        "directions": "dpad"
+      },
+      "late_join": "spectator_only",
+      "spectators": "watch",
+      "private_player_ui": false,
+      "fallback": "spectate",
+      "installed": false,
+      "entry": null,
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_stream",
+          "method": "shared_stream",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket",
+              "webrtc",
+              "video.h264"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "web_audio",
+              "vibration"
+            ],
+            "runtime": []
+          }
+        },
+        {
+          "id": "phone_crop",
+          "method": "personal_viewport",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": false,
+          "runtimeMissing": [
+            "presentation.personal_viewport.crop"
+          ],
+          "requires": {
+            "device": [
+              "websocket",
+              "webrtc",
+              "video.h264"
+            ]
+          },
+          "optional": {
+            "device": [],
+            "runtime": []
+          },
+          "viewport": "crop"
+        }
+      ],
+      "provider": "retroarch-ps1",
+      "providerMetadata": {
+        "profile": "worms",
+        "serial": "SLUS-00888",
+        "streamSlots": 1
+      },
+      "status": "experimental",
+      "hardwareValidationRequired": true,
+      "summary": "One controller, up to four players taking turns."
     }
   ],
-  "collections": [
-    {
-      "id": "lan-games",
-      "name": "Party games",
-      "summary": "About 28 quick games for the whole group, right in the browser.",
-      "entry": "/",
-      "available": true
-    }
-  ]
+  "collections": []
 }

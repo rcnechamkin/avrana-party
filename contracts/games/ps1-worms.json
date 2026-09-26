@@ -1,8 +1,8 @@
 {
   "contract": "avrana.game/v0",
-  "id": "ps1-bomberman",
-  "name": "Bomberman Party Edition",
-  "summary": "Up to four bombers on one arena. Phones are the controllers.",
+  "id": "ps1-worms",
+  "name": "Worms Armageddon",
+  "summary": "One controller, up to four players taking turns.",
   "kind": "emulated",
   "players": {
     "min": 1,
@@ -10,24 +10,15 @@
   },
   "screen": "tv_optional",
   "input": {
-    "model": "controller_slots",
-    "slots": 4,
-    "directions": "dpad",
-    "buttons": [
-      "cross",
-      "circle",
-      "square",
-      "triangle",
-      "start",
-      "select"
-    ]
+    "model": "hotseat",
+    "slots": 1
   },
-  "late_join": "supported",
+  "late_join": "spectator_only",
   "spectators": "watch",
   "private_player_ui": false,
   "runtime": {
     "type": "emulator_profile",
-    "profile": "bomberman",
+    "profile": "worms",
     "start": "service",
     "resources": [
       "emulator_slot",
@@ -66,29 +57,6 @@
       }
     },
     {
-      "id": "tv_controller",
-      "method": "controller_only",
-      "roles": [
-        "player"
-      ],
-      "requires": {
-        "device": [
-          "websocket"
-        ],
-        "runtime": [
-          "runtime.retroarch",
-          "presentation.tv",
-          "input.virtual_gamepad"
-        ]
-      },
-      "optional": {
-        "device": [
-          "wake_lock",
-          "vibration"
-        ]
-      }
-    },
-    {
       "id": "phone_crop",
       "method": "personal_viewport",
       "viewport": "crop",
@@ -117,10 +85,15 @@
     "reduced_motion_respected": false
   },
   "extensions": {
+    "net.avrana.catalog": {
+      "provider": "retroarch-ps1",
+      "status": "experimental",
+      "hardwareValidationRequired": true
+    },
     "net.avrana.ps1": {
-      "stream_slots": 4,
-      "multitap_port": 2,
-      "serial": "SLUS-01189",
+      "serial": "SLUS-00888",
+      "stream_slots": 1,
+      "multitap": "disabled",
       "metadataSource": {
         "titleProfiles": {
           "ref": "experiment/ps1-title-profiles",
@@ -131,11 +104,6 @@
           "commit": "59ac8ab7fd8992def20df97042e3cae66686bf9b"
         }
       }
-    },
-    "net.avrana.catalog": {
-      "provider": "retroarch-ps1",
-      "status": "experimental",
-      "hardwareValidationRequired": true
     }
   }
 }

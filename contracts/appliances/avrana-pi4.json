@@ -6,7 +6,9 @@
     {
       "id": "lan-games",
       "kind": "runtime",
-      "offers": ["runtime.lan_games"],
+      "offers": [
+        "runtime.lan_games"
+      ],
       "status": "live",
       "adapter": null,
       "implementation": "LAN Games server (MIT, upstream retired), systemd avranaparty-games on 127.0.0.1:8096; not in this repository"
@@ -14,7 +16,9 @@
     {
       "id": "retroarch",
       "kind": "runtime",
-      "offers": ["runtime.retroarch"],
+      "offers": [
+        "runtime.retroarch"
+      ],
       "status": "live",
       "adapter": "avrana.providers.retroarch:RetroArchRuntime",
       "implementation": "RetroArch (GPL-3.0) as a child process under Xvfb; pinned libretro cores are never committed"
@@ -22,7 +26,9 @@
     {
       "id": "uinput-gamepad",
       "kind": "input",
-      "offers": ["input.virtual_gamepad"],
+      "offers": [
+        "input.virtual_gamepad"
+      ],
       "status": "live",
       "adapter": "avrana.providers.uinput_gamepad:UInputGamepadProvider",
       "implementation": "Linux uinput via python-evdev; devices are system-wide (isolation: global)"
@@ -30,7 +36,9 @@
     {
       "id": "xtest-keys",
       "kind": "input",
-      "offers": ["input.virtual_gamepad"],
+      "offers": [
+        "input.virtual_gamepad"
+      ],
       "status": "experiment",
       "adapter": null,
       "implementation": "XTest key banks into a private X display (branch experiment/ps1-title-profiles; isolation: private)"
@@ -38,7 +46,9 @@
     {
       "id": "shared-webrtc",
       "kind": "presentation",
-      "offers": ["presentation.shared_stream"],
+      "offers": [
+        "presentation.shared_stream"
+      ],
       "status": "live",
       "adapter": null,
       "implementation": "arcade/stream.py: one v4l2h264enc encode fanned out per phone through GStreamer webrtcbin"
@@ -46,7 +56,9 @@
     {
       "id": "viewport-crop",
       "kind": "presentation",
-      "offers": ["presentation.personal_viewport.crop"],
+      "offers": [
+        "presentation.personal_viewport.crop"
+      ],
       "status": "experiment",
       "adapter": null,
       "implementation": "client-side crop of the shared frame (branch experiment/party-sim, experiments/viewports/poc)"
@@ -58,16 +70,185 @@
       "entry": "/arcade/",
       "health": "/arcade/stats",
       "tier": "builtin",
-      "permissions_granted": ["controllers", "host_devices"]
+      "permissions_granted": [
+        "controllers",
+        "host_devices"
+      ]
+    },
+    {
+      "game": "lan-brickade",
+      "entry": "/games/brickade/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-dodgeball",
+      "entry": "/games/dodgeball/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-smelterskelter",
+      "entry": "/games/smelterskelter/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-fifthsignal",
+      "entry": "/games/fifthsignal/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-gridiron",
+      "entry": "/games/gridiron/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-buzzboard",
+      "entry": "/games/buzzboard/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-bingo",
+      "entry": "/games/bingo/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-pricecheck",
+      "entry": "/games/pricecheck/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-orbitriot",
+      "entry": "/games/orbitriot/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-poker",
+      "entry": "/games/poker/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-spades",
+      "entry": "/games/spades/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-hearts",
+      "entry": "/games/hearts/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-euchre",
+      "entry": "/games/euchre/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-charades",
+      "entry": "/games/charades/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-trivia",
+      "entry": "/games/trivia/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-blitz",
+      "entry": "/games/blitz/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-werewolf",
+      "entry": "/games/werewolf/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-famfeud",
+      "entry": "/games/famfeud/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-wordrush",
+      "entry": "/games/wordrush/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-chess",
+      "entry": "/games/chess/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-checkers",
+      "entry": "/games/checkers/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-backgammon",
+      "entry": "/games/backgammon/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-connect4",
+      "entry": "/games/connect4/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-fortfling",
+      "entry": "/games/fortfling/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-tanks",
+      "entry": "/games/tanks/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-battleship",
+      "entry": "/games/battleship/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-snake",
+      "entry": "/games/snake/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-rummikub",
+      "entry": "/games/rummikub/",
+      "tier": "builtin",
+      "permissions_granted": []
+    },
+    {
+      "game": "lan-wordclash",
+      "entry": "/games/wordclash/",
+      "tier": "builtin",
+      "permissions_granted": []
     }
   ],
-  "collections": [
-    {
-      "id": "lan-games",
-      "name": "Party games",
-      "summary": "About 28 quick games for the whole group, right in the browser.",
-      "entry": "/",
-      "requires": ["runtime.lan_games"]
-    }
-  ]
+  "collections": []
 }

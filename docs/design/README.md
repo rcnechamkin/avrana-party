@@ -13,6 +13,7 @@ Read in this order:
 2. `../adr/0002-party-platform.md` and `../adr/0003-ids-and-keys.md` — the decisions, including
    which identifier or credential may authorize what.
 3. Then whichever focused document matches the work:
+   - `LAN-GAMES-ASSIMILATION.md` ? canonical ownership, donor inventory, profile/chat compatibility and provider catalogs
    - `PARTY-LIFECYCLE.md` — state machines and awkward-state rules (party, presence, host, seats)
    - `GAME-INTEGRATION.md` — capability manifest v0, runtime vs grant, the party contract, and what
      today's code duplicates
