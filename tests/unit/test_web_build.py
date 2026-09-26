@@ -42,6 +42,19 @@ class ShellFiles(unittest.TestCase):
                 self.assertIsNone(JARGON.search(literal), literal)
 
 
+class NoCredentialsInUrls(unittest.TestCase):
+    # ADR 0003: credentials never appear in URLs (nginx logs query strings).
+    PATTERN = re.compile(r'''[?&](token|ticket|key|secret|reconnectionToken|_authToken)=|'''
+                         r'''searchParams\.(set|append)\(\s*['"](token|ticket|key|secret)''', re.I)
+
+    def test_shipped_pages_and_scripts(self):
+        files = [p for p in list(WEB_DIR.rglob('*')) + list((REPO_ROOT / 'arcade').glob('*.html'))
+                 if p.suffix in ('.html', '.js')]
+        self.assertTrue(files)
+        for path in files:
+            self.assertIsNone(self.PATTERN.search(path.read_text(encoding='utf-8')), path)
+
+
 class Build(unittest.TestCase):
     def test_stamp_and_kill_switch(self):
         sw = (WEB_DIR / 'sw.js').read_text(encoding='utf-8')
