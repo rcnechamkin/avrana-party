@@ -48,7 +48,7 @@ video.addEventListener('playing',()=>{overlay.hidden=true});
 document.querySelector('#details').hidden=location.hash!=='#diag';
 let ws=null,pc=null,ready=false,heartbeat=null,statsTimer=null,pendingIce=[],signalChain=Promise.resolve(),myPlayer=null;
 // Quiet reconnect after a drop (phone locked, Wi-Fi blip): a few tries while the page is visible.
-let wasConnected=false,reconnecting=false,leaving=false,retries=0,retryTimer=null;const RETRY_MS=[500,1000,2000,4000,6000];
+let wasConnected=false,reconnecting=false,leaving=false,retries=0,retryTimer=null,attempt=0;const RETRY_MS=[500,1000,2000,4000,6000];
 // Keep the screen on while playing (Full Mode only; /party/lib is the Avrana web shell). Never fatal.
 let awake=null;
 if(window.isSecureContext&&'wakeLock' in navigator)import('/party/lib/keep-awake.js').then(m=>{awake=m.createKeepAwake()}).catch(()=>{});
@@ -62,6 +62,7 @@ function sendInput(){if(ws?.readyState===WebSocket.OPEN && ready){if(ws.buffered
  ws.send(JSON.stringify(msg))}}
 function releaseAll(){held.clear();controls.forEach(b=>b.classList.remove('held'));sendInput()}
 function teardown(){
+ attempt++; // late failures of the attempt being torn down are ignored from here on
  releaseAll();ready=false;myPlayer=null;document.querySelector('h1').textContent='Avrana Party · Gauntlet II';clearInterval(heartbeat);clearInterval(statsTimer);enableControls(false);
  if(ws){ws.onclose=null;ws.onerror=null;ws.close();ws=null}if(pc){pc.onconnectionstatechange=null;pc.close();pc=null}video.srcObject=null;
  leave.disabled=true;sound.disabled=true;
@@ -70,18 +71,25 @@ function disconnect(message='Disconnected. Tap Play to reconnect.'){
  clearTimeout(retryTimer);retryTimer=null;wasConnected=false;reconnecting=false;retries=0;awake?.release();teardown();
  connect.disabled=false;connect.textContent='▶ Play Gauntlet II';overlay.hidden=false;status.textContent=message;
 }
-// Full is not the same as lost: ask the arcade before choosing the words.
-async function isFull(){try{const r=await fetch(new URL('stats',location.href),{cache:'no-store'});if(!r.ok)return false;const s=await r.json();
- return Number.isInteger(s.players)&&Number.isInteger(s.max_players)&&s.players>=s.max_players}catch(_){return false}}
-async function failed(){
+// Full is not the same as lost: ask the arcade (briefly) before choosing the words.
+async function isFull(){const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),1500);
+ try{const r=await fetch(new URL('stats',location.href),{cache:'no-store',signal:ctl.signal});if(!r.ok)return false;const s=await r.json();
+ return Number.isInteger(s.players)&&Number.isInteger(s.max_players)&&s.players>=s.max_players}catch(_){return false}finally{clearTimeout(t)}}
+async function refused(fallback){
+ connect.disabled=true;overlay.hidden=false;status.textContent='Checking…';const mine=attempt;
+ const full=await isFull();if(mine!==attempt||leaving)return;
+ disconnect(full?'Both controllers are in use. Try again when one is free.':fallback);
+}
+function failed(){
  const retry=wasConnected||reconnecting;wasConnected=false;teardown();
  if(leaving)return;
- if(await isFull()){disconnect('Both controllers are in use. Try again when one is free.');return}
+ // After a drop, keep trying through "full": the arcade frees this phone's own slot only when its
+ // heartbeat notices the old connection is gone (a few seconds).
  if(retry){reconnecting=true;scheduleRetry();return}
- disconnect('Can’t connect right now. Stay on the Avrana Party Wi-Fi, then tap Play.');
+ refused('Can’t connect right now. Stay on the Avrana Party Wi-Fi, then tap Play.');
 }
 function scheduleRetry(){
- if(retries>=RETRY_MS.length){disconnect('Connection lost. Tap Play to reconnect.');return}
+ if(retries>=RETRY_MS.length){refused('Connection lost. Tap Play to reconnect.');return}
  connect.disabled=true;connect.textContent='Reconnecting…';overlay.hidden=false;status.textContent='Reconnecting…';
  if(document.hidden||retryTimer)return; // a locked phone resumes on visibilitychange
  retryTimer=setTimeout(()=>{retryTimer=null;retries++;start()},RETRY_MS[retries]);
@@ -129,6 +137,7 @@ connect.onclick=()=>{
  retries=0;reconnecting=false;awake?.want();start();
 };
 function start(){
+ const mine=++attempt;
  prev=null;lastSent='';document.querySelector('#path-warning').hidden=true;connect.disabled=true;connect.textContent=reconnecting?'Reconnecting…':'Connecting…';status.textContent=reconnecting?'Reconnecting…':'Connecting…';pendingIce=[];signalChain=Promise.resolve();
  pc=new RTCPeerConnection({iceServers:[]});
  const media=new MediaStream();video.srcObject=media;
@@ -145,7 +154,8 @@ function start(){
   if(!pc)return;
   if(message.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:message.sdp});for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];await pc.setLocalDescription(await pc.createAnswer());ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription.sdp}))}
   else if(message.type==='ice'){const c={candidate:message.candidate,sdpMLineIndex:message.sdpMLineIndex};if(pc.remoteDescription)await pc.addIceCandidate(c);else pendingIce.push(c)}
- }).catch(e=>{console.error(e);disconnect('Could not start video. Try your regular browser at '+location.origin+'/arcade/.')})};
+ }).catch(e=>{if(mine!==attempt)return; // a step of an older attempt failing after teardown
+  console.error(e);disconnect('Could not start video. Try your regular browser at '+location.origin+'/arcade/.')})};
  ws.onclose=()=>failed();
  ws.onerror=()=>failed();
  heartbeat=setInterval(()=>{if(!document.hidden)sendInput()},50);

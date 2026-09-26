@@ -6,7 +6,7 @@
 It mirrors the nginx 443 site closely enough for the browser tests: the shell under /party/ with
 the same headers (no-cache, CSP, nosniff), /party/api/origin.json, the arcade page at /arcade/
 with a fake /arcade/stats, and a stub games hub at /. With --test-controls, POST
-/__test__/arcade/<up|down|full> switches the fake arcade. Binds 127.0.0.1 only.
+/__test__/arcade/<up|down|full|hang> switches the fake arcade. Binds 127.0.0.1 only.
 """
 import argparse
 import json
@@ -43,6 +43,8 @@ class Arcade:
             mode = self.mode
         if mode == 'down':
             return None
+        if mode == 'hang':
+            return 'hang'
         players = 2 if mode == 'full' else 1
         return {'players': players, 'max_players': 2, 'video_encoders': 1, 'error': None, 'emulator_running': True,
                 'providers': {'runtime': {'id': 'retroarch', 'running': True}}}
@@ -92,6 +94,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(cfg['web'], path[len('/party/'):], SHELL_HEADERS)
         if path == '/arcade/stats':
             stats = cfg['arcade'].stats()
+            if stats == 'hang':  # a stuck upstream: answer long after any client timeout
+                threading.Event().wait(10)
+                stats = None
             if stats is None:
                 return self._send(502, b'<html><body>502 Bad Gateway</body></html>', 'text/html')
             return self._send(200, json.dumps(stats).encode(), 'application/json', {'Cache-Control': 'no-store'})
@@ -106,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
         cfg = self.server.cfg
         if cfg['test_controls'] and path.startswith('/__test__/arcade/'):
             mode = path.rsplit('/', 1)[1]
-            if mode in ('up', 'down', 'full'):
+            if mode in ('up', 'down', 'full', 'hang'):
                 with cfg['arcade'].lock:
                     cfg['arcade'].mode = mode
                 return self._send(204, b'')
