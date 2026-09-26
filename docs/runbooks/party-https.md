@@ -1,9 +1,9 @@
 # Party HTTPS deployment and recovery
 
-Status: **LIVE on the Pi from `fix/party-https` as of 2026-09-25; Party Wi-Fi
-client validation and automatic renewal remain open.** This runbook records
-the baseline and the narrow deployment path. GitHub `main` remains unchanged
-until the branch is fully validated and reviewed.
+Status: **LIVE on the Pi from `fix/party-https` as of 2026-09-25; a Party Wi-Fi
+phone check passed, while laptop Wi-Fi validation and automatic renewal remain
+open.** This runbook records the baseline and the narrow deployment path.
+GitHub `main` remains unchanged until the branch is fully validated and reviewed.
 
 ## Baseline and intended behavior
 
@@ -166,10 +166,12 @@ Do not treat that override as a Party Wi-Fi validation.
   presence, not permissions or device support.
 - Arcade was inactive before and after; `/arcade/` remains 502. No arcade
   restart or stream validation was attempted.
-- The laptop could not join Party Wi-Fi during this session, so a direct
-  Party-network DNS/browser check and a real phone join are pending. The
-  Cloudflare DNS API token was unavailable, so the renewal timer is staged
-  but not enabled. The initial certificate was issued by manual DNS-01.
+- The owner confirmed a phone joined Avrana Party Wi-Fi normally and loaded
+  the normal UI at `https://party.avrana.net/` without a certificate warning.
+  The laptop could not join Party Wi-Fi during this session, so its direct
+  Party-network DNS/browser check remains pending. The Cloudflare DNS API
+  token was unavailable, so the renewal timer is staged but not enabled.
+  The initial certificate was issued by manual DNS-01.
 
 ## Rollback
 
