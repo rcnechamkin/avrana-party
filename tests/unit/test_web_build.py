@@ -4,7 +4,6 @@ import os
 import re
 import subprocess
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -65,6 +64,16 @@ class Build(unittest.TestCase):
         with self.assertRaises(build.BuildError):
             build.stamp(sw.replace("const BUILD = 'dev';", ''), 'x')
 
+    def test_symlinks_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / 'src'
+            import shutil
+            shutil.copytree(WEB_DIR, src)
+            (src / 'leak').symlink_to('/etc/hostname')
+            self.assertTrue(any('symlink' in p for p in build.check_tree(src)))
+            with self.assertRaises(build.BuildError):
+                build.build(Path(tmp) / 'out', 'x', source=src)
+
     def test_build_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'out'
@@ -98,7 +107,6 @@ class InstallScript(unittest.TestCase):
             v1 = json.loads((current / 'version.json').read_text())
             self.assertTrue(v1['serviceWorker'])
             self.assertEqual(len(v1['build']), 12)
-            time.sleep(1.1)  # release directories are named by the second
             killed = self.run_script(dest, '--kill', str(REPO_ROOT))
             self.assertEqual(killed.returncode, 0, killed.stderr)
             self.assertIn('const ENABLED = false;', (current / 'sw.js').read_text())
@@ -110,6 +118,20 @@ class InstallScript(unittest.TestCase):
             self.assertEqual(len(releases), 2)
             self.assertEqual(current.resolve(), releases[0].resolve())
             self.assertFalse(any(p.name.startswith('.build') for p in (dest / 'releases').iterdir()))
+
+    def test_only_committed_files_are_published(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / 'repo'
+            subprocess.run(['git', 'clone', '-q', str(REPO_ROOT), str(repo)], check=True)
+            (repo / 'web' / 'party' / '.env').write_text('SECRET=1')            # git-ignored
+            (repo / 'web' / 'party' / 'notes.txt').write_text('draft')          # untracked
+            (repo / 'web' / 'party' / 'host').symlink_to('/etc/hostname')       # untracked symlink
+            dest = Path(tmp) / 'web'
+            out = self.run_script(dest, str(repo))
+            self.assertEqual(out.returncode, 0, out.stderr)
+            published = {p.name for p in (dest / 'current').rglob('*')}
+            self.assertFalse({'.env', 'notes.txt', 'host'} & published, published)
+            self.assertIn('index.html', published)
 
     def test_refuses_a_dirty_checkout_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:

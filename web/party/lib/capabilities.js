@@ -62,7 +62,8 @@ function glContext(env, kind) {
   return yn(Boolean(gl), 'functional');
 }
 
-/** Synchronous probes: cheap, no prompts, no hardware wake-up. */
+/** Synchronous probes: cheap and never prompting. (WebGL probes create a 1-pixel context and
+ * release it at once; the GPU-adapter request is left to the deep probe.) */
 export function probeSync(env = globalThis) {
   const nav = env.navigator || {};
   const doc = env.document || {};

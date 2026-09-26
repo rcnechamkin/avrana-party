@@ -48,7 +48,7 @@ def stamp(sw_text, build, service_worker=True):
 def check_tree(root):
     """Problems in a web shell tree (source or built)."""
     root = Path(root)
-    problems = []
+    problems = [f'{p.relative_to(root)} is a symlink (never published)' for p in root.rglob('*') if p.is_symlink()]
     sw = root / 'sw.js'
     if not sw.is_file():
         return ['sw.js is missing']
@@ -76,7 +76,7 @@ def build(out, build_id, commit=None, service_worker=True, source=WEB_DIR, now=N
     problems = check_tree(source)
     if problems:
         raise BuildError('; '.join(problems))
-    shutil.copytree(source, out, dirs_exist_ok=True)
+    shutil.copytree(source, out, dirs_exist_ok=True, symlinks=True)  # check_tree refused any symlink
     sw = out / 'sw.js'
     sw.write_text(stamp(sw.read_text(encoding='utf-8'), build_id, service_worker), encoding='utf-8')
     now = now or datetime.datetime.now(datetime.timezone.utc)

@@ -115,6 +115,17 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
   await expect(page.locator('[data-id="arcade-gauntlet2"]')).toBeVisible();
 });
 
+test('a refresh keeps keyboard focus on an unchanged card', async ({ page }) => {
+  await h264(page, true);
+  await open(page);
+  const play = page.locator('[data-id="arcade-gauntlet2"]').getByRole('link', { name: 'Play' });
+  await play.focus();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));  // triggers a refresh
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('Play');
+  await expect(play).toBeFocused();
+});
+
 test('the worker never controls the games hub', async ({ page }) => {
   await open(page);
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });

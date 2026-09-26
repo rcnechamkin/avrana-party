@@ -1,8 +1,8 @@
 // The offline copy of the Party pages (service worker at /party/sw.js, scope /party/ only).
 //
 // No maintenance trap: sw.js is served no-cache and registered with updateViaCache 'none', so the
-// browser rechecks it on every visit; version.json (always fetched from the network) can switch
-// the offline copy off, which removes it here; the diagnostics page has a manual "Remove offline
+// browser rechecks it on every visit; version.json (network-first, so fresh whenever the Pi
+// answers) can switch the offline copy off, which removes it here; the diagnostics page has a manual "Remove offline
 // copy" button; and a self-destruct sw.js build (ENABLED = false) cleans up phones that never
 // reload this page. The worker never touches the games hub, the arcade or anything outside /party/.
 

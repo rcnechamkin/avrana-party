@@ -38,6 +38,12 @@ def _problems(doc, vocab):
     if not isinstance(doc.get('name'), str) or not 1 <= len(doc['name']) <= 80:
         p.append('appliance.name: 1-80 characters')
     runtime_names = set(vocab.runtime) if vocab else None
+    for key in ('providers', 'installed', 'collections'):
+        if key in doc and not isinstance(doc[key], list):
+            p.append(f'appliance.{key}: a list')
+            doc = {**doc, key: []}
+    if not isinstance(doc.get('providers'), list) or not doc.get('providers'):
+        p.append('appliance.providers: a non-empty list')
     seen = set()
     for i, prov in enumerate(doc.get('providers') or []):
         where = f'providers[{i}]'
@@ -47,7 +53,8 @@ def _problems(doc, vocab):
             continue
         if not isinstance(prov['id'], str) or not ID.match(prov['id']) or prov['id'] in seen:
             p.append(f'{where}.id: a unique id')
-        seen.add(prov['id'])
+        else:
+            seen.add(prov['id'])
         if prov['kind'] not in PROVIDER_KINDS:
             p.append(f'{where}.kind: one of {list(PROVIDER_KINDS)}')
         if prov['status'] not in STATUSES:
@@ -71,7 +78,8 @@ def _problems(doc, vocab):
             continue
         if not isinstance(inst['game'], str) or not ID.match(inst['game']) or inst['game'] in games:
             p.append(f'{where}.game: a unique game id')
-        games.add(inst['game'])
+        else:
+            games.add(inst['game'])
         entry = inst['entry']
         if not isinstance(entry, str) or not PATH.match(entry) or '..' in entry or entry.startswith(RESERVED_PREFIXES):
             p.append(f'{where}.entry: a same-origin path ending in "/" outside {list(RESERVED_PREFIXES)}')
@@ -89,6 +97,8 @@ def _problems(doc, vocab):
         if not isinstance(col, dict) or set(col) - keys or keys - {'summary'} - set(col):
             p.append(f'{where}: keys {sorted(keys)} (summary optional)')
             continue
+        if not isinstance(col.get('id'), str) or not ID.match(col['id']) or not isinstance(col.get('name'), str):
+            p.append(f'{where}: id and name are text')
         if not isinstance(col['entry'], str) or not PATH.match(col['entry']):
             p.append(f'{where}.entry: a same-origin path ending in "/"')
         req = col['requires']

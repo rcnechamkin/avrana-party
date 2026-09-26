@@ -79,7 +79,9 @@ appliance, and the validator rejects them by name.
   `dedicated_stream`, `browser_renderer` or `private_panel`. **A Personal Viewport is an
   independently addressable visual output for a seat.** Cropping is one method among four.
 - `roles` is a subset of `player` and `spectator`. A game with `spectators: "none"` can't list
-  `spectator`, and a game that allows watchers must offer a spectator presentation.
+  `spectator`, and a game that allows watchers must offer a spectator presentation. The exception
+  is a game whose picture is only on the TV: when every presentation is `controller_only`,
+  watchers watch the TV.
 - A method that needs an appliance presenter must require it: `shared_stream` requires
   `presentation.shared_stream`; `controller_only` requires `presentation.tv`; `personal_viewport`
   with `crop` or `dedicated_stream` requires the matching `presentation.personal_viewport.*`.

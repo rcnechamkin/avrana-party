@@ -241,12 +241,16 @@ def validate(doc, vocab=None):
             problems.append(f'{where}.id: ^[a-z][a-z0-9_]{{0,31}}$')
         elif pid in seen:
             problems.append(f'{where}.id: duplicate {pid!r}')
-        seen.add(pid)
+        else:
+            seen.add(pid)
         method = _enum(p, 'method', where, METHODS, problems)
+        if method not in METHODS:
+            continue  # nothing below is meaningful without a known method
         viewport = p.get('viewport')
         if method == 'personal_viewport':
             if viewport not in VIEWPORTS:
                 problems.append(f'{where}.viewport: one of {list(VIEWPORTS)} for a personal_viewport')
+                viewport = None
         elif 'viewport' in p:
             problems.append(f'{where}.viewport: only for a personal_viewport')
             viewport = None
@@ -271,7 +275,9 @@ def validate(doc, vocab=None):
                               'roles': list(roles), 'requires': requires, 'optional': optional})
     if raw and not any('player' in p['roles'] for p in presentations):
         problems.append('presentations: none of them is for players')
-    if spectators == 'watch' and raw and not any('spectator' in p['roles'] for p in presentations):
+    tv_only = presentations and all(p['method'] == 'controller_only' for p in presentations)
+    if spectators == 'watch' and raw and not tv_only and not any('spectator' in p['roles'] for p in presentations):
+        # (A game whose picture is only on the TV lets watchers watch the TV: no phone presentation.)
         problems.append('presentations: spectators is "watch" but no presentation is for spectators')
     if fallback == 'spectate' and spectators != 'watch':
         problems.append('fallback: "spectate" needs spectators "watch"')
@@ -300,7 +306,7 @@ def validate(doc, vocab=None):
     if 'accessibility' in doc and _keys(doc['accessibility'], 'accessibility', set(ACCESSIBILITY), set(),
                                         problems):
         for key, value in doc['accessibility'].items():
-            if value not in (True, False, 'unknown'):
+            if type(value) is not bool and value != 'unknown':
                 problems.append(f'accessibility.{key}: true, false or "unknown"')
             accessibility[key] = value
 

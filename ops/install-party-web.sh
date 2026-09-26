@@ -9,7 +9,8 @@
 # Static files only: no service, port or reload. nginx serves $dest/current (see the /party/
 # locations in avrana-party.nginx, which must be deployed once, owner-approved). Each release is a
 # new directory; "current" switches atomically; the five newest releases are kept for rollback.
-# The build runs from the given clean checkout without writing into it.
+# Only committed files are used: the commit is exported with `git archive` and built from there,
+# so ignored or untracked files (and the checkout's working tree) never reach the web root.
 set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
@@ -53,17 +54,23 @@ fi
 commit=$(git -C "$checkout" rev-parse HEAD)
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 release=$dest/releases/$stamp-${commit:0:12}
+if [[ -e $release ]]; then
+    release=$release-$$  # two installs in the same second
+fi
 
 install -d -m 0755 "$dest" "$dest/releases"
 work=$(mktemp -d "$dest/releases/.build.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-(cd "$checkout" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.web.build \
+mkdir "$work/src"
+git -C "$checkout" archive --format=tar "$commit" avrana web/party | tar -x -C "$work/src"
+(cd "$work/src" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.web.build \
     --out "$work/out" --commit "$commit" "${kill_flag[@]}")
 chmod -R u=rwX,go=rX "$work/out"
 if [[ $EUID -eq 0 ]]; then
     chown -R root:root "$work/out"
 fi
-mv "$work/out" "$release"
+[[ ! -e $release ]] || { echo "$release already exists" >&2; exit 1; }
+mv -T "$work/out" "$release"
 switch_to "$release"
 
 # Keep the newest $keep releases, never the one "current" points to.

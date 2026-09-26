@@ -209,6 +209,36 @@ class GameContract(unittest.TestCase):
             self.assertNotIn('entry', c['runtime'])
         lifted, _ = game.lift_manifest_v0(gauntlet)
         self.assertEqual(game.validate(lifted, VOCAB)['presentations'][0]['method'], 'shared_stream')
+        # A TV-only controller game (no shared video): watchers watch the TV, so it stays valid.
+        tv_game = dict(gauntlet, id='tv-game', spectators='watch', shared_video=False)
+        doc, _ = game.lift_manifest_v0(tv_game)
+        self.assertEqual(game.validate(doc, VOCAB)['presentations'][0]['method'], 'controller_only')
+
+    def test_malformed_values_are_reported_not_raised(self):
+        junk = [None, 1, 1.5, True, [], [1], ['a', 'a'], {}, {'a': 1}, '', 'x' * 300, 'Party']
+        base = json.loads((GAMES / 'ps1-bomberman.json').read_text(encoding='utf-8'))
+        paths = [(k,) for k in base] + [('players', 'min'), ('input', 'model'), ('input', 'buttons'),
+                                         ('runtime', 'type'), ('runtime', 'permissions'), ('extensions',)]
+        paths += [('presentations', 0, k) for k in ('id', 'method', 'roles', 'requires', 'optional', 'viewport')]
+        for path in paths:
+            for value in junk:
+                doc = copy.deepcopy(base)
+                target = doc
+                for step in path[:-1]:
+                    target = target[step]
+                target[path[-1]] = value
+                try:
+                    game.validate(doc, VOCAB)
+                except game.ContractError:
+                    pass  # reported, as it should be
+        for value in junk:
+            try:
+                game.validate(value, VOCAB)
+            except game.ContractError:
+                pass
+
+    def test_accessibility_is_strictly_boolean(self):
+        self.assertRejects(minimal(accessibility={'timing_pressure': 1}), 'accessibility.timing_pressure')
 
 
 class ApplianceAndCatalog(unittest.TestCase):
@@ -259,6 +289,24 @@ class ApplianceAndCatalog(unittest.TestCase):
             doc['installed'][0].update(bad)
             with self.assertRaises(ValueError):
                 appliance.validate(doc, VOCAB)
+
+    def test_malformed_appliance_values_are_reported_not_raised(self):
+        junk = [None, 1, [], [1], {}, {'a': 1}, 'x']
+        for key in ('id', 'providers', 'installed', 'collections'):
+            for value in junk:
+                if (value == [] and key in ('installed', 'collections')) or (key, value) == ('id', 'x'):
+                    continue  # valid: nothing installed; a one-letter id
+                with self.assertRaises(ValueError, msg=f'{key}={value!r}'):
+                    appliance.validate(dict(self.appliance, **{key: value}), VOCAB)
+        for section in ('providers', 'installed', 'collections'):
+            for field in list(self.appliance[section][0]):
+                for value in junk:
+                    doc = copy.deepcopy(self.appliance)
+                    doc[section][0][field] = value
+                    try:
+                        appliance.validate(doc, VOCAB)
+                    except ValueError:
+                        pass
 
     def test_adapters_named_in_the_profile_exist_and_agree(self):
         for prov in self.appliance['providers']:

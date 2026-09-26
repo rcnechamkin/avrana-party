@@ -23,13 +23,14 @@ async function getJSON(url, init) {
   return res.json();
 }
 
-/** Does the Pi answer? api/origin.json is never answered from the offline copy. */
+/** Does the Pi answer? api/origin.json comes from nginx on the Party box and is never answered
+ * from the offline copy; anything else answering (another network's portal) does not count. */
 async function checkReach() {
   try {
-    await getJSON('api/origin.json', { cache: 'no-store' });
-    return true;
-  } catch (err) {
-    return typeof err.status === 'number'; // the Pi answered, just not with origin details
+    const origin = await getJSON('api/origin.json', { cache: 'no-store' });
+    return Boolean(origin && origin.schema === 'avrana.origin/v0');
+  } catch {
+    return false;
   }
 }
 
@@ -114,7 +115,14 @@ async function renderGames() {
   const items = installed.map((g, i) => gameCard(g, evaluateSeat(g, caps, 'player'), healths[i]));
   for (const col of state.catalog.collections || []) items.push(collectionCard(col));
   if (!items.length) items.push(h('li', { class: 'card', text: 'No games are set up on this Party box yet.' }));
-  list.replaceChildren(...items);
+  // Replace only the cards that changed, so a periodic refresh never steals keyboard or
+  // screen-reader focus from a card that stayed the same.
+  const old = [...list.children];
+  if (old.length !== items.length || old.some((el) => !el.dataset.id)) {
+    list.replaceChildren(...items);
+  } else {
+    items.forEach((item, i) => { if (!old[i].isEqualNode(item)) old[i].replaceWith(item); });
+  }
   list.setAttribute('aria-busy', 'false');
 }
 

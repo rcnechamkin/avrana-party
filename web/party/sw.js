@@ -59,14 +59,17 @@ async function fromCache(request) {
   return cache.match(new URL(SCOPE, self.location.href).href);
 }
 
-async function networkFirst(request, kind) {
-  const network = fetch(request).then(async (response) => {
+async function networkFirst(event, kind) {
+  const request = event.request;
+  const network = fetch(request).then((response) => {
     if (response.ok && response.type === 'basic' && SHELL.includes(relative(new URL(request.url)))) {
       const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put(cacheKey(request), copy)).catch(() => {});
+      const saved = caches.open(CACHE).then((cache) => cache.put(cacheKey(request), copy)).catch(() => {});
+      try { event.waitUntil(saved); } catch { /* the event already settled; best effort */ }
     }
     return response;
   });
+  network.catch(() => {}); // a late failure after the saved copy answered is not an error
   if (kind !== 'page') {
     return network.catch(async () => (await fromCache(request)) || Response.error());
   }
@@ -116,7 +119,7 @@ self.addEventListener('fetch', (event) => {
   if (!ENABLED) return;
   const kind = policy(event.request);
   if (kind === 'bypass') return;
-  event.respondWith(networkFirst(event.request, kind));
+  event.respondWith(networkFirst(event, kind));
 });
 
 // Read-only hook for the unit tests (tests/offline/sw.test.mjs); nothing in a page uses it.
