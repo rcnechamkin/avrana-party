@@ -53,7 +53,7 @@
     "gamepad": {
       "probe": "presence",
       "summary": "navigator.getGamepads exists (secure contexts only in current engines). Presence says nothing about a connected controller.",
-      "label": "a game controller",
+      "label": "game controller support",
       "missing": "This browser can’t use a game controller."
     },
     "wake_lock": {

@@ -74,7 +74,7 @@
       "missing": "This browser can’t go full screen."
     },
     "gamepad": {
-      "label": "a game controller",
+      "label": "game controller support",
       "missing": "This browser can’t use a game controller."
     },
     "input.virtual_gamepad": {

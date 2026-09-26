@@ -219,6 +219,12 @@ http {{
         self.assertIn(b"const BUILD = 'nginxtest';", body)
         res, _ = self.get('/party/catalog.json', https=True)
         self.assertEqual(res.getheader('Content-Type'), 'application/json')
+        res, body = self.get('/party/diag/', https=True)
+        self.assertEqual(res.status, 200)
+        self.assertIn(b'Diagnostics', body)
+        res, _ = self.get('/party/lib/keep-awake.js', https=True)  # imported by the arcade page
+        self.assertEqual(res.status, 200)
+        self.assertRegex(res.getheader('Content-Type'), r'(application|text)/javascript')
         res, _ = self.get('/party', https=True)
         self.assertEqual(res.status, 301)
         self.assertTrue(res.getheader('Location').endswith('/party/'))
