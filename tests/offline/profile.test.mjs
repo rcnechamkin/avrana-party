@@ -20,8 +20,8 @@ test('existing donor identity and lists are reused, not copied into a parallel s
   p.remember(arcade);
   assert.equal(data.get('wc-token'), 'existing-player-01');
   assert.equal(data.get('wc-name'), 'Robin Two'); // Legacy Hub.identity reads this exact key.
-  assert.deepEqual(JSON.parse(data.get('lg-favorites')), ['chess','unknown-old-title','avrana:arcade-gauntlet2']);
-  assert.deepEqual(JSON.parse(data.get('lg-recent')), ['avrana:arcade-gauntlet2','chess']);
+  assert.deepEqual(JSON.parse(data.get('lg-favorites')), ['avrana:lan-chess','unknown-old-title','avrana:arcade-gauntlet2']);
+  assert.deepEqual(JSON.parse(data.get('lg-recent')), ['avrana:arcade-gauntlet2','avrana:lan-chess']);
   assert.equal(p.snapshot().playTotal, 8);
   assert.ok(!('token' in p.snapshot()));
   assert.ok([...data.keys()].every((key) => /^(wc-|lg-)/.test(key)));
@@ -63,4 +63,16 @@ test('photo compatibility uses the existing backend and same token only in heade
 test('photo URL validation rejects credentials, remote images and path tricks', () => {
   for (const path of ['https://other.test/photo.png','//other.test/avatars/a.webp','/avatars/../x',
     'data:image/png;base64,aaa','/avatars/0123456789abcdef0123.webp?token=bad']) assert.equal(photoPath(path), '');
+});
+
+test('legacy and canonical aliases collapse without losing unknown or cross-provider entries', () => {
+  const { data, storage } = fixture({ 'lg-favorites': '["chess","lan-chess","avrana:lan-chess","unknown","avrana:ps1-worms"]',
+    'lg-recent': '["chess","avrana:lan-chess","avrana:arcade-gauntlet2"]' });
+  const p = createProfile(storage);
+  assert.ok(p.isFavorite(lan));
+  assert.deepEqual(p.snapshot().favorites, ['avrana:lan-chess','unknown','avrana:ps1-worms']);
+  p.toggleFavorite(lan);
+  assert.deepEqual(JSON.parse(data.get('lg-favorites')), ['unknown','avrana:ps1-worms']);
+  p.remember(lan);
+  assert.deepEqual(JSON.parse(data.get('lg-recent')), ['avrana:lan-chess','avrana:arcade-gauntlet2']);
 });

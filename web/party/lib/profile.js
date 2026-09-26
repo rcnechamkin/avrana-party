@@ -13,14 +13,24 @@ export function createProfile(storage, random = globalThis.crypto) {
       if (storage.getItem(key) !== value) throw new Error();
     } catch { throw new Error('This browser cannot save your profile. Allow local storage and try again.'); }
   };
+  const aliases = new Map();
   const list = (key) => {
     try {
       const value = JSON.parse(get(key) || '[]');
-      return Array.isArray(value) ? [...new Set(value.filter((v) => typeof v === 'string'))] : [];
+      return Array.isArray(value) ? [...new Set(value.filter((v) => typeof v === 'string').map((v) => aliases.get(v) || v))] : [];
     } catch { return []; }
   };
-  // Keep legacy slugs for LAN titles; namespace other games in the SAME backing lists.
-  const keyFor = (game) => game.legacySlug || 'avrana:' + game.id;
+  // Canonical IDs in the SAME lists; lazy, non-destructive compatibility reads.
+  // Unknown old entries are preserved. Register known titles before reading lists.
+  const keyFor = (game) => {
+    const key = 'avrana:' + game.id;
+    aliases.set(game.id, key); aliases.set(key, key);
+    if (game.legacySlug) {
+      aliases.set(game.legacySlug, key);
+      aliases.set('avrana:lan-' + game.legacySlug, key);
+    }
+    return key;
+  };
   const snapshot = () => ({
     name: get('wc-name').slice(0, 24), avatar: get('wc-avatar').slice(0, 32) || AVATARS[0],
     pfp: photoPath(get('wc-pfp')), favorites: list('lg-favorites'), recent: list('lg-recent'),
@@ -48,9 +58,9 @@ export function createProfile(storage, random = globalThis.crypto) {
       put('wc-avatar', String(avatar || AVATARS[0]).slice(0, 32));
       return snapshot();
     },
-    isFavorite(game) { return list('lg-favorites').includes(keyFor(game)); },
+    isFavorite(game) { const key = keyFor(game); return list('lg-favorites').includes(key); },
     toggleFavorite(game) {
-      const values = new Set(list('lg-favorites')), key = keyFor(game);
+      const key = keyFor(game), values = new Set(list('lg-favorites'));
       if (values.has(key)) values.delete(key); else values.add(key);
       put('lg-favorites', JSON.stringify([...values]));
     },
