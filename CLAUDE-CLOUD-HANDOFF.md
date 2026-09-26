@@ -15,10 +15,11 @@ Avrana Party Games fork are separate repositories. The published
 `experiment/party-sim`, `experiment/party-service`,
 `experiment/ps1-title-profiles`, `ps1-emulation`, and
 `fix/arcade-ap-interface` branches preserve work that is not deployed.
-`docs/party-platform` preserves its original history and raw measurement evidence;
+`docs/party-platform` preserves its original history, including historical raw measurement evidence;
 summaries are on `main`, while logs and JSONL samples stay out of `main`.
-The five 2026-09-25 architecture and experience drafts are in `docs/` and are
-explicitly marked as design or research, not deployed behavior.
+The architecture and experience documents are in `docs/` with status notes.
+`docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md` is current project research on proposed
+reusable subsystems and implementation/reference candidates.
 
 ## Start here
 
@@ -26,6 +27,11 @@ Read `CLAUDE.md`, `README.md`, `docs/ROADMAP.md`, `docs/SYSTEM.md`,
 `docs/TESTING.md`, and then the relevant `docs/design/` or `docs/runbooks/`
 page. `docs/ROADMAP.md` controls sequencing; dated findings record measurements.
 Treat proposed capabilities and branch experiments as distinct from what is live.
+Before architecture or dependency work, read `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md`
+with `docs/GAME-PLATFORM-ARCHITECTURE.md`,
+`docs/OFFLINE-TRUST-AND-RECOVERY.md`,
+`docs/PERSONAL-VIEWPORT-AND-EMULATION.md`, and
+`docs/REFERENCE-IMPLEMENTATIONS.md`.
 
 ## Branch workflow
 

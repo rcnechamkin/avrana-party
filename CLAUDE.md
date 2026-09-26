@@ -21,6 +21,13 @@ Status and the next action: `docs/ROADMAP.md` · what runs where: `docs/SYSTEM.m
 Label claims honestly: LIVE / TESTED / EXPERIMENT / PROPOSED / OPEN; a simulation is not a
 measurement, and a proposal is not a decision.
 
+For architecture and dependency work, read `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md`
+alongside `docs/GAME-PLATFORM-ARCHITECTURE.md`,
+`docs/OFFLINE-TRUST-AND-RECOVERY.md`,
+`docs/PERSONAL-VIEWPORT-AND-EMULATION.md`, and
+`docs/REFERENCE-IMPLEMENTATIONS.md`. The substrate document is current research
+on reusable subsystems and candidates, not a finalized or deployed architecture.
+
 ## Hard rules
 
 - **`main` is production.** Develop on `docs/*`, `experiment/*`, `fix/*` or `chore/*` branches;
