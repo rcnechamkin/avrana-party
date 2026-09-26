@@ -261,7 +261,7 @@ class Stream:
         return await asyncio.wait_for(future, 10)
 
     async def websocket(self, request):
-        if request.headers.get('Origin') != 'http://' + request.host:
+        if request.headers.get('Origin') not in ('http://' + request.host, 'https://' + request.host):
             raise web.HTTPForbidden()
         if self.error:
             raise web.HTTPServiceUnavailable(text='Stream unavailable')

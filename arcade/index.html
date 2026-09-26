@@ -96,7 +96,7 @@ async function collect(){
  if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'stats',s:out}));
 }
 connect.onclick=()=>{
- if(!window.RTCPeerConnection){status.textContent='Open http://party.local/arcade/ in your phone’s regular browser to play.';return}
+ if(!window.RTCPeerConnection){status.textContent='Open '+location.origin+'/arcade/ in your phone’s regular browser to play.';return}
  prev=null;lastSent='';document.querySelector('#path-warning').hidden=true;connect.disabled=true;connect.textContent='Connecting…';status.textContent='Connecting…';pendingIce=[];signalChain=Promise.resolve();
  pc=new RTCPeerConnection({iceServers:[]});
  const media=new MediaStream();video.srcObject=media;
@@ -113,7 +113,7 @@ connect.onclick=()=>{
   if(!pc)return;
   if(message.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:message.sdp});for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];await pc.setLocalDescription(await pc.createAnswer());ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription.sdp}))}
   else if(message.type==='ice'){const c={candidate:message.candidate,sdpMLineIndex:message.sdpMLineIndex};if(pc.remoteDescription)await pc.addIceCandidate(c);else pendingIce.push(c)}
- }).catch(e=>{console.error(e);disconnect('Could not start video. Try your regular browser at http://party.local/arcade/.')})};
+ }).catch(e=>{console.error(e);disconnect('Could not start video. Try your regular browser at '+location.origin+'/arcade/.')})};
  ws.onclose=()=>disconnect('Disconnected, or every player slot is in use. Close another controller, then tap Play.');
  ws.onerror=()=>disconnect('Could not connect. Stay on Avrana Party Wi-Fi, and make sure a player slot is free, then try again.');
  heartbeat=setInterval(()=>{if(!document.hidden)sendInput()},50);
