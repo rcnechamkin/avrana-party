@@ -1,0 +1,43 @@
+{
+  "contract": "avrana.game/v0",
+  "id": "bluff",
+  "name": "BLUFF",
+  "summary": "Hidden roles, bold claims. Your cards stay on your phone.",
+  "kind": "native",
+  "players": {"min": 2, "max": 6},
+  "screen": "no_tv_needed",
+  "input": {"model": "browser_native"},
+  "late_join": "spectator_only",
+  "spectators": "watch",
+  "private_player_ui": true,
+  "runtime": {
+    "type": "lan_games_module",
+    "permissions": ["party_roster"]
+  },
+  "presentations": [
+    {
+      "id": "phone_table",
+      "method": "browser_native",
+      "roles": ["player", "spectator"],
+      "requires": {
+        "device": ["websocket"],
+        "runtime": ["runtime.lan_games"]
+      },
+      "optional": {
+        "device": ["wake_lock", "storage.local"]
+      }
+    }
+  ],
+  "fallback": "spectate",
+  "package": {
+    "version": "0.1.0",
+    "publisher": "avrana.net",
+    "license": "MIT",
+    "platforms": ["any"]
+  },
+  "accessibility": {
+    "timing_pressure": true,
+    "audio_required": false,
+    "color_independent": "unknown"
+  }
+}

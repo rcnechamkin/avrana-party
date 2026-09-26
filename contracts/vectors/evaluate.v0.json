@@ -1,0 +1,949 @@
+{
+ "schema": "avrana.vectors.evaluate/v0",
+ "note": "Shared by avrana/contracts/evaluate.py and web/party/lib/evaluate.js (tests/unit/test_evaluate.py, tests/offline/evaluate.test.mjs). Change both implementations together.",
+ "games": {
+  "stream": {
+   "id": "stream",
+   "players": {
+    "min": 1,
+    "max": 2
+   },
+   "fallback": "explain",
+   "presentations": [
+    {
+     "id": "phone_stream",
+     "method": "shared_stream",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket",
+       "webrtc",
+       "video.h264"
+      ]
+     },
+     "optional": {
+      "device": [
+       "wake_lock",
+       "web_audio"
+      ],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "bomber": {
+   "id": "bomber",
+   "players": {
+    "min": 1,
+    "max": 4
+   },
+   "fallback": "spectate",
+   "presentations": [
+    {
+     "id": "phone_stream",
+     "method": "shared_stream",
+     "roles": [
+      "player",
+      "spectator"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket",
+       "webrtc",
+       "video.h264"
+      ]
+     },
+     "optional": {
+      "device": [
+       "wake_lock"
+      ],
+      "runtime": []
+     }
+    },
+    {
+     "id": "tv_controller",
+     "method": "controller_only",
+     "roles": [
+      "player"
+     ],
+     "available": false,
+     "runtimeMissing": [
+      "presentation.tv"
+     ],
+     "requires": {
+      "device": [
+       "websocket"
+      ]
+     },
+     "optional": {
+      "device": [
+       "wake_lock",
+       "vibration"
+      ],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "bomber_tv": {
+   "id": "bomber_tv",
+   "players": {
+    "min": 1,
+    "max": 4
+   },
+   "fallback": "spectate",
+   "presentations": [
+    {
+     "id": "phone_stream",
+     "method": "shared_stream",
+     "roles": [
+      "player",
+      "spectator"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket",
+       "webrtc",
+       "video.h264"
+      ]
+     },
+     "optional": {
+      "device": [
+       "wake_lock"
+      ],
+      "runtime": []
+     }
+    },
+    {
+     "id": "tv_controller",
+     "method": "controller_only",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket"
+      ]
+     },
+     "optional": {
+      "device": [
+       "wake_lock",
+       "vibration"
+      ],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "table": {
+   "id": "table",
+   "players": {
+    "min": 2,
+    "max": 6
+   },
+   "fallback": "spectate",
+   "presentations": [
+    {
+     "id": "phone_table",
+     "method": "browser_native",
+     "roles": [
+      "player",
+      "spectator"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket"
+      ]
+     },
+     "optional": {
+      "device": [
+       "wake_lock",
+       "storage.local"
+      ],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "watchable": {
+   "id": "watchable",
+   "players": {
+    "min": 2,
+    "max": 4
+   },
+   "fallback": "spectate",
+   "presentations": [
+    {
+     "id": "play",
+     "method": "browser_native",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket",
+       "gamepad"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     }
+    },
+    {
+     "id": "watch",
+     "method": "browser_native",
+     "roles": [
+      "spectator"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "websocket"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "crop_first": {
+   "id": "crop_first",
+   "players": {
+    "min": 1,
+    "max": 4
+   },
+   "fallback": "explain",
+   "presentations": [
+    {
+     "id": "my_view",
+     "method": "personal_viewport",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "webrtc",
+       "video.h264",
+       "webgl2"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     },
+     "viewport": "crop"
+    },
+    {
+     "id": "whole_frame",
+     "method": "shared_stream",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "webrtc",
+       "video.h264"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "offline_runtime": {
+   "id": "offline_runtime",
+   "players": {
+    "min": 1,
+    "max": 2
+   },
+   "fallback": "explain",
+   "presentations": [
+    {
+     "id": "phone_stream",
+     "method": "shared_stream",
+     "roles": [
+      "player"
+     ],
+     "available": false,
+     "runtimeMissing": [
+      "presentation.tv"
+     ],
+     "requires": {
+      "device": [
+       "webrtc"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     }
+    }
+   ]
+  },
+  "pick_fewest": {
+   "id": "pick_fewest",
+   "players": {
+    "min": 1,
+    "max": 2
+   },
+   "fallback": "explain",
+   "presentations": [
+    {
+     "id": "fancy",
+     "method": "browser_native",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "webgl2",
+       "webgpu"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     }
+    },
+    {
+     "id": "plain",
+     "method": "browser_native",
+     "roles": [
+      "player"
+     ],
+     "available": true,
+     "runtimeMissing": [],
+     "requires": {
+      "device": [
+       "webgl"
+      ]
+     },
+     "optional": {
+      "device": [],
+      "runtime": []
+     }
+    }
+   ]
+  }
+ },
+ "cases": [
+  {
+   "name": "capable phone gets the stream",
+   "game": "stream",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "ready",
+    "seatRole": "player",
+    "presentation": "phone_stream",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "no wake lock is only a degradation",
+   "game": "stream",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "no",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "limited",
+    "seatRole": "player",
+    "presentation": "phone_stream",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": [
+     "wake_lock"
+    ]
+   }
+  },
+  {
+   "name": "no H.264 rules the stream out",
+   "game": "stream",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "no",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "unavailable",
+    "seatRole": null,
+    "presentation": null,
+    "method": null,
+    "blockedBy": "device",
+    "missing": [
+     "video.h264"
+    ],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "unobserved H.264 is not a no",
+   "game": "stream",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "limited",
+    "seatRole": "player",
+    "presentation": "phone_stream",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [
+     "video.h264"
+    ],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "partial H.264 plays, limited",
+   "game": "stream",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "partial",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "limited",
+    "seatRole": "player",
+    "presentation": "phone_stream",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [
+     "video.h264"
+    ],
+    "degraded": []
+   }
+  },
+  {
+   "name": "a game with no watchers refuses spectators",
+   "game": "stream",
+   "role": "spectator",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "spectator",
+    "outcome": "unavailable",
+    "seatRole": null,
+    "presentation": null,
+    "method": null,
+    "blockedBy": "role",
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "without H.264 or a TV there is nothing to show",
+   "game": "bomber",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "no",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "unavailable",
+    "seatRole": null,
+    "presentation": null,
+    "method": null,
+    "blockedBy": "device",
+    "missing": [
+     "video.h264"
+    ],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "weak phone becomes a TV controller when a TV exists",
+   "game": "bomber_tv",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "no",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "no",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "limited",
+    "seatRole": "player",
+    "presentation": "tv_controller",
+    "method": "controller_only",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": [
+     "vibration"
+    ]
+   }
+  },
+  {
+   "name": "capable phone still prefers its own screen with a TV",
+   "game": "bomber_tv",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "ready",
+    "seatRole": "player",
+    "presentation": "phone_stream",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "spectator of a stream",
+   "game": "bomber",
+   "role": "spectator",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "spectator",
+    "outcome": "ready",
+    "seatRole": "spectator",
+    "presentation": "phone_stream",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "no live connection, no table",
+   "game": "table",
+   "role": "player",
+   "caps": {
+    "websocket": "no",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "unavailable",
+    "seatRole": null,
+    "presentation": null,
+    "method": null,
+    "blockedBy": "device",
+    "missing": [
+     "websocket"
+    ],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "a controller-only game lets a phone without a controller watch",
+   "game": "watchable",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "no",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "watch",
+    "seatRole": "spectator",
+    "presentation": "watch",
+    "method": "browser_native",
+    "blockedBy": null,
+    "missing": [
+     "gamepad"
+    ],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "personal viewport first, whole frame as fallback",
+   "game": "crop_first",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "no",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "ready",
+    "seatRole": "player",
+    "presentation": "whole_frame",
+    "method": "shared_stream",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "personal viewport when the phone can do it",
+   "game": "crop_first",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "ready",
+    "seatRole": "player",
+    "presentation": "my_view",
+    "method": "personal_viewport",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "the appliance cannot serve it",
+   "game": "offline_runtime",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "unavailable",
+    "seatRole": null,
+    "presentation": null,
+    "method": null,
+    "blockedBy": "runtime",
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "explain the candidate with the fewest gaps",
+   "game": "pick_fewest",
+   "role": "player",
+   "caps": {
+    "websocket": "yes",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "no",
+    "webgl2": "no",
+    "webgpu": "no"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "unavailable",
+    "seatRole": null,
+    "presentation": null,
+    "method": null,
+    "blockedBy": "device",
+    "missing": [
+     "webgl"
+    ],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "an unknown status word is unknown",
+   "game": "table",
+   "role": "player",
+   "caps": {
+    "websocket": "maybe",
+    "webrtc": "yes",
+    "video.h264": "yes",
+    "wake_lock": "yes",
+    "web_audio": "yes",
+    "vibration": "yes",
+    "storage.local": "yes",
+    "gamepad": "yes",
+    "webgl": "yes",
+    "webgl2": "yes",
+    "webgpu": "yes"
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "limited",
+    "seatRole": "player",
+    "presentation": "phone_table",
+    "method": "browser_native",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [
+     "websocket"
+    ],
+    "partial": [],
+    "degraded": []
+   }
+  },
+  {
+   "name": "report-shaped caps work too",
+   "game": "table",
+   "role": "player",
+   "caps": {
+    "websocket": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "webrtc": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "video.h264": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "wake_lock": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "web_audio": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "vibration": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "storage.local": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "gamepad": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "webgl": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "webgl2": {
+     "status": "yes",
+     "via": "presence"
+    },
+    "webgpu": {
+     "status": "yes",
+     "via": "presence"
+    }
+   },
+   "expect": {
+    "role": "player",
+    "outcome": "ready",
+    "seatRole": "player",
+    "presentation": "phone_table",
+    "method": "browser_native",
+    "blockedBy": null,
+    "missing": [],
+    "unverified": [],
+    "partial": [],
+    "degraded": []
+   }
+  }
+ ]
+}

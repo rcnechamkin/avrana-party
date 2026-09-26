@@ -1,0 +1,60 @@
+{
+  "contract": "avrana.game/v0",
+  "id": "ps1-bomberman",
+  "name": "Bomberman Party Edition",
+  "summary": "Up to four bombers on one arena. Phones are the controllers.",
+  "kind": "emulated",
+  "players": {"min": 1, "max": 4},
+  "screen": "tv_optional",
+  "input": {
+    "model": "controller_slots",
+    "slots": 4,
+    "directions": "dpad",
+    "buttons": ["cross", "circle", "square", "triangle", "start", "select"]
+  },
+  "late_join": "supported",
+  "spectators": "watch",
+  "private_player_ui": false,
+  "runtime": {
+    "type": "emulator_profile",
+    "profile": "bomberman",
+    "start": "service",
+    "resources": ["emulator_slot", "hw_encoder"],
+    "permissions": ["controllers"]
+  },
+  "presentations": [
+    {
+      "id": "phone_stream",
+      "method": "shared_stream",
+      "roles": ["player", "spectator"],
+      "requires": {
+        "device": ["websocket", "webrtc", "video.h264"],
+        "runtime": ["runtime.retroarch", "presentation.shared_stream", "input.virtual_gamepad"]
+      },
+      "optional": {
+        "device": ["wake_lock", "web_audio", "vibration"]
+      }
+    },
+    {
+      "id": "tv_controller",
+      "method": "controller_only",
+      "roles": ["player"],
+      "requires": {
+        "device": ["websocket"],
+        "runtime": ["runtime.retroarch", "presentation.tv", "input.virtual_gamepad"]
+      },
+      "optional": {
+        "device": ["wake_lock", "vibration"]
+      }
+    }
+  ],
+  "fallback": "spectate",
+  "accessibility": {
+    "timing_pressure": true,
+    "text_scalable": false,
+    "reduced_motion_respected": false
+  },
+  "extensions": {
+    "net.avrana.ps1": {"stream_slots": 4, "multitap_port": 2}
+  }
+}

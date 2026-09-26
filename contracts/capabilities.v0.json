@@ -1,0 +1,181 @@
+{
+  "schema": "avrana.capability-vocabulary/v0",
+  "note": "Canonical capability names. Python (avrana/contracts) and the browser probe (web/party/lib/capabilities.js) must use exactly these names; tests enforce it. 'label' and 'missing' are guest-facing words: no machinery terms.",
+  "device": {
+    "secure_context": {
+      "probe": "presence",
+      "summary": "window.isSecureContext is true (https://party.avrana.net or localhost).",
+      "label": "a secure connection",
+      "missing": "This page isn’t open on the secure Party address."
+    },
+    "service_worker": {
+      "probe": "presence",
+      "summary": "navigator.serviceWorker exists (secure contexts only).",
+      "label": "an offline copy of the Party page",
+      "missing": "This browser can’t keep an offline copy of the Party page."
+    },
+    "cache_storage": {
+      "probe": "presence",
+      "summary": "The Cache Storage API (caches) exists.",
+      "label": "saved Party pages",
+      "missing": "This browser can’t save Party pages."
+    },
+    "websocket": {
+      "probe": "presence",
+      "summary": "The WebSocket constructor exists (wss:// on the HTTPS origin).",
+      "label": "a live connection to the party",
+      "missing": "This browser can’t keep a live connection to the party."
+    },
+    "webrtc": {
+      "probe": "presence",
+      "summary": "RTCPeerConnection exists.",
+      "label": "live game video",
+      "missing": "This browser can’t show live game video."
+    },
+    "webrtc.data_channel": {
+      "probe": "presence",
+      "summary": "RTCPeerConnection.prototype.createDataChannel exists; the deep probe opens a local loopback channel.",
+      "label": "fast game controls",
+      "missing": "This browser can’t use the fastest game controls."
+    },
+    "video.h264": {
+      "probe": "functional",
+      "summary": "RTCRtpReceiver.getCapabilities('video') lists H.264 (the Pi's hardware encoder output).",
+      "label": "the Party’s video format",
+      "missing": "This browser can’t play the Party’s video format."
+    },
+    "web_audio": {
+      "probe": "presence",
+      "summary": "AudioContext (or webkitAudioContext) exists.",
+      "label": "game sound",
+      "missing": "This browser can’t play game sound."
+    },
+    "gamepad": {
+      "probe": "presence",
+      "summary": "navigator.getGamepads exists (secure contexts only in current engines). Presence says nothing about a connected controller.",
+      "label": "a game controller",
+      "missing": "This browser can’t use a game controller."
+    },
+    "wake_lock": {
+      "probe": "presence",
+      "summary": "navigator.wakeLock exists (secure contexts only). A request still needs a visible page and can be refused.",
+      "label": "keeping the screen on",
+      "missing": "This phone may dim its screen while you play."
+    },
+    "web_crypto": {
+      "probe": "presence",
+      "summary": "crypto.subtle exists (secure contexts only).",
+      "label": "secure sign-in",
+      "missing": "This browser can’t do secure sign-in."
+    },
+    "storage.local": {
+      "probe": "functional",
+      "summary": "A localStorage write/read/remove round trip succeeds.",
+      "label": "remembering you on this phone",
+      "missing": "This browser won’t remember you between visits."
+    },
+    "storage.indexeddb": {
+      "probe": "presence",
+      "summary": "indexedDB exists.",
+      "label": "saving game data",
+      "missing": "This browser can’t save game data."
+    },
+    "storage.persistent": {
+      "probe": "functional",
+      "summary": "navigator.storage.persisted() resolves true. Never calls persist() (that can prompt).",
+      "label": "keeping saved data",
+      "missing": "This browser may clear saved Party data."
+    },
+    "webgl": {
+      "probe": "functional",
+      "summary": "A canvas returns a WebGL context.",
+      "label": "3D graphics",
+      "missing": "This browser can’t draw 3D graphics."
+    },
+    "webgl2": {
+      "probe": "functional",
+      "summary": "A canvas returns a WebGL2 context.",
+      "label": "advanced 3D graphics",
+      "missing": "This browser can’t draw advanced 3D graphics."
+    },
+    "webgpu": {
+      "probe": "functional",
+      "summary": "navigator.gpu.requestAdapter() resolves an adapter (async; never prompts).",
+      "label": "next-generation graphics",
+      "missing": "This browser can’t use next-generation graphics."
+    },
+    "fullscreen": {
+      "probe": "presence",
+      "summary": "document.fullscreenEnabled (or the webkit prefix) is true. iPhone Safari reports false for elements.",
+      "label": "full screen",
+      "missing": "This browser can’t go full screen."
+    },
+    "vibration": {
+      "probe": "presence",
+      "summary": "navigator.vibrate exists (absent on iPhone).",
+      "label": "vibration",
+      "missing": "This phone won’t vibrate for game events."
+    },
+    "media_devices": {
+      "probe": "presence",
+      "summary": "navigator.mediaDevices.getUserMedia exists. Never called by the probe.",
+      "label": "camera and microphone access",
+      "missing": "This browser can’t use a camera or microphone."
+    },
+    "microphone": {
+      "probe": "permission",
+      "summary": "Permissions API reports microphone 'granted' (yes) or 'denied' (no); 'prompt' stays unknown. Never prompts.",
+      "label": "the microphone",
+      "missing": "The microphone isn’t allowed for the Party."
+    },
+    "camera": {
+      "probe": "permission",
+      "summary": "Permissions API reports camera 'granted' (yes) or 'denied' (no); 'prompt' stays unknown. Never prompts.",
+      "label": "the camera",
+      "missing": "The camera isn’t allowed for the Party."
+    },
+    "touch": {
+      "probe": "presence",
+      "summary": "navigator.maxTouchPoints > 0.",
+      "label": "a touch screen",
+      "missing": "This device has no touch screen."
+    }
+  },
+  "runtime": {
+    "runtime.lan_games": {
+      "summary": "The LAN Games server (browser-native games) is installed on the appliance.",
+      "label": "the party games",
+      "missing": "The Party games aren’t installed on this Party box."
+    },
+    "runtime.retroarch": {
+      "summary": "An emulator runtime (RetroArch with a pinned libretro core) can run on the appliance.",
+      "label": "the game player",
+      "missing": "This Party box can’t run this game."
+    },
+    "input.virtual_gamepad": {
+      "summary": "Phone input can drive per-seat virtual controllers (live: Linux uinput for the arcade; experiment: XTest into a private X display for PS1).",
+      "label": "phone controllers",
+      "missing": "This Party box can’t turn phones into controllers."
+    },
+    "presentation.shared_stream": {
+      "summary": "One encode of the whole frame fanned out to each phone (today: GStreamer webrtcbin + the Pi H.264 encoder).",
+      "label": "video to phones",
+      "missing": "This Party box can’t send game video to phones."
+    },
+    "presentation.personal_viewport.crop": {
+      "summary": "A Personal Viewport made by cropping the shared frame per seat.",
+      "label": "your own part of the screen",
+      "missing": "This Party box can’t show each player their own part of the screen."
+    },
+    "presentation.personal_viewport.dedicated_stream": {
+      "summary": "A Personal Viewport rendered and encoded separately per seat.",
+      "label": "your own game view",
+      "missing": "This Party box can’t give each player their own game view."
+    },
+    "presentation.tv": {
+      "summary": "A shared screen driven by the appliance (HDMI or a TV browser) shows the game.",
+      "label": "a TV",
+      "missing": "There’s no TV connected to the party."
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "contract": "avrana.game/v0",
+  "id": "arcade-gauntlet2",
+  "name": "Gauntlet II",
+  "summary": "Two heroes, one dungeon. Every phone is a controller and a screen.",
+  "kind": "emulated",
+  "players": {"min": 1, "max": 2},
+  "screen": "tv_optional",
+  "input": {
+    "model": "controller_slots",
+    "slots": 2,
+    "directions": "dpad",
+    "buttons": ["fire", "magic", "coin", "start"]
+  },
+  "late_join": "supported",
+  "spectators": "none",
+  "private_player_ui": false,
+  "runtime": {
+    "type": "external",
+    "start": "always_on",
+    "resources": ["emulator_slot", "hw_encoder"],
+    "permissions": ["controllers", "host_devices"]
+  },
+  "presentations": [
+    {
+      "id": "phone_stream",
+      "method": "shared_stream",
+      "roles": ["player"],
+      "requires": {
+        "device": ["websocket", "webrtc", "video.h264"],
+        "runtime": ["runtime.retroarch", "presentation.shared_stream", "input.virtual_gamepad"]
+      },
+      "optional": {
+        "device": ["wake_lock", "web_audio"]
+      }
+    }
+  ],
+  "fallback": "explain",
+  "accessibility": {
+    "color_independent": "unknown",
+    "audio_required": false,
+    "text_scalable": false,
+    "reduced_motion_respected": false,
+    "timing_pressure": true
+  }
+}

@@ -1,0 +1,117 @@
+"""The appliance profile: which providers this Party box has, and which games it grants.
+
+Data: contracts/appliances/<id>.json. This is the appliance's side of the contract: runtime
+capabilities come from providers (not from games), and URL paths, health checks, tier and granted
+permissions are grants the appliance makes (a game contract never sets them). A grant can only
+give permissions the game's contract requested (checked by the catalog build).
+
+Provider status:
+  live        deployed production code (whether its service is running is a health question)
+  experiment  exists on an experiment branch or dev port; off unless explicitly included
+  planned     a documented seam with no implementation yet
+"""
+import re
+
+from avrana.contracts import strictjson
+from avrana.contracts.game import ID
+
+APPLIANCE = 'avrana.appliance/v0'
+PROVIDER_KINDS = ('runtime', 'input', 'presentation')
+STATUSES = ('live', 'experiment', 'planned')
+TIERS = ('builtin', 'trusted', 'community')
+PATH = re.compile(r'^/(?:[a-z0-9][a-z0-9._-]*/)*$')
+HEALTH = re.compile(r'^/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*$')
+ADAPTER = re.compile(r'^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$')
+RESERVED_PREFIXES = ('/party/', '/admin/', '/shared/')
+
+
+def _problems(doc, vocab):
+    p = []
+    if not isinstance(doc, dict):
+        return ['appliance: must be an object']
+    allowed = {'schema', 'id', 'name', 'providers', 'installed', 'collections'}
+    p += [f'appliance: unknown key {k!r}' for k in sorted(set(doc) - allowed)]
+    if doc.get('schema') != APPLIANCE:
+        p.append(f'appliance.schema: must be {APPLIANCE!r}')
+    if not isinstance(doc.get('id'), str) or not ID.match(doc['id']):
+        p.append('appliance.id: an id')
+    if not isinstance(doc.get('name'), str) or not 1 <= len(doc['name']) <= 80:
+        p.append('appliance.name: 1-80 characters')
+    runtime_names = set(vocab.runtime) if vocab else None
+    seen = set()
+    for i, prov in enumerate(doc.get('providers') or []):
+        where = f'providers[{i}]'
+        keys = {'id', 'kind', 'offers', 'status', 'adapter', 'implementation'}
+        if not isinstance(prov, dict) or set(prov) - keys or {'id', 'kind', 'offers', 'status'} - set(prov):
+            p.append(f'{where}: keys {sorted(keys)} (adapter and implementation optional)')
+            continue
+        if not isinstance(prov['id'], str) or not ID.match(prov['id']) or prov['id'] in seen:
+            p.append(f'{where}.id: a unique id')
+        seen.add(prov['id'])
+        if prov['kind'] not in PROVIDER_KINDS:
+            p.append(f'{where}.kind: one of {list(PROVIDER_KINDS)}')
+        if prov['status'] not in STATUSES:
+            p.append(f'{where}.status: one of {list(STATUSES)}')
+        offers = prov['offers']
+        if not isinstance(offers, list) or not offers or not all(isinstance(o, str) for o in offers):
+            p.append(f'{where}.offers: a non-empty list of runtime capability names')
+        elif runtime_names is not None:
+            p += [f'{where}.offers: unknown capability {o!r}' for o in offers if o not in runtime_names]
+        adapter = prov.get('adapter')
+        if adapter is not None and (not isinstance(adapter, str) or not ADAPTER.match(adapter)):
+            p.append(f'{where}.adapter: "package.module:Class" or null')
+        if 'implementation' in prov and not isinstance(prov['implementation'], str):
+            p.append(f'{where}.implementation: text')
+    games = set()
+    for i, inst in enumerate(doc.get('installed') or []):
+        where = f'installed[{i}]'
+        keys = {'game', 'entry', 'health', 'tier', 'permissions_granted'}
+        if not isinstance(inst, dict) or set(inst) - keys or {'game', 'entry', 'tier'} - set(inst):
+            p.append(f'{where}: keys {sorted(keys)} (health and permissions_granted optional)')
+            continue
+        if not isinstance(inst['game'], str) or not ID.match(inst['game']) or inst['game'] in games:
+            p.append(f'{where}.game: a unique game id')
+        games.add(inst['game'])
+        entry = inst['entry']
+        if not isinstance(entry, str) or not PATH.match(entry) or '..' in entry or entry.startswith(RESERVED_PREFIXES):
+            p.append(f'{where}.entry: a same-origin path ending in "/" outside {list(RESERVED_PREFIXES)}')
+        health = inst.get('health')
+        if health is not None and (not isinstance(health, str) or not HEALTH.match(health) or '..' in health):
+            p.append(f'{where}.health: a same-origin path')
+        if inst['tier'] not in TIERS:
+            p.append(f'{where}.tier: one of {list(TIERS)}')
+        granted = inst.get('permissions_granted', [])
+        if not isinstance(granted, list) or not all(isinstance(g, str) for g in granted):
+            p.append(f'{where}.permissions_granted: a list of permission names')
+    for i, col in enumerate(doc.get('collections') or []):
+        where = f'collections[{i}]'
+        keys = {'id', 'name', 'summary', 'entry', 'requires'}
+        if not isinstance(col, dict) or set(col) - keys or keys - {'summary'} - set(col):
+            p.append(f'{where}: keys {sorted(keys)} (summary optional)')
+            continue
+        if not isinstance(col['entry'], str) or not PATH.match(col['entry']):
+            p.append(f'{where}.entry: a same-origin path ending in "/"')
+        req = col['requires']
+        if not isinstance(req, list) or (runtime_names is not None and any(r not in runtime_names for r in req)):
+            p.append(f'{where}.requires: runtime capability names')
+    return p
+
+
+def validate(doc, vocab=None):
+    problems = _problems(doc, vocab)
+    if problems:
+        raise ValueError('; '.join(problems))
+    return doc
+
+
+def load(path, vocab=None):
+    return validate(strictjson.load_path(path), vocab)
+
+
+def runtime_capabilities(appliance, include=('live',)):
+    """The runtime capability names offered by providers whose status is in `include`."""
+    return sorted({o for prov in appliance['providers'] if prov['status'] in include for o in prov['offers']})
+
+
+def grants(appliance):
+    return {inst['game']: inst for inst in appliance.get('installed') or []}

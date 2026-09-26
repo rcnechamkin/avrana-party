@@ -1,0 +1,367 @@
+{
+  "schema": "avrana.catalog/v0",
+  "appliance": {
+    "id": "avrana-pi4",
+    "name": "Avrana Party (Raspberry Pi 4)"
+  },
+  "providers": [
+    {
+      "id": "lan-games",
+      "kind": "runtime",
+      "status": "live",
+      "offers": [
+        "runtime.lan_games"
+      ]
+    },
+    {
+      "id": "retroarch",
+      "kind": "runtime",
+      "status": "live",
+      "offers": [
+        "runtime.retroarch"
+      ]
+    },
+    {
+      "id": "uinput-gamepad",
+      "kind": "input",
+      "status": "live",
+      "offers": [
+        "input.virtual_gamepad"
+      ]
+    },
+    {
+      "id": "xtest-keys",
+      "kind": "input",
+      "status": "experiment",
+      "offers": [
+        "input.virtual_gamepad"
+      ]
+    },
+    {
+      "id": "shared-webrtc",
+      "kind": "presentation",
+      "status": "live",
+      "offers": [
+        "presentation.shared_stream"
+      ]
+    },
+    {
+      "id": "viewport-crop",
+      "kind": "presentation",
+      "status": "experiment",
+      "offers": [
+        "presentation.personal_viewport.crop"
+      ]
+    }
+  ],
+  "runtime": [
+    "input.virtual_gamepad",
+    "presentation.shared_stream",
+    "runtime.lan_games",
+    "runtime.retroarch"
+  ],
+  "labels": {
+    "cache_storage": {
+      "label": "saved Party pages",
+      "missing": "This browser can’t save Party pages."
+    },
+    "camera": {
+      "label": "the camera",
+      "missing": "The camera isn’t allowed for the Party."
+    },
+    "fullscreen": {
+      "label": "full screen",
+      "missing": "This browser can’t go full screen."
+    },
+    "gamepad": {
+      "label": "a game controller",
+      "missing": "This browser can’t use a game controller."
+    },
+    "input.virtual_gamepad": {
+      "label": "phone controllers",
+      "missing": "This Party box can’t turn phones into controllers."
+    },
+    "media_devices": {
+      "label": "camera and microphone access",
+      "missing": "This browser can’t use a camera or microphone."
+    },
+    "microphone": {
+      "label": "the microphone",
+      "missing": "The microphone isn’t allowed for the Party."
+    },
+    "presentation.shared_stream": {
+      "label": "video to phones",
+      "missing": "This Party box can’t send game video to phones."
+    },
+    "runtime.lan_games": {
+      "label": "the party games",
+      "missing": "The Party games aren’t installed on this Party box."
+    },
+    "runtime.retroarch": {
+      "label": "the game player",
+      "missing": "This Party box can’t run this game."
+    },
+    "secure_context": {
+      "label": "a secure connection",
+      "missing": "This page isn’t open on the secure Party address."
+    },
+    "service_worker": {
+      "label": "an offline copy of the Party page",
+      "missing": "This browser can’t keep an offline copy of the Party page."
+    },
+    "storage.indexeddb": {
+      "label": "saving game data",
+      "missing": "This browser can’t save game data."
+    },
+    "storage.local": {
+      "label": "remembering you on this phone",
+      "missing": "This browser won’t remember you between visits."
+    },
+    "storage.persistent": {
+      "label": "keeping saved data",
+      "missing": "This browser may clear saved Party data."
+    },
+    "touch": {
+      "label": "a touch screen",
+      "missing": "This device has no touch screen."
+    },
+    "vibration": {
+      "label": "vibration",
+      "missing": "This phone won’t vibrate for game events."
+    },
+    "video.h264": {
+      "label": "the Party’s video format",
+      "missing": "This browser can’t play the Party’s video format."
+    },
+    "wake_lock": {
+      "label": "keeping the screen on",
+      "missing": "This phone may dim its screen while you play."
+    },
+    "web_audio": {
+      "label": "game sound",
+      "missing": "This browser can’t play game sound."
+    },
+    "web_crypto": {
+      "label": "secure sign-in",
+      "missing": "This browser can’t do secure sign-in."
+    },
+    "webgl": {
+      "label": "3D graphics",
+      "missing": "This browser can’t draw 3D graphics."
+    },
+    "webgl2": {
+      "label": "advanced 3D graphics",
+      "missing": "This browser can’t draw advanced 3D graphics."
+    },
+    "webgpu": {
+      "label": "next-generation graphics",
+      "missing": "This browser can’t use next-generation graphics."
+    },
+    "webrtc": {
+      "label": "live game video",
+      "missing": "This browser can’t show live game video."
+    },
+    "webrtc.data_channel": {
+      "label": "fast game controls",
+      "missing": "This browser can’t use the fastest game controls."
+    },
+    "websocket": {
+      "label": "a live connection to the party",
+      "missing": "This browser can’t keep a live connection to the party."
+    }
+  },
+  "games": [
+    {
+      "id": "arcade-gauntlet2",
+      "name": "Gauntlet II",
+      "kind": "emulated",
+      "players": {
+        "min": 1,
+        "max": 2
+      },
+      "screen": "tv_optional",
+      "input": {
+        "model": "controller_slots",
+        "slots": 2,
+        "buttons": [
+          "fire",
+          "magic",
+          "coin",
+          "start"
+        ],
+        "directions": "dpad"
+      },
+      "late_join": "supported",
+      "spectators": "none",
+      "private_player_ui": false,
+      "fallback": "explain",
+      "installed": true,
+      "entry": "/arcade/",
+      "health": "/arcade/stats",
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_stream",
+          "method": "shared_stream",
+          "roles": [
+            "player"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket",
+              "webrtc",
+              "video.h264"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "web_audio"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "summary": "Two heroes, one dungeon. Every phone is a controller and a screen."
+    },
+    {
+      "id": "bluff",
+      "name": "BLUFF",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 6
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "watch",
+      "private_player_ui": true,
+      "fallback": "spectate",
+      "installed": false,
+      "entry": null,
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_table",
+          "method": "browser_native",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "summary": "Hidden roles, bold claims. Your cards stay on your phone."
+    },
+    {
+      "id": "ps1-bomberman",
+      "name": "Bomberman Party Edition",
+      "kind": "emulated",
+      "players": {
+        "min": 1,
+        "max": 4
+      },
+      "screen": "tv_optional",
+      "input": {
+        "model": "controller_slots",
+        "slots": 4,
+        "buttons": [
+          "cross",
+          "circle",
+          "square",
+          "triangle",
+          "start",
+          "select"
+        ],
+        "directions": "dpad"
+      },
+      "late_join": "supported",
+      "spectators": "watch",
+      "private_player_ui": false,
+      "fallback": "spectate",
+      "installed": false,
+      "entry": null,
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_stream",
+          "method": "shared_stream",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket",
+              "webrtc",
+              "video.h264"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "web_audio",
+              "vibration"
+            ],
+            "runtime": []
+          }
+        },
+        {
+          "id": "tv_controller",
+          "method": "controller_only",
+          "roles": [
+            "player"
+          ],
+          "available": false,
+          "runtimeMissing": [
+            "presentation.tv"
+          ],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "vibration"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "summary": "Up to four bombers on one arena. Phones are the controllers."
+    }
+  ],
+  "collections": [
+    {
+      "id": "lan-games",
+      "name": "Party games",
+      "summary": "About 28 quick games for the whole group, right in the browser.",
+      "entry": "/",
+      "available": true
+    }
+  ]
+}
