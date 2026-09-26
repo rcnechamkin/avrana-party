@@ -278,14 +278,22 @@ test('real browser and party: a stream that ends, then 502s while the party rest
   await ctx.close();
 });
 
-test('real browser and party: a quiet, healthy stream is left alone past the silence window', async ({ page }) => {
-  test.slow();                                       // waits out SILENT in real time
+test('real browser and party: a player on a quiet, healthy stream stays live and stays here', async ({ page }) => {
+  test.slow();                                       // waits out SILENT (and the Join window) in real time
   let requests = 0;
   page.on('request', (r) => { if (new URL(r.url()).pathname === '/party/events') requests += 1; });
   await page.goto('/party/');
-  await expect(page.getByRole('button', { name: 'Join the party' })).toBeVisible();
+  await page.getByLabel('What should we call you?').fill('Ana');
+  await page.getByRole('button', { name: 'Join the party' }).click();
+  await expect(page.getByText('Hi, Ana')).toBeVisible();
   await expect(page.locator('#conn')).toHaveText('');
-  await page.waitForTimeout(SILENT + 2000);          // only the party's pings arrive meanwhile
-  expect(requests).toBe(1);
+  await page.waitForTimeout(SILENT + 2000);          // past the Join window (15 s) and the silence window
+  const players = page.getByRole('list', { name: 'Players' });
+  await expect(players).toContainText('Ana (you)');
+  await expect(players).not.toContainText('away', { timeout: 1000 });   // still here...
+  await expect(page.getByText('— you’re the host')).toBeVisible({ timeout: 1000 });   // ...and still the host
   await expect(page.locator('#conn')).toHaveText('');
+  // Two streams in all: the onlooker's, then one after Join (the party binds the Join to it).
+  // Only pings arrived after that, and the healthy stream was left alone.
+  expect(requests).toBe(2);
 });

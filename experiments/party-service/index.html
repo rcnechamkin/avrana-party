@@ -196,6 +196,9 @@ async function post(cmd, body = {}) {
   } catch (e) { $('error').textContent = 'Can’t reach the party. Are you on the Avrana Party Wi-Fi?'; return; }
   if (!r.ok) { $('error').textContent = friendly(data.error); return; }
   render(data);
+  // The party binds a Join to the NEXT stream this page opens (service.py JOIN_BIND_S); the one
+  // already open was an onlooker's and never counts, so without this the player fades to "away".
+  if (cmd === 'join') { live.failures = 0; openStream(); }
 }
 
 function text(el, s) { el.textContent = s; return el; }
