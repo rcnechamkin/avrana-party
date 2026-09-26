@@ -56,6 +56,32 @@ server {
     ssl_certificate_key /etc/avrana-party/tls/current/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # Avrana Full Mode shell: static, Avrana-owned files under /party/, HTTPS only. The port 80
+    # server above is unchanged. Installed by ops/install-party-web.sh (a release directory and
+    # an atomic "current" symlink; no reload needed per release). Headers must match
+    # avrana/web/devserver.py SHELL_HEADERS (tests/unit/test_nginx_site.py). Never send a
+    # Service-Worker-Allowed header: the worker must stay inside /party/.
+    location = /party {
+        return 301 /party/;
+    }
+
+    # Lets a page tell "the Pi answered" from "not on the Party Wi-Fi", and which address and TLS
+    # version it reached. Never cached, never answered by the service worker.
+    location = /party/api/origin.json {
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        return 200 '{"schema":"avrana.origin/v0","scheme":"$scheme","serverAddr":"$server_addr","tls":"$ssl_protocol","http":"$server_protocol"}';
+    }
+
+    location /party/ {
+        alias /var/www/avrana-party/web/current/;
+        index index.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+    }
+
     location /arcade/ {
         proxy_pass http://127.0.0.1:8097/;
         proxy_http_version 1.1;

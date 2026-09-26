@@ -1,0 +1,7 @@
+{
+  "schema": "avrana.web-build/v0",
+  "build": "dev",
+  "commit": null,
+  "builtAt": null,
+  "serviceWorker": true
+}

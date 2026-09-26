@@ -1,0 +1,123 @@
+/* Avrana Party Full Mode shell worker. Scope: /party/ (the path it is served from; nginx sends no
+   Service-Worker-Allowed header, so it can never widen). Policy, most important first:
+
+   - Only GET requests to this origin under /party/ are touched. The games hub (/), the arcade,
+     PS1 streams, WebSockets and everything else go straight to the network.
+   - /party/api/* and sw.js itself are never cached or answered from cache.
+   - Pages and shell files are NETWORK-FIRST: the Pi is local and fast, so a phone on the Party
+     Wi-Fi always runs the current build. The cache is only a fallback when the Pi cannot be
+     reached (phone left the Wi-Fi, Pi restarting), so the page can say so instead of showing a
+     browser error. No party state, identity or game data is ever cached.
+   - BUILD is stamped at install (avrana.web.build); a new build replaces the old cache.
+   - ENABLED = false turns this file into a self-destruct build: it deletes its caches,
+     unregisters itself and reloads open pages. See docs/design/FULL-MODE.md. */
+'use strict';
+
+const BUILD = 'dev';
+const ENABLED = true;
+const CACHE_PREFIX = 'avrana-party-shell-';
+const CACHE = CACHE_PREFIX + BUILD;
+const SCOPE = new URL('./', self.location.href).pathname;
+const NAV_TIMEOUT_MS = 4000;
+// Everything the shell needs offline, relative to the scope. A test checks each file exists and
+// that no other file under web/party/ is left out by accident.
+const SHELL = [
+  '', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg', 'catalog.json', 'version.json',
+  'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
+  'diag/', 'diag/index.html', 'diag/diag.js',
+];
+const NEVER = [/^api\//, /^sw\.js$/];
+
+function relative(url) {
+  return url.pathname.startsWith(SCOPE) ? url.pathname.slice(SCOPE.length) : null;
+}
+
+/** 'bypass' | 'page' | 'shell' for a request (pure; exported for tests). */
+function policy(request) {
+  if (request.method !== 'GET') return 'bypass';
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return 'bypass';
+  const rel = relative(url);
+  if (rel === null || NEVER.some((re) => re.test(rel))) return 'bypass';
+  if (request.headers && typeof request.headers.has === 'function' && request.headers.has('range')) return 'bypass';
+  if (request.mode === 'navigate') return 'page';
+  return SHELL.includes(rel) ? 'shell' : 'bypass';
+}
+
+function cacheKey(request) {
+  const url = new URL(request.url);
+  url.search = '';
+  url.hash = '';
+  return url.href;
+}
+
+async function fromCache(request) {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(cacheKey(request));
+  if (hit || request.mode !== 'navigate') return hit;
+  // An unknown page under the scope falls back to the Party page itself.
+  return cache.match(new URL(SCOPE, self.location.href).href);
+}
+
+async function networkFirst(request, kind) {
+  const network = fetch(request).then(async (response) => {
+    if (response.ok && response.type === 'basic' && SHELL.includes(relative(new URL(request.url)))) {
+      const copy = response.clone();
+      caches.open(CACHE).then((cache) => cache.put(cacheKey(request), copy)).catch(() => {});
+    }
+    return response;
+  });
+  if (kind !== 'page') {
+    return network.catch(async () => (await fromCache(request)) || Response.error());
+  }
+  // Pages: wait for the Pi a few seconds (a hung Wi-Fi join), then use the saved copy.
+  let timer;
+  const slow = new Promise((resolve) => { timer = setTimeout(() => resolve('slow'), NAV_TIMEOUT_MS); });
+  try {
+    const first = await Promise.race([network, slow]);
+    if (first !== 'slow') return first;
+    return (await fromCache(request)) || await network;
+  } catch {
+    return (await fromCache(request)) || Response.error();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+self.addEventListener('install', (event) => {
+  if (!ENABLED) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await cache.addAll(SHELL.map((rel) => new Request(new URL(rel, new URL(SCOPE, self.location.href)).href,
+      { cache: 'reload' })));
+    await self.skipWaiting();
+  })());
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && (!ENABLED || key !== CACHE))
+      .map((key) => caches.delete(key)));
+    if (!ENABLED) {
+      await self.registration.unregister();
+      const pages = await self.clients.matchAll({ type: 'window' });
+      await Promise.all(pages.map((page) => page.navigate(page.url).catch(() => {})));
+      return;
+    }
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', (event) => {
+  if (!ENABLED) return;
+  const kind = policy(event.request);
+  if (kind === 'bypass') return;
+  event.respondWith(networkFirst(event.request, kind));
+});
+
+// Read-only hook for the unit tests (tests/offline/sw.test.mjs); nothing in a page uses it.
+self.__avranaShell = Object.freeze({ BUILD, ENABLED, CACHE, SCOPE, SHELL, policy, cacheKey });
