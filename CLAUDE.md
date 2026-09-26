@@ -24,7 +24,12 @@ Status and the next action: `docs/ROADMAP.md` · what runs where: `docs/SYSTEM.m
 Label claims honestly: LIVE / TESTED / EXPERIMENT / PROPOSED / OPEN; a simulation is not a
 measurement, and a proposal is not a decision.
 
-For architecture and dependency work, read `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md`
+Platform contracts (capability names, Game Contract v0, appliance profile, seat evaluation):
+`contracts/README.md` and ADR 0004. The Full Mode web shell (`web/party/`, served at `/party/`
+on HTTPS): `docs/design/FULL-MODE.md`.
+
+For architecture and dependency work, read `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md` (its §0 decision
+matrix wins over older sections)
 alongside `docs/GAME-PLATFORM-ARCHITECTURE.md`,
 `docs/OFFLINE-TRUST-AND-RECOVERY.md`,
 `docs/PERSONAL-VIEWPORT-AND-EMULATION.md`, and
@@ -40,6 +45,12 @@ on reusable subsystems and candidates, not a finalized or deployed architecture.
   `avranaparty-arcade` :8097) or the production checkout `/home/cody/avrana-party` without asking.
   Experiments live under `~/avrana-lab/` on dev ports (8190 party front, 8196 BLUFF, 8198 PS1).
 - `avrana-party.nginx`, `arcade/nginx-site` and the live site must stay byte-identical (`cmp`).
+- Full Mode (ADR 0004):
+  - Avrana web pages live under `/party/` on the 443 server only; the port 80 server stays as it is.
+  - Never add HSTS or `Service-Worker-Allowed`, and never widen the service worker beyond `/party/`.
+  - Capability names come only from `contracts/capabilities.v0.json`.
+  - A Game Contract never carries grants (paths, tier, trust, granted permissions).
+  - Never decide anything from the user agent.
 - **Power measurements:** sample on the Pi and read once at the end — no SSH polling and no parallel
   agent work during one (each SSH session is a CPU burst).
 - PS1/emulator runs: bounded and supervised only (`ps1/tools/supervised-run.sh`, or a party-launched
@@ -66,7 +77,8 @@ on reusable subsystems and candidates, not a finalized or deployed architecture.
 ## Workflow
 
 Read `CLAUDE-CLOUD-HANDOFF.md` before a Cloud task. Clone from GitHub → make a branch → run
-offline/unit checks first (`docs/TESTING.md`) → push for review. Browser E2E in `tests/` targets
+offline/unit checks first (`docs/TESTING.md`; `npm ci && npm run test:offline`, in Cloud with
+`PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`; the real-nginx test needs `nginx` installed) → push for review. Browser E2E in `tests/` targets
 the live appliance and needs the Party Wi-Fi; Cloud cannot run it. Pi-only validation belongs in
 `~/avrana-lab/` on dev ports. After review, merge to GitHub `main`, then fast-forward the clean
 production checkout `/home/cody/avrana-party` to that exact commit. Restarting services or changing

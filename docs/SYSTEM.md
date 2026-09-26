@@ -57,12 +57,14 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 | `ps1-emulation` | GitHub | older PS1 shared-stream base (superseded by `experiment/ps1-title-profiles`) | not merged |
 | `fix/arcade-ap-interface` | GitHub (from 2026-09-24) | arcade `/stats` path label after the Wi-Fi change (off `main`) | not merged, not deployed |
 | `docs/current-state` | laptop only | an old docs commit **already contained in `main`** | safe to delete (`git branch -d`) |
+| `claude/dreamy-carson-sja5mq` | GitHub (PR) | 2026-09-26 sprint: platform contracts (`contracts/`, `avrana/contracts`), provider adapters (`avrana/providers`, used by `arcade/stream.py`), the Full Mode web shell (`web/party/`, nginx `/party/` on 443), the arcade page's keep-awake and reconnect, and offline CI suites. It includes PR #1's CI lane | not merged, not deployed |
 
 ## Services and ports on the Pi
 
 | Port | Service (systemd) | Code |
 |---|---|---|
-| 80 | nginx (`/etc/nginx/sites-available/avrana-party`) | `avrana-party.nginx` |
+| 80 | nginx (`/etc/nginx/sites-available/avrana-party`): captive probes, LAN Games, `/arcade/` | `avrana-party.nginx` |
+| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; **proposed** `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current`) | `avrana-party.nginx`, `ops/` |
 | 8096 | LAN Games (`avranaparty-games`) | `/home/cody/LAN-Games` |
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
@@ -85,6 +87,7 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 | `/etc/NetworkManager/system-connections/` | Wi-Fi profiles incl. passwords (owner only; never read into chat or Git) |
 | `/var/lib/NetworkManager/dnsmasq-wlan0.leases` | DHCP leases (phones' addresses) |
 | `experiments/party-service/dev-data/` | dev device-token hashes (git-ignored) |
+| `/var/www/avrana-party/web/{releases,current}` | **proposed** Full Mode shell releases, built by `ops/install-party-web.sh` from a clean checkout (static, root-owned; the newest five kept) |
 | `.venv/`, `node_modules/`, `__pycache__/`, `test-results/` | tooling caches |
 
 ## Compare and sync safely (next time)

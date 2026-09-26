@@ -18,6 +18,97 @@ Open-source components may provide runtime, streaming, controller, update, netwo
 
 ---
 
+# 0. Decision matrix (verification pass, 2026-09-26)
+
+**Read this before the per-project sections below.** Five research tracks checked this document
+against upstream code, licence files and release metadata on 2026-09-26: the repository audit,
+runtime/streaming/input, party engine, network/trust and browser. Where a section below disagrees
+with this matrix, **this matrix wins**.
+
+Labels and scope:
+- The classifications are **PROPOSED**. The boundaries they refer to are ADR 0004 (proposed).
+- **Nothing here proves Pi 4 compatibility.** Rows marked HARDWARE-SPIKE-REQUIRED name the spike
+  that would decide them.
+- The evidence and sources are in `docs/findings/2026-09-26-architecture-sprint.md`.
+- No dependency was added to Avrana by this pass.
+
+Rule: **Avrana owns the contracts and the orchestration; implementations stay replaceable.**
+The contracts that exist now:
+- the capability vocabulary;
+- Game Contract v0;
+- the appliance profile;
+- RuntimeProvider, InputProvider and PresentationProvider.
+
+### Runtime, streaming and input
+
+| Project | Class | Gives Avrana | Boundary | Licence (read) | Main risk | Avrana keeps |
+|---|---|---|---|---|---|---|
+| RetroArch / libretro | **ADOPT / WRAP** (live) | emulator runtime; a stdin command channel later | child process behind `RuntimeProvider` (`RetroArchRuntime`) | GPL-3.0 (separate process) | its UDP command port listens on all interfaces without authentication: **keep it off** | lifecycle, config, content identity |
+| MAME 2010, FBNeo cores | ADOPT (private use only) | arcade emulation | libretro `.so`, installed by the owner, never committed | **non-commercial** licence texts | commercial distribution is restricted | never bundling cores |
+| PCSX ReARMed | ADOPT (experiment) | PS1 emulation; memory maps (viewport state without computer vision) | libretro `.so` | GPL-2.0 | per-title compatibility | title profiles |
+| GStreamer `webrtcbin` + Pi `v4l2h264enc` | **ADOPT** (live) | one shared H.264 encode fanned out per phone | in-process (`arcade/stream.py`), `PresentationProvider` | LGPL | 1 encoder context proven; N contexts unknown | encoder budget, seat admission |
+| uinput (python-evdev) / XTest | **ADOPT** (live / experiment) | virtual pads | `InputProvider` (isolation global / private) | kernel ABI; python-evdev BSD-3-Clause | uinput pads leak into any udev RetroArch (seen) | seat → slot, staleness policy |
+| gst-wayland-display | **HARDWARE-SPIKE-REQUIRED (S1)** → ADAPT | a headless GPU display instead of Xvfb's software GL (~1.2 cores today) | a GStreamer element as frame source | MIT | Smithay GLES on the Pi's v3d is unproven | when to use the GPU |
+| Selkies 2.0 + pixelflux 2.1 | **HARDWARE-SPIKE-REQUIRED (S3)** → WRAP or REFERENCE | the only external stack with one encode shared by all viewers **and** a Pi 4 V4L2 M2M encoder | a separate process behind `PresentationProvider` | MPL-2.0 (the published wheels are GPL because they bundle x264) | desktop-product surface; a new dependency | seats, tickets, viewport policy |
+| Wolf / Games on Whales | **REFERENCE** (DEFER, S5) | the lobby / producer-switch pattern | none | MIT | **each client gets its own encode**; images are amd64 only; no V4L2 encoder in its default list | fan-out, seats |
+| Gamescope | **REJECT** (Pi 4) | — | — | **BSD-2-Clause** (not MIT) | Vulkan extensions the Pi lacks; a Pi 5 bug report shows it failing | — |
+| Moonlight-Web (two projects: `linckosz/moonlight-web`, `MrCreativ3001/moonlight-web-stream`) | REFERENCE | transport engineering ideas | none | **GPL-3.0 (both)** | needs a GameStream host and an encode per client | browser transport |
+| InputPlumber | DEFER | physical pads → seats, later | a root D-Bus daemon | GPL-3.0-or-later | **routing input over the network is not implemented** (`network.rs` is empty) | seat ↔ pad policy |
+| PartyPad | REFERENCE | DSU motion server; RetroArch autoconfig pattern | none | MIT | early alpha, single author | everything else |
+| inputtino | DEFER | vendor-exact pads, rumble | library | MIT | `/dev/uhid` access | slot mapping |
+| Sunshine | DEFER | a Moonlight host | Moonlight protocol | GPL-3.0 | no Pi hardware encode in a release | — |
+| webrtcsink | REJECT for the shared stream; DEFER for dedicated per-seat streams (S2) | congestion control per viewer | — | MPL-2.0 | one encode per consumer | encoder budget |
+
+### Party engine and native games
+
+| Project | Class | Gives Avrana | Licence | Why |
+|---|---|---|---|---|
+| **Avrana party model + service** (branches `experiment/party-sim`, `experiment/party-service`) | **OWN** | party, device, profile, presence, seat, host succession, seating across games | Avrana | **no upstream framework models a party**; these rules already match or beat every reference |
+| Colyseus | **WRAP**, optional and per game (spike 3); **REJECT** as the party layer | a realtime room runtime for native action games | MIT | ~88–91 MB RSS versus ~23 MB for the Python front (x86, not measured on the Pi); puts `sessionId` and `reconnectionToken` in URLs (conflicts with "no credentials in URLs") |
+| boardgame.io | REFERENCE | filter-then-diff private state, log redaction, per-move staleness | MIT | copy the patterns into a Python game SDK |
+| React Native Couch Kit, Buzz TV Party Game | REFERENCE | the host / transport / display split | MIT | client-minted secrets; raw action echo |
+| Hotspot Arcade | REFERENCE | phone-recovery watchdog, captive-browser handoff | MIT | MAC-address identity (rejected) |
+| Nakama | REJECT | — | Apache-2.0 | needs Postgres or CockroachDB; account-centric |
+| AirConsole, Jackbox | REFERENCE (product behaviour) | — | proprietary / none | — |
+
+### Network, trust, packages and updates
+
+| Project | Class | Gives Avrana | Licence | Note |
+|---|---|---|---|---|
+| **openNDS** | **REJECT** as a runtime (was "strong candidate"); REFERENCE | RFC 8908/8910 know-how | GPL-2.0 | it forces a splash page and so **brings back the captive popup the owner removed**; v11 refuses a wireless gateway interface; it fights NetworkManager's dnsmasq. Keep the current dnsmasq + nginx design. Spike 4 becomes a captive regression test |
+| lego | **ADOPT** (live) | ACME DNS-01, and later DNS-PERSIST-01 or CSR courier mode | MIT | the v4 → v5 CLI break affects `ops/renew-party-certificate.sh`; **don't mint a zone-wide Cloudflare token for the Pi**: delegate `_acme-challenge` by CNAME to a validation-only zone, or wait for DNS-PERSIST-01. Decide before ~2026-11-25 |
+| TUF (python-tuf 7.x; go-tuf v2) | **ADOPT** (spike 7) | signed metadata, rollback/freeze protection, delegation | Apache-2.0 OR MIT | the Pi has no RTC, so expiry needs a time policy for courier delays; rust-tuf is REJECTED (beta) |
+| OCI image spec 1.1 | ADAPT (DEFER) | per-architecture artifacts, referrers for signatures and SBOMs | Apache-2.0 | a tarred OCI Image Layout; no registry on the Pi |
+| ORAS | WRAP on the build / courier side only | produce and export OCI layouts | Apache-2.0 | not on the Pi |
+| Rugix | **HARDWARE-SPIKE-REQUIRED** (spike 5, spare SD card) | A/B updates with rollback (Pi 4 tryboot) | MIT OR Apache-2.0 | falls back to ephemeral state if the data partition fails to mount |
+| Mender / RAUC | REFERENCE / fallback | A/B update clients | Apache-2.0 / **LGPL-2.1** | Mender needs U-Boot; RAUC has no tryboot backend |
+| CertMagic | REFERENCE | ACME renewal info (ARI), locking | Apache-2.0 | only inside a future Go agent |
+| LocalSend protocol | REFERENCE; later ADAPT as a receive-only inbox | Companion courier transport | **the protocol repo has no LICENSE file**; the app is Apache-2.0 | trust-on-first-use TLS, an open port |
+| CasaOS / ZimaOS store | REFERENCE (UX); REJECT (trust model) | "add a source" without a marketplace | Apache-2.0; ZimaOS has no licence | unsigned; Compose apps get host power |
+| Home Assistant add-on model | REFERENCE (pattern) | coarse permission keys + a rating computed by the appliance → Game Contract `runtime.permissions` | code Apache-2.0; docs CC BY-NC-SA | the shape is copied, not the keys |
+| Wasmtime | DEFER; HARDWARE-SPIKE-REQUIRED | a capability-scoped sandbox for small extensions (not games) | Apache-2.0 WITH LLVM-exception | aarch64 is Tier 2 upstream; the Pi kernel's 39-bit address space may need tuning |
+
+### Browser
+
+| Source | Class | Use |
+|---|---|---|
+| MDN Browser Compatibility Data | REFERENCE (prior knowledge only) | expectations; **runtime probes decide** (`web/party/lib/capabilities.js`). Examples: Wake Lock is iOS 16.4 in a tab, 18.4 in Home Screen apps; there is no element fullscreen, orientation lock or vibration on iPhone |
+
+**Corrections to the sections below:**
+- §3.2 Gamescope's licence is BSD-2-Clause.
+- §3.3 "Moonlight-Web" is two GPL-3.0 projects.
+- §3.4 InputPlumber has no network input routing.
+- §3.5 PartyPad is alpha and WebSocket-based locally.
+- §5.2 openNDS is rejected as a runtime.
+- §12 RAUC is LGPL-2.1.
+- §13 see the lego note above.
+- §19 Wasmtime aarch64 is Tier 2.
+- Personal Viewport (§15) is implemented as a presentation `method` with a `viewport` kind
+  (`crop`, `dedicated_stream`, `browser_renderer`, `private_panel`) in Game Contract v0
+  (`contracts/README.md`).
+
+---
+
 # 1. Current Product Philosophy
 
 Avrana Party is not merely a small gaming appliance. It is intended to become a local-first party gaming platform.

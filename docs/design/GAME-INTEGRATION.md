@@ -50,6 +50,16 @@ never see device tokens; the party never runs game rules.
 
 ## 1. Capability manifest v0 (draft)
 
+> **Game Contract v0 (2026-09-26, branch `claude/dreamy-carson-sja5mq`, ADR 0004):** the contract for
+> `main` is `contracts/games/*.json`, validated by `avrana/contracts/game.py` (field reference:
+> `contracts/README.md`). It grows from manifest v0 below, keeping the ids, enums and strictness. It
+> adds ordered **presentations**, each with required and optional capabilities; a Personal Viewport
+> there is a method with a `viewport` kind, not only a crop. It also adds a per-seat fallback,
+> requested `runtime.permissions` and `resources`, an optional `package` block and extensions.
+> Grants (paths, health checks, tier, granted permissions) live in the appliance profile
+> (`contracts/appliances/`), matching the three-way split below. `lift_manifest_v0()` converts
+> v0 manifests.
+>
 > **Implemented as an experiment (2026-09-24):** `experiments/manifests/` on branch
 > `experiment/party-service` — a strict stdlib validator, builtin manifests for the arcade and PS1,
 > LAN Games titles **derived** from the games server's `/api/games`, and the party catalog built from

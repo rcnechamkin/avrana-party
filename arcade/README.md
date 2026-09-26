@@ -7,6 +7,17 @@
 > by its address) is on branch `fix/arcade-ap-interface`, not merged or deployed. Streaming itself
 > is unaffected.
 
+> **Code note (2026-09-26, branch `claude/dreamy-carson-sja5mq`, not deployed):**
+> - `stream.py` opens its pads through `avrana.providers.uinput_gamepad` and runs RetroArch through
+>   `avrana.providers.retroarch` (ADR 0004). The behaviour is identical, and a test pins it.
+> - `/stats` gains a `providers` block.
+> - The phone page keeps the screen on (via the Full Mode shell's `/party/lib/keep-awake.js`, HTTPS
+>   only), says "Both controllers are in use" only when `/stats` says the game is full, and
+>   reconnects quietly after a drop or lock.
+> - Raw stats are visible only with `#diag`.
+> - The Selkies row below is out of date: pixelflux 2.1 now has a Pi 4 V4L2 encoder (see the
+>   substrate decision matrix, spike S3).
+
 ## Current state (updated 2026-09-19)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.

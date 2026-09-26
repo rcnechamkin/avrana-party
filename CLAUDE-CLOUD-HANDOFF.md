@@ -21,13 +21,20 @@ The architecture and experience documents are in `docs/` with status notes.
 `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md` is current project research on proposed
 reusable subsystems and implementation/reference candidates.
 
-As of 2026-09-25, `fix/party-https` is a local validation branch deployed to
-the Pi checkout, while GitHub `main` remains unchanged. It adds
-`https://party.avrana.net/` with local Party DNS and a Pi-only Let's Encrypt
-DNS-01 certificate. See `docs/runbooks/party-https.md` for the exact status,
-validation evidence, renewal blocker and rollback procedure. A phone on Party
-Wi-Fi loaded the HTTPS UI without a warning; the direct laptop Wi-Fi check and
-automatic renewal are still open. Review those gaps before merging.
+Party HTTPS (`fix/party-https`) was merged to `main` as PR #2 on 2026-09-26 (`d092ffd`). It
+provides `https://party.avrana.net/`, served over local Party DNS with a Pi-only Let's Encrypt
+DNS-01 certificate. This is the canonical Full Mode origin (ADR 0004 D1). Status, evidence, the
+renewal blocker and rollback are in `docs/runbooks/party-https.md`. Automatic renewal is still off,
+and the certificate expires 2026-12-25.
+
+The 2026-09-26 foundation sprint (branch `claude/dreamy-carson-sja5mq`, a PR, not merged) added:
+- platform contracts (`contracts/`, `avrana/`);
+- provider adapters, which the arcade now uses;
+- the Full Mode web shell (`web/party/`);
+- Tier 1–2 offline suites.
+
+It includes PR #1's CI lane. Start from `docs/findings/2026-09-26-architecture-sprint.md` and
+ADR 0004.
 
 ## Start here
 
@@ -56,8 +63,16 @@ with `docs/GAME-PLATFORM-ARCHITECTURE.md`,
 ## Safe testing
 
 `npm ci` installs the lockfile's Playwright dependency. Offline logic checks include
-`npx playwright test tests/soak-metrics.spec.ts`; install Playwright browsers
-with `npx playwright install` if a browser-only test needs them. See
+`npx playwright test tests/soak-metrics.spec.ts` and `npm run test:offline`: Python unit tests,
+`node --test` and the offline Chromium suite against a simulated Party on 127.0.0.1.
+
+**Browser and nginx setup in Cloud:**
+- The image's pre-installed Chromium doesn't match Playwright 1.63, and downloading browsers may
+  be blocked. Run the offline browser suite with
+  `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`.
+- The real-nginx Tier 2 test runs when `nginx` is installed (`apt-get install nginx`; it is used
+  only as a test binary, never started as a service) and skips otherwise. CI sets
+  `AVRANA_REQUIRE_NGINX=1`. See
 `docs/TESTING.md` for commands on each experiment branch. Python unit tests on
 those branches use standard-library stubs where documented. This repo does not
 yet provide one reproducible Linux image or dependency lock for all Pi media
