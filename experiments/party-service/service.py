@@ -8,7 +8,8 @@ views, and a background timer.
 Routes (all under /party/; every other path belongs to games — see front.py):
   GET  /party/             Party Home page (index.html)
   GET  /party/state        this viewer's view (observer until joined). Issues a device cookie.
-  GET  /party/events       Server-Sent Events: the view again on every change (+ keepalives).
+  GET  /party/events       Server-Sent Events: the view again on every change (`state`), and a
+                           `ping` every KEEPALIVE_S so the page can tell a live stream from a dead one.
                            Re-attaches an EXISTING presence (a reload/wake) but never creates one.
   POST /party/join         {persona?}         explicit Join: the ONLY way a presence is created
   POST /party/leave | /party/rename {name}
@@ -32,7 +33,7 @@ import identity  # noqa: E402
 import seat_ticket  # noqa: E402
 
 JOIN_BIND_S = 15.0        # a Join's connection must be claimed by an event stream within this
-KEEPALIVE_S = 10.0        # SSE comment interval: also how fast a vanished phone is noticed
+KEEPALIVE_S = 10.0        # ping interval: also how fast a vanished phone is noticed (index.html PING_MS)
 MAX_BODY = 4096
 MESSAGES = 10
 
@@ -407,7 +408,9 @@ def _stream(h, service, token, new_cookie):
                 data = json.dumps(service.view(token))
                 h.wfile.write(f'event: state\ndata: {data}\n\n'.encode())
             else:
-                h.wfile.write(b': keepalive\n\n')
+                # A named event, not an SSE comment: pages never see comments, and a browser drops
+                # an event without data. Party Home's liveness watchdog counts on this ping.
+                h.wfile.write(b'event: ping\ndata: {}\n\n')
             h.wfile.flush()
     except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
         pass
