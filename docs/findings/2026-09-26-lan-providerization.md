@@ -38,10 +38,10 @@ AVRANA_GAMES_REPO=../avrana-party-games AVRANA_PROVIDER_PYTHON=../avrana-party-g
 
 PowerShell uses $env assignments and .venv/Scripts/python.exe. Linux defaults
 python3. Windows: modules 56 pass, contracts+assimilation27 pass, soak10 pass,
-combined browser10 pass (all30 pages at two sizes; real donor sockets), catalog and
+combined browser12 pass (all30 pages at two sizes; real donor sockets), catalog and
 nginx byte hashes pass. Full Windows unit suite: 61 pass, 5 fail, 2 error, 4 skip
 of72; Linux paths/bash/symlinks/arcade subprocess and nginx need Linux CI.
-Final offline Chromium: 56 passed. Current Linux CI results are recorded below when complete.
+Final offline Chromium: 56 passed. Current Linux CI results are recorded below when complete. The final combined suite adds a TV link/QR context test and passes 12/12.
 
 Games:
 

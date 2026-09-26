@@ -116,3 +116,14 @@ test('standalone hub reads canonical favorites without creating duplicate IDs', 
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(page.locator('#games > li')).toHaveCount(1);
 });
+
+test('game TV links and QR handoff preserve the explicit Party launch context', async ({ page }) => {
+  await seed(page);
+  await page.goto('/games/fifthsignal/?avrana=1');
+  await expect(page.locator('[data-avrana-game-link]').first()).toHaveAttribute('href', '/games/fifthsignal/tv.html?avrana=1');
+  await page.route('**/shared/qr.js', (route) => route.fulfill({ contentType: 'text/javascript',
+    body: 'function renderQR(el, url) { el.dataset.testJoin = url; }' }));
+  await page.goto('/games/orbitriot/tv.html?avrana=1');
+  await expect(page.locator('#tv-qr')).toHaveAttribute('data-test-join', 'http://127.0.0.1:8182/games/orbitriot/?avrana=1');
+  await expect(page.locator('#avrana-navigation a')).toBeVisible();
+});

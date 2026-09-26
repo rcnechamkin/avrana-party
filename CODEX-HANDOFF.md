@@ -115,7 +115,7 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 - Games full Python suite: 1200 passed (206.92 seconds).
 - Games provider worker behavior: Node 3 passed; metadata drift check passed.
 - Platform Node modules: 56 passed; contracts/assimilation: 27 passed.
-- Cross-repository real donor + shell Chromium: 10 passed, two phone sizes;
+- Cross-repository real donor + shell Chromium: 12 passed, two phone sizes;
   all 30 authoritative pages, actual shared identity hello, one chat history,
   reload return, viewport separation, standalone canonical favorites/cache scope.
 - Soak metric math: 10 passed. nginx source hashes identical.
