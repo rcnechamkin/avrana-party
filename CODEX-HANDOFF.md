@@ -1,7 +1,7 @@
 # Codex handoff — LAN Games Providerization & Direct-Launch
 
 Updated: 2026-09-26. This file is the durable continuation record.
-Status: implementation and cross-repository tests complete; final CI/publication pending.
+Status: implementation complete; coordinated review PRs open. No merge or deployment.
 
 ## Current goal
 
@@ -78,8 +78,10 @@ cross-repository behavioral tests must pin this boundary. No merge or deployment
 ## Uncommitted state
 
 Platform implementation committed as 6c6917e (catalog) and 60c7db4 (launch/library).
-Documentation and cross-repository harness remain uncommitted pending final review.
-Donor exporter committed febd546; integration/CI/tests committed; final navigation context checkpoint added.
+Documentation and cross-repository harness committed (code validation at da313c6).
+Donor exporter febd546; integration ce13795; navigation context cff9958.
+Final standalone unknown-ID preservation fix and this handoff are the closing
+checkpoint. Run git status and git rev-parse HEAD for final review heads.
 No production, networking, certificate, Party Home or experiment changes.
 
 ## Tests already run
@@ -93,13 +95,14 @@ Verified prior PR #5 CI results (not rerun in this continuation):
 
 Continuation checks: PR status/CI, clean Pi source checkout, installed release,
 trusted TLS HTTP HEAD/GET, served version/catalog/origin and service active state.
-No new implementation tests yet; no physical-device acceptance test attempted.
+These were baseline checks; complete sprint results follow below. No physical-device acceptance attempted.
 
 ## Unresolved failures / limitations
 
 - Linux-only gates fail locally on Windows: symlinks, bash process/path checks,
   two arcade subprocess lifecycle tests; real nginx is skipped. Validate current
-  PR with Linux CI before final report. Donor release-safety needs missing rsync.
+  PR with Linux CI before merging. Linux CI run 36261333271 passed these gates;
+  donor run 36261284527 passed release-safety including rsync.
 - History privacy scan found only old branding/filesystem paths; retained privately.
   Current tree privacy gate passed; no credential/private-key pattern matches.
 - An initial SSH curl command lost wildcard quoting through PowerShell and treated
@@ -124,7 +127,7 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 - Final offline Chromium suite: 56 passed after updating one old raw-href assertion.
 - Full Windows unit run: 72 total, 61 pass, 5 failures/2 errors/4 skips, Linux-only
   paths/process/symlink/nginx gates. Existing prior PR #5 Linux CI all passed;
-  current branch must pass new Linux CI before completion.
+  sprint Linux CI also passed all 72 tests and real nginx checks (run 36261333271).
 - Initial cross-repo failures were assertion mistakes: a game-specific suite-home
   class already routed correctly, hidden first standalone link, duplicate legacy
   tile matches and absent aria-pressed. Fixed assertions target actual behavior.
@@ -134,13 +137,30 @@ No new implementation tests yet; no physical-device acceptance test attempted.
 ## Cross-repository dependency state
 
 Donor support first, backward-compatible standalone. Platform version-gates launches
-and refuses unsupported donor behavior. Both feature PRs remain to be opened;
+and refuses unsupported donor behavior. Both feature PRs are open;
 no merge/deploy. Each private repo runs independent CI; automatic combined checkout
 would need narrowly scoped read credentials/artifact delivery, not added here.
 
+## Review links and closing checkpoint
+
+- Donor PR: https://github.com/rcnechamkin/avrana-party-games/pull/1
+- Platform PR: https://github.com/rcnechamkin/avrana-party/pull/7
+- Initial donor Linux CI SUCCESS: run 36261284527 (1200 Python, privacy/export,
+  static syntax, worker behavior and release-safety).
+- Initial platform Linux CI SUCCESS: run 36261333271 (72 Python including nginx,
+  56 Node modules, 56 offline browser, 10 pure soak metrics, catalog/byte identity).
+- Final cross-repo suite: 12/12, no browser page errors across 30 titles.
+- Final unknown/future library-ID preservation regression: 2/2 at both phone sizes.
+  Standalone now normalizes only titles actually present in its registry. Unknown
+  canonical IDs stay byte-for-byte intact when editing a known favorite.
+- This closing checkpoint reruns each PR's independent CI; PR head checks are the
+  current authority. No further feature work is authorized by this handoff.
+
 ## Exact next action
 
-Finish final offline tests, inspect diffs and secret/binary scans, commit donor
-integration and platform docs/harness, push dedicated branches and open coordinated
-PRs. Verify Linux CI, update final findings/handoffs with PR URLs and results.
-Do not merge/deploy. Hardware checklist is for the owner after reviewed release.
+Owner reviews donor PR #1 first, platform PR #7 second, and checks each current
+head's CI. Neither is merged or deployed. After review, separately plan donor and
+shell releases and run the exact Pi/iPhone/Android/multi-phone/legacy-worker/game/
+profile/library/return checklist in the findings document. Do not touch Party Home.
+Next migration should address shared transport ownership and authoritative session/
+roster separately; scoped chat, PS1 runtime, TV/viewport and Companion are deferred.

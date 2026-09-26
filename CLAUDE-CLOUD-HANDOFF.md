@@ -98,7 +98,8 @@ Cloud cannot reach the Party LAN or reproduce the Pi's hardware media stack.
 The first offline CI lane (`.github/workflows/offline-checks.yml`, Node 22.22.2)
 runs the offline checks on `main`; its exact commands and the classification of
 every other test are in `docs/TESTING.md` ("Offline CI lane"). The games fork
-is a separate repo and is not yet available through the same GitHub workflow.
+is a separate private GitHub repo with independent CI; combined browser tests
+require both explicit checkouts as documented below.
 
 **First Cloud task (done 2026-09-26, the lane above):** on a new branch, add a
 small, safe offline CI lane for existing pure tests and document its exact setup.

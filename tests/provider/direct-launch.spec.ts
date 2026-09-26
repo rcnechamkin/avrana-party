@@ -105,13 +105,14 @@ test('standalone hub reads canonical favorites without creating duplicate IDs', 
   await seed(page); await home(page);
   await page.locator('[data-id="lan-chess"]').getByRole('button', { name: /from favorites/ }).click();
   await page.locator('[data-id="lan-chess"]').getByRole('button', { name: /to favorites/ }).click();
+  await page.evaluate(() => localStorage.setItem('lg-favorites', '["avrana:lan-chess","avrana:lan-future-title","unknown-old-title"]'));
   await page.goto('/');
   const favorite = page.locator('#rails .tile[data-slug="chess"] .tile-fav');
   await expect(favorite).toHaveAttribute('aria-label', 'remove from favorites');
   await favorite.click();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual([]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-future-title','unknown-old-title']);
   await favorite.click();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-chess']);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-future-title','unknown-old-title','avrana:lan-chess']);
   await home(page);
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(page.locator('#games > li')).toHaveCount(1);

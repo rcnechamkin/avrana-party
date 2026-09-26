@@ -95,3 +95,21 @@ then define authoritative session/roster independently of chat connections. Do n
 promote Party Home here. Scoped chat, deeper legacy deletion, PS1 runtime promotion,
 TV/Personal Viewport and native Companion execution remain later sprints.
 Private combined CI still needs a read-access/artifact mechanism; no new secrets.
+
+## Review and Linux CI
+
+- Donor PR: https://github.com/rcnechamkin/avrana-party-games/pull/1 (first).
+- Platform PR: https://github.com/rcnechamkin/avrana-party/pull/7 (second).
+- Donor run 36261284527 SUCCESS: Python1200 (84.68s), privacy/drift/static,
+  worker3 and release-safety passed.
+- Platform run 36261333271 SUCCESS: Python72 including real nginx and Linux
+  process/symlink gates, modules56, offline browser56, soak10, catalog/byte identity.
+- Final review added unknown future-ID preservation to the standalone adapter;
+  focused cross-repo browser checks passed 2/2 after the full12/12 run.
+- Closing checkpoint reruns independent PR CI; inspect current PR head checks.
+Both review branches remain unmerged; no production files or services changed.
+
+Working-tree final state and final SHAs are available through git status / git
+rev-parse HEAD and PR heads. Secrets, browser output, test runtime data, dependencies
+and local logs remain ignored. The private games repository retains original main
+history with historical branding/paths; no abandoned refs were published.
