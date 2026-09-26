@@ -32,9 +32,16 @@ def load_contracts(directory, vocab):
     # Custom --games directories remain self-contained.
     if Path(directory).resolve() == (CONTRACTS_DIR / 'games').resolve():
         donor = lan_catalog.load(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
-        if set(donor) & set(contracts):
-            raise ValueError('duplicate donor/game contract ids')
-        contracts.update(donor)
+        for cid, c in donor.items():
+            if cid in contracts:
+                if cid != 'bluff':
+                    raise ValueError('duplicate donor/game contract ids')
+                # Keep BLUFF's explicit hand/spectator/capability contract; public
+                # display metadata and player counts come from its provider.
+                contracts[cid].update({k: c[k] for k in ('name', 'summary', 'players')})
+                contracts[cid].setdefault('extensions', {})['net.avrana.catalog'] = c['extensions']['net.avrana.catalog']
+            else:
+                contracts[cid] = c
     return contracts
 
 
@@ -44,6 +51,7 @@ def build(vocab, appliance, contracts, include=('live',)):
     unknown = sorted(set(grants) - set(contracts))
     if unknown:
         raise ValueError(f'installed games without a contract: {unknown}')
+    donor_launches = lan_catalog.launch_targets(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
     games = []
     for cid, c in contracts.items():
         grant = grants.get(cid)
@@ -69,8 +77,14 @@ def build(vocab, appliance, contracts, include=('live',)):
                                      'lan-games' if c['runtime']['type'] == 'lan_games_module' else 'retroarch')
         if entry['provider'] == 'retroarch-ps1':
             entry['providerMetadata'] = provider_metadata.ps1(c)
+        provider_target = donor_launches.get(cid) if meta.get('integration') else None
+        if provider_target:
+            entry['launchTarget'] = provider_target
+        if grant and provider_target and grant['entry'] != provider_target:
+            raise ValueError(f'{cid}: installed path disagrees with authoritative launch target')
         entry['status'] = meta.get('status', 'current' if grant else 'not_installed')
-        for key in ('legacySlug', 'icon', 'category', 'hardwareValidationRequired'):
+        for key in ('legacySlug', 'icon', 'category', 'hardwareValidationRequired',
+                    'description', 'solo', 'art', 'accent', 'playersLabel', 'integration'):
             if key in meta:
                 entry[key] = meta[key]
         if 'summary' in c:
