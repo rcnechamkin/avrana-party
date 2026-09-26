@@ -5,6 +5,7 @@ import collections
 import json
 import logging
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -33,6 +34,7 @@ ROM = '/srv/avrana/roms/arcade/gaunt2.zip'
 PRESENTATION = ProviderInfo(
     id='shared-webrtc', kind='presentation', offers=('presentation.shared_stream',),
     implementation='one v4l2h264enc encode fanned out per phone through GStreamer webrtcbin')
+EXIT_FATAL = 1  # non-zero: avranaparty-arcade.service restarts on failure (Restart=on-failure)
 EMULATOR_LOG = ROOT / 'runtime/emulator.log'
 EMULATOR_LOG_MAX = 20 * 1024 * 1024  # emulator.log.1 keeps the previous 20 MB; total stays under ~45 MB.
 logging.basicConfig(level=logging.INFO)
@@ -110,6 +112,7 @@ class Stream:
         self.video_bytes = 0
         self.started = time.monotonic()
         self.error = None
+        self.fatal = False  # set only by watch() on an unrecoverable emulator/pipeline failure
         self.emulator = None
         self.serial = 0
         self.age = dict(video=Window(), audio=Window())
@@ -234,7 +237,17 @@ class Stream:
             if self.error:
                 for ws in list(self.peers):
                     await ws.close(code=1011, message=b'Stream stopped')
+                # Fatal: nothing can stream any more. Shut down through aiohttp's normal path (so
+                # cleanup() releases pads, stops RetroArch and the pipeline) and exit non-zero, so
+                # systemd's Restart=on-failure brings the arcade back.
+                log.error('Fatal: %s; exiting for a restart', self.error)
+                self.fatal = True
+                self.request_exit()
                 return
+
+    def request_exit(self):
+        """Ask web.run_app to stop gracefully (it handles SIGTERM by running on_cleanup)."""
+        os.kill(os.getpid(), signal.SIGTERM)
 
     async def promise(self, element, signal, *args):
         future = self.loop.create_future()
@@ -465,3 +478,4 @@ if __name__ == '__main__':
     app.on_startup.append(stream.startup)
     app.on_cleanup.append(stream.cleanup)
     web.run_app(app, host='127.0.0.1', port=8097)
+    sys.exit(EXIT_FATAL if stream.fatal else 0)
