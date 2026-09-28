@@ -155,6 +155,10 @@ Without any of them a game keeps working exactly as today. With them it joins th
 
 ### 3.1 Seat ticket handshake (v1)
 
+> **Superseded for party sessions by `avrana.party-session/v0` (ADR 0006, proposed, 2026-09-27):**
+> tickets carry a session id and an opaque participant id instead of a slot, and completion is a
+> signed server-to-server report. The text below is the earlier design and the PS1 experiment.
+
 > **As built for PS1 (2026-09-24, experiment):** `experiments/party-service/seat_ticket.py` (branch
 > `experiment/party-service`) and party mode in `ps1/stream_ps1.py` (`experiment/ps1-title-profiles`).
 > Per-launch random key passed to the game in its environment; ticket
