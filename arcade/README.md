@@ -4,7 +4,7 @@
 > home/management link are from before the USB Wi-Fi adapter was removed. Today the AP is the internal
 > `wlan0` (`10.42.0.1`) and management is `eth0` (`docs/runbooks/network.md`). Side effect: `/stats`
 > labels every peer's path `other` because `ap_addresses()` looks for `wlan1`. The fix (find the AP
-> by the party address `10.42.0.1`, whatever the interface) is on branch `fix/arcade-ap-address`,
+> by the party address `10.42.0.1`, whatever the interface) is on `main` (PR #8, 2026-09-27),
 > pinned by `tests/unit/test_arcade_stream.py` `ApAddresses`; it is not deployed until the owner
 > fast-forwards production and restarts the arcade. Streaming itself is unaffected.
 

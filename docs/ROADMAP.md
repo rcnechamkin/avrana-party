@@ -39,7 +39,7 @@ phones join its Wi-Fi. Game runtimes in view:
 
 Open arcade work (independent of the game work below): verify the audio-ratchet fix `6acf0b0`,
 the recovery gap (`docs/findings/2026-09-20-audio-ratchet-and-recovery.md`), and merging
-`fix/arcade-ap-address` (was `fix/arcade-ap-interface`). Under-voltage is resolved for the tested workloads (no USB adapter).
+the arcade AP fix (merged in PR #8, not deployed: needs a production fast-forward + arcade restart). Under-voltage is resolved for the tested workloads (no USB adapter).
 
 ### Product direction (accepted 2026-09-24): one party, many games
 
@@ -141,8 +141,8 @@ Records: ADR 0004, `docs/design/FULL-MODE.md`, `docs/findings/2026-09-26-archite
 and the substrate decision matrix.
 
 **Owner next:**
-1. Review and merge the PR (and PR #1, and `fix/arcade-ap-address`: it fixes the arcade's
-   false "home network" warning).
+1. ~~Review and merge the PR~~ (merged: PRs #3–#13). Deploying the arcade AP fix (PR #8) needs a
+   production fast-forward and an arcade restart.
 2. Deploy the shell: one nginx step plus `ops/install-party-web.sh`.
 3. Run the phone checklist in `docs/runbooks/party-https.md`.
 4. Decide the certificate-renewal credential before about **2026-11-25**; the certificate expires

@@ -1,10 +1,9 @@
 # ADR 0006 — Party Core v0 and the party ↔ game session protocol v0
 
-Status: **proposed** (implemented and tested on review branches `fix/party-core-v0` and
-`fix/party-session-protocol-v0`; not deployed; no game implements the game side yet).
+Status: **proposed** (implemented and tested; merged to `main` in PRs #12 and #13; not deployed; no game
+implements the game side yet).
 Date: 2026-09-27. Builds on ADR 0002 (party platform), ADR 0003 (ids and keys), ADR 0005 (LAN
-provider launch) and `docs/findings/2026-09-27-party-bluff-boundary.md` (branch
-`docs/party-bluff-seam`).
+provider launch) and `docs/findings/2026-09-27-party-bluff-boundary.md` (PR #10).
 
 ## Context
 

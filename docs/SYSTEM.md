@@ -48,13 +48,13 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 ## Branches of this repository
 
 Reconciled 2026-09-27 (`docs/findings/2026-09-27-m0-git-baseline.md`). Branches
-fully contained in `main` were deleted; nothing below is deployed unless it says so.
+fully contained in `main` were deleted; nothing below is deployed unless it says so. Merged the same
+day (PRs #8–#13): the arcade AP fix, the M0 reconcile, the BLUFF-seam finding, the games deploy
+runbook, Party Core v0 and the session protocol v0; none of them is deployed.
 
 | Branch | Where | What | Status |
 |---|---|---|---|
 | `main` | GitHub + Pi production | **production** source (the Pi checkout may lag it; a fast-forward there is an owner step) | canonical |
-| `fix/arcade-ap-address` | GitHub | arcade `/stats` path label: find the AP by `10.42.0.1`, not `wlan1` (replaces `fix/arcade-ap-interface`) | review → merge; not deployed |
-| `chore/m0-reconcile` | GitHub | operator tools, captive-DNS installer profile fix and pointers salvaged from `docs/party-platform` | review → merge |
 | `docs/party-platform` | GitHub | history of the docs now on `main`, plus raw power-measurement evidence that stays out of `main` | park (archive) |
 | `experiment/party-service` | GitHub + Pi worktree `~/avrana-lab/party-svc` | party service, device identity, membership, host, presence, lifecycle, manifest v0, service-game launcher (PS1) + seat tickets v1, Party Home reconnect (includes the deleted `fix/party-home-reconnect`) | park: source evidence for Party Core, **not** for a wholesale merge |
 | `experiment/party-sim` | GitHub | `experiments/`: party lifecycle model, viewport geometry, Personal Viewports PoC | park (research) |
