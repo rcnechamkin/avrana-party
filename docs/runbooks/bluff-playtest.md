@@ -1,7 +1,7 @@
 # Runbook: first real-phone BLUFF playtest (N2)
 
-The `tools/avrana-offline` helper used below remains on the
-`docs/party-platform` branch; it is absent from production `main`.
+The `tools/avrana-offline` helper used below is on `main` (from 2026-09-27); the owner runs it
+with `sudo` (`docs/runbooks/network.md`).
 
 Status: **ready to run** (power is clean without the USB adapter since 2026-09-24; see "Gate"). Prepared 2026-09-24 from a read-only
 audit of the Pi and the BLUFF code; no server was started. Leave any result cell **blank** if it

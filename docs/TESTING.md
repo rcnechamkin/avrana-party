@@ -31,8 +31,8 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 | Party Home → PS1 end to end (seats, spectators, return home) | `experiment/party-service` | on the Pi: `front.py --port 8190 --host 10.0.0.142:8190 --ps1 <dev checkout>/ps1 --devices ""`; laptop: `PW_FROM=<main checkout> node experiments/party-service/e2e-ps1-party.mjs http://10.0.0.142:8190` | Pi + laptop | a fresh party (restart `front.py`) | pass ×3 (2026-09-24) |
 | Party Home page (first-time path, host game cards, follow/return, no machinery words, friendly refusal, a11y smoke) | `experiment/party-service` | `npx playwright test -c experiments/party-service/playwright.config.ts` | laptop | Playwright browsers | 6 pass (3 × Chromium, WebKit) |
 | Manifest v0 validator | `experiment/party-service` | `python experiments/manifests/test_manifest.py` | laptop | — | 10 pass |
-| Topology check (read-only) | `docs/party-platform` | `tools/avrana-topology-check` | **Pi** | — | see `docs/runbooks/network.md` |
-| Radio capacity sampler (read-only) | `docs/party-platform` | `tools/radio-watch SECONDS [INTERVAL] [OUT]` (run detached on the Pi) | **Pi** | phones kept awake (a sleeping iPhone ignores ping) | tried 2026-09-24 (1 station); capacity test not run |
+| Topology check (read-only) | `main` | `tools/avrana-topology-check` | **Pi** | — | see `docs/runbooks/network.md` |
+| Radio capacity sampler (read-only) | `main` | `tools/radio-watch SECONDS [INTERVAL] [OUT]` (run detached on the Pi) | **Pi** | phones kept awake (a sleeping iPhone ignores ping) | tried 2026-09-24 (1 station); capacity test not run |
 
 From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 `test-results/` is generated and Git-ignored.

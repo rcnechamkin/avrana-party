@@ -5,7 +5,7 @@
 #     sudo bash telemetry/install-beszel-agent.sh
 #
 # After it finishes: in the hub UI (http://10.0.0.218:8093) click "Add System",
-# name it "party", host 10.0.0.143, port 45876. The hub then connects out to the
+# name it "party", host 10.0.0.142 (eth0 since 2026-09-24), port 45876. The hub then connects out to the
 # agent using the public key below (the hub keeps the private half).
 set -euo pipefail
 
@@ -55,4 +55,4 @@ systemctl enable --now beszel-agent.service
 echo "==> status"
 systemctl --no-pager --full status beszel-agent.service | head -n 12 || true
 echo
-echo "Agent listening on :${LISTEN_PORT}. Next: add system 'party' (10.0.0.143:${LISTEN_PORT}) in the hub UI."
+echo "Agent listening on :${LISTEN_PORT}. Next: add system 'party' (10.0.0.142:${LISTEN_PORT}, eth0) in the hub UI."

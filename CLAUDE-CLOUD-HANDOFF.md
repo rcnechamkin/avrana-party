@@ -13,8 +13,8 @@ on the Pi. A source fast-forward does not restart live services.
 system map, runbooks, and design documentation. The live LAN Games server and the
 Avrana Party Games fork are separate repositories. The published
 `experiment/party-sim`, `experiment/party-service`,
-`experiment/ps1-title-profiles`, `ps1-emulation`, and
-`fix/arcade-ap-interface` branches preserve work that is not deployed.
+`experiment/ps1-title-profiles`, and `ps1-emulation` branches preserve work
+that is not deployed (the branch map is in `docs/SYSTEM.md`).
 `docs/party-platform` preserves its original history, including historical raw measurement evidence;
 summaries are on `main`, while logs and JSONL samples stay out of `main`.
 The architecture and experience documents are in `docs/` with status notes.

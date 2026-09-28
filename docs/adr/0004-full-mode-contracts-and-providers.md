@@ -1,6 +1,6 @@
 # ADR 0004: Full Mode origin, platform contracts and provider boundaries
 
-Date: 2026-09-26. Branch: `claude/dreamy-carson-sja5mq` (not merged).
+Date: 2026-09-26. Branch: `claude/dreamy-carson-sja5mq` (merged as PR #3, `a671955`).
 
 Status:
 - **D1 is ACCEPTED**: it restates the owner's sprint brief of 2026-09-26, which treats the HTTPS
