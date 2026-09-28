@@ -1,9 +1,27 @@
 // Avrana owns this profile. These are the donor's existing backing keys, not a
 // second identity store. Never expose the token in UI, URLs, diagnostics or caches.
-export const AVATARS = ['🦊','🐸','🦖','🐙','🦉','🐯','🐼','🦄','👾','🤖','🐲','😈','🦈','🐝','🦩','🐢'];
+import { AVATARS as GAZE } from './avatars.js';
+
+/** Player avatars: stable ids ("gaze-17") of the bundled DiceBear Gaze set (lib/avatars.js). */
+export const AVATARS = GAZE.map((a) => a.id);
+export const avatarLabel = (id) => (GAZE.find((a) => a.id === id) || GAZE[0]).label;
+// The donor's former emoji characters, in the donor's own order. A stored emoji is read as the
+// Gaze avatar at the same position (never written back until the player saves); anything else
+// unknown reads as the first avatar. The name and every other key are untouched.
+export const LEGACY_AVATARS = ['🦊','🐸','🦖','🐙','🦉','🐯','🐼','🦄','👾','🤖','🐲','😈','🦈','🐝','🦩','🐢'];
+export function resolveAvatar(value) {
+  if (AVATARS.includes(value)) return value;
+  const legacy = LEGACY_AVATARS.indexOf(value);
+  return AVATARS[legacy >= 0 ? legacy : 0];
+}
 const TOKEN = /^[A-Za-z0-9_-]{8,64}$/;
 export const photoPath = (value) => typeof value === 'string'
   && /^\/avatars\/[a-f0-9]{20}\.webp(?:\?v=\d+)?$/.test(value) ? value : '';
+// The games' server sends a chosen Gaze avatar as this exact bundled picture path.
+export const gazePicture = (value) => {
+  const match = typeof value === 'string' && /^\/shared\/avatars\/(gaze-\d\d)\.svg$/.exec(value);
+  return match && AVATARS.includes(match[1]) ? value : '';
+};
 
 export function createProfile(storage, random = globalThis.crypto) {
   const get = (key) => { try { return storage.getItem(key) || ''; } catch { return ''; } };
@@ -32,7 +50,7 @@ export function createProfile(storage, random = globalThis.crypto) {
     return key;
   };
   const snapshot = () => ({
-    name: get('wc-name').slice(0, 24), avatar: get('wc-avatar').slice(0, 32) || AVATARS[0],
+    name: get('wc-name').slice(0, 24), avatar: resolveAvatar(get('wc-avatar')),
     pfp: photoPath(get('wc-pfp')), favorites: list('lg-favorites'), recent: list('lg-recent'),
     playTotal: Math.max(0, Number(get('lg-play-total')) || 0),
   });
@@ -55,7 +73,7 @@ export function createProfile(storage, random = globalThis.crypto) {
       if (!clean) throw new Error('Choose a name first.');
       ensureToken();
       put('wc-name', clean);
-      put('wc-avatar', String(avatar || AVATARS[0]).slice(0, 32));
+      put('wc-avatar', resolveAvatar(avatar || snapshot().avatar));
       return snapshot();
     },
     isFavorite(game) { const key = keyFor(game); return list('lg-favorites').includes(key); },

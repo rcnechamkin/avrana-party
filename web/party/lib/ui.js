@@ -22,20 +22,27 @@ export function playersText({ min, max }) {
   return `${min}–${max} players`;
 }
 
+/** Where the game is seen: from the Game Contract's `screen`. */
+export function screenText(game) {
+  if (game.screen === 'tv_required') return { icon: 'monitor', text: 'Needs the TV' };
+  if (game.screen === 'tv_optional') return { icon: 'monitor', text: 'TV optional' };
+  return { icon: 'smartphone', text: 'Phone only' };
+}
+
+/** How you play, only when it says more than "on your phone". */
 export function howText(game) {
   const parts = [];
-  if (game.input && game.input.model === 'controller_slots') parts.push('your phone is the controller');
-  else if (game.input && game.input.model === 'hotseat') parts.push('one controller, taking turns');
-  else parts.push('play on your phone');
-  if (game.screen === 'tv_required') parts.push('needs the TV');
+  if (game.input && game.input.model === 'controller_slots') parts.push('Your phone is the controller');
+  else if (game.input && game.input.model === 'hotseat') parts.push('One controller, taking turns');
   if (game.private_player_ui) parts.push('your cards stay private');
   return parts.join(' · ');
 }
 
+/** A Lucide icon name for a game without its own glyph. */
 export function kindIcon(game) {
-  if (game.kind === 'emulated') return '🕹️';
-  if (game.private_player_ui) return '🃏';
-  return '🎲';
+  if (game.kind === 'emulated') return 'gamepad-2';
+  if (game.private_player_ui) return 'spade';
+  return 'dices';
 }
 
 export function capitalize(text) {

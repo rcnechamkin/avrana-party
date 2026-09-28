@@ -125,8 +125,15 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, b'not found')
 
 
+class _DevServer(ThreadingHTTPServer):
+    # A fresh page's service worker fetches every shell file at once (~90 with the avatars and
+    # library art). The socketserver default backlog of 5 makes Windows refuse the overflow
+    # (ECONNREFUSED); nginx on the Pi has no such limit.
+    request_queue_size = 128
+
+
 def make_server(port=0, web=WEB_DIR, test_controls=False):
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server = _DevServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
     server.cfg = {'web': Path(web), 'arcade': Arcade(), 'test_controls': test_controls}
     return server

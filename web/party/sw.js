@@ -24,8 +24,27 @@ const NAV_TIMEOUT_MS = 4000;
 const SHELL = [
   '', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg', 'catalog.json', 'version.json',
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
-  'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js',
+  'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/icons.js', 'lib/avatars.js',
   'diag/', 'diag/index.html', 'diag/diag.js',
+  // Library artwork (tools/build-art.mjs from contracts/artwork.json).
+  'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-backgammon.svg',
+  'art/lan-battleship.svg', 'art/lan-bingo.svg', 'art/lan-blitz.svg', 'art/lan-bluff.svg',
+  'art/lan-brickade.svg', 'art/lan-buzzboard.svg', 'art/lan-charades.svg', 'art/lan-checkers.svg',
+  'art/lan-chess.svg', 'art/lan-connect4.svg', 'art/lan-dodgeball.svg', 'art/lan-euchre.svg',
+  'art/lan-famfeud.svg', 'art/lan-fifthsignal.svg', 'art/lan-fortfling.svg', 'art/lan-gridiron.svg',
+  'art/lan-hearts.svg', 'art/lan-orbitriot.svg', 'art/lan-poker.svg', 'art/lan-pricecheck.svg',
+  'art/lan-rummikub.svg', 'art/lan-smelterskelter.svg', 'art/lan-snake.svg', 'art/lan-spades.svg',
+  'art/lan-tanks.svg', 'art/lan-trivia.svg', 'art/lan-werewolf.svg', 'art/lan-wordclash.svg',
+  'art/lan-wordrush.svg',
+  // Player avatars (tools/build-avatars.mjs): generated, committed, tiny.
+  'avatars/gaze-01.svg', 'avatars/gaze-02.svg', 'avatars/gaze-03.svg', 'avatars/gaze-04.svg',
+  'avatars/gaze-05.svg', 'avatars/gaze-06.svg', 'avatars/gaze-07.svg', 'avatars/gaze-08.svg',
+  'avatars/gaze-09.svg', 'avatars/gaze-10.svg', 'avatars/gaze-11.svg', 'avatars/gaze-12.svg',
+  'avatars/gaze-13.svg', 'avatars/gaze-14.svg', 'avatars/gaze-15.svg', 'avatars/gaze-16.svg',
+  'avatars/gaze-17.svg', 'avatars/gaze-18.svg', 'avatars/gaze-19.svg', 'avatars/gaze-20.svg',
+  'avatars/gaze-21.svg', 'avatars/gaze-22.svg', 'avatars/gaze-23.svg', 'avatars/gaze-24.svg',
+  'avatars/gaze-25.svg', 'avatars/gaze-26.svg', 'avatars/gaze-27.svg', 'avatars/gaze-28.svg',
+  'avatars/gaze-29.svg', 'avatars/gaze-30.svg', 'avatars/gaze-31.svg', 'avatars/gaze-32.svg',
 ];
 const NEVER = [/^api\//, /^sw\.js$/];
 

@@ -96,6 +96,7 @@ listed above on experiment branches are candidates for this lane once those bran
 | Party Core v0 (`avrana.party`): explicit Join, server-issued device cookie, presence as liveness (a player in the game stays `playing`), host grace/succession, versioned host actions, one session launching→active→ending→ended, stale reports refused, 150-seed fuzz; HTTP guards (Host, Origin, JSON, size), no token in bodies/logs, long poll | 1 | same (`test_party_core`, `test_party_service`) | 47 pass (laptop + Linux + CI, 2026-09-27; PR #12) |
 | Party session protocol v0 (`avrana.party.protocol`, ADR 0006): shared vectors, ticket audience/session/expiry/tamper/type confusion, stable game token, replay, `GameSide`; end to end over HTTP with a reference game: launch roster, ticket admit + reconnect = same identity, spectator, server-to-server completed/abandoned, browser-forged/stale/replayed reports refused, end for everyone | 1–2 | same (`test_party_protocol`, `test_party_session_flow`) | 32 pass (laptop + Linux + CI, 2026-09-27; PR #13) |
 | Catalog is fresh | 1 | `python3 -m avrana.contracts.catalog --check` | clean |
+| Generated UI assets are fresh (`web/party/styles.css` from `web/src/party.css`, `web/party/lib/icons.js` from Lucide; `docs/UI-DESIGN-SYSTEM.md`) | 1 | `npm run check:ui` | clean (laptop, 2026-09-27) |
 
 `npm run test:offline` runs the three offline runners in order. `npm run dev` serves the simulated
 Party at `http://127.0.0.1:8180/party/`. CI runs everything in this table (see

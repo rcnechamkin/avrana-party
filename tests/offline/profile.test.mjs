@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProfile, photoPath } from '../../web/party/lib/profile.js';
+import { AVATARS, LEGACY_AVATARS, createProfile, photoPath, resolveAvatar } from '../../web/party/lib/profile.js';
 
 const lan = { id: 'lan-chess', legacySlug: 'chess' }, arcade = { id: 'arcade-gauntlet2' };
 function fixture(values = {}) {
@@ -15,11 +15,12 @@ test('existing donor identity and lists are reused, not copied into a parallel s
   assert.equal(p.identity().token, 'existing-player-01');
   assert.equal(p.snapshot().name, 'Robin');
   assert.ok(p.isFavorite(lan));
-  p.save({ name: 'Robin Two', avatar: '🐙' });
+  p.save({ name: 'Robin Two', avatar: 'gaze-17' });
   p.toggleFavorite(arcade);
   p.remember(arcade);
   assert.equal(data.get('wc-token'), 'existing-player-01');
   assert.equal(data.get('wc-name'), 'Robin Two'); // Legacy Hub.identity reads this exact key.
+  assert.equal(data.get('wc-avatar'), 'gaze-17');
   assert.deepEqual(JSON.parse(data.get('lg-favorites')), ['avrana:lan-chess','unknown-old-title','avrana:arcade-gauntlet2']);
   assert.deepEqual(JSON.parse(data.get('lg-recent')), ['avrana:arcade-gauntlet2','avrana:lan-chess']);
   assert.equal(p.snapshot().playTotal, 8);
@@ -29,7 +30,7 @@ test('existing donor identity and lists are reused, not copied into a parallel s
 test('new identity is persisted once, corrupt lists recover and recent history stays bounded', () => {
   const { data, storage } = fixture({ 'lg-favorites': '{broken', 'lg-recent': 'null' });
   const p = createProfile(storage);
-  p.save({ name: ' New Guest ', avatar: '🦊' });
+  p.save({ name: ' New Guest ', avatar: 'gaze-05' });
   assert.match(p.ensureToken(), /^[0-9a-f]{32}$/);
   assert.equal(p.ensureToken(), data.get('wc-token'));
   assert.equal(p.snapshot().name, 'New Guest');
@@ -75,4 +76,29 @@ test('legacy and canonical aliases collapse without losing unknown or cross-prov
   assert.deepEqual(JSON.parse(data.get('lg-favorites')), ['unknown','avrana:ps1-worms']);
   p.remember(lan);
   assert.deepEqual(JSON.parse(data.get('lg-recent')), ['avrana:lan-chess','avrana:arcade-gauntlet2']);
+});
+
+test('avatars are the 32 bundled Gaze ids, and a chosen one persists as its stable id', () => {
+  assert.equal(AVATARS.length, 32);
+  assert.ok(AVATARS.every((id) => /^gaze-\d\d$/.test(id)));
+  const { data, storage } = fixture();
+  const p = createProfile(storage);
+  assert.equal(p.snapshot().avatar, 'gaze-01');         // a new guest starts on the first avatar
+  p.save({ name: 'Casey', avatar: 'gaze-32' });
+  assert.equal(data.get('wc-avatar'), 'gaze-32');
+  assert.equal(createProfile(storage).snapshot().avatar, 'gaze-32');
+  assert.equal(p.identity().avatar, 'gaze-32');         // what chat and games receive
+  p.save({ name: 'Casey', avatar: '<img src=x>' });     // never stores anything but a known id
+  assert.equal(data.get('wc-avatar'), 'gaze-01');
+});
+test('a legacy emoji profile keeps its name and reads as the Gaze avatar at the same position', () => {
+  assert.equal(LEGACY_AVATARS.length, 16);
+  LEGACY_AVATARS.forEach((emoji, i) => assert.equal(resolveAvatar(emoji), AVATARS[i]));
+  for (const odd of ['', 'R', '🙂', 'gaze-99', null, undefined]) assert.equal(resolveAvatar(odd), 'gaze-01');
+  const { data, storage } = fixture({ 'wc-token': 'existing-player-01', 'wc-name': 'Robin', 'wc-avatar': '🐸' });
+  const p = createProfile(storage);
+  assert.deepEqual([p.snapshot().name, p.snapshot().avatar], ['Robin', 'gaze-02']);
+  assert.equal(data.get('wc-avatar'), '🐸');             // reading never rewrites the stored value
+  p.save({ name: 'Robin' });                              // saving keeps the migrated look
+  assert.equal(data.get('wc-avatar'), 'gaze-02');
 });

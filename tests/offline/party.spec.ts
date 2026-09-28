@@ -82,7 +82,7 @@ test('guest words only, and basic accessibility', async ({ page }) => {
   const text = await page.locator('main').innerText();
   expect(text).not.toMatch(JARGON);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  const small = await page.$$eval('main a.button, main button, summary', (els) => els
+  const small = await page.$$eval('main a.btn, main button, summary', (els) => els
     .filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().height < 44)
     .map((el) => el.textContent));
   expect(small).toEqual([]);

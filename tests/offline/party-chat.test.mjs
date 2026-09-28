@@ -82,3 +82,12 @@ test('no welcome times out; heartbeat uses donor ping; closed chat stops retries
   f.chat.close(); assert.equal(f.pending.size, 0);
   assert.equal(f.chat.send('closed'), false);
 });
+
+test('a sender Gaze avatar arrives as its exact bundled picture; anything else is dropped', () => {
+  const base = { id: 7, by: 'u', name: 'Casey', text: 'hi' };
+  assert.equal(normalizeMessage({ ...base, pfp: '/shared/avatars/gaze-29.svg' }).pfp, '/shared/avatars/gaze-29.svg');
+  for (const bad of ['/shared/avatars/gaze-99.svg', '/shared/avatars/../x.svg', 'https://x.test/shared/avatars/gaze-01.svg',
+    '/shared/avatars/gaze-01.svg?token=1', '/shared/avatars/gaze-1.svg']) {
+    assert.equal(normalizeMessage({ ...base, pfp: bad }).pfp, '', bad);
+  }
+});

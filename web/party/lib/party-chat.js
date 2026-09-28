@@ -1,12 +1,12 @@
 // Party-wide UI boundary over the legacy ChatHub protocol. Same channel/store,
 // same profile token. No durable client message store or second presence model.
-import { photoPath } from './profile.js';
+import { gazePicture, photoPath } from './profile.js';
 
 export function normalizeMessage(raw) {
   if (!raw || (!Number.isSafeInteger(raw.id) || raw.id < 1)
       || typeof raw.by !== 'string' || typeof raw.text !== 'string') return null;
   return { id: raw.id, by: raw.by.slice(0, 80), name: String(raw.name || 'Player').slice(0, 24),
-    avatar: String(raw.avatar || '👤').slice(0, 32), pfp: photoPath(raw.pfp),
+    avatar: String(raw.avatar || '👤').slice(0, 32), pfp: photoPath(raw.pfp) || gazePicture(raw.pfp),
     text: raw.text.slice(0, 400), photo: Boolean(raw.img), ts: Number(raw.ts) || 0 };
 }
 

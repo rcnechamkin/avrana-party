@@ -49,6 +49,11 @@ jobs:
           command -v nginx >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q nginx; }
           python3 -m unittest discover -s tests/unit -v
 
+      # docs/UI-DESIGN-SYSTEM.md: styles.css and lib/icons.js are generated and committed (the Pi
+      # never runs Node); fail when either no longer matches its source.
+      - name: Generated UI assets are current
+        run: npm run check:ui
+
       - name: Web catalog matches its contracts
         run: python3 -m avrana.contracts.catalog --check
 
