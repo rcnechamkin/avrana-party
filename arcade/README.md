@@ -3,9 +3,10 @@
 > **Network note (2026-09-24):** mentions below of `wlan1` as the party AP and `wlan0` as the
 > home/management link are from before the USB Wi-Fi adapter was removed. Today the AP is the internal
 > `wlan0` (`10.42.0.1`) and management is `eth0` (`docs/runbooks/network.md`). Side effect: `/stats`
-> labels every peer's path `other` because `ap_addresses()` looks for `wlan1`; the fix (find the AP
-> by its address) is on branch `fix/arcade-ap-interface`, not merged or deployed. Streaming itself
-> is unaffected.
+> labels every peer's path `other` because `ap_addresses()` looks for `wlan1`. The fix (find the AP
+> by the party address `10.42.0.1`, whatever the interface) is on branch `fix/arcade-ap-address`,
+> pinned by `tests/unit/test_arcade_stream.py` `ApAddresses`; it is not deployed until the owner
+> fast-forwards production and restarts the arcade. Streaming itself is unaffected.
 
 > **Code note (2026-09-26, branch `claude/dreamy-carson-sja5mq`, not deployed):**
 > - `stream.py` opens its pads through `avrana.providers.uinput_gamepad` and runs RetroArch through

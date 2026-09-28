@@ -14,6 +14,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from avrana import CONTRACTS_DIR, REPO_ROOT
@@ -135,6 +136,47 @@ class ArcadeStream(unittest.TestCase):
         self.assertEqual(sum(1 for entry in log if entry[0] == 'close'), 2)
         self.assertFalse(s.runtime.running())
         self.assertEqual(pipeline.states, ['PLAYING', 'NULL'])
+
+
+# 'ip -o addr show' output as the Pi prints it (the literal backslash ends each record).
+IP_NOW = r"""1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever
+2: eth0    inet 10.0.0.142/24 brd 10.0.0.255 scope global dynamic noprefixroute eth0\       valid_lft 86000sec
+3: wlan0    inet 10.42.0.1/24 brd 10.42.0.255 scope global noprefixroute wlan0\       valid_lft forever
+3: wlan0    inet6 fe80::9afe:54ff:fe34:e550/64 scope link noprefixroute \       valid_lft forever
+"""
+IP_OLD = r"""2: wlan0    inet 10.0.0.143/24 brd 10.0.0.255 scope global wlan0\       valid_lft 86000sec
+4: wlan1    inet 10.42.0.1/24 brd 10.42.0.255 scope global wlan1\       valid_lft forever
+"""
+
+
+class ApAddresses(unittest.TestCase):
+    """/stats labels a peer's path 'avrana' when its address is on the party AP. The AP is found by
+    the party address (10.42.0.1), not an interface name: wlan1 (USB adapter) before 2026-09-24,
+    the internal wlan0 since."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.stream, _ = load_stream()
+
+    def addresses(self, ip_output):
+        fake = types.SimpleNamespace(run=lambda *a, **k: types.SimpleNamespace(stdout=ip_output))
+        with mock.patch.object(self.stream, 'subprocess', fake):
+            return self.stream.ap_addresses()
+
+    def test_internal_radio_as_ap(self):
+        self.assertEqual(self.addresses(IP_NOW), {'10.42.0.1', 'fe80::9afe:54ff:fe34:e550'})
+
+    def test_old_usb_adapter_as_ap(self):
+        self.assertEqual(self.addresses(IP_OLD), {'10.42.0.1'})
+
+    def test_no_party_ap(self):
+        self.assertEqual(self.addresses('2: eth0    inet 10.0.0.142/24 scope global eth0\n'), set())
+
+    def test_ip_failure_is_empty(self):
+        def boom(*a, **k):
+            raise FileNotFoundError('ip')
+        with mock.patch.object(self.stream, 'subprocess', types.SimpleNamespace(run=boom)):
+            self.assertEqual(self.stream.ap_addresses(), set())
 
 
 if __name__ == '__main__':
