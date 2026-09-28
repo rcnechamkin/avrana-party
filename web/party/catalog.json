@@ -225,7 +225,8 @@
       "accent": "#34d399",
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Dice, blots, zero mercy."
+      "summary": "Dice, blots, zero mercy.",
+      "artwork": "art/dice_3D_detailed.svg"
     },
     {
       "id": "lan-battleship",
@@ -281,7 +282,8 @@
       "accent": "#60a5fa",
       "playersLabel": "1–6 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Hidden fleets. Everyone's a target."
+      "summary": "Hidden fleets. Everyone's a target.",
+      "artwork": "art/flag_square.svg"
     },
     {
       "id": "lan-bingo",
@@ -337,7 +339,8 @@
       "accent": "#22d3ee",
       "playersLabel": "1–12",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Daub your card. First to the pattern shouts BINGO."
+      "summary": "Daub your card. First to the pattern shouts BINGO.",
+      "artwork": "art/tokens_stack.svg"
     },
     {
       "id": "lan-brickade",
@@ -393,7 +396,8 @@
       "accent": "#a855f7",
       "playersLabel": "1–8 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Pong-royale meets Breakout. Own the ball."
+      "summary": "Pong-royale meets Breakout. Own the ball.",
+      "artwork": "art/structure_wall.svg"
     },
     {
       "id": "lan-buzzboard",
@@ -449,7 +453,8 @@
       "accent": "#f5b301",
       "playersLabel": "2–10 + TV",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Pick a square. Beat them to the buzzer. Risk it all."
+      "summary": "Pick a square. Beat them to the buzzer. Risk it all.",
+      "artwork": "art/hand_token.svg"
     },
     {
       "id": "lan-blitz",
@@ -505,7 +510,8 @@
       "accent": "#fb923c",
       "playersLabel": "2–10",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Name things. Fast. Don't match."
+      "summary": "Name things. Fast. Don't match.",
+      "artwork": "art/timer_CW_75.svg"
     },
     {
       "id": "lan-charades",
@@ -561,7 +567,8 @@
       "accent": "#f472b6",
       "playersLabel": "2–10, same room",
       "integration": "avrana.lan-launch/v1",
-      "summary": "One actor. Everyone races to type it."
+      "summary": "One actor. Everyone races to type it.",
+      "artwork": "art/character.svg"
     },
     {
       "id": "lan-checkers",
@@ -617,7 +624,8 @@
       "accent": "#fb7185",
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Jump or be jumped."
+      "summary": "Jump or be jumped.",
+      "artwork": "art/flip_full.svg"
     },
     {
       "id": "lan-chess",
@@ -673,7 +681,8 @@
       "accent": "#a78bfa",
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Think three moves ahead."
+      "summary": "Think three moves ahead.",
+      "artwork": "art/chess_knight.svg"
     },
     {
       "id": "lan-connect4",
@@ -729,7 +738,8 @@
       "accent": "#ef4444",
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Four in a row. Gravity does the rest."
+      "summary": "Four in a row. Gravity does the rest.",
+      "artwork": "art/tokens.svg"
     },
     {
       "id": "lan-dodgeball",
@@ -785,7 +795,8 @@
       "accent": "#f97316",
       "playersLabel": "1–8 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Run, throw, dodge. Last one standing."
+      "summary": "Run, throw, dodge. Last one standing.",
+      "artwork": "art/token_out.svg"
     },
     {
       "id": "lan-euchre",
@@ -841,7 +852,8 @@
       "accent": "#38bdf8",
       "playersLabel": "1–4 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Order it up. Go alone. Get euchred."
+      "summary": "Order it up. Go alone. Get euchred.",
+      "artwork": "art/cards_fan.svg"
     },
     {
       "id": "lan-famfeud",
@@ -897,7 +909,8 @@
       "accent": "#f59e0b",
       "playersLabel": "2–10, teams",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Survey says… head-to-head or teams."
+      "summary": "Survey says… head-to-head or teams.",
+      "artwork": "art/notepad.svg"
     },
     {
       "id": "lan-fortfling",
@@ -953,7 +966,8 @@
       "accent": "#fb7185",
       "playersLabel": "2 players",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Pull back. Pick a weapon. Wreck their fort."
+      "summary": "Pull back. Pick a weapon. Wreck their fort.",
+      "artwork": "art/structure_tower.svg"
     },
     {
       "id": "arcade-gauntlet2",
@@ -1010,7 +1024,8 @@
       ],
       "provider": "arcade",
       "status": "current",
-      "summary": "Two heroes, one dungeon. Every phone is a controller and a screen."
+      "summary": "Two heroes, one dungeon. Every phone is a controller and a screen.",
+      "artwork": "art/sword.svg"
     },
     {
       "id": "lan-gridiron",
@@ -1066,7 +1081,8 @@
       "accent": "#84cc16",
       "playersLabel": "1–8 + bots + TV",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Call the play. Make the catch. Own the field."
+      "summary": "Call the play. Make the catch. Own the field.",
+      "artwork": "art/flag_triangle.svg"
     },
     {
       "id": "lan-hearts",
@@ -1122,7 +1138,8 @@
       "accent": "#f43f5e",
       "playersLabel": "1–4 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Duck the queen. Dodge the points."
+      "summary": "Duck the queen. Dodge the points.",
+      "artwork": "art/suit_hearts.svg"
     },
     {
       "id": "lan-orbitriot",
@@ -1178,7 +1195,8 @@
       "accent": "#ff3dbb",
       "playersLabel": "2–8 + TV",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Pool meets pinball. Everybody launches at once."
+      "summary": "Pool meets pinball. Everybody launches at once.",
+      "artwork": "art/arrow_rotate.svg"
     },
     {
       "id": "lan-pricecheck",
@@ -1234,7 +1252,8 @@
       "accent": "#10c96e",
       "playersLabel": "1–12",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Guess the price. Closest wins."
+      "summary": "Guess the price. Closest wins.",
+      "artwork": "art/dollar.svg"
     },
     {
       "id": "lan-rummikub",
@@ -1290,7 +1309,8 @@
       "accent": "#f59e0b",
       "playersLabel": "2–6 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Open with 30. Then wreck the table."
+      "summary": "Open with 30. Then wreck the table.",
+      "artwork": "art/card_tap.svg"
     },
     {
       "id": "lan-smelterskelter",
@@ -1346,7 +1366,8 @@
       "accent": "#ff4d1a",
       "playersLabel": "2–8 + TV",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Hook. Swing. Steal the cargo."
+      "summary": "Hook. Swing. Steal the cargo.",
+      "artwork": "art/fire.svg"
     },
     {
       "id": "lan-snake",
@@ -1402,7 +1423,8 @@
       "accent": "#4ade80",
       "playersLabel": "1–8 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Don't hit anything. Especially yourself."
+      "summary": "Don't hit anything. Especially yourself.",
+      "artwork": "art/arrow_right_curve.svg"
     },
     {
       "id": "lan-spades",
@@ -1458,7 +1480,8 @@
       "accent": "#22d3ee",
       "playersLabel": "2–4 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Partnership trick-taking to 500."
+      "summary": "Partnership trick-taking to 500.",
+      "artwork": "art/suit_spades.svg"
     },
     {
       "id": "lan-tanks",
@@ -1514,7 +1537,8 @@
       "accent": "#a3e635",
       "playersLabel": "1–6 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Angle. Power. Apologize later."
+      "summary": "Angle. Power. Apologize later.",
+      "artwork": "art/shield.svg"
     },
     {
       "id": "lan-poker",
@@ -1570,7 +1594,8 @@
       "accent": "#10c96e",
       "playersLabel": "1–9 + bots",
       "integration": "avrana.lan-launch/v1",
-      "summary": "No-Limit Hold'em. Last stack standing."
+      "summary": "No-Limit Hold'em. Last stack standing.",
+      "artwork": "art/suit_diamonds.svg"
     },
     {
       "id": "lan-fifthsignal",
@@ -1626,7 +1651,8 @@
       "accent": "#5ee7f7",
       "playersLabel": "3–5 + TV",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Five consoles. One signal. Nobody has the whole answer."
+      "summary": "Five consoles. One signal. Nobody has the whole answer.",
+      "artwork": "art/spinner_segment.svg"
     },
     {
       "id": "lan-trivia",
@@ -1682,7 +1708,8 @@
       "accent": "#facc15",
       "playersLabel": "2–10",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Buzz first. Think later."
+      "summary": "Buzz first. Think later.",
+      "artwork": "art/book_open.svg"
     },
     {
       "id": "lan-werewolf",
@@ -1738,7 +1765,8 @@
       "accent": "#c084fc",
       "playersLabel": "5–10, same room",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Someone here is lying."
+      "summary": "Someone here is lying.",
+      "artwork": "art/campfire.svg"
     },
     {
       "id": "lan-wordrush",
@@ -1794,7 +1822,8 @@
       "accent": "#2dd4bf",
       "playersLabel": "1–12",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Same 7 letters. Race to find the most words."
+      "summary": "Same 7 letters. Race to find the most words.",
+      "artwork": "art/notepad_write.svg"
     },
     {
       "id": "lan-wordclash",
@@ -1850,7 +1879,8 @@
       "accent": "#10c96e",
       "playersLabel": "2–8",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Duel. Relay. Sabotage."
+      "summary": "Duel. Relay. Sabotage.",
+      "artwork": "art/puzzle.svg"
     },
     {
       "id": "bluff",
@@ -1908,7 +1938,8 @@
       "accent": "#e879f9",
       "playersLabel": "1–6 (+ test bots)",
       "integration": "avrana.lan-launch/v1",
-      "summary": "Claim anything. Get caught, lose a card."
+      "summary": "Claim anything. Get caught, lose a card.",
+      "artwork": "art/card_flip.svg"
     },
     {
       "id": "ps1-bomberman",
@@ -2022,7 +2053,8 @@
       },
       "status": "experimental",
       "hardwareValidationRequired": true,
-      "summary": "Up to four bombers on one arena. Phones are the controllers."
+      "summary": "Up to four bombers on one arena. Phones are the controllers.",
+      "artwork": "art/exploding.svg"
     },
     {
       "id": "ps1-worms",
@@ -2105,7 +2137,8 @@
       },
       "status": "experimental",
       "hardwareValidationRequired": true,
-      "summary": "One controller, up to four players taking turns."
+      "summary": "One controller, up to four players taking turns.",
+      "artwork": "art/bow.svg"
     }
   ],
   "collections": []

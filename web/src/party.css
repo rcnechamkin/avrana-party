@@ -197,6 +197,11 @@
     border: 1px solid color-mix(in oklab, var(--game-accent) 40%, transparent);
   }
   .avrana-game-cover .avrana-icon { width: 2.25rem; height: 2.25rem; }
+  /* Library artwork is a one-colour SVG used as a mask, so each game tints it with its accent. */
+  .avrana-game-art {
+    width: 2.875rem; height: 2.875rem; background: currentColor;
+    -webkit-mask: var(--game-art) center / contain no-repeat; mask: var(--game-art) center / contain no-repeat;
+  }
   .avrana-game-title { margin: 0.125rem 0 0.25rem; font-size: 1.1875rem; font-weight: 750; line-height: 1.2; overflow-wrap: break-word; }
   .avrana-game-facts { display: flex; flex-wrap: wrap; gap: 0.125rem 0.875rem; font-size: 0.9375rem; color: var(--color-muted); }
   .avrana-game-facts > span { display: inline-flex; align-items: center; gap: 0.375rem; }

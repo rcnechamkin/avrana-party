@@ -9,6 +9,7 @@ the page only compares device capabilities. Output is deterministic (no timestam
 check that the committed file matches its sources.
 """
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,25 @@ from avrana.contracts.evaluate import compile_presentations
 CATALOG = 'avrana.catalog/v0'
 DEFAULT_APPLIANCE = CONTRACTS_DIR / 'appliances' / 'avrana-pi4.json'
 DEFAULT_OUT = WEB_DIR / 'catalog.json'
+DEFAULT_ARTWORK = CONTRACTS_DIR / 'artwork.json'
+ARTWORK_NAME = re.compile(r'^[A-Za-z0-9_]{1,40}$')
+
+
+def load_artwork(path=DEFAULT_ARTWORK, web=WEB_DIR):
+    """Avrana-curated temporary library artwork: {game id: 'art/<name>.svg'} (docs/UI-DESIGN-SYSTEM.md).
+    Every file must already be prepared under web/party/art/ (tools/build-art.mjs)."""
+    doc = strictjson.load_path(path)
+    if doc.get('schema') != 'avrana.artwork/v0' or not isinstance(doc.get('games'), dict):
+        raise ValueError('artwork.json: wrong schema')
+    out = {}
+    for cid, name in doc['games'].items():
+        if not isinstance(name, str) or not ARTWORK_NAME.match(name):
+            raise ValueError(f'artwork.json: bad artwork name for {cid}')
+        rel = f'art/{name}.svg'
+        if not (Path(web) / rel).is_file():
+            raise ValueError(f'artwork.json: {rel} is missing (run npm run build:art)')
+        out[cid] = rel
+    return out
 
 
 def load_contracts(directory, vocab):
@@ -45,12 +65,16 @@ def load_contracts(directory, vocab):
     return contracts
 
 
-def build(vocab, appliance, contracts, include=('live',)):
+def build(vocab, appliance, contracts, include=('live',), artwork=None):
     runtime = appliance_mod.runtime_capabilities(appliance, include)
     grants = appliance_mod.grants(appliance)
     unknown = sorted(set(grants) - set(contracts))
     if unknown:
         raise ValueError(f'installed games without a contract: {unknown}')
+    artwork = artwork or {}
+    stray = sorted(set(artwork) - set(contracts))
+    if stray:
+        raise ValueError(f'artwork for unknown games: {stray}')
     donor_launches = (lan_catalog.launch_targets(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
                      if any(c.get('extensions', {}).get('net.avrana.catalog', {}).get('integration')
                             for c in contracts.values()) else {})
@@ -91,6 +115,8 @@ def build(vocab, appliance, contracts, include=('live',)):
                 entry[key] = meta[key]
         if 'summary' in c:
             entry['summary'] = c['summary']
+        if cid in artwork:
+            entry['artwork'] = artwork[cid]
         games.append(entry)
     games.sort(key=lambda g: (not g['installed'], g['name'].lower(), g['id']))
     have = set(runtime)
@@ -125,7 +151,8 @@ def main(argv=None):
     appliance = appliance_mod.load(args.appliance, vocab)
     contracts = load_contracts(args.games, vocab)
     include = ('live', 'experiment') if args.include_experiments else ('live',)
-    text = strictjson.dumps(build(vocab, appliance, contracts, include))
+    artwork = load_artwork() if Path(args.games).resolve() == (CONTRACTS_DIR / 'games').resolve() else {}
+    text = strictjson.dumps(build(vocab, appliance, contracts, include, artwork))
     out = Path(args.out)
     if args.check:
         current = out.read_text(encoding='utf-8') if out.exists() else ''

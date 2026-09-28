@@ -77,11 +77,17 @@ function chipFor(result) {
 
 const ACCENT = /^#[0-9a-f]{6}$/i;
 
+const ARTWORK = /^art\/[A-Za-z0-9_]+\.svg$/;
+
+// Artwork, most specific first: the catalog's local artwork (Avrana-curated for now), else a
+// generic kind icon. Decorative: the title sits right beside it.
 function cover(game) {
+  const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
   const el = h('div', { class: 'avrana-game-cover', 'aria-hidden': 'true' },
-    game.icon ? game.icon : icon(kindIcon(game)));
-  // The catalog's own colour for the game; CSSOM, so the CSP's style-src still holds.
+    art ? h('span', { class: 'avrana-game-art' }) : icon(kindIcon(game)));
+  // The catalog's own colour and art for the game; CSSOM, so the CSP's style-src still holds.
   if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
+  if (art) el.style.setProperty('--game-art', `url("${new URL(art, document.baseURI).href}")`);
   return el;
 }
 
