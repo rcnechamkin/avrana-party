@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { donorAvailability, visibleGames, filterGames } from '../../web/party/lib/catalog-view.js';
+import { donorAvailability, visibleGames, filterGames, launchTarget } from '../../web/party/lib/catalog-view.js';
 import { createProfile } from '../../web/party/lib/profile.js';
 import { evaluateSeat } from '../../web/party/lib/evaluate.js';
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
@@ -28,7 +28,7 @@ test('donor API only confirms known visible slugs and never supplies launch auth
   const availability = donorAvailability({ games: [
     { slug: 'chess', live: { players: 1 }, entry: 'https://outside.test', requires: ['camera'] },
     { slug: 'template', hidden: true }, { title: 'Bad' }], external: [{ slug: 'wordclash' }] });
-  assert.deepEqual(availability.get('chess'), { running: true, players: 1, max: null });
+  assert.deepEqual(availability.get('chess'), { running: false, integration: false, players: 1, max: null });
   assert.ok(!availability.has('template'));
   assert.equal(catalog.games.find((g) => g.id === 'lan-chess').entry, '/games/chess/');
 });
@@ -39,4 +39,18 @@ test('a weak phone cannot downgrade another phone or the provider catalog', () =
   assert.equal(evaluateSeat(game, { ...strong, 'video.h264': 'no' }).outcome, 'unavailable');
   assert.deepEqual(evaluateSeat(game, strong), before);
   assert.equal(evaluateSeat(catalog.games.find((g) => g.id === 'lan-chess'), { websocket: 'yes', 'storage.local': 'yes' }).outcome, 'ready');
+});
+
+test('all granted browser titles launch directly with explicit context; invalid paths fail closed', () => {
+  const games = catalog.games.filter((g) => g.provider === 'lan-games' && g.installed);
+  assert.equal(games.length, 29);
+  for (const game of games) {
+    assert.equal(launchTarget(game), `/games/${game.legacySlug}/?avrana=1`);
+    assert.equal(launchTarget({ ...game, entry: '/' }), null);
+    assert.equal(launchTarget({ ...game, launchTarget: '//outside.test/' }), null);
+  }
+  assert.equal(launchTarget(catalog.games.find((g) => g.id === 'arcade-gauntlet2')), '/arcade/');
+  const api = { games: [{ slug: 'chess' }], external: [], avranaIntegration: 'avrana.lan-launch/v1' };
+  assert.equal(donorAvailability(api).get('chess').running, true);
+  assert.equal(donorAvailability({ ...api, avranaIntegration: 'unknown' }).get('chess').running, false);
 });

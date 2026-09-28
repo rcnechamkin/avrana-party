@@ -6,7 +6,8 @@ export function donorAvailability(body) {
   for (const row of [...body.games, ...body.external]) {
     if (!row || typeof row.slug !== 'string' || row.hidden) continue;
     available.set(row.slug, {
-      running: true,
+      running: body.avranaIntegration === 'avrana.lan-launch/v1',
+      integration: body.avranaIntegration === 'avrana.lan-launch/v1',
       players: Number.isInteger(row.live?.players) ? row.live.players : null,
       max: null,
     });
@@ -18,6 +19,7 @@ export function visibleGames(catalog) {
 }
 export function filterGames(games, { query = '', players = 0, view = 'all' }, profile) {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  games.forEach((game) => profile.keyFor(game));
   const me = profile.snapshot();
   const filtered = games.filter((g) => {
     const words = [g.name, g.summary, g.category].filter(Boolean).join(' ').toLowerCase();
@@ -30,4 +32,13 @@ export function filterGames(games, { query = '', players = 0, view = 'all' }, pr
   if (view === 'recent') filtered.sort((a, b) =>
     me.recent.indexOf(profile.keyFor(a)) - me.recent.indexOf(profile.keyFor(b)));
   return filtered;
+}
+
+// Only appliance-granted paths are launch authority. Donor support gates activation.
+export function launchTarget(game) {
+  if (game.provider !== 'lan-games') return game.entry;
+  const expected = '/games/' + game.legacySlug + '/';
+  if (!game.legacySlug || game.entry !== expected || game.launchTarget !== expected
+      || game.integration !== 'avrana.lan-launch/v1') return null;
+  return expected + '?avrana=1';
 }

@@ -14,7 +14,7 @@ class DonorCatalog(unittest.TestCase):
 
     def test_known_library_is_individual_valid_contracts(self):
         games = lan_catalog.parse(self.source, VOCAB)
-        self.assertEqual(len(games), 29)
+        self.assertEqual(len(games), 30)
         self.assertIn('lan-wordclash', games)
         self.assertNotIn('lan-template', games)
         self.assertNotIn('lan-bluff', games)
@@ -23,12 +23,13 @@ class DonorCatalog(unittest.TestCase):
         for cid, contract in games.items():
             self.assertEqual(game.validate(contract, VOCAB), contract)
             self.assertNotIn('entry', contract)
-            self.assertEqual(contract['extensions']['net.avrana.catalog']['legacySlug'], cid[4:])
+            self.assertNotIn('launchTarget', contract['extensions']['net.avrana.catalog'])
+            self.assertEqual(contract['extensions']['net.avrana.catalog']['legacySlug'], ('bluff' if cid == 'bluff' else cid[4:]))
 
     def test_bad_or_authority_bearing_metadata_is_rejected(self):
         for key, value in [('slug', '../party'), ('min_p', True), ('max_p', 99),
                            ('tv', 'yes'), ('entry', '/evil/'), ('requires', ['camera']),
-                           ('title', '<invalid>\x00')]:
+                           ('title', '<invalid>\x00'), ('launch', '//outside.test/'), ('id', 'invented'), ('accent', 'bad')]:
             doc = copy.deepcopy(self.source)
             doc['games'][0][key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):

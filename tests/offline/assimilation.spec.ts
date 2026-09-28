@@ -43,14 +43,14 @@ test('profile edits and a direct legacy game visit share the same backing identi
   const snapshot = await page.evaluate(() => ({ token: localStorage.getItem('wc-token'),
     name: localStorage.getItem('wc-name'), avatar: localStorage.getItem('wc-avatar') }));
   expect(snapshot).toEqual({ token: 'existing-player-01', name: 'Robin Two', avatar: '🐙' });
-  await page.route('**/games/chess/', (route) => route.fulfill({
+  await page.route('**/games/chess/?avrana=1', (route) => route.fulfill({
     contentType: 'text/html', body: '<!doctype html><title>Legacy game stub</title><h1>Chess</h1>' }));
   await page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play', exact: true }).click();
-  await expect(page).toHaveURL(/\/games\/chess\/$/);
+  await expect(page).toHaveURL(/\/games\/chess\/\?avrana=1$/);
   // These are the exact getters in the inspected legacy Hub.identity implementation.
   expect(await page.evaluate(() => [localStorage.getItem('wc-token'), localStorage.getItem('wc-name'),
     localStorage.getItem('wc-avatar'), JSON.parse(localStorage.getItem('lg-recent') || '[]')[0],
-    localStorage.getItem('lg-play-total')])).toEqual(['existing-player-01','Robin Two','🐙','chess','4']);
+    localStorage.getItem('lg-play-total')])).toEqual(['existing-player-01','Robin Two','🐙','avrana:lan-chess','4']);
 });
 test('search, group size and cross-provider favorites work together', async ({ page }) => {
   await open(page);
@@ -141,4 +141,11 @@ test('photo framing uses the shared avatar endpoint and removal handles failures
   await page.getByRole('button', { name: 'Remove photo' }).click();
   await expect(page.locator('#player-chip img')).toHaveCount(0);
   expect(uploads).toEqual(['existing-player-01','existing-player-01','existing-player-01']);
+});
+
+test('old donor fails honestly instead of entering a second global shell', async ({ page }) => {
+  await page.route('**/api/games', (route) => route.fulfill({ json: { games: [{ slug: 'chess' }], external: [] } }));
+  await open(page);
+  await expect(page.locator('[data-id="lan-chess"]')).toContainText('Games update needed');
+  await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveCount(0);
 });

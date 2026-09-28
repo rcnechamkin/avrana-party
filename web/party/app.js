@@ -12,7 +12,7 @@ import { capitalize, h, howText, kindIcon, playersText } from './lib/ui.js';
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
-import { donorAvailability, visibleGames, filterGames } from './lib/catalog-view.js';
+import { donorAvailability, visibleGames, filterGames, launchTarget } from './lib/catalog-view.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -80,18 +80,26 @@ function liveText(hp) {
 }
 
 function gameCard(game, result, hp) {
+  const target = launchTarget(game);
   const installed = Boolean(game.installed && game.entry);
   const note = installed ? explain(result, state.catalog.labels || {}) : '';
-  const running = installed && !(hp && !hp.running);
+  const running = installed && Boolean(target) && !(hp && !hp.running);
   const fits = result.outcome !== 'unavailable';
-  const remember = () => {
-    try { profile.remember(game); renderProfile(); }
-    catch (err) { $('profile-note').textContent = err.message; }
+  const remember = (event) => {
+    try {
+      if (!profile.snapshot().name) {
+        event.preventDefault(); $('profile').open = true; $('profile-name').focus();
+        $('profile-note').textContent = 'Choose your Party name before opening a game.';
+        return;
+      }
+      profile.ensureToken(); profile.remember(game); renderProfile();
+    }
+    catch (err) { event.preventDefault(); $('profile-note').textContent = err.message; }
   };
   const action = running && fits
-    ? h('a', { class: 'button', href: game.entry, onclick: remember, text: result.outcome === 'watch' ? 'Watch' : 'Play' })
+    ? h('a', { class: 'button', href: target, onclick: remember, text: result.outcome === 'watch' ? 'Watch' : 'Play' })
     : running
-      ? h('a', { class: 'button quiet', href: game.entry, onclick: remember, text: 'Try anyway' })
+      ? h('a', { class: 'button quiet', href: target, onclick: remember, text: 'Try anyway' })
       : h('button', { type: 'button', class: 'button', disabled: true, text: installed ? 'Play' : 'Not installed' });
   const favorite = profile.isFavorite(game);
   const star = h('button', { type: 'button', class: 'quiet favorite', text: favorite ? '★' : '☆',
@@ -100,7 +108,7 @@ function gameCard(game, result, hp) {
       try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
       catch (err) { $('profile-note').textContent = err.message; }
     } });
-  const live = installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
+  const live = installed && hp?.integration === false ? 'Games update needed before opening here' : installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
   return h('li', { class: 'game', 'data-id': game.id, 'data-outcome': installed ? result.outcome : 'unavailable' },
     h('div', { class: 'gicon', 'aria-hidden': 'true', text: game.icon || kindIcon(game) }),
     h('div', {}, h('h3', { text: game.name }),
@@ -184,6 +192,7 @@ async function boot() {
   ]);
   state.reachable = reachable;
   state.catalog = catalog;
+  catalog.games.forEach((game) => profile.keyFor(game));
   state.report = report;
   $('away').hidden = reachable;
   $('chat').hidden = !reachable;

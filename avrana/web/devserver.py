@@ -97,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
             snapshot = json.loads((REPO_ROOT / 'contracts/catalogs/lan-games.json').read_text(encoding='utf-8'))
             rows = [dict(row, live={'players': 0, 'phase': 'lobby'}, hidden=False)
                     for row in snapshot['games']]
-            return self._send(200, json.dumps({'games': rows, 'external': []}).encode(),
+            return self._send(200, json.dumps({'games': rows, 'external': [], 'avranaIntegration': 'avrana.lan-launch/v1'}).encode(),
                               'application/json', {'Cache-Control': 'no-store'})
         if path == '/arcade/stats':
             stats = cfg['arcade'].stats()

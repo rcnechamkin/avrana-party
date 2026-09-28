@@ -42,7 +42,7 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(card).toContainText('Works on this phone');
   await expect(card).toContainText('1 of 2 playing');
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/arcade/');
-  await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/chess/');
+  await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/chess/?avrana=1');
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Not installed');
   // Uninstalled prototypes stay hidden; explicitly experimental titles are visible but cannot launch.
   await expect(page.locator('[data-id="bluff"]')).toHaveCount(0);
