@@ -17,10 +17,9 @@ shell disables LAN launches ("Games update needed") unless `/api/games` advertis
 
 ## Which revision
 
-Games-fork GitHub `main`, at an explicit SHA. Prefer the `main` that includes
-`fix/reconnect-lineage` (the hubnet reconnect fix and lifecycle log lines). If that PR is not merged
-yet, `3a6c472` is acceptable: it is no worse than production on reconnect, because upstream has
-the same bug.
+Games-fork GitHub `main`, at an explicit SHA: **`9696524`** as of 2026-09-27 (games PR #2 merged
+the hubnet reconnect fix and lifecycle log lines onto `3a6c472`). Its tree is identical to the tested
+`ac7d6c7`; games CI (pytest + static) passed on the PR.
 
 Laptop evidence for `3a6c472` and `fix/reconnect-lineage` (`ac7d6c7`), 2026-09-27:
 - pytest 1200 / 1201 pass.
