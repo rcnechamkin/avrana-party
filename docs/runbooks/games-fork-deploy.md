@@ -1,7 +1,8 @@
 # Runbook: switch production games from upstream LAN-Games to the Avrana Party Games fork
 
-Status: **READY, not run** (prepared 2026-09-27). Every production step needs `sudo`, so the owner
-types it. Order matters: this comes **before** any `/party/` shell newer than `459d4cd`. PR #7's
+Status: **RUN 2026-09-27** by the owner: the fork `9696524` serves production and the shell followed
+(`docs/findings/2026-09-27-production-deploy.md`). Kept as the procedure and the rollback
+reference. Prepared 2026-09-27. Every production step needs `sudo`, so the owner types it. Order matters: this comes **before** any `/party/` shell newer than `459d4cd`. PR #7's
 shell disables LAN launches ("Games update needed") unless `/api/games` advertises
 `avrana.lan-launch/v1`, and today's upstream server does not.
 

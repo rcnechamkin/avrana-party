@@ -33,13 +33,14 @@ The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch
 
 ### The games fork: Avrana Party Games (LAN Games + BLUFF) — a separate repository
 
-| Copy | Where | State (2026-09-24) |
+| Copy | Where | State (2026-09-24; GitHub and production rows 2026-09-27) |
 |---|---|---|
-| GitHub | `rcnechamkin/avrana-party-games` | **does not exist yet** (owner creates it; push `main` only) |
+| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical; `main` @ `9696524` (2026-09-27); work on `fix/*` branches with PRs |
 | laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `6d795a7` (reconnect fix, lifecycle log lines, the Pi's `ops/lab` helpers; 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
 | Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; also has `playtest-readiness`, checked out as the worktree **`~/avrana-lab/wt/playtest`** (use it for the playtest); old `agent/*` worktrees under `~/avrana-lab/wt/`. Runs BLUFF on port 8196 when started |
 | laptop working clone | any scratch clone of the bare backup | edit on a branch; this separate games fork has no GitHub Cloud workflow yet |
-| **live** LAN Games | Pi `/home/cody/LAN-Games` | upstream `main` @ `5da1764` (retired upstream); service `avranaparty-games`, port 8096. **Never edited.** |
+| **production** games | Pi `/home/cody/avrana-party-games` | fork `main` @ `9696524` since 2026-09-27; service `avranaparty-games` (port 8096) via the drop-in `avranaparty-games.service.d/avrana-fork.conf`, using the old venv (`docs/findings/2026-09-27-production-deploy.md`) |
+| upstream LAN Games (rollback) | Pi `/home/cody/LAN-Games` | upstream `main` @ `5da1764` (retired upstream); no longer served; removing the drop-in returns to it. **Never edited.** |
 
 AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on the fork's
 `abandoned/classic-diplomacy` branch (and `~/avrana-lab/diplomacy-spike` on the Pi). `main` and
@@ -50,7 +51,9 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 Reconciled 2026-09-27 (`docs/findings/2026-09-27-m0-git-baseline.md`). Branches
 fully contained in `main` were deleted; nothing below is deployed unless it says so. Merged the same
 day (PRs #8–#13): the arcade AP fix, the M0 reconcile, the BLUFF-seam finding, the games deploy
-runbook, Party Core v0 and the session protocol v0; none of them is deployed.
+runbook, Party Core v0 and the session protocol v0. Production was fast-forwarded to `7581baa` the
+same evening (shell and arcade AP fix live); Party Core v0 and the session protocol are in that
+checkout but **no Party service runs** (`docs/findings/2026-09-27-production-deploy.md`).
 
 | Branch | Where | What | Status |
 |---|---|---|---|
@@ -66,8 +69,8 @@ runbook, Party Core v0 and the session protocol v0; none of them is deployed.
 | Port | Service (systemd) | Code |
 |---|---|---|
 | 80 | nginx (`/etc/nginx/sites-available/avrana-party`): captive probes, LAN Games, `/arcade/` | `avrana-party.nginx` |
-| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; **proposed** `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current`) | `avrana-party.nginx`, `ops/` |
-| 8096 | LAN Games (`avranaparty-games`) | `/home/cody/LAN-Games` |
+| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `7581baa` since 2026-09-27) | `avrana-party.nginx`, `ops/` |
+| 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `9696524` (upstream `/home/cody/LAN-Games` kept for rollback) |
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
 | 5353 | avahi (`party.local`) | system |
