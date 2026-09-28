@@ -19,7 +19,8 @@ async function legacyProfile(page: Page) {
 test('legacy profile, favorites and history appear in the canonical shell', async ({ page }) => {
   await legacyProfile(page); await open(page);
   await expect(page.locator('#player-chip')).toContainText('Robin');
-  await expect(page.locator('#player-chip')).toContainText('🐸');
+  // The legacy 🐸 character reads as the Gaze avatar at its position (docs/UI-DESIGN-SYSTEM.md).
+  await expect(page.locator('#player-chip img')).toHaveAttribute('src', /\/party\/avatars\/gaze-02\.svg$/);
   await expect(page.locator('#game-count')).toHaveText('32 games');
   await expect(page.locator('[data-id="lan-games"]')).toHaveCount(0);
   await expect(page.locator('[data-id="lan-chess"]')).toContainText('CHESS');
@@ -37,12 +38,14 @@ test('profile edits and a direct legacy game visit share the same backing identi
   await legacyProfile(page); await open(page);
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Robin Two');
-  await page.getByRole('button', { name: 'Choose 🐙', exact: true }).click();
+  const choice = page.locator('#avatar-choices [data-avatar="gaze-17"]');
+  await choice.click();
+  await expect(choice).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Save profile' }).click();
   await expect(page.locator('#player-chip')).toContainText('Robin Two');
   const snapshot = await page.evaluate(() => ({ token: localStorage.getItem('wc-token'),
     name: localStorage.getItem('wc-name'), avatar: localStorage.getItem('wc-avatar') }));
-  expect(snapshot).toEqual({ token: 'existing-player-01', name: 'Robin Two', avatar: '🐙' });
+  expect(snapshot).toEqual({ token: 'existing-player-01', name: 'Robin Two', avatar: 'gaze-17' });
   await page.route('**/games/chess/?avrana=1', (route) => route.fulfill({
     contentType: 'text/html', body: '<!doctype html><title>Legacy game stub</title><h1>Chess</h1>' }));
   await page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play', exact: true }).click();
@@ -50,7 +53,7 @@ test('profile edits and a direct legacy game visit share the same backing identi
   // These are the exact getters in the inspected legacy Hub.identity implementation.
   expect(await page.evaluate(() => [localStorage.getItem('wc-token'), localStorage.getItem('wc-name'),
     localStorage.getItem('wc-avatar'), JSON.parse(localStorage.getItem('lg-recent') || '[]')[0],
-    localStorage.getItem('lg-play-total')])).toEqual(['existing-player-01','Robin Two','🐙','avrana:lan-chess','4']);
+    localStorage.getItem('lg-play-total')])).toEqual(['existing-player-01','Robin Two','gaze-17','avrana:lan-chess','4']);
 });
 test('search, group size and cross-provider favorites work together', async ({ page }) => {
   await open(page);
@@ -88,7 +91,7 @@ test('Party Chat uses the same hello and server echo, then reconnects after a pr
   await open(page); await page.locator('#chat summary').click();
   await expect(page.locator('#chat-status')).toHaveText('2 in chat');
   await expect(page.locator('#chat-messages')).toContainText('Hello from the games');
-  expect(hellos[0]).toEqual({ t: 'hello', token: 'existing-player-01', name: 'Robin', avatar: '🐸' });
+  expect(hellos[0]).toEqual({ t: 'hello', token: 'existing-player-01', name: 'Robin', avatar: 'gaze-02' });
   await page.locator('#chat-text').fill('<b>Hello Party</b>');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.locator('#chat-messages')).toContainText('<b>Hello Party</b>');
@@ -139,7 +142,8 @@ test('photo framing uses the shared avatar endpoint and removal handles failures
   await expect(page.locator('#player-chip img')).toHaveCount(1);
   failDelete = false;
   await page.getByRole('button', { name: 'Remove photo' }).click();
-  await expect(page.locator('#player-chip img')).toHaveCount(0);
+  // Without a photo the chip falls back to the player's Gaze avatar (was: an emoji character).
+  await expect(page.locator('#player-chip img')).toHaveAttribute('src', /\/party\/avatars\/gaze-02\.svg$/);
   expect(uploads).toEqual(['existing-player-01','existing-player-01','existing-player-01']);
 });
 

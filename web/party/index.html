@@ -37,7 +37,7 @@
       <form id="profile-form">
         <label for="profile-name" class="mb-1.5 block text-[0.9375rem] font-semibold">Your name</label>
         <input id="profile-name" class="input w-full text-base" maxlength="24" autocomplete="nickname" required>
-        <p class="mb-2 mt-4 text-[0.9375rem] font-semibold" id="avatar-label">Choose a character</p>
+        <p class="mb-2 mt-5 flex items-baseline justify-between gap-3 text-[0.9375rem]"><span class="font-semibold" id="avatar-label">Your avatar</span><span id="avatar-chosen" class="text-muted"></span></p>
         <div id="avatar-choices" class="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-4" role="group" aria-labelledby="avatar-label"></div>
         <button type="submit" class="btn btn-primary btn-block mt-4">Save profile</button>
       </form>

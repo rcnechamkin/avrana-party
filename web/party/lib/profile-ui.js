@@ -1,18 +1,38 @@
 // Small shell editor over the SAME shared model and avatar service.
-import { AVATARS } from './profile.js';
+import { AVATARS, avatarLabel } from './profile.js';
 import { icon } from './icons.js';
 import { h } from './ui.js';
 
-/** A person's picture: their photo, or the emoji character they chose. size: '', 'sm' or 'lg'. */
-export function avatarNode(me, size = '') {
+const avatarSrc = (id) => new URL(`../avatars/${id}.svg`, import.meta.url).href;
+// The games' server hands out a Gaze choice as its bundled picture; use the Party's own copy.
+const SHARED_GAZE = /^\/shared\/avatars\/(gaze-\d\d)\.svg$/;
+
+/** Which bundled avatar a person shows, if any: their own choice, or one named by the games. */
+export function gazeOf(person) {
+  if (AVATARS.includes(person.avatar)) return person.avatar;
+  const match = SHARED_GAZE.exec(person.pfp || '');
+  return match && AVATARS.includes(match[1]) ? match[1] : null;
+}
+
+/** A person's picture: an uploaded photo, else their Gaze avatar, else (older players in chat)
+ * the character they had. Decorative: the name always sits next to it. size: '', 'sm' or 'lg'. */
+export function avatarNode(person, size = '') {
   const cls = ('avrana-avatar ' + size).trim();
-  return me.pfp ? h('img', { class: cls, src: me.pfp, alt: '', width: 48, height: 48 })
-    : h('span', { class: cls, 'aria-hidden': 'true', text: me.avatar });
+  const gaze = gazeOf(person);
+  if (person.pfp && !SHARED_GAZE.test(person.pfp)) return h('img', { class: cls, src: person.pfp, alt: '', width: 48, height: 48 });
+  if (gaze) return h('img', { class: cls, src: avatarSrc(gaze), alt: '', width: 48, height: 48 });
+  return h('span', { class: cls, 'aria-hidden': 'true', text: person.avatar || '' });
 }
 export function wireProfile(profile, changed) {
   const $ = (id) => document.getElementById(id);
   let chosen = profile.snapshot().avatar, image = null, selection = 0;
   const say = (text) => { $('profile-note').textContent = text; };
+  // Built once, so choosing keeps keyboard focus on the choice.
+  const choices = AVATARS.map((id) => h('button', {
+    type: 'button', class: 'avrana-avatar-choice', 'data-avatar': id, 'aria-label': 'Choose ' + avatarLabel(id),
+    onclick: () => { chosen = id; render(); },
+  }, h('img', { src: avatarSrc(id), alt: '', width: 64, height: 64, loading: 'lazy' }), icon('check', { cls: 'tick' })));
+  $('avatar-choices').replaceChildren(...choices);
   function render() {
     const me = profile.snapshot();
     // Who you are at this party; a new guest's first step is choosing a name.
@@ -29,11 +49,8 @@ export function wireProfile(profile, changed) {
       $('profile-name').value = me.name;
       chosen = me.avatar;
     }
-    $('avatar-choices').replaceChildren(...AVATARS.map((avatar) => h('button', {
-      type: 'button', class: 'btn btn-ghost h-14 border-line text-[1.75rem] aria-pressed:border-primary aria-pressed:bg-base-300', text: avatar,
-      'aria-label': 'Choose ' + avatar, 'aria-pressed': avatar === chosen,
-      onclick: () => { chosen = avatar; render(); },
-    })));
+    for (const choice of choices) choice.setAttribute('aria-pressed', String(choice.dataset.avatar === chosen));
+    $('avatar-chosen').textContent = avatarLabel(chosen);
   }
   $('profile').addEventListener('toggle', () =>
     $('player-chip').setAttribute('aria-expanded', String($('profile').open)));

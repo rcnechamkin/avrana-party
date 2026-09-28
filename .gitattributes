@@ -7,3 +7,4 @@ tools/build-icons.mjs text eol=lf
 tools/check-ui.mjs text eol=lf
 web/party/avatars/*.svg text eol=lf
 tools/build-avatars.mjs text eol=lf
+web/party/lib/avatars.js text eol=lf
