@@ -1,0 +1,7 @@
+# Generated UI assets are compared byte for byte by `npm run check:ui` (docs/UI-DESIGN-SYSTEM.md):
+# keep them, and their sources, LF in every checkout regardless of core.autocrlf.
+web/party/styles.css text eol=lf
+web/party/lib/icons.js text eol=lf
+web/src/party.css text eol=lf
+tools/build-icons.mjs text eol=lf
+tools/check-ui.mjs text eol=lf
