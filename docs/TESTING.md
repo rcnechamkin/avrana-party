@@ -146,7 +146,17 @@ AVRANA_GAMES_REPO=../avrana-party-games AVRANA_PROVIDER_PYTHON=../avrana-party-g
 
 Windows uses .venv/Scripts/python.exe and PowerShell $env:NAME assignments. The
 harness binds 127.0.0.1:8182, imports actual donor routes/chat/game sockets and serves
-the real shell with its CSP. Arcade health is simulated. It rejects metadata drift
+the real shell with its CSP. A second instance on 127.0.0.1:8183 (`--party-session`,
+`tests/provider/party_harness.py`) also runs the real Party service behind `/party/api/`
+(the games server gets a throwaway BLUFF key and the party's loopback URL, both halves of its
+party-session config), so `party-session.spec.ts` drives Join, launch, tickets, End and the
+real BLUFF page on one origin: reload, sleep/wake, a lost or timed-out ticket request return
+the same seat and hand; another member, a forged or stale ticket, a wc-token and a stranger
+never take a seat or see a hand; a phone asleep through the end shows the end and joins the
+rematch as a new session; a watcher becomes a player at the next launch (AVR-22/23/24). It
+runs once, in the android-size project, with a Pixel-sized and an iPhone-sized phone; the whole
+provider run expects 19 passed and 7 skipped. The real-phone version is
+`docs/runbooks/bluff-party-reconnect.md`. Arcade health is simulated. It rejects metadata drift
 before starting. Runtime test avatar/media directories stay ignored in the local
 games checkout. Tests use synthetic identities; no Pi, WLAN, TV, ROM or emulator.
 CI independently checks each repo; private cross-repo checkout credentials are not

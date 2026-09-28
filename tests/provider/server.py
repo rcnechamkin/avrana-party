@@ -1,5 +1,10 @@
 """Local cross-repository harness. Real donor routes/sockets, simulated arcade.
 Never a deployment server; binds loopback and needs an explicit games checkout.
+
+--party-session also runs Party Core v0 and the session protocol in-process behind
+/party/api/ (tests/provider/party_harness.py, AVR-23). --bind adds one more listening
+address for a supervised real-phone check on a lab port (docs/runbooks/bluff-party-reconnect.md);
+the launch route still needs loopback, so 127.0.0.1 is always bound too.
 """
 import argparse
 from pathlib import Path
@@ -8,11 +13,16 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument('--games', required=True)
 parser.add_argument('--port', type=int, default=8182)
+parser.add_argument('--party-session', action='store_true')
+parser.add_argument('--bind', default='127.0.0.1')
 args = parser.parse_args()
 platform = Path(__file__).resolve().parents[2]
 games = Path(args.games).resolve()
 sys.path.insert(0, str(games))
 sys.path.insert(1, str(platform))
+if args.party_session:
+    import party_harness
+    party_key, party_port = party_harness.prepare_keys()   # before the donor reads its env
 import asyncio
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -44,5 +54,19 @@ async def shell_headers(request, call_next):
         response.headers.update(SHELL_HEADERS)
     return response
 
+if args.party_session:
+    public = {args.bind} - {'127.0.0.1'}
+    party_harness.attach(donor.app, party_key, args.port, public, party_port)
+
 donor.app.mount('/party', StaticFiles(directory=platform / 'web/party', html=True))
-uvicorn.run(donor.app, host='127.0.0.1', port=args.port, log_level='warning')
+if args.bind == '127.0.0.1':
+    uvicorn.run(donor.app, host='127.0.0.1', port=args.port, log_level='warning')
+else:
+    import socket
+    listeners = []
+    for host in ('127.0.0.1', args.bind):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, args.port))
+        listeners.append(sock)
+    uvicorn.Server(uvicorn.Config(donor.app, log_level='warning')).run(sockets=listeners)
