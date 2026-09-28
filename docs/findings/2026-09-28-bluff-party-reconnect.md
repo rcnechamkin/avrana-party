@@ -1,8 +1,8 @@
 # BLUFF in a Party session end to end on the laptop: reconnect, session end, rematch (2026-09-28)
 
-Status: **TESTED (laptop, Windows, Chromium)** for AVR-23, with AVR-22's review fixes and AVR-24
-integrated. Not deployed, not LIVE, not phone-verified: the real-phone check is
-`docs/runbooks/bluff-party-reconnect.md` (owner). The Party is authoritative throughout: a network
+Status: **TESTED (laptop, Windows, Chromium), on the Pi over the Party Wi-Fi, and phone-verified on
+an iPhone** (see "Real-phone result") for AVR-23, with AVR-22's review fixes and AVR-24 integrated.
+Not deployed, not LIVE: the production HTTPS path is AVR-51's. The Party is authoritative throughout: a network
 failure, reload, sleep/wake or an old browser token never changes a Party player's role, seat or
 identity by itself.
 
@@ -87,6 +87,21 @@ is loaded; the full provider suite then passed three runs in a row.
 What desktop automation cannot show, so it stays for real phones: iPhone Safari (WebKit) lock and
 wake, where the OS suspends the page and drops its connection; a phone leaving and rejoining the
 Party Wi-Fi at the radio level; iOS or Android killing a background tab.
+
+## Real-phone result (owner, iPhone with Safari, 2026-09-28)
+
+On the same Pi lab harness over the Avrana Party Wi-Fi (`http://10.42.0.1:8190`; games `0ddc6cb`,
+harness `bc81776`), the three checks desktop automation cannot reproduce all **passed**, as reported
+by the owner (device model and iOS version not recorded):
+
+| Check | Result |
+|---|---|
+| R2: real screen lock about 15 s, then wake | same seat and cards; never a watcher |
+| R4 on the phone: Wi-Fi off about 10 s, then on (radio) | same seat and cards |
+| E1 with a really locked phone: host ends the game, then wake | "This game is over.", no table |
+
+Not covered: the production HTTPS path (`https://party.avrana.net`, `Secure` cookie, nginx
+`location /party/api/`), which needs the Party Core deployment (AVR-51).
 
 ## Bugs found and fixed
 
