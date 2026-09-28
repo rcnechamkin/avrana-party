@@ -23,7 +23,8 @@
     "build:icons": "node tools/build-icons.mjs",
     "build:css": "tailwindcss -i web/src/party.css -o web/party/styles.css --minify",
     "watch:css": "tailwindcss -i web/src/party.css -o web/party/styles.css --watch",
-    "build:ui": "npm run build:icons && npm run build:css"
+    "build:ui": "npm run build:icons && npm run build:css",
+    "check:ui": "node tools/check-ui.mjs"
   },
   "repository": {
     "type": "git",

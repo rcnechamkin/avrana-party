@@ -10,10 +10,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ICONS = [
-  'check', 'chevron-down', 'chevron-left', 'circle-alert', 'circle-check', 'circle-help', 'circle-slash',
-  'dices', 'eye', 'gamepad-2', 'history', 'image', 'layers', 'lock', 'message-circle', 'monitor',
+  'check', 'chevron-down', 'chevron-left', 'chevron-right', 'circle-alert', 'circle-check', 'circle-help', 'circle-slash',
+  'dices', 'eye', 'gamepad-2', 'history', 'image', 'layers', 'lock', 'message-circle', 'monitor', 'play',
   'search', 'search-x', 'send-horizontal', 'smartphone', 'spade', 'star', 'user-round-pen', 'users',
   'wifi', 'wifi-off', 'x',
 ];
@@ -63,7 +64,17 @@ export function hydrateIcons(root = document) {
   }
 }
 `;
-const target = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
-  '..', 'web', 'party', 'lib', 'icons.js');
-writeFileSync(target, out);
-console.log(`icons.js: ${ICONS.length} icons, ${out.length} bytes (lucide-static ${version})`);
+const target = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'party', 'lib', 'icons.js');
+if (process.argv.includes('--check')) {
+  // Used by tools/check-ui.mjs: compare, never write.
+  let current = null;
+  try { current = readFileSync(target, 'utf8'); } catch { /* missing counts as stale */ }
+  if (current !== out) {
+    console.error('web/party/lib/icons.js is stale: run npm run build:icons and commit it');
+    process.exit(1);
+  }
+  console.log('icons.js is current');
+} else {
+  writeFileSync(target, out);
+  console.log(`icons.js: ${ICONS.length} icons, ${out.length} bytes (lucide-static ${version})`);
+}

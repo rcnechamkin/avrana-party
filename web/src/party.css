@@ -1,0 +1,219 @@
+/* Avrana Party system UI: source stylesheet (prototype-era design system, not the final brand).
+ *
+ *   web/src/party.css  --(npm run build:css, Tailwind CSS 4 + daisyUI 5, build time only)-->  web/party/styles.css
+ *
+ * The compiled file is committed: the Pi serves static files and never runs Node. `npm run check:ui`
+ * fails when it is stale. Guide: docs/UI-DESIGN-SYSTEM.md.
+ *
+ * Layers, most general first: the `avrana` daisyUI theme (colour, radius, control size) ->
+ * Tailwind @theme tokens (text/line colours, fonts) -> base element rules -> a small `avrana-*`
+ * component layer for patterns the pages repeat. Layout and one-offs use Tailwind utilities in the
+ * markup. No web fonts, no remote assets, no inline styles (the /party/ CSP forbids them). */
+
+@import "tailwindcss" source(none);
+@source "../party/index.html";
+@source "../party/diag/index.html";
+@source "../party/app.js";
+@source "../party/diag/diag.js";
+@source "../party/lib/ui.js";
+@source "../party/lib/profile-ui.js";
+
+@plugin "daisyui" {
+  themes: false;
+  logs: false;
+}
+
+@plugin "daisyui/theme" {
+  name: "avrana";
+  default: true;
+  color-scheme: dark;
+  /* Surfaces: deep charcoal with a faint violet cast, each level a step up. */
+  --color-base-100: oklch(18.5% 0.012 285);
+  --color-base-200: oklch(22.5% 0.015 285);
+  --color-base-300: oklch(27.5% 0.018 285);
+  --color-base-content: oklch(94% 0.008 85);
+  /* Muted cosmic purple; white text on it passes WCAG AA. */
+  --color-primary: oklch(55% 0.135 293);
+  --color-primary-content: oklch(98.5% 0.006 293);
+  --color-secondary: oklch(74% 0.07 305);
+  --color-secondary-content: oklch(20% 0.03 300);
+  --color-accent: oklch(80% 0.075 300);
+  --color-accent-content: oklch(20% 0.03 300);
+  --color-neutral: oklch(31% 0.02 285);
+  --color-neutral-content: oklch(92% 0.01 285);
+  /* State colours: recognisable, never loud. */
+  --color-info: oklch(74% 0.085 250);
+  --color-info-content: oklch(20% 0.03 250);
+  --color-success: oklch(76% 0.11 158);
+  --color-success-content: oklch(20% 0.04 158);
+  --color-warning: oklch(82% 0.11 78);
+  --color-warning-content: oklch(22% 0.04 78);
+  --color-error: oklch(68% 0.15 22);
+  --color-error-content: oklch(20% 0.04 22);
+  /* One radius per role: fields/buttons, boxes (panels, tiles), small selectors. */
+  --radius-selector: 0.5rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  /* size-field x 10 = 48 px default buttons and inputs. */
+  --size-selector: 0.25rem;
+  --size-field: 0.3rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme {
+  --color-muted: oklch(76% 0.025 290);
+  --color-line: oklch(33% 0.02 285);
+  --color-line-strong: oklch(42% 0.03 290);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; background: var(--color-base-100); }
+  body {
+    min-height: 100vh; min-height: 100dvh;
+    background: var(--color-base-100); color: var(--color-base-content);
+    font: 1.0625rem/1.5 var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+  [hidden] { display: none !important; }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+  a { color: var(--color-accent); text-underline-offset: 3px; }
+  :focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  @media (prefers-contrast: more) {
+    :root { --color-muted: var(--color-base-content); --color-line: var(--color-base-content); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+}
+
+@layer components {
+  /* An inline Lucide icon (lib/icons.js); it scales with the text around it. */
+  .avrana-icon { width: 1.25em; height: 1.25em; flex: none; display: inline-block; vertical-align: -0.25em; }
+
+  /* The page: phone first, safe areas respected. On wide screens the Party page becomes a rail
+     (you, chat, this phone) beside the game library; DOM order stays phone order. */
+  .avrana-screen {
+    margin-inline: auto; width: 100%; max-width: 40rem;
+    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+             max(2.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+  @media (min-width: 64rem) {
+    .avrana-screen.avrana-split {
+      max-width: 84rem; display: grid; column-gap: 2.5rem; align-items: start;
+      grid-template-columns: 21rem minmax(0, 1fr); grid-template-rows: repeat(6, auto) 1fr;
+    }
+    .avrana-split > * { grid-column: 1; }
+    .avrana-split > .avrana-library { grid-column: 2; grid-row: 1 / -1; }
+  }
+
+  /* A raised surface: one step above the page, bordered, not shadowed. */
+  .avrana-surface {
+    background: var(--color-base-200); border: 1px solid var(--color-line);
+    border-radius: var(--radius-box);
+  }
+
+  /* Section heading row (title + quiet meta on the right). */
+  .avrana-section-title {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    margin: 0 0 0.75rem; font-size: 1.25rem; font-weight: 750; letter-spacing: -0.01em;
+  }
+
+  /* Connection state: text first, the mark is only decoration (never a colour-only cue). */
+  .avrana-status {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem;
+    min-height: 1.75rem; font-size: 0.9375rem; font-weight: 600; color: var(--color-muted);
+  }
+  .avrana-status .dot { width: 0.625rem; height: 0.625rem; border-radius: 50%; flex: none; background: var(--color-muted); }
+  .avrana-status[data-state="ok"] { color: var(--color-base-content); }
+  .avrana-status[data-state="ok"] .dot { background: var(--color-success); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-success) 22%, transparent); }
+  .avrana-status[data-state="away"] .dot { background: var(--color-warning); }
+  .avrana-status[data-state="checking"] .dot { display: none; }
+  .avrana-status:not([data-state="checking"]) .loading { display: none; }
+
+  /* Disclosure rows (profile, chat, this phone): a full-width 56 px tap target with a chevron. */
+  .avrana-disclosure > summary {
+    display: flex; align-items: center; gap: 0.75rem; min-height: 3.5rem; padding: 0.5rem 1rem;
+    border-radius: var(--radius-box); font-weight: 650;
+  }
+  .avrana-disclosure > summary > .chev { margin-left: auto; color: var(--color-muted); transition: transform 150ms ease; }
+  .avrana-disclosure[open] > summary > .chev { transform: rotate(180deg); }
+  .avrana-disclosure > summary:hover { background: color-mix(in oklab, var(--color-base-300) 45%, transparent); }
+  .avrana-disclosure > .body { padding: 0 1rem 1rem; }
+
+  /* A person: avatar + name. Emoji avatars are identity content, kept as chosen. */
+  .avrana-avatar {
+    width: 3rem; height: 3rem; flex: none; border-radius: 50%; object-fit: cover;
+    display: inline-grid; place-items: center; font-size: 1.75rem; line-height: 1;
+    background: var(--color-base-300); border: 1px solid var(--color-line-strong);
+  }
+  .avrana-avatar.sm { width: 2.25rem; height: 2.25rem; font-size: 1.25rem; }
+  .avrana-avatar.lg { width: 3.5rem; height: 3.5rem; font-size: 2rem; }
+
+  /* Game library tile: cover glyph, title, facts, then what it means for this phone + Play. */
+  .avrana-game-card {
+    --game-accent: var(--color-secondary);
+    position: relative; display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    column-gap: 0.875rem; row-gap: 0.5rem; align-items: start; padding: 0.875rem;
+    background: var(--color-base-200); border: 1px solid var(--color-line); border-radius: var(--radius-box);
+    transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+  }
+  .avrana-game-card:hover, .avrana-game-card:focus-within {
+    border-color: color-mix(in oklab, var(--game-accent) 55%, var(--color-line));
+    background: color-mix(in oklab, var(--color-base-200) 88%, var(--game-accent));
+  }
+  .avrana-game-card:active { transform: scale(0.995); }
+  .avrana-game-cover {
+    width: 4.5rem; height: 4.5rem; border-radius: var(--radius-field); display: grid; place-items: center;
+    font-size: 2.25rem; line-height: 1; color: var(--game-accent);
+    background: color-mix(in oklab, var(--game-accent) 20%, var(--color-base-300));
+    border: 1px solid color-mix(in oklab, var(--game-accent) 40%, transparent);
+  }
+  .avrana-game-cover .avrana-icon { width: 2.25rem; height: 2.25rem; }
+  .avrana-game-title { margin: 0.125rem 0 0.25rem; font-size: 1.1875rem; font-weight: 750; line-height: 1.2; overflow-wrap: anywhere; }
+  .avrana-game-facts { display: flex; flex-wrap: wrap; gap: 0.125rem 0.875rem; font-size: 0.9375rem; color: var(--color-muted); }
+  .avrana-game-facts > span { display: inline-flex; align-items: center; gap: 0.375rem; }
+  .avrana-game-card > .wide { grid-column: 1 / -1; }
+  .avrana-game-card .summary { font-size: 1rem; }
+  .avrana-game-card .why { font-size: 0.9375rem; padding-left: 0.75rem; border-left: 3px solid var(--color-warning); }
+  .avrana-game-card .foot {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
+    padding-top: 0.75rem; margin-top: 0.125rem; border-top: 1px solid var(--color-line);
+  }
+  .avrana-game-card .foot .btn { margin-left: auto; min-width: 7.5rem; }
+  .avrana-game-card[data-outcome="unavailable"] .avrana-game-cover { filter: grayscale(1); opacity: 0.6; }
+
+  /* Fit for this phone: icon + words; colour only tints the icon. */
+  .avrana-fit { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.9375rem; font-weight: 650; }
+  .avrana-fit[data-fit="ready"] .avrana-icon { color: var(--color-success); }
+  .avrana-fit[data-fit="limited"] .avrana-icon { color: var(--color-warning); }
+  .avrana-fit[data-fit="watch"] .avrana-icon { color: var(--color-info); }
+  .avrana-fit[data-fit="no"] .avrana-icon { color: var(--color-error); }
+
+  /* Empty state: icon, one sentence, maybe an action. */
+  .avrana-empty {
+    display: grid; justify-items: center; gap: 0.5rem; padding: 2rem 1rem; text-align: center;
+    color: var(--color-muted); border: 1px dashed var(--color-line-strong); border-radius: var(--radius-box);
+  }
+  .avrana-empty .avrana-icon { width: 2rem; height: 2rem; }
+
+  /* Checklist rows (this phone, and the offline-copy line). */
+  .avrana-checks { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+  .avrana-checks li { display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.5rem; align-items: start; }
+  .avrana-checks li .avrana-icon { margin-top: 0.125rem; color: var(--color-muted); }
+  .avrana-checks li[data-status="yes"] .avrana-icon { color: var(--color-success); }
+  .avrana-checks li[data-status="no"] .avrana-icon { color: var(--color-warning); }
+
+  /* Diagnostics: denser, still legible; wide tables scroll sideways on phones. */
+  .avrana-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .avrana-table-wrap table { min-width: 36rem; }
+  .s-yes { color: var(--color-success); }
+  .s-no { color: var(--color-warning); }
+  .s-unknown, .s-partial { color: var(--color-muted); }
+}
