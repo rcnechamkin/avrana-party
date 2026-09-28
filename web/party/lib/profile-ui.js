@@ -1,10 +1,13 @@
 // Small shell editor over the SAME shared model and avatar service.
 import { AVATARS } from './profile.js';
+import { icon } from './icons.js';
 import { h } from './ui.js';
 
-export function avatarNode(me) {
-  return me.pfp ? h('img', { class: 'avatar', src: me.pfp, alt: '', width: 48, height: 48 })
-    : h('span', { class: 'avatar', 'aria-hidden': 'true', text: me.avatar });
+/** A person's picture: their photo, or the emoji character they chose. size: '', 'sm' or 'lg'. */
+export function avatarNode(me, size = '') {
+  const cls = ('avrana-avatar ' + size).trim();
+  return me.pfp ? h('img', { class: cls, src: me.pfp, alt: '', width: 48, height: 48 })
+    : h('span', { class: cls, 'aria-hidden': 'true', text: me.avatar });
 }
 export function wireProfile(profile, changed) {
   const $ = (id) => document.getElementById(id);
@@ -12,8 +15,14 @@ export function wireProfile(profile, changed) {
   const say = (text) => { $('profile-note').textContent = text; };
   function render() {
     const me = profile.snapshot();
-    $('player-chip').replaceChildren(avatarNode(me),
-      h('span', { text: me.name || 'Choose your name' }));
+    // Who you are at this party; a new guest's first step is choosing a name.
+    $('player-chip').classList.toggle('border-primary', !me.name);
+    $('player-chip').replaceChildren(avatarNode(me, 'lg'),
+      h('span', { class: 'grid min-w-0 flex-1' },
+        h('span', { class: 'truncate', text: me.name || 'Choose your name' }),
+        h('span', { class: 'text-[0.9375rem] font-normal text-muted',
+          text: me.name ? 'Your profile' : 'Pick a name to join a game' })),
+      icon('user-round-pen', { cls: 'text-muted' }));
     $('profile-stats').textContent = me.favorites.length + ' favorites · ' + me.playTotal + ' games opened';
     $('remove-photo').hidden = !me.pfp;
     if (!$('profile').open) {
@@ -21,7 +30,7 @@ export function wireProfile(profile, changed) {
       chosen = me.avatar;
     }
     $('avatar-choices').replaceChildren(...AVATARS.map((avatar) => h('button', {
-      type: 'button', class: 'quiet', text: avatar,
+      type: 'button', class: 'btn btn-ghost h-14 border-line text-[1.75rem] aria-pressed:border-primary aria-pressed:bg-base-300', text: avatar,
       'aria-label': 'Choose ' + avatar, 'aria-pressed': avatar === chosen,
       onclick: () => { chosen = avatar; render(); },
     })));

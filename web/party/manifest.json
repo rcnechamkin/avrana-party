@@ -6,8 +6,8 @@
   "start_url": "/party/",
   "scope": "/party/",
   "display": "standalone",
-  "background_color": "#0e0c1d",
-  "theme_color": "#0e0c1d",
+  "background_color": "#121218",
+  "theme_color": "#121218",
   "icons": [
     {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
   ]

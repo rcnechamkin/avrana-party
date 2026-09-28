@@ -7,7 +7,8 @@
 import { probeCapabilities, statuses } from './lib/capabilities.js';
 import { evaluateSeat, explain } from './lib/evaluate.js';
 import { registerShell } from './lib/shell.js';
-import { capitalize, h, howText, kindIcon, playersText } from './lib/ui.js';
+import { capitalize, h, howText, kindIcon, playersText, screenText } from './lib/ui.js';
+import { hydrateIcons, icon } from './lib/icons.js';
 
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
@@ -61,13 +62,31 @@ function setStatus(kind, text) {
   $('secure').hidden = !(kind === 'ok' && window.isSecureContext);
 }
 
+const FIT = {
+  ready: ['circle-check', 'Works on this phone'],
+  limited: ['circle-alert', 'Works, with limits'],
+  watch: ['eye', 'You can watch'],
+  no: ['circle-slash', 'Not on this phone'],
+};
+
 function chipFor(result) {
-  switch (result.outcome) {
-    case 'ready': return h('span', { class: 'chip ok', text: 'Works on this phone' });
-    case 'limited': return h('span', { class: 'chip limited', text: 'Works, with limits' });
-    case 'watch': return h('span', { class: 'chip watch', text: 'You can watch' });
-    default: return h('span', { class: 'chip no', text: 'Not on this phone' });
-  }
+  const fit = FIT[result.outcome] ? result.outcome : 'no';
+  const [name, text] = FIT[fit];
+  return h('span', { class: 'avrana-fit', 'data-fit': fit }, icon(name), text);
+}
+
+const ACCENT = /^#[0-9a-f]{6}$/i;
+
+function cover(game) {
+  const el = h('div', { class: 'avrana-game-cover', 'aria-hidden': 'true' },
+    game.icon ? game.icon : icon(kindIcon(game)));
+  // The catalog's own colour for the game; CSSOM, so the CSP's style-src still holds.
+  if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
+  return el;
+}
+
+function emptyState(name, text) {
+  return h('li', { class: 'avrana-empty xl:col-span-2' }, icon(name), h('p', { class: 'm-0', text }));
 }
 
 function liveText(hp) {
@@ -96,29 +115,37 @@ function gameCard(game, result, hp) {
     }
     catch (err) { event.preventDefault(); $('profile-note').textContent = err.message; }
   };
+  const label = result.outcome === 'watch' ? 'Watch' : 'Play';
   const action = running && fits
-    ? h('a', { class: 'button', href: target, onclick: remember, text: result.outcome === 'watch' ? 'Watch' : 'Play' })
+    ? h('a', { class: 'btn btn-primary', href: target, onclick: remember }, icon(label === 'Watch' ? 'eye' : 'play'), label)
     : running
-      ? h('a', { class: 'button quiet', href: target, onclick: remember, text: 'Try anyway' })
-      : h('button', { type: 'button', class: 'button', disabled: true, text: installed ? 'Play' : 'Not installed' });
+      ? h('a', { class: 'btn btn-outline', href: target, onclick: remember, text: 'Try anyway' })
+      : h('button', { type: 'button', class: 'btn', disabled: true, text: installed ? 'Play' : 'Not installed' });
   const favorite = profile.isFavorite(game);
-  const star = h('button', { type: 'button', class: 'quiet favorite', text: favorite ? '★' : '☆',
+  const star = h('button', { type: 'button', class: 'btn btn-ghost btn-square -mr-1 -mt-1 ' + (favorite ? 'text-warning' : 'text-muted'),
     'aria-label': (favorite ? 'Remove ' : 'Add ') + game.name + (favorite ? ' from favorites' : ' to favorites'),
     'aria-pressed': favorite, onclick: () => {
       try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
       catch (err) { $('profile-note').textContent = err.message; }
-    } });
+    } }, icon('star', { cls: favorite ? 'fill-current' : '' }));
   const live = installed && hp?.integration === false ? 'Games update needed before opening here' : installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
-  return h('li', { class: 'game', 'data-id': game.id, 'data-outcome': installed ? result.outcome : 'unavailable' },
-    h('div', { class: 'gicon', 'aria-hidden': 'true', text: game.icon || kindIcon(game) }),
-    h('div', {}, h('h3', { text: game.name }),
-      h('p', { class: 'gmeta', text: playersText(game.players) + ' · ' + howText(game) })),
+  const screen = screenText(game);
+  const how = howText(game);
+  return h('li', { class: 'avrana-game-card', 'data-id': game.id, 'data-outcome': installed ? result.outcome : 'unavailable' },
+    cover(game),
+    h('div', { class: 'min-w-0' }, h('h3', { class: 'avrana-game-title', text: game.name }),
+      h('p', { class: 'avrana-game-facts m-0' },
+        h('span', {}, icon('users'), playersText(game.players)),
+        h('span', {}, icon(screen.icon), screen.text))),
     star,
-    game.summary ? h('p', { class: 'gsummary note', text: game.summary }) : null,
-    game.hardwareValidationRequired ? h('p', { class: 'note', text: 'Needs a device check before use.' }) : null,
-    note ? h('p', { class: 'note why', text: note }) : null,
-    h('div', { class: 'gfoot' }, installed ? chipFor(result) : null,
-      live ? h('span', { class: 'live', text: live }) : null, action));
+    game.summary ? h('p', { class: 'summary wide m-0', text: game.summary }) : null,
+    how ? h('p', { class: 'wide m-0 text-[0.9375rem] text-muted', text: capitalize(how) }) : null,
+    game.hardwareValidationRequired ? h('p', { class: 'wide m-0 text-[0.9375rem] text-muted', text: 'Needs a device check before use.' }) : null,
+    note ? h('p', { class: 'why wide m-0', text: note }) : null,
+    h('div', { class: 'foot' },
+      h('div', { class: 'grid gap-0.5' }, installed ? chipFor(result) : null,
+        live ? h('span', { class: 'text-[0.9375rem] text-muted', text: live }) : null),
+      action));
 }
 
 async function renderGames(refresh = true) {
@@ -144,9 +171,9 @@ async function renderGames(refresh = true) {
     return gameCard(g, evaluateSeat(g, caps, 'player'), hp);
   });
   $('game-count').textContent = games.length + (games.length === 1 ? ' game' : ' games');
-  if (!items.length) items.push(h('li', { class: 'card', text:
-    state.view === 'favorites' ? 'Tap a star to save a game here.'
-      : state.view === 'recent' ? 'Games you open will appear here.' : 'No games match. Try another search or group size.' }));
+  if (!items.length) items.push(state.view === 'favorites' ? emptyState('star', 'Tap a star to save a game here.')
+    : state.view === 'recent' ? emptyState('history', 'Games you open will appear here.')
+      : emptyState('search-x', 'No games match. Try another search or group size.'));
   const list = $('games'), old = [...list.children];
   if (old.length !== items.length || old.some((el, i) => el.dataset.id !== items[i].dataset.id)) {
     list.replaceChildren(...items);
@@ -164,12 +191,12 @@ function renderPhone() {
     const label = labels[name] || { label: name, missing: `${name} isn’t available.` };
     const text = status === 'yes' ? capitalize(label.label)
       : status === 'no' ? label.missing : `${capitalize(label.label)}: not sure yet`;
-    const mark = status === 'yes' ? '✓' : status === 'no' ? '✕' : '?';
-    return h('li', { 'data-status': status, 'data-mark': mark, 'data-cap': name, text });
+    const mark = status === 'yes' ? 'check' : status === 'no' ? 'x' : 'circle-help';
+    return h('li', { 'data-status': status, 'data-cap': name }, icon(mark), h('span', { text }));
   });
   if (state.shell && state.shell.state === 'registered') {
-    items.splice(1, 0, h('li', { 'data-status': 'yes', 'data-mark': '✓', 'data-cap': 'offline_copy',
-      text: 'Party page saved on this phone' }));
+    items.splice(1, 0, h('li', { 'data-status': 'yes', 'data-cap': 'offline_copy' },
+      icon('check'), h('span', { text: 'Party page saved on this phone' })));
   }
   $('phone-list').replaceChildren(...items);
   const allSet = ESSENTIAL.every((name) => caps[name] && caps[name].status === 'yes');
@@ -215,6 +242,8 @@ async function boot() {
   });
 }
 
+hydrateIcons();
+
 let storage;
 try { storage = window.localStorage; } catch { /* compatibility model reports persistence failure */ }
 const profile = createProfile(storage);
@@ -229,8 +258,10 @@ const chat = createPartyChat({
     const list = $('chat-messages');
     const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     list.replaceChildren(...snapshot.messages.map((m) =>
-      h('li', {}, avatarNode(m), h('div', {},
-        h('strong', { text: m.name }), h('p', { text: m.text + (m.photo ? ' 📷 Photo shared' : '') })))));
+      h('li', { class: 'flex gap-3 border-b border-line py-2.5 last:border-b-0' }, avatarNode(m, 'sm'), h('div', { class: 'min-w-0' },
+        h('strong', { class: 'text-[0.9375rem]', text: m.name }),
+        h('p', { class: 'm-0 whitespace-pre-wrap', text: m.text }),
+        m.photo ? h('p', { class: 'm-0 inline-flex items-center gap-1.5 text-[0.9375rem] text-muted' }, icon('image'), 'Photo shared') : null))));
     if (atEnd) list.scrollTop = list.scrollHeight;
   },
 });

@@ -6,6 +6,7 @@ import { probeCapabilities, statuses } from '../lib/capabilities.js';
 import { evaluateSeat } from '../lib/evaluate.js';
 import { createKeepAwake } from '../lib/keep-awake.js';
 import { describeShell, readVersion, registerShell, removeShell } from '../lib/shell.js';
+import { hydrateIcons } from '../lib/icons.js';
 import { h } from '../lib/ui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -184,4 +185,5 @@ $('copy').addEventListener('click', async () => {
   }
 });
 
+hydrateIcons();
 boot();

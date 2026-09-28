@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="avrana">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0e0c1d">
-<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#121218">
+<meta name="color-scheme" content="dark">
 <meta name="referrer" content="same-origin">
 <title>Avrana Party</title>
 <link rel="manifest" href="manifest.json">
@@ -13,91 +13,105 @@
 <script type="module" src="app.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to the games</a>
-<main id="main">
-  <header>
-    <h1>Avrana Party</h1>
-    <p class="muted">Your people. Your games. One party.</p>
-    <p id="status" class="status" role="status" data-state="checking">
+<a class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 btn btn-primary" href="#games-h">Skip to the games</a>
+<main id="main" class="avrana-screen avrana-split">
+  <header class="mb-4">
+    <div class="flex items-center gap-3">
+      <img src="icon.svg" alt="" width="36" height="36" class="size-9 rounded-lg">
+      <h1 class="m-0 text-[1.75rem] font-extrabold leading-tight tracking-tight">Avrana Party</h1>
+    </div>
+    <p id="status" class="avrana-status mt-2" role="status" data-state="checking">
       <span class="dot" aria-hidden="true"></span>
+      <span class="spin" aria-hidden="true"><span class="loading loading-spinner loading-xs text-muted"></span></span>
       <span id="status-text">Checking the connection…</span>
-      <span id="secure" class="secure" hidden>🔒 Secure</span>
+      <span id="secure" class="inline-flex items-center gap-1 text-sm font-semibold text-muted" hidden><span data-icon="lock"></span>Secure</span>
     </p>
-    <button id="player-chip" type="button" class="quiet player-chip" aria-controls="profile">Choose your name</button>
+    <button id="player-chip" type="button" class="avrana-surface mt-4 flex w-full min-h-18 cursor-pointer items-center gap-3 px-3 py-2.5 text-left text-lg font-bold transition-colors hover:border-line-strong" aria-controls="profile">Choose your name</button>
   </header>
 
-  <details id="profile" class="card">
-    <summary><h2>Your Avrana profile</h2></summary>
-    <p class="muted small">Saved on this browser. Shared with the party games.</p>
-    <form id="profile-form">
-      <label for="profile-name">Your name</label>
-      <input id="profile-name" maxlength="24" autocomplete="nickname" required>
-      <p class="small gap-top" id="avatar-label">Choose a character</p>
-      <div id="avatar-choices" class="avatar-choices" role="group" aria-labelledby="avatar-label"></div>
-      <button type="submit">Save profile</button>
-    </form>
-    <label for="profile-photo" class="gap-top">Or use your photo</label>
-    <input id="profile-photo" type="file" accept="image/jpeg,image/png,image/webp">
-    <div id="photo-crop" hidden>
-      <canvas id="photo-canvas" width="512" height="512" aria-label="Photo preview"></canvas>
-      <label for="photo-zoom">Zoom</label><input id="photo-zoom" type="range" min="1" max="4" step="0.01" value="1">
-      <label for="photo-x">Left to right</label><input id="photo-x" type="range" min="0" max="100" value="50">
-      <label for="photo-y">Top to bottom</label><input id="photo-y" type="range" min="0" max="100" value="50">
-      <div class="actions"><button id="photo-use" type="button">Use photo</button><button id="photo-cancel" type="button" class="quiet">Cancel</button></div>
+  <details id="profile" class="avrana-surface -mt-2 mb-4 not-open:hidden">
+    <summary hidden><h2>Your Avrana profile</h2></summary>
+    <div class="p-4">
+      <h2 class="m-0 text-lg font-bold">Your Avrana profile</h2>
+      <p class="mb-4 mt-1 text-[0.9375rem] text-muted">Saved on this browser. Shared with the party games.</p>
+      <form id="profile-form">
+        <label for="profile-name" class="mb-1.5 block text-[0.9375rem] font-semibold">Your name</label>
+        <input id="profile-name" class="input w-full text-base" maxlength="24" autocomplete="nickname" required>
+        <p class="mb-2 mt-4 text-[0.9375rem] font-semibold" id="avatar-label">Choose a character</p>
+        <div id="avatar-choices" class="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-4" role="group" aria-labelledby="avatar-label"></div>
+        <button type="submit" class="btn btn-primary btn-block mt-4">Save profile</button>
+      </form>
+      <div class="mt-5 border-t border-line pt-4">
+        <label for="profile-photo" class="mb-1.5 block text-[0.9375rem] font-semibold">Or use your photo</label>
+        <input id="profile-photo" class="file-input w-full" type="file" accept="image/jpeg,image/png,image/webp">
+        <div id="photo-crop" class="mt-3" hidden>
+          <canvas id="photo-canvas" class="mx-auto my-3 block w-full max-w-64 rounded-box" width="512" height="512" aria-label="Photo preview"></canvas>
+          <label for="photo-zoom" class="block text-[0.9375rem]">Zoom</label><input id="photo-zoom" class="range range-primary mb-3 w-full" type="range" min="1" max="4" step="0.01" value="1">
+          <label for="photo-x" class="block text-[0.9375rem]">Left to right</label><input id="photo-x" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
+          <label for="photo-y" class="block text-[0.9375rem]">Top to bottom</label><input id="photo-y" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
+          <div class="flex flex-wrap gap-2"><button id="photo-use" type="button" class="btn btn-primary flex-1">Use photo</button><button id="photo-cancel" type="button" class="btn btn-ghost flex-1">Cancel</button></div>
+        </div>
+        <button id="remove-photo" type="button" class="btn btn-ghost mt-2 text-error" hidden>Remove photo</button>
+      </div>
+      <p id="profile-stats" class="mb-0 mt-4 text-[0.9375rem] text-muted"></p>
     </div>
-    <button id="remove-photo" type="button" class="quiet" hidden>Remove photo</button>
-    <p id="profile-stats" class="muted small"></p>
   </details>
-  <p id="profile-note" class="small" role="status"></p>
+  <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
 
-  <section id="away" class="card hero" hidden aria-labelledby="away-h">
-    <h2 id="away-h" class="big">Can’t reach the party</h2>
-    <p>Make sure this phone is on the <strong>Avrana Party</strong> Wi-Fi, then try again.</p>
-    <button type="button" id="retry" class="wide">Try again</button>
-    <p class="muted small gap-top">Still stuck? <a href="http://10.42.0.1/">Open the basic version</a>.</p>
+  <section id="away" class="avrana-surface mb-4 grid justify-items-center gap-2 px-5 py-8 text-center lg:col-start-2 lg:row-start-1" hidden aria-labelledby="away-h">
+    <span class="mb-1 grid size-16 place-items-center rounded-full bg-base-300 text-warning" data-icon="wifi-off" data-icon-class="size-8"></span>
+    <h2 id="away-h" class="m-0 text-2xl font-extrabold">Can’t reach the party</h2>
+    <p class="m-0 max-w-sm">Make sure this phone is on the <strong>Avrana Party</strong> Wi-Fi, then try again.</p>
+    <button type="button" id="retry" class="btn btn-primary btn-wide mt-3">Try again</button>
+    <p class="m-0 mt-2 text-[0.9375rem] text-muted">Still stuck? <a href="http://10.42.0.1/">Open the basic version</a>.</p>
   </section>
 
-  <details id="chat" class="card" hidden>
-    <summary><h2>Party Chat</h2><span id="chat-status" class="muted small">Open to chat</span></summary>
-    <p class="muted small">For everyone at the party, whatever you’re playing.</p>
-    <ol id="chat-messages" class="chat-messages" aria-label="Party messages"></ol>
-    <p id="chat-feedback" class="small" role="status"></p>
-    <form id="chat-form">
-      <label for="chat-text">Message</label>
-      <div class="actions"><input id="chat-text" maxlength="400" autocomplete="off" required><button id="chat-send" type="submit" disabled>Send</button></div>
-    </form>
+  <details id="chat" class="avrana-disclosure avrana-surface mb-4" hidden>
+    <summary><span data-icon="message-circle" class="text-secondary"></span><h2 class="m-0 text-base font-bold">Party Chat</h2><span id="chat-status" class="ml-auto text-[0.9375rem] font-normal text-muted">Open to chat</span><span class="chev ml-0!" data-icon="chevron-down"></span></summary>
+    <div class="body">
+      <p class="m-0 text-[0.9375rem] text-muted">For everyone at the party, whatever you’re playing.</p>
+      <ol id="chat-messages" class="my-3 max-h-72 list-none overflow-y-auto overscroll-contain p-0 [overflow-wrap:anywhere]" aria-label="Party messages"></ol>
+      <p id="chat-feedback" class="text-[0.9375rem] text-warning empty:hidden" role="status"></p>
+      <form id="chat-form">
+        <label for="chat-text" class="mb-1.5 block text-[0.9375rem] font-semibold">Message</label>
+        <div class="flex gap-2"><input id="chat-text" class="input min-w-0 flex-1 text-base" maxlength="400" autocomplete="off" required><button id="chat-send" type="submit" class="btn btn-primary" disabled><span data-icon="send-horizontal"></span>Send</button></div>
+      </form>
+    </div>
   </details>
 
-  <section id="games-section" aria-labelledby="games-h">
-    <h2 id="games-h">Find your next game</h2>
-    <label for="game-search" class="visually-hidden">Search games</label>
-    <input id="game-search" type="search" placeholder="Search games">
-    <div class="filters">
-      <label for="game-players">People playing</label>
-      <select id="game-players"><option value="0">Any group size</option>
-        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-        <option value="4">4</option><option value="5">5</option><option value="6">6</option>
-        <option value="8">8</option><option value="10">10</option><option value="12">12</option>
-      </select>
+  <section id="games-section" class="avrana-library mb-6" aria-labelledby="games-h">
+    <h2 id="games-h" class="avrana-section-title" tabindex="-1">Games <span id="game-count" class="font-sans text-[0.9375rem] font-normal text-muted" role="status"></span></h2>
+    <div class="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+      <label for="game-search" class="sr-only">Search games</label>
+      <div class="input w-full"><span data-icon="search" class="text-muted"></span><input id="game-search" type="search" class="text-base" placeholder="Search games"></div>
+      <div class="flex items-center gap-2">
+        <label for="game-players" class="whitespace-nowrap text-[0.9375rem] font-semibold"><span data-icon="users" class="mr-1 text-muted"></span>People playing</label>
+        <select id="game-players" class="select min-w-0 flex-1 text-base sm:w-44"><option value="0">Any group size</option>
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+          <option value="8">8</option><option value="10">10</option><option value="12">12</option>
+        </select>
+      </div>
     </div>
-    <nav id="game-views" class="actions" aria-label="Your games">
-      <button type="button" class="quiet" data-view="all" aria-pressed="true">All games</button>
-      <button type="button" class="quiet" data-view="favorites" aria-pressed="false">Favorites</button>
-      <button type="button" class="quiet" data-view="recent" aria-pressed="false">Recently opened</button>
+    <nav id="game-views" class="mb-4 flex gap-1 sm:w-fit rounded-field bg-base-200 p-1" aria-label="Your games">
+      <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="all" aria-pressed="true">All games</button>
+      <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="favorites" aria-pressed="false">Favorites</button>
+      <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="recent" aria-pressed="false">Recently opened</button>
     </nav>
-    <p id="game-count" class="small muted" role="status"></p>
-    <ul id="games" class="games" aria-busy="true">
-      <li class="skeleton" aria-hidden="true"></li>
-      <li class="skeleton" aria-hidden="true"></li>
+    <ul id="games" class="m-0 grid list-none gap-3 p-0 xl:grid-cols-2" aria-busy="true">
+      <li class="skeleton h-44 rounded-box" aria-hidden="true"></li>
+      <li class="skeleton h-44 rounded-box" aria-hidden="true"></li>
     </ul>
   </section>
 
-  <details id="phone">
-    <summary><h2 id="phone-h">This phone</h2><span id="phone-summary" class="muted small"></span></summary>
-    <ul id="phone-list" class="checks" aria-labelledby="phone-h"></ul>
-    <p class="small"><a href="diag/">Technical details</a></p>
+  <details id="phone" class="avrana-disclosure mb-4 border-t border-line">
+    <summary><span data-icon="smartphone" class="text-muted"></span><h2 id="phone-h" class="m-0 text-base font-bold">This phone</h2><span id="phone-summary" class="ml-auto text-[0.9375rem] font-normal text-muted"></span><span class="chev ml-0!" data-icon="chevron-down"></span></summary>
+    <div class="body">
+      <ul id="phone-list" class="avrana-checks" aria-labelledby="phone-h"></ul>
+      <p class="mb-0 mt-4 text-[0.9375rem]"><a href="diag/">Technical details</a></p>
+    </div>
   </details>
 </main>
-<noscript><p class="center">Avrana Party needs JavaScript. You can still <a href="/">open the party games</a>.</p></noscript>
+<noscript><p class="p-4 text-center">Avrana Party needs JavaScript. You can still <a href="/">open the party games</a>.</p></noscript>
 </body>
 </html>
