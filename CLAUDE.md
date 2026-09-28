@@ -16,6 +16,20 @@ designed as **one party platform with many games**. Start at `README.md` → "St
   Party network; local dnsmasq resolves it to `10.42.0.1`. Read
   `docs/runbooks/party-https.md` before changing nginx, DNS or certificates.
 
+## Laptop Party-network testing
+
+When the laptop is connected to both Ethernet and Avrana Party Wi-Fi:
+
+- normal internet/GitHub traffic uses Ethernet
+- `10.42.0.0/24` is directly reachable over Wi-Fi
+- `party.avrana.net` resolves through the Party DNS to `10.42.0.1`
+- `ssh party` is still the management-LAN path
+
+Local Claude Code may run Party-network browser/curl/E2E tests against:
+https://party.avrana.net/
+
+Do not treat management-LAN success as Party-WLAN validation.
+
 ## Where truth lives
 
 Status and the next action: `docs/ROADMAP.md` · what runs where: `docs/SYSTEM.md` · every test:
