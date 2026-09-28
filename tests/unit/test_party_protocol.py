@@ -35,6 +35,42 @@ class Vectors(unittest.TestCase):
         self.assertEqual(P.game_token(key, g['sid'], g['participant']), g['token'])
 
 
+class Encoding(unittest.TestCase):
+    """A malformed segment is refused as Invalid('encoding'), never a stray binascii.Error: callers
+    catch only Invalid, so anything else becomes a 500."""
+    BAD = ('aps0.x.y',                      # length 1 mod 4: urlsafe_b64decode raises
+           'aps0.e30.abcde',                # signature 1 mod 4
+           'aps0.abcde.' + 'A' * 43,        # payload 1 mod 4 (signature fails first: still refused)
+           'aps0.e30.AA+A',                 # outside the URL-safe alphabet
+           'aps0.e30.AA=A',                 # padding is never on the wire
+           'aps0.e30.éAAA')           # non-ASCII
+
+    def test_unseal(self):
+        for bad in self.BAD[:2] + self.BAD[3:]:
+            with self.subTest(bad=bad), self.assertRaises(Invalid) as e:
+                P.unseal(KEY, bad, 'ticket', 'bluff', now=NOW)
+            self.assertEqual(str(e.exception), 'encoding')
+        with self.assertRaises(Invalid):
+            P.unseal(KEY, self.BAD[2], 'ticket', 'bluff', now=NOW)
+
+    def test_verify_ticket(self):
+        for bad in self.BAD:
+            with self.subTest(bad=bad), self.assertRaises(Invalid):
+                P.verify_ticket(KEY, bad, 'bluff', SID, now=NOW)
+        with self.assertRaises(Invalid) as e:
+            P.verify_ticket(KEY, 'aps0.x.y', 'bluff', SID, now=NOW)
+        self.assertEqual(str(e.exception), 'encoding')
+
+    def test_open_message(self):
+        for typ, aud in (('launch', 'bluff'), ('end', 'bluff'), ('ended', 'party')):
+            for bad in self.BAD:
+                with self.subTest(typ=typ, bad=bad), self.assertRaises(Invalid):
+                    P.open_message(KEY, bad, typ, aud, P.ReplayGuard(), now=NOW)
+            with self.assertRaises(Invalid) as e:
+                P.open_message(KEY, 'aps0.x.y', typ, aud, P.ReplayGuard(), now=NOW)
+            self.assertEqual(str(e.exception), 'encoding')
+
+
 class Tickets(unittest.TestCase):
     def ticket(self, **kw):
         args = dict(key=KEY, game='bluff', sid=SID, participant=PID, role='player', now=NOW)
