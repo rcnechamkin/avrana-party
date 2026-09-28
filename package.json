@@ -19,7 +19,11 @@
     "test:offline-browser": "playwright test -c playwright.offline.config.ts",
     "test:offline": "npm run test:unit && npm run test:modules && npm run test:offline-browser",
     "catalog": "python3 -m avrana.contracts.catalog",
-    "dev": "python3 -m avrana.web.devserver --port 8180"
+    "dev": "python3 -m avrana.web.devserver --port 8180",
+    "build:icons": "node tools/build-icons.mjs",
+    "build:css": "tailwindcss -i web/src/party.css -o web/party/styles.css --minify",
+    "watch:css": "tailwindcss -i web/src/party.css -o web/party/styles.css --watch",
+    "build:ui": "npm run build:icons && npm run build:css"
   },
   "repository": {
     "type": "git",
@@ -34,6 +38,10 @@
   "homepage": "https://github.com/rcnechamkin/avrana-party#readme",
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.2"
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/node": "^26.6.2",
+    "daisyui": "^5.7.46",
+    "lucide-static": "^1.48.0",
+    "tailwindcss": "^4.3.3"
   }
 }

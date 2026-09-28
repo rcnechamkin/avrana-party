@@ -24,7 +24,7 @@ const NAV_TIMEOUT_MS = 4000;
 const SHELL = [
   '', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg', 'catalog.json', 'version.json',
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
-  'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js',
+  'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/icons.js',
   'diag/', 'diag/index.html', 'diag/diag.js',
 ];
 const NEVER = [/^api\//, /^sw\.js$/];
