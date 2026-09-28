@@ -23,20 +23,22 @@ CATALOG = 'avrana.catalog/v0'
 DEFAULT_APPLIANCE = CONTRACTS_DIR / 'appliances' / 'avrana-pi4.json'
 DEFAULT_OUT = WEB_DIR / 'catalog.json'
 DEFAULT_ARTWORK = CONTRACTS_DIR / 'artwork.json'
-ARTWORK_NAME = re.compile(r'^[A-Za-z0-9_]{1,40}$')
+ARTWORK_REF = re.compile(r'^(lan|kenney):([A-Za-z0-9_]{1,40})$')
 
 
 def load_artwork(path=DEFAULT_ARTWORK, web=WEB_DIR):
-    """Avrana-curated temporary library artwork: {game id: 'art/<name>.svg'} (docs/UI-DESIGN-SYSTEM.md).
-    Every file must already be prepared under web/party/art/ (tools/build-art.mjs)."""
+    """Library artwork: {game id: 'art/<source>-<name>.svg'} (docs/UI-DESIGN-SYSTEM.md). A reference is
+    'lan:<slug>' (the title's own exported scene) or 'kenney:<icon>'; the prepared file must exist
+    under web/party/art/ (tools/build-art.mjs)."""
     doc = strictjson.load_path(path)
     if doc.get('schema') != 'avrana.artwork/v0' or not isinstance(doc.get('games'), dict):
         raise ValueError('artwork.json: wrong schema')
     out = {}
-    for cid, name in doc['games'].items():
-        if not isinstance(name, str) or not ARTWORK_NAME.match(name):
-            raise ValueError(f'artwork.json: bad artwork name for {cid}')
-        rel = f'art/{name}.svg'
+    for cid, ref in doc['games'].items():
+        match = ARTWORK_REF.match(ref) if isinstance(ref, str) else None
+        if not match:
+            raise ValueError(f'artwork.json: bad artwork reference for {cid}')
+        rel = f'art/{match[1]}-{match[2]}.svg'
         if not (Path(web) / rel).is_file():
             raise ValueError(f'artwork.json: {rel} is missing (run npm run build:art)')
         out[cid] = rel

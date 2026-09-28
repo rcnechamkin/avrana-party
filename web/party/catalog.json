@@ -226,7 +226,7 @@
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
       "summary": "Dice, blots, zero mercy.",
-      "artwork": "art/dice_3D_detailed.svg"
+      "artwork": "art/lan-backgammon.svg"
     },
     {
       "id": "lan-battleship",
@@ -283,7 +283,7 @@
       "playersLabel": "1–6 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Hidden fleets. Everyone's a target.",
-      "artwork": "art/flag_square.svg"
+      "artwork": "art/lan-battleship.svg"
     },
     {
       "id": "lan-bingo",
@@ -340,7 +340,7 @@
       "playersLabel": "1–12",
       "integration": "avrana.lan-launch/v1",
       "summary": "Daub your card. First to the pattern shouts BINGO.",
-      "artwork": "art/tokens_stack.svg"
+      "artwork": "art/lan-bingo.svg"
     },
     {
       "id": "lan-brickade",
@@ -397,7 +397,7 @@
       "playersLabel": "1–8 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Pong-royale meets Breakout. Own the ball.",
-      "artwork": "art/structure_wall.svg"
+      "artwork": "art/lan-brickade.svg"
     },
     {
       "id": "lan-buzzboard",
@@ -454,7 +454,7 @@
       "playersLabel": "2–10 + TV",
       "integration": "avrana.lan-launch/v1",
       "summary": "Pick a square. Beat them to the buzzer. Risk it all.",
-      "artwork": "art/hand_token.svg"
+      "artwork": "art/lan-buzzboard.svg"
     },
     {
       "id": "lan-blitz",
@@ -511,7 +511,7 @@
       "playersLabel": "2–10",
       "integration": "avrana.lan-launch/v1",
       "summary": "Name things. Fast. Don't match.",
-      "artwork": "art/timer_CW_75.svg"
+      "artwork": "art/lan-blitz.svg"
     },
     {
       "id": "lan-charades",
@@ -568,7 +568,7 @@
       "playersLabel": "2–10, same room",
       "integration": "avrana.lan-launch/v1",
       "summary": "One actor. Everyone races to type it.",
-      "artwork": "art/character.svg"
+      "artwork": "art/lan-charades.svg"
     },
     {
       "id": "lan-checkers",
@@ -625,7 +625,7 @@
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
       "summary": "Jump or be jumped.",
-      "artwork": "art/flip_full.svg"
+      "artwork": "art/lan-checkers.svg"
     },
     {
       "id": "lan-chess",
@@ -682,7 +682,7 @@
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
       "summary": "Think three moves ahead.",
-      "artwork": "art/chess_knight.svg"
+      "artwork": "art/lan-chess.svg"
     },
     {
       "id": "lan-connect4",
@@ -739,7 +739,7 @@
       "playersLabel": "1–2 + bot",
       "integration": "avrana.lan-launch/v1",
       "summary": "Four in a row. Gravity does the rest.",
-      "artwork": "art/tokens.svg"
+      "artwork": "art/lan-connect4.svg"
     },
     {
       "id": "lan-dodgeball",
@@ -796,7 +796,7 @@
       "playersLabel": "1–8 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Run, throw, dodge. Last one standing.",
-      "artwork": "art/token_out.svg"
+      "artwork": "art/lan-dodgeball.svg"
     },
     {
       "id": "lan-euchre",
@@ -853,7 +853,7 @@
       "playersLabel": "1–4 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Order it up. Go alone. Get euchred.",
-      "artwork": "art/cards_fan.svg"
+      "artwork": "art/lan-euchre.svg"
     },
     {
       "id": "lan-famfeud",
@@ -910,7 +910,7 @@
       "playersLabel": "2–10, teams",
       "integration": "avrana.lan-launch/v1",
       "summary": "Survey says… head-to-head or teams.",
-      "artwork": "art/notepad.svg"
+      "artwork": "art/lan-famfeud.svg"
     },
     {
       "id": "lan-fortfling",
@@ -967,7 +967,7 @@
       "playersLabel": "2 players",
       "integration": "avrana.lan-launch/v1",
       "summary": "Pull back. Pick a weapon. Wreck their fort.",
-      "artwork": "art/structure_tower.svg"
+      "artwork": "art/lan-fortfling.svg"
     },
     {
       "id": "arcade-gauntlet2",
@@ -1025,7 +1025,7 @@
       "provider": "arcade",
       "status": "current",
       "summary": "Two heroes, one dungeon. Every phone is a controller and a screen.",
-      "artwork": "art/sword.svg"
+      "artwork": "art/kenney-sword.svg"
     },
     {
       "id": "lan-gridiron",
@@ -1082,7 +1082,7 @@
       "playersLabel": "1–8 + bots + TV",
       "integration": "avrana.lan-launch/v1",
       "summary": "Call the play. Make the catch. Own the field.",
-      "artwork": "art/flag_triangle.svg"
+      "artwork": "art/lan-gridiron.svg"
     },
     {
       "id": "lan-hearts",
@@ -1139,7 +1139,7 @@
       "playersLabel": "1–4 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Duck the queen. Dodge the points.",
-      "artwork": "art/suit_hearts.svg"
+      "artwork": "art/lan-hearts.svg"
     },
     {
       "id": "lan-orbitriot",
@@ -1196,7 +1196,7 @@
       "playersLabel": "2–8 + TV",
       "integration": "avrana.lan-launch/v1",
       "summary": "Pool meets pinball. Everybody launches at once.",
-      "artwork": "art/arrow_rotate.svg"
+      "artwork": "art/lan-orbitriot.svg"
     },
     {
       "id": "lan-pricecheck",
@@ -1253,7 +1253,7 @@
       "playersLabel": "1–12",
       "integration": "avrana.lan-launch/v1",
       "summary": "Guess the price. Closest wins.",
-      "artwork": "art/dollar.svg"
+      "artwork": "art/lan-pricecheck.svg"
     },
     {
       "id": "lan-rummikub",
@@ -1310,7 +1310,7 @@
       "playersLabel": "2–6 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Open with 30. Then wreck the table.",
-      "artwork": "art/card_tap.svg"
+      "artwork": "art/lan-rummikub.svg"
     },
     {
       "id": "lan-smelterskelter",
@@ -1367,7 +1367,7 @@
       "playersLabel": "2–8 + TV",
       "integration": "avrana.lan-launch/v1",
       "summary": "Hook. Swing. Steal the cargo.",
-      "artwork": "art/fire.svg"
+      "artwork": "art/lan-smelterskelter.svg"
     },
     {
       "id": "lan-snake",
@@ -1424,7 +1424,7 @@
       "playersLabel": "1–8 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Don't hit anything. Especially yourself.",
-      "artwork": "art/arrow_right_curve.svg"
+      "artwork": "art/lan-snake.svg"
     },
     {
       "id": "lan-spades",
@@ -1481,7 +1481,7 @@
       "playersLabel": "2–4 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Partnership trick-taking to 500.",
-      "artwork": "art/suit_spades.svg"
+      "artwork": "art/lan-spades.svg"
     },
     {
       "id": "lan-tanks",
@@ -1538,7 +1538,7 @@
       "playersLabel": "1–6 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "Angle. Power. Apologize later.",
-      "artwork": "art/shield.svg"
+      "artwork": "art/lan-tanks.svg"
     },
     {
       "id": "lan-poker",
@@ -1595,7 +1595,7 @@
       "playersLabel": "1–9 + bots",
       "integration": "avrana.lan-launch/v1",
       "summary": "No-Limit Hold'em. Last stack standing.",
-      "artwork": "art/suit_diamonds.svg"
+      "artwork": "art/lan-poker.svg"
     },
     {
       "id": "lan-fifthsignal",
@@ -1652,7 +1652,7 @@
       "playersLabel": "3–5 + TV",
       "integration": "avrana.lan-launch/v1",
       "summary": "Five consoles. One signal. Nobody has the whole answer.",
-      "artwork": "art/spinner_segment.svg"
+      "artwork": "art/lan-fifthsignal.svg"
     },
     {
       "id": "lan-trivia",
@@ -1709,7 +1709,7 @@
       "playersLabel": "2–10",
       "integration": "avrana.lan-launch/v1",
       "summary": "Buzz first. Think later.",
-      "artwork": "art/book_open.svg"
+      "artwork": "art/lan-trivia.svg"
     },
     {
       "id": "lan-werewolf",
@@ -1766,7 +1766,7 @@
       "playersLabel": "5–10, same room",
       "integration": "avrana.lan-launch/v1",
       "summary": "Someone here is lying.",
-      "artwork": "art/campfire.svg"
+      "artwork": "art/lan-werewolf.svg"
     },
     {
       "id": "lan-wordrush",
@@ -1823,7 +1823,7 @@
       "playersLabel": "1–12",
       "integration": "avrana.lan-launch/v1",
       "summary": "Same 7 letters. Race to find the most words.",
-      "artwork": "art/notepad_write.svg"
+      "artwork": "art/lan-wordrush.svg"
     },
     {
       "id": "lan-wordclash",
@@ -1880,7 +1880,7 @@
       "playersLabel": "2–8",
       "integration": "avrana.lan-launch/v1",
       "summary": "Duel. Relay. Sabotage.",
-      "artwork": "art/puzzle.svg"
+      "artwork": "art/lan-wordclash.svg"
     },
     {
       "id": "bluff",
@@ -1939,7 +1939,7 @@
       "playersLabel": "1–6 (+ test bots)",
       "integration": "avrana.lan-launch/v1",
       "summary": "Claim anything. Get caught, lose a card.",
-      "artwork": "art/card_flip.svg"
+      "artwork": "art/lan-bluff.svg"
     },
     {
       "id": "ps1-bomberman",
@@ -2054,7 +2054,7 @@
       "status": "experimental",
       "hardwareValidationRequired": true,
       "summary": "Up to four bombers on one arena. Phones are the controllers.",
-      "artwork": "art/exploding.svg"
+      "artwork": "art/kenney-exploding.svg"
     },
     {
       "id": "ps1-worms",
@@ -2137,8 +2137,7 @@
       },
       "status": "experimental",
       "hardwareValidationRequired": true,
-      "summary": "One controller, up to four players taking turns.",
-      "artwork": "art/bow.svg"
+      "summary": "One controller, up to four players taking turns."
     }
   ],
   "collections": []

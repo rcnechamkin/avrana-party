@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// Prepare the curated library artwork: contracts/artwork.json names icons from the vendored,
-// unmodified Kenney originals in assets/vendor/kenney-board-game-icons/; each is written to
-// web/party/art/<name>.svg with a viewBox and currentColor fill (so a tile can tint it) and
-// nothing else changed.
+// Prepare the library artwork named in contracts/artwork.json into web/party/art/:
+//
+//   lan:<slug>     -> art/lan-<slug>.svg      the title's own GameArt scene, exported by the games
+//                                             repository (ops/export_game_art.mjs) into
+//                                             assets/vendor/lan-games-art/; copied verbatim
+//   kenney:<icon>  -> art/kenney-<icon>.svg   a vendored, unmodified Kenney Board Game Icon (CC0),
+//                                             given a viewBox and an Avrana lavender fill
 //
 //   npm run build:art            (part of npm run build:ui)
 //   node tools/build-art.mjs --check
@@ -13,23 +16,37 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const vendor = path.join(root, 'assets', 'vendor', 'kenney-board-game-icons');
+const vendor = path.join(root, 'assets', 'vendor');
 const outDir = path.join(root, 'web', 'party', 'art');
-const NAME = /^[A-Za-z0-9_]{1,40}$/;
+const REF = /^(lan|kenney):([A-Za-z0-9_]{1,40})$/;
+const KENNEY_FILL = '#cdbff2';   // Avrana lavender on the tile; Kenney art is single-colour
 
 /** Kenney's vector icons are single-colour paths on a 64 x 64 canvas centred on 0,0. */
-export function prepare(svg) {
+export function prepareKenney(svg) {
   const paths = [...svg.matchAll(/<path\b[^>]*\sd="([^"]+)"[^>]*\/?>/g)].map((m) => m[1]);
   if (!paths.length) throw new Error('no paths');
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 64 64" fill="currentColor">'
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -40 80 80" fill="${KENNEY_FILL}">`
     + paths.map((d) => `<path d="${d}"/>`).join('') + '</svg>\n';
+}
+
+export function outputName(ref) {
+  const [, source, name] = REF.exec(ref) || [];
+  if (!source) throw new Error(`bad artwork reference ${ref}`);
+  return `${source}-${name}.svg`;
 }
 
 export function wanted() {
   const doc = JSON.parse(readFileSync(path.join(root, 'contracts', 'artwork.json'), 'utf8'));
-  const names = [...new Set(Object.values(doc.games))].sort();
-  for (const name of names) if (!NAME.test(name)) throw new Error(`bad artwork name ${name}`);
-  return new Map(names.map((name) => [name + '.svg', prepare(readFileSync(path.join(vendor, name + '.svg'), 'utf8'))]));
+  const files = new Map();
+  for (const ref of new Set(Object.values(doc.games))) {
+    const [, source, name] = REF.exec(ref) || [];
+    if (!source) throw new Error(`bad artwork reference ${ref}`);
+    const svg = source === 'lan'
+      ? readFileSync(path.join(vendor, 'lan-games-art', name + '.svg'), 'utf8')
+      : prepareKenney(readFileSync(path.join(vendor, 'kenney-board-game-icons', name + '.svg'), 'utf8'));
+    files.set(outputName(ref), svg);
+  }
+  return new Map([...files].sort());
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
@@ -49,6 +66,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     for (const [f, svg] of files) writeFileSync(path.join(outDir, f), svg);
-    console.log(`art: ${files.size} icons, ${[...files.values()].reduce((n, s) => n + s.length, 0)} bytes`);
+    console.log(`art: ${files.size} files, ${[...files.values()].reduce((n, s) => n + s.length, 0)} bytes`);
   }
 }

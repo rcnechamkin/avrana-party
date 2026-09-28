@@ -10,3 +10,4 @@ tools/build-avatars.mjs text eol=lf
 web/party/lib/avatars.js text eol=lf
 web/party/art/*.svg text eol=lf
 tools/build-art.mjs text eol=lf
+assets/vendor/lan-games-art/*.svg text eol=lf

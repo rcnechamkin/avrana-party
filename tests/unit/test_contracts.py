@@ -274,23 +274,27 @@ class ApplianceAndCatalog(unittest.TestCase):
         for name in built['labels']:
             self.assertTrue(name in VOCAB.device or name in VOCAB.runtime)
 
-    def test_curated_artwork_is_local_and_validated(self):
+    def test_library_artwork_is_local_and_validated(self):
         art = catalog.load_artwork()
         built = catalog.build(VOCAB, self.appliance, self.contracts, artwork=art)
-        chess = next(g for g in built['games'] if g['id'] == 'lan-chess')
-        self.assertEqual(chess['artwork'], 'art/chess_knight.svg')
+        by_id = {g['id']: g for g in built['games']}
+        self.assertEqual(by_id['lan-chess']['artwork'], 'art/lan-chess.svg')          # the title's own scene
+        self.assertEqual(by_id['arcade-gauntlet2']['artwork'], 'art/kenney-sword.svg')
+        self.assertNotIn('artwork', by_id['ps1-worms'])                                # generic icon instead
         for g in built['games']:
             if 'artwork' in g:
-                self.assertRegex(g['artwork'], r'^art/[A-Za-z0-9_]+\.svg$')
+                self.assertRegex(g['artwork'], r'^art/(lan|kenney)-[A-Za-z0-9_]+\.svg$')
                 svg = (WEB_DIR / g['artwork']).read_text(encoding='utf-8')
-                self.assertIn('fill="currentColor"', svg)
-                self.assertNotRegex(svg, r'https?://(?!www\.w3\.org/2000/svg)')  # no remote references
+                # Self-contained: no remote references, no styles or scripts (the /party/ CSP).
+                self.assertNotRegex(svg, r'https?://(?!www\.w3\.org/2000/svg)')
+                self.assertNotRegex(svg, r'<(style|script)|\sstyle=|\son[a-z]+=')
         with self.assertRaisesRegex(ValueError, 'unknown games'):
-            catalog.build(VOCAB, self.appliance, self.contracts, artwork={'ghost': 'art/sword.svg'})
+            catalog.build(VOCAB, self.appliance, self.contracts, artwork={'ghost': 'art/kenney-sword.svg'})
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'artwork.json'
-            for games, pattern in (({'lan-chess': '../x'}, 'bad artwork name'),
-                                   ({'lan-chess': 'not_prepared'}, 'missing')):
+            for games, pattern in (({'lan-chess': 'lan:../x'}, 'bad artwork reference'),
+                                   ({'lan-chess': 'http:x'}, 'bad artwork reference'),
+                                   ({'lan-chess': 'lan:not_exported'}, 'missing')):
                 path.write_text(json.dumps({'schema': 'avrana.artwork/v0', 'games': games}), encoding='utf-8')
                 with self.assertRaisesRegex(ValueError, pattern):
                     catalog.load_artwork(path)

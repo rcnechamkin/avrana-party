@@ -1,17 +1,31 @@
-# Vendored third-party visual assets
+# Vendored visual assets
 
-Development-time sources only. Nothing here is served: build scripts turn these files into the
-committed assets under `web/party/` (which are). Only files actually used are vendored.
+Development-time sources only. Nothing here is served: `tools/build-art.mjs` turns these files into
+the committed assets under `web/party/art/` (which are). Only files actually used are vendored.
+The mapping from game to artwork is `contracts/artwork.json`.
 
-## `kenney-board-game-icons/`
+## `lan-games-art/`: the titles' own artwork
+
+| | |
+|---|---|
+| What | each LAN Games title's GameArt scene: the same drawing its hub card and join screen use |
+| Source | the games repository (`rcnechamkin/avrana-party-games`): `web/gameart.js` (drawings) + `provider/catalog.json` (accents), exported by `ops/export_game_art.mjs` |
+| Form | static, square (viewBox `0 50 300 300`), self-contained SVG: presentation attributes only, no styles, scripts, fonts or remote references; frozen (no animation) |
+| License | first-party project artwork; same terms as the games repository |
+| Refresh | in the games checkout: `node ops/export_game_art.mjs ../avrana-party/assets/vendor/lan-games-art`; to check: add `--check`. Then `npm run build:art` here |
+
+## `kenney-board-game-icons/`: Kenney icons where they genuinely depict the game
 
 | | |
 |---|---|
 | Pack | Board Game Icons 1.1 by Kenney (www.kenney.nl), created 2024-07-22 |
 | Source | https://kenney.nl/assets/board-game-icons (`kenney_board-game-icons.zip`, SHA-256 `05f4358381d8b16b303b2f056393b76ce3f6a58228599e88caa2eab11d4c2946`, downloaded 2026-09-27) |
 | License | CC0 1.0 (`License.txt`, unmodified); attribution not required |
-| Files | 33 icons from `Vector/Icons/`, byte-for-byte originals; the set is exactly the values of `contracts/artwork.json` |
-| Modified? | Not here. `tools/build-art.mjs` writes derived copies to `web/party/art/`: same paths, plus a `viewBox="-32 -32 64 64"` and `fill="currentColor"` so a tile can tint them |
+| Files | `sword.svg` (Gauntlet II), `exploding.svg` (Bomberman): byte-for-byte originals from `Vector/Icons/` |
+| Modified? | Not here. `tools/build-art.mjs` writes derived copies (same paths, a viewBox and an Avrana lavender fill) |
+
+Kenney's board-game vocabulary has no ships, balls, buzzers or letter tiles, so it is not used where
+it would only be a loose metaphor; titles without artwork show a generic icon.
 
 ## Generated (not vendored)
 
