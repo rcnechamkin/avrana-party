@@ -44,8 +44,11 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/arcade/');
   await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/chess/?avrana=1');
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Not installed');
-  // Uninstalled prototypes stay hidden; explicitly experimental titles are visible but cannot launch.
-  await expect(page.locator('[data-id="bluff"]')).toHaveCount(0);
+  // BLUFF is installed: listed with its own art and launched through the Avrana-integrated path.
+  const bluff = page.locator('[data-id="bluff"]');
+  await expect(bluff).toContainText('BLUFF');
+  await expect(bluff.locator('img[src$="art/lan-bluff.svg"]')).toHaveCount(1);
+  await expect(bluff.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
   await page.locator('#phone summary').click();
   await expect(page.locator('#phone-summary')).toHaveText('All set');
   await expect(page.locator('#phone-list [data-cap="video.h264"]')).toHaveAttribute('data-status', 'yes');

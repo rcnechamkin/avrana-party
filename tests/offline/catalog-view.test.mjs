@@ -10,8 +10,12 @@ const profile = createProfile({ getItem: (k) => map.get(k) ?? null, setItem: (k,
 
 test('unified catalog includes individual browser titles, arcade and honest PS1 entries', () => {
   const games = visibleGames(catalog);
-  assert.equal(games.length, 32); // 29 donor + arcade + 2 PS1; uninstalled BLUFF stays hidden.
-  assert.equal(games.filter((g) => g.provider === 'lan-games').length, 29);
+  assert.equal(games.length, 33); // 29 donor + BLUFF + arcade + 2 PS1
+  assert.equal(games.filter((g) => g.provider === 'lan-games').length, 30);
+  const bluff = games.find((g) => g.id === 'bluff');
+  assert.ok(bluff.installed);
+  assert.equal(bluff.artwork, 'art/lan-bluff.svg');
+  assert.equal(launchTarget(bluff), '/games/bluff/?avrana=1');
   const ps1 = games.filter((g) => g.provider === 'retroarch-ps1');
   assert.equal(ps1.length, 2);
   assert.ok(ps1.every((g) => !g.installed && !g.entry && g.hardwareValidationRequired));
@@ -43,7 +47,7 @@ test('a weak phone cannot downgrade another phone or the provider catalog', () =
 
 test('all granted browser titles launch directly with explicit context; invalid paths fail closed', () => {
   const games = catalog.games.filter((g) => g.provider === 'lan-games' && g.installed);
-  assert.equal(games.length, 29);
+  assert.equal(games.length, 30); // 29 donor titles + BLUFF
   for (const game of games) {
     assert.equal(launchTarget(game), `/games/${game.legacySlug}/?avrana=1`);
     assert.equal(launchTarget({ ...game, entry: '/' }), null);

@@ -25,6 +25,8 @@ test('shows every capability and a machine-readable report', async ({ page }) =>
   expect(JSON.stringify(r)).not.toContain('Mozilla/');  // the user agent is shown to people, never reported
   await expect(page.locator('#summary')).toContainText('reached the Pi at 127.0.0.1');
   await expect(page.locator('#providers')).toContainText('uinput-gamepad');
+  expect(r.evaluations.find((e: { game: string }) => e.game === 'bluff').installed).toBe(true);
+  await expect(page.locator('#games tbody tr', { hasText: 'BLUFF' })).not.toContainText('not installed');
 });
 
 test('deep checks and the keep-awake test', async ({ page }) => {

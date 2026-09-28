@@ -47,8 +47,14 @@ class DonorCatalog(unittest.TestCase):
                          {'lan-games', 'arcade', 'retroarch-ps1'})
         self.assertEqual(result['collections'], [])
         installed = [g for g in result['games'] if g['installed']]
-        self.assertEqual(len(installed), 30)
+        self.assertEqual(len(installed), 31)
         self.assertEqual(next(g for g in installed if g['id'] == 'lan-chess')['entry'], '/games/chess/')
+        # BLUFF is live in the Games fork; the appliance grants it under its own ID.
+        bluff = next(g for g in installed if g['id'] == 'bluff')
+        self.assertEqual((bluff['entry'], bluff['launchTarget'], bluff['status']),
+                         ('/games/bluff/', '/games/bluff/', 'current'))
+        self.assertEqual(bluff['integration'], 'avrana.lan-launch/v1')
+        self.assertTrue(bluff['private_player_ui'])
         for cid in ('ps1-bomberman', 'ps1-worms'):
             entry = next(g for g in result['games'] if g['id'] == cid)
             self.assertFalse(entry['installed'])
