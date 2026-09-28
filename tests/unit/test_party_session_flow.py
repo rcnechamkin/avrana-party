@@ -170,7 +170,7 @@ class Flow(ServiceCase):
         self.assertEqual(self.ana.post('session/ended', {'message': forged})[0], 404)
         # 3. Without the key: a ticket, a guess or a message signed with another key.
         _, t, _ = self.ticket(self.ana)
-        for bad in (t['ticket'], 'aps0.e30.AAAA',
+        for bad in (t['ticket'], 'aps0.e30.AAAA', 'aps0.x.y', 'aps0.e30.AA+A',
                     protocol.ended_message(protocol.new_key(), 'bluff', sid, 'completed'),
                     protocol.ended_message(KEY, 'spades', sid, 'completed')):
             with self.subTest(bad=bad[:30]):
