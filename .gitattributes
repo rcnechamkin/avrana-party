@@ -5,3 +5,5 @@ web/party/lib/icons.js text eol=lf
 web/src/party.css text eol=lf
 tools/build-icons.mjs text eol=lf
 tools/check-ui.mjs text eol=lf
+web/party/avatars/*.svg text eol=lf
+tools/build-avatars.mjs text eol=lf

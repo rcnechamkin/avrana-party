@@ -26,6 +26,15 @@ const SHELL = [
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
   'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/icons.js',
   'diag/', 'diag/index.html', 'diag/diag.js',
+  // Player avatars (tools/build-avatars.mjs): generated, committed, tiny.
+  'avatars/gaze-01.svg', 'avatars/gaze-02.svg', 'avatars/gaze-03.svg', 'avatars/gaze-04.svg',
+  'avatars/gaze-05.svg', 'avatars/gaze-06.svg', 'avatars/gaze-07.svg', 'avatars/gaze-08.svg',
+  'avatars/gaze-09.svg', 'avatars/gaze-10.svg', 'avatars/gaze-11.svg', 'avatars/gaze-12.svg',
+  'avatars/gaze-13.svg', 'avatars/gaze-14.svg', 'avatars/gaze-15.svg', 'avatars/gaze-16.svg',
+  'avatars/gaze-17.svg', 'avatars/gaze-18.svg', 'avatars/gaze-19.svg', 'avatars/gaze-20.svg',
+  'avatars/gaze-21.svg', 'avatars/gaze-22.svg', 'avatars/gaze-23.svg', 'avatars/gaze-24.svg',
+  'avatars/gaze-25.svg', 'avatars/gaze-26.svg', 'avatars/gaze-27.svg', 'avatars/gaze-28.svg',
+  'avatars/gaze-29.svg', 'avatars/gaze-30.svg', 'avatars/gaze-31.svg', 'avatars/gaze-32.svg',
 ];
 const NEVER = [/^api\//, /^sw\.js$/];
 

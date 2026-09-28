@@ -23,8 +23,9 @@
     "build:icons": "node tools/build-icons.mjs",
     "build:css": "tailwindcss -i web/src/party.css -o web/party/styles.css --minify",
     "watch:css": "tailwindcss -i web/src/party.css -o web/party/styles.css --watch",
-    "build:ui": "npm run build:icons && npm run build:css",
-    "check:ui": "node tools/check-ui.mjs"
+    "build:ui": "npm run build:icons && npm run build:avatars && npm run build:css",
+    "check:ui": "node tools/check-ui.mjs",
+    "build:avatars": "node tools/build-avatars.mjs"
   },
   "repository": {
     "type": "git",
@@ -38,6 +39,8 @@
   },
   "homepage": "https://github.com/rcnechamkin/avrana-party#readme",
   "devDependencies": {
+    "@dicebear/core": "^10.7.0",
+    "@dicebear/styles": "^10.6.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^26.6.2",

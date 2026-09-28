@@ -3,6 +3,7 @@
 //
 //   web/src/party.css      -> web/party/styles.css   (Tailwind CSS 4 + daisyUI 5)
 //   tools/build-icons.mjs  -> web/party/lib/icons.js (Lucide subset)
+//   tools/build-avatars.mjs -> web/party/avatars/gaze-NN.svg (DiceBear Gaze, Night Shift)
 //
 // Nothing in the working tree is written: the CSS is compiled into a temporary file and compared
 // byte for byte, and the icon generator runs in its --check mode.
@@ -15,10 +16,12 @@ import { fileURLToPath } from 'node:url';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 let failed = false;
 
-try {
-  execFileSync(process.execPath, [path.join(root, 'tools', 'build-icons.mjs'), '--check'], { stdio: 'inherit' });
-} catch {
-  failed = true;
+for (const tool of ['build-icons.mjs', 'build-avatars.mjs']) {
+  try {
+    execFileSync(process.execPath, [path.join(root, 'tools', tool), '--check'], { stdio: 'inherit' });
+  } catch {
+    failed = true;
+  }
 }
 
 const tmp = mkdtempSync(path.join(tmpdir(), 'avrana-ui-'));
