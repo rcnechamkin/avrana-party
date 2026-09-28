@@ -70,6 +70,9 @@ async function join(page: Page, name: string) {
 async function hostAction(host: Page, button: string, done: string) {
   const out = host.locator('#out');
   for (let i = 0; i < 5; i++) {
+    // Click only once the lab page has its view: a click on a page still showing "Loading..." carries
+    // no if_version, the Party answers 409, and the lab's next poll overwrites that message at once.
+    await expect(out).toContainText('me: ');
     await host.getByRole('button', { name: button }).click();
     await expect(out).toContainText(new RegExp(`${done}|The party changed`), { timeout: 15_000 });
     if ((await out.textContent())!.includes(done)) return;
@@ -298,6 +301,7 @@ test('asleep through the end: the page shows the end, never a standalone seat, t
   await ben.context.setOffline(false);
   await ben.page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
   await expect(ended(ben.page)).toContainText('This game is over');
+  await expect(ben.page.locator('#avrana-game-room')).toBeHidden();  // no stale table (found on the Pi)
   await ben.page.waitForTimeout(3_000);
   const woke = await log(ben.page);
   expect(woke.opened).toBe(asleep.opened);                           // no socket: not standalone, not a watcher
@@ -312,6 +316,7 @@ test('asleep through the end: the page shows the end, never a standalone seat, t
   expect(second).toMatch(/^session-/);
   expect(second).not.toBe(first);                                    // one session per play-through
   await expect(ended(ben.page)).toHaveCount(0);
+  await expect(ben.page.locator('#avrana-game-room')).toBeVisible();
   const fresh = await latest(ben.page);
   expect(fresh.phase).toBe('lobby');                                 // a fresh table, no old hands
   expect(fresh.you?.pid).toBe(rejoined.pid);

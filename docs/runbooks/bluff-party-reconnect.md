@@ -15,6 +15,12 @@ What it does not prove: the HTTPS path (`https://party.avrana.net/party/api/…`
 That needs the Party service deployed behind an owner-approved `location /party/api/` on the 443
 server, which is a separate, later step. The lab is plain HTTP on `10.42.0.1:8190`.
 
+**Already covered without phones (2026-09-28):** desktop Chromium over the real Party Wi-Fi against
+this lab passed setup, R1, R4, R5, E1, E2 and E3 (and a frozen-page stand-in for R3); see the
+finding. The phone-only part is what a desktop browser cannot reproduce: **R2** (iPhone lock and
+wake) and **R4 on the phone** (Wi-Fi off/on at the radio), then **E1** with a really locked phone.
+If time is short, run those three on an iPhone in Safari; the rest is optional confirmation.
+
 ## 0. Before you start
 
 - Pushed for review (or merged): games `fix/avr-23-party-reconnect` (games PR #6; it contains PR #5,

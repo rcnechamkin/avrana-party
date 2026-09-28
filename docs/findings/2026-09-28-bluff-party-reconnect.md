@@ -8,7 +8,8 @@ identity by itself.
 
 Code: games integration branch `fix/avr-22-23-24-integration` at `d2798c4` (on games `main`
 `e9954a6`), whose tree is identical to the stacked review branches
-`fix/avr-24-party-completion` + `fix/avr-23-party-reconnect` (`1102fbe`); avrana-party
+`fix/avr-24-party-completion` + `fix/avr-23-party-reconnect` (`1102fbe`, then `0ddc6cb` with the
+ended-screen fix below); avrana-party
 `fix/avr-23-party-bluff-reconnect-e2e` (on `main` `563c164`).
 
 ## How
@@ -48,6 +49,45 @@ abandonment, `/end`, stale tickets after an end, a launch dropping watchers so t
 decides, a rematch as a new session, config needing both halves); `tests/hubnet_party_ticket_test.mjs`
 (the client rules, with a fake clock).
 
+## Remote run: the real Pi over the Avrana Party Wi-Fi (desktop browser automation)
+
+Status: **TESTED on the appliance's radio path**, not phone-verified. The dev laptop joined the
+Party Wi-Fi (`10.42.0.46`, default route via `10.42.0.1`) and drove the supervised lab harness on
+the Pi (`http://10.42.0.1:8190`, runbook step 2, bounded to 60 min, stopped afterwards) with
+Playwright: separate Chromium contexts per player (Pixel- and iPhone-sized), so cookies and storage
+were isolated. Pi code: games `0ddc6cb` (first runs `1102fbe`), harness `bc81776`. Final run:
+**33/33 checks**; the Pi's EVENT log (`~/avrana-lab/playtest/avr23-2026-09-28-0900-laptop-playwright.log`,
+kept there, not committed) matches every step.
+
+| Step | What was done | Result |
+|---|---|---|
+| Setup | two members join; host launches (`players: 2`); both open BLUFF with tickets, ready, start | p1/p2 seated, two cards each, hello carried a ticket and no token |
+| R1 | reload A | same Party session, pid, seat, cards; reconnect about 0.4-0.5 s; EVENT `disconnect` then `rejoin p1` |
+| R3~ | A's page frozen 20 s (`Page.setWebLifecycleState frozen`, JS and timers stopped), then resumed | same pid/seat/cards; the socket stayed open, so no reconnect was needed. **Not** iOS sleep: the OS did not drop the connection |
+| R4 | A offline about 10 s (browser network emulation; the socket then closed) | no socket opened while offline; B saw A `reconnecting`; 4 ticket requests failed (`ERR_INTERNET_DISCONNECTED`) and were retried; reconnect about 0.3 s after the network returned, with a ticket, same pid/seat/cards |
+| R5 | close A's tab, open the BLUFF URL in a new tab (same browser, cookie kept) | same participant and role, same seat/cards, game still `playing` |
+| E1 | B offline with its socket gone; host ends; B back online | Party `ended_by_host`; B's ticket request got 409 (no game); B shows "This game is over." beside Back to Party with the table hidden; no socket, no rejoin |
+| E2 | host launches again | new Party session (`players: 2`); B joined it by itself 0.6-4.8 s later (the 5 s poll), no reload; new session remembered; fresh lobby, no old cards; the first play-through's ticket is refused (`ticket_refused session`) |
+| E3 | a third member joins while a game runs, opens BLUFF; host ends and launches | watcher (`welcome watch`, no hand in any frame); the next launch lists 3 players and the watcher becomes a player about 4.8 s later, no reload, no navigation |
+
+No 5xx anywhere. The only non-200 Party answers were the expected 409 "no game" answers after an end.
+
+**Defect found by this run, fixed:** in E1 the page showed the ended note above the last table it
+had drawn (the old hand, "Waiting for Ana...", a turn timer), which reads as a game still on. The
+protocol was right; the screen was not. games `0ddc6cb` hides the integrated game room in the ended
+state and shows it again for the next play-through (node tests; `party-session.spec.ts` asserts it
+and fails on `1102fbe`); the rerun on the Pi confirmed it.
+
+**Test harness race found, fixed (test only):** a host action clicked on the lab page while it still
+showed "Loading..." carried no `if_version`; the Party answered 409 and the lab page's next poll
+overwrote that message, so a test could wait out its timeout on a click that had already been
+refused (one intermittent failure in the watcher test). `hostAction` now clicks only once the view
+is loaded; the full provider suite then passed three runs in a row.
+
+What desktop automation cannot show, so it stays for real phones: iPhone Safari (WebKit) lock and
+wake, where the OS suspends the page and drops its connection; a phone leaving and rejoining the
+Party Wi-Fi at the radio level; iOS or Android killing a background tab.
+
 ## Bugs found and fixed
 
 - **A waking phone came back as a watcher** (AVR-23, games `web/hubnet.js`): a ticket request that
@@ -74,7 +114,7 @@ decides, a rematch as a new session, config needing both halves); `tests/hubnet_
 - games (integration `d2798c4`): pytest **1334 passed, 2 skipped** (the 2 are the sibling-checkout
   vendoring comparison, which has no `../avrana-party` next to a temporary worktree; the
   cross-repo tests against the real Party service ran, with `AVRANA_PARTY_REPO` set);
-  `hubnet_party_ticket_test` **26/26**; `hubnet_reconnect_test` **3/3**; `avrana_worker` **3/3**;
+  `hubnet_party_ticket_test` **26/26** (28/28 at `0ddc6cb`); `hubnet_reconnect_test` **3/3**; `avrana_worker` **3/3**;
   `test_no_private_data`, `export_avrana_catalog --check`, `check_static.sh` clean.
   `ops/test_release_safety.sh` needs `rsync` (not in Git Bash); CI runs it on Linux.
 - avrana-party (`563c164` + this branch): provider E2E **19 passed, 7 skipped** (the 7 are the
@@ -82,7 +122,8 @@ decides, a rematch as a new session, config needing both halves); `tests/hubnet_
   sizes itself); `party-session.spec.ts` alone **7/7**; offline Playwright **56 passed**;
   `node --test tests/offline/*.test.mjs` **56/56**; unit tests: the 6 known Windows-only failures
   (symlinks, the install script, POSIX signals, a path separator) and nothing else; catalog check
-  and `cmp avrana-party.nginx arcade/nginx-site` pass.
+  and `cmp avrana-party.nginx arcade/nginx-site` pass. At games `0ddc6cb` with the `hostAction` fix:
+  provider E2E 19 passed, 7 skipped, three runs in a row.
 
 ## Open
 
