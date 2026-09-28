@@ -47,17 +47,19 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 
 ## Branches of this repository
 
-| Branch | Where | What | Merge status |
+Reconciled 2026-09-27 (`docs/findings/2026-09-27-m0-git-baseline.md`). Branches
+fully contained in `main` were deleted; nothing below is deployed unless it says so.
+
+| Branch | Where | What | Status |
 |---|---|---|---|
-| `main` | GitHub + Pi production | **production** | — (only the owner merges into it) |
-| `docs/party-platform` | GitHub | source of current docs copied to `main`; also has historical raw measurement evidence and network tools | retained separately; raw evidence and tools not on `main` |
-| `experiment/party-sim` | GitHub | `experiments/`: party model, viewport geometry, Personal Viewports PoC | not merged |
-| `experiment/party-service` | GitHub + Pi worktree `~/avrana-lab/party-svc` | party service + device identity + dev front door, manifest v0, **service-game launcher (PS1) + seat tickets v1** (branched from `experiment/party-sim` @ `7d4fdfd`, so it lacks the later shared-WebRTC viewport commit) | not merged |
-| `experiment/ps1-title-profiles` | GitHub + Pi dev/test checkout | **current PS1 line**: title profiles, token-in-hello, explicit Leave, supervised runs, `--capture`, party mode (seat tickets, return home), `--viewports` (built on `ps1-emulation`) | not merged |
-| `ps1-emulation` | GitHub | older PS1 shared-stream base (superseded by `experiment/ps1-title-profiles`) | not merged |
-| `fix/arcade-ap-interface` | GitHub (from 2026-09-24) | arcade `/stats` path label after the Wi-Fi change (off `main`) | not merged, not deployed |
-| `docs/current-state` | laptop only | an old docs commit **already contained in `main`** | safe to delete (`git branch -d`) |
-| `claude/dreamy-carson-sja5mq` | GitHub (PR) | 2026-09-26 sprint: platform contracts (`contracts/`, `avrana/contracts`), provider adapters (`avrana/providers`, used by `arcade/stream.py`), the Full Mode web shell (`web/party/`, nginx `/party/` on 443), the arcade page's keep-awake and reconnect, and offline CI suites. It includes PR #1's CI lane | not merged, not deployed |
+| `main` | GitHub + Pi production | **production** source (the Pi checkout may lag it; a fast-forward there is an owner step) | canonical |
+| `fix/arcade-ap-address` | GitHub | arcade `/stats` path label: find the AP by `10.42.0.1`, not `wlan1` (replaces `fix/arcade-ap-interface`) | review → merge; not deployed |
+| `chore/m0-reconcile` | GitHub | operator tools, captive-DNS installer profile fix and pointers salvaged from `docs/party-platform` | review → merge |
+| `docs/party-platform` | GitHub | history of the docs now on `main`, plus raw power-measurement evidence that stays out of `main` | park (archive) |
+| `experiment/party-service` | GitHub + Pi worktree `~/avrana-lab/party-svc` | party service, device identity, membership, host, presence, lifecycle, manifest v0, service-game launcher (PS1) + seat tickets v1, Party Home reconnect (includes the deleted `fix/party-home-reconnect`) | park: source evidence for Party Core, **not** for a wholesale merge |
+| `experiment/party-sim` | GitHub | `experiments/`: party lifecycle model, viewport geometry, Personal Viewports PoC | park (research) |
+| `experiment/ps1-title-profiles` | GitHub + Pi dev/test checkout | current PS1 line: title profiles, token-in-hello, Leave, supervised runs, party mode, `--viewports` | park (R&D) |
+| `ps1-emulation` | GitHub | older PS1 shared-stream base (superseded by `experiment/ps1-title-profiles`) | park (history) |
 
 ## Services and ports on the Pi
 

@@ -1,8 +1,9 @@
 # Network: topology, checks, offline mode (canonical)
 
 The `tools/avrana-offline`, `tools/avrana-topology-check`, and `tools/radio-watch`
-helpers referenced below remain on the `docs/party-platform` branch. They are
-absent from production `main`; review the exact script before using it on the Pi.
+helpers referenced below are on `main` (brought over from `docs/party-platform` on 2026-09-27).
+They are operator tools, not installed services: copy one to `~/avrana-lab/` and run it from
+there. `avrana-offline on|off` needs the owner's `sudo`; the other two are read-only.
 
 This is the **single source of truth for the Pi's networking**. Status labels: **VERIFIED** (read on
 the Pi, with date), **PROPOSED** (not applied), **OPEN** (owner decision). Older documents that

@@ -39,7 +39,7 @@ phones join its Wi-Fi. Game runtimes in view:
 
 Open arcade work (independent of the game work below): verify the audio-ratchet fix `6acf0b0`,
 the recovery gap (`docs/findings/2026-09-20-audio-ratchet-and-recovery.md`), and merging
-`fix/arcade-ap-interface`. Under-voltage is resolved for the tested workloads (no USB adapter).
+`fix/arcade-ap-address` (was `fix/arcade-ap-interface`). Under-voltage is resolved for the tested workloads (no USB adapter).
 
 ### Product direction (accepted 2026-09-24): one party, many games
 
@@ -127,7 +127,7 @@ in `docs/findings/2026-09-23-vtt-coup-reference.md`.
 
 ## NOW
 
-### Sprint update (2026-09-26): foundations on branch `claude/dreamy-carson-sja5mq` (PR, not merged)
+### Sprint update (2026-09-26): foundations on branch `claude/dreamy-carson-sja5mq` (merged as PR #3)
 
 Built and tested in Cloud (Tier 1–2), not deployed:
 - platform contracts: capability vocabulary, Game Contract v0 (F7's successor), appliance profile,
@@ -141,7 +141,7 @@ Records: ADR 0004, `docs/design/FULL-MODE.md`, `docs/findings/2026-09-26-archite
 and the substrate decision matrix.
 
 **Owner next:**
-1. Review and merge the PR (and PR #1, and `fix/arcade-ap-interface`: it fixes the arcade's
+1. Review and merge the PR (and PR #1, and `fix/arcade-ap-address`: it fixes the arcade's
    false "home network" warning).
 2. Deploy the shell: one nginx step plus `ops/install-party-web.sh`.
 3. Run the phone checklist in `docs/runbooks/party-https.md`.

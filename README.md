@@ -87,7 +87,7 @@ file), so **run them from a machine joined to the Avrana Party Wi-Fi**. `npm tes
 ## Open / not yet verified
 
 - Real phones **truly offline** (every phone test so far had internet behind the Pi) — `tools/avrana-offline`
-  on branch `docs/party-platform`, and the phone checklist in `docs/runbooks/network.md`.
+  and the phone checklist in `docs/runbooks/network.md`.
 - BLUFF on real phones (ROADMAP N2) — `docs/runbooks/bluff-playtest.md`.
 - Input-to-photon latency; soak with more than two phones; the AP's client ceiling.
 - Android / Windows / Firefox captive flows (their probes get a 404 today).

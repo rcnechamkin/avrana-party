@@ -16,7 +16,7 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 | Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm test` (fast), `npm run test:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; a hosts-file line `10.42.0.1 party.avrana` (Windows: `C:\Windows\System32\drivers\etc\hosts`, edited as administrator) | not run today (would take the laptop off the home network) |
 | Soak / fault harness (`@heavy`) | `main` | `npm run soak`, `npm run fault` | laptop on the Party Wi-Fi | live Pi; owner go-ahead for load | not run |
 | Soak metric maths | `main` | `npx playwright test tests/soak-metrics.spec.ts` | laptop, Cloud, **CI** | — (no browser binaries) | 10 pass (5 × 2 projects; Cloud 2026-09-26) |
-| Arcade AP-address detection | `fix/arcade-ap-interface` | `python arcade/test_ap_addresses.py` | laptop or Pi | — | 3 pass |
+| Arcade AP-address detection | `fix/arcade-ap-address` | `python3 -m unittest discover -s tests/unit -k ApAddresses` (also in the full unit run and **CI**) | laptop, Pi, CI | — (GStreamer/aiohttp stubbed) | 4 pass (2026-09-27) |
 | PS1 title profiles | `experiment/ps1-title-profiles` | `python ps1/tests/test_profiles.py` | laptop, Pi | — | 11 pass |
 | PS1 hello handshake (+ capture size, viewports) / Leave / slot logic / party-mode seats / latency instrumentation | `experiment/ps1-title-profiles` | `python ps1/tests/test_hello.py`, `test_leave.py`, `test_slots.py`, `test_seats.py`, `test_latency.py` | laptop, Pi | — (aiohttp/GStreamer stubbed) | 10, 4, 5, 4 pass; slots OK |
 | PS1 phone page layout (no control over the picture, on screen, targets, states, #diag only on request) | `experiment/ps1-title-profiles` | `npx playwright test -c ps1/tests/playwright.config.ts` | laptop | Playwright browsers | 26 pass (Chromium + WebKit × iPhone 13/SE × portrait/landscape) |
@@ -31,8 +31,8 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 | Party Home → PS1 end to end (seats, spectators, return home) | `experiment/party-service` | on the Pi: `front.py --port 8190 --host 10.0.0.142:8190 --ps1 <dev checkout>/ps1 --devices ""`; laptop: `PW_FROM=<main checkout> node experiments/party-service/e2e-ps1-party.mjs http://10.0.0.142:8190` | Pi + laptop | a fresh party (restart `front.py`) | pass ×3 (2026-09-24) |
 | Party Home page (first-time path, host game cards, follow/return, no machinery words, friendly refusal, a11y smoke) | `experiment/party-service` | `npx playwright test -c experiments/party-service/playwright.config.ts` | laptop | Playwright browsers | 6 pass (3 × Chromium, WebKit) |
 | Manifest v0 validator | `experiment/party-service` | `python experiments/manifests/test_manifest.py` | laptop | — | 10 pass |
-| Topology check (read-only) | `docs/party-platform` | `tools/avrana-topology-check` | **Pi** | — | see `docs/runbooks/network.md` |
-| Radio capacity sampler (read-only) | `docs/party-platform` | `tools/radio-watch SECONDS [INTERVAL] [OUT]` (run detached on the Pi) | **Pi** | phones kept awake (a sleeping iPhone ignores ping) | tried 2026-09-24 (1 station); capacity test not run |
+| Topology check (read-only) | `main` | `tools/avrana-topology-check` | **Pi** | — | see `docs/runbooks/network.md` |
+| Radio capacity sampler (read-only) | `main` | `tools/radio-watch SECONDS [INTERVAL] [OUT]` (run detached on the Pi) | **Pi** | phones kept awake (a sleeping iPhone ignores ping) | tried 2026-09-24 (1 station); capacity test not run |
 
 From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 `test-results/` is generated and Git-ignored.
