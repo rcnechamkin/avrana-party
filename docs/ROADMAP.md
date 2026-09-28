@@ -33,13 +33,13 @@ phones join its Wi-Fi. Game runtimes in view:
 
 | Runtime | Status | Role |
 |---|---|---|
-| **LAN Games** (`/home/cody/LAN-Games`, `party.local/`, port 8096) | **Live.** 28 browser-native games; lobby, identity, reconnect, per-player views, bots. Upstream (BEACNpool) **retired it in Sept 2026**. It is MIT-licensed and still runs, but gets no updates. | Existing native web-game platform, and the **foundation for new Avrana games** |
-| **Avrana Party Games** (fork of LAN Games; dev clone `~/avrana-lab/avrana-party-games/` on `party`; GitHub repo `rcnechamkin/avrana-party-games`, planned private, not yet created; verified full backup on the laptop at `~/avrana-party-games.git`) | **In development**, isolated on port 8196 | Source of Avrana's native games |
+| **LAN Games** (`/home/cody/LAN-Games`, `party.local/`, port 8096) | **Replaced in production on 2026-09-27** by the fork below (kept untouched at `5da1764` for rollback). 28 browser-native games; lobby, identity, reconnect, per-player views, bots. Upstream (BEACNpool) **retired it in Sept 2026**. It is MIT-licensed and still runs, but gets no updates. | Existing native web-game platform, and the **foundation for new Avrana games** |
+| **Avrana Party Games** (fork of LAN Games; private GitHub repo `rcnechamkin/avrana-party-games`; production `/home/cody/avrana-party-games`; dev clone `~/avrana-lab/avrana-party-games/` on `party`; laptop bare backup `~/avrana-party-games.git`) | **LIVE** since 2026-09-27 at `9696524` on port 8096, including BLUFF (`docs/findings/2026-09-27-production-deploy.md`); dev instances on port 8196 | Source of Avrana's native games |
 | **Arcade streaming** (`arcade/`, `party.local/arcade/`) | **Live prototype.** Gauntlet II via RetroArch + MAME 2010, one shared encode, WebRTC to phones; two iPhones verified. | Traditional/emulated games. **Preserved; not being redesigned.** |
 
 Open arcade work (independent of the game work below): verify the audio-ratchet fix `6acf0b0`,
 the recovery gap (`docs/findings/2026-09-20-audio-ratchet-and-recovery.md`), and merging
-the arcade AP fix (merged in PR #8, not deployed: needs a production fast-forward + arcade restart). Under-voltage is resolved for the tested workloads (no USB adapter).
+the arcade AP fix (PR #8) is **LIVE** since the 2026-09-27 arcade restart (`docs/findings/2026-09-27-production-deploy.md`). Under-voltage is resolved for the tested workloads (no USB adapter).
 
 ### Product direction (accepted 2026-09-24): one party, many games
 
@@ -141,9 +141,10 @@ Records: ADR 0004, `docs/design/FULL-MODE.md`, `docs/findings/2026-09-26-archite
 and the substrate decision matrix.
 
 **Owner next:**
-1. ~~Review and merge the PR~~ (merged: PRs #3–#13). Deploying the arcade AP fix (PR #8) needs a
-   production fast-forward and an arcade restart.
-2. Deploy the shell: one nginx step plus `ops/install-party-web.sh`.
+1. ~~Review and merge the PR~~ (merged: PRs #3–#13). ~~Deploy the arcade AP fix (PR #8)~~: live
+   since the 2026-09-27 production fast-forward to `7581baa` and arcade restart.
+2. ~~Deploy the shell~~: `/party/` release `7581baa` is live, after the games fork `9696524`
+   (2026-09-27, `docs/findings/2026-09-27-production-deploy.md`).
 3. Run the phone checklist in `docs/runbooks/party-https.md`.
 4. Decide the certificate-renewal credential before about **2026-11-25**; the certificate expires
    2026-12-25. Research recommends against a zone-wide Cloudflare token; see the findings.
