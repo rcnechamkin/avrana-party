@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# avrana-offline on [30min|2h] | off | status  — DEVELOPMENT offline mode for the party AP.
+#
+# ON:  party clients (wlan0) can reach the Pi (10.42.0.1: pages, DHCP, DNS, mDNS) but nothing
+#      beyond it — not the internet, not the home LAN — and the Pi's dnsmasq stops forwarding
+#      their DNS upstream. The Pi's own traffic and management over eth0 are untouched.
+# How: ONE runtime nftables table (inet avrana_offline) + a marker file /run/avrana-offline +
+#      a transient systemd timer that removes both after the chosen time (dead-man revert).
+#      Never flushes the ruleset; nothing written under /etc; gone after `off` or a reboot.
+# Needs sudo (the owner runs it):  sudo tools/avrana-offline on 30min
+# Design and verification: docs/runbooks/network.md.
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+AP_IF=wlan0; AP_ADDR=10.42.0.1; MARK=/run/avrana-offline; UNIT=avrana-offline-revert
+die(){ echo "avrana-offline: $*" >&2; exit 1; }
+need_root(){ [ "$(id -u)" = 0 ] || die "needs sudo"; }
+dnsmasq_pid(){ local f=/run/nm-dnsmasq-$AP_IF.pid p; [ -r "$f" ] || return 1; p=$(cat "$f"); [ -d "/proc/$p" ] && echo "$p"; }
+table_present(){ nft list table inet avrana_offline >/dev/null 2>&1; }
+
+cmd_on(){
+  need_root; local ttl=${1:-2h} pid uid user others
+  [[ $ttl =~ ^[0-9]+(s|min|h)$ ]] || die "bad duration '$ttl' (e.g. 30min, 2h)"
+  ip -4 -o addr show dev "$AP_IF" | grep -q "inet $AP_ADDR/24 " || die "$AP_IF lacks $AP_ADDR/24: not the party AP, refusing"
+  pid=$(dnsmasq_pid) || die "NetworkManager's dnsmasq for $AP_IF not found"
+  uid=$(awk '/^Uid:/{print $3}' "/proc/$pid/status"); user=$(id -nu "$uid")
+  [ "$uid" != 0 ] || die "dnsmasq runs as root: a uid rule would also block root's DNS, refusing"
+  others=$(pgrep -u "$uid" | grep -vcx "$pid" || true)
+  [ "$others" = 0 ] || die "other processes also run as $user: the DNS rule would hit them, refusing"
+  nft -f - <<EOF
+table inet avrana_offline
+delete table inet avrana_offline
+table inet avrana_offline {
+  chain fwd { type filter hook forward priority -10; policy accept;
+    iifname "$AP_IF" oifname != "$AP_IF" counter reject with icmpx type admin-prohibited
+    iifname != "$AP_IF" oifname "$AP_IF" counter drop }
+  chain out { type filter hook output priority -10; policy accept;
+    meta skuid $uid oifname != "$AP_IF" meta l4proto { udp, tcp } th dport 53 counter drop }
+}
+EOF
+  systemctl stop "$UNIT.timer" 2>/dev/null || true; systemctl reset-failed "$UNIT.service" 2>/dev/null || true
+  systemd-run --quiet --unit="$UNIT" --on-active="$ttl" --timer-property=AccuracySec=1s \
+    /bin/sh -c '/usr/sbin/nft delete table inet avrana_offline 2>/dev/null; rm -f /run/avrana-offline'
+  printf 'state=ON\nsince=%s\nauto_revert_after=%s\nby=%s\ndns_uid=%s(%s)\n' \
+    "$(date -Is)" "$ttl" "${SUDO_USER:-root}" "$uid" "$user" > "$MARK"; chmod 0644 "$MARK"
+  kill -HUP "$pid"   # clear dnsmasq's cache so cached upstream answers stop; does not drop the AP
+  echo "OFFLINE MODE ON: party clients have no upstream; auto-revert in $ttl  (undo: sudo $0 off)"
+}
+
+cmd_off(){
+  need_root
+  systemctl stop "$UNIT.timer" 2>/dev/null || true; systemctl reset-failed "$UNIT.service" 2>/dev/null || true
+  nft delete table inet avrana_offline 2>/dev/null || true; rm -f "$MARK"
+  local pid; pid=$(dnsmasq_pid) && kill -HUP "$pid" || true
+  if table_present; then die "table still present!"; fi
+  echo "offline mode OFF"
+}
+
+cmd_status(){
+  local st=OFF tbl="unknown (run with sudo to check)"; [ -e "$MARK" ] && st=ON
+  if [ "$(id -u)" = 0 ]; then if table_present; then tbl=present; else tbl=absent; fi; fi
+  echo "offline mode: $st   nft table: $tbl"
+  [ -e "$MARK" ] && sed 's/^/  /' "$MARK"
+  systemctl list-timers --all --no-legend "$UNIT.timer" 2>/dev/null | sed 's/^/  auto-revert: /'
+  if [ "$tbl" = present ]; then nft list table inet avrana_offline | grep -o 'i.*counter packets [0-9]*' | sed 's/^/  /'; fi
+  if { [ "$st" = ON ] && [ "$tbl" = absent ]; } || { [ "$st" = OFF ] && [ "$tbl" = present ]; }; then
+    echo "  WARNING: marker and table disagree; run: sudo $0 off"
+  fi
+}
+
+case "${1:-status}" in
+  on) shift; cmd_on "$@";;
+  off) cmd_off;;
+  status) cmd_status;;
+  *) echo "usage: avrana-offline on [30min|2h] | off | status" >&2; exit 2;;
+esac

@@ -185,7 +185,8 @@ caused the failure; do not copy keys off the Pi.
 
 ## Full Mode web shell (`/party/`): deploy, check, roll back
 
-Status: **PROPOSED; not deployed** (branch `claude/dreamy-carson-sja5mq`, ADR 0004,
+Status: **LIVE** — release `459d4cd` (PR #5) under `/var/www/avrana-party/web/releases/`, read on the
+Pi 2026-09-27; later `main` commits are not deployed until the owner runs this again (ADR 0004,
 `docs/design/FULL-MODE.md`). It adds three `location` blocks to the **443 server only**:
 `= /party`, `= /party/api/origin.json` and `/party/`. The port 80 server is byte-for-byte
 unchanged, which `tests/unit/test_nginx_site.py` checks against a real nginx. The files are static;
