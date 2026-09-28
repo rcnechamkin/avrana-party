@@ -17,9 +17,9 @@ server, which is a separate, later step. The lab is plain HTTP on `10.42.0.1:819
 
 ## 0. Before you start
 
-- Merged or at least pushed for review: the games branch with AVR-22, AVR-23 and AVR-24 together
-  (`GAMES_BRANCH` below; the integration branch was `fix/avr-22-23-24-integration`) and the
-  avrana-party harness branch `fix/avr-23-party-bluff-reconnect-e2e`. Note both SHAs.
+- Pushed for review (or merged): games `fix/avr-23-party-reconnect` (games PR #6; it contains PR #5,
+  so AVR-22, AVR-23 and AVR-24 together) and the avrana-party harness branch
+  `fix/avr-23-party-bluff-reconnect-e2e` (PR #18). Note both SHAs.
 - Two phones on the "Avrana Party" Wi-Fi. Best: one iPhone (Safari) and one Android (Chrome); the
   wake-up failure this work fixed is most likely on iOS. A third browser is optional (step 6).
 - Nothing else on the lab port: `ssh party 'ss -ltn | grep -E ":8190 " || echo free'`. If the old
@@ -33,9 +33,9 @@ travels as a bundle (as in `games-fork-deploy.md`):
 
 ```bash
 # laptop, games checkout:
-git bundle create avr23-games.bundle GAMES_BRANCH && scp avr23-games.bundle party:
+git bundle create avr23-games.bundle fix/avr-23-party-reconnect && scp avr23-games.bundle party:
 # Pi:
-git -C ~/avrana-lab/avrana-party-games fetch ~/avr23-games.bundle GAMES_BRANCH:avr23-lab \
+git -C ~/avrana-lab/avrana-party-games fetch ~/avr23-games.bundle fix/avr-23-party-reconnect:avr23-lab \
     && rm ~/avr23-games.bundle
 git -C ~/avrana-lab/avrana-party-games worktree add ~/avrana-lab/wt/avr23-games avr23-lab
 git -C ~/avrana-lab/avrana-party-docs fetch origin fix/avr-23-party-bluff-reconnect-e2e
