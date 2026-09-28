@@ -17,6 +17,11 @@ export function resolveAvatar(value) {
 const TOKEN = /^[A-Za-z0-9_-]{8,64}$/;
 export const photoPath = (value) => typeof value === 'string'
   && /^\/avatars\/[a-f0-9]{20}\.webp(?:\?v=\d+)?$/.test(value) ? value : '';
+// The games' server sends a chosen Gaze avatar as this exact bundled picture path.
+export const gazePicture = (value) => {
+  const match = typeof value === 'string' && /^\/shared\/avatars\/(gaze-\d\d)\.svg$/.exec(value);
+  return match && AVATARS.includes(match[1]) ? value : '';
+};
 
 export function createProfile(storage, random = globalThis.crypto) {
   const get = (key) => { try { return storage.getItem(key) || ''; } catch { return ''; } };
