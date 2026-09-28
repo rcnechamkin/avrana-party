@@ -93,6 +93,7 @@ listed above on experiment branches are candidates for this lane once those bran
 | nginx: static rules + a **real nginx** run (HTTP captive/apps unchanged; `/party/` HTTPS-only with headers; origin JSON) | 1 + 2 | same, with `AVRANA_REQUIRE_NGINX=1` (skips without nginx otherwise) | pass (nginx 1.24) |
 | Browser modules: probe (fake browsers), evaluation vectors, keep-awake lifecycle, service worker in a VM | 1 | `node --test 'tests/offline/*.test.mjs'` | 41 pass |
 | Full Mode page, diagnostics, arcade page states (fake signalling), offline copy with Chromium offline mode | 2 | `npx playwright test -c playwright.offline.config.ts` (Cloud: `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`) | 42 pass (2 Chromium projects) |
+| Party Core v0 (`avrana.party`): explicit Join, server-issued device cookie, presence as liveness (a player in the game stays `playing`), host grace/succession, versioned host actions, one session launching→active→ending→ended, stale reports refused, 150-seed fuzz; HTTP guards (Host, Origin, JSON, size), no token in bodies/logs, long poll | 1 | same (`test_party_core`, `test_party_service`) | 47 pass (laptop, 2026-09-27; branch `fix/party-core-v0`) |
 | Catalog is fresh | 1 | `python3 -m avrana.contracts.catalog --check` | clean |
 
 `npm run test:offline` runs the three offline runners in order. `npm run dev` serves the simulated
