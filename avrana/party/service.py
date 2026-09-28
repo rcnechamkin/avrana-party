@@ -16,6 +16,9 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/session/launch {game, if_version}    host
     POST /party/api/session/end    {if_version}          host: end the game for everyone
 
+Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
+(ADR 0006).
+
 Guards: an allowed Host header on every request (DNS rebinding); POSTs need an allowed Origin
 (CSRF) and a JSON body of at most 8 KiB; every response is `Cache-Control: no-store`. The device
 token lives only in the cookie; it is never logged and never in a body or URL. Game servers are
@@ -149,6 +152,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     service: PartyService = None
     cfg: Config = None
     extra_routes = {}                    # (method, path) -> fn(handler, device_id, body); protocol
+    internal_routes = {}                 # path -> fn(handler, body); loopback, unproxied only
 
     def log_request(self, code='-', size='-'):
         # Path only: never the query string, headers or body (tokens and tickets live there).
@@ -181,9 +185,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return _send(self, 200, self.service.view(self._device(), since, wait))
 
     def do_POST(self):
+        path = urlsplit(self.path).path
+        if path.startswith('/internal/'):
+            return self._internal(path)
         if not self._guard():
             return
-        path = urlsplit(self.path).path
         try:
             n = int(self.headers.get('Content-Length') or 0)
         except ValueError:
@@ -231,6 +237,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except core.Refused as e:
             return _refused(self, e)
 
+    def _internal(self, path):
+        """Server-to-server routes (the session protocol's game -> party messages). Only from this
+        machine and never through the reverse proxy: nginx adds X-Forwarded-For/X-Real-IP, and it
+        forwards only /party/api/. The message itself is signed; this is defence in depth."""
+        route = self.internal_routes.get(path)
+        proxied = any(self.headers.get(h) for h in ('X-Forwarded-For', 'X-Real-IP', 'Forwarded'))
+        if route is None or proxied or self.client_address[0] not in ('127.0.0.1', '::1'):
+            return _send(self, 404, {'error': 'not_found'})
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            n = -1
+        if not 0 <= n <= MAX_BODY:
+            self.close_connection = True
+            return _send(self, 413, {'error': 'body_size'})
+        try:
+            body = json.loads(self.rfile.read(n) or b'{}')
+        except ValueError:
+            return _send(self, 400, {'error': 'bad_json'})
+        if not isinstance(body, dict):
+            return _send(self, 400, {'error': 'bad_json'})
+        return route(self, body)
+
     def _join(self, device, body):
         cookie = None
         if device is None:
@@ -241,9 +270,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return _send(self, 200, self.service.view(device), cookie)
 
 
-def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None):
+def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None, internal_routes=None):
     handler = type('BoundHandler', (Handler,), {'service': service, 'cfg': cfg,
-                                                'extra_routes': dict(extra_routes or {})})
+                                                'extra_routes': dict(extra_routes or {}),
+                                                'internal_routes': dict(internal_routes or {})})
     return http.server.ThreadingHTTPServer((host, port), handler)
 
 
@@ -263,10 +293,15 @@ def main(argv=None):
     args = ap.parse_args(argv)
     with open(args.config, encoding='utf-8') as f:
         conf = json.load(f)
+    from avrana.party import protocol, sessions         # the session protocol (ADR 0006)
     store = identity.DeviceStore(conf.get('devices'))
-    service = PartyService(store, load_games(conf.get('games', {})))
+    entries = conf.get('games', {})
+    endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']))
+                 for g, e in entries.items() if e.get('url') and e.get('key_file')}
+    service = PartyService(store, load_games(entries), sessions.HttpGameLink(endpoints))
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
-    server = make_server(service, cfg, port=args.port)
+    extra, internal = sessions.routes(service, endpoints)
+    server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()
     try:
