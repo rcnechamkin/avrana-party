@@ -121,6 +121,22 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     launch: (game) => hostMove('session/launch', game, 'lobby'),
     /** The host moves everyone from the game that is on to another one (AVR-128): Party Core
      * ends the old game first, then starts this one. */
-    switchTo: (game) => hostMove('session/switch', game, 'active'),
+    switchTo: (game) => hostMove('session/switch', game, view && view.state === 'setup' ? 'setup' : 'active'),
+    /** This member's own choice for the round being set up: 'player' or 'spectator' (AVR-129). */
+    choose: (choice) => act('session/choice', { choice }),
+    /** The host starts the round set up. Choices move the version often, so a refusal only for
+     * "stale" is re-checked against a fresh view and tried once more while this phone is still
+     * the host of a round in setup. Every other refusal (someone has not chosen, too few) stands. */
+    async startRound() {
+      let res = await act('session/start', { if_version: view ? view.version : null });
+      if (res.ok || res.error !== 'stale') return res;
+      epoch++;
+      const fresh = await request('state');
+      epoch++;
+      if (fresh.ok) accept(readView(fresh.body), true);
+      const v = view;
+      if (!v || !v.me || !v.me.host || v.state !== 'setup') return res;
+      return act('session/start', { if_version: v.version });
+    },
   };
 }

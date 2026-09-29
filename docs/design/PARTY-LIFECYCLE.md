@@ -3,7 +3,9 @@
 Status: **design (2026-09-24). Rules are proposals checked by an offline simulation.** Party Core
 v0 (ADR 0006) since implements the party, presence, host and one-session rules; R2/R5 navigation
 and the host's `in_game → launching` switch (end first) are implemented per ADR 0008 (AVR-128;
-TESTED on a laptop, not on phones). Seats, intermission seating, votes and kicks are not built. Simulation: `experiments/party-model/` on branch `experiment/party-sim` (52 tests incl. a
+TESTED on a laptop, not on phones). The pregame (a round's Play or Watch, host-only start, roles
+fixed until the next setup) is Party Core's `setup` state per ADR 0010 (AVR-129). Seats,
+intermission seating, votes and kicks are not built. Simulation: `experiments/party-model/` on branch `experiment/party-sim` (52 tests incl. a
 300-seed fuzz). Concepts: `PARTY-PLATFORM.md` §5; identifiers: `docs/adr/0003-ids-and-keys.md`.
 
 ## Locked decisions this document implements

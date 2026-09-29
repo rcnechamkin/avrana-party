@@ -86,10 +86,8 @@ async function reset(request: any) {
 }
 
 const latestState = (page: Page) => page.evaluate(() => (window as any).__avr.rx.filter((m: any) => m.type === 'state').at(-1));
-/** BLUFF's own ready/countdown lobby (untouched by the party): everyone ready, the first starts. */
+/** A Party round (AVR-129): no ready/start in BLUFF; it deals once every seat's phone is here. */
 async function play(phones: Phone[]) {
-  for (const p of phones) await p.page.getByRole('button', { name: /I'M READY/ }).click();
-  await phones[0].page.getByRole('button', { name: /START GAME/ }).click();
   for (const p of phones) {
     await expect.poll(async () => (await latestState(p.page))?.game?.me?.cards?.length ?? 0).toBe(2);
   }

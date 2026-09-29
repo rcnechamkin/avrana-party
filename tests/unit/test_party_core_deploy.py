@@ -47,6 +47,8 @@ class Templates(unittest.TestCase):
         for gid, entry in CONFIG['games'].items():
             contract = json.loads((REPO_ROOT / f'contracts/games/{gid}.json').read_text(encoding='utf-8'))
             self.assertEqual(games[gid]['max_players'], contract['players']['max'], gid)
+            if 'min_players' in entry:                                   # AVR-129 pregame
+                self.assertEqual(games[gid]['min_players'], contract['players']['min'], gid)
             if gid == ARCADE:     # AVR-134: the arcade's own loopback control port, never nginx
                 self.assertIn(gid, granted)
                 self.assertEqual(entry['url'], f'http://127.0.0.1:{ARCADE_CONTROL_PORT}', gid)
@@ -54,6 +56,12 @@ class Templates(unittest.TestCase):
             else:
                 self.assertEqual(entry['url'], f'http://127.0.0.1:8096{granted[gid].rstrip("/")}', gid)
             self.assertEqual(entry['key_file'], f'/etc/avrana-party/game-keys/{gid}.key', gid)
+
+    def test_bluff_runs_the_party_pregame(self):
+        """AVR-129: BLUFF opens in the Party's setup (Play or Watch, host start)."""
+        games = service.load_games(CONFIG['games'])
+        self.assertEqual((games['bluff']['pregame'], games['bluff']['min_players']), (True, 2))
+        self.assertFalse(games[ARCADE]['pregame'])                       # seats come from its page
 
     def test_arcade_drop_in_points_at_this_party_and_its_keys(self):
         """deploy/arcade/avrana-party-session.conf (AVR-134) agrees with Party Core's unit and

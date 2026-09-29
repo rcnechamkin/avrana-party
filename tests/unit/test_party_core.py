@@ -7,6 +7,8 @@ from avrana.party.core import Refused
 
 BLUFF = {'id': 'bluff', 'max_players': 3, 'late_join': 'spectator_only'}
 BOMBER = {'id': 'bomber', 'max_players': 4, 'late_join': 'spectator_only'}
+PREGAME = {'id': 'bluff', 'min_players': 2, 'max_players': 3, 'late_join': 'spectator_only',
+           'pregame': True}
 
 
 class Clock:
@@ -556,6 +558,162 @@ class Navigation(unittest.TestCase):
         self.assertEqual(view['nav']['seq'], 0)                  # key navigation by (party, seq)
 
 
+class Pregame(unittest.TestCase):
+    """AVR-129: a pregame game opens in setup; members choose to play or watch; only the host
+    starts, and only when everyone here has chosen and the minimum holds. Roles change only at
+    the setup boundary."""
+
+    def setUp(self):
+        self.pc, self.clock = make([PREGAME, BOMBER])
+        self.a = self.pc.join('device-a', 'Ana')
+        self.b = self.pc.join('device-b', 'Ben')
+        self.c = self.pc.join('device-c', 'Cy')
+
+    def v(self):
+        return self.pc.party.version
+
+    def setup(self):
+        return self.pc.launch('device-a', 'bluff', self.v())
+
+    def refused(self, code, fn, *args):
+        with self.assertRaises(Refused) as e:
+            fn(*args)
+        self.assertEqual(e.exception.code, code)
+
+    def test_setup_is_a_committed_move_to_the_game_with_nothing_running(self):
+        s = self.setup()
+        self.assertEqual((s.state, s.participants), (core.SETUP, {}))
+        view = self.pc.view('device-b')
+        self.assertEqual((view['state'], view['nav']['to'], view['nav']['game'], view['nav']['session']),
+                         ('setup', 'game', 'bluff', s.id))
+        st = view['session']['setup']
+        self.assertEqual((st['min'], st['max'], st['mine'], st['players']), (2, 3, None, 0))
+        self.assertEqual(st['waiting'], [self.a.id, self.b.id, self.c.id])
+        self.assertIn('Waiting for Ana, Ben, Cy', st['blocker'])
+
+    def test_only_the_host_starts_and_only_when_everyone_has_chosen(self):
+        s = self.setup()
+        self.pc.choose('device-a', 'player')
+        self.pc.choose('device-b', 'player')
+        self.refused('not_host', self.pc.start_round, 'device-b', self.v())
+        self.refused('unresolved', self.pc.start_round, 'device-a', self.v())   # Cy has not chosen
+        self.pc.choose('device-c', 'spectator')
+        self.refused('stale', self.pc.start_round, 'device-a', self.v() - 1)
+        self.refused('not_member', self.pc.start_round, 'device-x', self.v())
+        s = self.pc.start_round('device-a', self.v())
+        self.assertEqual(s.state, core.LAUNCHING)
+        roles = {mid: p.role for mid, p in s.participants.items()}
+        self.assertEqual(roles, {self.a.id: 'player', self.b.id: 'player', self.c.id: 'spectator'})
+        self.assertEqual([r['role'] for r in s.roster(self.pc.party.members)],
+                         ['player', 'player', 'spectator'])     # spectators are never seated
+
+    def test_minimum_and_maximum_players(self):
+        self.setup()
+        self.pc.choose('device-a', 'player')
+        self.pc.choose('device-b', 'spectator')
+        self.pc.choose('device-c', 'spectator')
+        self.refused('player_count', self.pc.start_round, 'device-a', self.v())
+        self.assertIn('2 players needed', self.pc.view('device-a')['session']['setup']['blocker'])
+        self.pc.join('device-d', 'Dee')
+        for d in ('device-b', 'device-c', 'device-d'):
+            self.pc.choose(d, 'player')                          # 4 players; the maximum is 3
+        self.refused('player_count', self.pc.start_round, 'device-a', self.v())
+        self.pc.choose('device-d', 'spectator')
+        self.assertIsNone(self.pc.view('device-a')['session']['setup']['blocker'])
+        self.pc.start_round('device-a', self.v())
+
+    def test_choices_can_change_during_setup_but_not_during_the_round(self):
+        s = self.setup()
+        self.pc.choose('device-b', 'spectator')
+        self.pc.choose('device-b', 'player')                     # changed their mind: fine
+        v = self.v()
+        self.pc.choose('device-b', 'player')                     # the same choice: no new version
+        self.assertEqual(self.v(), v)
+        self.refused('bad_choice', self.pc.choose, 'device-b', 'host')
+        for d in ('device-a', 'device-c'):
+            self.pc.choose(d, 'player')
+        self.pc.start_round('device-a', self.v())
+        self.pc.launch_accepted(s.id)
+        self.refused('round_on', self.pc.choose, 'device-b', 'spectator')
+        self.assertEqual(s.participants[self.b.id].role, 'player')   # the live round is untouched
+
+    def test_away_members_do_not_block_and_late_arrivals_watch_until_the_next_setup(self):
+        s = self.setup()
+        self.clock.advance(core.LIVE_WINDOW + 1)
+        self.pc.touch('device-a')
+        self.pc.touch('device-b')                               # Cy is away now
+        self.pc.choose('device-a', 'player')
+        self.pc.choose('device-b', 'player')
+        self.assertEqual(self.pc.view('device-a')['session']['setup']['waiting'], [])
+        self.pc.start_round('device-a', self.v())
+        self.pc.launch_accepted(s.id)
+        self.assertNotIn(self.c.id, s.participants)
+        _, p = self.pc.participant_for('device-c', 'bluff')     # Cy comes back mid-round
+        self.assertEqual(p.role, 'spectator')
+        d = self.pc.join('device-d', 'Dee')                     # a new member mid-round
+        self.assertEqual(s.participants[d.id].role, 'spectator')
+
+    def test_a_member_joining_during_setup_must_choose_too(self):
+        self.setup()
+        for d in ('device-a', 'device-b', 'device-c'):
+            self.pc.choose(d, 'player')
+        self.pc.join('device-d', 'Dee')
+        self.refused('unresolved', self.pc.start_round, 'device-a', self.v())
+        self.pc.choose('device-d', 'spectator')
+        self.pc.start_round('device-a', self.v())
+
+    def test_tickets_wait_for_the_start_and_then_follow_the_choices(self):
+        s = self.setup()
+        self.refused('setup', self.pc.participant_for, 'device-b', 'bluff')
+        self.refused('no_game', self.pc.participant_for, 'device-b')            # an older page
+        self.refused('no_game', self.pc.participant_for, 'device-b', 'bomber')
+        for d, c in (('device-a', 'player'), ('device-b', 'player'), ('device-c', 'spectator')):
+            self.pc.choose(d, c)
+        self.pc.start_round('device-a', self.v())
+        self.refused('setup', self.pc.participant_for, 'device-c', 'bluff')     # still launching
+        self.pc.launch_accepted(s.id)
+        self.assertEqual(self.pc.participant_for('device-c', 'bluff')[1].role, 'spectator')
+        self.assertEqual(self.pc.participant_for('device-b', 'bluff')[1].role, 'player')
+        self.assertEqual(self.pc.view('device-b')['nav']['seq'], 1)  # active is no second move
+
+    def test_host_end_during_setup_sends_everyone_home(self):
+        s = self.setup()
+        self.refused('not_host', self.pc.begin_end, 'device-b', self.v())
+        self.pc.begin_end('device-a', self.v())
+        view = self.pc.view('device-b')
+        self.assertEqual((s.state, s.outcome, view['state'], view['nav']['to'], view['nav']['from']),
+                         (core.ENDED, 'ended_by_host', 'lobby', 'home', 'bluff'))
+        self.refused('no_game', self.pc.choose, 'device-b', 'player')
+
+    def test_a_failed_launch_after_setup_sends_everyone_home(self):
+        s = self.setup()
+        for d in ('device-a', 'device-b', 'device-c'):
+            self.pc.choose(d, 'player')
+        self.pc.start_round('device-a', self.v())
+        self.pc.launch_failed(s.id, 'down')
+        self.assertEqual(self.pc.view('device-b')['nav']['to'], 'home')
+
+    def test_switching_from_setup_or_into_setup(self):
+        s = self.setup()
+        old = self.pc.begin_switch('device-a', 'bomber', self.v())
+        self.assertEqual((old.state, old.game_confirmed_end), (core.ENDED, True))
+        nxt = self.pc.launch_pending()
+        self.assertEqual((nxt.game_id, nxt.state), ('bomber', core.LAUNCHING))
+        self.pc.launch_accepted(nxt.id)
+        self.pc.begin_switch('device-a', 'bluff', self.v())
+        self.pc.end_confirmed(nxt.id, True)
+        again = self.pc.launch_pending()
+        self.assertEqual((again.game_id, again.state, again.choices), ('bluff', core.SETUP, {}))
+        self.assertEqual(self.pc.view('device-a')['nav']['session'], again.id)
+        self.assertIsNot(again, s)                                # every round is set up afresh
+
+    def test_non_pregame_games_launch_directly(self):
+        s = self.pc.launch('device-a', 'bomber', self.v())
+        self.assertEqual(s.state, core.LAUNCHING)
+        self.refused('no_setup', self.pc.start_round, 'device-a', self.v())
+        self.refused('round_on', self.pc.choose, 'device-b', 'player')
+
+
 class Idle(unittest.TestCase):
     def test_idle_party_ends_and_the_next_visit_starts_a_new_one(self):
         pc, clock = make()
@@ -588,12 +746,12 @@ class Fuzz(unittest.TestCase):
         devices = [f'device-{i}' for i in range(5)]
         for seed in range(150):
             rng = random.Random(seed)
-            pc, clock = make([BLUFF, BOMBER])
+            pc, clock = make([PREGAME if seed % 2 else BLUFF, BOMBER])
             seen_pids = {}
             party_id, version, nav = pc.party.id, pc.party.version, 0
             for _ in range(120):
                 d = rng.choice(devices)
-                op = rng.randrange(12)
+                op = rng.randrange(14)
                 try:
                     if op == 0:
                         pc.join(d, rng.choice(['Ana', 'Ben', 'Cy']))
@@ -624,6 +782,12 @@ class Fuzz(unittest.TestCase):
                             pc.transfer_host(d, rng.choice(others), pc.party.version)
                     elif op == 8:
                         clock.advance(rng.choice([1, 20, 50, 80, 400]))
+                    elif op == 11:
+                        pc.choose(d, rng.choice(['player', 'spectator', 'player']))
+                    elif op == 12:
+                        s = pc.start_round(d, pc.party.version if rng.random() < .8 else 0)
+                        if rng.random() < .8:
+                            pc.launch_accepted(s.id)
                     elif op == 10:
                         old = pc.begin_switch(d, rng.choice(['bluff', 'bomber']),
                                               pc.party.version if rng.random() < .8 else 0)
@@ -650,7 +814,12 @@ class Fuzz(unittest.TestCase):
                 live = pc._live_session()
                 if live is not None:
                     self.assertIs(live, party.session)
-                    self.assertIn(live.state, (core.LAUNCHING, core.ACTIVE, core.ENDING))
+                    self.assertIn(live.state, (core.SETUP, core.LAUNCHING, core.ACTIVE, core.ENDING))
+                if live is not None and live.state == core.SETUP:
+                    self.assertEqual(live.participants, {}, seed)       # nobody seated in setup
+                if live is not None and live.pregame and live.state != core.SETUP:
+                    players = [p for p in live.participants.values() if p.role == 'player']
+                    self.assertLessEqual(len(players), live.max_players, seed)
                 ids = [p.id for p in (party.session.participants.values() if party.session else [])]
                 self.assertEqual(len(ids), len(set(ids)), seed)
 

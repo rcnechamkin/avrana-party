@@ -280,5 +280,93 @@ class Flow(ServiceCase):
         self.game = ReferenceGame(self.port)
 
 
+PREGAME_BLUFF = {'bluff': {'id': 'bluff', 'min_players': 2, 'max_players': 6,
+                           'late_join': 'spectator_only', 'pregame': True}}
+
+
+class PregameFlow(Flow):
+    """AVR-129: every Flow test again, with BLUFF opening in the Party's setup: Ana and Ben
+    choose to play and the host starts the round; plus the pregame's own protocol checks."""
+    games = PREGAME_BLUFF
+
+    def launch(self, choices=(('ana', 'player'), ('ben', 'player'))):
+        _, v, _ = self.ana.state()
+        status, v, _ = self.ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'setup'), v)
+        for who, choice in choices:
+            status, _, _ = getattr(self, who).post('session/choice', {'choice': choice})
+            self.assertEqual(status, 200)
+        _, v, _ = self.ana.state()
+        status, v, _ = self.ana.post('session/start', {'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'active'), v)
+        return v['session']['id']
+
+    def test_switch_resets_the_old_game_before_its_next_session_and_old_tickets_die(self):
+        sid = self.launch()
+        _, old, _ = self.ticket(self.ben)
+        _, v, _ = self.ana.state()
+        status, v, _ = self.ana.post('session/switch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'setup'))    # the next round is set up first
+        self.assertEqual(self.game.ends, [sid])
+        self.assertEqual(len(self.game.launches), 1)              # nothing launched yet
+        with self.assertRaises(Invalid):
+            self.game.hello(old['ticket'])
+        self.assertEqual(self.ben.post('session/ticket', {'game': 'bluff'})[1]['error'], 'setup')
+
+    def test_game_down_launch_fails_readably_and_end_still_ends(self):
+        self.game.stop()
+        _, v, _ = self.ana.state()
+        self.ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.ana.post('session/choice', {'choice': 'player'})
+        self.ben.post('session/choice', {'choice': 'player'})
+        _, v, _ = self.ana.state()
+        _, v, _ = self.ana.post('session/start', {'if_version': v['version']})
+        self.assertEqual((v['state'], v['session']['outcome'], v['nav']['to']), ('lobby', 'launch_failed', 'home'))
+        self.assertIn('did not answer', v['session']['detail'])
+        self.game = ReferenceGame(self.port)
+
+    # ---- the pregame's own checks --------------------------------------------------------------
+    def test_the_game_hears_nothing_until_the_host_starts_and_then_gets_the_chosen_roles(self):
+        _, v, _ = self.ana.state()
+        self.ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual(self.game.launches, [])
+        status, body, _ = self.ben.post('session/ticket', {'game': 'bluff'})
+        self.assertEqual((status, body['error']), (409, 'setup'))   # the page waits, never joins alone
+        self.ana.post('session/choice', {'choice': 'player'})
+        self.ben.post('session/choice', {'choice': 'spectator'})
+        _, v, _ = self.ben.state()
+        status, body, _ = self.ben.post('session/start', {'if_version': v['version']})
+        self.assertEqual((status, body['error']), (403, 'not_host'))
+        status, body, _ = self.ana.post('session/start', {'if_version': v['version']})
+        self.assertEqual((status, body['error']), (409, 'player_count'))  # one player; BLUFF needs 2
+        self.assertEqual(self.game.launches, [])
+        cy = self.phone()
+        cy.post('join', {'name': 'Cy'})
+        _, v, _ = self.ana.state()
+        status, body, _ = self.ana.post('session/start', {'if_version': v['version']})
+        self.assertEqual((status, body['error']), (409, 'unresolved'))
+        self.assertIn('Cy', body['message'])
+        cy.post('session/choice', {'choice': 'player'})
+        _, v, _ = self.ana.state()
+        status, v, _ = self.ana.post('session/start', {'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'active'))
+        roster = self.game.launches[0]
+        self.assertEqual([(r['name'], r['role']) for r in roster],
+                         [('Ana', 'player'), ('Cy', 'player'), ('Ben', 'spectator')])   # players first
+        _, t, _ = self.ticket(self.ben)
+        self.assertEqual(self.game.hello(t['ticket'])[1], 'spectator')
+        status, body, _ = self.ben.post('session/choice', {'choice': 'player'})
+        self.assertEqual((status, body['error']), (409, 'round_on'))    # next round, not this one
+        _, t, _ = self.ticket(self.ben)
+        self.assertEqual(self.game.hello(t['ticket'])[1], 'spectator')
+
+    def test_host_end_during_setup_never_reaches_the_game(self):
+        _, v, _ = self.ana.state()
+        self.ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        _, v, _ = self.end_for_everyone()
+        self.assertEqual((v['state'], v['nav']['to'], self.game.launches, self.game.ends),
+                         ('lobby', 'home', [], []))
+
+
 if __name__ == '__main__':
     unittest.main()

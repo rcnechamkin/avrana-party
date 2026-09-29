@@ -17,6 +17,9 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/session/end    {if_version}          host: end the game for everyone
     POST /party/api/session/switch {game, if_version}    host: end the game that is on, then
                                                          launch this one (AVR-128)
+    POST /party/api/session/choice {choice}              a member, during setup: 'player' or
+                                                         'spectator' for this round (AVR-129)
+    POST /party/api/session/start  {if_version}          host: start the round set up (AVR-129)
 
 Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
 (ADR 0006).
@@ -95,6 +98,17 @@ class PartyService:
             s = self.core.launch(device_id, game_id, if_version)
             roster = s.roster(self.core.party.members)
             self._notify()
+        if s.state == core.SETUP:               # pregame (AVR-129): the host's start launches it
+            return s
+        return self._start(s, roster)
+
+    def start_round(self, device_id, if_version):
+        """The host starts a round that was set up (AVR-129): the members' choices become the
+        roster, then the game is launched exactly as a direct launch would be."""
+        with self.lock:
+            s = self.core.start_round(device_id, if_version)
+            roster = s.roster(self.core.party.members)
+            self._notify()
         return self._start(s, roster)
 
     def switch(self, device_id, game_id, if_version):
@@ -105,13 +119,16 @@ class PartyService:
         with self.lock:
             old = self.core.begin_switch(device_id, game_id, if_version)
             self._notify()
-        confirmed = self.link.end(old)
+        # a round still in setup never reached the game: nothing there to end
+        confirmed = True if old.state == core.ENDED else self.link.end(old)
         with self.lock:
             self.core.end_confirmed(old.id, confirmed)
             s = self.core.launch_pending()
             roster = s.roster(self.core.party.members) if s else None
             self._notify()
-        return self._start(s, roster) if s else old
+        if s is None or s.state == core.SETUP:
+            return s or old
+        return self._start(s, roster)
 
     def _start(self, s, roster):
         ok, detail = self.link.launch(s, roster)
@@ -169,7 +186,9 @@ def _send(h, status, obj, cookie=None):
 
 def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
-              'no_game': 409, 'stale_session': 409, 'unknown_game': 404}.get(e.code, 400)
+              'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
+              'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409,
+              'player_count': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
 
@@ -259,6 +278,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.end(device, body.get('if_version'))
             elif path == '/party/api/session/switch':
                 svc.switch(device, body.get('game'), body.get('if_version'))
+            elif path == '/party/api/session/choice':
+                svc.call('choose', device, body.get('choice'))
+            elif path == '/party/api/session/start':
+                svc.start_round(device, body.get('if_version'))
             else:
                 return _send(self, 404, {'error': 'not_found'})
             return _send(self, 200, svc.view(device))
@@ -311,7 +334,9 @@ def load_games(entries):
     games = {}
     for game_id, e in entries.items():
         games[game_id] = {'id': game_id, 'max_players': int(e['max_players']),
-                          'late_join': e.get('late_join', 'spectator_only')}
+                          'late_join': e.get('late_join', 'spectator_only'),
+                          'min_players': int(e.get('min_players', 1)),
+                          'pregame': bool(e.get('pregame', False))}
     return games
 
 
