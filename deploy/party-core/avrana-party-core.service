@@ -1,0 +1,38 @@
+# Avrana Party Core v0: membership, presence, host and the one game session, behind
+# https://party.avrana.net/party/api/ (docs/runbooks/party-core-deploy.md, AVR-51).
+#
+#   sudo install -m 0644 deploy/party-core/avrana-party-core.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now avrana-party-core
+#
+# Loopback only (avrana.party.service binds 127.0.0.1): nginx forwards /party/api/ and never
+# /internal/. Runs from the production checkout, like the arcade. Memory-only party: a restart
+# starts a new party (device identities survive in the state directory; ADR 0006).
+[Unit]
+Description=Avrana Party Core (/party/api/)
+After=network.target
+
+[Service]
+User=cody
+Group=cody
+WorkingDirectory=/home/cody/avrana-party
+ExecStart=/usr/bin/python3 -m avrana.party.service --config /etc/avrana-party/party-core.json --port 8191
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# The checkout is read-only here (ProtectHome); never leave bytecode in production.
+Environment=PYTHONDONTWRITEBYTECODE=1
+# /var/lib/avrana-party-core (0700, owned by cody): the hashed device store only.
+StateDirectory=avrana-party-core
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
