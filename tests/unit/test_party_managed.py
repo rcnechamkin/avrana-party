@@ -225,8 +225,10 @@ class Configure(unittest.TestCase):
         self.tmp.cleanup()
 
     def key(self, text=None):
-        with open(os.path.join(self.dir, f'{GAME}.key'), 'w') as f:
+        path = os.path.join(self.dir, f'{GAME}.key')
+        with open(path, 'w') as f:
             f.write(text if text is not None else KEY.hex() + '\n')
+        os.chmod(path, 0o600)                   # read_key refuses group/other-readable keys (POSIX)
 
     def test_both_halves_or_always_on(self):
         url = 'http://127.0.0.1:8191'

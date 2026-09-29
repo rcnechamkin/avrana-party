@@ -158,8 +158,10 @@ class ManagedArcade(unittest.TestCase):
         self.protocol = protocol
         self.key = protocol.new_key()
         self.tmp = tempfile.TemporaryDirectory()
-        with open(os.path.join(self.tmp.name, 'arcade-gauntlet2.key'), 'w') as f:
+        path = os.path.join(self.tmp.name, 'arcade-gauntlet2.key')
+        with open(path, 'w') as f:
             f.write(self.key.hex() + '\n')
+        os.chmod(path, 0o600)                   # read_key refuses group/other-readable keys (POSIX)
         self.env = mock.patch.dict(os.environ, {'AVRANA_PARTY_KEYS': self.tmp.name,
                                                 'AVRANA_PARTY_URL': 'http://127.0.0.1:8191',
                                                 'PULSE_SERVER': 'unix:/nonexistent'})
