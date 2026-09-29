@@ -39,10 +39,13 @@ async function fakeTransport(page: Page) {
   await page.addInitScript(() => {
     const sockets: any[] = [];
     (window as any).__sockets = sockets;
-    // Knobs for tests: delay the remote description (a slow signalling step), or make every new
-    // socket fail at once (the arcade is gone).
+    // Knobs for tests: delay the remote description (a slow signalling step), make every new
+    // socket fail at once (the arcade is gone), have the arcade refuse because its video is not
+    // flowing (stream.py's "no-media"), or leave ICE hanging so the peer never connects.
     (window as any).__slowOfferMs = 0;
     (window as any).__refuseSockets = false;
+    (window as any).__noMedia = false;
+    (window as any).__neverConnect = false;
     class FakeSocket {
       static OPEN = 1;
       url: string; readyState = 0; bufferedAmount = 0; sent: string[] = [];
@@ -59,6 +62,12 @@ async function fakeTransport(page: Page) {
         setTimeout(() => {
           if (this.readyState === 3) return;  // closed sockets deliver nothing, as in browsers
           this.readyState = 1;
+          if ((window as any).__noMedia) {
+            this.onmessage?.({ data: JSON.stringify({ type: 'error', reason: 'no-media', media: ['video'] }) });
+            this.readyState = 3;
+            this.onclose?.({ code: 1000 });
+            return;
+          }
           this.onmessage?.({ data: JSON.stringify({ type: 'player', slot: 1 }) });
           this.onmessage?.({ data: JSON.stringify({ type: 'offer', sdp: 'v=0 fake' }) });
         }, 20);
@@ -79,6 +88,7 @@ async function fakeTransport(page: Page) {
       async createAnswer() { return { type: 'answer', sdp: 'fake' }; }
       async setLocalDescription(d: any) {
         this.localDescription = d;
+        if ((window as any).__neverConnect) { this.connectionState = 'connecting'; return; }
         setTimeout(() => { this.connectionState = 'connected'; this.onconnectionstatechange?.(); }, 20);
       }
       async addIceCandidate() {}
@@ -110,7 +120,8 @@ test('the page contract the live suite relies on is unchanged', async ({ page })
   await expect(page.locator('#connect')).toHaveText(/Play Gauntlet II/);
   await expect(page.locator('#status')).toContainText(/Ready to play/i);
   await expect(page.locator('[data-key]')).toHaveCount(8);
-  await expect(page.getByRole('link', { name: 'Other games' })).toHaveAttribute('href', '/');
+  // Full Mode (a secure context, as here and on https://party.avrana.net): back to Party Home.
+  await expect(page.getByRole('link', { name: 'Other games' })).toHaveAttribute('href', '/party/');
   await expect(page.locator('#leave')).toBeDisabled();
   await expect(page.locator('#details')).toBeHidden();           // raw stats only with #diag
   expect(await page.locator('#metrics').textContent()).toBe('Not connected');
@@ -230,4 +241,103 @@ test('after five failed retries the phone says so and offers Play', async ({ pag
   await expect(page.locator('#status')).toHaveText('Connection lost. Tap Play to reconnect.', { timeout: 20_000 });
   expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(6);  // 1 + 5 retries
   await expect(page.locator('#connect')).toBeEnabled();
+});
+
+// AVR-92: a Play that cannot produce a picture must say so, and the way out is Party Home.
+
+test('on plain HTTP (no /party/ there) Other games keeps the games hub', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'isSecureContext', { value: false }));
+  await open(page);
+  await expect(page.getByRole('link', { name: 'Other games' })).toHaveAttribute('href', '/');
+});
+
+test('Other games returns to Party Home, and Back returns to a clean arcade page', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.getByRole('link', { name: 'Other games' }).click();
+  await expect(page).toHaveURL(/\/party\/$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/arcade\/$/);
+  await expect(page.locator('#connect')).toBeEnabled();
+  await expect(page.locator('#connect')).toHaveText(/Play Gauntlet II/);
+  await expect(page.locator('#leave')).toBeDisabled();
+});
+
+test('Play shows it is working: a busy, not faded, button until the picture', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  // A slow offer step holds "Connecting video…" long enough to see on a loaded test machine.
+  await page.evaluate(() => { (window as any).__slowOfferMs = 4000; });
+  await page.locator('#connect').click();
+  const connect = page.locator('#connect');
+  await expect(connect).toHaveAttribute('aria-busy', 'true');
+  await expect(connect).toBeDisabled();
+  expect(await connect.evaluate((b) => getComputedStyle(b).opacity)).toBe('1');
+  await expect(page.locator('#status')).toHaveText('You are Player 1. Connecting video…');
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await expect(connect).toHaveText(/Starting video/);   // connected; waiting for the first frame
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(connect).not.toHaveAttribute('aria-busy', 'true');
+});
+
+test('the arcade refusing for lack of video says so, not "check your Wi-Fi"', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  await page.evaluate(() => { (window as any).__noMedia = true; });
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Gauntlet II isn’t sending a picture right now. Wait a minute, then tap Play.');
+  await expect(page.locator('#connect')).toBeEnabled();
+  await expect(page.locator('#connect')).not.toHaveAttribute('aria-busy', 'true');
+  expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(1);   // no retry loop
+});
+
+test('a stopped arcade (the Pi answers, the game does not) is named as such', async ({ page }) => {
+  await arcade(page, 'down');
+  await open(page);
+  await page.locator('#connect').click();   // the real socket fails; /arcade/stats is a 502
+  await expect(page.locator('#status')).toHaveText('Gauntlet II isn’t running right now. Wait a minute, then tap Play, or pick another game.');
+  await expect(page.locator('#connect')).toBeEnabled();
+});
+
+test('a connection that never completes ends in a message, not an endless "Connecting"', async ({ page }) => {
+  await page.clock.install();
+  await fakeTransport(page);
+  await open(page);
+  await page.evaluate(() => { (window as any).__neverConnect = true; });
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('You are Player 1. Connecting video…');
+  await page.clock.fastForward(21_000);
+  await expect(page.locator('#status')).toHaveText('Can’t connect right now. Stay on the Avrana Party Wi-Fi, then tap Play.');
+  await expect(page.locator('#connect')).toBeEnabled();
+});
+
+test('connected without a picture tells the player what to do', async ({ page }) => {
+  await page.clock.install();
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.clock.fastForward(11_000);
+  await expect(page.locator('#status')).toHaveText('Connected, but no picture yet. Tap Enable sound; if it stays dark, tap Leave, then Play.');
+  await expect(page.locator('#leave')).toBeEnabled();
+});
+
+test('controls and sound work once connected', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  const coin = page.locator('[data-key="coin"]');
+  await coin.hover();
+  await page.mouse.down();   // a real pointer (setPointerCapture needs one)
+  await expect.poll(() => page.evaluate(() => (window as any).__sockets[0].sent
+    .map((m: string) => JSON.parse(m)).some((m: any) => m.type === 'input' && m.buttons.includes('coin')))).toBe(true);
+  await page.mouse.up();
+  await expect(page.locator('#sound')).toBeEnabled();
+  await page.locator('#sound').click();
+  expect(await page.evaluate(() => document.querySelector('video')!.muted)).toBe(false);
 });
