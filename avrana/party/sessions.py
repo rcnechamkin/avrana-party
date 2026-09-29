@@ -5,8 +5,9 @@ Party -> game (server to server, loopback, signed with that game's key):
     POST {game_url}/avrana/session/v0/end      {"message": <end>}      -> 200 {"ok": true}
 
 Browser -> party (cookie-authenticated, Origin-checked, never in a URL):
-    POST /party/api/session/ticket   {}   -> {"protocol", "game", "session", "role", "ticket",
-                                              "expires_in"}
+    POST /party/api/session/ticket   {[game]} -> {"protocol", "game", "session", "role", "ticket",
+                                                  "expires_in"}
+    A page that names its game gets 409 no_game while the party plays another one (AVR-128).
     The game page sends the ticket as its first WebSocket message: {"t": "hello", "ticket": …}.
 
 Game -> party (server to server, loopback and unproxied only, signed):
@@ -75,7 +76,8 @@ def routes(service, endpoints):
             return _send(h, 403, {'error': 'not_member', 'message': 'Join the party first.'})
         try:
             with service.lock:
-                s, p = service.core.participant_for(device)
+                game = body.get('game') if isinstance(body.get('game'), str) else None
+                s, p = service.core.participant_for(device, game)
                 service._notify()
         except core.Refused as e:
             return _refused(h, e)

@@ -14,6 +14,7 @@ from avrana.party import identity, service
 HOST = 'party.test'
 ORIGIN = 'https://party.test'
 BLUFF = {'bluff': {'id': 'bluff', 'max_players': 6, 'late_join': 'spectator_only'}}
+TWO_GAMES = dict(BLUFF, bomber={'id': 'bomber', 'max_players': 4, 'late_join': 'spectator_only'})
 
 
 class FakeLink:
@@ -69,12 +70,16 @@ class Phone:
 
 class ServiceCase(unittest.TestCase):
     link_ok = True
+    games = BLUFF
+
+    def make_link(self):
+        return FakeLink(self.link_ok)
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = identity.DeviceStore(os.path.join(self.tmp.name, 'devices.json'))
-        self.link = FakeLink(self.link_ok)
-        self.svc = service.PartyService(self.store, BLUFF, self.link)
+        self.link = self.make_link()
+        self.svc = service.PartyService(self.store, self.games, self.link)
         cfg = service.Config({HOST}, {ORIGIN}, secure_cookie=True)
         self.log = io.StringIO()
         self.server = service.make_server(self.svc, cfg, port=0)
@@ -341,6 +346,183 @@ class HostLaunch(ServiceCase):
         _, v, _ = ben.post('session/end', {'if_version': v['version']})
         self.assertEqual((v['state'], v['session']['outcome']), ('lobby', 'ended_by_host'))
         self.assertEqual(self.link.ended, [sid])
+
+
+class ProviderLink:
+    """A game link that records every call in order, as one exclusive runtime would see it:
+    `running` is the set of sessions the runtimes believe are on. `end_delay` stretches the time
+    the old game takes to reset; `end_ok` is whether it confirms."""
+
+    def __init__(self, end_delay=0.0, end_ok=True):
+        self.calls, self.running, self.overlaps = [], set(), []
+        self.end_delay, self.end_ok = end_delay, end_ok
+        self.lock = threading.Lock()
+
+    def launch(self, session, roster):
+        with self.lock:
+            if self.running:
+                self.overlaps.append((set(self.running), session.id))
+            self.running.add(session.id)
+            self.calls.append(('launch', session.game_id, session.id))
+        return True, None
+
+    def end(self, session):
+        time.sleep(self.end_delay)
+        with self.lock:
+            self.calls.append(('end', session.game_id, session.id))
+            if self.end_ok:
+                self.running.discard(session.id)
+        return self.end_ok
+
+
+class PartyNavigation(ServiceCase):
+    """AVR-128 over real HTTP: one Party activity at a time, host-only navigation, and followers
+    (Party Home or a game page, both long-polling /party/api/state) observing each committed move."""
+    games = TWO_GAMES
+
+    def make_link(self):
+        return ProviderLink(end_delay=0.4)
+
+    def table(self, *names):
+        phones = [self.phone() for _ in names]
+        for p, n in zip(phones, names):
+            p.post('join', {'name': n})
+        return phones
+
+    def start(self, host, game='bluff'):
+        _, v, _ = host.state()
+        status, v, _ = host.post('session/launch', {'game': game, 'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'active'))
+        return v
+
+    def watch(self, phone, since, done, seen, limit=15):
+        def run():
+            s = since
+            deadline = time.monotonic() + limit
+            while time.monotonic() < deadline:
+                _, v, _ = phone.state(since=s, wait=5)
+                seen.append(v)
+                if done(v):
+                    return
+                s = v['version']
+        t = threading.Thread(target=run)
+        t.start()
+        return t
+
+    def test_host_switch_ends_the_old_runtime_before_the_next_starts_and_followers_move(self):
+        ana, ben = self.table('Ana', 'Ben')
+        first = self.start(ana)
+        _, bv, _ = ben.state()
+        self.assertEqual((bv['nav']['to'], bv['nav']['game']), ('game', 'bluff'))
+        seen = []
+        t = self.watch(ben, bv['version'], lambda v: v['nav']['game'] == 'bomber', seen)
+        time.sleep(0.2)
+        status, v, _ = ana.post('session/switch', {'game': 'bomber', 'if_version': first['version']})
+        t.join(20)
+        self.assertEqual((status, v['state'], v['session']['game'], v['nav']['game']),
+                         (200, 'active', 'bomber', 'bomber'))
+        self.assertEqual([c[:2] for c in self.link.calls],
+                         [('launch', 'bluff'), ('end', 'bluff'), ('launch', 'bomber')])
+        self.assertEqual(self.link.overlaps, [])                  # never two runtimes at once
+        # the follower saw "switching" and then the next game, never a home detour
+        self.assertIn('bomber', [x['switching_to'] for x in seen])
+        self.assertNotIn('home', [x['nav']['to'] for x in seen])
+        self.assertEqual(seen[-1]['nav']['seq'], bv['nav']['seq'] + 1)
+        self.assertEqual(seen[-1]['session']['my_role'], 'player')
+
+    def test_followers_already_in_a_game_go_home_on_the_host_end(self):
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        _, bv, _ = ben.state()
+        seen = []
+        t = self.watch(ben, bv['version'], lambda x: x['nav']['to'] == 'home', seen)
+        time.sleep(0.2)
+        status, v, _ = ana.post('session/end', {'if_version': v['version']})
+        t.join(20)
+        self.assertEqual((status, seen[-1]['nav']['to'], seen[-1]['nav']['from']),
+                         (200, 'home', 'bluff'))
+
+    def test_nobody_but_the_host_moves_the_party_and_leave_moves_only_you(self):
+        ana, ben, cy = self.table('Ana', 'Ben', 'Cy')
+        v = self.start(ana)
+        _, bv, _ = ben.state()
+        for path, body in (('session/switch', {'game': 'bomber'}), ('session/end', {}),
+                           ('session/launch', {'game': 'bomber'})):
+            status, r, _ = ben.post(path, dict(body, if_version=bv['version']))
+            self.assertEqual((path, status, r['error']), (path, 403, 'not_host'))
+        stranger = self.phone()
+        status, r, _ = stranger.post('session/switch', {'game': 'bomber', 'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_member'))
+        status, r, _ = ben.post('leave')
+        self.assertEqual(status, 200)
+        _, cv, _ = cy.state()
+        self.assertEqual((cv['state'], cv['session']['game'], cv['nav']['seq']),
+                         ('active', 'bluff', v['nav']['seq']))
+        self.assertEqual([c[:2] for c in self.link.calls], [('launch', 'bluff')])
+
+    def test_stale_and_concurrent_navigation_leave_exactly_one_activity(self):
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        tabs = [self.phone() for _ in range(6)]                   # six of the host's tabs
+        for tab in tabs:
+            tab.cookie = ana.cookie
+        results = []
+
+        def fire(tab, i):
+            path = ('session/switch', 'session/launch')[i % 2]
+            game = ('bomber', 'bluff')[i % 3 == 0]
+            status, body, _ = tab.post(path, {'game': game, 'if_version': v['version']})
+            results.append((path, status, body.get('error')))
+        threads = [threading.Thread(target=fire, args=(t, i)) for i, t in enumerate(tabs)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(20)
+        wins = [r for r in results if r[1] == 200]
+        self.assertEqual(len(wins), 1, results)                   # one move wins
+        self.assertTrue(all(r[2] in ('stale', 'busy') for r in results if r[1] != 200), results)
+        self.assertEqual(self.link.overlaps, [])
+        _, now, _ = ben.state()
+        self.assertIn(now['state'], ('active', 'lobby'))
+        live = [c for c in self.link.calls if c[0] == 'launch']
+        ended = {c[2] for c in self.link.calls if c[0] == 'end'}
+        self.assertLessEqual(len([c for c in live if c[2] not in ended]), 1)
+        # an old tab still holding the first version is refused; the party does not move
+        status, body, _ = ana.post('session/switch', {'game': 'bomber', 'if_version': v['version']})
+        self.assertEqual((status, body['error']), (409, 'stale'))
+
+    def test_launch_while_a_switch_is_ending_is_refused(self):
+        ana, _ = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        done = []
+        t = threading.Thread(target=lambda: done.append(
+            ana.post('session/switch', {'game': 'bomber', 'if_version': v['version']})))
+        t.start()
+        time.sleep(0.15)                                          # the old game is still resetting
+        _, mid, _ = ana.state()
+        self.assertEqual((mid['state'], mid['switching_to']), ('ending', 'bomber'))
+        status, body, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': mid['version']})
+        self.assertEqual((status, body['error']), (409, 'busy'))
+        t.join(20)
+        self.assertEqual(done[0][1]['session']['game'], 'bomber')
+        self.assertEqual(self.link.overlaps, [])
+
+
+class UnconfirmedSwitch(PartyNavigation):
+    def make_link(self):
+        return ProviderLink(end_ok=False)
+
+    def test_host_switch_ends_the_old_runtime_before_the_next_starts_and_followers_move(self):
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        status, v, _ = ana.post('session/switch', {'game': 'bomber', 'if_version': v['version']})
+        self.assertEqual((status, v['state'], v['nav']['to'], v['switching_to']),
+                         (200, 'lobby', 'home', None))
+        self.assertIn('did not stop', v['session']['detail'])
+        self.assertEqual([c[:2] for c in self.link.calls], [('launch', 'bluff'), ('end', 'bluff')])
+
+    test_stale_and_concurrent_navigation_leave_exactly_one_activity = None
+    test_launch_while_a_switch_is_ending_is_refused = None
 
 
 class FailingLaunch(ServiceCase):

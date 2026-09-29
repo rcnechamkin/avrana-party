@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readView, partyGame, tileMode, arrival } from '../../web/party/lib/party-mode.js';
+import { readView, partyGame, tileMode, arrival, follow } from '../../web/party/lib/party-mode.js';
 import { createPartyClient } from '../../web/party/lib/party-client.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
@@ -9,9 +9,10 @@ const byId = (id) => catalog.games.find((g) => g.id === id);
 
 // A Party Core view (avrana/party/core.py PartyCore.view) with only what the page reads.
 function view({ version = 5, state = 'lobby', me = { id: 'member-a', name: 'Ana', host: true }, session = null,
-  games = ['bluff'], party = 'party-1' } = {}) {
+  games = ['bluff'], party = 'party-1', nav = { seq: 0, to: 'home', game: null, session: null, from: null },
+  switching_to = null } = {}) {
   return { party, version, state, members: me ? [{ id: me.id, name: me.name, presence: 'here', host: me.host }] : [],
-    host: me && me.host ? me.id : 'member-x', me, session, games };
+    host: me && me.host ? me.id : 'member-x', me, session, games, nav, switching_to };
 }
 const active = (id = 'session-1', game = 'bluff', state = 'active') =>
   ({ id, game, state, outcome: null, detail: null, players: 2, my_role: 'player' });
@@ -52,7 +53,10 @@ test('while a party game is on: its tile rejoins, other party games are closed, 
   assert.deepEqual(tileMode(chess, v), { kind: 'busy', name: 'bluff' });   // no catalog: the id
   assert.equal(tileMode(orbit, v), null);
   const host = view({ state: 'active', session: active(), games: ['bluff', 'chess'] });
-  assert.equal(tileMode(chess, host).kind, 'busy');                     // the host cannot start a second one either
+  // the host never starts a second one: the tile switches (Party Core ends BLUFF first; AVR-128)
+  assert.deepEqual(tileMode(chess, host, catalog), { kind: 'switch', game: 'chess', name: 'BLUFF' });
+  assert.equal(tileMode(chess, view({ state: 'active', session: active(), games: ['bluff', 'chess'],
+    switching_to: 'chess' })).kind, 'busy');                            // one switch at a time
   for (const s of ['launching', 'ending']) {
     const w = view({ state: s, session: active('session-1', 'bluff', s), games: ['bluff', 'chess'] });
     assert.equal(tileMode(bluff, w).kind, 'starting');
@@ -78,6 +82,29 @@ test('arrival: a live transition enters; a reload enters unless this tab already
   assert.equal(arrival(other, { previous: null, entered: null }), 'enter');       // the page checks the target
   const newParty = view({ version: 2, state: 'active', session: active(), party: 'party-2' });
   assert.equal(arrival(newParty, { previous: on, entered: null }), 'enter');
+});
+
+test('follow (AVR-128): a page inside a game moves only on a committed move it watched', () => {
+  const nav = (seq, to, game = null, from = null) => ({ seq, to, game, session: game ? `session-${seq}` : null, from });
+  const inBluff = view({ version: 7, state: 'active', session: active(), me: ben, nav: nav(1, 'game', 'bluff') });
+  const toChess = view({ version: 9, state: 'active', session: active('session-2', 'chess'), me: ben, nav: nav(2, 'game', 'chess') });
+  const home = view({ version: 8, me: ben, nav: nav(2, 'home', null, 'bluff') });
+  assert.deepEqual(follow(toChess, inBluff, 'bluff'), { to: 'game', game: 'chess' });   // the host switched
+  assert.deepEqual(follow(home, inBluff, 'bluff'), { to: 'home' });                     // the host ended it
+  assert.equal(follow(home, inBluff, null), null);                   // the arcade / a standalone title stays
+  assert.equal(follow(home, inBluff, 'chess'), null);                // another game's end is not this page's
+  assert.deepEqual(follow(toChess, inBluff, null), { to: 'game', game: 'chess' });   // but a start pulls it in
+  assert.equal(follow(toChess, inBluff, 'chess'), null);             // already there
+  assert.equal(follow(inBluff, null, 'bluff'), null);                // opening or reloading never moves
+  assert.equal(follow(toChess, null, 'bluff'), null);
+  assert.equal(follow(toChess, toChess, 'bluff'), null);             // nothing new
+  assert.equal(follow(inBluff, toChess, 'chess'), null);             // an older seq never moves anyone
+  assert.equal(follow({ ...toChess, party: 'party-2' }, inBluff, 'bluff'), null);   // keyed by party (R5)
+  assert.equal(follow({ ...toChess, me: null }, inBluff, 'bluff'), null);            // left: Leave is personal
+  const selfEnded = view({ version: 8, me: ben, nav: nav(1, 'game', 'bluff') });     // BLUFF ended by its rules
+  assert.equal(follow(selfEnded, inBluff, 'bluff'), null);            // its end screen stays
+  const noNav = { ...toChess }; delete noNav.nav;
+  assert.equal(follow(noNav, inBluff, 'bluff'), null);                // an older Party Core: no moves
 });
 
 // ---- the client: one long poll, actions win over polls, stale host actions retried once ------------
@@ -172,4 +199,24 @@ test('a poll that was already in flight when an action ran never overwrites the 
   assert.equal(client.view().version, 9);
   assert.equal(seen.at(-1).version, 9);
   client.stop();
+});
+
+test('the host switch goes to session/switch with the version and is retried once only when stale', async () => {
+  let version = 7;
+  const on = (v) => view({ version: v, state: 'active', session: active(), games: ['bluff', 'chess'] });
+  const srv = fakeServer((url, init) => {
+    if (url.endsWith('state')) return [200, on(version)];
+    if (url.includes('state?')) return 'hang';
+    const body = JSON.parse(init.body);
+    if (body.if_version !== version) { version++; return [409, { error: 'stale', message: 'The party changed.' }]; }
+    return [200, view({ version: version + 3, state: 'active', session: active('session-2', 'chess') })];
+  });
+  const client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(on(6));
+  const res = await client.switchTo('chess');
+  assert.equal(res.ok, true);
+  const posts = srv.calls.filter((c) => c.method === 'POST');
+  assert.deepEqual(posts.map((c) => [c.url, c.body.game, c.body.if_version]),
+    [['api/session/switch', 'chess', 6], ['api/session/switch', 'chess', 8]]);
+  client.stop(); srv.release();
 });

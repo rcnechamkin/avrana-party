@@ -6,6 +6,7 @@ from avrana.party import core
 from avrana.party.core import Refused
 
 BLUFF = {'id': 'bluff', 'max_players': 3, 'late_join': 'spectator_only'}
+BOMBER = {'id': 'bomber', 'max_players': 4, 'late_join': 'spectator_only'}
 
 
 class Clock:
@@ -389,6 +390,172 @@ class Session(unittest.TestCase):
         self.assertEqual((s.state, s.outcome), (core.ENDED, 'launch_failed'))
 
 
+class Navigation(unittest.TestCase):
+    """AVR-128: Party Core owns where everyone is. `nav` moves only on committed transitions;
+    the host's switch ends the game that is on before the next session exists."""
+
+    def setUp(self):
+        self.pc, self.clock = make([BLUFF, BOMBER])
+        self.pc.join('device-a', 'Ana')
+        self.pc.join('device-b', 'Ben')
+
+    def v(self):
+        return self.pc.party.version
+
+    def nav(self, device='device-b'):
+        return self.pc.view(device)['nav']
+
+    def start(self, game='bluff'):
+        s = self.pc.launch('device-a', game, self.v())
+        self.pc.launch_accepted(s.id)
+        return s
+
+    def switch(self, game, confirmed=True):
+        old = self.pc.begin_switch('device-a', game, self.v())
+        self.pc.end_confirmed(old.id, confirmed)
+        return old, self.pc.launch_pending()
+
+    def test_nav_moves_on_committed_start_and_host_end_only(self):
+        self.assertEqual(self.nav(), {'seq': 0, 'to': 'home', 'game': None, 'session': None,
+                                      'from': None})
+        s = self.pc.launch('device-a', 'bluff', self.v())
+        self.assertEqual(self.nav()['seq'], 0)                   # launching is intent, not a move
+        self.pc.launch_accepted(s.id)
+        self.assertEqual(self.nav(), {'seq': 1, 'to': 'game', 'game': 'bluff', 'session': s.id,
+                                      'from': None})
+        self.pc.begin_end('device-a', self.v())                  # the host's end: home at once
+        self.assertEqual(self.nav(), {'seq': 2, 'to': 'home', 'game': None, 'session': None,
+                                      'from': 'bluff'})
+        self.pc.end_confirmed(s.id, True)
+        self.assertEqual(self.nav()['seq'], 2)                   # one move, not two
+
+    def test_a_game_ending_by_its_own_rules_leaves_everyone_on_its_end_screen(self):
+        s = self.start()
+        self.pc.game_reported_end(s.id, 'completed')
+        self.assertEqual((self.pc.view('device-b')['state'], self.nav()['to'], self.nav()['seq']),
+                         ('lobby', 'game', 1))
+        s = self.pc.launch('device-a', 'bomber', self.v())       # a start that fails from here
+        self.pc.launch_failed(s.id, 'down')                      # leaves them on the end screen
+        self.assertEqual((self.nav()['to'], self.nav()['seq']), ('game', 1))
+        nxt = self.start('bomber')                               # the host's next start moves them
+        self.assertEqual((self.nav()['game'], self.nav()['session'], self.nav()['seq']),
+                         ('bomber', nxt.id, 2))
+
+    def test_failed_or_cancelled_starts_never_move_anyone(self):
+        s = self.pc.launch('device-a', 'bluff', self.v())
+        self.pc.launch_failed(s.id, 'down')
+        s = self.pc.launch('device-a', 'bluff', self.v())
+        self.pc.begin_end('device-a', self.v())
+        self.clock.advance(core.LAUNCH_TIMEOUT + 1)
+        self.assertEqual(self.nav()['seq'], 0)
+
+    def test_host_switch_ends_the_old_game_first_then_everyone_goes_to_the_next(self):
+        a = self.start()
+        old = self.pc.begin_switch('device-a', 'bomber', self.v())
+        self.assertIs(old, a)
+        view = self.pc.view('device-b')
+        self.assertEqual((view['state'], view['switching_to'], view['nav']['game']),
+                         ('ending', 'bomber', 'bluff'))            # nobody moves yet
+        with self.assertRaises(Refused) as e:                    # nothing starts in between
+            self.pc.launch('device-a', 'bomber', self.v())
+        self.assertEqual(e.exception.code, 'busy')
+        with self.assertRaises(Refused):                         # no tickets for the old one
+            self.pc.participant_for('device-b')
+        self.pc.end_confirmed(a.id, True)
+        self.assertEqual((a.state, a.outcome), (core.ENDED, 'ended_by_host'))
+        self.assertEqual(self.nav()['game'], 'bluff')            # still no home detour
+        b = self.pc.launch_pending()
+        self.assertEqual((b.game_id, b.state, self.pc.party.pending), ('bomber', core.LAUNCHING, None))
+        self.pc.launch_accepted(b.id)
+        self.assertEqual((self.nav()['to'], self.nav()['game'], self.nav()['session'],
+                          self.nav()['seq']), ('game', 'bomber', b.id, 2))
+        self.assertEqual(self.pc.participant_for('device-b')[0], b)
+
+    def test_switch_stops_when_the_old_game_did_not_confirm_its_end(self):
+        self.start()
+        old, nxt = self.switch('bomber', confirmed=False)
+        self.assertIsNone(nxt)                                   # never on top of a live runtime
+        view = self.pc.view('device-b')
+        self.assertEqual((view['state'], view['switching_to'], view['nav']['to'],
+                          view['nav']['from']), ('lobby', None, 'home', 'bluff'))
+        self.assertIn('did not stop', view['session']['detail'])
+
+    def test_switch_launch_failure_sends_everyone_home(self):
+        self.start()
+        _, b = self.switch('bomber')
+        self.pc.launch_failed(b.id, 'down')
+        self.assertEqual((self.nav()['to'], self.nav()['from']), ('home', 'bluff'))
+
+    def test_host_cancelling_the_switched_launch_sends_everyone_home(self):
+        self.start()
+        _, b = self.switch('bomber')
+        self.pc.begin_end('device-a', self.v())
+        self.assertEqual((b.outcome, self.nav()['to']), ('launch_failed', 'home'))
+
+    def test_switch_end_timeout_does_not_start_the_next_game(self):
+        self.start()
+        self.pc.begin_switch('device-a', 'bomber', self.v())
+        self.clock.advance(core.END_TIMEOUT + 1)
+        self.pc.tick()                                           # the end timed out
+        self.assertIsNone(self.pc.launch_pending())
+        self.assertEqual((self.pc._live_session(), self.nav()['to']), (None, 'home'))
+
+    def test_only_the_host_navigates_the_party_and_only_from_the_current_version(self):
+        self.start()
+        v = self.v()
+        for call in (lambda: self.pc.begin_switch('device-b', 'bomber', v),
+                     lambda: self.pc.begin_end('device-b', v),
+                     lambda: self.pc.launch('device-b', 'bomber', v)):
+            with self.assertRaises(Refused) as e:
+                call()
+            self.assertEqual(e.exception.code, 'not_host')
+        with self.assertRaises(Refused) as e:
+            self.pc.begin_switch('device-x', 'bomber', v)
+        self.assertEqual(e.exception.code, 'not_member')
+        self.pc.join('device-c', 'Cy')                           # the party moved on
+        with self.assertRaises(Refused) as e:
+            self.pc.begin_switch('device-a', 'bomber', v)
+        self.assertEqual(e.exception.code, 'stale')
+        with self.assertRaises(Refused) as e:
+            self.pc.begin_switch('device-a', 'nope', self.v())
+        self.assertEqual(e.exception.code, 'unknown_game')
+        self.assertEqual(self.pc.party.session.game_id, 'bluff')
+        self.assertEqual(self.pc.party.session.state, core.ACTIVE)
+
+    def test_switch_needs_a_game_on_and_only_one_switch_at_a_time(self):
+        with self.assertRaises(Refused) as e:
+            self.pc.begin_switch('device-a', 'bomber', self.v())
+        self.assertEqual(e.exception.code, 'no_game')
+        self.start()
+        self.pc.begin_switch('device-a', 'bomber', self.v())
+        with self.assertRaises(Refused) as e:
+            self.pc.begin_switch('device-a', 'bluff', self.v())
+        self.assertEqual(e.exception.code, 'busy')
+
+    def test_leave_is_personal_and_never_moves_the_party(self):
+        s = self.start()
+        self.pc.leave('device-b')
+        self.assertEqual((self.pc.party.session.state, self.nav('device-a')['session']),
+                         (core.ACTIVE, s.id))
+
+    def test_a_page_for_another_game_gets_no_ticket(self):
+        self.start()
+        with self.assertRaises(Refused) as e:
+            self.pc.participant_for('device-b', 'bomber')
+        self.assertEqual(e.exception.code, 'no_game')
+        s, _ = self.pc.participant_for('device-b', 'bluff')
+        self.assertEqual(s.game_id, 'bluff')
+
+    def test_a_new_party_restarts_nav(self):
+        self.start()
+        self.pc.game_reported_end(self.pc.party.session.id, 'completed')
+        self.clock.advance(core.LIVE_WINDOW + 1)
+        self.pc.tick()                                           # nobody here: idle from now
+        self.clock.advance(core.PARTY_IDLE + 1)
+        view = self.pc.view(None)
+        self.assertEqual(view['nav']['seq'], 0)                  # key navigation by (party, seq)
+
+
 class Idle(unittest.TestCase):
     def test_idle_party_ends_and_the_next_visit_starts_a_new_one(self):
         pc, clock = make()
@@ -421,12 +588,12 @@ class Fuzz(unittest.TestCase):
         devices = [f'device-{i}' for i in range(5)]
         for seed in range(150):
             rng = random.Random(seed)
-            pc, clock = make()
+            pc, clock = make([BLUFF, BOMBER])
             seen_pids = {}
-            party_id, version = pc.party.id, pc.party.version
+            party_id, version, nav = pc.party.id, pc.party.version, 0
             for _ in range(120):
                 d = rng.choice(devices)
-                op = rng.randrange(11)
+                op = rng.randrange(12)
                 try:
                     if op == 0:
                         pc.join(d, rng.choice(['Ana', 'Ben', 'Cy']))
@@ -457,15 +624,27 @@ class Fuzz(unittest.TestCase):
                             pc.transfer_host(d, rng.choice(others), pc.party.version)
                     elif op == 8:
                         clock.advance(rng.choice([1, 20, 50, 80, 400]))
+                    elif op == 10:
+                        old = pc.begin_switch(d, rng.choice(['bluff', 'bomber']),
+                                              pc.party.version if rng.random() < .8 else 0)
+                        if rng.random() < .8:
+                            pc.end_confirmed(old.id, rng.random() < .8)
+                            s = pc.launch_pending()
+                            if s and rng.random() < .8:
+                                pc.launch_accepted(s.id)
                     else:
                         pc.tick()
                 except Refused:
                     pass
                 party = pc.party
                 if party.id != party_id:
-                    party_id, version = party.id, party.version
+                    party_id, version, nav = party.id, party.version, party.nav['seq']
                 self.assertGreaterEqual(party.version, version, seed)
-                version = party.version
+                self.assertGreaterEqual(party.nav['seq'], nav, seed)
+                version, nav = party.version, party.nav['seq']
+                if pc._live_session() is not None and pc._live_session().state == core.ACTIVE:
+                    # nav never points anyone at a different game than the one on
+                    self.assertEqual(party.nav['session'], pc._live_session().id, seed)
                 if party.host_id is not None:
                     self.assertFalse(party.members[party.host_id].left, seed)
                 live = pc._live_session()

@@ -82,6 +82,22 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     }
   }
 
+  /** A host move. A refusal only because the party moved on ("stale": someone joined, a phone
+   * woke) is re-checked against a fresh view and tried once more, if this phone is still the
+   * host and the party is still where the move expects it. Every other refusal stands. */
+  async function hostMove(path, game, from) {
+    let res = await act(path, { game, if_version: view ? view.version : null });
+    if (res.ok || res.error !== 'stale') return res;
+    epoch++;
+    const fresh = await request('state');
+    epoch++;
+    if (fresh.ok) accept(readView(fresh.body), true);
+    const v = view;
+    if (!v || !v.me || !v.me.host || v.state !== from || !v.games.includes(game)) return res;
+    res = await act(path, { game, if_version: v.version });
+    return res;
+  }
+
   return {
     view: () => view,
     /** The first look: a Party Core view, or null (no Party here: catalog mode). Observes only. */
@@ -101,20 +117,10 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     join: (name) => act('join', { name }),
     leave: () => act('leave', {}),
     end: () => act('session/end', { if_version: view ? view.version : null }),
-    /** The host starts a party game for everyone. A refusal only because the party moved on
-     * ("stale": someone joined, a phone woke) is re-checked against a fresh view and tried once
-     * more, if this phone is still the host of an idle party. Every other refusal stands. */
-    async launch(game) {
-      let res = await act('session/launch', { game, if_version: view ? view.version : null });
-      if (res.ok || res.error !== 'stale') return res;
-      epoch++;
-      const fresh = await request('state');
-      epoch++;
-      if (fresh.ok) accept(readView(fresh.body), true);
-      const v = view;
-      if (!v || !v.me || !v.me.host || v.state !== 'lobby' || !v.games.includes(game)) return res;
-      res = await act('session/launch', { game, if_version: v.version });
-      return res;
-    },
+    /** The host starts a party game for everyone (from the lobby). */
+    launch: (game) => hostMove('session/launch', game, 'lobby'),
+    /** The host moves everyone from the game that is on to another one (AVR-128): Party Core
+     * ends the old game first, then starts this one. */
+    switchTo: (game) => hostMove('session/switch', game, 'active'),
   };
 }

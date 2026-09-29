@@ -29,7 +29,8 @@ HTTPS origin.
 |---|---|
 | `web/party/index.html`, `app.js`, `styles.css` | the guest page; `styles.css` is **generated** from `web/src/party.css` (Tailwind CSS 4 + daisyUI 5 at build time; `npm run check:ui`), the prototype-era `avrana` theme in [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md): dark only, rem type, 48 px targets, no web fonts, no machinery words (tested) |
 | `web/party/lib/icons.js` | **generated** Lucide subset (`npm run build:icons`) |
-| `web/party/lib/party-mode.js`, `party-client.js` | Party mode (ADR 0007): pure decisions from the Party Core view; the `/party/api/state` long poll and Join/Leave/host start/end |
+| `web/party/lib/party-mode.js`, `party-client.js` | Party mode (ADR 0007): pure decisions from the Party Core view; the `/party/api/state` long poll and Join/Leave/host start/switch/end |
+| `web/party/lib/party-follow.js` | Party navigation inside games (ADR 0008, AVR-128): loaded by integrated LAN game pages and the arcade; follows Party Core's committed moves and gives the host End for everyone |
 | `web/party/lib/capabilities.js` | probe → `avrana.capabilities/v0` report (names = `contracts/capabilities.v0.json`) |
 | `web/party/lib/evaluate.js` | per-seat evaluation + one guest sentence (`explain`) |
 | `web/party/lib/keep-awake.js` | Screen Wake Lock policy |

@@ -149,7 +149,8 @@ function gameCard(game, result, hp) {
       try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
       catch (err) { $('profile-note').textContent = err.message; }
     } }, icon('star', { cls: favorite ? 'fill-current' : '' }));
-  const live = mode ? 'Everyone plays together: the host starts it'
+  const live = mode ? (mode.kind === 'switch' ? `Ends ${mode.name} first, then everyone moves here`
+    : 'Everyone plays together: the host starts it')
     : installed && hp?.integration === false ? 'Games update needed before opening here' : installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
   const screen = screenText(game);
   const how = howText(game);
@@ -191,6 +192,11 @@ function partyAction(game, mode) {
     return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
       onclick: () => hostStart(game, mode.game) }, icon('play'), 'Start for everyone');
   }
+  if (mode.kind === 'switch') {
+    return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
+      'aria-label': `Switch everyone from ${mode.name} to ${game.name}`,
+      onclick: () => hostStart(game, mode.game, true) }, icon('play'), 'Switch everyone to this');
+  }
   if (mode.kind === 'rejoin') {
     return h('a', { class: 'btn btn-primary', href: mode.href, onclick: () => markEntered(mode.session, game) },
       icon('play'), 'Rejoin');
@@ -200,12 +206,12 @@ function partyAction(game, mode) {
   return h('button', { type: 'button', class: 'btn', disabled: true, text });
 }
 
-async function hostStart(game, id) {
+async function hostStart(game, id, switching = false) {
   if (state.partyBusy) return;
   state.partyBusy = true;
   $('party-note').textContent = '';
   renderGames(false);
-  const res = await party.launch(id);
+  const res = await (switching ? party.switchTo(id) : party.launch(id));
   state.partyBusy = false;
   if (!res.ok) $('party-note').textContent = res.message || `${game.name} didn’t start. Please try again.`;
   renderGames(false);
@@ -235,7 +241,9 @@ function renderParty(view, previous) {
   $('party-rejoin').hidden = !(s && view.state === 'active' && me && game);
   $('party-end').hidden = !(s && view.state === 'active' && me && me.host);
   if (s) {
+    const next = view.switching_to ? partyGame(state.catalog, view.switching_to) : null;
     $('party-now-text').textContent = view.state === 'launching' ? `Starting ${name}…`
+      : view.switching_to ? `Switching from ${name} to ${next ? next.name : view.switching_to}…`
       : view.state === 'ending' ? `Ending ${name}…`
         : me ? `Your party is playing ${name}.` : `The party is playing ${name}. Join to play along.`;
     if (game) {

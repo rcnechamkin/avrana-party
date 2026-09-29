@@ -169,7 +169,7 @@ test('the host starts BLUFF once and every joined phone follows into the same ga
 test('Back to Party offers Rejoin without bouncing; reopened and stale tabs resolve to the game', async ({ browser, request }) => {
   const { phones: [ana, ben], pids: [, pb] } = await startTogether(browser, request, ['Ana', 'Ben'], true);
   // The fixed return stays: Ben goes back to Party Home and is not sent straight back.
-  await ben.page.locator('#avrana-navigation a').click();
+  await ben.page.locator('#avrana-navigation a').first().click();
   await expect(ben.page).toHaveURL(/\/party\/$/);
   await expect(ben.page.locator('#party-now')).toContainText('Your party is playing BLUFF');
   await ben.page.waitForTimeout(2_500);
@@ -233,7 +233,7 @@ test('a start from a stale view is re-checked and happens once; followers still 
 test('the host leaving mid-game hands the party to a player; the game and the seats stay', async ({ browser, request }) => {
   const { phones: [ana, ben], pids: [, pb] } = await startTogether(browser, request, ['Ana', 'Ben'], true);
   const sid = await store(ben.page, 'avrana-party-session:bluff');
-  await ana.page.locator('#avrana-navigation a').click();
+  await ana.page.locator('#avrana-navigation a').first().click();
   await expect(ana.page.locator('#party-end')).toBeVisible();
   await ana.page.getByRole('button', { name: 'Leave the party' }).click();
   await expect(ana.page.locator('#party-join')).toBeVisible();
@@ -244,7 +244,7 @@ test('the host leaving mid-game hands the party to a player; the game and the se
   await ben.page.reload();                                        // still his seat, by Party identity
   expect((await welcome(ben.page)).pid).toBe(pb);
   // The new host has real authority: back on Party Home he can end it for everyone.
-  await ben.page.locator('#avrana-navigation a').click();
+  await ben.page.locator('#avrana-navigation a').first().click();
   await expect(ben.page.locator('#party-host')).toContainText('You’re the host');
   await ben.page.getByRole('button', { name: 'End the game for everyone' }).click();
   await expect(ben.page.locator('#party-now')).toBeHidden();
@@ -270,10 +270,51 @@ test('a failed start says why and stays in the lobby; a second party game cannot
   const v = await partyState(ana.page);
   const busy = await api(ana.page, 'session/launch', { game: 'chess', if_version: v.version });
   expect(busy).toMatchObject({ status: 409, body: { error: 'busy' } });
-  await ana.page.locator('#avrana-navigation a').click();
-  await expect(tile(ana.page, 'lan-chess').getByRole('button', { name: 'Party is playing BLUFF' })).toBeDisabled();
+  await ana.page.locator('#avrana-navigation a').first().click();
+  // The host is offered a switch (Party Core ends BLUFF first; AVR-128), never a second game.
+  await expect(tile(ana.page, 'lan-chess').getByRole('button', { name: /Switch everyone from BLUFF to CHESS/ })).toBeEnabled();
   await expect(tile(ana.page, 'bluff').getByRole('link', { name: 'Rejoin' })).toBeVisible();
   expect((await partyState(ana.page)).session.game).toBe('bluff');
+  await ana.context.close(); await ben.context.close();
+});
+
+test('AVR-128: the host ends BLUFF from inside it and every player inside it goes back to Party Home', async ({ browser, request }) => {
+  const { phones: [ana, ben] } = await startTogether(browser, request, ['Ana', 'Ben'], true);
+  // Only the host's game page offers End for everyone; Party Core refuses anyone else anyway.
+  await expect(ana.page.getByRole('button', { name: 'End for everyone' })).toBeVisible();
+  await expect(ben.page.locator('#avrana-party-end')).toBeHidden();
+  const v = await partyState(ben.page);
+  expect(await api(ben.page, 'session/end', { if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
+  await ana.page.getByRole('button', { name: 'End for everyone' }).click();
+  const again = ana.page.getByRole('button', { name: 'Tap again to end it for everyone' });
+  await expect(again).toBeVisible();
+  expect((await partyState(ana.page)).state).toBe('active');       // one tap never ends it
+  await again.click();
+  for (const p of [ana, ben]) await expect(p.page).toHaveURL(/\/party\/$/);
+  expect(await partyState(ben.page)).toMatchObject({ state: 'lobby', nav: { to: 'home', from: 'bluff' },
+    session: { outcome: 'ended_by_host' } });
+  await ana.context.close(); await ben.context.close();
+});
+
+test('AVR-128: a host switch ends BLUFF before the next game; players inside BLUFF follow the committed move', async ({ browser, request }) => {
+  const { phones: [ana, ben] } = await startTogether(browser, request, ['Ana', 'Ben'], true);
+  const first = await store(ben.page, 'avrana-party-session:bluff');
+  // A fresh round of the same game: Party Core ends the old session, then launches the new one;
+  // Ben's BLUFF page stays and joins the new session through its own ticket path.
+  const v = await partyState(ana.page);
+  const round = await api(ana.page, 'session/switch', { game: 'bluff', if_version: v.version });
+  expect(round).toMatchObject({ status: 200, body: { state: 'active', session: { game: 'bluff' } } });
+  expect(round.body.session.id).not.toBe(first);
+  await expect.poll(() => store(ben.page, 'avrana-party-session:bluff'), { timeout: 30_000 }).toBe(round.body.session.id);
+  await expect(ben.page).toHaveURL(IN_BLUFF);
+  // A switch to a game whose server cannot start (the harness's chess has no game side): BLUFF
+  // still ends first, nothing runs on top of it, and the players inside BLUFF go home.
+  await ana.page.locator('#avrana-navigation a').first().click();
+  await tile(ana.page, 'lan-chess').getByRole('button', { name: /Switch everyone/ }).click();
+  await expect(ben.page).toHaveURL(/\/party\/$/);
+  expect(await partyState(ben.page)).toMatchObject({ state: 'lobby', nav: { to: 'home', from: 'bluff' },
+    session: { game: 'chess', outcome: 'launch_failed' } });
+  await expect(ana.page.locator('#party-note')).toContainText('CHESS didn’t start');
   await ana.context.close(); await ben.context.close();
 });
 

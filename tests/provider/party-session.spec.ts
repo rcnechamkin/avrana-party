@@ -290,7 +290,7 @@ test('a ticket timeout and repeated network failures never demote a player', asy
   await ana.context.close(); await ben.context.close();
 });
 
-test('asleep through the end: the page shows the end, never a standalone seat, then joins the rematch as a new session', async ({ browser, request }) => {
+test('asleep through the host\'s end: the page follows the Party home, never a standalone seat, then joins the rematch as a new session', async ({ browser, request }) => {
   const { ana, ben, pb } = await table(browser, request);
   const first = await partySession(ben.page);
   expect(first).toMatch(/^session-/);
@@ -300,18 +300,19 @@ test('asleep through the end: the page shows the end, never a standalone seat, t
   const asleep = await log(ben.page);
   await ana.page.goto('/__harness__/party-lab');
   await hostAction(ana.page, 'End game (host)', 'game: bluff ended');
-  // Ben wakes: the Party has no game for him; his page says so and does not rejoin the room.
+  // Ben wakes. The host's end is a committed Party move (AVR-128, ADR 0008), so his BLUFF page
+  // follows it back to Party Home rather than rejoining the room (standalone or as a watcher).
+  // The games-side ended state without a Party follower is pinned in the games repository
+  // (tests/hubnet_party_ticket_test.mjs).
+  expect(welcomes(asleep).length).toBeGreaterThan(0);
   await ben.context.setOffline(false);
   await ben.page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
-  await expect(ended(ben.page)).toContainText('This game is over');
-  await expect(ben.page.locator('#avrana-game-room')).toBeHidden();  // no stale table (found on the Pi)
-  await ben.page.waitForTimeout(3_000);
-  const woke = await log(ben.page);
-  expect(woke.opened).toBe(asleep.opened);                           // no socket: not standalone, not a watcher
-  expect(welcomes(woke)).toEqual(welcomes(asleep));
-  // The host starts a rematch: a new Party session. Ben's page joins it without a reload.
+  await expect(ben.page).toHaveURL(/\/party\/$/, { timeout: 30_000 });
+  await expect(ben.page.locator('#avrana-game-room')).toHaveCount(0);
+  // The host starts a rematch: a new Party session. Party Home takes Ben into it (ADR 0007).
   await launch(ana.page);
-  await expect.poll(async () => welcomes(await log(ben.page)).length, { timeout: 20_000 }).toBeGreaterThan(welcomes(woke).length);
+  await expect(ben.page).toHaveURL(/\/games\/bluff\/\?avrana=1$/);
+  await expect.poll(async () => welcomes(await log(ben.page)).length, { timeout: 20_000 }).toBeGreaterThan(0);
   const rejoined = welcomes(await log(ben.page)).at(-1);
   expect(rejoined.watch).toBeUndefined();
   expect(rejoined.pid).toBeTruthy();

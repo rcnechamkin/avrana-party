@@ -134,6 +134,32 @@ class Flow(ServiceCase):
         _, t, _ = self.ticket(cy)
         self.assertEqual(self.game.hello(t['ticket'])[1], 'spectator')
 
+    def test_a_page_naming_another_game_gets_no_ticket_and_starts_nothing(self):
+        sid = self.launch()                                  # AVR-128: a direct or stale URL
+        status, body, _ = self.ben.post('session/ticket', {'game': 'bomber'})
+        self.assertEqual((status, body['error']), (409, 'no_game'))
+        status, t, _ = self.ben.post('session/ticket', {'game': 'bluff'})
+        self.assertEqual((status, t['session']), (200, sid))
+        self.assertEqual(len(self.game.launches), 1)
+        _, v, _ = self.ben.state()
+        self.assertEqual((v['state'], v['session']['id']), ('active', sid))
+
+    def test_switch_resets_the_old_game_before_its_next_session_and_old_tickets_die(self):
+        sid = self.launch()
+        _, old, _ = self.ticket(self.ben)
+        _, v, _ = self.ana.state()
+        status, v, _ = self.ana.post('session/switch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'active'))
+        new = v['session']['id']
+        self.assertNotEqual(new, sid)
+        self.assertEqual(self.game.ends, [sid])
+        self.assertEqual(len(self.game.launches), 2)         # end, then the next launch
+        self.assertEqual(self.game.side.sid, new)
+        with self.assertRaises(Invalid):
+            self.game.hello(old['ticket'])                   # the old session's ticket is dead
+        _, t, _ = self.ticket(self.ben)
+        self.assertEqual(t['session'], new)
+
     def test_no_ticket_without_membership_or_a_game(self):
         self.assertEqual(self.ticket(self.ana)[0], 409)                  # no game on
         self.launch()
