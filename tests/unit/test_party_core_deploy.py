@@ -15,13 +15,19 @@ import tempfile
 import unittest
 
 from avrana import REPO_ROOT
-from avrana.party import protocol, service
+from avrana.party import managed, protocol, service
 from test_nginx_site import SITE, location_body, server_blocks
 
 DEPLOY = REPO_ROOT / 'deploy' / 'party-core'
 CONFIG = json.loads((DEPLOY / 'party-core.example.json').read_text(encoding='utf-8'))
 UNIT = (DEPLOY / 'avrana-party-core.service').read_text(encoding='utf-8')
 BLOCK = (DEPLOY / 'nginx-party-api.location').read_text(encoding='utf-8')
+ARCADE = 'arcade-gauntlet2'
+ARCADE_DROP_IN = (REPO_ROOT / 'deploy/arcade/avrana-party-session.conf').read_text(encoding='utf-8')
+# arcade/stream.py imports GStreamer, so read its constant rather than import it
+ARCADE_CONTROL_PORT = int(re.search(r"AVRANA_ARCADE_CONTROL_PORT', '(\d+)'",
+                                    (REPO_ROOT / 'arcade/stream.py').read_text(encoding='utf-8')).group(1))
+START_TIMEOUT = managed.START_TIMEOUT
 
 
 def directives(text):
@@ -41,8 +47,25 @@ class Templates(unittest.TestCase):
         for gid, entry in CONFIG['games'].items():
             contract = json.loads((REPO_ROOT / f'contracts/games/{gid}.json').read_text(encoding='utf-8'))
             self.assertEqual(games[gid]['max_players'], contract['players']['max'], gid)
-            self.assertEqual(entry['url'], f'http://127.0.0.1:8096{granted[gid].rstrip("/")}', gid)
+            if gid == ARCADE:     # AVR-134: the arcade's own loopback control port, never nginx
+                self.assertIn(gid, granted)
+                self.assertEqual(entry['url'], f'http://127.0.0.1:{ARCADE_CONTROL_PORT}', gid)
+                self.assertGreater(entry['timeout'], START_TIMEOUT + 5)   # start + a stop's 5 s
+            else:
+                self.assertEqual(entry['url'], f'http://127.0.0.1:8096{granted[gid].rstrip("/")}', gid)
             self.assertEqual(entry['key_file'], f'/etc/avrana-party/game-keys/{gid}.key', gid)
+
+    def test_arcade_drop_in_points_at_this_party_and_its_keys(self):
+        """deploy/arcade/avrana-party-session.conf (AVR-134) agrees with Party Core's unit and
+        config, carries no secret, and nginx never forwards the arcade's control port."""
+        env = dict(re.findall(r'(?m)^Environment=([A-Z_]+)=(\S+)$', ARCADE_DROP_IN))
+        self.assertEqual(set(env), {'AVRANA_PARTY_KEYS', 'AVRANA_PARTY_URL'})
+        port = re.search(r'--port (\d+)', UNIT).group(1)
+        self.assertEqual(env['AVRANA_PARTY_URL'], f'http://127.0.0.1:{port}')
+        self.assertEqual(env['AVRANA_PARTY_KEYS'] + f'/{ARCADE}.key', CONFIG['games'][ARCADE]['key_file'])
+        self.assertNotRegex(ARCADE_DROP_IN, r'(?im)^Environment=.*(token|secret|password)')
+        self.assertNotIn(f':{ARCADE_CONTROL_PORT}', SITE)
+        self.assertEqual(managed.party_url(env['AVRANA_PARTY_URL']), env['AVRANA_PARTY_URL'])
 
     def test_unit_runs_the_service_on_loopback_port_8191_without_secrets(self):
         self.assertRegex(UNIT, r'(?m)^ExecStart=/usr/bin/python3 -m avrana\.party\.service '
@@ -111,6 +134,7 @@ class KeyScript(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.dir, 'bluff.key')).read(), before)
         for bad in ('', '../x', 'Bluff', 'a/b'):
             self.assertEqual(self.run_script(bad).returncode, 2, bad)
+        self.assertEqual(self.run_script(ARCADE).returncode, 0)             # AVR-134's key
 
 
 if __name__ == '__main__':

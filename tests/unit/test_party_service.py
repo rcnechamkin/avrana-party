@@ -534,6 +534,9 @@ class FailingLaunch(ServiceCase):
         _, v, _ = a.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
         self.assertEqual((v['state'], v['session']['outcome'], v['session']['detail']),
                          ('lobby', 'launch_failed', 'Games server is down.'))
+        # AVR-134: the failed launch is also ended at the game, so a runtime that came up late
+        # (after the link gave up) or half-started is stopped before anything else can start
+        self.assertEqual(self.link.ended, [v['session']['id']])
 
 
 if __name__ == '__main__':

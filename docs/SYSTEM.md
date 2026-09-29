@@ -76,6 +76,7 @@ Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 | 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `6bd5af4` since 2026-09-29); `/party/api/` → Party Core 127.0.0.1:8191 | `avrana-party.nginx`, `ops/` |
 | 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `eeedb19` (upstream `/home/cody/LAN-Games` kept for rollback) |
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
+| 127.0.0.1:8098 (**proposed**, AVR-134; not deployed) | arcade control: the Party's signed launch/end start and stop RetroArch + the encode (ADR 0009); only with the drop-in `deploy/arcade/avrana-party-session.conf`; never proxied | `arcade/stream.py`, `avrana/party/managed.py` |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
 | 5353 | avahi (`party.local`) | system |
 | 5201 | iperf3 | system |

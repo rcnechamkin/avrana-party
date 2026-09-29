@@ -73,6 +73,8 @@ PARTY-LIFECYCLE R2 and R5, the `in_game → launching` switch, and "Switching be
 
 **What this does not do:**
 - **The arcade is not a Party activity yet.** The emulator runs as an always-on service (`avranaparty-arcade`), which Party Core does not start or stop. Stopping it is an owner step (ROADMAP N4). An arcade page follows the party into a party game, but Gauntlet II and a party game can still run at the same time. Making the arcade a Party-launched provider means giving it the launch/end half of the session protocol and letting Party Core stop it. That is a separate, owner-approved change (unit and privileges), tracked as Linear AVR-134.
+  **Update:** ADR 0009 (AVR-134) does this without new privileges. Party Core starts and stops the
+  arcade's runtime through the session protocol, on a loopback control port.
 - **Order of deployment.** The follower ships in the Party web release (`/party/lib/party-follow.js`) and the games fork loads it. Either can deploy first:
   - a game page with no follower module, or no Party Core, is unchanged;
   - an older Party Core has no `nav`, so the follower never moves anyone;

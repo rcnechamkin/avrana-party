@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""One emulator, one hardware video encode, per-phone WebRTC transports."""
+"""One emulator, one hardware video encode, per-phone WebRTC transports.
+
+Two ways to run (AVR-134, ADR 0009):
+  * always-on (no Party session key configured): the emulator and the encode start with the
+    process and run until it stops, as before;
+  * Party-managed ($AVRANA_PARTY_KEYS holds arcade-gauntlet2.key and $AVRANA_PARTY_URL is set;
+    deploy/arcade/avrana-party-session.conf): the page, the controllers and /stats are always up,
+    but RetroArch and the capture/encode run only between the Party's signed `launch` and `end`
+    (avrana.party.managed), served on 127.0.0.1:CONTROL_PORT, which nginx never forwards.
+"""
 import asyncio
 import collections
 import json
@@ -27,6 +36,7 @@ from avrana.providers.base import ProviderInfo  # noqa: E402
 from avrana.providers.controller import ControllerLayout  # noqa: E402
 from avrana.providers.retroarch import RetroArchRuntime  # noqa: E402
 from avrana.providers.uinput_gamepad import UInputGamepadProvider  # noqa: E402
+from avrana.party import managed as party_managed  # noqa: E402
 
 MAX_PLAYERS = 2  # P1 verified on a real phone over 5 GHz; raise beyond 2 only after a 2-phone test.
 # Must match contracts/games/arcade-gauntlet2.json "input" and index.html's data-key buttons (tested).
@@ -42,6 +52,9 @@ EXIT_FATAL = 1  # non-zero: avranaparty-arcade.service restarts on failure (Rest
 # the process stayed "active" and every phone failed with "Media caps did not reach WebRTC").
 VIDEO_STALL_S = 10
 EXIT_BACKSTOP_S = 20  # a fatal exit that has not finished cleanup by then is forced
+PARTY_GAME = 'arcade-gauntlet2'  # the Party Core game id (contracts/games/arcade-gauntlet2.json)
+CONTROL_PORT = int(os.environ.get('AVRANA_ARCADE_CONTROL_PORT', '8098'))  # loopback only
+IDLE_TEXT = 'Gauntlet II is not running. The Party Host starts it from Party Home.'
 EMULATOR_LOG = ROOT / 'runtime/emulator.log'
 EMULATOR_LOG_MAX = 20 * 1024 * 1024  # emulator.log.1 keeps the previous 20 MB; total stays under ~45 MB.
 # Per-second phone stats (analyze-latency.py). Past the cap it rotates to .1, so the newest
@@ -142,11 +155,53 @@ class Stream:
         self.keyframes_forced = 0
         self.last_sample = {}  # media -> time.monotonic() of the newest encoded sample
         self.video_since = None  # when the capture pipeline was started (the stall grace period)
+        self.managed = None  # party_managed.ManagedRuntime when the Party starts and stops the runtime
+        self.party_url = None
+        self.control = None  # the loopback control site's runner (Party-managed only)
 
     async def startup(self, app):
         self.loop = asyncio.get_running_loop()
         self.pads = [self.input.open(slot, LAYOUT) for slot in range(MAX_PLAYERS)]
         await asyncio.sleep(0.5)  # Allow udev to expose the controllers before SDL scans.
+        party = party_managed.configure(os.environ, PARTY_GAME)
+        if party is None:
+            await self.start_runtime()  # always-on, as before AVR-134
+            return
+        side, self.party_url = party
+        self.managed = party_managed.ManagedRuntime(side, self.start_runtime, self.stop_runtime,
+                                                    report=self.report_ended)
+        await self.start_control()
+        log.info('Party-managed: idle until the Party launches %s', PARTY_GAME)
+
+    async def start_control(self):
+        """The session protocol's launch/end routes on 127.0.0.1:CONTROL_PORT only."""
+        control = web.Application(client_max_size=party_managed.MAX_BODY)
+        for action, path in (('launch', party_managed.LAUNCH_PATH), ('end', party_managed.END_PATH)):
+            control.router.add_post(path, lambda request, action=action: self.control_request(request, action))
+        self.control = web.AppRunner(control, access_log=None)
+        await self.control.setup()
+        await web.TCPSite(self.control, '127.0.0.1', CONTROL_PORT).start()
+
+    async def control_request(self, request, action):
+        raw = await request.read()  # the whole body; aiohttp answers 413 past client_max_size
+        status, body = await party_managed.handle(self.managed, action, request.remote,
+                                                  request.headers, raw)
+        return web.json_response(body, status=status)
+
+    async def report_ended(self, message):
+        status = await asyncio.to_thread(party_managed.post_ended, self.party_url, message)
+        return status == 200
+
+    def runtime_state(self):
+        if self.managed is not None:
+            return self.managed.state
+        return 'running' if self.pipeline is not None else 'idle'
+
+    async def start_runtime(self):
+        """RetroArch, then the shared capture/encode, then the watchdog. On failure the caller
+        stops what did start (Party-managed: ManagedRuntime; always-on: the process exits)."""
+        self.error = None
+        self.last_sample = {}
         # Truncate at start as before, but O_APPEND so rotate_emulator_log() can truncate in place.
         self.emulator_log = os.fdopen(os.open(
             EMULATOR_LOG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_APPEND, 0o664), 'w')
@@ -173,6 +228,29 @@ class Stream:
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError('Could not start capture pipeline')
         self.monitor = asyncio.create_task(self.watch())
+
+    async def stop_runtime(self, reason='Stream stopped'):
+        """The reverse of start_runtime(), safe to call twice and after a partial start: phones
+        are told, the watchdog stops, the capture/encode stops, then RetroArch. The controllers
+        stay (they are cheap and SDL keeps its devices across runs)."""
+        monitor, self.monitor = getattr(self, 'monitor', None), None
+        if monitor is not None and monitor is not asyncio.current_task():
+            monitor.cancel()
+        log_cap, self.log_cap = getattr(self, 'log_cap', None), None
+        if log_cap is not None:
+            log_cap.cancel()
+        for ws in list(self.peers):
+            await ws.close(code=1001, message=reason.encode()[:120])
+        if self.pipeline:
+            self.pipeline.set_state(Gst.State.NULL)
+            self.pipeline = None
+        for pad in self.pads:
+            pad.update([])
+        await asyncio.to_thread(self.runtime.stop, 5)
+        emulator_log, self.emulator_log = getattr(self, 'emulator_log', None), None
+        if emulator_log is not None:
+            emulator_log.close()
+        self.video_since = None
 
     async def cap_emulator_log(self):
         while True:
@@ -281,6 +359,10 @@ class Stream:
                 # systemd's Restart=on-failure brings the arcade back.
                 log.error('Fatal: %s; exiting for a restart', self.error)
                 self.fatal = True
+                if self.managed is not None:
+                    # Party-managed: the party must not keep showing a game that is gone. The
+                    # restarted process comes back idle until the host starts it again.
+                    await self.managed.abandon()
                 self.request_exit()
                 return
 
@@ -314,6 +396,8 @@ class Stream:
             raise web.HTTPForbidden()
         if self.error:
             raise web.HTTPServiceUnavailable(text='Stream unavailable')
+        if self.pipeline is None:  # Party-managed and not started: nothing to stream, nothing spent
+            raise web.HTTPServiceUnavailable(text=IDLE_TEXT)
         used = self.reserved
         slot = next((s for s in range(MAX_PLAYERS) if s not in used), None)
         if slot is None:
@@ -496,6 +580,8 @@ class Stream:
             # get a picture (video) or sound (audio), whatever emulator_running says.
             sample_age_s={m: round(now - t, 1) for m, t in self.last_sample.items()},
             emulator_running=self.runtime.running(),
+            # 'idle' | 'starting' | 'running' | 'stopping'; party_managed: the Party starts it.
+            state=self.runtime_state(), party_managed=self.managed is not None,
             capture_age_ms={m: w.summary() for m, w in self.age.items()},
             video_frame_kb=self.frame_kb.summary(), keyframes_forced=self.keyframes_forced,
             providers=dict(runtime=self.runtime.status(),
@@ -505,20 +591,11 @@ class Stream:
                    for p in self.peers.values()]))
 
     async def cleanup(self, app):
-        if hasattr(self, 'monitor'):
-            self.monitor.cancel()
-        if hasattr(self, 'log_cap'):
-            self.log_cap.cancel()
-        for ws in list(self.peers):
-            await ws.close()
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
+        if self.control is not None:
+            await self.control.cleanup()
+        await self.stop_runtime()
         for pad in self.pads:
-            pad.update([])
             pad.device.close()
-        await asyncio.to_thread(self.runtime.stop, 5)
-        if hasattr(self, 'emulator_log'):
-            self.emulator_log.close()
 
 
 if __name__ == '__main__':

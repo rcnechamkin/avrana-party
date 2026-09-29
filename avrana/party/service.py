@@ -115,6 +115,11 @@ class PartyService:
 
     def _start(self, s, roster):
         ok, detail = self.link.launch(s, roster)
+        if not ok:
+            # Roll back at the game too (AVR-134): a runtime that came up after the link gave up
+            # waiting, or half-started, is stopped before the party says the launch failed, so a
+            # failed start never leaves a heavy runtime running beside the next one.
+            self.link.end(s)
         with self.lock:
             if ok:
                 self.core.launch_accepted(s.id)
@@ -266,8 +271,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         forwards only /party/api/. The message itself is signed; this is defence in depth."""
         route = self.internal_routes.get(path)
         proxied = any(self.headers.get(h) for h in ('X-Forwarded-For', 'X-Real-IP', 'Forwarded'))
-        if route is None or proxied or self.client_address[0] not in ('127.0.0.1', '::1'):
-            return _send(self, 404, {'error': 'not_found'})
         try:
             n = int(self.headers.get('Content-Length') or 0)
         except ValueError:
@@ -275,8 +278,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not 0 <= n <= MAX_BODY:
             self.close_connection = True
             return _send(self, 413, {'error': 'body_size'})
+        raw = self.rfile.read(n)             # read before refusing so the reply is not reset
+        if route is None or proxied or self.client_address[0] not in ('127.0.0.1', '::1'):
+            return _send(self, 404, {'error': 'not_found'})
         try:
-            body = json.loads(self.rfile.read(n) or b'{}')
+            body = json.loads(raw or b'{}')
         except ValueError:
             return _send(self, 400, {'error': 'bad_json'})
         if not isinstance(body, dict):
@@ -319,7 +325,8 @@ def main(argv=None):
     from avrana.party import protocol, sessions         # the session protocol (ADR 0006)
     store = identity.DeviceStore(conf.get('devices'))
     entries = conf.get('games', {})
-    endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']))
+    endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']),
+                                          e.get('timeout'))
                  for g, e in entries.items() if e.get('url') and e.get('key_file')}
     service = PartyService(store, load_games(entries), sessions.HttpGameLink(endpoints))
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
