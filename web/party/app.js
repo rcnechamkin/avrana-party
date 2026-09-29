@@ -226,7 +226,7 @@ function renderParty(view, previous) {
     class: 'inline-flex min-h-11 items-center gap-1.5 rounded-field bg-base-300 px-3 text-[0.9375rem]', 'data-presence': m.presence },
   h('strong', { class: 'font-semibold', text: m.name + (me && m.id === me.id ? ' (you)' : '') }),
   m.host ? h('span', { class: 'text-secondary', text: 'host' }) : null,
-  h('span', { class: 'text-muted', text: PRESENCE_WORDS[m.presence] || '' }))));
+  h('span', { class: 'text-muted', text: PRESENCE_WORDS[m.presence] }))));
 
   const s = liveSession(view);
   const game = s ? partyGame(state.catalog, s.game) : null;
