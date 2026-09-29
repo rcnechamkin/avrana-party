@@ -2,7 +2,7 @@
 
 **Status: proposed.**
 - Implemented and TESTED on a laptop, on branch `fix/avr-134-arcade-provider`, stacked on AVR-128's `fix/avr-128-party-navigation`.
-- Not merged and not deployed. Not tried on the Pi or a phone.
+- Merged (PR #31) and **deployed 2026-09-29**, verified server-side on the Pi (`docs/findings/2026-09-29-avr128-134-deploy.md`). Not yet tried on a phone.
 - Date: 2026-09-29. Linear: AVR-134. Extends ADR 0006 and ADR 0008.
 
 ## Context
