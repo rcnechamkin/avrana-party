@@ -15,6 +15,7 @@ import textwrap
 import time
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from avrana import REPO_ROOT
@@ -108,6 +109,52 @@ class WatchLoop(unittest.TestCase):
         self.assertEqual(s.exits, 1)
         self.assertFalse(s.runtime.running())
         self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+
+    def test_silent_video_stall_is_fatal(self):
+        """2026-09-28: the encoder stopped returning frames with no bus ERROR; the process stayed
+        'active', /stats had error null, and every phone failed. Silence must end the process."""
+        log = []
+        s = self.make(log)
+        peer = FakeSocket()
+
+        async def during(s):
+            s.peers[peer] = {}
+            s.last_sample['video'] = time.monotonic()   # video flowed once, then stopped
+            await asyncio.wait_for(s.monitor, 5)
+        with mock.patch.object(self.stream, 'VIDEO_STALL_S', 0.3):
+            self.run_case(s, during)
+        self.assertEqual(s.error, 'Video capture stalled')
+        self.assertTrue(s.fatal)
+        self.assertEqual(s.exits, 1)
+        self.assertEqual(peer.closed_with, 1011)
+        self.assertFalse(s.runtime.running())
+        self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+
+    def test_video_that_never_starts_is_fatal(self):
+        s = self.make([])
+
+        async def during(s):
+            await asyncio.wait_for(s.monitor, 5)
+        with mock.patch.object(self.stream, 'VIDEO_STALL_S', 0.3):
+            self.run_case(s, during)
+        self.assertEqual(s.error, 'Video capture stalled')
+        self.assertEqual(s.exits, 1)
+
+    def test_flowing_video_is_not_fatal(self):
+        s = self.make([])
+
+        async def during(s):
+            for _ in range(10):   # one frame every 0.1 s for a second: well past the stall limit
+                s.last_sample['video'] = time.monotonic()
+                await asyncio.sleep(0.1)
+            stats = await s.stats(None)
+            return s.monitor.done(), stats
+        with mock.patch.object(self.stream, 'VIDEO_STALL_S', 0.3):
+            done, stats = self.run_case(s, during)
+        self.assertFalse(done)
+        self.assertFalse(s.fatal)
+        self.assertIsNone(stats['error'])
+        self.assertLess(stats['sample_age_s']['video'], 0.3)
 
     def test_client_churn_is_not_fatal(self):
         s = self.make([])

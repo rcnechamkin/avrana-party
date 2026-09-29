@@ -23,6 +23,14 @@
 >   cleanup and exits with status 1, so `Restart=on-failure` can restart it (it used to stay alive
 >   and unusable). A deliberate stop (SIGTERM) still exits 0. Tested with stubs
 >   (`tests/unit/test_arcade_fatal_exit.py`); a real restart on the Pi is not yet verified.
+> - **A silent video stall is fatal too (AVR-92, branch `fix/avr-92-gauntlet-launch`):** on
+>   2026-09-28 the encoder stopped producing frames with no bus error, the service stayed "active",
+>   `/stats` said `error: null`, and every Play failed. `stream.py` now exits (status 1, so systemd
+>   restarts it) after `VIDEO_STALL_S` (10 s) with no encoded video, and `/stats` reports
+>   `sample_age_s` per medium. The phone page shows progress on Play, names "not running" and
+>   "no picture" failures, gives up after 20 s instead of "Connecting…" forever, and "Other games"
+>   goes to Party Home (`/party/`) on HTTPS (`/` stays on plain HTTP). See
+>   `docs/findings/2026-09-29-gauntlet-launch.md`.
 > - The Selkies row below is out of date: pixelflux 2.1 now has a Pi 4 V4L2 encoder (see the
 >   substrate decision matrix, spike S3).
 
