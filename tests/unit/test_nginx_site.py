@@ -116,6 +116,8 @@ NGINX = shutil.which('nginx') or ('/usr/sbin/nginx' if os.path.exists('/usr/sbin
 
 @unittest.skipUnless(NGINX or os.environ.get('AVRANA_REQUIRE_NGINX') == '1', 'nginx is not installed')
 class RealNginx(unittest.TestCase):
+    site = SITE                          # a subclass may test a proposed change to the site
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = Path(tempfile.mkdtemp())
@@ -128,7 +130,7 @@ class RealNginx(unittest.TestCase):
         build.build(tmp / 'web' / 'current', 'nginxtest')
         cls.lan, cls.arcade = upstream('lan'), upstream('arcade')
         cls.p80, cls.p443 = free_port(), free_port()
-        site = (SITE
+        site = (cls.site
                 .replace('listen 80 default_server;', f'listen 127.0.0.1:{cls.p80} default_server;')
                 .replace('listen [::]:80 default_server;', '')
                 .replace('listen 443 ssl;', f'listen 127.0.0.1:{cls.p443} ssl;')
