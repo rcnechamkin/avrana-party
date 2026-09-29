@@ -43,7 +43,14 @@ def stub_modules():
     gi = types.ModuleType('gi')
     gi.require_version = lambda *_: None
     gi.repository = repository
-    web = types.SimpleNamespace(json_response=lambda data: data)
+    class HTTPError(Exception):
+        def __init__(self, text=''):
+            super().__init__(text)
+            self.text = text
+    web = types.SimpleNamespace(json_response=lambda data, status=200: data,
+                                HTTPForbidden=type('HTTPForbidden', (HTTPError,), {}),
+                                HTTPServiceUnavailable=type('HTTPServiceUnavailable', (HTTPError,), {}),
+                                HTTPConflict=type('HTTPConflict', (HTTPError,), {}))
     aiohttp = types.ModuleType('aiohttp')
     aiohttp.web = web
     return {'gi': gi, 'gi.repository': repository, 'aiohttp': aiohttp}, gst
@@ -136,6 +143,132 @@ class ArcadeStream(unittest.TestCase):
         self.assertEqual(sum(1 for entry in log if entry[0] == 'close'), 2)
         self.assertFalse(s.runtime.running())
         self.assertEqual(pipeline.states, ['PLAYING', 'NULL'])
+
+
+class ManagedArcade(unittest.TestCase):
+    """AVR-134: with a Party session key the arcade starts idle; the Party's signed launch starts
+    RetroArch and the encode, its end stops them, and the page, controllers and /stats stay up."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.stream, cls.gst = load_stream()
+
+    def setUp(self):
+        from avrana.party import protocol
+        self.protocol = protocol
+        self.key = protocol.new_key()
+        self.tmp = tempfile.TemporaryDirectory()
+        with open(os.path.join(self.tmp.name, 'arcade-gauntlet2.key'), 'w') as f:
+            f.write(self.key.hex() + '\n')
+        self.env = mock.patch.dict(os.environ, {'AVRANA_PARTY_KEYS': self.tmp.name,
+                                                'AVRANA_PARTY_URL': 'http://127.0.0.1:8191',
+                                                'PULSE_SERVER': 'unix:/nonexistent'})
+        self.env.start()
+        self.stream.EMULATOR_LOG = Path(self.tmp.name) / 'emulator.log'
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def make(self, log):
+        s = self.stream.Stream()
+        s.input = UInputGamepadProvider(evdev=fake_evdev(log))
+        s.runtime = RetroArchRuntime(config='c', core='k', content='x', popen=lambda cmd, **kw: subprocess.Popen(
+            [sys.executable, '-c', 'import time; time.sleep(30)'], **kw))
+        self.pipelines = []
+
+        def parse(description):
+            self.pipelines.append(FakePipeline())
+            return self.pipelines[-1]
+        self.gst.parse_launch = parse
+        s.controls = 0
+
+        async def no_socket():          # the real one binds 127.0.0.1:8098 through aiohttp
+            s.controls += 1
+        s.start_control = no_socket
+        return s
+
+    def message(self, typ, sid):
+        roster = [{'participant': 'participant-' + '1' * 32, 'name': 'Ana', 'role': 'player'}]
+        if typ == 'launch':
+            return self.protocol.launch_message(self.key, 'arcade-gauntlet2', sid, roster)
+        return self.protocol.end_message(self.key, 'arcade-gauntlet2', sid)
+
+    def request(self):
+        return types.SimpleNamespace(headers={'Origin': 'https://party.avrana.net'}, host='party.avrana.net')
+
+    def test_idle_until_launched_then_stopped_by_end_and_restartable(self):
+        log = []
+        s = self.make(log)
+        sid1, sid2 = 'session-' + 'a' * 32, 'session-' + 'b' * 32
+
+        async def run():
+            await s.startup(None)
+            idle = await s.stats(None)
+            with self.assertRaises(self.stream.web.HTTPServiceUnavailable) as refused:
+                await s.websocket(self.request())       # a phone before the host starts it
+            first = await s.managed.launch(self.message('launch', sid1))
+            running = await s.stats(None)
+            stopped = await s.managed.end(self.message('end', sid1))
+            after = await s.stats(None)
+            again = await s.managed.launch(self.message('launch', sid2))
+            await s.cleanup(None)
+            return idle, refused.exception.text, first, running, stopped, after, again
+        idle, refused, first, running, stopped, after, again = asyncio.run(run())
+        self.assertEqual(s.controls, 1)
+        self.assertEqual((idle['state'], idle['party_managed'], idle['emulator_running']), ('idle', True, False))
+        self.assertEqual(len(self.pipelines), 2)          # one encode per run, none while idle
+        self.assertIn('Party Host', refused)
+        self.assertEqual(first, (200, {'ok': True}))
+        self.assertEqual((running['state'], running['emulator_running']), ('running', True))
+        self.assertEqual(stopped, (200, {'ok': True}))
+        self.assertEqual((after['state'], after['emulator_running']), ('idle', False))
+        self.assertEqual(self.pipelines[0].states, ['PLAYING', 'NULL'])
+        self.assertEqual(again, (200, {'ok': True}))
+        self.assertEqual(self.pipelines[1].states, ['PLAYING', 'NULL'])  # cleanup stopped run 2
+        self.assertFalse(s.runtime.running())
+        # the controllers stayed open across runs and were released once, at the end
+        self.assertEqual(sum(1 for e in log if e[0] == 'create'), 2)
+        self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+
+    def test_without_the_key_the_arcade_runs_always_on(self):
+        log = []
+        with mock.patch.dict(os.environ, {'AVRANA_PARTY_KEYS': ''}):
+            s = self.make(log)
+
+            async def run():
+                await s.startup(None)
+                stats = await s.stats(None)
+                await s.cleanup(None)
+                return stats
+            stats = asyncio.run(run())
+        self.assertIsNone(s.managed)
+        self.assertEqual(s.controls, 0)                  # no control port either
+        self.assertEqual((stats['state'], stats['party_managed'], stats['emulator_running']),
+                         ('running', False, True))
+
+    def test_a_fatal_failure_during_a_party_session_reports_abandoned_before_exiting(self):
+        log = []
+        s = self.make(log)
+        s.exits = 0
+        s.request_exit = lambda: setattr(s, 'exits', s.exits + 1)
+        reports = []
+
+        async def report(message):
+            reports.append(message)
+            return True
+
+        async def run():
+            await s.startup(None)
+            s.managed.report = report
+            await s.managed.launch(self.message('launch', 'session-' + 'c' * 32))
+            s.runtime.process.kill()                      # the emulator dies mid-game
+            await asyncio.wait_for(s.monitor, 5)
+            await s.cleanup(None)
+        asyncio.run(run())
+        self.assertEqual((s.error, s.exits, len(reports)), ('Emulator exited', 1, 1))
+        p = self.protocol.open_message(self.key, reports[0], 'ended', 'party', self.protocol.ReplayGuard())
+        self.assertEqual(p['outcome'], 'abandoned')
 
 
 # 'ip -o addr show' output as the Pi prints it (the literal backslash ends each record).

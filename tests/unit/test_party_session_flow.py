@@ -68,6 +68,40 @@ class ReferenceGame:
         self.server.server_close()
 
 
+class LinkTimeouts(unittest.TestCase):
+    """AVR-134: a game whose launch starts a heavy runtime gets its own link timeout."""
+
+    def test_each_endpoint_uses_its_own_timeout(self):
+        from unittest import mock
+        seen = []
+
+        class Reply:
+            status = 200
+
+            def read(self):
+                return b'{"ok": true}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def urlopen(req, timeout):
+            seen.append((req.full_url, timeout))
+            return Reply()
+        eps = {'bluff': sessions.GameEndpoint('bluff', 'http://127.0.0.1:1', KEY),
+               'arcade-gauntlet2': sessions.GameEndpoint('arcade-gauntlet2', 'http://127.0.0.1:2', KEY, 25)}
+        link = sessions.HttpGameLink(eps, timeout=5)
+        with mock.patch.object(sessions.urllib.request, 'urlopen', urlopen):
+            for gid in eps:
+                s = type('S', (), {'game_id': gid, 'id': 'session-' + 'a' * 32})()
+                self.assertEqual(link.launch(s, []), (True, None))
+                self.assertTrue(link.end(s))
+        self.assertEqual([t for _, t in seen], [5, 5, 25, 25])
+        self.assertEqual(seen[2][0], 'http://127.0.0.1:2' + sessions.LAUNCH_PATH)
+
+
 class Flow(ServiceCase):
     def setUp(self):
         super().setUp()

@@ -57,6 +57,8 @@ cd /home/cody/avrana-party-games && git fetch && git checkout --detach <reviewed
 sudo bash /home/cody/avrana-party/ops/provision-party-game-key.sh bluff
 
 # 3. Config, then the service (loopback only)
+#    Since AVR-134 the example config also lists arcade-gauntlet2 (on 127.0.0.1:8098). Install
+#    it only after docs/runbooks/arcade-party-provider.md steps 1-2, or drop that entry.
 sudo install -m 0644 /home/cody/avrana-party/deploy/party-core/party-core.example.json /etc/avrana-party/party-core.json
 sudo install -m 0644 /home/cody/avrana-party/deploy/party-core/avrana-party-core.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now avrana-party-core

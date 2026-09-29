@@ -302,6 +302,16 @@ test('a stopped arcade (the Pi answers, the game does not) is named as such', as
   await expect(page.locator('#connect')).toBeEnabled();
 });
 
+test('a Party-managed arcade that the host has not started says who starts it (AVR-134)', async ({ page }) => {
+  await arcade(page, 'down');
+  await page.route('**/arcade/stats', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ players: 0, max_players: 2, error: null, emulator_running: false, state: 'idle', party_managed: true }) }));
+  await open(page);
+  await page.locator('#connect').click();   // the arcade answers 503: nothing runs until the host starts it
+  await expect(page.locator('#status')).toHaveText('Gauntlet II isn’t on right now. The Party Host starts it for everyone from Party Home.');
+  await expect(page.locator('#connect')).toBeEnabled();
+});
+
 test('a connection that never completes ends in a message, not an endless "Connecting"', async ({ page }) => {
   await page.clock.install();
   await fakeTransport(page);
