@@ -343,6 +343,65 @@
       "artwork": "art/lan-bingo.svg"
     },
     {
+      "id": "bluff",
+      "name": "BLUFF",
+      "kind": "native",
+      "players": {
+        "min": 1,
+        "max": 6
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "watch",
+      "private_player_ui": true,
+      "fallback": "spectate",
+      "installed": true,
+      "entry": "/games/bluff/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_table",
+          "method": "browser_native",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "launchTarget": "/games/bluff/",
+      "status": "current",
+      "legacySlug": "bluff",
+      "icon": "🎭",
+      "category": "party",
+      "description": "Prototype bluffing card game (working title). Two hidden roles, claim any power, challenge the liars, block the attacks. Last one with a card left wins. Test bots can fill seats.",
+      "solo": true,
+      "art": null,
+      "accent": "#e879f9",
+      "playersLabel": "1–6 (+ test bots)",
+      "integration": "avrana.lan-launch/v1",
+      "summary": "Claim anything. Get caught, lose a card.",
+      "artwork": "art/lan-bluff.svg"
+    },
+    {
       "id": "lan-brickade",
       "name": "BRICKADE",
       "kind": "native",
@@ -1881,65 +1940,6 @@
       "integration": "avrana.lan-launch/v1",
       "summary": "Duel. Relay. Sabotage.",
       "artwork": "art/lan-wordclash.svg"
-    },
-    {
-      "id": "bluff",
-      "name": "BLUFF",
-      "kind": "native",
-      "players": {
-        "min": 1,
-        "max": 6
-      },
-      "screen": "no_tv_needed",
-      "input": {
-        "model": "browser_native"
-      },
-      "late_join": "spectator_only",
-      "spectators": "watch",
-      "private_player_ui": true,
-      "fallback": "spectate",
-      "installed": false,
-      "entry": null,
-      "health": null,
-      "playableHere": true,
-      "presentations": [
-        {
-          "id": "phone_table",
-          "method": "browser_native",
-          "roles": [
-            "player",
-            "spectator"
-          ],
-          "available": true,
-          "runtimeMissing": [],
-          "requires": {
-            "device": [
-              "websocket"
-            ]
-          },
-          "optional": {
-            "device": [
-              "wake_lock",
-              "storage.local"
-            ],
-            "runtime": []
-          }
-        }
-      ],
-      "provider": "lan-games",
-      "launchTarget": "/games/bluff/",
-      "status": "current",
-      "legacySlug": "bluff",
-      "icon": "🎭",
-      "category": "party",
-      "description": "Prototype bluffing card game (working title). Two hidden roles, claim any power, challenge the liars, block the attacks. Last one with a card left wins. Test bots can fill seats.",
-      "solo": true,
-      "art": null,
-      "accent": "#e879f9",
-      "playersLabel": "1–6 (+ test bots)",
-      "integration": "avrana.lan-launch/v1",
-      "summary": "Claim anything. Get caught, lose a card.",
-      "artwork": "art/lan-bluff.svg"
     },
     {
       "id": "ps1-bomberman",

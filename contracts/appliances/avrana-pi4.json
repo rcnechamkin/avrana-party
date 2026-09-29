@@ -248,6 +248,14 @@
       "entry": "/games/wordclash/",
       "tier": "builtin",
       "permissions_granted": []
+    },
+    {
+      "game": "bluff",
+      "entry": "/games/bluff/",
+      "tier": "builtin",
+      "permissions_granted": [
+        "party_roster"
+      ]
     }
   ],
   "collections": []

@@ -29,6 +29,8 @@ Laptop evidence for `3a6c472` and `fix/reconnect-lineage` (`ac7d6c7`), 2026-09-2
 - A local server lists all 29 production slugs plus `bluff`; every `/games/<slug>/` returns 200;
   `/api/games` advertises `avrana.lan-launch/v1`.
 - BLUFF is served but not granted in Avrana's appliance profile, so `/party/` does not list it.
+  (Superseded by AVR-91: `contracts/appliances/avrana-pi4.json` now grants `bluff` at
+  `/games/bluff/`, so Party Home lists it and launches `/games/bluff/?avrana=1`.)
 
 ## 1. Stage (no sudo, no effect on the live service)
 
