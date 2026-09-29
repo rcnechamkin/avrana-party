@@ -238,18 +238,21 @@ function renderParty(view, previous) {
   const game = s ? partyGame(state.catalog, s.game) : null;
   const name = game ? game.name : s ? s.game : '';
   $('party-now').hidden = !s;
-  $('party-rejoin').hidden = !(s && view.state === 'active' && me && game);
-  $('party-end').hidden = !(s && view.state === 'active' && me && me.host);
+  const on = view.state === 'active' || view.state === 'setup';     // setup: AVR-129 pregame
+  $('party-rejoin').hidden = !(s && on && me && game);
+  $('party-end').hidden = !(s && on && me && me.host);
   if (s) {
     const next = view.switching_to ? partyGame(state.catalog, view.switching_to) : null;
     $('party-now-text').textContent = view.state === 'launching' ? `Starting ${name}…`
       : view.switching_to ? `Switching from ${name} to ${next ? next.name : view.switching_to}…`
       : view.state === 'ending' ? `Ending ${name}…`
+      : view.state === 'setup' ? (me ? `Your party is setting up ${name}: choose Play or Watch.`
+        : `The party is setting up ${name}. Join to play along.`)
         : me ? `Your party is playing ${name}.` : `The party is playing ${name}. Join to play along.`;
     if (game) {
       $('party-rejoin').href = launchTarget(game);
       $('party-rejoin').onclick = () => markEntered(s.id, game);
-      $('party-rejoin-text').textContent = `Rejoin ${name}`;
+      $('party-rejoin-text').textContent = view.state === 'setup' ? `Go to ${name} setup` : `Rejoin ${name}`;
     }
   }
   // Announcements (a live region), only for changes this page watched happen.
@@ -279,13 +282,17 @@ function enterGame(view, previous) {
   if (!game || state.entering === s.id) return;
   state.entering = s.id;
   const watched = previous && previous.party === view.party;
-  $('party-live').textContent = watched
-    ? `${view.me.host ? 'You started' : 'The host started'} ${game.name}. Joining…`
-    : `Your party is playing ${game.name}. Joining…`;
+  const setup = view.state === 'setup';
+  $('party-live').textContent = setup
+    ? `${view.me.host ? 'You picked' : 'The host picked'} ${game.name}. Choose Play or Watch there…`
+    : watched
+      ? `${view.me.host ? 'You started' : 'The host started'} ${game.name}. Joining…`
+      : `Your party is playing ${game.name}. Joining…`;
   markEntered(s.id, game);
   setTimeout(() => {
     const now = party.view();
-    if (state.partyMode && now && now.state === 'active' && now.session && now.session.id === s.id) {
+    const on = now && (now.state === 'active' || now.state === 'setup');
+    if (state.partyMode && on && now.session && now.session.id === s.id) {
       location.assign(launchTarget(game));
     } else {
       state.entering = null;

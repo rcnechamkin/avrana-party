@@ -103,10 +103,7 @@ async function table(browser: Browser, request: any) {
   await join(ana.page, 'Ana'); await join(ben.page, 'Ben');
   await launch(ana.page);
   const wa = await openBluff(ana.page), wb = await openBluff(ben.page);
-  for (const p of [ana.page, ben.page]) {
-    await p.getByRole('button', { name: /I'M READY/ }).click();
-  }
-  await ana.page.getByRole('button', { name: /START GAME/ }).click();
+  // AVR-129: a Party round has no ready/start of its own; BLUFF deals once both phones are here
   const ga = await playing(ana.page), gb = await playing(ben.page);
   return { ana, ben, pa: wa.pid as string, pb: wb.pid as string, ga, gb };
 }
@@ -322,7 +319,9 @@ test('asleep through the host\'s end: the page follows the Party home, never a s
   await expect(ended(ben.page)).toHaveCount(0);
   await expect(ben.page.locator('#avrana-game-room')).toBeVisible();
   const fresh = await latest(ben.page);
-  expect(fresh.phase).toBe('lobby');                                 // a fresh table, no old hands
+  // a fresh Party round (AVR-129: seated by the roster, dealt once both phones are here), no old hands
+  expect(['countdown', 'playing']).toContain(fresh.phase);
+  expect(fresh.game?.log?.length ?? 0).toBeLessThan(5);
   expect(fresh.you?.pid).toBe(rejoined.pid);
   void pb;
   await ana.context.close(); await ben.context.close();
@@ -334,7 +333,7 @@ test('a watcher becomes a player at the next launch that includes them, without 
   const cleo = await phone(browser, 1);
   await join(cleo.page, 'Cleo');
   const watching = await openBluff(cleo.page);
-  expect(watching).toEqual({ type: 'welcome', watch: true });
+  expect(watching).toEqual({ type: 'welcome', watch: true, spectator: true });   // AVR-129: a Party spectator
   expect((await latest(cleo.page)).game.me).toBeNull();
   const before = await log(cleo.page);
   // The host ends the game and launches again; Cleo is here, so she is on the roster now.
