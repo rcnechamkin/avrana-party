@@ -258,7 +258,9 @@ function renderParty(view, previous) {
     && previous.session.outcome === 'launch_failed';
   if (failed && !known) {
     const g = partyGame(state.catalog, view.session.game);
-    $('party-note').textContent = `${g ? g.name : view.session.game} didn’t start. ${view.session.detail || ''}`.trim();
+    const why = view.session.detail;
+    $('party-note').textContent = why ? `${g ? g.name : view.session.game} didn’t start. ${why}`
+      : `${g ? g.name : view.session.game} didn’t start.`;
   }
 }
 
