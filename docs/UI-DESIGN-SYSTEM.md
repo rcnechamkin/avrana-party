@@ -90,8 +90,13 @@ Icon-only buttons (the favourite star) always carry an `aria-label`.
 **Game tiles.** Only catalog metadata: title; the title's artwork (below); players; screen
 (`Phone only` / `TV optional` / `Needs the TV` from the contract's `screen`); how you play when it
 adds something; summary; fit for this phone; live state; Play. One column on phones and tablets, two
-from `xl` (tiles need ≈ 400 px). No ratings, prices or store language. There is no "selected game"
-concept in the shell yet, so none is drawn; favourites show as a filled star.
+from `xl` (tiles need ≈ 400 px). No ratings, prices or store language. Favourites show as a filled
+star. In Party mode (ADR 0007) a party game's one action follows the party: "Start for everyone"
+(host, primary), "The host starts it" (disabled), "Join the party to play" (outline), "Rejoin"
+(primary) or "Party is playing …" (disabled); standalone tiles are unchanged. The Party panel is one
+`avrana-surface` under "you": who is here and who hosts, the game that is on with Rejoin (and
+"End the game for everyone", outline error, for the host), and a polite live region for
+"The host started … Joining…".
 
 ## Player avatars
 

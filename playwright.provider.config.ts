@@ -10,7 +10,8 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:8182', trace: 'retain-on-failure', serviceWorkers: 'allow' },
   webServer: [{
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8182`,
-    url: 'http://127.0.0.1:8182/party/', reuseExistingServer: false, timeout: 20000,
+    // a loaded laptop can take ~20 s to import the games server and run the drift check
+    url: 'http://127.0.0.1:8182/party/', reuseExistingServer: false, timeout: 60000,
   }, {
     // AVR-23: the same harness plus a real Party service behind /party/api/ (party-session.spec.ts)
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8183 --party-session`,

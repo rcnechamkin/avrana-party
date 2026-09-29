@@ -155,9 +155,16 @@ party-session config), so `party-session.spec.ts` drives Join, launch, tickets, 
 real BLUFF page on one origin: reload, sleep/wake, a lost or timed-out ticket request return
 the same seat and hand; another member, a forged or stale ticket, a wc-token and a stranger
 never take a seat or see a hand; a phone asleep through the end shows the end and joins the
-rematch as a new session; a watcher becomes a player at the next launch (AVR-22/23/24). It
-runs once, in the android-size project, with a Pixel-sized and an iPhone-sized phone; the whole
-provider run expects 19 passed and 7 skipped. The real-phone version is
+rematch as a new session; a watcher becomes a player at the next launch (AVR-22/23/24).
+`party-home.spec.ts` drives the real Party Home instead (AVR-20/AVR-127): phones Join on
+`/party/`; only the host is offered "Start for everyone" and Party Core refuses anyone else; one
+start takes every joined phone into the same BLUFF session with its Party identity; Back to Party
+offers Rejoin without bouncing; a reopened or stale tab resolves to the current game; a start from
+a stale view is re-checked and happens once; the host leaving mid-game hands over without ending
+it; a failed start stays in the lobby and a second party game cannot start over the first
+(the harness configures a second party game, `chess`, with no game side); and the same shell with
+no Party Core (8182) stays the plain catalog. These run once, in the android-size project, with a
+Pixel-sized and an iPhone-sized phone; the whole provider run expects 25 passed and 13 skipped. The real-phone version is
 `docs/runbooks/bluff-party-reconnect.md`. Arcade health is simulated. It rejects metadata drift
 before starting. Runtime test avatar/media directories stay ignored in the local
 games checkout. Tests use synthetic identities; no Pi, WLAN, TV, ROM or emulator.

@@ -71,6 +71,20 @@ class Membership(unittest.TestCase):
                     pc.join('device-z', bad)
         self.assertEqual(pc.party.members, {})
 
+    def test_every_phone_sees_the_party_games_only_the_host_may_start_them(self):
+        """AVR-127: followers (and a phone that has not joined yet) need to know which titles are
+        party games, so Party Home never offers them as a solo launch; authority stays with
+        me.host, which every host action re-checks."""
+        pc, _ = make()
+        pc.join('device-a', 'Ana')
+        pc.join('device-b', 'Ben')
+        for device in ('device-a', 'device-b', None, 'device-zzz'):
+            self.assertEqual(pc.view(device)['games'], ['bluff'])
+        self.assertFalse(pc.view('device-b')['me']['host'])
+        with self.assertRaises(Refused) as e:
+            pc.launch('device-b', 'bluff', pc.party.version)
+        self.assertEqual(e.exception.code, 'not_host')
+
     def test_view_hides_device_ids(self):
         pc, _ = make()
         pc.join('device-a', 'Ana')
@@ -177,6 +191,41 @@ class Host(unittest.TestCase):
         b = pc.join('device-b', 'Ben')
         pc.leave('device-a')
         self.assertEqual(pc.party.host_id, b.id)
+
+    def test_host_leaving_mid_game_hands_over_to_a_player_and_the_game_goes_on(self):
+        """AVR-127: players in the active game are present (playing), so they are successors; the
+        game session is the party's, not the host's, and survives the handover untouched."""
+        pc, _ = make()
+        pc.join('device-a', 'Ana')
+        b = pc.join('device-b', 'Ben')
+        s = pc.launch('device-a', 'bluff', pc.party.version)
+        pc.launch_accepted(s.id)
+        roster = s.roster(pc.party.members)
+        pc.leave('device-a')
+        self.assertEqual(pc.party.host_id, b.id)             # at once, not vacant
+        v = pc.view('device-b')
+        self.assertEqual((v['state'], v['session']['id'], v['me']['host']), ('active', s.id, True))
+        self.assertEqual(s.roster(pc.party.members), roster)  # the roster did not move
+        pc.begin_end('device-b', pc.party.version)          # the new host has real authority
+        self.assertEqual(s.state, core.ENDING)
+
+    def test_an_away_host_outside_the_game_hands_over_to_a_player(self):
+        pc, clock = make()
+        a = pc.join('device-a', 'Ana')
+        pc.join('device-b', 'Ben')
+        c = pc.join('device-c', 'Cy')
+        clock.advance(core.LIVE_WINDOW + 1)
+        pc.touch('device-a')
+        pc.touch('device-b')                                  # Cy is away at the launch
+        s = pc.launch('device-a', 'bluff', pc.party.version)
+        pc.launch_accepted(s.id)
+        self.assertNotIn(c.id, s.participants)
+        pc.touch('device-c')                                  # Cy is back on Party Home, not in the game
+        pc.transfer_host('device-a', c.id, pc.party.version)
+        clock.advance(core.LIVE_WINDOW + core.HOST_GRACE + 1)  # then Cy's phone goes quiet
+        pc.tick()
+        self.assertEqual(pc.party.host_id, a.id)             # Ana is playing: present, eligible
+        self.assertEqual(s.state, core.ACTIVE)
 
     def test_transfer_needs_fresh_version_and_a_present_target(self):
         pc, clock = make()
