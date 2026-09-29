@@ -73,6 +73,23 @@ server {
         return 200 '{"schema":"avrana.origin/v0","scheme":"$scheme","serverAddr":"$server_addr","tls":"$ssl_protocol","http":"$server_protocol"}';
     }
 
+    # Party Core v0 (AVR-51): the party API, avrana-party-core.service on loopback 127.0.0.1:8191
+    # (docs/runbooks/party-core-deploy.md). The exact-match origin.json location above keeps
+    # answering from nginx. Source copy: deploy/party-core/nginx-party-api.location.
+    # Only /party/api/ is forwarded; the service's /internal/ routes are never proxied (and it
+    # refuses anything carrying X-Forwarded-For). Long polls wait up to 25 s.
+    location /party/api/ {
+        proxy_pass http://127.0.0.1:8191;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 40s;
+        proxy_buffering off;
+        client_max_body_size 8k;
+    }
+
     location /party/ {
         alias /var/www/avrana-party/web/current/;
         index index.html;

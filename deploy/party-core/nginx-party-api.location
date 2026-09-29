@@ -1,7 +1,6 @@
-    # Party Core v0 (AVR-51): the party API on loopback. PROPOSED — not in avrana-party.nginx until
-    # the owner-approved deploy, which adds this block to BOTH avrana-party.nginx and
-    # arcade/nginx-site (they stay byte-identical with the live site) right after the
-    # `location = /party/api/origin.json` block. That exact-match location keeps answering here.
+    # Party Core v0 (AVR-51): the party API, avrana-party-core.service on loopback 127.0.0.1:8191
+    # (docs/runbooks/party-core-deploy.md). The exact-match origin.json location above keeps
+    # answering from nginx. Source copy: deploy/party-core/nginx-party-api.location.
     # Only /party/api/ is forwarded; the service's /internal/ routes are never proxied (and it
     # refuses anything carrying X-Forwarded-For). Long polls wait up to 25 s.
     location /party/api/ {
