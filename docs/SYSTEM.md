@@ -35,11 +35,11 @@ The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch
 
 | Copy | Where | State (2026-09-24; GitHub and production rows 2026-09-28) |
 |---|---|---|
-| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical; `main` @ `c6199be` (2026-09-28, games PR #7); work on `fix/*` branches with PRs |
+| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical; `main` @ `eeedb19` (2026-09-29, games PR #10); work on `fix/*` branches with PRs |
 | laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `6d795a7` (reconnect fix, lifecycle log lines, the Pi's `ops/lab` helpers; 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
 | Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; also has `playtest-readiness`, checked out as the worktree **`~/avrana-lab/wt/playtest`** (use it for the playtest); old `agent/*` worktrees under `~/avrana-lab/wt/`. Runs BLUFF on port 8196 when started |
 | laptop working clone | any scratch clone of the bare backup | edit on a branch; this separate games fork has no GitHub Cloud workflow yet |
-| **production** games | Pi `/home/cody/avrana-party-games` | fork `main` @ `c6199be` (detached checkout) since the 2026-09-28 13:43 PDT restart; first deployed at `9696524` on 2026-09-27 (`docs/findings/2026-09-27-production-deploy.md`). Service `avranaparty-games` (port 8096) via the drop-in `avranaparty-games.service.d/avrana-fork.conf` only, using the old venv; no Party-session drop-in yet (AVR-51) |
+| **production** games | Pi `/home/cody/avrana-party-games` | fork `main` @ `eeedb19` (detached checkout) since the 2026-09-29 11:37 PDT restart; first deployed at `9696524` on 2026-09-27. Service `avranaparty-games` (port 8096) via the drop-ins `avrana-fork.conf` and `avrana-party-session.conf` (Party sessions on, AVR-51; `docs/findings/2026-09-29-party-core-deploy.md`), using the old venv |
 | upstream LAN Games (rollback) | Pi `/home/cody/LAN-Games` | upstream `main` @ `5da1764` (retired upstream); no longer served; removing the drop-in returns to it. **Never edited.** |
 
 AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on the fork's
@@ -55,7 +55,8 @@ runbook, Party Core v0 and the session protocol v0. Production was fast-forwarde
 same evening (shell and arcade AP fix live); Party Core v0 and the session protocol are in that
 checkout but **no Party service runs** (`docs/findings/2026-09-27-production-deploy.md`).
 On 2026-09-28 the games fork went to `c6199be` and production was fast-forwarded to `3724b34`, then
-to `15f6322` (PR #20, AVR-91); `/party/` serves the web release built from `15f6322`. BLUFF is granted and listed in Party Home, and still no
+to `15f6322` (PR #20, AVR-91). On 2026-09-29 production went to `6bd5af4` with games `eeedb19`: Party Core `avrana-party-core`
+(127.0.0.1:8191) runs behind nginx `/party/api/`, and `/party/` serves the release built from `6bd5af4` (`docs/findings/2026-09-29-party-core-deploy.md`). BLUFF is granted and listed in Party Home, and still no
 Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 
 | Branch | Where | What | Status |
@@ -72,8 +73,8 @@ Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 | Port | Service (systemd) | Code |
 |---|---|---|
 | 80 | nginx (`/etc/nginx/sites-available/avrana-party`): captive probes, LAN Games, `/arcade/` | `avrana-party.nginx` |
-| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `15f6322` since 2026-09-28) | `avrana-party.nginx`, `ops/` |
-| 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `c6199be` (upstream `/home/cody/LAN-Games` kept for rollback) |
+| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `6bd5af4` since 2026-09-29); `/party/api/` → Party Core 127.0.0.1:8191 | `avrana-party.nginx`, `ops/` |
+| 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `eeedb19` (upstream `/home/cody/LAN-Games` kept for rollback) |
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
 | 5353 | avahi (`party.local`) | system |
