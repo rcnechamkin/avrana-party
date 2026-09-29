@@ -4,8 +4,9 @@
 #
 #     sudo bash telemetry/install-pi-throttle-check.sh
 #
-# Output: /var/log/avrana/pi-throttle.jsonl (JSON lines). This complements Beszel;
-# it does not replace it.
+# Output: /var/log/avrana/pi-throttle.jsonl (JSON lines), rotated by
+# /etc/logrotate.d/avrana-telemetry (AVR-30). This complements Beszel; it does not replace it.
+# Re-running it is safe: it only (re)installs files and re-enables the timer.
 set -euo pipefail
 
 BIN_DIR="/opt/avrana-telemetry"
@@ -17,6 +18,9 @@ if [ "$(id -u)" -ne 0 ]; then echo "run as root (sudo)" >&2; exit 1; fi
 echo "==> installing sampler to ${BIN_DIR}"
 install -d "$BIN_DIR" "$LOG_DIR"
 install -m 0755 "$SCRIPT_DIR/pi-throttle-check.sh" "$BIN_DIR/pi-throttle-check.sh"
+
+echo "==> installing log rotation (AVR-30: weekly or 10 MB, 8 compressed generations)"
+install -m 0644 "$SCRIPT_DIR/avrana-telemetry.logrotate" /etc/logrotate.d/avrana-telemetry
 
 echo "==> installing systemd timer"
 install -m 0644 "$SCRIPT_DIR/pi-throttle-check.service" /etc/systemd/system/pi-throttle-check.service
