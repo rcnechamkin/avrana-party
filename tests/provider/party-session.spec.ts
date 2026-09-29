@@ -45,6 +45,9 @@ const PHONES = [devices['Pixel 7'], devices['iPhone 13']];
 async function phone(browser: Browser, n = 0): Promise<{ context: BrowserContext; page: Page }> {
   const { defaultBrowserType, ...device } = PHONES[n % PHONES.length] as any;
   const context = await browser.newContext({ ...device, baseURL: BASE, serviceWorkers: 'block' });
+  // These phones have already read BLUFF's first-play briefing (AVR-90; games/bluff/web/briefing.js
+  // KEY/VERSION), so it doesn't cover the lobby; the briefing has its own tests in the games repo.
+  await context.addInitScript(() => { try { localStorage.setItem('bluff-briefed', '1'); } catch { /* private */ } });
   const page = await context.newPage();
   await page.addInitScript(record);
   return { context, page };
