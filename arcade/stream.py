@@ -9,6 +9,7 @@ import signal
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 
 import gi
@@ -35,6 +36,12 @@ PRESENTATION = ProviderInfo(
     id='shared-webrtc', kind='presentation', offers=('presentation.shared_stream',),
     implementation='one v4l2h264enc encode fanned out per phone through GStreamer webrtcbin')
 EXIT_FATAL = 1  # non-zero: avranaparty-arcade.service restarts on failure (Restart=on-failure)
+# ximagesrc runs at a fixed 60 fps (use-damage=false), so encoded video never pauses while the
+# arcade is healthy, even on a still screen. No video for this long means the capture/encode
+# pipeline has wedged without a bus ERROR (seen 2026-09-28: v4l2h264enc stopped returning frames,
+# the process stayed "active" and every phone failed with "Media caps did not reach WebRTC").
+VIDEO_STALL_S = 10
+EXIT_BACKSTOP_S = 20  # a fatal exit that has not finished cleanup by then is forced
 EMULATOR_LOG = ROOT / 'runtime/emulator.log'
 EMULATOR_LOG_MAX = 20 * 1024 * 1024  # emulator.log.1 keeps the previous 20 MB; total stays under ~45 MB.
 logging.basicConfig(level=logging.INFO)
@@ -129,6 +136,8 @@ class Stream:
         self.client_log = None
         self.last_keyframe = 0.0
         self.keyframes_forced = 0
+        self.last_sample = {}  # media -> time.monotonic() of the newest encoded sample
+        self.video_since = None  # when the capture pipeline was started (the stall grace period)
 
     async def startup(self, app):
         self.loop = asyncio.get_running_loop()
@@ -156,6 +165,7 @@ class Stream:
             'appsink name=audio_out emit-signals=true sync=false max-buffers=4 drop=true')
         for media in ('video', 'audio'):
             self.pipeline.get_by_name(media + '_out').connect('new-sample', self.distribute, media)
+        self.video_since = time.monotonic()
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError('Could not start capture pipeline')
         self.monitor = asyncio.create_task(self.watch())
@@ -169,6 +179,7 @@ class Stream:
                 log.exception('emulator log rotation failed')
 
     def distribute(self, sink, media):
+        self.last_sample[media] = time.monotonic()
         sample = sink.emit('pull-sample')
         buffer = sample.get_buffer()
         if buffer.pts != Gst.CLOCK_TIME_NONE:
@@ -226,6 +237,16 @@ class Stream:
             encoder.get_static_pad('src').send_event(event)
             log.info('Forced keyframe (%s)', reason)
 
+    def video_age(self):
+        """Seconds since the newest encoded video frame (or since the pipeline started, before
+        the first one); None before startup."""
+        since = self.last_sample.get('video', self.video_since)
+        return None if since is None else time.monotonic() - since
+
+    def video_stalled(self):
+        age = self.video_age()
+        return age is not None and age > VIDEO_STALL_S
+
     def status(self):
         """PresentationProvider diagnostics: one shared encode, one transport per viewer."""
         return dict(self.info.describe(), viewers=len(self.peers), encoders=1)
@@ -243,6 +264,11 @@ class Stream:
                 log.error('Pipeline error: %s %s', err, debug)
             if not self.runtime.running():
                 self.error = 'Emulator exited'
+            if not self.error and self.video_stalled():
+                # Alive but silent: the service looks "active" and /stats looked healthy, yet no
+                # phone can get a picture. Treat it like a pipeline error so systemd restarts it.
+                self.error = 'Video capture stalled'
+                log.error('No encoded video for %.1f s', self.video_age())
             if self.error:
                 for ws in list(self.peers):
                     await ws.close(code=1011, message=b'Stream stopped')
@@ -256,6 +282,11 @@ class Stream:
 
     def request_exit(self):
         """Ask web.run_app to stop gracefully (it handles SIGTERM by running on_cleanup)."""
+        # Backstop: if cleanup itself hangs on a wedged encoder, still exit non-zero so systemd
+        # restarts the arcade instead of leaving a silent process behind.
+        backstop = threading.Timer(EXIT_BACKSTOP_S, os._exit, (EXIT_FATAL,))
+        backstop.daemon = True
+        backstop.start()
         os.kill(os.getpid(), signal.SIGTERM)
 
     async def promise(self, element, signal, *args):
@@ -336,7 +367,11 @@ class Stream:
                     break
                 await asyncio.sleep(0.1)
             else:
-                raise RuntimeError('Media caps did not reach WebRTC')
+                missing = [media for (media, _, _), sink in zip(wanted, peer['sinks'])
+                           if not sink.get_current_caps()]
+                # Tell the phone why, so it does not blame its Wi-Fi.
+                await ws.send_json(dict(type='error', reason='no-media', media=missing))
+                raise RuntimeError('Media caps did not reach WebRTC: ' + ', '.join(missing))
             await ws.send_json(dict(type='player', slot=slot + 1))
             log.info('Creating offer for player %s', slot + 1)
             reply = await self.promise(rtc, 'create-offer', None)
@@ -449,9 +484,13 @@ class Stream:
         return out
 
     async def stats(self, request):
+        now = time.monotonic()
         return web.json_response(dict(players=len(self.peers), max_players=MAX_PLAYERS,
             video_encoders=1, video_frames=self.video_frames, video_bytes=self.video_bytes,
-            uptime=time.monotonic() - self.started, error=self.error,
+            uptime=now - self.started, error=self.error,
+            # Seconds since each medium's newest encoded sample: large values mean no phone can
+            # get a picture (video) or sound (audio), whatever emulator_running says.
+            sample_age_s={m: round(now - t, 1) for m, t in self.last_sample.items()},
             emulator_running=self.runtime.running(),
             capture_age_ms={m: w.summary() for m, w in self.age.items()},
             video_frame_kb=self.frame_kb.summary(), keyframes_forced=self.keyframes_forced,
