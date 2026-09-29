@@ -37,8 +37,9 @@ export function liveSession(view) {
 
 /** How a catalog tile behaves in Party mode, or null when it is not a party game (then the tile
  * is exactly today's). Kinds: join (not a member yet), start (the host), wait (a member, not the
- * host), rejoin (this game is on), starting (it is starting or ending), busy (another party game
- * is on: nobody can start this one until it ends). */
+ * host), rejoin (this game is on), starting (it is starting or ending), switch (the host, while
+ * another party game is on: ends it, then starts this one for everyone; AVR-128), busy (another
+ * party game is on and this phone is not the host). */
 export function tileMode(game, view, catalog = null) {
   const id = coreId(game, view);
   if (!id || !game.installed || !launchTarget(game)) return null;   // not here: today's tile says so
@@ -46,7 +47,9 @@ export function tileMode(game, view, catalog = null) {
   const s = liveSession(view);
   if (s && s.game !== id) {
     const on = catalog ? partyGame(catalog, s.game) : null;
-    return { kind: 'busy', name: on ? on.name : s.game };
+    const name = on ? on.name : s.game;
+    if (view.me.host && view.state === 'active' && !view.switching_to) return { kind: 'switch', game: id, name };
+    return { kind: 'busy', name };
   }
   if (s) {
     return view.state === 'active' ? { kind: 'rejoin', href: launchTarget(game), session: s.id } : { kind: 'starting' };
@@ -72,4 +75,24 @@ export function arrival(view, { previous = null, entered } = {}) {
   }
   if (entered === undefined) return 'offer';
   return entered === sid ? 'offer' : 'enter';
+}
+
+/** Where a page inside a game should go after a Party Core view (AVR-128). Party Core's `nav`
+ * says where the party is; it moves only on committed transitions (a game became active, the
+ * host ended it, a start failed). A page follows only a move it watched happen in this party
+ * (R2, R5: keyed by party and seq), so opening or reloading a page never throws anyone out.
+ *   {to: 'game', game}  the party went to another game (a switch, or a start while this page
+ *                       showed something else): go there
+ *   {to: 'home'}        the host ended the game this page is: back to Party Home
+ *   null                stay. Also for a game that ended by its own rules (its end screen is the
+ *                       intermission) and for anyone who is not a member (Leave is personal).
+ * `here` is this page's Party Core game id, or null for a page that is not a party game (a
+ * standalone title, the arcade): those follow a start, never an end. */
+export function follow(view, previous, here = null) {
+  if (!view || !view.me || !view.nav || !previous || !previous.nav || previous.party !== view.party) return null;
+  const n = view.nav;
+  if (n.seq <= previous.nav.seq) return null;
+  if (n.to === 'game') return n.game && n.game !== here ? { to: 'game', game: n.game } : null;
+  if (n.to === 'home') return here && n.from === here ? { to: 'home' } : null;
+  return null;
 }

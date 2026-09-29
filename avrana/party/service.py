@@ -15,6 +15,8 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/host        {to, if_version}
     POST /party/api/session/launch {game, if_version}    host
     POST /party/api/session/end    {if_version}          host: end the game for everyone
+    POST /party/api/session/switch {game, if_version}    host: end the game that is on, then
+                                                         launch this one (AVR-128)
 
 Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
 (ADR 0006).
@@ -93,6 +95,25 @@ class PartyService:
             s = self.core.launch(device_id, game_id, if_version)
             roster = s.roster(self.core.party.members)
             self._notify()
+        return self._start(s, roster)
+
+    def switch(self, device_id, game_id, if_version):
+        """End the game that is on, then launch the next one: the old game's server has reset
+        (or timed out, and then nothing new starts) before the next session exists, so two party
+        games never run at once. Nothing can start in between: the old session stays live
+        (ending) until the same locked step that opens the next one."""
+        with self.lock:
+            old = self.core.begin_switch(device_id, game_id, if_version)
+            self._notify()
+        confirmed = self.link.end(old)
+        with self.lock:
+            self.core.end_confirmed(old.id, confirmed)
+            s = self.core.launch_pending()
+            roster = s.roster(self.core.party.members) if s else None
+            self._notify()
+        return self._start(s, roster) if s else old
+
+    def _start(self, s, roster):
         ok, detail = self.link.launch(s, roster)
         with self.lock:
             if ok:
@@ -231,6 +252,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.launch(device, body.get('game'), body.get('if_version'))
             elif path == '/party/api/session/end':
                 svc.end(device, body.get('if_version'))
+            elif path == '/party/api/session/switch':
+                svc.switch(device, body.get('game'), body.get('if_version'))
             else:
                 return _send(self, 404, {'error': 'not_found'})
             return _send(self, 200, svc.view(device))

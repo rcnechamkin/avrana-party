@@ -69,6 +69,7 @@ authoritative, phones could end up in different games, and the host role had no 
 - Not changed: the ticket protocol, BLUFF's own ready/countdown lobby, `/games/` pages. A game page
   that shows "This game is over" does not follow the host into a *different* next game on its own;
   its Back to Party link leads to Party Home, which does (a games-side follow is a possible later
-  step, not part of this decision).
+  step, not part of this decision). **Superseded in part by ADR 0008 (AVR-128):** pages inside
+  games now follow Party Core's committed moves too, and the host can switch games in one step.
 - Still needs a real-phone check (Tier 3): the auto-follow on iPhone Safari and Android Chrome,
   sleeping phones, and the long poll through the real nginx `location /party/api/` (AVR-51).
