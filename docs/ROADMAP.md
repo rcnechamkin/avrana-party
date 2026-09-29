@@ -34,7 +34,7 @@ phones join its Wi-Fi. Game runtimes in view:
 | Runtime | Status | Role |
 |---|---|---|
 | **LAN Games** (`/home/cody/LAN-Games`, `party.local/`, port 8096) | **Replaced in production on 2026-09-27** by the fork below (kept untouched at `5da1764` for rollback). 28 browser-native games; lobby, identity, reconnect, per-player views, bots. Upstream (BEACNpool) **retired it in Sept 2026**. It is MIT-licensed and still runs, but gets no updates. | Existing native web-game platform, and the **foundation for new Avrana games** |
-| **Avrana Party Games** (fork of LAN Games; private GitHub repo `rcnechamkin/avrana-party-games`; production `/home/cody/avrana-party-games`; dev clone `~/avrana-lab/avrana-party-games/` on `party`; laptop bare backup `~/avrana-party-games.git`) | **LIVE** since 2026-09-27 at `9696524` on port 8096, including BLUFF (`docs/findings/2026-09-27-production-deploy.md`); dev instances on port 8196 | Source of Avrana's native games |
+| **Avrana Party Games** (fork of LAN Games; private GitHub repo `rcnechamkin/avrana-party-games`; production `/home/cody/avrana-party-games`; dev clone `~/avrana-lab/avrana-party-games/` on `party`; laptop bare backup `~/avrana-party-games.git`) | **LIVE** since 2026-09-27 (`docs/findings/2026-09-27-production-deploy.md`), at `c6199be` since 2026-09-28, on port 8096, including BLUFF, listed in and launched from Party Home since 2026-09-28 (AVR-91, `docs/findings/2026-09-28-bluff-party-home.md`); dev instances on port 8196 | Source of Avrana's native games |
 | **Arcade streaming** (`arcade/`, `party.local/arcade/`) | **Live prototype.** Gauntlet II via RetroArch + MAME 2010, one shared encode, WebRTC to phones; two iPhones verified. | Traditional/emulated games. **Preserved; not being redesigned.** |
 
 Open arcade work (independent of the game work below): verify the audio-ratchet fix `6acf0b0`,
@@ -144,7 +144,8 @@ and the substrate decision matrix.
 1. ~~Review and merge the PR~~ (merged: PRs #3–#13). ~~Deploy the arcade AP fix (PR #8)~~: live
    since the 2026-09-27 production fast-forward to `7581baa` and arcade restart.
 2. ~~Deploy the shell~~: `/party/` release `7581baa` is live, after the games fork `9696524`
-   (2026-09-27, `docs/findings/2026-09-27-production-deploy.md`).
+   (2026-09-27, `docs/findings/2026-09-27-production-deploy.md`). Superseded 2026-09-28: games
+   `c6199be`, production and `/party/` at `15f6322` (BLUFF in Party Home, AVR-91).
 3. Run the phone checklist in `docs/runbooks/party-https.md`.
 4. Decide the certificate-renewal credential before about **2026-11-25**; the certificate expires
    2026-12-25. Research recommends against a zone-wide Cloudflare token; see the findings.

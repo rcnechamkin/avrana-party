@@ -31,16 +31,16 @@ Labels: **LIVE** = running on the appliance · **TESTED** = automated tests, not
 
 | Thing | Status | Where |
 |---|---|---|
-| LAN Games hub (~28 browser games) | **LIVE** (port 8096 behind nginx `/`) | `/home/cody/LAN-Games` on the Pi (upstream retired; not in this repo) |
+| LAN Games hub (~28 browser games) | **LIVE** (port 8096 behind nginx `/`), served by the Avrana Party Games fork since 2026-09-27 | fork `/home/cody/avrana-party-games` on the Pi; upstream `/home/cody/LAN-Games` (retired) kept for rollback; not in this repo |
 | Gauntlet II arcade stream (1 encode → WebRTC, 2 players) | **LIVE** prototype | `arcade/` |
 | Captive probe: Apple gets "Success" (no popup) | **LIVE** | `avrana-party.nginx`, `avrana-captive.conf` |
 | Party AP on the Pi's internal Wi-Fi, eth0 upstream | **LIVE** since 2026-09-24 (boot determinism pending: an owner fix in the runbook) | `docs/runbooks/network.md` |
-| BLUFF (first native game) in the Avrana Party Games fork | **LIVE** since 2026-09-27 (games fork `9696524` serves port 8096); no real-phone playtest yet | separate repo, see `docs/SYSTEM.md` |
+| BLUFF (first native game) in the Avrana Party Games fork | **LIVE** since 2026-09-27 (games fork at `c6199be` since 2026-09-28); listed in and launched from Party Home, iPhone-verified (AVR-91). Party-session reconnect is phone-verified on the Pi's dev setup (AVR-23), not in production (AVR-51); four-player playtest pending | separate repo, see `docs/SYSTEM.md` |
 | PS1 on one shared stream; title profiles | **EXPERIMENT**, power-gated | branches `ps1-emulation`, `experiment/ps1-title-profiles` |
 | Party lifecycle model; Personal Viewports PoC (incl. shared WebRTC source) | **EXPERIMENT** | branch `experiment/party-sim` (`experiments/`) |
 | Party service + device identity + dev front door; manifest v0 | **EXPERIMENT** | branch `experiment/party-service` |
 | Browser-trusted HTTPS at `https://party.avrana.net` (Full Mode origin) | **LIVE** since 2026-09-25 (renewal not automated yet) | `docs/runbooks/party-https.md`, `ops/` |
-| Full Mode web shell at `/party/`: capability-aware game cards, offline copy, diagnostics; arcade keep-awake + quiet reconnect | **LIVE** at release `7581baa` since 2026-09-27 (server-side and HTTP checks; phone checklist pending) | `web/party/`, `docs/design/FULL-MODE.md` |
+| Full Mode web shell at `/party/`: capability-aware game cards, offline copy, diagnostics; arcade keep-awake + quiet reconnect | **LIVE** at release `15f6322` since 2026-09-28 (server-side and HTTP checks; phone checklist pending) | `web/party/`, `docs/design/FULL-MODE.md` |
 | Platform contracts: capability vocabulary, Game Contract v0, appliance profile, per-seat Capability Engine v0; provider boundaries (arcade runs through them) | **TESTED**, not deployed | `contracts/`, `avrana/`, ADR 0004 |
 | Party platform, onboarding, accessibility expectations | **PROPOSED** | `docs/design/` |
 
