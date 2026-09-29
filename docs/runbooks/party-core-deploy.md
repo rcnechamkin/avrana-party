@@ -29,13 +29,12 @@ party, device identities survive), BLUFF rules changes, `.avrgame`.
    - avrana-party `main` contains Party Core, the Party Home integration (AVR-20/127) and this package.
    - games `main` contains the party side (AVR-22/23/24) and, for AVR-27, AVR-25/AVR-90.
    - Write both SHAs down: they are the **reviewed revisions** this deploy is about.
-2. **nginx PR:** a small avrana-party PR adds `deploy/party-core/nginx-party-api.location` to
-   **both** `avrana-party.nginx` and `arcade/nginx-site`, right after the
-   `location = /party/api/origin.json` block. The two files stay identical (`cmp`; CI checks
-   it). Update `tests/unit/test_nginx_site.py`'s expected 443 locations to include
-   `'/party/api/'`. The Tier 2 test `tests/unit/test_party_core_deploy.py` already proves the
-   spliced site, with the real party service, in CI's real nginx. Merge that PR only when the owner
-   is ready to deploy, because `main` then differs from the live site until step 6.
+2. **nginx:** `deploy/party-core/nginx-party-api.location` is committed verbatim in **both**
+   `avrana-party.nginx` and `arcade/nginx-site`, right after the
+   `location = /party/api/origin.json` block. The two files stay identical (`cmp`; CI checks it).
+   `tests/unit/test_nginx_site.py` runs CI's real nginx with the real party service behind that
+   block. From that merge until step 6 below, `main`'s site differs from the live site. That is
+   expected: the live site is installed only in step 6.
 3. **CI green** on both repos.
 
 ## Deploy (owner, on the Pi, in this order)
