@@ -40,7 +40,7 @@ Labels: **LIVE** = running on the appliance · **TESTED** = automated tests, not
 | Party lifecycle model; Personal Viewports PoC (incl. shared WebRTC source) | **EXPERIMENT** | branch `experiment/party-sim` (`experiments/`) |
 | Party service + device identity + dev front door; manifest v0 | **EXPERIMENT** | branch `experiment/party-service` |
 | Browser-trusted HTTPS at `https://party.avrana.net` (Full Mode origin) | **LIVE** since 2026-09-25 (renewal not automated yet) | `docs/runbooks/party-https.md`, `ops/` |
-| Full Mode web shell at `/party/`: capability-aware game cards, offline copy, diagnostics; arcade keep-awake + quiet reconnect | **LIVE** at release `6bd5af4` since 2026-09-29, with Party Core behind `/party/api/` (server-side verified; phone checklist pending) | `web/party/`, `docs/design/FULL-MODE.md` |
+| Full Mode web shell at `/party/`: capability-aware game cards, offline copy, diagnostics; arcade keep-awake + quiet reconnect | **LIVE** at release `b345b6d` since 2026-09-29, with Party Core behind `/party/api/` (server-side verified; phone checklist pending) | `web/party/`, `docs/design/FULL-MODE.md` |
 | Platform contracts: capability vocabulary, Game Contract v0, appliance profile, per-seat Capability Engine v0; provider boundaries (arcade runs through them) | **TESTED**, not deployed | `contracts/`, `avrana/`, ADR 0004 |
 | Party platform, onboarding, accessibility expectations | **PROPOSED** | `docs/design/` |
 

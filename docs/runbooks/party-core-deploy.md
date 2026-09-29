@@ -1,7 +1,8 @@
 # Runbook: deploy Party Core v0 to the appliance (AVR-51)
 
 Status: **RUN 2026-09-29** (production `6bd5af4`, games `eeedb19`; `docs/findings/2026-09-29-party-core-deploy.md`). The owner ran the sudo steps
-as one script; everything verified server-side. Phone checks, a Party Core restart test and the rollback remain open.
+as one script; everything verified server-side. Restart, crash recovery and the full rollback/roll-forward were
+exercised the same day with 0 failures. Phone checks remain open.
 
 ## What this deploys
 

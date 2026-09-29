@@ -55,8 +55,8 @@ runbook, Party Core v0 and the session protocol v0. Production was fast-forwarde
 same evening (shell and arcade AP fix live); Party Core v0 and the session protocol are in that
 checkout but **no Party service runs** (`docs/findings/2026-09-27-production-deploy.md`).
 On 2026-09-28 the games fork went to `c6199be` and production was fast-forwarded to `3724b34`, then
-to `15f6322` (PR #20, AVR-91). On 2026-09-29 production went to `6bd5af4` with games `eeedb19`: Party Core `avrana-party-core`
-(127.0.0.1:8191) runs behind nginx `/party/api/`, and `/party/` serves the release built from `6bd5af4` (`docs/findings/2026-09-29-party-core-deploy.md`). BLUFF is granted and listed in Party Home, and still no
+to `15f6322` (PR #20, AVR-91). On 2026-09-29 production went to `6bd5af4`, then `b345b6d` (docs), with games `eeedb19`: Party Core `avrana-party-core`
+(127.0.0.1:8191) runs behind nginx `/party/api/`, and `/party/` serves the release built from `b345b6d` (`docs/findings/2026-09-29-party-core-deploy.md`). BLUFF is granted and listed in Party Home, and still no
 Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 
 | Branch | Where | What | Status |
@@ -73,7 +73,7 @@ Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 | Port | Service (systemd) | Code |
 |---|---|---|
 | 80 | nginx (`/etc/nginx/sites-available/avrana-party`): captive probes, LAN Games, `/arcade/` | `avrana-party.nginx` |
-| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `6bd5af4` since 2026-09-29); `/party/api/` → Party Core 127.0.0.1:8191 | `avrana-party.nginx`, `ops/` |
+| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `b345b6d` since 2026-09-29); `/party/api/` → Party Core 127.0.0.1:8191 | `avrana-party.nginx`, `ops/` |
 | 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `eeedb19` (upstream `/home/cody/LAN-Games` kept for rollback) |
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
