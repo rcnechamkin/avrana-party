@@ -179,5 +179,31 @@ class ApAddresses(unittest.TestCase):
             self.assertEqual(self.stream.ap_addresses(), set())
 
 
+class ClientStatsLog(unittest.TestCase):
+    """runtime/client-stats.jsonl is bounded (AVR-30): past its cap it rotates to .1, so the
+    newest phone stats are kept and the pair never exceeds about twice the cap."""
+
+    def setUp(self):
+        self.module, _ = load_stream()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: [p.unlink() for p in self.tmp.iterdir()] and None)
+        self.module.CLIENT_LOG = self.tmp / 'client-stats.jsonl'
+        self.module.CLIENT_LOG_MAX = 400
+        self.stream = self.module.Stream.__new__(self.module.Stream)
+        self.peer = {'addr': '10.42.0.23', 'server': {'path': 'wlan'}}
+
+    def test_rotates_past_the_cap_and_keeps_writing(self):
+        for i in range(40):
+            self.stream.log_client(self.peer, {'n': i})
+        log, old = self.module.CLIENT_LOG, self.module.CLIENT_LOG.with_suffix('.jsonl.1')
+        self.assertTrue(old.exists())
+        self.assertLessEqual(log.stat().st_size, 400 + 200)
+        self.assertLessEqual(old.stat().st_size, 400 + 200)
+        newest = log.read_text(encoding='utf-8').splitlines()[-1]
+        self.assertIn('"n": 39', newest)                 # the newest record is never dropped
+        self.assertEqual(sorted(p.name for p in self.tmp.iterdir()),
+                         ['client-stats.jsonl', 'client-stats.jsonl.1'])
+
+
 if __name__ == '__main__':
     unittest.main()

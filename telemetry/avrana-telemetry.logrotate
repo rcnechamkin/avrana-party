@@ -1,0 +1,18 @@
+# Avrana telemetry retention (AVR-30). Installed by telemetry/install-pi-throttle-check.sh as
+# /etc/logrotate.d/avrana-telemetry; the system's daily logrotate run applies it.
+#
+# pi-throttle.jsonl gains one JSON line a minute (~0.4 MB/day, measured 2026-09-29). Rotate weekly,
+# or sooner past 10 MB, keeping 8 compressed generations: about two months of history in well
+# under 20 MB. The sampler opens the file with >> on every run, so no copytruncate is needed.
+# Only this file: baseline.jsonl and other hand-made captures in /var/log/avrana are measurement
+# evidence and are never rotated or expired automatically.
+/var/log/avrana/pi-throttle.jsonl {
+    weekly
+    maxsize 10M
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 root root
+}

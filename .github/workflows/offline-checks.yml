@@ -45,8 +45,10 @@ jobs:
       - name: Python unit tests
         env:
           AVRANA_REQUIRE_NGINX: '1'
+          AVRANA_REQUIRE_LOGROTATE: '1'
         run: |
           command -v nginx >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q nginx; }
+          command -v logrotate >/dev/null || [ -x /usr/sbin/logrotate ] || { sudo apt-get update -q && sudo apt-get install -y -q logrotate; }
           python3 -m unittest discover -s tests/unit -v
 
       # docs/UI-DESIGN-SYSTEM.md: styles.css and lib/icons.js are generated and committed (the Pi

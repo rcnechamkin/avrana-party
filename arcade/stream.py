@@ -44,6 +44,10 @@ VIDEO_STALL_S = 10
 EXIT_BACKSTOP_S = 20  # a fatal exit that has not finished cleanup by then is forced
 EMULATOR_LOG = ROOT / 'runtime/emulator.log'
 EMULATOR_LOG_MAX = 20 * 1024 * 1024  # emulator.log.1 keeps the previous 20 MB; total stays under ~45 MB.
+# Per-second phone stats (analyze-latency.py). Past the cap it rotates to .1, so the newest
+# records are kept and the pair stays under ~2x the cap (AVR-30).
+CLIENT_LOG = ROOT / 'runtime/client-stats.jsonl'
+CLIENT_LOG_MAX = 20 * 1024 * 1024
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('avrana-arcade')
 
@@ -425,9 +429,9 @@ class Stream:
         return ws
 
     def log_client(self, peer, values):
-        path = ROOT / 'runtime/client-stats.jsonl'
-        if path.exists() and path.stat().st_size > 20_000_000:
-            return
+        path = CLIENT_LOG
+        if path.exists() and path.stat().st_size > CLIENT_LOG_MAX:
+            path.replace(path.with_name(path.name + '.1'))
         record = dict(t=round(time.time(), 2), addr=peer['addr'], path=peer['server'].get('path'),
                       client=values, server=peer['server'])
         with path.open('a') as f:
