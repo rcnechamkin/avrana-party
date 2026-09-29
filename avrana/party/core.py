@@ -23,6 +23,12 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   those committed transitions (PARTY-LIFECYCLE R2), keyed by (party, seq) (R5). Party Home and
   every integrated game page follow it. A game that ends by its own rules leaves `nav` alone: its
   end screen is the intermission, and the host's next start moves everyone on.
+* **Pregame is the party's** (AVR-129, ADR 0010). A game configured with `pregame` opens in
+  `setup`: the party is already on the game's page, nothing runs at the game yet, and every member
+  who is here chooses to play or to watch this round. Only the host starts the round, and only
+  once the game's minimum is met and everyone here has chosen; the choices become the roster's
+  roles. Roles change only at that boundary: during a round a choice is refused, and a member who
+  arrives late watches until the next setup.
 * **Switching is end, then launch.** The host's switch ends the game that is on (the service
   waits for that game's server to reset) before the next session exists, so two party games never
   run at once. If the old game does not confirm its end, the switch stops there: nothing new starts
@@ -45,6 +51,8 @@ RESERVED_NAMES = ('system', 'admin', 'host', 'avrana', 'moderator')
 
 # Session states and outcomes. `outcome` is set exactly when the state becomes 'ended'.
 LAUNCHING, ACTIVE, ENDING, ENDED = 'launching', 'active', 'ending', 'ended'
+SETUP = 'setup'                 # pregame (AVR-129): members choose to play or watch; host starts
+CHOICES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned', 'ended_by_host', 'launch_failed')
 ROLES = ('player', 'spectator')
 
@@ -120,6 +128,10 @@ class GameSession:
         self.detail = None              # e.g. why a launch failed; shown to people
         self.game_confirmed_end = None  # True/False once an end-for-everyone was attempted
         self.replaced = None            # the session a host switch ended for this one (AVR-128)
+        self.pregame = bool(game.get('pregame'))   # opened in setup (AVR-129)
+        self.min_players = game.get('min_players', 1)
+        self.max_players = game['max_players']
+        self.choices = {}               # member_id -> 'player' | 'spectator' (setup only)
         self.participants = {}          # member_id -> Participant (insertion order = roster order)
 
     def roster(self, members):
@@ -351,11 +363,79 @@ class PartyCore:
     def _open_session(self, host, game):
         now = self.clock()
         s = GameSession(game, host.id, now)
+        self.party.session = s
+        if s.pregame:
+            # the party goes to the game's page for its setup; nothing runs at the game yet
+            s.state, s.state_since = SETUP, now
+            self._navigate('game', s)
+            self._commit()
+            return s
         here = [m for m in self.party.members.values() if not m.left and self._here(m, now)]
         for i, m in enumerate(here):
             p = Participant(m.id, 'player' if i < game['max_players'] else 'spectator')
             s.participants[m.id] = p
-        self.party.session = s
+        self._commit()
+        return s
+
+    # ---- pregame (AVR-129) ------------------------------------------------------------------------
+    def _eligible(self, now):
+        """Who must choose before the round can start: every member who is here now."""
+        return [m for m in self.party.members.values() if not m.left and self._here(m, now)]
+
+    def setup_status(self, s, now=None):
+        """(players, spectators, waiting, blocker) for a session in setup. `waiting` are members
+        who are here and have not chosen; `blocker` is why the host cannot start yet, or None."""
+        now = self.clock() if now is None else now
+        eligible = self._eligible(now)
+        players = [m for m in eligible if s.choices.get(m.id) == 'player']
+        spectators = [m for m in eligible if s.choices.get(m.id) == 'spectator']
+        waiting = [m for m in eligible if m.id not in s.choices]
+        blocker = None
+        if waiting:
+            names = ', '.join(m.name for m in waiting[:3]) + (' …' if len(waiting) > 3 else '')
+            blocker = f'Waiting for {names} to choose Play or Watch.'
+        elif len(players) < s.min_players:
+            blocker = f'{s.min_players} players needed; {len(players)} chose to play.'
+        elif len(players) > s.max_players:
+            blocker = f'At most {s.max_players} can play; {len(players)} chose to play.'
+        return players, spectators, waiting, blocker
+
+    def choose(self, device_id, choice):
+        """A member's own choice for the round being set up: 'player' or 'spectator'. Any member,
+        any number of times, until the host starts. Roles never change during a round."""
+        self._timed()
+        m = self._require_member(device_id)
+        if choice not in CHOICES:
+            raise Refused('bad_choice', 'Choose Play or Watch.')
+        s = self._live_session()
+        if s is None:
+            raise Refused('no_game', 'No game is being set up.')
+        if s.state != SETUP:
+            raise Refused('round_on', 'Roles change between rounds. You can choose again when '
+                                      'the host sets up the next round.')
+        m.last_seen = self.clock()
+        if s.choices.get(m.id) != choice:
+            s.choices[m.id] = choice
+            self._commit()
+        return s
+
+    def start_round(self, device_id, if_version):
+        """The host starts the round set up: the choices become the roster (players in join order,
+        then spectators). Refused until every member who is here has chosen and the game's minimum
+        (and maximum) holds. Returns the session, now 'launching'."""
+        self._timed()
+        self._require_host(device_id, if_version)
+        s = self._live_session()
+        if s is None or s.state != SETUP:
+            raise Refused('no_setup', 'No round is being set up.')
+        players, spectators, waiting, blocker = self.setup_status(s)
+        if blocker:
+            raise Refused('unresolved' if waiting else 'player_count', blocker)
+        for m in players:
+            s.participants[m.id] = Participant(m.id, 'player')
+        for m in spectators:
+            s.participants[m.id] = Participant(m.id, 'spectator')
+        s.state, s.state_since = LAUNCHING, self.clock()
         self._commit()
         return s
 
@@ -366,7 +446,8 @@ class PartyCore:
         if s is None or s.id != session_id or s.state != LAUNCHING:
             return False
         s.state, s.state_since = ACTIVE, self.clock()
-        self._navigate('game', s)
+        if self.party.nav['session'] != s.id:  # a pregame session: the party is already there
+            self._navigate('game', s)
         self._commit()
         return True
 
@@ -386,6 +467,9 @@ class PartyCore:
         s = self._live_session()
         if s is None or s.state == ENDING:
             raise Refused('no_game', 'No game is on.')
+        if s.state == SETUP:                  # nothing runs at the game: close it here
+            self._close(s, 'ended_by_host', 'The host cancelled the round.')
+            return s
         if s.state == LAUNCHING:
             self._close(s, 'launch_failed', 'Cancelled by the host.')
             return s
@@ -405,9 +489,13 @@ class PartyCore:
         s = self._live_session()
         if s is None:
             raise Refused('no_game', 'No game is on. Start one instead.')
-        if s.state != ACTIVE or self.party.pending is not None:
+        if s.state not in (ACTIVE, SETUP) or self.party.pending is not None:
             raise Refused('busy', 'The party is already changing games. Wait a moment.')
         self.party.pending = game['id']
+        if s.state == SETUP:                  # nothing runs at the game: it is ended already
+            s.game_confirmed_end = True
+            self._close(s, 'ended_by_host')
+            return s
         s.state, s.state_since = ENDING, self.clock()
         self._commit()
         return s
@@ -467,7 +555,8 @@ class PartyCore:
             s.detail = detail
         for member_id in s.participants:
             self.party.released_at[member_id] = now
-        moved = outcome == 'ended_by_host' or (outcome == 'launch_failed' and s.replaced)
+        moved = outcome == 'ended_by_host' or (outcome == 'launch_failed'
+                                               and (s.replaced or s.pregame))
         if moved and self.party.pending is None:
             self._home_unless_live()          # the host's end, or a failed switch: everyone home
         self._commit()
@@ -483,7 +572,8 @@ class PartyCore:
     def _home_unless_live(self):
         """Send `nav` home when it points at a game session that is no longer on."""
         n, s = self.party.nav, self._live_session()
-        if n['to'] == 'game' and not (s is not None and s.id == n['session'] and s.state == ACTIVE):
+        on = s is not None and s.id == n['session'] and s.state in (SETUP, LAUNCHING, ACTIVE)
+        if n['to'] == 'game' and not on:
             self._navigate('home')
 
     def participant_for(self, device_id, game_id=None):
@@ -493,6 +583,10 @@ class PartyCore:
         self._timed()
         m = self._require_member(device_id)
         s = self._live_session()
+        if s is not None and game_id is not None and game_id == s.game_id \
+                and s.state in (SETUP, LAUNCHING):
+            # the game's page waits for the host's start instead of joining a room on its own
+            raise Refused('setup', 'The round is being set up.')
         if s is None or s.state != ACTIVE:
             raise Refused('no_game', 'No game is on.')
         if game_id is not None and game_id != s.game_id:
@@ -533,6 +627,16 @@ class PartyCore:
                        'detail': s.detail,
                        'players': sum(1 for p in s.participants.values() if p.role == 'player'),
                        'my_role': mine.role if mine else None}
+            if s.state == SETUP:
+                players, spectators, waiting, blocker = self.setup_status(s, now)
+                session['setup'] = {
+                    'min': s.min_players, 'max': s.max_players,
+                    'choices': {mid: c for mid, c in s.choices.items()
+                                if mid in party.members and not party.members[mid].left},
+                    'players': len(players), 'spectators': len(spectators),
+                    'waiting': [m.id for m in waiting],
+                    'blocker': blocker,
+                    'mine': s.choices.get(me.id) if me else None}
         return {'party': party.id, 'version': party.version,
                 'state': s.state if s is not None and s.state != ENDED else 'lobby',
                 'members': members, 'host': party.host_id,

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readView, partyGame, tileMode, arrival, follow } from '../../web/party/lib/party-mode.js';
+import { readView, partyGame, tileMode, arrival, follow, setupPanel } from '../../web/party/lib/party-mode.js';
 import { createPartyClient } from '../../web/party/lib/party-client.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
@@ -218,5 +218,86 @@ test('the host switch goes to session/switch with the version and is retried onc
   const posts = srv.calls.filter((c) => c.method === 'POST');
   assert.deepEqual(posts.map((c) => [c.url, c.body.game, c.body.if_version]),
     [['api/session/switch', 'chess', 6], ['api/session/switch', 'chess', 8]]);
+  client.stop(); srv.release();
+});
+
+// ---- AVR-129: the Party's pregame -------------------------------------------------------------
+
+const setupSession = (setup, id = 'session-1', game = 'bluff') =>
+  ({ id, game, state: 'setup', outcome: null, detail: null, players: 0, my_role: null, setup });
+function setupView({ me = ben, mine = null, waiting = ['member-a'], blocker = 'Waiting for Ana to choose Play or Watch.',
+  version = 8, players = 1, spectators = 0 } = {}) {
+  const v = view({ version, state: 'setup', me, session: setupSession({ min: 2, max: 6, mine, waiting, blocker,
+    players, spectators, choices: {} }), nav: { seq: 1, to: 'game', game: 'bluff', session: 'session-1', from: null } });
+  v.members = [{ id: 'member-a', name: 'Ana', presence: 'here', host: true }, { id: 'member-b', name: 'Ben', presence: 'here', host: false }];
+  return v;
+}
+
+test('setupPanel: only on the game being set up, for a member; start only for the host with no blocker', () => {
+  const p = setupPanel(setupView(), 'bluff');
+  assert.deepEqual(p, { mine: null, players: 1, spectators: 0, min: 2, max: 6, waiting: ['Ana'], host: false,
+    canStart: false, blocker: 'Waiting for Ana to choose Play or Watch.' });
+  assert.equal(setupPanel(setupView(), 'chess'), null);                    // another game's page
+  assert.equal(setupPanel(setupView(), null), null);                        // the arcade, a standalone title
+  assert.equal(setupPanel(setupView({ me: null }), 'bluff'), null);         // not a member
+  const host = { id: 'member-a', name: 'Ana', host: true };
+  assert.equal(setupPanel(setupView({ me: host }), 'bluff').canStart, false);  // someone has not chosen
+  const ready = setupPanel(setupView({ me: host, mine: 'player', waiting: [], blocker: null, players: 2 }), 'bluff');
+  assert.equal(ready.canStart, true);
+  assert.equal(setupPanel(setupView({ mine: 'player', waiting: [], blocker: null, players: 2 }), 'bluff').canStart,
+    false);                                                                 // never for anyone but the host
+  const on = view({ version: 9, state: 'active', session: active() });
+  assert.equal(setupPanel(on, 'bluff'), null);                              // the round is on: no panel
+});
+
+test('a setup is where the party goes: Party Home enters it; the start that follows is not a second move', () => {
+  const lobby = view({ version: 5, me: ben });
+  const setup = setupView();
+  assert.equal(arrival(setup, { previous: lobby, entered: null }), 'enter');
+  assert.equal(arrival(setup, { previous: null, entered: 'session-1' }), 'offer');   // came back on purpose
+  const on = view({ version: 12, state: 'active', session: active(), me: ben });
+  assert.equal(arrival(on, { previous: setup, entered: 'session-1' }), null);        // no bounce at the start
+  const bluff = byId('bluff'), chess = byId('lan-chess');
+  const s = setupView();
+  s.games = ['bluff', 'chess'];
+  assert.equal(tileMode(bluff, s).kind, 'rejoin');                          // "Go to BLUFF setup"
+  assert.equal(tileMode(chess, s, catalog).kind, 'busy');
+  const hs = setupView({ me: { id: 'member-a', name: 'Ana', host: true } });
+  hs.games = ['bluff', 'chess'];
+  assert.equal(tileMode(chess, hs, catalog).kind, 'switch');                // the host can switch from setup too
+});
+
+test('choose and start: the member’s own choice; the host’s start retried once only when stale', async () => {
+  let version = 8;
+  const srv = fakeServer((url, init) => {
+    if (url.endsWith('state')) return [200, setupView({ me: { id: 'member-a', name: 'Ana', host: true }, version })];
+    if (url.includes('state?')) return 'hang';
+    const body = JSON.parse(init.body);
+    if (url.endsWith('session/choice')) {        // someone else joins right after: this answer is stale
+      version += 2;
+      return [200, setupView({ me: { id: 'member-a', name: 'Ana', host: true }, version: version - 1, mine: body.choice })];
+    }
+    if (body.if_version !== version) { version++; return [409, { error: 'stale', message: 'The party changed.' }]; }
+    return [200, view({ version: version + 2, state: 'active', session: active() })];
+  });
+  const client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(setupView({ me: { id: 'member-a', name: 'Ana', host: true }, version: 7 }));
+  assert.equal((await client.choose('spectator')).ok, true);
+  const res = await client.startRound();
+  assert.equal(res.ok, true);
+  const posts = srv.calls.filter((c) => c.method === 'POST');
+  assert.deepEqual(posts.map((c) => [c.url, c.body.choice || c.body.if_version]),
+    [['api/session/choice', 'spectator'], ['api/session/start', 9], ['api/session/start', 11]]);
+  client.stop(); srv.release();
+});
+
+test('a start refused because someone has not chosen is never retried', async () => {
+  const srv = fakeServer((url) => url.includes('state?') ? 'hang'
+    : url.endsWith('state') ? [200, setupView()] : [409, { error: 'unresolved', message: 'Waiting for Cy to choose Play or Watch.' }]);
+  const client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(setupView({ me: { id: 'member-a', name: 'Ana', host: true } }));
+  const res = await client.startRound();
+  assert.equal(res.error, 'unresolved');
+  assert.equal(srv.calls.filter((c) => c.method === 'POST').length, 1);
   client.stop(); srv.release();
 });

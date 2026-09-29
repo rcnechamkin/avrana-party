@@ -6,7 +6,8 @@
 // answer that is not a Party Core view) Party Home stays the catalog it has always been.
 import { launchTarget } from './catalog-view.js';
 
-const LIVE = ['launching', 'active', 'ending'];
+const LIVE = ['setup', 'launching', 'active', 'ending'];
+const ON = ['setup', 'active'];     // the party is at the game's page: its setup (AVR-129) or the round
 
 /** A Party Core view, or null for anything else (a 404 page, another service's JSON). */
 export function readView(body) {
@@ -48,11 +49,11 @@ export function tileMode(game, view, catalog = null) {
   if (s && s.game !== id) {
     const on = catalog ? partyGame(catalog, s.game) : null;
     const name = on ? on.name : s.game;
-    if (view.me.host && view.state === 'active' && !view.switching_to) return { kind: 'switch', game: id, name };
+    if (view.me.host && ON.includes(view.state) && !view.switching_to) return { kind: 'switch', game: id, name };
     return { kind: 'busy', name };
   }
   if (s) {
-    return view.state === 'active' ? { kind: 'rejoin', href: launchTarget(game), session: s.id } : { kind: 'starting' };
+    return ON.includes(view.state) ? { kind: 'rejoin', href: launchTarget(game), session: s.id } : { kind: 'starting' };
   }
   return { kind: view.me.host ? 'start' : 'wait', game: id };
 }
@@ -67,10 +68,11 @@ export function tileMode(game, view, catalog = null) {
  * `entered` is the session id this tab last entered, null if none, undefined when the tab
  * cannot remember (storage blocked): then a reopened page only offers, so it can never trap. */
 export function arrival(view, { previous = null, entered } = {}) {
-  if (!view || !view.me || view.state !== 'active' || !view.session) return null;
+  if (!view || !view.me || !ON.includes(view.state) || !view.session) return null;
   const sid = view.session.id;
   if (previous && previous.party === view.party) {
-    const was = previous.state === 'active' && previous.session && previous.session.id === sid;
+    // a round set up and then started is one move to the game's page (AVR-129)
+    const was = ON.includes(previous.state) && previous.session && previous.session.id === sid;
     return was ? null : 'enter';
   }
   if (entered === undefined) return 'offer';
@@ -95,4 +97,28 @@ export function follow(view, previous, here = null) {
   if (n.to === 'game') return n.game && n.game !== here ? { to: 'game', game: n.game } : null;
   if (n.to === 'home') return here && n.from === here ? { to: 'home' } : null;
   return null;
+}
+
+/** The pregame panel on a game's page (AVR-129), or null when this page has none to show: the
+ * party is setting up a round of `here`, and this phone is a member. Party Core decides; this only
+ * shapes its answer for the page.
+ *   mine         'player' | 'spectator' | null (not chosen yet)
+ *   players, spectators, min, max   counts and the game's limits
+ *   waiting      names of members who are here and have not chosen
+ *   host         this phone is the Party Host
+ *   canStart     the host may start now (everyone here chose; the counts fit)
+ *   blocker      why the round cannot start yet, in words, or null */
+export function setupPanel(view, here) {
+  const s = view && view.session;
+  if (!view || !view.me || view.state !== 'setup' || !s || !s.setup || !here || s.game !== here) return null;
+  const st = s.setup;
+  const byId = new Map(view.members.map((m) => [m.id, m.name]));
+  return {
+    mine: st.mine || null,
+    players: st.players, spectators: st.spectators, min: st.min, max: st.max,
+    waiting: (st.waiting || []).map((id) => byId.get(id) || '?'),
+    host: Boolean(view.me.host),
+    canStart: Boolean(view.me.host) && !st.blocker,
+    blocker: st.blocker || null,
+  };
 }

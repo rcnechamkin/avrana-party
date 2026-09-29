@@ -525,6 +525,59 @@ class UnconfirmedSwitch(PartyNavigation):
     test_launch_while_a_switch_is_ending_is_refused = None
 
 
+class PregameHttp(ServiceCase):
+    """AVR-129 over HTTP: setup, choices and the host's start, as Party Home and game pages see
+    them through the long poll; the game link is used only once the round starts."""
+    games = dict(TWO_GAMES, bluff={'id': 'bluff', 'min_players': 2, 'max_players': 6,
+                                   'late_join': 'spectator_only', 'pregame': True})
+
+    def test_followers_see_setup_then_the_round_and_the_link_waits_for_the_start(self):
+        ana, ben = (self.phone(), self.phone())
+        ana.post('join', {'name': 'Ana'})
+        ben.post('join', {'name': 'Ben'})
+        _, bv, _ = ben.state()
+        seen = []
+
+        def follow():
+            since = bv['version']
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                _, v, _ = ben.state(since=since, wait=5)
+                seen.append(v)
+                if v['state'] == 'active':
+                    return
+                since = v['version']
+        t = threading.Thread(target=follow)
+        t.start()
+        time.sleep(0.2)
+        _, v, _ = ana.state()
+        status, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, v['state'], self.link.launched), (200, 'setup', []))
+        self.assertEqual(v['session']['setup']['waiting'], [m['id'] for m in v['members']])
+        ana.post('session/choice', {'choice': 'player'})
+        status, v, _ = ben.post('session/choice', {'choice': 'player'})
+        self.assertEqual((status, v['session']['setup']['mine'], v['session']['setup']['blocker']),
+                         (200, 'player', None))
+        status, body, _ = ana.post('session/start', {'if_version': v['version'] - 1})
+        self.assertEqual((status, body['error']), (409, 'stale'))
+        _, v, _ = ana.state()
+        status, v, _ = ana.post('session/start', {'if_version': v['version']})
+        t.join(20)
+        self.assertEqual((status, v['state'], len(self.link.launched)), (200, 'active', 1))
+        states = [x['state'] for x in seen]
+        self.assertEqual((states[0], states[-1]), ('setup', 'active'))
+        self.assertEqual({x['nav']['session'] for x in seen}, {v['session']['id']})  # one move
+
+    def test_switch_away_from_setup_never_calls_the_game(self):
+        ana = self.phone()
+        _, v, _ = ana.post('join', {'name': 'Ana'})
+        _, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        status, v, _ = ana.post('session/switch', {'game': 'bomber', 'if_version': v['version']})
+        self.assertEqual((status, v['state'], v['session']['game']), (200, 'active', 'bomber'))
+        self.assertEqual(self.link.ended, [])
+        self.assertEqual(len(self.link.launched), 1)
+
+
 class FailingLaunch(ServiceCase):
     link_ok = False
 
