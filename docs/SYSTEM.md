@@ -54,6 +54,9 @@ day (PRs #8–#13): the arcade AP fix, the M0 reconcile, the BLUFF-seam finding,
 runbook, Party Core v0 and the session protocol v0. Production was fast-forwarded to `7581baa` the
 same evening (shell and arcade AP fix live); Party Core v0 and the session protocol are in that
 checkout but **no Party service runs** (`docs/findings/2026-09-27-production-deploy.md`).
+On 2026-09-28 production was fast-forwarded to `15f6322` (PR #20, AVR-91), and `/party/` serves
+the web release built from that commit. BLUFF is granted and listed in Party Home, and still no
+Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 
 | Branch | Where | What | Status |
 |---|---|---|---|
