@@ -15,6 +15,7 @@ context, but no page depends on it: every feature degrades silently.
 | Page | For | What it shows |
 |---|---|---|
 | `/party/` | guests | "Connected to the party · 🔒 Secure"; the games installed on this Party box, each with what it will be like on **this phone** ("Works on this phone" / "Works, with limits" / "You can watch" / "Not on this phone" + one plain sentence) and its live state ("1 of 2 playing", "Full right now", "Not running right now"); individual browser titles alongside arcade and experimental PS1 metadata; the shared Avrana profile and Party Chat; favorites/history and search/group-size filters; a "This phone" disclosure (secure connection, saved offline, live video, keeping the screen on, sound, controllers, vibration) |
+| `/party/` with Party Core answering `/party/api/state` (Party mode, ADR 0007; not deployed) | guests | the same page plus a Party panel: Join, who is here and who hosts, Leave; party games start only from the host ("Start for everyone") and every joined phone follows into the game; while it is on, Rejoin (and End for the host). Without Party Core the page is unchanged |
 | `/party/` while the Pi is out of reach | guests | "Can’t reach the party. Make sure this phone is on the Avrana Party Wi-Fi", Try again, and a link to the basic HTTP version; it recovers by itself when the phone is back online |
 | `/party/diag/` (also `/party/#diag`) | owner, developers, agents | every capability with its status, evidence level and note; the seat evaluation for every game in the catalog (installed or not); the providers of this Party box; offline-copy state; deep checks (WebGPU adapter, DataChannel loopback); a keep-awake test; a copyable `avrana.diagnostics/v0` report; the user agent, labelled as never used for decisions |
 
@@ -28,6 +29,7 @@ HTTPS origin.
 |---|---|
 | `web/party/index.html`, `app.js`, `styles.css` | the guest page; `styles.css` is **generated** from `web/src/party.css` (Tailwind CSS 4 + daisyUI 5 at build time; `npm run check:ui`), the prototype-era `avrana` theme in [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md): dark only, rem type, 48 px targets, no web fonts, no machinery words (tested) |
 | `web/party/lib/icons.js` | **generated** Lucide subset (`npm run build:icons`) |
+| `web/party/lib/party-mode.js`, `party-client.js` | Party mode (ADR 0007): pure decisions from the Party Core view; the `/party/api/state` long poll and Join/Leave/host start/end |
 | `web/party/lib/capabilities.js` | probe → `avrana.capabilities/v0` report (names = `contracts/capabilities.v0.json`) |
 | `web/party/lib/evaluate.js` | per-seat evaluation + one guest sentence (`explain`) |
 | `web/party/lib/keep-awake.js` | Screen Wake Lock policy |

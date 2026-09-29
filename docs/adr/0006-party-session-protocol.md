@@ -138,6 +138,8 @@ game derives `game_token(key, sid, pid)`, a stable secret it may use where LAN G
   - party persistence;
   - votes, kicks and profiles;
   - more late-join policies than spectator;
-  - automatic navigation (the fixed return to `/party/` stays);
+  - automatic navigation (the fixed return to `/party/` stays). **Amended 2026-09-28 by ADR 0007**
+    (AVR-127): Party Home now follows the host's committed start into the game; the fixed return
+    stays;
   - PS1 and service runtimes;
   - `.avrgame` and the SDK.

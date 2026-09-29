@@ -15,8 +15,8 @@ on the appliance:
 Harness-only routes (loopback callers only):
     POST /__harness__/party/reset    a fresh party (tests are independent; the games server's room
                                      is replaced by the next launch anyway)
-    GET  /__harness__/party-lab      a bare Join / Launch / Open page for a real-phone check; the
-                                     Party shell has no Join UI yet
+    GET  /__harness__/party-lab      a bare Join / Launch / Open page (the protocol checks predate
+                                     Party Home's own Join and host start, AVR-127)
 
 The key lives in a temporary directory that is deleted at exit; it is never printed.
 """
@@ -36,6 +36,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from avrana.party import core, identity, protocol, service, sessions
 
 GAME = 'bluff'
+SECOND = 'chess'
 MAX_PLAYERS = 6
 LOOPBACK = ('127.0.0.1', '::1')
 FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length')
@@ -62,7 +63,9 @@ def attach(app, key, port, public_hosts, party_port):
     """Run the party service beside `app` and route /party/api/ to it. `public_hosts` are the
     host names phones use for this origin (127.0.0.1 always included)."""
     hosts = {f'{h}:{port}' for h in {'127.0.0.1', *public_hosts}}
-    games = service.load_games({GAME: {'max_players': MAX_PLAYERS}})
+    # A second party game with no game side attached here: it proves Party Home takes its party
+    # games from Party Core (nothing is BLUFF-specific), and its start fails readably.
+    games = service.load_games({GAME: {'max_players': MAX_PLAYERS}, SECOND: {'max_players': 2}})
     endpoints = {GAME: sessions.GameEndpoint(GAME, f'http://127.0.0.1:{port}/games/{GAME}', key)}
     svc = service.PartyService(identity.DeviceStore(None), games, sessions.HttpGameLink(endpoints))
     cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False)

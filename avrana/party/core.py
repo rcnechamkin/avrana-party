@@ -190,8 +190,10 @@ class PartyCore:
         return self.presence(member, now) in ('here', 'playing')
 
     def _successor(self, now, exclude):
+        """The earliest-joined member who is present. Playing counts as present: a player in the
+        active game can take over (AVR-127), so a host leaving mid-game never leaves it vacant."""
         return next((m for m in self.party.members.values()
-                     if not m.left and m.id != exclude and self.presence(m, now) == 'here'), None)
+                     if not m.left and m.id != exclude and self._here(m, now)), None)
 
     def _set_host(self, member_id):
         self.party.host_id = member_id
@@ -451,4 +453,6 @@ class PartyCore:
                 'me': ({'id': me.id, 'name': me.name, 'host': me.id == party.host_id}
                        if me else None),
                 'session': session,
-                'games': sorted(self.games) if me and me.id == party.host_id else []}
+                # the party's games, for every phone: Party Home must know which titles the host
+                # starts for everyone. Authority is me.host, re-checked on every host action.
+                'games': sorted(self.games)}

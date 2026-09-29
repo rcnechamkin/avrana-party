@@ -25,6 +25,7 @@ const SHELL = [
   '', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg', 'catalog.json', 'version.json',
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
   'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/icons.js', 'lib/avatars.js',
+  'lib/party-mode.js', 'lib/party-client.js',
   'diag/', 'diag/index.html', 'diag/diag.js',
   // Library artwork (tools/build-art.mjs from contracts/artwork.json).
   'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-backgammon.svg',

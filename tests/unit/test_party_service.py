@@ -236,6 +236,113 @@ class Flow(ServiceCase):
         self.assertTrue(v['me']['host'])
 
 
+class HostLaunch(ServiceCase):
+    """AVR-20/AVR-127: the host's launch is the party's one transition; every member observes it
+    through the long poll Party Home already uses, and it survives reconnects and succession."""
+
+    def table(self, *names):
+        phones = [self.phone() for _ in names]
+        for p, n in zip(phones, names):
+            p.post('join', {'name': n})
+        return phones
+
+    def poll_until(self, p, since, done, limit=10):
+        """Long-poll like Party Home: every view seen until done(view)."""
+        seen = []
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            _, v, _ = p.state(since=since, wait=5)
+            seen.append(v)
+            if done(v):
+                return seen
+            since = v['version']
+        self.fail(f'never converged: {[x["state"] for x in seen]}')
+
+    def test_one_host_launch_is_one_transition_every_member_observes(self):
+        ana, ben, cy = self.table('Ana', 'Ben', 'Cy')
+        _, v, _ = ana.state()
+        self.assertEqual(v['games'], ['bluff'])
+        _, bv, _ = ben.state()
+        self.assertEqual((bv['games'], bv['me']['host']), (['bluff'], False))
+        seen = {}
+
+        def follow(name, p, since):
+            seen[name] = self.poll_until(p, since, lambda x: x['state'] == 'active')
+        followers = [threading.Thread(target=follow, args=(n, p, bv['version']))
+                     for n, p in (('ben', ben), ('cy', cy))]
+        for t in followers:
+            t.start()
+        time.sleep(0.3)
+        _, v, _ = ana.state()
+        status, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'active'))
+        for t in followers:
+            t.join(15)
+        self.assertEqual(len(self.link.launched), 1)                  # one host action, one game
+        sid = v['session']['id']
+        for name in ('ben', 'cy'):
+            sessions = {x['session']['id'] for x in seen[name] if x['session']}
+            self.assertEqual(sessions, {sid}, name)                   # nobody saw another session
+            self.assertEqual(seen[name][-1]['session']['my_role'], 'player')
+            self.assertLessEqual(len(seen[name]), 3)                  # launching, active (+ presence)
+        # the double tap and the late second launch are refused; still exactly one session
+        status, body, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': bv['version']})
+        self.assertEqual((status, body['error']), (409, 'stale'))
+        _, v, _ = ana.state()
+        status, body, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, body['error']), (409, 'busy'))
+        self.assertEqual(len(self.link.launched), 1)
+        _, v, _ = cy.state()
+        self.assertEqual([m['presence'] for m in v['members']], ['playing'] * 3)   # still members
+
+    def test_a_member_who_is_not_host_can_neither_launch_nor_end(self):
+        ana, ben = self.table('Ana', 'Ben')
+        _, v, _ = ben.state()
+        status, body, _ = ben.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, body['error']), (403, 'not_host'))
+        stranger = self.phone()
+        status, body, _ = stranger.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, body['error']), (403, 'not_member'))
+        self.assertEqual(self.link.launched, [])
+        _, v, _ = ana.state()
+        _, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        status, body, _ = ben.post('session/end', {'if_version': v['version']})
+        self.assertEqual((status, body['error']), (403, 'not_host'))
+        self.assertEqual(ben.state()[1]['state'], 'active')
+
+    def test_reconnecting_and_stale_clients_resolve_to_the_active_game(self):
+        ana, ben = self.table('Ana', 'Ben')
+        _, old, _ = ben.state()
+        _, v, _ = ana.state()
+        _, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        sid = v['session']['id']
+        t0 = time.monotonic()
+        _, stale, _ = ben.state(since=old['version'], wait=20)        # an old version: at once
+        self.assertLess(time.monotonic() - t0, 2)
+        self.assertEqual((stale['state'], stale['session']['id']), ('active', sid))
+        _, fresh, _ = ben.state()                                     # a reload: no version at all
+        self.assertEqual((fresh['state'], fresh['session']['id'], fresh['session']['my_role']),
+                         ('active', sid, 'player'))
+        late = self.phone()
+        _, lv, _ = late.post('join', {'name': 'Cy'})                  # joins mid-game
+        self.assertEqual((lv['state'], lv['session']['id'], lv['session']['my_role']),
+                         ('active', sid, 'spectator'))
+
+    def test_the_host_leaving_mid_game_hands_over_and_the_game_goes_on(self):
+        ana, ben = self.table('Ana', 'Ben')
+        _, v, _ = ana.state()
+        _, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        sid = v['session']['id']
+        _, gone, _ = ana.post('leave')
+        self.assertIsNone(gone['me'])
+        _, v, _ = ben.state()
+        self.assertEqual((v['me']['host'], v['state'], v['session']['id'], v['session']['my_role']),
+                         (True, 'active', sid, 'player'))
+        _, v, _ = ben.post('session/end', {'if_version': v['version']})
+        self.assertEqual((v['state'], v['session']['outcome']), ('lobby', 'ended_by_host'))
+        self.assertEqual(self.link.ended, [sid])
+
+
 class FailingLaunch(ServiceCase):
     link_ok = False
 

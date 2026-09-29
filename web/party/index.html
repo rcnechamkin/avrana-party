@@ -58,6 +58,27 @@
   </details>
   <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
 
+  <!-- Party mode (AVR-20/AVR-127): shown only when Party Core answers /party/api/state. -->
+  <section id="party" class="avrana-surface mb-4 grid gap-3 p-4" hidden aria-labelledby="party-h">
+    <div class="flex items-center gap-2"><span data-icon="users" class="text-secondary"></span><h2 id="party-h" class="m-0 text-lg font-bold">Your party</h2><span id="party-count" class="ml-auto text-[0.9375rem] text-muted"></span></div>
+    <p id="party-live" class="m-0 font-semibold empty:hidden" role="status" aria-live="polite"></p>
+    <div id="party-now" class="grid gap-2 rounded-field border border-line-strong p-3" hidden>
+      <p id="party-now-text" class="m-0"></p>
+      <div class="flex flex-wrap gap-2"><a id="party-rejoin" class="btn btn-primary flex-1" hidden><span data-icon="play"></span><span id="party-rejoin-text">Rejoin</span></a><button id="party-end" type="button" class="btn btn-outline btn-error flex-1" hidden>End the game for everyone</button></div>
+    </div>
+    <form id="party-join" class="grid gap-2" hidden>
+      <p class="m-0 text-[0.9375rem] text-muted">Join, and the host can start games for everyone here at once.</p>
+      <label for="party-name" class="block text-[0.9375rem] font-semibold">Your name at this party</label>
+      <div class="flex gap-2"><input id="party-name" class="input min-w-0 flex-1 text-base" maxlength="16" autocomplete="nickname" required><button type="submit" class="btn btn-primary">Join the party</button></div>
+    </form>
+    <div id="party-in" class="grid gap-3" hidden>
+      <p id="party-host" class="m-0"></p>
+      <ul id="party-members" class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="People at the party"></ul>
+      <button id="party-leave" type="button" class="btn btn-ghost justify-self-start">Leave the party</button>
+    </div>
+    <p id="party-note" class="m-0 text-[0.9375rem] text-warning empty:hidden" role="status"></p>
+  </section>
+
   <section id="away" class="avrana-surface mb-4 grid justify-items-center gap-2 px-5 py-8 text-center lg:col-start-2 lg:row-start-1" hidden aria-labelledby="away-h">
     <span class="mb-1 grid size-16 place-items-center rounded-full bg-base-300 text-warning" data-icon="wifi-off" data-icon-class="size-8"></span>
     <h2 id="away-h" class="m-0 text-2xl font-extrabold">Can’t reach the party</h2>
