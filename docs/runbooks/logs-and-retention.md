@@ -15,17 +15,17 @@ parties, or on a smaller card.
 
 | Source | Writer | Bound | Status |
 |---|---|---|---|
-| systemd journal (all Avrana services: `avranaparty-games`, `avranaparty-arcade`, `avrana-party-core`, the telemetry timer) | journald | `deploy/journald/avrana-journald.conf`: 256 MB on disk, 1 GB always kept free, 64 MB in RAM, one file per week | **Template; owner installs it.** Until then, journald's defaults (a percentage of the card) apply |
+| systemd journal (all Avrana services: `avranaparty-games`, `avranaparty-arcade`, `avrana-party-core`, the telemetry timer) | journald | `deploy/journald/avrana-journald.conf`: 256 MB on disk, 1 GB always kept free, 64 MB in RAM, one file per week | LIVE since 2026-09-29 (effective config verified) |
 | `/var/log/nginx/*.log` | nginx | Debian's `/etc/logrotate.d/nginx`: daily, 14 generations, compressed | LIVE, unchanged (read 2026-09-29) |
-| `/var/log/avrana/pi-throttle.jsonl` | `pi-throttle-check.timer`, one line a minute (~0.4 MB/day) | `telemetry/avrana-telemetry.logrotate`: weekly or past 10 MB, 8 compressed generations (about two months, well under 20 MB) | **Owner re-runs the installer** (below). Unbounded until then |
+| `/var/log/avrana/pi-throttle.jsonl` | `pi-throttle-check.timer`, one line a minute (~0.4 MB/day) | `telemetry/avrana-telemetry.logrotate`: weekly or past 10 MB, 8 compressed generations (about two months, well under 20 MB) | LIVE since 2026-09-29 (`logrotate -d` parses it as intended) |
 | `/var/log/avrana/baseline.jsonl` and other hand-made captures | the owner, by hand | none on purpose: they're measurement evidence | Never rotated or expired automatically |
 | `arcade/runtime/emulator.log` | `arcade/stream.py` | 20 MB, then the last 20 MB kept as `.1` (under ~45 MB) | LIVE |
-| `arcade/runtime/client-stats.jsonl` | `arcade/stream.py` (per-second phone stats) | 20 MB, then rotated to `.1` (under ~40 MB). Before AVR-30 it stopped recording once full, dropping the newest stats | This branch; live after the arcade restarts on the new code |
+| `arcade/runtime/client-stats.jsonl` | `arcade/stream.py` (per-second phone stats) | 20 MB, then rotated to `.1` (under ~40 MB). Before AVR-30 it stopped recording once full, dropping the newest stats | LIVE since the 2026-09-29 11:37 arcade restart |
 | `arcade/runtime/webrtc-stats-sample1.txt`, `…8.txt` | `arcade/stream.py` | two fixed files, overwritten | LIVE |
 | `arcade/runtime/pulse.log` | `arcade/with-audio.sh` | truncated at every arcade start; PulseAudio writes little | LIVE |
-| games `data/chatmedia/` | `core/chatmedia.py` (chat photos and GIFs) | 400 files **and** 256 MB total, oldest pruned first. Before AVR-30 only the count was capped, which allowed ~6.4 GB of 16 MB GIFs | games branch `fix/avr-30-chatmedia-bound` |
+| games `data/chatmedia/` | `core/chatmedia.py` (chat photos and GIFs) | 400 files **and** 256 MB total, oldest pruned first. Before AVR-30 only the count was capped, which allowed ~6.4 GB of 16 MB GIFs | LIVE (games `eeedb19`, 2026-09-29) |
 | games `data/avatars/` | `core/avatars.py` | one 256 px WebP (tens of KB) per player identity, replaced on update: bounded by use. Not pruned, because that would delete active players' pictures | LIVE |
-| `/var/lib/avrana-party-core/devices.json` | Party Core (after AVR-51) | one short hashed entry per device that ever joined: bounded by use | not deployed |
+| `/var/lib/avrana-party-core/devices.json` | Party Core (after AVR-51) | one short hashed entry per device that ever joined: bounded by use | LIVE since 2026-09-29 |
 | `~/avrana-captures/*.jsonl` | `arcade/capture-load.py`, run by hand | none on purpose: manual evidence | manual |
 
 nginx logs and the journal are the only sources that grow with traffic. Everything else is either

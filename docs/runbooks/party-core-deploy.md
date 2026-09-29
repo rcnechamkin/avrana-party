@@ -1,7 +1,7 @@
 # Runbook: deploy Party Core v0 to the appliance (AVR-51)
 
-Status: **PROPOSED — not run.** Every step below changes the live appliance and is the owner's to
-run (sudo). Nothing here has been done on the Pi.
+Status: **RUN 2026-09-29** (production `6bd5af4`, games `eeedb19`; `docs/findings/2026-09-29-party-core-deploy.md`). The owner ran the sudo steps
+as one script; everything verified server-side. Phone checks, a Party Core restart test and the rollback remain open.
 
 ## What this deploys
 
