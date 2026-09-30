@@ -255,6 +255,9 @@ test('nobody else can take a seat or see a hand: another member, a forged or sta
   await ana.page.goto('/__harness__/party-lab');
   await hostAction(ana.page, 'End game (host)', 'game: bluff ended');
   await launch(ana.page);
+  // Ben's page went home with the End and comes back with the launch (ADR 0011): wait for it
+  await expect(ben.page).toHaveURL(/\/games\/bluff\/\?avrana=1$/);
+  await expect.poll(async () => (await latest(ben.page))?.phase ?? null, { timeout: 20_000 }).not.toBeNull();
   const stale = await hello(ben.page, { t: 'hello', ticket: anaTicket });
   expect(stale.map((m) => m.type)).toEqual(['fx']);
   expect(stale[0].msg).toMatch(/ticket refused/i);
@@ -303,7 +306,9 @@ test('asleep through the host\'s end: the page follows the Party home, never a s
   // (tests/hubnet_party_ticket_test.mjs).
   expect(welcomes(asleep).length).toBeGreaterThan(0);
   await ben.context.setOffline(false);
-  await ben.page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
+  // the browser's own `online` sends the page on its way; nudging it too may race that move
+  await ben.page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); })
+    .catch(() => { /* already moving */ });
   await expect(ben.page).toHaveURL(/\/party\/$/, { timeout: 30_000 });
   await expect(ben.page.locator('#avrana-game-room')).toHaveCount(0);
   // The host starts a rematch: a new Party session. Party Home takes Ben into it (ADR 0007).
@@ -327,7 +332,7 @@ test('asleep through the host\'s end: the page follows the Party home, never a s
   await ana.context.close(); await ben.context.close();
 });
 
-test('a watcher becomes a player at the next launch that includes them, without a reload', async ({ browser, request }) => {
+test('a watcher becomes a player at the next launch that includes them: the host moves her there', async ({ browser, request }) => {
   const { ana, ben } = await table(browser, request);
   // Cleo joins after the launch: the Party admits her as a spectator, so she watches.
   const cleo = await phone(browser, 1);
@@ -335,16 +340,18 @@ test('a watcher becomes a player at the next launch that includes them, without 
   const watching = await openBluff(cleo.page);
   expect(watching).toEqual({ type: 'welcome', watch: true, spectator: true });   // AVR-129: a Party spectator
   expect((await latest(cleo.page)).game.me).toBeNull();
-  const before = await log(cleo.page);
-  // The host ends the game and launches again; Cleo is here, so she is on the roster now.
+  // The host ends the game (everyone home: ADR 0011) and launches again; Cleo is on the roster
+  // now, and the launch brings her page back into BLUFF, as a player, with a fresh ticket.
   await ana.page.goto('/__harness__/party-lab');
   await hostAction(ana.page, 'End game (host)', 'game: bluff ended');
+  await expect(cleo.page).toHaveURL(/\/party\/$/);
   await launch(ana.page);
+  await expect(cleo.page).toHaveURL(/\/games\/bluff\/\?avrana=1$/);
   await expect.poll(async () => welcomes(await log(cleo.page)).filter((w) => w.pid).length, { timeout: 20_000 }).toBe(1);
   const now = await log(cleo.page);
-  const promoted = welcomes(now).slice(welcomes(before).length).find((w) => w.pid);
+  const promoted = welcomes(now).find((w) => w.pid);
   expect(promoted.watch).toBeUndefined();
   await expect.poll(async () => (await latest(cleo.page))?.you?.pid).toBe(promoted.pid);
-  expect(hellos(now).slice(hellos(before).length).every((h) => typeof h.ticket === 'string')).toBe(true);
+  expect(hellos(now).every((h) => typeof h.ticket === 'string')).toBe(true);
   await ana.context.close(); await ben.context.close(); await cleo.context.close();
 });

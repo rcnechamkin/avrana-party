@@ -714,6 +714,86 @@ class Pregame(unittest.TestCase):
         self.refused('round_on', self.pc.choose, 'device-b', 'player')
 
 
+class ConsoleLocation(unittest.TestCase):
+    """ADR 0011: one authoritative location for the whole party, moved only by the host."""
+
+    def setUp(self):
+        self.pc, self.clock = make([PREGAME, BOMBER])
+        self.a = self.pc.join('device-a', 'Ana', 'gaze-07')
+        self.b = self.pc.join('device-b', 'Ben')
+
+    def v(self):
+        return self.pc.party.version
+
+    def at(self, device='device-b'):
+        loc = self.pc.view(device)['location']
+        return loc['at'], loc['game']
+
+    def round(self):
+        s = self.pc.launch('device-a', 'bluff', self.v())
+        self.pc.choose('device-a', 'player')
+        self.pc.choose('device-b', 'player')
+        self.pc.start_round('device-a', self.v())
+        self.pc.launch_accepted(s.id)
+        return s
+
+    def refused(self, code, fn, *args):
+        with self.assertRaises(Refused) as e:
+            fn(*args)
+        self.assertEqual(e.exception.code, code)
+
+    def test_home_setup_game_results_home(self):
+        self.assertEqual(self.at(), ('home', None))
+        s = self.pc.launch('device-a', 'bluff', self.v())
+        self.assertEqual(self.at(), ('setup', 'bluff'))
+        self.pc.choose('device-a', 'player')
+        self.pc.choose('device-b', 'player')
+        self.pc.start_round('device-a', self.v())
+        self.assertEqual(self.at(), ('setup', 'bluff'))          # launching: still the setup scene
+        self.pc.launch_accepted(s.id)
+        self.assertEqual(self.at(), ('game', 'bluff'))
+        self.pc.game_reported_end(s.id, 'completed')
+        self.assertEqual(self.at(), ('results', 'bluff'))       # held until the host moves on
+        self.refused('not_host', self.pc.go_home, 'device-b', self.v())
+        got = self.pc.go_home('device-a', self.v())
+        self.assertIs(got, s)
+        self.assertEqual(self.at(), ('home', None))
+        self.refused('not_results', self.pc.go_home, 'device-a', self.v())
+
+    def test_play_again_from_results_is_a_fresh_setup(self):
+        s = self.round()
+        self.pc.game_reported_end(s.id, 'abandoned')
+        self.assertEqual(self.at(), ('results', 'bluff'))
+        self.refused('not_host', self.pc.launch, 'device-b', 'bluff', self.v())
+        again = self.pc.launch('device-a', 'bluff', self.v())
+        self.assertEqual((self.at(), again.choices), (('setup', 'bluff'), {}))
+
+    def test_host_end_goes_home_and_a_direct_game_has_no_setup(self):
+        first = self.round()
+        self.pc.begin_end('device-a', self.v())
+        self.assertEqual(self.at(), ('home', None))               # at once, while the game resets
+        self.pc.end_confirmed(first.id, True)
+        s = self.pc.launch('device-a', 'bomber', self.v())
+        self.assertEqual(self.at(), ('home', None))               # launching directly: not yet moved
+        self.pc.launch_accepted(s.id)
+        self.assertEqual(self.at(), ('game', 'bomber'))
+
+    def test_every_phone_sees_the_same_location(self):
+        s = self.round()
+        self.pc.join('device-c', 'Cy')                            # late: a spectator, same place
+        locs = {d: self.pc.view(d)['location'] for d in ('device-a', 'device-b', 'device-c', None)}
+        self.assertEqual({(l['at'], l['session']) for l in locs.values()}, {('game', s.id)})
+
+    def test_avatars_are_bundled_gaze_ids_only(self):
+        members = {m['name']: m['avatar'] for m in self.pc.view('device-a')['members']}
+        self.assertEqual(members, {'Ana': 'gaze-07', 'Ben': None})
+        self.pc.rename('device-b', 'Ben', 'gaze-12')
+        for bad in ('../x', 'https://evil/x.svg', 'gaze-7', 12, 'gaze-12.svg'):
+            self.pc.join('device-a', 'Ana', bad)
+            self.assertIsNone(self.pc.party.members[self.a.id].avatar, bad)
+        self.assertEqual(self.pc.party.members[self.b.id].avatar, 'gaze-12')
+
+
 class Idle(unittest.TestCase):
     def test_idle_party_ends_and_the_next_visit_starts_a_new_one(self):
         pc, clock = make()

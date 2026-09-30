@@ -29,6 +29,11 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   once the game's minimum is met and everyone here has chosen; the choices become the roster's
   roles. Roles change only at that boundary: during a round a choice is refused, and a member who
   arrives late watches until the next setup.
+* **One location** (ADR 0011, the console model). Every view carries `location`: where the
+  whole party is right now, `home`, `setup` (a round being set up), `game` (a round on) or
+  `results` (a round that ended by the game's own rules, held until the host moves on). Every
+  member's phone renders that location; only the host moves it (start, round start, end, Party
+  Home, play again). Presence is automatic: a phone with a profile joins on its own.
 * **Switching is end, then launch.** The host's switch ends the game that is on (the service
   waits for that game's server to reset) before the next session exists, so two party games never
   run at once. If the old game does not confirm its end, the switch stops there: nothing new starts
@@ -38,6 +43,7 @@ Not here (deliberately): persistence across reboot (the party is memory-only; OP
 profiles, teams, seat assignment (the game seats its roster), results and scores.
 """
 import itertools
+import re
 import secrets
 import unicodedata
 
@@ -48,6 +54,7 @@ END_TIMEOUT = 15.0         # s for the game to confirm an end before the party s
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
 NAME_MAX = 16
 RESERVED_NAMES = ('system', 'admin', 'host', 'avrana', 'moderator')
+AVATAR = re.compile(r'^gaze-\d\d$')     # a bundled DiceBear Gaze avatar id (web/party/avatars/)
 
 # Session states and outcomes. `outcome` is set exactly when the state becomes 'ended'.
 LAUNCHING, ACTIVE, ENDING, ENDED = 'launching', 'active', 'ending', 'ended'
@@ -92,13 +99,19 @@ def clean_name(raw):
     return text
 
 
-class Member:
-    __slots__ = ('id', 'device_id', 'name', 'joined_at', 'last_seen', 'left')
+def clean_avatar(raw):
+    """A profile avatar: only a bundled Gaze id is kept; anything else shows the default."""
+    return raw if isinstance(raw, str) and AVATAR.match(raw) else None
 
-    def __init__(self, device_id, name, now):
+
+class Member:
+    __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left')
+
+    def __init__(self, device_id, name, now, avatar=None):
         self.id = new_id('member')
         self.device_id = device_id
         self.name = name
+        self.avatar = avatar
         self.joined_at = now
         self.last_seen = now
         self.left = False
@@ -270,20 +283,23 @@ class PartyCore:
             self._shown = {}
 
     # ---- membership ----------------------------------------------------------------------------
-    def join(self, device_id, name):
-        """Explicit Join: the only way to become a member. Idempotent for a device that is
-        already in; a device that left comes back as the same member."""
+    def join(self, device_id, name, avatar=None):
+        """Become present. Phones call this on their own as soon as they have a profile (ADR
+        0011: no Join ceremony); it is idempotent for a device that is already in, and a device
+        that left comes back as the same member."""
         self._timed()
         clean = clean_name(name)
         now = self.clock()
         m = self._member_of(device_id)
         if m is None:
-            m = Member(device_id, self._unique(clean, None), now)
+            m = Member(device_id, self._unique(clean, None), now, clean_avatar(avatar))
             self.party.members[m.id] = m
         else:
             if m.left:
                 m.left = False
                 m.name = self._unique(clean, m)
+            if avatar is not None:
+                m.avatar = clean_avatar(avatar)
             m.last_seen = now
         if self.party.host_id is None:
             self._set_host(m.id)
@@ -307,10 +323,12 @@ class PartyCore:
             self._commit()                                    # away -> here is visible to others
         return m
 
-    def rename(self, device_id, name):
+    def rename(self, device_id, name, avatar=None):
         self._timed()
         m = self._require_member(device_id)
         m.name = self._unique(clean_name(name), m)
+        if avatar is not None:
+            m.avatar = clean_avatar(avatar)
         m.last_seen = self.clock()
         self._commit()
         return m
@@ -561,6 +579,33 @@ class PartyCore:
             self._home_unless_live()          # the host's end, or a failed switch: everyone home
         self._commit()
 
+    def go_home(self, device_id, if_version):
+        """Host: from a round's results back to Party Home, for everyone (ADR 0011). Returns the
+        finished session, so the service can release the game's held results screen."""
+        self._timed()
+        self._require_host(device_id, if_version)
+        if self.location()['at'] != 'results':
+            raise Refused('not_results', 'The party is not on a results screen.')
+        s = self.party.session
+        self._navigate('home')
+        self._commit()
+        return s
+
+    def location(self):
+        """Where the whole party is: {'at': 'home'|'setup'|'game'|'results', 'game', 'session'}.
+        It follows `nav` (committed moves only): a round being set up or starting is `setup`; a
+        round on (or ending in a switch) is `game`; a round the game itself finished is
+        `results` until the host moves on."""
+        n, s = self.party.nav, self.party.session
+        if n['to'] != 'game' or s is None or s.id != n['session']:
+            return {'at': 'home', 'game': None, 'session': None}
+        at = {SETUP: 'setup', LAUNCHING: 'setup', ACTIVE: 'game', ENDING: 'game'}.get(s.state)
+        if at is None:
+            at = 'results' if s.outcome in ('completed', 'abandoned') else 'home'
+        if at == 'home':
+            return {'at': 'home', 'game': None, 'session': None}
+        return {'at': at, 'game': s.game_id, 'session': s.id}
+
     # ---- navigation (AVR-128) --------------------------------------------------------------------
     def _navigate(self, to, session=None):
         n = self.party.nav
@@ -616,8 +661,8 @@ class PartyCore:
         me = self._member_of(device_id) if device_id else None
         if me is not None and me.left:
             me = None
-        members = [{'id': m.id, 'name': m.name, 'presence': self.presence(m, now),
-                    'host': m.id == party.host_id}
+        members = [{'id': m.id, 'name': m.name, 'avatar': m.avatar,
+                    'presence': self.presence(m, now), 'host': m.id == party.host_id}
                    for m in party.members.values() if not m.left]
         s = party.session
         session = None
@@ -644,6 +689,7 @@ class PartyCore:
                        if me else None),
                 'session': session,
                 'nav': dict(party.nav),
+                'location': self.location(),
                 'switching_to': party.pending,
                 # the party's games, for every phone: Party Home must know which titles the host
                 # starts for everyone. Authority is me.host, re-checked on every host action.

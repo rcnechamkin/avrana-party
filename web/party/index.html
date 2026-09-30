@@ -58,24 +58,12 @@
   </details>
   <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
 
-  <!-- Party mode (AVR-20/AVR-127): shown only when Party Core answers /party/api/state. -->
+  <!-- Party mode (ADR 0011, the console model): shown only when Party Core answers. Presence is
+       automatic once this phone has a profile; there is no Join and no Leave. -->
   <section id="party" class="avrana-surface mb-4 grid gap-3 p-4" hidden aria-labelledby="party-h">
     <div class="flex items-center gap-2"><span data-icon="users" class="text-secondary"></span><h2 id="party-h" class="m-0 text-lg font-bold">Your party</h2><span id="party-count" class="ml-auto text-[0.9375rem] text-muted"></span></div>
-    <p id="party-live" class="m-0 font-semibold empty:hidden" role="status" aria-live="polite"></p>
-    <div id="party-now" class="grid gap-2 rounded-field border border-line-strong p-3" hidden>
-      <p id="party-now-text" class="m-0"></p>
-      <div class="flex flex-wrap gap-2"><a id="party-rejoin" class="btn btn-primary flex-1" hidden><span data-icon="play"></span><span id="party-rejoin-text">Rejoin</span></a><button id="party-end" type="button" class="btn btn-outline btn-error flex-1" hidden>End the game for everyone</button></div>
-    </div>
-    <form id="party-join" class="grid gap-2" hidden>
-      <p class="m-0 text-[0.9375rem] text-muted">Join, and the host can start games for everyone here at once.</p>
-      <label for="party-name" class="block text-[0.9375rem] font-semibold">Your name at this party</label>
-      <div class="flex gap-2"><input id="party-name" class="input min-w-0 flex-1 text-base" maxlength="16" autocomplete="nickname" required><button type="submit" class="btn btn-primary">Join the party</button></div>
-    </form>
-    <div id="party-in" class="grid gap-3" hidden>
-      <p id="party-host" class="m-0"></p>
-      <ul id="party-members" class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="People at the party"></ul>
-      <button id="party-leave" type="button" class="btn btn-ghost justify-self-start">Leave the party</button>
-    </div>
+    <p id="party-host" class="m-0"></p>
+    <ul id="party-members" class="avrana-roster" aria-label="People at the party"></ul>
     <p id="party-note" class="m-0 text-[0.9375rem] text-warning empty:hidden" role="status"></p>
   </section>
 
@@ -133,6 +121,53 @@
     </div>
   </details>
 </main>
+
+<!-- A round's setup (ADR 0011): the Party's own full-screen scene, themed by the game's catalog
+     entry and its onboarding.json. The game's table is not on screen until the host starts. -->
+<section id="scene" class="avrana-scene" hidden aria-labelledby="scene-title">
+  <header class="flex items-center gap-3">
+    <div id="scene-cover" class="avrana-game-cover has-art size-16" aria-hidden="true"><img id="scene-art" alt="" width="64" height="64"></div>
+    <div class="min-w-0">
+      <h1 id="scene-title" class="m-0 text-[1.75rem] font-extrabold leading-tight tracking-tight"></h1>
+      <p id="scene-host" class="m-0 inline-flex items-center gap-1.5 text-[0.9375rem] text-muted"><span data-icon="crown" class="text-secondary"></span><span id="scene-host-name"></span></p>
+    </div>
+  </header>
+  <div class="grid justify-items-start gap-1">
+    <p id="scene-premise" class="m-0"></p>
+    <button id="scene-rules" type="button" class="btn btn-ghost btn-sm -ml-3"><span data-icon="circle-help" class="text-secondary"></span>How to play</button>
+  </div>
+  <section aria-labelledby="scene-people-h">
+    <h2 id="scene-people-h" class="avrana-section-title">This round <span id="scene-count" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
+    <ul id="scene-roster" class="avrana-lineup" aria-label="Who plays and who watches"></ul>
+  </section>
+  <div class="avrana-scene-actions">
+    <div class="grid grid-cols-2 gap-3" role="group" aria-label="Your choice for this round">
+      <button id="choose-play" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="play" data-icon-class="size-7"></span><span>Play this round</span></button>
+      <button id="choose-watch" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="eye" data-icon-class="size-7"></span><span>Watch this round</span></button>
+    </div>
+    <div class="grid gap-2">
+      <button id="scene-start" type="button" class="btn btn-primary btn-lg btn-block" hidden><span data-icon="play"></span>Start game</button>
+      <p id="scene-status" class="m-0 text-center text-[0.9375rem] text-muted" role="status" aria-live="polite"></p>
+      <button id="scene-cancel" type="button" class="btn btn-ghost btn-sm justify-self-center text-muted" hidden>Choose another game</button>
+    </div>
+  </div>
+</section>
+
+<!-- How to play: one sheet, easy to open and to leave; the setup underneath is untouched. -->
+<dialog id="rules" class="modal modal-bottom sm:modal-middle" aria-labelledby="rules-title">
+  <div class="modal-box grid max-h-[85dvh] gap-4 bg-base-200">
+    <div class="flex items-center gap-2"><h2 id="rules-title" class="m-0 text-xl font-bold">How to play</h2><button id="rules-close" type="button" class="btn btn-ghost btn-square ml-auto" aria-label="Close"><span data-icon="x"></span></button></div>
+    <div id="rules-body" class="grid gap-4 overflow-y-auto overscroll-contain"></div>
+    <button id="rules-ok" type="button" class="btn btn-primary btn-block">Got it</button>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+</dialog>
+
+<!-- Where the party is, while this phone goes there (a moment, never something to act on). -->
+<section id="going" class="avrana-scene place-content-center text-center" hidden aria-label="Joining your party">
+  <span class="loading loading-spinner loading-lg mx-auto text-secondary" aria-hidden="true"></span>
+  <p id="going-text" class="m-0 text-lg font-semibold" role="status"></p>
+</section>
 <noscript><p class="p-4 text-center">Avrana Party needs JavaScript. You can still <a href="/">open the party games</a>.</p></noscript>
 </body>
 </html>

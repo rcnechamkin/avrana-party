@@ -4,10 +4,11 @@
 // capabilities, and show each installed game with what it will be like on *this* phone. Profiles
 // and chat share donor adapters. Guest copy only.
 //
-// Party mode (AVR-20, AVR-127) is progressive enhancement: only when Party Core answers
-// /party/api/state does the page offer Join, show who is here and who hosts, let the host start a
-// party game for everyone, and take every member into it when that start is committed. Without
-// Party Core (production before AVR-51) the page is the catalog it always was.
+// Party mode (ADR 0011, the console model) is progressive enhancement: only when Party Core answers
+// /party/api/state is this page the party's home screen. A phone with a profile is in the party on
+// its own (no Join). The party is in one place and only its host moves it: home (this catalog), a
+// round's setup (this page's full-screen setup scene) or a round and its results (the game's page,
+// where every member's phone goes at once). Without Party Core the page is the catalog it always was.
 
 import { probeCapabilities, statuses } from './lib/capabilities.js';
 import { evaluateSeat, explain } from './lib/evaluate.js';
@@ -19,7 +20,7 @@ import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
 import { donorAvailability, visibleGames, filterGames, launchTarget } from './lib/catalog-view.js';
-import { arrival, liveSession, partyGame, tileMode } from './lib/party-mode.js';
+import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 
 const $ = (id) => document.getElementById(id);
@@ -27,14 +28,9 @@ const $ = (id) => document.getElementById(id);
 const PHONE_CHECKS = ['secure_context', 'webrtc', 'video.h264', 'wake_lock', 'web_audio', 'gamepad', 'vibration'];
 const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
-// Party mode: the session this tab last went into (a session id, not a secret), and how long the
-// "joining" announcement shows before the page moves (long enough for a screen reader to start).
-const ENTERED_KEY = 'avrana-party-entered';
-const ENTER_DELAY_MS = 900;
-const PRESENCE_WORDS = { here: 'here', away: 'away', playing: 'playing' };
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
-  partyMode: false, partyBusy: false, entering: null };
+  partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -135,7 +131,7 @@ function gameCard(game, result, hp) {
     catch (err) { event.preventDefault(); $('profile-note').textContent = err.message; }
   };
   const label = result.outcome === 'watch' ? 'Watch' : 'Play';
-  const mode = state.partyMode ? tileMode(game, party.view(), state.catalog) : null;
+  const mode = state.partyMode ? tileMode(game, party.view()) : null;
   const action = mode ? partyAction(game, mode)
     : running && fits
     ? h('a', { class: 'btn btn-primary', href: target, onclick: remember }, icon(label === 'Watch' ? 'eye' : 'play'), label)
@@ -149,8 +145,7 @@ function gameCard(game, result, hp) {
       try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
       catch (err) { $('profile-note').textContent = err.message; }
     } }, icon('star', { cls: favorite ? 'fill-current' : '' }));
-  const live = mode ? (mode.kind === 'switch' ? `Ends ${mode.name} first, then everyone moves here`
-    : 'Everyone plays together: the host starts it')
+  const live = mode ? 'Everyone plays together: the host starts it'
     : installed && hp?.integration === false ? 'Games update needed before opening here' : installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
   const screen = screenText(game);
   const how = howText(game);
@@ -172,139 +167,186 @@ function gameCard(game, result, hp) {
       action));
 }
 
-// ---- Party mode -------------------------------------------------------------------------------
+// ---- Party mode (ADR 0011: one party, one place, the host moves it) ---------------------------
 
-function enteredSession() {
-  try { return window.sessionStorage.getItem(ENTERED_KEY); } catch { return undefined; }
-}
-function markEntered(sid, game) {
-  try { window.sessionStorage.setItem(ENTERED_KEY, sid); } catch { /* then a reopened page only offers */ }
-  try { profile.remember(game); } catch { /* the recent list is a nicety */ }
-}
-
-/** A party game's tile action. The host's start is the only way a party game begins. */
+/** A party game's tile, while the party is home. The host's start is the only way it begins. */
 function partyAction(game, mode) {
-  if (mode.kind === 'join') {
-    return h('button', { type: 'button', class: 'btn btn-outline', text: 'Join the party to play',
-      onclick: () => $('party-name').focus() });
+  if (mode.kind === 'profile') {
+    return h('button', { type: 'button', class: 'btn btn-outline', text: 'Choose your name to play',
+      onclick: () => { $('profile').open = true; $('profile-name').focus(); } });
   }
   if (mode.kind === 'start') {
     return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
       onclick: () => hostStart(game, mode.game) }, icon('play'), 'Start for everyone');
   }
-  if (mode.kind === 'switch') {
-    return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
-      'aria-label': `Switch everyone from ${mode.name} to ${game.name}`,
-      onclick: () => hostStart(game, mode.game, true) }, icon('play'), 'Switch everyone to this');
-  }
-  if (mode.kind === 'rejoin') {
-    return h('a', { class: 'btn btn-primary', href: mode.href, onclick: () => markEntered(mode.session, game) },
-      icon('play'), 'Rejoin');
-  }
-  const text = mode.kind === 'wait' ? 'The host starts it' : mode.kind === 'starting' ? 'Starting…'
-    : 'Party is playing ' + mode.name;
+  const text = mode.kind === 'wait' ? 'The host starts it' : 'Starting…';
   return h('button', { type: 'button', class: 'btn', disabled: true, text });
 }
 
-async function hostStart(game, id, switching = false) {
+async function hostStart(game, id) {
   if (state.partyBusy) return;
   state.partyBusy = true;
   $('party-note').textContent = '';
   renderGames(false);
-  const res = await (switching ? party.switchTo(id) : party.launch(id));
+  const res = await party.launch(id);
   state.partyBusy = false;
   if (!res.ok) $('party-note').textContent = res.message || `${game.name} didn’t start. Please try again.`;
   renderGames(false);
 }
 
-function renderParty(view, previous) {
+/** This phone's profile, as Party Core takes it (16 characters, a bundled avatar). */
+function partyIdentity() {
+  const me = profile.snapshot();
+  const name = (me.name || '').trim().slice(0, 16).trim();
+  return name ? { name, avatar: me.avatar } : null;
+}
+
+/** Presence is automatic (ADR 0011): once this phone has a profile it is in the party. Called on
+ * every view, so a reopened page, a new party after a restart or a fresh profile all just join. */
+async function ensurePresent(view) {
+  if (view.me || state.joining) return;
+  const who = partyIdentity();
+  if (!who) return;
+  state.joining = true;
+  const res = await party.join(who.name, who.avatar);
+  state.joining = false;
+  if (!res.ok) $('party-note').textContent = res.message ? `${res.message} Change it in your profile.` : '';
+}
+
+function personChip(m, extra = []) {
+  return h('li', { 'data-presence': m.presence, 'data-choice': m.choice || null, 'data-away': m.away ? '' : null },
+    avatarNode({ avatar: m.avatar || '' }, 'sm'),
+    h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
+    m.host ? h('span', { class: 'what', 'aria-label': 'host' }, icon('crown', { cls: 'text-secondary' })) : null,
+    ...extra);
+}
+
+function renderParty(view) {
   const me = view.me;
   $('party').hidden = false;
-  $('party-join').hidden = Boolean(me);
-  $('party-in').hidden = !me;
-  if (!me && !$('party-name').value) $('party-name').value = profile.snapshot().name.slice(0, 16);
   const count = view.members.length;
   $('party-count').textContent = count === 1 ? '1 person' : `${count} people`;
   const host = view.members.find((m) => m.host);
-  $('party-host').textContent = me && me.host ? 'You’re the host: start a party game below and everyone joins in.'
-    : host ? `${host.name} is the host and starts the party games.` : 'Nobody is hosting right now.';
-  $('party-members').replaceChildren(...view.members.map((m) => h('li', {
-    class: 'inline-flex min-h-11 items-center gap-1.5 rounded-field bg-base-300 px-3 text-[0.9375rem]', 'data-presence': m.presence },
-  h('strong', { class: 'font-semibold', text: m.name + (me && m.id === me.id ? ' (you)' : '') }),
-  m.host ? h('span', { class: 'text-secondary', text: 'host' }) : null,
-  h('span', { class: 'text-muted', text: PRESENCE_WORDS[m.presence] }))));
-
-  const s = liveSession(view);
-  const game = s ? partyGame(state.catalog, s.game) : null;
-  const name = game ? game.name : s ? s.game : '';
-  $('party-now').hidden = !s;
-  const on = view.state === 'active' || view.state === 'setup';     // setup: AVR-129 pregame
-  $('party-rejoin').hidden = !(s && on && me && game);
-  $('party-end').hidden = !(s && on && me && me.host);
-  if (s) {
-    const next = view.switching_to ? partyGame(state.catalog, view.switching_to) : null;
-    $('party-now-text').textContent = view.state === 'launching' ? `Starting ${name}…`
-      : view.switching_to ? `Switching from ${name} to ${next ? next.name : view.switching_to}…`
-      : view.state === 'ending' ? `Ending ${name}…`
-      : view.state === 'setup' ? (me ? `Your party is setting up ${name}: choose Play or Watch.`
-        : `The party is setting up ${name}. Join to play along.`)
-        : me ? `Your party is playing ${name}.` : `The party is playing ${name}. Join to play along.`;
-    if (game) {
-      $('party-rejoin').href = launchTarget(game);
-      $('party-rejoin').onclick = () => markEntered(s.id, game);
-      $('party-rejoin-text').textContent = view.state === 'setup' ? `Go to ${name} setup` : `Rejoin ${name}`;
-    }
-  }
-  // Announcements (a live region), only for changes this page watched happen.
-  if (previous && previous.party === view.party) {
-    const was = liveSession(previous);
-    if (me && me.host && previous.me && !previous.me.host) $('party-live').textContent = 'You’re the host now.';
-    else if (was && !s) {
-      const old = partyGame(state.catalog, was.game);
-      $('party-live').textContent = `${old ? old.name : was.game} is over.`;
-    }
-  }
-  const failed = !s && view.session && view.session.outcome === 'launch_failed' && me && me.host;
-  const known = previous && previous.session && previous.session.id === (view.session && view.session.id)
-    && previous.session.outcome === 'launch_failed';
-  if (failed && !known) {
-    const g = partyGame(state.catalog, view.session.game);
-    const why = view.session.detail;
-    $('party-note').textContent = why ? `${g ? g.name : view.session.game} didn’t start. ${why}`
-      : `${g ? g.name : view.session.game} didn’t start.`;
-  }
-}
-
-/** Take this member into the party's game: announce it, remember it for this tab, then go. */
-function enterGame(view, previous) {
+  $('party-host').textContent = !me ? (partyIdentity() ? 'Joining the party…' : 'Choose your name above to join the party.')
+    : me.host ? 'You’re the host: start a game below and everyone goes there together.'
+      : host ? `${host.name} is the host and picks the games.` : 'Nobody is hosting right now.';
+  $('party-members').replaceChildren(...roster(view).map((m) => personChip(m)));
   const s = view.session;
-  const game = partyGame(state.catalog, s.game);
-  if (!game || state.entering === s.id) return;
-  state.entering = s.id;
-  const watched = previous && previous.party === view.party;
-  const setup = view.state === 'setup';
-  $('party-live').textContent = setup
-    ? `${view.me.host ? 'You picked' : 'The host picked'} ${game.name}. Choose Play or Watch there…`
-    : watched
-      ? `${view.me.host ? 'You started' : 'The host started'} ${game.name}. Joining…`
-      : `Your party is playing ${game.name}. Joining…`;
-  markEntered(s.id, game);
-  setTimeout(() => {
-    const now = party.view();
-    const on = now && (now.state === 'active' || now.state === 'setup');
-    if (state.partyMode && on && now.session && now.session.id === s.id) {
-      location.assign(launchTarget(game));
-    } else {
-      state.entering = null;
-    }
-  }, ENTER_DELAY_MS);
+  const failed = s && s.outcome === 'launch_failed' && me && me.host && s.id !== state.failShown;
+  if (failed) {
+    state.failShown = s.id;
+    const g = partyGame(state.catalog, s.game);
+    $('party-note').textContent = `${g ? g.name : s.game} didn’t start.` + (s.detail ? ` ${s.detail}` : '');
+  }
 }
 
-function onPartyView(view, previous) {
+// ---- the setup scene ----------------------------------------------------------------------------
+const ONBOARDING = new Map();       // game id -> onboarding.json (or null), fetched once
+
+/** The game's onboarding (avrana.onboarding/v0), served beside its entry: /games/<slug>/. */
+async function onboardingFor(game) {
+  if (ONBOARDING.has(game.id)) return ONBOARDING.get(game.id);
+  ONBOARDING.set(game.id, null);
+  try {
+    const url = new URL('onboarding.json', new URL(launchTarget(game), location.href)).pathname;
+    const data = await getJSON(url, { cache: 'no-store' });
+    if (data && data.schema === 'avrana.onboarding/v0' && Array.isArray(data.rules)) ONBOARDING.set(game.id, data);
+  } catch { /* the catalog's summary is enough to choose */ }
+  return ONBOARDING.get(game.id);
+}
+
+function acknowledged(ob) {
+  if (!ob || !ob.ack) return true;
+  try { return window.localStorage.getItem(ob.ack.key) === ob.ack.version; } catch { return state.acked; }
+}
+function acknowledge(ob) {
+  state.acked = true;
+  if (!ob || !ob.ack) return;
+  try { window.localStorage.setItem(ob.ack.key, ob.ack.version); } catch { /* memory only */ }
+}
+
+/** Open How to play. `then`: an action to run on "Got it" (a first-timer's Play). */
+function openRules(game, ob, then = null) {
+  const facts = (ob && ob.facts) || {};
+  const fill = (text) => String(text).replace(/\{(\w+)\}/g, (m, k) => (k in facts ? facts[k] : m));
+  $('rules-title').textContent = `How to play ${game.name}`;
+  $('rules-body').replaceChildren(...(ob ? ob.rules : [{ title: game.name, points: [game.summary || ''] }])
+    .map((sec) => h('section', { class: 'avrana-rules' }, h('h3', { text: fill(sec.title) }),
+      h('ul', {}, ...sec.points.map((p) => h('li', { text: fill(p) }))))));
+  $('rules-ok').textContent = then ? 'Got it, I’ll play' : 'Got it';
+  state.rulesThen = then;
+  $('rules').showModal();
+}
+
+async function choose(choice) {
+  const view = party.view();
+  const game = view && partyGame(state.catalog, view.session && view.session.game);
+  const ob = game ? await onboardingFor(game) : null;
+  if (choice === 'player' && game && !acknowledged(ob)) return openRules(game, ob, () => choose('player'));
+  const res = await party.choose(choice);
+  if (!res.ok) $('scene-status').textContent = res.message || 'Please try again.';
+}
+
+async function renderScene(view) {
+  const panel = setupPanel(view);
+  const game = partyGame(state.catalog, panel ? panel.game : null);
+  if (!panel || !game) return;
+  $('scene').dataset.game = game.id;
+  $('scene-title').textContent = game.name;
+  const art = ARTWORK.test(game.artwork || '') ? game.artwork : 'icon.svg';
+  if ($('scene-art').getAttribute('src') !== art) $('scene-art').src = art;
+  if (ACCENT.test(game.accent || '')) $('scene-cover').style.setProperty('--game-accent', game.accent);
+  $('scene-host-name').textContent = panel.host ? 'You’re the host' : panel.hostName ? `Hosted by ${panel.hostName}` : 'Nobody is hosting';
+  const ob = await onboardingFor(game);
+  $('scene-premise').textContent = (ob && ob.premise) || game.summary || '';
+  const words = { player: ['play', 'Playing'], spectator: ['eye', 'Watching'] };
+  const people = roster(view);
+  $('scene-count').textContent = `${panel.players} playing · ${panel.spectators} watching`;
+  $('scene-roster').replaceChildren(...people.map((m) => {
+    const [ic, text] = words[m.choice] || ['hourglass', 'Choosing'];
+    return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null },
+      h('span', { class: 'face' }, avatarNode({ avatar: m.avatar || '' }),
+        m.host ? h('span', { class: 'crown' }, icon('crown', { label: 'host' })) : null,
+        h('span', { class: 'badge' }, icon(ic, { label: text }))),
+      h('span', { class: 'who', text: m.me ? 'You' : m.name }));
+  }));
+  $('choose-play').setAttribute('aria-pressed', String(panel.mine === 'player'));
+  $('choose-watch').setAttribute('aria-pressed', String(panel.mine === 'spectator'));
+  $('choose-play').disabled = $('choose-watch').disabled = panel.starting;
+  $('scene-start').hidden = !panel.host;
+  $('scene-cancel').hidden = !panel.host || panel.starting;
+  $('scene-start').disabled = !panel.canStart || state.partyBusy;
+  $('scene-status').textContent = panel.starting ? 'Starting…'
+    : panel.host ? panel.blocker || ''
+      : `Waiting for ${panel.hostName || 'the host'} to start`;
+}
+
+function show(which) {
+  $('main').hidden = which !== 'main';
+  $('scene').hidden = which !== 'scene';
+  $('going').hidden = which !== 'going';
+  document.documentElement.dataset.screen = which;
+}
+
+function onPartyView(view) {
   if (!state.partyMode) return;
-  renderParty(view, previous);
+  ensurePresent(view);
+  const url = destination(view, HOME, state.catalog);
+  if (url) {                                  // the party is in a round: this phone goes there
+    const g = partyGame(state.catalog, locationOf(view).game);
+    $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
+    show('going');
+    location.replace(url);
+    return;
+  }
+  if (view.me && locationOf(view).at === 'setup') {
+    show('scene');
+    renderScene(view);
+    return;
+  }
+  show('main');
+  renderParty(view);
   renderGames(false);
-  if (arrival(view, { previous, entered: enteredSession() }) === 'enter') enterGame(view, previous);
 }
 
 async function renderGames(refresh = true) {
@@ -430,24 +472,44 @@ const chat = createPartyChat({
     if (atEnd) list.scrollTop = list.scrollHeight;
   },
 });
-const renderProfile = wireProfile(profile, () => { renderGames(false); syncChat(true); });
+const renderProfile = wireProfile(profile, () => { renderGames(false); syncChat(true); syncPresence(); });
+/** A saved profile is who this phone is at the party: join with it, or show the new name. */
+function syncPresence() {
+  const view = party.view(), who = partyIdentity();
+  if (!state.partyMode || !view || !who) return;
+  if (view.me) party.rename(who.name, who.avatar); else ensurePresent(view);
+}
 const party = createPartyClient({ onView: onPartyView });
-$('party-join').onsubmit = async (event) => {
-  event.preventDefault();
-  $('party-note').textContent = '';
-  const res = await party.join($('party-name').value);
-  if (!res.ok) $('party-note').textContent = res.message || 'Couldn’t join. Please try again.';
+$('choose-play').onclick = () => choose('player');
+$('choose-watch').onclick = () => choose('spectator');
+$('scene-start').onclick = async () => {
+  if (state.partyBusy) return;
+  state.partyBusy = true;
+  $('scene-start').disabled = true;
+  const res = await party.startRound();
+  state.partyBusy = false;
+  if (!res.ok) $('scene-status').textContent = res.message || 'The round didn’t start. Please try again.';
+  const view = party.view();
+  if (view) onPartyView(view);
 };
-$('party-leave').onclick = async () => {
-  const res = await party.leave();
-  $('party-note').textContent = res.ok ? '' : res.message || 'Please try again.';
-  if (res.ok) $('party-live').textContent = 'You left the party.';
-};
-$('party-end').onclick = async () => {
-  $('party-end').disabled = true;
+$('scene-cancel').onclick = async () => {        // the host: back home, everyone with them
   const res = await party.end();
-  $('party-end').disabled = false;
-  $('party-note').textContent = res.ok ? '' : res.message || 'Please try again.';
+  if (!res.ok) $('scene-status').textContent = res.message || 'Please try again.';
+};
+$('scene-rules').onclick = async () => {
+  const view = party.view();
+  const game = view && partyGame(state.catalog, view.session && view.session.game);
+  if (game) openRules(game, await onboardingFor(game));
+};
+$('rules-close').onclick = () => { state.rulesThen = null; $('rules').close(); };
+$('rules-ok').onclick = async () => {
+  const view = party.view();
+  const game = view && partyGame(state.catalog, view.session && view.session.game);
+  if (game) acknowledge(await onboardingFor(game));
+  const then = state.rulesThen;
+  state.rulesThen = null;
+  $('rules').close();
+  if (then) then();
 };
 function syncChat(reconnect = false) {
   if (state.reachable && $('chat').open && profile.snapshot().name) {
