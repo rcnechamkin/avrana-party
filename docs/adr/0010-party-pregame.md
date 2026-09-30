@@ -4,7 +4,7 @@
 
 **Status: proposed.**
 - Implemented and TESTED on a laptop, on branches `feat/avr-129-party-pregame` (this repository) and `feat/avr-129-bluff-pregame` (games).
-- Not merged, not deployed, and not yet tried on a phone.
+- Merged (#33, games #12) and **deployed 2026-09-29** with BLUFF's pregame on; verified server-side (`docs/findings/2026-09-29-avr129-deploy.md`). Not yet tried on a phone.
 - Date: 2026-09-29. Linear: AVR-129.
 - It answers the M3 part of AVR-26 (Party lobby versus game lobby) and extends ADRs 0006–0008.
 

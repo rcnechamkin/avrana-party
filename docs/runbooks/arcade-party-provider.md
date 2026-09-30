@@ -1,6 +1,6 @@
 # Runbook: make Gauntlet II a Party-launched game (AVR-134)
 
-Status: **NOT RUN.** This is the owner's deploy for ADR 0009.
+Status: **RUN 2026-09-29** (production `0e97c2e`, games `03df5ae`): the owner ran steps 1–3 as one script, 0 failures; verified server-side (`docs/findings/2026-09-29-avr128-134-deploy.md`). Phone checks remain open. This is the owner's deploy for ADR 0009.
 
 - It follows AVR-128 (ADR 0008) and needs that on the Pi first:
   - avrana-party #30 merged and deployed;

@@ -3,8 +3,9 @@
 **Superseded in part by ADR 0011 (the console model):** pages no longer follow only moves they watched, and the in-game Party status line is gone. Party Core's single `location` decides where every member page is, on load and on every move; host controls live in the game's own chrome.
 
 Status: **proposed**. Implemented and TESTED on a laptop on branches `fix/avr-128-party-navigation`
-(this repository) and `fix/avr-128-follow-party` (games). Not merged, not deployed, and not yet
-tried on a real phone. Date: 2026-09-29. Linear AVR-128. Extends ADR 0007, which covered Party Home
+(this repository) and `fix/avr-128-follow-party` (games). Merged (PR #30, games #11) and
+**deployed 2026-09-29**, verified server-side (`docs/findings/2026-09-29-avr128-134-deploy.md`);
+not yet tried on a real phone. Date: 2026-09-29. Linear AVR-128. Extends ADR 0007, which covered Party Home
 only.
 
 ## Context
