@@ -1,5 +1,7 @@
 # ADR 0007 — Host-authoritative launch: Party Home follows Party Core
 
+**Superseded in part by ADR 0011 (the console model):** the reconnect rule of §6 (offer Rejoin, remember what the tab entered) and the manual Join are gone; every member page is simply where the party is, and presence is automatic with a profile.
+
 Status: **proposed** (implemented and TESTED on a laptop on branch `fix/avr-20-127-host-launch`;
 not merged, not deployed; no real phone yet). Date: 2026-09-28. Linear AVR-20, AVR-127.
 Amends ADR 0006: reverses its deferral of "automatic navigation" for Party Home only.
@@ -69,6 +71,7 @@ authoritative, phones could end up in different games, and the host role had no 
 - Not changed: the ticket protocol, BLUFF's own ready/countdown lobby, `/games/` pages. A game page
   that shows "This game is over" does not follow the host into a *different* next game on its own;
   its Back to Party link leads to Party Home, which does (a games-side follow is a possible later
-  step, not part of this decision).
+  step, not part of this decision). **Superseded in part by ADR 0008 (AVR-128):** pages inside
+  games now follow Party Core's committed moves too, and the host can switch games in one step.
 - Still needs a real-phone check (Tier 3): the auto-follow on iPhone Safari and Android Chrome,
   sleeping phones, and the long poll through the real nginx `location /party/api/` (AVR-51).

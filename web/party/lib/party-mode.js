@@ -1,12 +1,17 @@
-// Party mode (AVR-20, AVR-127): what Party Home shows and does when Party Core answers.
-// Pure: no DOM, no network, no storage. Decisions come only from the Party Core view
-// (avrana/party/core.py PartyCore.view) and the catalog; never from the browser or the user agent.
+// Party mode: what a page shows and where it must be, from Party Core's view (ADR 0011, the
+// console model). Pure: no DOM, no network, no storage. Decisions come only from the Party Core
+// view (avrana/party/core.py PartyCore.view) and the catalog; never from the browser or the user
+// agent.
 //
-// Party mode is progressive enhancement. With no Party Core (production before AVR-51, or any
-// answer that is not a Party Core view) Party Home stays the catalog it has always been.
+// There is one party and it is in one place (view.location): home, setup, game or results. Every
+// member's phone is a viewport onto that place; only the Party Host moves it. So a member's page
+// never wanders: destination() says where it must be, and the page goes there at once, on load,
+// on reconnect and on every move. Party mode is progressive enhancement: with no Party Core, or
+// for someone who has no profile yet, pages stay what they always were.
 import { launchTarget } from './catalog-view.js';
 
-const LIVE = ['launching', 'active', 'ending'];
+const LIVE = ['setup', 'launching', 'active', 'ending'];
+export const HOME = 'home';            // `here` for Party Home itself
 
 /** A Party Core view, or null for anything else (a 404 page, another service's JSON). */
 export function readView(body) {
@@ -30,46 +35,81 @@ export function coreId(game, view) {
   return view.games.find((id) => id === game.id) || view.games.find((id) => id === game.legacySlug) || null;
 }
 
-/** The party's current game (starting, on or ending), or null in the lobby. */
+/** The party's current game (being set up, starting, on or ending), or null. */
 export function liveSession(view) {
   return view && view.session && LIVE.includes(view.state) ? view.session : null;
 }
 
-/** How a catalog tile behaves in Party mode, or null when it is not a party game (then the tile
- * is exactly today's). Kinds: join (not a member yet), start (the host), wait (a member, not the
- * host), rejoin (this game is on), starting (it is starting or ending), busy (another party game
- * is on: nobody can start this one until it ends). */
-export function tileMode(game, view, catalog = null) {
+/** Where the whole party is: {at: 'home'|'setup'|'game'|'results', game, session}. */
+export function locationOf(view) {
+  const loc = view && view.location;
+  return loc && typeof loc.at === 'string' ? loc : { at: HOME, game: null, session: null };
+}
+
+/** Where this member's page must be, or null when it is already there.
+ *   here: HOME on Party Home; the page's Party Core game id on a game page; for a page that is
+ *         not a party game (a standalone title) its own slug, which is never a party game.
+ * Home and setup are Party Home's (the setup scene is the Party's). A round, and its results, are
+ * the game's page. A standalone title may stay open while the party is home (a personal game),
+ * never once the host takes the party somewhere. Nobody without a profile is moved. */
+export function destination(view, here, catalog) {
+  if (!view || !view.me || !view.location) return null;
+  const loc = locationOf(view);
+  if (loc.at === HOME || loc.at === 'setup') {
+    if (here === HOME) return null;
+    if (loc.at === HOME && !view.games.includes(here)) return null;     // a personal standalone game
+    return '/party/';
+  }
+  if (here === loc.game) return null;
+  const game = partyGame(catalog, loc.game);
+  return game ? launchTarget(game) : here === HOME ? null : '/party/';
+}
+
+/** How a catalog tile behaves while the party is home, or null when it is not a party game (then
+ * the tile is exactly today's). Kinds: profile (no profile yet: choose a name first), start (the
+ * host), wait (a member, not the host), starting (the host's direct start is on its way). */
+export function tileMode(game, view) {
   const id = coreId(game, view);
   if (!id || !game.installed || !launchTarget(game)) return null;   // not here: today's tile says so
-  if (!view.me) return { kind: 'join' };
-  const s = liveSession(view);
-  if (s && s.game !== id) {
-    const on = catalog ? partyGame(catalog, s.game) : null;
-    return { kind: 'busy', name: on ? on.name : s.game };
-  }
-  if (s) {
-    return view.state === 'active' ? { kind: 'rejoin', href: launchTarget(game), session: s.id } : { kind: 'starting' };
-  }
+  if (!view.me) return { kind: 'profile' };
+  if (liveSession(view)) return { kind: 'starting' };
   return { kind: view.me.host ? 'start' : 'wait', game: id };
 }
 
-/** Should this page take the member into the party's game now?
- *   'enter'  the host's start was committed (the game is active) and this page has not taken
- *            this tab into it: go. A start watched live always enters; a page opened while a
- *            game is on (reconnect, reopen, a late phone) enters unless this tab already went
- *            in (it came back with Back to Party: then it only offers).
- *   'offer'  show Rejoin, do not move.
- *   null     nothing to do.
- * `entered` is the session id this tab last entered, null if none, undefined when the tab
- * cannot remember (storage blocked): then a reopened page only offers, so it can never trap. */
-export function arrival(view, { previous = null, entered } = {}) {
-  if (!view || !view.me || view.state !== 'active' || !view.session) return null;
-  const sid = view.session.id;
-  if (previous && previous.party === view.party) {
-    const was = previous.state === 'active' && previous.session && previous.session.id === sid;
-    return was ? null : 'enter';
-  }
-  if (entered === undefined) return 'offer';
-  return entered === sid ? 'offer' : 'enter';
+/** The roster as the setup scene shows it: every member, with their round choice. */
+export function roster(view) {
+  const choices = (view.session && view.session.setup && view.session.setup.choices) || {};
+  return view.members.map((m) => ({
+    id: m.id, name: m.name, avatar: m.avatar || null, host: Boolean(m.host),
+    me: Boolean(view.me && view.me.id === m.id), away: m.presence === 'away',
+    choice: choices[m.id] || null,
+  }));
+}
+
+/** The setup scene's decision and host area (AVR-129), or null when the party is not setting up
+ * a round. Party Core decides; this only shapes its answer for the scene.
+ *   game         the Party Core game id being set up
+ *   mine         'player' | 'spectator' | null (not chosen yet)
+ *   players, spectators, min, max   counts and the game's limits
+ *   waiting      names of members who are here and have not chosen
+ *   host         this phone is the Party Host; hostName: who is
+ *   canStart     the host may start now; starting: the host's start is on its way
+ *   blocker      why the round cannot start yet, in words, or null */
+export function setupPanel(view) {
+  const s = view && view.session;
+  if (!view || !view.me || !s || !['setup', 'launching'].includes(view.state)) return null;
+  const st = s.setup || {};
+  const byId = new Map(view.members.map((m) => [m.id, m.name]));
+  const host = view.members.find((m) => m.host);
+  const starting = view.state === 'launching';
+  return {
+    game: s.game,
+    mine: starting ? s.my_role : st.mine || null,
+    players: st.players ?? s.players, spectators: st.spectators ?? 0, min: st.min, max: st.max,
+    waiting: (st.waiting || []).map((id) => byId.get(id) || '?'),
+    host: Boolean(view.me.host), hostName: host ? host.name : null,
+    canStart: Boolean(view.me.host) && !starting && !st.blocker,
+    starting,
+    blocker: starting ? null : st.blocker || null,
+  };
 }

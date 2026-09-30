@@ -82,6 +82,22 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     }
   }
 
+  /** A host move. A refusal only because the party moved on ("stale": someone joined, a phone
+   * woke) is re-checked against a fresh view and tried once more, if this phone is still the
+   * host and the party is still where the move expects it. Every other refusal stands. */
+  async function hostMove(path, game, from) {
+    let res = await act(path, { game, if_version: view ? view.version : null });
+    if (res.ok || res.error !== 'stale') return res;
+    epoch++;
+    const fresh = await request('state');
+    epoch++;
+    if (fresh.ok) accept(readView(fresh.body), true);
+    const v = view;
+    if (!v || !v.me || !v.me.host || v.state !== from || !v.games.includes(game)) return res;
+    res = await act(path, { game, if_version: v.version });
+    return res;
+  }
+
   return {
     view: () => view,
     /** The first look: a Party Core view, or null (no Party here: catalog mode). Observes only. */
@@ -98,23 +114,34 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     stop() { gen++; poke(); },
     poke,
     act,
-    join: (name) => act('join', { name }),
+    /** Presence (ADR 0011): a phone with a profile joins on its own; the same call is idempotent,
+     * so reopening a page simply restores it. */
+    join: (name, avatar) => act('join', { name, avatar }),
+    rename: (name, avatar) => act('rename', { name, avatar }),
     leave: () => act('leave', {}),
+    /** The host, from a round's results: everyone back to Party Home. */
+    goHome: () => act('home', { if_version: view ? view.version : null }),
     end: () => act('session/end', { if_version: view ? view.version : null }),
-    /** The host starts a party game for everyone. A refusal only because the party moved on
-     * ("stale": someone joined, a phone woke) is re-checked against a fresh view and tried once
-     * more, if this phone is still the host of an idle party. Every other refusal stands. */
-    async launch(game) {
-      let res = await act('session/launch', { game, if_version: view ? view.version : null });
+    /** The host starts a party game for everyone (from the lobby). */
+    launch: (game) => hostMove('session/launch', game, 'lobby'),
+    /** The host moves everyone from the game that is on to another one (AVR-128): Party Core
+     * ends the old game first, then starts this one. */
+    switchTo: (game) => hostMove('session/switch', game, view && view.state === 'setup' ? 'setup' : 'active'),
+    /** This member's own choice for the round being set up: 'player' or 'spectator' (AVR-129). */
+    choose: (choice) => act('session/choice', { choice }),
+    /** The host starts the round set up. Choices move the version often, so a refusal only for
+     * "stale" is re-checked against a fresh view and tried once more while this phone is still
+     * the host of a round in setup. Every other refusal (someone has not chosen, too few) stands. */
+    async startRound() {
+      let res = await act('session/start', { if_version: view ? view.version : null });
       if (res.ok || res.error !== 'stale') return res;
       epoch++;
       const fresh = await request('state');
       epoch++;
       if (fresh.ok) accept(readView(fresh.body), true);
       const v = view;
-      if (!v || !v.me || !v.me.host || v.state !== 'lobby' || !v.games.includes(game)) return res;
-      res = await act('session/launch', { game, if_version: v.version });
-      return res;
+      if (!v || !v.me || !v.me.host || v.state !== 'setup') return res;
+      return act('session/start', { if_version: v.version });
     },
   };
 }

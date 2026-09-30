@@ -5,8 +5,9 @@ Party -> game (server to server, loopback, signed with that game's key):
     POST {game_url}/avrana/session/v0/end      {"message": <end>}      -> 200 {"ok": true}
 
 Browser -> party (cookie-authenticated, Origin-checked, never in a URL):
-    POST /party/api/session/ticket   {}   -> {"protocol", "game", "session", "role", "ticket",
-                                              "expires_in"}
+    POST /party/api/session/ticket   {[game]} -> {"protocol", "game", "session", "role", "ticket",
+                                                  "expires_in"}
+    A page that names its game gets 409 no_game while the party plays another one (AVR-128).
     The game page sends the ticket as its first WebSocket message: {"t": "hello", "ticket": …}.
 
 Game -> party (server to server, loopback and unproxied only, signed):
@@ -27,10 +28,12 @@ TICKET_ROUTE = '/party/api/session/ticket'
 
 
 class GameEndpoint:
-    def __init__(self, game_id, url, key):
+    def __init__(self, game_id, url, key, timeout=None):
         self.game_id = game_id
         self.url = url.rstrip('/')
         self.key = key
+        self.timeout = timeout          # s per request; None = the link's default. A game that
+                                        # starts a heavy runtime on launch (the arcade) needs more
 
 
 class HttpGameLink:
@@ -40,11 +43,11 @@ class HttpGameLink:
         self.endpoints = dict(endpoints)          # game_id -> GameEndpoint
         self.timeout = timeout
 
-    def _post(self, url, message):
+    def _post(self, url, message, timeout=None):
         req = urllib.request.Request(url, data=json.dumps({'message': message}).encode(),
                                      headers={'Content-Type': 'application/json'}, method='POST')
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
                 body = json.loads(r.read() or b'{}')
                 return r.status == 200 and body.get('ok') is True, body.get('message')
         except (urllib.error.URLError, OSError, ValueError) as e:
@@ -55,14 +58,15 @@ class HttpGameLink:
         if ep is None:
             return False, 'That game has no server here.'
         msg = protocol.launch_message(ep.key, ep.game_id, session.id, roster)
-        ok, detail = self._post(ep.url + LAUNCH_PATH, msg)
+        ok, detail = self._post(ep.url + LAUNCH_PATH, msg, ep.timeout)
         return ok, (None if ok else detail or 'The game refused to start.')
 
     def end(self, session):
         ep = self.endpoints.get(session.game_id)
         if ep is None:
             return False
-        return self._post(ep.url + END_PATH, protocol.end_message(ep.key, ep.game_id, session.id))[0]
+        msg = protocol.end_message(ep.key, ep.game_id, session.id)
+        return self._post(ep.url + END_PATH, msg, ep.timeout)[0]
 
 
 def routes(service, endpoints):
@@ -75,7 +79,8 @@ def routes(service, endpoints):
             return _send(h, 403, {'error': 'not_member', 'message': 'Join the party first.'})
         try:
             with service.lock:
-                s, p = service.core.participant_for(device)
+                game = body.get('game') if isinstance(body.get('game'), str) else None
+                s, p = service.core.participant_for(device, game)
                 service._notify()
         except core.Refused as e:
             return _refused(h, e)

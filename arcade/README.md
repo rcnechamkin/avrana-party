@@ -31,6 +31,12 @@
 >   "no picture" failures, gives up after 20 s instead of "Connecting…" forever, and "Other games"
 >   goes to Party Home (`/party/`) on HTTPS (`/` stays on plain HTTP). See
 >   `docs/findings/2026-09-29-gauntlet-launch.md`.
+> - **Party-launched (AVR-134, ADR 0009; proposed, not deployed):** the drop-in
+>   `deploy/arcade/avrana-party-session.conf` and a Party session key switch this on. The page,
+>   controllers and `/stats` stay up, but RetroArch and the encode run only between Party Core's
+>   signed launch and end, on `127.0.0.1:8098`. So Gauntlet II never runs beside BLUFF or another
+>   Party game. Without the drop-in the arcade stays always-on, as before. Runbook:
+>   `docs/runbooks/arcade-party-provider.md`.
 > - The Selkies row below is out of date: pixelflux 2.1 now has a Pi 4 V4L2 encoder (see the
 >   substrate decision matrix, spike S3).
 

@@ -13,7 +13,8 @@ on the appliance:
     /party/               -> the real shell (server.py's static mount)
 
 Harness-only routes (loopback callers only):
-    POST /__harness__/party/reset    a fresh party (tests are independent; the games server's room
+    POST /__harness__/party/reset[?pregame=1]   a fresh party; ?pregame=1: BLUFF runs the Party's
+                                     pregame, as in production (AVR-129) (tests are independent; the games server's room
                                      is replaced by the next launch anyway)
     GET  /__harness__/party-lab      a bare Join / Launch / Open page (the protocol checks predate
                                      Party Home's own Join and host start, AVR-127)
@@ -66,6 +67,9 @@ def attach(app, key, port, public_hosts, party_port):
     # A second party game with no game side attached here: it proves Party Home takes its party
     # games from Party Core (nothing is BLUFF-specific), and its start fails readably.
     games = service.load_games({GAME: {'max_players': MAX_PLAYERS}, SECOND: {'max_players': 2}})
+    # AVR-129: BLUFF as production configures it: the Party's pregame (Play or Watch, host start)
+    pregame = service.load_games({GAME: {'max_players': MAX_PLAYERS, 'min_players': 2, 'pregame': True},
+                                  SECOND: {'max_players': 2}})
     endpoints = {GAME: sessions.GameEndpoint(GAME, f'http://127.0.0.1:{port}/games/{GAME}', key)}
     svc = service.PartyService(identity.DeviceStore(None), games, sessions.HttpGameLink(endpoints))
     cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False)
@@ -109,8 +113,9 @@ def attach(app, key, port, public_hosts, party_port):
     async def reset(request: Request):
         if not loopback(request):
             return JSONResponse({'error': 'not_found'}, status_code=404)
+        chosen = pregame if request.query_params.get('pregame') == '1' else games
         with svc.lock:
-            svc.core = core.PartyCore(time.monotonic, games)
+            svc.core = core.PartyCore(time.monotonic, chosen)
             svc._notify()
         return JSONResponse({'ok': True})
 

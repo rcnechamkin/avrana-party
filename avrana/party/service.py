@@ -15,6 +15,14 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/host        {to, if_version}
     POST /party/api/session/launch {game, if_version}    host
     POST /party/api/session/end    {if_version}          host: end the game for everyone
+    POST /party/api/session/switch {game, if_version}    host: end the game that is on, then
+                                                         launch this one (AVR-128)
+    POST /party/api/session/choice {choice}              a member, during setup: 'player' or
+                                                         'spectator' for this round (AVR-129)
+    POST /party/api/session/start  {if_version}          host: start the round set up (AVR-129)
+    POST /party/api/home           {if_version}          host: from a round's results back to
+                                                         Party Home, for everyone (ADR 0011)
+    join and rename also take {avatar}: a bundled Gaze avatar id, shown to the party
 
 Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
 (ADR 0006).
@@ -93,7 +101,54 @@ class PartyService:
             s = self.core.launch(device_id, game_id, if_version)
             roster = s.roster(self.core.party.members)
             self._notify()
+        if s.state == core.SETUP:               # pregame (AVR-129): the host's start launches it
+            return s
+        return self._start(s, roster)
+
+    def go_home(self, device_id, if_version):
+        """Host: results -> Party Home (ADR 0011). The game held its results screen for the
+        party; it is released (the session protocol's end, acknowledged for a finished session)."""
+        with self.lock:
+            s = self.core.go_home(device_id, if_version)
+            self._notify()
+        self.link.end(s)
+        return s
+
+    def start_round(self, device_id, if_version):
+        """The host starts a round that was set up (AVR-129): the members' choices become the
+        roster, then the game is launched exactly as a direct launch would be."""
+        with self.lock:
+            s = self.core.start_round(device_id, if_version)
+            roster = s.roster(self.core.party.members)
+            self._notify()
+        return self._start(s, roster)
+
+    def switch(self, device_id, game_id, if_version):
+        """End the game that is on, then launch the next one: the old game's server has reset
+        (or timed out, and then nothing new starts) before the next session exists, so two party
+        games never run at once. Nothing can start in between: the old session stays live
+        (ending) until the same locked step that opens the next one."""
+        with self.lock:
+            old = self.core.begin_switch(device_id, game_id, if_version)
+            self._notify()
+        # a round still in setup never reached the game: nothing there to end
+        confirmed = True if old.state == core.ENDED else self.link.end(old)
+        with self.lock:
+            self.core.end_confirmed(old.id, confirmed)
+            s = self.core.launch_pending()
+            roster = s.roster(self.core.party.members) if s else None
+            self._notify()
+        if s is None or s.state == core.SETUP:
+            return s or old
+        return self._start(s, roster)
+
+    def _start(self, s, roster):
         ok, detail = self.link.launch(s, roster)
+        if not ok:
+            # Roll back at the game too (AVR-134): a runtime that came up after the link gave up
+            # waiting, or half-started, is stopped before the party says the launch failed, so a
+            # failed start never leaves a heavy runtime running beside the next one.
+            self.link.end(s)
         with self.lock:
             if ok:
                 self.core.launch_accepted(s.id)
@@ -143,7 +198,9 @@ def _send(h, status, obj, cookie=None):
 
 def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
-              'no_game': 409, 'stale_session': 409, 'unknown_game': 404}.get(e.code, 400)
+              'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
+              'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409,
+              'player_count': 409, 'not_results': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
 
@@ -222,7 +279,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with svc.lock:
                     svc._touch_locked(device)
             elif path == '/party/api/rename':
-                svc.call('rename', device, body.get('name'))
+                svc.call('rename', device, body.get('name'), body.get('avatar'))
             elif path == '/party/api/leave':
                 svc.call('leave', device)
             elif path == '/party/api/host':
@@ -231,6 +288,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.launch(device, body.get('game'), body.get('if_version'))
             elif path == '/party/api/session/end':
                 svc.end(device, body.get('if_version'))
+            elif path == '/party/api/session/switch':
+                svc.switch(device, body.get('game'), body.get('if_version'))
+            elif path == '/party/api/session/choice':
+                svc.call('choose', device, body.get('choice'))
+            elif path == '/party/api/home':
+                svc.go_home(device, body.get('if_version'))
+            elif path == '/party/api/session/start':
+                svc.start_round(device, body.get('if_version'))
             else:
                 return _send(self, 404, {'error': 'not_found'})
             return _send(self, 200, svc.view(device))
@@ -243,8 +308,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         forwards only /party/api/. The message itself is signed; this is defence in depth."""
         route = self.internal_routes.get(path)
         proxied = any(self.headers.get(h) for h in ('X-Forwarded-For', 'X-Real-IP', 'Forwarded'))
-        if route is None or proxied or self.client_address[0] not in ('127.0.0.1', '::1'):
-            return _send(self, 404, {'error': 'not_found'})
         try:
             n = int(self.headers.get('Content-Length') or 0)
         except ValueError:
@@ -252,8 +315,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not 0 <= n <= MAX_BODY:
             self.close_connection = True
             return _send(self, 413, {'error': 'body_size'})
+        raw = self.rfile.read(n)             # read before refusing so the reply is not reset
+        if route is None or proxied or self.client_address[0] not in ('127.0.0.1', '::1'):
+            return _send(self, 404, {'error': 'not_found'})
         try:
-            body = json.loads(self.rfile.read(n) or b'{}')
+            body = json.loads(raw or b'{}')
         except ValueError:
             return _send(self, 400, {'error': 'bad_json'})
         if not isinstance(body, dict):
@@ -266,7 +332,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             core.clean_name(body.get('name'))              # refuse a bad name before minting
             token, device = self.service.store.issue()
             cookie = identity.set_cookie(token, self.cfg.secure_cookie)
-        self.service.call('join', device, body.get('name'))
+        self.service.call('join', device, body.get('name'), body.get('avatar'))
         return _send(self, 200, self.service.view(device), cookie)
 
 
@@ -282,7 +348,9 @@ def load_games(entries):
     games = {}
     for game_id, e in entries.items():
         games[game_id] = {'id': game_id, 'max_players': int(e['max_players']),
-                          'late_join': e.get('late_join', 'spectator_only')}
+                          'late_join': e.get('late_join', 'spectator_only'),
+                          'min_players': int(e.get('min_players', 1)),
+                          'pregame': bool(e.get('pregame', False))}
     return games
 
 
@@ -296,7 +364,8 @@ def main(argv=None):
     from avrana.party import protocol, sessions         # the session protocol (ADR 0006)
     store = identity.DeviceStore(conf.get('devices'))
     entries = conf.get('games', {})
-    endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']))
+    endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']),
+                                          e.get('timeout'))
                  for g, e in entries.items() if e.get('url') and e.get('key_file')}
     service = PartyService(store, load_games(entries), sessions.HttpGameLink(endpoints))
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
