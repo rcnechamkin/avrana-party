@@ -20,6 +20,9 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/session/choice {choice}              a member, during setup: 'player' or
                                                          'spectator' for this round (AVR-129)
     POST /party/api/session/start  {if_version}          host: start the round set up (AVR-129)
+    POST /party/api/home           {if_version}          host: from a round's results back to
+                                                         Party Home, for everyone (ADR 0011)
+    join and rename also take {avatar}: a bundled Gaze avatar id, shown to the party
 
 Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
 (ADR 0006).
@@ -101,6 +104,15 @@ class PartyService:
         if s.state == core.SETUP:               # pregame (AVR-129): the host's start launches it
             return s
         return self._start(s, roster)
+
+    def go_home(self, device_id, if_version):
+        """Host: results -> Party Home (ADR 0011). The game held its results screen for the
+        party; it is released (the session protocol's end, acknowledged for a finished session)."""
+        with self.lock:
+            s = self.core.go_home(device_id, if_version)
+            self._notify()
+        self.link.end(s)
+        return s
 
     def start_round(self, device_id, if_version):
         """The host starts a round that was set up (AVR-129): the members' choices become the
@@ -188,7 +200,7 @@ def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
               'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
               'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409,
-              'player_count': 409}.get(e.code, 400)
+              'player_count': 409, 'not_results': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
 
@@ -267,7 +279,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with svc.lock:
                     svc._touch_locked(device)
             elif path == '/party/api/rename':
-                svc.call('rename', device, body.get('name'))
+                svc.call('rename', device, body.get('name'), body.get('avatar'))
             elif path == '/party/api/leave':
                 svc.call('leave', device)
             elif path == '/party/api/host':
@@ -280,6 +292,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.switch(device, body.get('game'), body.get('if_version'))
             elif path == '/party/api/session/choice':
                 svc.call('choose', device, body.get('choice'))
+            elif path == '/party/api/home':
+                svc.go_home(device, body.get('if_version'))
             elif path == '/party/api/session/start':
                 svc.start_round(device, body.get('if_version'))
             else:
@@ -318,7 +332,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             core.clean_name(body.get('name'))              # refuse a bad name before minting
             token, device = self.service.store.issue()
             cookie = identity.set_cookie(token, self.cfg.secure_cookie)
-        self.service.call('join', device, body.get('name'))
+        self.service.call('join', device, body.get('name'), body.get('avatar'))
         return _send(self, 200, self.service.view(device), cookie)
 
 

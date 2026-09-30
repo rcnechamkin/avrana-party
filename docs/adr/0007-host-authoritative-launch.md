@@ -1,5 +1,7 @@
 # ADR 0007 — Host-authoritative launch: Party Home follows Party Core
 
+**Superseded in part by ADR 0011 (the console model):** the reconnect rule of §6 (offer Rejoin, remember what the tab entered) and the manual Join are gone; every member page is simply where the party is, and presence is automatic with a profile.
+
 Status: **proposed** (implemented and TESTED on a laptop on branch `fix/avr-20-127-host-launch`;
 not merged, not deployed; no real phone yet). Date: 2026-09-28. Linear AVR-20, AVR-127.
 Amends ADR 0006: reverses its deferral of "automatic navigation" for Party Home only.

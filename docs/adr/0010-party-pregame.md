@@ -1,5 +1,7 @@
 # ADR 0010: The pregame is the Party's (Play or Watch, host start)
 
+**Amended by ADR 0011:** the setup is Party Home's own full-screen scene (Party Home's design system, the game's `onboarding.json` as content), not a panel above the game page; a Party round's results are held until the host moves on. The Play/Watch rules, host-only start, role boundary and spectator privacy are unchanged.
+
 **Status: proposed.**
 - Implemented and TESTED on a laptop, on branches `feat/avr-129-party-pregame` (this repository) and `feat/avr-129-bluff-pregame` (games).
 - Not merged, not deployed, and not yet tried on a phone.

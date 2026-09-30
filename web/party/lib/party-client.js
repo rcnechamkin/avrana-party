@@ -114,8 +114,13 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     stop() { gen++; poke(); },
     poke,
     act,
-    join: (name) => act('join', { name }),
+    /** Presence (ADR 0011): a phone with a profile joins on its own; the same call is idempotent,
+     * so reopening a page simply restores it. */
+    join: (name, avatar) => act('join', { name, avatar }),
+    rename: (name, avatar) => act('rename', { name, avatar }),
     leave: () => act('leave', {}),
+    /** The host, from a round's results: everyone back to Party Home. */
+    goHome: () => act('home', { if_version: view ? view.version : null }),
     end: () => act('session/end', { if_version: view ? view.version : null }),
     /** The host starts a party game for everyone (from the lobby). */
     launch: (game) => hostMove('session/launch', game, 'lobby'),

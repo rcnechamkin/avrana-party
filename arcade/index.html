@@ -8,7 +8,7 @@
 *{box-sizing:border-box;touch-action:manipulation}
 html{overscroll-behavior:none}
 body{margin:0;background:#15132b;color:#eee;font-family:system-ui,sans-serif;padding:12px;padding-bottom:env(safe-area-inset-bottom);overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 12px}#avrana-party-follow{flex-basis:100%;order:3;font-size:14px;color:#cbc5e0}#avrana-party-follow:empty,#avrana-party-end[hidden]{display:none}#avrana-party-end{min-height:44px;padding:8px 12px;background:transparent;color:#eee;border:1px solid #e2837b}h1{font-size:18px;margin:8px 0}p{font-size:14px;color:#cbc5e0}a{color:#c7b8ff}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 12px}html[data-avrana-party=on] #home{display:none}#avrana-party-end[hidden]{display:none}#avrana-party-end{min-height:44px;padding:8px 12px;background:transparent;color:#eee;border:1px solid #e2837b}h1{font-size:18px;margin:8px 0}p{font-size:14px;color:#cbc5e0}a{color:#c7b8ff}
 video{display:block;width:100%;max-height:60vh;aspect-ratio:4/3;background:#000;object-fit:contain;margin:10px auto}
 .stage,.controls,.controls *{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .stage{position:relative}.start-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#15132bcc}.start-overlay[hidden]{display:none}.start-overlay button{font-size:22px;padding:20px 32px;box-shadow:0 0 0 8px #c7b8ff22}
@@ -63,7 +63,8 @@ let awake=null;
 if(window.isSecureContext&&'wakeLock' in navigator)import('/party/lib/keep-awake.js').then(m=>{awake=m.createKeepAwake()}).catch(()=>{});
 // Follow the party (AVR-128): when the Party Host starts or switches to a party game, this phone
 // goes there too, like Party Home. Full Mode only; with no Party Core it does nothing. Never fatal.
-// Gauntlet II is itself a Party game (AVR-134): the host's End brings its players home.
+// Gauntlet II is itself a Party game (AVR-134). In a Party (ADR 0011) the page stays where the party
+// is, "Other games" is hidden (only the Party Host moves the party) and the host gets End here.
 if(window.isSecureContext)import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:'arcade-gauntlet2',container:document.querySelector('header')})).catch(()=>{});
 const held=new Map(), controls=[...document.querySelectorAll('[data-key]')];
 function enableControls(value){controls.forEach(b=>b.disabled=!value)}

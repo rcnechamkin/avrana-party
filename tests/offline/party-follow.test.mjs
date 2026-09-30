@@ -1,94 +1,103 @@
-// The in-game follower (web/party/lib/party-follow.js, AVR-128) with a fake Party Core: a page
-// inside a game moves only on a committed Party move it watched, and never without a Party.
+// The Party underneath a game page (web/party/lib/party-follow.js, ADR 0011) with a fake Party
+// Core: a member's page is always where the party is (on load, and on every move), presence is
+// automatic with a profile, and game shells get the host's controls through window.AvranaParty.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { startPartyFollow, gameOfPath } from '../../web/party/lib/party-follow.js';
+import { startPartyFollow, gameOfPath, profileIdentity } from '../../web/party/lib/party-follow.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
-const ben = { id: 'member-b', name: 'Ben', host: false };
-const nav = (seq, to, game = null, from = null) => ({ seq, to, game, session: game ? `session-${seq}` : null, from });
-function view({ version, state = 'lobby', game = null, me = ben, n, party = 'party-1', switching_to = null }) {
-  const session = game ? { id: n.session || 'session-x', game, state, outcome: null, detail: null, players: 2,
-    my_role: 'player' } : null;
-  return { party, version, state, members: me ? [{ ...me, presence: 'here' }] : [], host: 'member-a', me,
-    session, games: ['bluff', 'chess'], nav: n, switching_to };
+const ana = { id: 'member-a', name: 'Ana', host: true }, ben = { id: 'member-b', name: 'Ben', host: false };
+const at = (where, game = 'bluff') => ({ at: where, game: where === 'home' ? null : game, session: where === 'home' ? null : 'session-1' });
+function view({ version = 7, me = ben, location = at('game') } = {}) {
+  return { party: 'party-1', version, state: location.at === 'game' ? 'active' : 'lobby',
+    members: [{ ...ana, presence: 'here' }, { ...ben, presence: 'here' }], host: 'member-a', me,
+    session: { id: 'session-1', game: 'bluff', state: 'active' }, games: ['bluff', 'arcade-gauntlet2'],
+    nav: { seq: 1, to: 'game', game: 'bluff', session: 'session-1' }, location };
 }
-const inBluff = view({ version: 7, state: 'active', game: 'bluff', n: nav(1, 'game', 'bluff') });
+const store = (values = {}) => ({ getItem: (k) => values[k] ?? null, setItem: (k, v) => { values[k] = v; } });
+const PROFILE = store({ 'wc-name': 'Benjamin The Great', 'wc-avatar': 'gaze-12' });
 
-/** A fake origin: the probe answers `first`, then each long poll takes the next view (then hangs). */
-function origin(first, polls, { party = true } = {}) {
-  const queue = [...polls];
-  const hanging = [];
+/** A fake origin: the probe answers `first`; POSTs are recorded and answered by `answer`;
+ * each long poll takes the next of `polls`, then hangs until aborted. */
+function origin(first, polls = [], { party = true, answer = () => [200, first] } = {}) {
+  const queue = [...polls], posts = [];
   const fetch = (url, init = {}) => {
-    if (url === '/party/catalog.json') return Promise.resolve({ ok: true, status: 200, json: async () => catalog });
-    if (!party) return Promise.resolve({ ok: false, status: 404, json: async () => ({ detail: 'Not Found' }) });
-    if (url === '/party/api/state') return Promise.resolve({ ok: true, status: 200, json: async () => first });
-    if (url.startsWith('/party/api/state?') && queue.length) {
-      const v = queue.shift();
-      return Promise.resolve({ ok: true, status: 200, json: async () => v });
-    }
-    return new Promise((_, reject) => {
-      hanging.push(reject);
-      init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
-    });
+    const reply = (status, body) => Promise.resolve({ ok: status < 300, status, json: async () => body });
+    if (url === '/party/catalog.json') return reply(200, catalog);
+    if (!party) return reply(404, { detail: 'Not Found' });
+    if (init.method === 'POST') { posts.push([url, JSON.parse(init.body)]); return reply(...answer(url)); }
+    if (url === '/party/api/state') return reply(200, first);
+    if (url.startsWith('/party/api/state?') && queue.length) return reply(200, queue.shift());
+    return new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted'))));
   };
-  return { fetch };
+  return { fetch, posts };
 }
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); };
 
-async function run(first, polls, here, opts) {
-  const went = [], stored = new Map(), timers = [];
-  const f = await startPartyFollow({ here, container: null, fetch: origin(first, polls, opts).fetch,
-    go: (url) => went.push(url), storage: { setItem: (k, v) => stored.set(k, v) },
-    schedule: (fn) => timers.push(fn) });
+async function run(first, here, { polls = [], storage = PROFILE, ...opts } = {}) {
+  const went = [];
+  const o = origin(first, polls, opts);
+  const api = await startPartyFollow({ here, fetch: o.fetch, go: (url) => went.push(url), storage, root: null });
   await settle();
-  timers.splice(0).forEach((fn) => fn());
-  if (f) f.stop();
-  return { f, went, stored };
+  api?.stop();
+  return { api, went, posts: o.posts };
 }
 
-test('the page game comes from its path', () => {
+test('the page game comes from its path; the Party name is the profile\'s, cut to 16', () => {
   assert.equal(gameOfPath('/games/bluff/'), 'bluff');
-  assert.equal(gameOfPath('/games/bluff/table'), 'bluff');
   assert.equal(gameOfPath('/arcade/'), null);
-  assert.equal(gameOfPath('/games/'), null);
+  assert.deepEqual(profileIdentity(PROFILE), { name: 'Benjamin The Gre', avatar: 'gaze-12' });
+  assert.equal(profileIdentity(store()), null);
 });
 
-test('the host switched: a player inside BLUFF goes to the next game and Party Home remembers it', async () => {
-  const toChess = view({ version: 9, state: 'active', game: 'chess', n: nav(2, 'game', 'chess') });
-  const { went, stored } = await run(inBluff, [toChess], 'bluff');
-  assert.deepEqual(went, ['/games/chess/?avrana=1']);
-  assert.equal(stored.get('avrana-party-entered'), 'session-2');
+test('on load, a page in the wrong place goes where the party is at once', async () => {
+  assert.deepEqual((await run(view({ location: at('game') }), 'backgammon')).went, ['/games/bluff/?avrana=1']);
+  assert.deepEqual((await run(view({ location: at('home') }), 'bluff')).went, ['/party/']);
+  assert.deepEqual((await run(view({ location: at('setup') }), 'bluff')).went, ['/party/']);
+  assert.deepEqual((await run(view({ location: at('results') }), 'arcade-gauntlet2')).went, ['/games/bluff/?avrana=1']);
+  assert.deepEqual((await run(view({ location: at('game') }), 'bluff')).went, []);     // already there
+  assert.deepEqual((await run(view({ location: at('home') }), 'backgammon')).went, []); // personal, at home
 });
 
-test('the host ended the game: its players go back to Party Home; the arcade stays', async () => {
-  const home = view({ version: 8, n: nav(2, 'home', null, 'bluff') });
-  assert.deepEqual((await run(inBluff, [home], 'bluff')).went, ['/party/']);
-  assert.deepEqual((await run(inBluff, [home], null)).went, []);
+test('every host move takes this page along; the page never moves on its own', async () => {
+  const home = view({ version: 9, location: at('home') });
+  assert.deepEqual((await run(view(), 'bluff', { polls: [home] })).went, ['/party/']);        // host ended
+  const setupAgain = view({ version: 9, location: at('setup') });
+  assert.deepEqual((await run(view(), 'bluff', { polls: [setupAgain] })).went, ['/party/']); // play again
+  const arcade = view({ version: 9, location: at('game', 'arcade-gauntlet2') });
+  assert.deepEqual((await run(view(), 'bluff', { polls: [arcade] })).went, ['/arcade/']);    // next game
+  const results = view({ version: 9, location: at('results') });
+  assert.deepEqual((await run(view(), 'bluff', { polls: [results] })).went, []);             // results: stay
 });
 
-test('the host started a party game: someone on the arcade follows into it', async () => {
-  const lobby = view({ version: 3, n: nav(0, 'home') });
-  const on = view({ version: 5, state: 'active', game: 'bluff', n: nav(1, 'game', 'bluff') });
-  assert.deepEqual((await run(lobby, [on], null)).went, ['/games/bluff/?avrana=1']);
+test('presence is automatic: a phone with a profile joins on its own, with its avatar', async () => {
+  const stranger = view({ me: null, location: at('game') });
+  const { went, posts } = await run(stranger, 'backgammon', { answer: () => [200, view({ location: at('game') })] });
+  assert.deepEqual(posts, [['/party/api/join', { name: 'Benjamin The Gre', avatar: 'gaze-12' }]]);
+  assert.deepEqual(went, ['/games/bluff/?avrana=1']);                                 // and is taken there
 });
 
-test('opening a page, a game ending by its own rules, a stranger and no Party never move anyone', async () => {
-  const toChess = view({ version: 9, state: 'active', game: 'chess', n: nav(2, 'game', 'chess') });
-  assert.deepEqual((await run(toChess, [], 'bluff')).went, []);                   // a reload: offer only
-  const over = view({ version: 8, n: nav(1, 'game', 'bluff') });                  // BLUFF finished
-  assert.deepEqual((await run(inBluff, [over], 'bluff')).went, []);
-  const stranger = { ...toChess, me: null };
-  assert.deepEqual((await run({ ...inBluff, me: null }, [stranger], 'bluff')).went, []);
-  const none = await run(inBluff, [toChess], 'bluff', { party: false });
-  assert.equal(none.f, null);
-  assert.deepEqual(none.went, []);
+test('no profile, or no Party Core: nothing joins, nothing moves, the page stays standalone', async () => {
+  const none = await run(view({ me: null }), 'bluff', { storage: store() });
+  assert.equal(none.api, null);
+  assert.deepEqual([none.went, none.posts], [[], []]);
+  const no = await run(view(), 'bluff', { party: false });
+  assert.equal(no.api, null);
+  assert.deepEqual(no.went, []);
 });
 
-test('a move that is overtaken before the delay ends does not navigate to the old target', async () => {
-  const toChess = view({ version: 9, state: 'active', game: 'chess', n: nav(2, 'game', 'chess') });
-  const back = view({ version: 11, n: nav(3, 'home', null, 'chess') });
-  const { went } = await run(inBluff, [toChess, back], 'bluff');
-  assert.deepEqual(went, []);        // chess was already over when the delay ended; BLUFF is not the one ended
+test('the game shell gets the host\'s controls; they go to Party Core as the host\'s moves', async () => {
+  const o = origin(view({ me: ana, location: at('results') }), [], { answer: () => [200, view({ me: ana, location: at('setup') })] });
+  const api = await startPartyFollow({ here: 'bluff', fetch: o.fetch, go: () => {}, storage: PROFILE, root: null });
+  assert.equal(api.isHost(), true);
+  assert.equal(api.hostName(), 'Ana');
+  assert.deepEqual(api.location(), at('results'));
+  assert.equal(api.gameName(), 'BLUFF');
+  await api.playAgain();
+  await api.goHome();
+  await api.end();
+  assert.deepEqual(o.posts.map(([url, body]) => [url, body.game ?? null]),
+    [['/party/api/session/launch', 'bluff'], ['/party/api/home', null], ['/party/api/session/end', null]]);
+  api.stop();
 });
