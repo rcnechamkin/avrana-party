@@ -68,5 +68,28 @@ All steps succeeded.
   - Automatic follow into BLUFF.
   - The BLUFF briefing on a phone.
   - Gauntlet II picture and controls.
-- **Party Core resilience:** restart behaviour (`systemctl restart avrana-party-core` starts a new Party; phones re-Join) and the runbook rollback. Both are owner actions.
 - **The arcade watchdog on a real encoder stall.**
+
+## Restart and rollback verification (11:50 PDT, owner-run script, 0 failures)
+
+Production was first fast-forwarded to `b345b6d` (docs only). The owner then ran one sudo
+script, and every check passed:
+
+- **Clean restart:** Party Core is active again, and a restart starts a new, empty Party (memory-only
+  by design). The device store is kept (`/var/lib/avrana-party-core`, 0700).
+- **Crash:** after `systemctl kill -s KILL`, systemd brought it back by itself (`NRestarts` 0 → 1) and
+  `/party/api/state` answered 200 again.
+- **Rollback, in runbook order:**
+  1. The nginx backup was restored, and `/party/api/state` became the static 404 again, as before the deploy.
+  2. `install-party-web.sh --rollback` switched `current` back to `15f6322`, and `/party/` stayed 200.
+  3. The games Party-session drop-in was removed, and games became standalone and active. The BLUFF page answered 200.
+  4. Party Core was stopped and disabled.
+- **Roll forward:** the repo site was installed (live site == repo, `nginx -t` ok, reload), web
+  release `20260929T185048Z-b345b6d6f3bf` went in, the games drop-in came back and games restarted,
+  and Party Core was enabled. All health checks passed. The arcade was untouched and active throughout.
+- **Afterwards (my read-only checks, plus the flow with two test cookie jars through HTTPS):**
+  - All services active and enabled; 8191 and 8097 on loopback only.
+  - Both checkouts clean.
+  - Non-host start refused (`not_host`). The Party Host's start went to `active` in one transition; the follower
+    saw it as `player` and got a ticket. End returned both to the lobby, and both left.
+  - Arcade at about 60 fps with `sample_age_s` 0.0; `throttled=0x0`; disk at 8%.

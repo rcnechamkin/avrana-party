@@ -55,8 +55,8 @@ runbook, Party Core v0 and the session protocol v0. Production was fast-forwarde
 same evening (shell and arcade AP fix live); Party Core v0 and the session protocol are in that
 checkout but **no Party service runs** (`docs/findings/2026-09-27-production-deploy.md`).
 On 2026-09-28 the games fork went to `c6199be` and production was fast-forwarded to `3724b34`, then
-to `15f6322` (PR #20, AVR-91). On 2026-09-29 production went to `6bd5af4` with games `eeedb19`, then to `0e97c2e` with games `03df5ae` (AVR-128 Party navigation, AVR-134 Party-launched arcade; `docs/findings/2026-09-29-avr128-134-deploy.md`), then to `956b968` with games `c6d7b52` and BLUFF's pregame on (AVR-129; `docs/findings/2026-09-29-avr129-deploy.md`): Party Core `avrana-party-core`
-(127.0.0.1:8191) runs behind nginx `/party/api/`, and `/party/` serves the release built from `6bd5af4` (`docs/findings/2026-09-29-party-core-deploy.md`). BLUFF is granted and listed in Party Home, and still no
+to `15f6322` (PR #20, AVR-91). On 2026-09-29 production went to `6bd5af4`, then `b345b6d` for the restart and rollback checks (`docs/findings/2026-09-29-party-core-deploy.md`), with games `eeedb19`. It then went to `0e97c2e` with games `03df5ae` (AVR-128 Party navigation, AVR-134 Party-launched arcade; `docs/findings/2026-09-29-avr128-134-deploy.md`), then to `956b968` with games `c6d7b52` and BLUFF's pregame on (AVR-129; `docs/findings/2026-09-29-avr129-deploy.md`): Party Core `avrana-party-core`
+(127.0.0.1:8191) runs behind nginx `/party/api/`, and `/party/` serves the release built from `956b968`. BLUFF is granted and listed in Party Home, and still no
 Party service runs (`docs/findings/2026-09-28-bluff-party-home.md`).
 
 | Branch | Where | What | Status |
