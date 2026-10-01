@@ -1,11 +1,9 @@
 # Avrana Party
 
 A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 runs the games; phones
-join its Wi-Fi ("Avrana Party") and play in a normal browser — no internet, accounts or app
+join its Wi-Fi ("Avrana Party") and play in a normal browser. No internet, accounts, or app
 installs. It is designed as **one party platform with many games**: *the game may change; the party
-does not* (identity, host, seats and history carry from game to game — design stage).
-
-Not to be confused with the Avrana Homelab media server (the machine `avrana`).
+does not* (identity, host, seats and history carry from game to game—WIP still.)
 
 ## Start here
 
