@@ -37,8 +37,10 @@ from avrana.providers.controller import ControllerLayout  # noqa: E402
 from avrana.providers.retroarch import RetroArchRuntime  # noqa: E402
 from avrana.providers.uinput_gamepad import UInputGamepadProvider  # noqa: E402
 from avrana.party import managed as party_managed  # noqa: E402
+from avrana.party import protocol  # noqa: E402
 
 MAX_PLAYERS = 2  # P1 verified on a real phone over 5 GHz; raise beyond 2 only after a 2-phone test.
+SEAT_GRACE_S = 60  # docs/design/PARTY-LIFECYCLE.md provisional SEAT_GRACE
 # Must match contracts/games/arcade-gauntlet2.json "input" and index.html's data-key buttons (tested).
 LAYOUT = ControllerLayout(buttons=('fire', 'magic', 'coin', 'start'), directions='dpad')
 ROM = '/srv/avrana/roms/arcade/gaunt2.zip'
@@ -130,6 +132,52 @@ def ap_addresses():
     return found
 
 
+class PartySeats:
+    """Session-local ownership keyed only by GameSide's secret game token. Never log it."""
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.session = None
+        self.seats = {}
+
+    def reset(self, session=None):
+        self.session = session
+        self.seats.clear()
+
+    def claim(self, side, ticket, ws):
+        token, role = side.admit(ticket)
+        if self.session != side.sid:
+            self.reset(side.sid)
+        if role != 'player':
+            raise protocol.Invalid('spectator')
+        now = self.clock()
+        self.seats = {t: s for t, s in self.seats.items()
+                      if s['ws'] is not None or s['until'] > now}
+        seat = self.seats.get(token)
+        if seat is None:
+            used = {s['slot'] for s in self.seats.values()}
+            slot = next((s for s in range(MAX_PLAYERS) if s not in used), None)
+            if slot is None:
+                raise protocol.Invalid('full')
+            seat = self.seats[token] = dict(slot=slot, ws=None, until=None)
+        old = seat['ws']
+        seat.update(ws=ws, until=None)
+        return seat['slot'], old
+
+    def owns(self, side, slot, ws):
+        return self.session == side.sid and side.sid is not None and any(
+            s['slot'] == slot and s['ws'] is ws for s in self.seats.values())
+
+    def disconnect(self, slot, ws, *, leave=False):
+        for token, seat in list(self.seats.items()):
+            if seat['slot'] == slot and seat['ws'] is ws:
+                if leave:
+                    del self.seats[token]
+                else:
+                    seat.update(ws=None, until=self.clock() + SEAT_GRACE_S)
+                return True
+        return False
+
+
 class Stream:
     info = PRESENTATION
 
@@ -141,6 +189,7 @@ class Stream:
         self.pads = []
         self.peers = {}
         self.reserved = set()
+        self.party_seats = PartySeats()
         self.video_frames = 0
         self.video_bytes = 0
         self.started = time.monotonic()
@@ -200,6 +249,7 @@ class Stream:
     async def start_runtime(self):
         """RetroArch, then the shared capture/encode, then the watchdog. On failure the caller
         stops what did start (Party-managed: ManagedRuntime; always-on: the process exits)."""
+        self.party_seats.reset(self.managed.session if self.managed is not None else None)
         self.error = None
         self.last_sample = {}
         # Truncate at start as before, but O_APPEND so rotate_emulator_log() can truncate in place.
@@ -233,6 +283,7 @@ class Stream:
         """The reverse of start_runtime(), safe to call twice and after a partial start: phones
         are told, the watchdog stops, the capture/encode stops, then RetroArch. The controllers
         stay (they are cheap and SDL keeps its devices across runs)."""
+        self.party_seats.reset()
         monitor, self.monitor = getattr(self, 'monitor', None), None
         if monitor is not None and monitor is not asyncio.current_task():
             monitor.cancel()
@@ -398,32 +449,61 @@ class Stream:
             raise web.HTTPServiceUnavailable(text='Stream unavailable')
         if self.pipeline is None:  # Party-managed and not started: nothing to stream, nothing spent
             raise web.HTTPServiceUnavailable(text=IDLE_TEXT)
-        used = self.reserved
-        slot = next((s for s in range(MAX_PLAYERS) if s not in used), None)
-        if slot is None:
-            raise web.HTTPConflict(text='Player slot in use. Close the other controller first.')
-        self.reserved.add(slot)
+        slot = None
+        if self.managed is None:
+            slot = next((s for s in range(MAX_PLAYERS) if s not in self.reserved), None)
+            if slot is None:
+                raise web.HTTPConflict(text='Player slot in use. Close the other controller first.')
+            self.reserved.add(slot)
         ws = web.WebSocketResponse(max_msg_size=65536, heartbeat=5)
         try:
             await ws.prepare(request)
+            if self.managed is not None:
+                try:
+                    hello = await ws.receive_json(timeout=5)
+                    if not isinstance(hello, dict) or hello.get('type') != 'hello':
+                        raise protocol.Invalid('hello')
+                    if self.managed.state != party_managed.RUNNING or self.pipeline is None:
+                        raise protocol.Invalid('session')
+                    slot, old = self.party_seats.claim(self.managed.side, hello.get('ticket'), ws)
+                except (protocol.Invalid, ValueError, TypeError, asyncio.TimeoutError) as e:
+                    reason = str(e) if isinstance(e, protocol.Invalid) else 'hello'
+                    await ws.send_json(dict(type='error', reason=reason))
+                    await ws.close()
+                    return ws
+                self.pads[slot].update([])
+                if old is not None and old is not ws:
+                    if not old.closed:
+                        try:
+                            await old.send_json(dict(type='error', reason='replaced'))
+                        except (ConnectionError, RuntimeError):
+                            pass  # a disappearing old socket must not undo the new binding
+                    await old.close(code=1000, message=b'Controller opened in another connection')
+                if not self.party_seats.owns(self.managed.side, slot, ws):
+                    await ws.close()
+                    return ws
         except BaseException:
-            self.reserved.discard(slot)
+            if self.managed is None:
+                self.reserved.discard(slot)
+            elif slot is not None:
+                self.party_seats.disconnect(slot, ws)
             raise
-        self.serial += 1
-        rtc = Gst.ElementFactory.make('webrtcbin', f'peer_{self.serial}')
-        rtc.set_property('bundle-policy', GstWebRTC.WebRTCBundlePolicy.MAX_BUNDLE)
-        peer = dict(slot=slot, rtc=rtc, sources={}, remote=False, ice=[], sinks=[], caps_set=set(),
-                    addr=request.remote, client={}, server={}, ack=Window(120))
-        transport = Gst.Pipeline.new(f'transport_{self.serial}')
-        peer['pipeline'] = transport
-        self.peers[ws] = peer
-        async def send_ice(mline, candidate):
-            if not ws.closed:
-                await ws.send_json(dict(type='ice', candidate=candidate, sdpMLineIndex=mline))
-        rtc.connect('on-ice-candidate', lambda _, mline, candidate:
-                    asyncio.run_coroutine_threadsafe(send_ice(mline, candidate), self.loop))
-        transport.add(rtc)
+        transport = None
         try:
+            self.serial += 1
+            rtc = Gst.ElementFactory.make('webrtcbin', f'peer_{self.serial}')
+            rtc.set_property('bundle-policy', GstWebRTC.WebRTCBundlePolicy.MAX_BUNDLE)
+            peer = dict(slot=slot, rtc=rtc, sources={}, remote=False, ice=[], sinks=[], caps_set=set(),
+                        addr=request.remote, client={}, server={}, ack=Window(120))
+            transport = Gst.Pipeline.new(f'transport_{self.serial}')
+            peer['pipeline'] = transport
+            self.peers[ws] = peer
+            async def send_ice(mline, candidate):
+                if not ws.closed:
+                    await ws.send_json(dict(type='ice', candidate=candidate, sdpMLineIndex=mline))
+            rtc.connect('on-ice-candidate', lambda _, mline, candidate:
+                        asyncio.run_coroutine_threadsafe(send_ice(mline, candidate), self.loop))
+            transport.add(rtc)
             wanted = [('video', 'h264parse ! rtph264pay config-interval=-1 aggregate-mode=zero-latency', 96),
                       ('audio', 'rtpopuspay', 97)]
             if request.query.get('audio') == '0':  # A/B: remove audio transport entirely
@@ -473,6 +553,13 @@ class Stream:
                     break
                 data = json.loads(message.data)
                 kind = data.get('type')
+                if self.managed is not None and not self.party_seats.owns(self.managed.side, slot, ws):
+                    break  # replaced socket or ended/switched session cannot input or release
+                if kind == 'leave':
+                    if self.managed is not None:
+                        self.party_seats.disconnect(slot, ws, leave=True)
+                    self.pads[slot].update([])
+                    break
                 if kind == 'answer' and not peer['remote']:
                     result, sdp = GstSdp.SDPMessage.new()
                     if GstSdp.sdp_message_parse_buffer(data['sdp'].encode(), sdp) != GstSdp.SDPResult.OK:
@@ -505,10 +592,13 @@ class Stream:
         finally:
             if 'stats_task' in locals():
                 stats_task.cancel()
-            self.pads[slot].update([])
+            if self.managed is None or self.party_seats.disconnect(slot, ws):
+                self.pads[slot].update([])
             self.peers.pop(ws, None)
-            self.reserved.discard(slot)
-            await asyncio.to_thread(transport.set_state, Gst.State.NULL)
+            if self.managed is None:
+                self.reserved.discard(slot)
+            if transport is not None:
+                await asyncio.to_thread(transport.set_state, Gst.State.NULL)
             await ws.close()
         return ws
 

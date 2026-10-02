@@ -95,6 +95,10 @@ async function arcadeState(){const ctl=new AbortController(),t=setTimeout(()=>ct
   if(s.error||s.emulator_running===false)return 'down';
   return Number.isInteger(s.players)&&Number.isInteger(s.max_players)&&s.players>=s.max_players?'full':null}catch(_){return null}finally{clearTimeout(t)}}
 const WORDS={full:'Both controllers are in use. Try again when one is free.',
+ spectator:'You are a spectator for this Party session. No controller is available for spectators.',
+ replaced:'Your controller is open in another tab. Tap Play here to take it back.',
+ session:'This Party session has ended. Return to Party Home.',
+ ticket:'Could not join this Party session. Join the party from Party Home, then try again.',
  idle:'Gauntlet II isn’t on right now. The Party Host starts it for everyone from Party Home.',
  down:'Gauntlet II isn’t running right now. Wait a minute, then tap Play, or pick another game.',
  'no-media':'Gauntlet II isn’t sending a picture right now. Wait a minute, then tap Play.'};
@@ -106,6 +110,7 @@ async function refused(fallback){
 function failed(){
  const retry=wasConnected||reconnecting,reason=serverReason;wasConnected=false;teardown();
  if(leaving)return;
+ if(reason==='replaced'||reason==='spectator'){disconnect(WORDS[reason]);return}
  // After a drop, keep trying through "full": the arcade frees this phone's own slot only when its
  // heartbeat notices the old connection is gone (a few seconds).
  if(retry){reconnecting=true;scheduleRetry();return}
@@ -127,7 +132,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){releaseAll
  if(reconnecting&&!ws&&!retryTimer){retries=0;scheduleRetry()}});
 window.addEventListener('blur',releaseAll);window.addEventListener('pagehide',()=>{leaving=true;disconnect()});
 window.addEventListener('pageshow',()=>{leaving=false});
-leave.onclick=()=>disconnect('You left the game. Tap Play to join again.');
+leave.onclick=()=>{if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'leave'}));disconnect('You left the game. Tap Play to join again.')};
 sound.onclick=async()=>{video.muted=!video.muted;try{await video.play();sound.textContent=video.muted?'Enable sound':'Mute sound'}catch(e){status.textContent='Tap Enable sound again to start playback.'}};
 let vf=null,prev=null,pingId=0;const pingAt=new Map(),pingRtts=[];
 const pct=(a,q)=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);return +b[Math.min(b.length-1,Math.floor(q*b.length))].toFixed(1)};
@@ -159,19 +164,39 @@ connect.onclick=()=>{
  if(!window.RTCPeerConnection){status.textContent='Open '+location.origin+'/arcade/ in your phone’s regular browser to play.';return}
  retries=0;reconnecting=false;awake?.want();start();
 };
-function start(){
+async function start(){
  const mine=++attempt;
  prev=null;lastSent='';serverReason=null;document.querySelector('#path-warning').hidden=true;busy(reconnecting?'Reconnecting…':'Connecting…');status.textContent=reconnecting?'Reconnecting…':'Connecting…';pendingIce=[];signalChain=Promise.resolve();
  // Never a silent wait: no connection in time counts as a failed attempt.
  connectTimer=setTimeout(()=>{connectTimer=null;if(mine===attempt&&!ready)failed()},CONNECT_MS);
+ let ticket=null;
+ const admissionAbort=new AbortController();let admissionTimer=setTimeout(()=>admissionAbort.abort(),1500);
+ try{
+  const r=await fetch(new URL('stats',location.href),{cache:'no-store',signal:admissionAbort.signal});
+  if(!r.ok)throw new Error('stats');
+  const state=await r.json();
+  clearTimeout(admissionTimer);
+  if(state.party_managed){
+   admissionTimer=setTimeout(()=>admissionAbort.abort(),5000);
+   const response=await fetch('/party/api/session/ticket',{method:'POST',credentials:'same-origin',signal:admissionAbort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({game:'arcade-gauntlet2'})});
+   const body=await response.json();
+   if(!response.ok||typeof body.ticket!=='string'){if(mine===attempt)disconnect(body.message||WORDS.ticket);return}
+   ticket=body.ticket;
+  }
+ }catch(_){if(mine===attempt)failed();return}finally{clearTimeout(admissionTimer)}
+ if(mine!==attempt)return;
  pc=new RTCPeerConnection({iceServers:[]});
  const media=new MediaStream();video.srcObject=media;
  pc.ontrack=e=>{media.addTrack(e.track);try{e.receiver.jitterBufferTarget=+(new URLSearchParams(location.search).get('jb')||0)}catch(_){}try{e.receiver.playoutDelayHint=0}catch(_){}video.play().catch(()=>{status.textContent='Tap Enable sound to start playback.'})};
  pc.onicecandidate=e=>{if(e.candidate && ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ice',candidate:e.candidate.candidate,sdpMLineIndex:e.candidate.sdpMLineIndex}))};
  pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;wasConnected=true;reconnecting=false;retries=0;clearTimeout(connectTimer);connectTimer=null;awake?.want();enableControls(true);leave.disabled=false;sound.disabled=false;status.textContent=`Player ${myPlayer} connected. Add a coin to join.`;
   if(overlay.hidden)connect.removeAttribute('aria-busy');else{connect.textContent='Starting video…';clearTimeout(pictureTimer);pictureTimer=setTimeout(()=>{pictureTimer=null;if(ready&&!overlay.hidden)status.textContent='Connected, but no picture yet. Tap Enable sound; if it stays dark, tap Leave, then Play.'},PICTURE_MS)}}else if(['failed','closed'].includes(pc.connectionState))failed()};
- ws=new WebSocket(new URL('ws'+location.search,location.href).href.replace(/^http/,'ws'));
- ws.onmessage=e=>{let message;try{message=JSON.parse(e.data)}catch(_){return}
+ const socketUrl=new URL('ws',location.href);
+ // Forward only the existing audio diagnostic; credentials always travel in the hello body.
+ if(new URLSearchParams(location.search).get('audio')==='0')socketUrl.searchParams.set('audio','0');
+ const socket=ws=new WebSocket(socketUrl.href.replace(/^http/,'ws'));
+ socket.onopen=()=>{if(mine===attempt&&ticket)socket.send(JSON.stringify({type:'hello',ticket}))};
+ ws.onmessage=e=>{if(mine!==attempt)return;let message;try{message=JSON.parse(e.data)}catch(_){return}
   // The arcade's reason for refusing this phone: kept at once, so the close that follows reads it.
   if(message.type==='error'){serverReason=message.reason;return}
   signalChain=signalChain.then(async()=>{

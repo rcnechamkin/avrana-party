@@ -52,6 +52,7 @@ async function fakeTransport(page: Page) {
       onmessage: ((e: { data: string }) => void) | null = null;
       onclose: ((e: { code: number }) => void) | null = null;
       onerror: (() => void) | null = null;
+      onopen: (() => void) | null = null;
       constructor(url: string) {
         this.url = url;
         sockets.push(this);
@@ -62,6 +63,7 @@ async function fakeTransport(page: Page) {
         setTimeout(() => {
           if (this.readyState === 3) return;  // closed sockets deliver nothing, as in browsers
           this.readyState = 1;
+          this.onopen?.();
           if ((window as any).__noMedia) {
             this.onmessage?.({ data: JSON.stringify({ type: 'error', reason: 'no-media', media: ['video'] }) });
             this.readyState = 3;
@@ -113,6 +115,62 @@ async function open(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => arcade(page, 'up'));
+
+test('Party admission fetches a fresh authenticated game ticket before each socket and sends it only in hello', async ({ page }) => {
+  await fakeTransport(page);
+  let tickets = 0;
+  await page.route('**/arcade/stats', route => route.fulfill({ json: {
+    party_managed: true, state: 'running', players: 0, max_players: 2, emulator_running: true,
+  } }));
+  await page.route('**/party/api/session/ticket', async route => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON()).toEqual({ game: 'arcade-gauntlet2' });
+    expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(tickets);
+    tickets++;
+    await route.fulfill({ json: { ticket: `secret-ticket-${tickets}`, role: 'player' } });
+  });
+  await page.goto('/arcade/?ticket=do-not-forward&audio=0');
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.evaluate(() => (window as any).__sockets[0].drop());
+  await expect.poll(() => page.evaluate(() => (window as any).__sockets.length)).toBe(2);
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  const sockets = await page.evaluate(() => (window as any).__sockets.map((s: any) => ({ url: s.url, sent: s.sent.map(JSON.parse) })));
+  expect(tickets).toBe(2);
+  for (const [i, s] of sockets.entries()) {
+    expect(new URL(s.url).search).toBe('?audio=0');
+    expect(s.sent[0]).toEqual({ type: 'hello', ticket: `secret-ticket-${i + 1}` });
+  }
+  await page.locator('#leave').click();
+  expect(await page.evaluate(() => (window as any).__sockets[1].sent.map(JSON.parse))).toContainEqual({ type: 'leave' });
+});
+
+test('Party ticket refusal never opens a socket or enables controls', async ({ page }) => {
+  await fakeTransport(page);
+  await page.route('**/arcade/stats', route => route.fulfill({ json: { party_managed: true, state: 'running' } }));
+  await page.route('**/party/api/session/ticket', route => route.fulfill({ status: 403, json: { message: 'Join the party first.' } }));
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Join the party first.');
+  expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(0);
+  await expect(page.locator('[data-key="coin"]')).toBeDisabled();
+});
+
+test('a replaced tab gives up its binding without automatically taking it back', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.evaluate(() => {
+    const socket = (window as any).__sockets[0];
+    socket.onmessage({ data: JSON.stringify({ type: 'error', reason: 'replaced' }) });
+    socket.drop();
+  });
+  await expect(page.locator('#status')).toHaveText('Your controller is open in another tab. Tap Play here to take it back.');
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(1);
+  await expect(page.locator('[data-key="coin"]')).toBeDisabled();
+});
 
 test('the page contract the live suite relies on is unchanged', async ({ page }) => {
   await open(page);

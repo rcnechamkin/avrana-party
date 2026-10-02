@@ -89,4 +89,30 @@ If only the arcade drop-in is removed, Party Core still lists Gauntlet II. Its l
   - reachable only on 127.0.0.1:8098, which nginx does not proxy;
   - refuse proxy headers;
   - accept only fresh, signed, single-use `launch`/`end` messages addressed to `arcade-gauntlet2`.
-- **Controllers:** the arcade does not verify Party tickets yet. Controllers go to whoever opens the page while it runs, as before.
+- **Controllers (AVR-130):** before each connection, the page checks `/arcade/stats` and, when
+  Party-managed, POSTs `{game: 'arcade-gauntlet2'}` to the authenticated
+  `/party/api/session/ticket` API. The ticket goes only in the first WebSocket body
+  `{type: 'hello', ticket: …}`, with a five-second hello deadline. `GameSide.admit()` validates
+  it; no Party device identity reaches the arcade. Tickets and derived tokens are never logged.
+- **Slot ownership:** an in-memory, session-local reservation uses the stable secret game token
+  returned by `admit()`. A player receives the first unowned slot; reconnect order does not
+  compact or renumber it. Disconnect releases held input immediately but reserves the slot for
+  60 seconds (the lifecycle design's provisional seat grace). At the deadline a new admission
+  can reuse it. A reconnect during grace binds the same slot immediately. A duplicate tab takes
+  over that slot and closes the previous socket; old input and old cleanup cannot affect it.
+  The replaced tab stops automatic retries until its user taps Play, avoiding takeover loops.
+- **Release:** the arcade Leave button sends `{type: 'leave'}` before closing, releasing ownership
+  immediately when the server receives it. A lost Leave message follows ordinary disconnect
+  grace. End, switch, a newer launch, runtime stop or process restart discard reservations.
+  Previous-session tickets cannot claim seats in a new session.
+- **Roles and fallback:** spectator tickets receive a clear non-player response and no stream or
+  controller. Without Party-managed configuration, first-free connection allocation remains:
+  disconnect immediately frees the slot, and no Party ticket is required.
+
+## AVR-130 acceptance checks (remaining on real devices)
+
+The automated reservation and fake-media tests do not establish phone acceptance. On two phones
+in one Party arcade session, connect A then B, lock/disconnect both, and reconnect B then A within
+60 seconds: B must remain Player 2 and A Player 1. Check duplicate tabs, held-input release,
+Leave and immediate reuse, reuse after grace, spectator refusal, and end/switch/relaunch. Repeat
+on the Party Wi-Fi with actual streaming. This change has not been deployed by these tests.

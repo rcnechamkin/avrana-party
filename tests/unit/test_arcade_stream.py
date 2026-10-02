@@ -111,7 +111,7 @@ class ArcadeStream(unittest.TestCase):
         self.assertEqual(s.status(), {'id': 'shared-webrtc', 'kind': 'presentation',
                                       'offers': ['presentation.shared_stream'], 'viewers': 0, 'encoders': 1})
         self.assertEqual(s.runtime.command()[-1], '/srv/avrana/roms/arcade/gaunt2.zip')
-        self.assertTrue(str(s.runtime.core).endswith('arcade/cores/mame2010_libretro.so'))
+        self.assertTrue(s.runtime.core.as_posix().endswith('arcade/cores/mame2010_libretro.so'))
 
     def test_startup_stats_cleanup_drive_the_providers(self):
         log = []
@@ -211,7 +211,11 @@ class ManagedArcade(unittest.TestCase):
                 await s.websocket(self.request())       # a phone before the host starts it
             first = await s.managed.launch(self.message('launch', sid1))
             running = await s.stats(None)
+            ticket = self.protocol.mint_ticket(self.key, s.managed.side.game, sid1,
+                                               'participant-' + '1' * 32, 'player')
+            s.party_seats.claim(s.managed.side, ticket, object())
             stopped = await s.managed.end(self.message('end', sid1))
+            self.assertEqual(s.party_seats.seats, {})
             after = await s.stats(None)
             again = await s.managed.launch(self.message('launch', sid2))
             await s.cleanup(None)
@@ -232,6 +236,22 @@ class ManagedArcade(unittest.TestCase):
         # the controllers stayed open across runs and were released once, at the end
         self.assertEqual(sum(1 for e in log if e[0] == 'create'), 2)
         self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+
+    def test_newer_launch_clears_reservations_even_without_old_end(self):
+        s = self.make([])
+        async def run():
+            await s.startup(None)
+            sid1, sid2 = 'session-' + 'a' * 32, 'session-' + 'b' * 32
+            await s.managed.launch(self.message('launch', sid1))
+            old = self.protocol.mint_ticket(self.key, s.managed.side.game, sid1,
+                                           'participant-' + '1' * 32, 'player')
+            s.party_seats.claim(s.managed.side, old, object())
+            await s.managed.launch(self.message('launch', sid2))
+            self.assertEqual(s.party_seats.seats, {})
+            with self.assertRaises(self.protocol.Invalid):
+                s.party_seats.claim(s.managed.side, old, object())
+            await s.cleanup(None)
+        asyncio.run(run())
 
     def test_without_the_key_the_arcade_runs_always_on(self):
         log = []
@@ -282,6 +302,231 @@ IP_NOW = r"""1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever pr
 IP_OLD = r"""2: wlan0    inet 10.0.0.143/24 brd 10.0.0.255 scope global wlan0\       valid_lft 86000sec
 4: wlan1    inet 10.42.0.1/24 brd 10.42.0.255 scope global wlan1\       valid_lft forever
 """
+
+
+class PartySeatReservations(unittest.TestCase):
+    """AVR-130: real protocol admission, deterministic monotonic grace clock."""
+    def setUp(self):
+        from avrana.party import protocol
+        self.protocol = protocol
+        self.module, _ = load_stream()
+        self.side = protocol.GameSide(protocol.new_key(), 'arcade-gauntlet2')
+        self.side.on_launch(protocol.launch_message(self.side.key, self.side.game,
+                                                   'session-' + 'a' * 32, []))
+        self.now = 100
+        self.seats = self.module.PartySeats(clock=lambda: self.now)
+
+    def ticket(self, who=1, role='player', **kw):
+        return self.protocol.mint_ticket(self.side.key, kw.pop('game', self.side.game),
+                                        kw.pop('sid', self.side.sid),
+                                        'participant-' + str(who) * 32, role, **kw)
+
+    def claim(self, who=1, ws=None):
+        return self.seats.claim(self.side, self.ticket(who), ws or object())
+
+    def test_first_player_and_same_participant_reconnect(self):
+        ws = object()
+        self.assertEqual(self.claim(ws=ws), (0, None))
+        self.assertTrue(self.seats.disconnect(0, ws))
+        self.assertEqual(self.claim(), (0, None))
+
+    def test_reverse_reconnect_does_not_swap_slots(self):
+        a, b = object(), object()
+        self.assertEqual(self.claim(1, a)[0], 0)
+        self.assertEqual(self.claim(2, b)[0], 1)
+        self.seats.disconnect(0, a)
+        self.seats.disconnect(1, b)
+        self.assertEqual(self.claim(2)[0], 1)
+        self.assertEqual(self.claim(1)[0], 0)
+
+    def test_grace_blocks_other_participant_and_expires_at_deadline(self):
+        a = object()
+        self.claim(1, a)
+        self.claim(2)
+        self.seats.disconnect(0, a)
+        self.now += 59.999
+        with self.assertRaisesRegex(self.protocol.Invalid, 'full'):
+            self.claim(3)
+        self.now = 160
+        self.assertEqual(self.claim(3)[0], 0)
+
+    def test_leave_releases_immediately(self):
+        a = object()
+        self.claim(1, a)
+        self.seats.disconnect(0, a, leave=True)
+        self.assertEqual(self.claim(2)[0], 0)
+
+    def test_duplicate_uses_same_slot_and_old_socket_cannot_input_or_release(self):
+        a, b = object(), object()
+        self.claim(1, a)
+        self.assertEqual(self.claim(1, b), (0, a))
+        self.assertEqual(len(self.seats.seats), 1)
+        self.assertFalse(self.seats.owns(self.side, 0, a))
+        self.assertTrue(self.seats.owns(self.side, 0, b))
+        self.assertFalse(self.seats.disconnect(0, a, leave=True))
+        self.assertFalse(self.seats.disconnect(0, a))
+        self.assertTrue(self.seats.owns(self.side, 0, b))
+
+    def test_stale_ticket_and_new_launch(self):
+        old = self.ticket()
+        a = object()
+        self.claim(1, a)
+        self.side.on_launch(self.protocol.launch_message(self.side.key, self.side.game,
+                                                       'session-' + 'b' * 32, []))
+        self.assertFalse(self.seats.owns(self.side, 0, a))
+        with self.assertRaisesRegex(self.protocol.Invalid, 'session'):
+            self.seats.claim(self.side, old, object())
+        self.assertEqual(self.claim(2)[0], 0)
+        self.assertEqual(len(self.seats.seats), 1)
+
+    def test_invalid_tickets_never_allocate(self):
+        for ticket in (None, 'bad', self.ticket(game='bluff'), self.ticket(now=0),
+                       self.ticket()[:-3] + 'xxx'):
+            with self.subTest(ticket=ticket), self.assertRaises(self.protocol.Invalid):
+                self.seats.claim(self.side, ticket, object())
+        self.assertEqual(self.seats.seats, {})
+
+    def test_spectator_cannot_acquire_input(self):
+        ws = object()
+        with self.assertRaisesRegex(self.protocol.Invalid, 'spectator'):
+            self.seats.claim(self.side, self.ticket(role='spectator'), ws)
+        self.assertEqual(self.seats.seats, {})
+        self.assertFalse(self.seats.owns(self.side, 0, ws))
+
+    def test_end_invalidates_input_and_tickets(self):
+        a = object()
+        old = self.ticket()
+        self.claim(1, a)
+        self.side.on_end(self.protocol.end_message(self.side.key, self.side.game, self.side.sid))
+        self.assertFalse(self.seats.owns(self.side, 0, a))
+        with self.assertRaises(self.protocol.Invalid):
+            self.seats.claim(self.side, old, object())
+
+
+class ArcadeSocketSeats(unittest.TestCase):
+    """Exercise the actual websocket route with fake media, not just the reservation table."""
+    def setUp(self):
+        PartySeatReservations.setUp(self)
+        import json
+        module = self.module
+        self.s = module.Stream()
+        self.s.party_seats = self.seats
+        self.s.pipeline = mock.MagicMock()
+        self.s.pads = [mock.Mock(), mock.Mock()]
+        self.s.request_keyframe = mock.Mock()
+        self.s.managed = types.SimpleNamespace(side=self.side, state='running')
+        module.Gst = mock.MagicMock()
+        module.Gst.CLOCK_TIME_NONE = -1
+        module.Gst.PadLinkReturn.OK = module.Gst.parse_bin_from_description.return_value.get_static_pad.return_value.link.return_value
+        module.GstWebRTC = mock.MagicMock()
+        module.GstSdp = mock.MagicMock()
+        module.GstSdp.SDPMessage.new.return_value = (None, mock.Mock())
+        module.GstSdp.sdp_message_parse_buffer.return_value = module.GstSdp.SDPResult.OK
+        offer = types.SimpleNamespace(sdp=types.SimpleNamespace(as_text=lambda: 'fake'))
+        offer.copy = lambda: offer
+        self.s.promise = mock.AsyncMock(return_value=types.SimpleNamespace(get_value=lambda _: offer))
+        self.s.peer_stats = mock.AsyncMock()
+        module.web.WSMsgType = types.SimpleNamespace(TEXT='text')
+        self.sockets = []
+        sockets = self.sockets
+
+        class Socket:
+            def __init__(inner, **kw):
+                inner.closed = False
+                inner.sent = []
+                inner.stopped = asyncio.Event()
+                sockets.append(inner)
+            async def prepare(inner, request):
+                inner.request = request
+            async def receive_json(inner, timeout):
+                return inner.request.hello
+            async def send_json(inner, body):
+                inner.sent.append(body)
+            async def close(inner, **kw):
+                inner.closed = True
+                inner.stopped.set()
+            def __aiter__(inner):
+                async def messages():
+                    for body in inner.request.messages:
+                        if inner.request.pause is not None and body.get('type') == 'input':
+                            inner.request.pause.set()
+                            await inner.stopped.wait()
+                        yield types.SimpleNamespace(type='text', data=json.dumps(body))
+                return messages()
+        module.web.WebSocketResponse = Socket
+
+    ticket = PartySeatReservations.ticket
+
+    async def connect(self, ticket, messages=(), pause=None):
+        self.s.loop = asyncio.get_running_loop()
+        request = types.SimpleNamespace(headers={'Origin': 'https://party.test'}, host='party.test',
+                                        remote='127.0.0.1', query={},
+                                        hello={'type': 'hello', 'ticket': ticket}, messages=messages, pause=pause)
+        return await self.s.websocket(request)
+
+    def test_socket_admission_input_disconnect_and_leave(self):
+        async def run():
+            ws = await self.connect(self.ticket(), [{'type': 'answer', 'sdp': 'fake'},
+                                                    {'type': 'input', 'buttons': ['fire']}])
+            self.assertIn({'type': 'player', 'slot': 1}, ws.sent)
+            self.s.pads[0].update.assert_any_call(['fire'])
+            self.assertEqual(len(self.seats.seats), 1)
+            ws = await self.connect(self.ticket(), [{'type': 'leave'}])
+            self.assertIn({'type': 'player', 'slot': 1}, ws.sent)
+            self.assertEqual(self.seats.seats, {})
+        asyncio.run(run())
+
+    def test_socket_refuses_unticketed_and_spectator_without_media_or_input(self):
+        async def run():
+            for ticket in (None, 'bad', self.ticket(role='spectator'), self.ticket(game='bluff'),
+                           self.ticket(now=0)):
+                ws = await self.connect(ticket, [{'type': 'input', 'buttons': ['fire']}])
+                self.assertEqual(ws.sent[0]['type'], 'error')
+                self.assertTrue(ws.closed)
+            self.s.pads[0].update.assert_not_called()
+            self.module.Gst.ElementFactory.make.assert_not_called()
+        asyncio.run(run())
+
+    def test_standalone_disconnect_reuses_first_free_slot(self):
+        self.s.managed = None
+        async def run():
+            for _ in range(2):
+                ws = await self.connect(None)
+                self.assertIn({'type': 'player', 'slot': 1}, ws.sent)
+                self.assertEqual(self.s.reserved, set())
+            self.s.reserved.add(0)
+            ws = await self.connect(None)
+            self.assertIn({'type': 'player', 'slot': 2}, ws.sent)
+        asyncio.run(run())
+
+    def test_duplicate_route_closes_old_socket_and_rejects_its_queued_input(self):
+        async def run():
+            paused = asyncio.Event()
+            first = asyncio.create_task(self.connect(self.ticket(), [
+                {'type': 'answer', 'sdp': 'fake'}, {'type': 'input', 'buttons': ['magic']}], paused))
+            await asyncio.wait_for(paused.wait(), 2)
+            newest = await self.connect(self.ticket(), [
+                {'type': 'answer', 'sdp': 'fake'}, {'type': 'input', 'buttons': ['fire']}])
+            old = await asyncio.wait_for(first, 2)
+            self.assertIn({'type': 'error', 'reason': 'replaced'}, old.sent)
+            self.assertTrue(old.closed)
+            self.assertIn({'type': 'player', 'slot': 1}, newest.sent)
+            self.assertEqual(len(self.seats.seats), 1)
+            self.s.pads[0].update.assert_any_call(['fire'])
+            self.assertNotIn(mock.call(['magic']), self.s.pads[0].update.call_args_list)
+            self.s.pads[1].update.assert_not_called()
+        asyncio.run(run())
+
+    def test_media_setup_failure_disconnects_binding_and_allows_grace_expiry(self):
+        self.module.Gst.ElementFactory.make.side_effect = RuntimeError('no transport')
+        async def run():
+            with self.assertLogs('avrana-arcade', level='ERROR'):
+                ws = await self.connect(self.ticket())
+            self.assertTrue(ws.closed)
+            self.assertIsNone(next(iter(self.seats.seats.values()))['ws'])
+            self.now += self.module.SEAT_GRACE_S
+            self.assertEqual(self.seats.claim(self.side, self.ticket(2), object())[0], 0)
+        asyncio.run(run())
 
 
 class ApAddresses(unittest.TestCase):
