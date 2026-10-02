@@ -5,7 +5,7 @@ Branch: `claude/dreamy-carson-sja5mq`. It merges PR #1's branch (`claude/kind-ma
 
 Where things are recorded:
 - decisions: `docs/adr/0004-full-mode-contracts-and-providers.md`;
-- substrate classifications: the matrix at the top of `docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md`;
+- substrate classifications: the matrix at the top of `docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md`;
 - the web shell: `docs/design/FULL-MODE.md`.
 
 Labels:

@@ -1,8 +1,9 @@
 # Design documents
 
-The five additional drafts in the parent `docs/` directory cover broader platform
-architecture, offline trust, Personal Viewports and emulation, reference projects, and
-experience quality. They are proposals or research notes. ADRs and canonical design docs own
+The broad direction drafts in the parent `docs/` directory cover platform architecture,
+offline trust, Personal Viewports/emulation and experience quality. Reference/substrate
+research is indexed in [research/](../research/README.md). They are proposals or research notes.
+ADRs and canonical design docs own
 architecture/product contracts; `../SYSTEM.md` owns verified deployed state. Linear owns live
 sequencing, blockers, acceptance and ownership; `../ROADMAP.md` owns strategic direction.
 

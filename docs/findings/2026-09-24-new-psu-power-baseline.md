@@ -10,7 +10,7 @@ and per-minute context logs). It is intentionally absent from production `main`.
 adapter, no resets and reasonable thermals. Everything held **except** the first: the kernel
 logged **8 under-voltage dips** in the first 1 h 27 min of this boot (≈ 5.5/h), and a 9th at 09:52
 (~91 min after boot; see the addendum). The PS1/stream gate stays closed; the recurring
-under-voltage stays open (`CLAUDE-HANDOFF.md`).
+under-voltage stays open (`docs/archive/handoffs/2026-09-25-claude-log.md`).
 
 ## How to read the counters
 

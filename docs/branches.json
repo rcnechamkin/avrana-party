@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "observed": "2026-10-02",
+  "main": "bb7364c6e3bc2151ee74491f854d240b64cde522",
+  "notes": "GitHub-only snapshot; no Pi reads. Counts are historical; refetch and compare before any branch action. Active assignments live in Linear.",
+  "branches": [
+    {
+      "name": "docs/party-platform",
+      "purpose": "Original platform documentation history and raw measurement evidence; summaries already on main.",
+      "status": "retained",
+      "canonical": false,
+      "wholesale_merge": "forbidden",
+      "observed_head": "842249e90000128f28451f1a088d7e714c5627d4",
+      "ahead_of_main": 16,
+      "behind_main": 121
+    },
+    {
+      "name": "experiment/party-service",
+      "purpose": "Earlier Party service/device identity/PS1 integration prototype; source evidence only.",
+      "status": "retained",
+      "canonical": false,
+      "wholesale_merge": "forbidden",
+      "observed_head": "eb3844f7e66a407a0d4110decf18496823e98fb4",
+      "ahead_of_main": 33,
+      "behind_main": 121
+    },
+    {
+      "name": "experiment/party-sim",
+      "purpose": "Party lifecycle simulation and Personal Viewports geometry/PoC.",
+      "status": "retained",
+      "canonical": false,
+      "wholesale_merge": "forbidden",
+      "observed_head": "eb1617683bc7bc637f40c54fe26e6275fdc3c433",
+      "ahead_of_main": 13,
+      "behind_main": 121
+    },
+    {
+      "name": "experiment/ps1-title-profiles",
+      "purpose": "PS1 title profiles, streaming/controller and latency experiments.",
+      "status": "retained",
+      "canonical": false,
+      "wholesale_merge": "forbidden",
+      "observed_head": "4b8fa60afecb4868be0816f4b908b752bc33296d",
+      "ahead_of_main": 25,
+      "behind_main": 121
+    },
+    {
+      "name": "ps1-emulation",
+      "purpose": "Earlier PS1 stream and supervised runtime guard experiments.",
+      "status": "retained",
+      "canonical": false,
+      "wholesale_merge": "forbidden",
+      "observed_head": "21a16c272b0d765592cefb98adf5fe33fb5a92ce",
+      "ahead_of_main": 7,
+      "behind_main": 121
+    }
+  ]
+}

@@ -64,7 +64,7 @@ The isolated `avranaparty-arcade.service` is enabled at boot and running as cody
 
 - **Players:** `MAX_PLAYERS = 2` in `stream.py`, so two slots are enabled. P1 is
   verified for basic gameplay and streaming on a real iPhone. Two-phone play was **verified on two
-  real iPhones on 2026-09-20** (a 3-minute session; see `CLAUDE-HANDOFF.md`). Do not raise beyond 2
+  real iPhones on 2026-09-20** (a 3-minute session; see `docs/archive/handoffs/2026-09-25-claude-log.md`). Do not raise beyond 2
   without a longer multi-phone soak.
 - **Measurement:** input-to-photon latency and performance under real gameplay
   have **not** been formally measured.

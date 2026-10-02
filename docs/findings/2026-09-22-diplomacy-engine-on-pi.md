@@ -19,8 +19,8 @@ that performance is a non-issue for a 7-player game.
   `pip install ./engine-src` in about 32 s.
 - Dependencies resolved: tornado 6.5.10, ujson 6.0.0, bcrypt 5.0.0, coloredlogs 15.0.1,
   tqdm 4.70.1, all with prebuilt arm64 wheels.
-- Script: `experiments/diplomacy/validate_engine.py`. Raw output:
-  `experiments/diplomacy/pi-validation-2026-09-22.json`.
+- Script: `experiments/archive/diplomacy/validate_engine.py`. Raw output:
+  `experiments/archive/diplomacy/pi-validation-2026-09-22.json`.
 
 ## Checks (12/12 pass)
 

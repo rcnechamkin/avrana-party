@@ -66,15 +66,22 @@ It pins Node 22.22.2. Its current offline commands are:
 
 ```sh
 npm ci
+npm run check:repo
 npx playwright test tests/soak-metrics.spec.ts
 cmp avrana-party.nginx arcade/nginx-site
 AVRANA_REQUIRE_NGINX=1 AVRANA_REQUIRE_LOGROTATE=1 python3 -m unittest discover -s tests/unit -v
-npm run check:ui
-python3 -m avrana.contracts.catalog --check
 node --test 'tests/offline/*.test.mjs'
 npx playwright install --with-deps chromium
 npx playwright test -c playwright.offline.config.ts
 ```
+
+`npm run check:repo` enforces the [governance manifest](manifest.json), local documentation links,
+archive/authority boundaries and existing UI/catalog freshness checks. See
+[checker scope](REPOSITORY-GOVERNANCE.md). On Windows it selects `python`; existing Python npm
+scripts use `python3`, so use `python -m unittest discover -s tests/unit` directly if necessary.
+For offline browsers on such Windows hosts, set `$env:AVRANA_PYTHON = 'python'` before running
+`npm run test:offline-browser`. UI/catalog checks can also be run individually with
+`npm run check:ui` and `python3 -m avrana.contracts.catalog --check`.
 
 CI installs nginx and logrotate for the Linux gates. Local runs may skip those gates if their
 binaries are unavailable; Windows also cannot exercise Linux process/symlink paths. The metrics

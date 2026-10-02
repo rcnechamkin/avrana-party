@@ -40,7 +40,7 @@
 >   six-workstream robustness pass: 1,197 tests, protocol privacy and attack checks, a
 >   full-game simulator (0 violations), and 2–6 player screenshots. **Next milestone: a real
 >   3–4 iPhone playtest** (2026-09-24: widened to 3–6 phones including an Android, tested truly offline, with the measurements in ROADMAP N5). Details: `docs/findings/2026-09-23-bluff-multi-agent-pass.md`.
->   Next-agent prompt: `docs/handoff/2026-09-23-next-agent-prompt.md` (partly superseded
+>   Next-agent prompt: `docs/archive/handoffs/2026-09-23-next-agent-prompt.md` (partly superseded
 >   2026-09-24; see the banner at its top).
 > - **Not yet published:** the repo `rcnechamkin/avrana-party-games` must be created by the
 >   owner (empty, not a fork). The laptop pushes `main` from its backup, never
@@ -117,7 +117,7 @@ Status of the Gauntlet II phone-streaming prototype, from a read-only inspection
   **SUPERSEDED 2026-09-22:** the repository is now the working source of truth,
   because the BookStack MCP is unreliable (it failed on 2026-09-19 and 2026-09-20).
   Do **not** try to repair it or "reconcile BookStack early" unless the owner asks.
-  The pages are stale. `docs/bookstack-update-2026-09-20.md` holds a paste-ready
+  The pages are stale. `docs/archive/2026-09-20-bookstack-update.md` holds a paste-ready
   update for when it's reliable. See `docs/ROADMAP.md`. Don't confuse it with the
   “Avrana Homelab” shelf (the separate media server).
 - **Telemetry (NEW 2026-09-19):** party now reports to the existing Beszel hub on

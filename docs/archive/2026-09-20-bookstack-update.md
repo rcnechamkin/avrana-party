@@ -1,5 +1,8 @@
 # BookStack update — Avrana Party — 2026-09-20
 
+> **ARCHIVED — non-authoritative.** Preserved publication draft; its BookStack authority claim
+> and instructions below are historical. Start at [AGENTS](../../AGENTS.md) and [SYSTEM](../SYSTEM.md).
+
 > Paste into the **Avrana Party** book (shelf: Avrana Party), pages *Decisions &
 > Current State* and *Runbook*. Written to the repo because the BookStack MCP
 > server was unavailable this session (failed to connect), so it could not be
