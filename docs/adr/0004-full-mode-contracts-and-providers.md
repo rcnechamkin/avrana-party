@@ -11,7 +11,7 @@ Status:
 
 Context: `docs/runbooks/party-https.md` (HTTPS is LIVE since 2026-09-25), `docs/design/PARTY-PLATFORM.md`
 §4/§16.1 (written before HTTPS and now partly superseded), ADR 0002/0003, `docs/design/GAME-INTEGRATION.md`,
-`docs/AVRANA-OPEN-SOURCE-SUBSTRATE.md` (see its 2026-09-26 decision matrix) and the research summary
+`docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md` (see its 2026-09-26 decision matrix) and the research summary
 in `docs/findings/2026-09-26-architecture-sprint.md`.
 
 ## D1. The canonical Avrana origin is `https://party.avrana.net` (ACCEPTED, owner brief)

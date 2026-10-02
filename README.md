@@ -14,7 +14,8 @@ or app installs. **The game may change; the party does not.**
 | Deployed topology and verified revisions | [SYSTEM](docs/SYSTEM.md), supported by dated [findings](docs/findings/) |
 | Strategic direction and milestones | [ROADMAP](docs/ROADMAP.md) |
 | Test commands and evidence tiers | [TESTING](docs/TESTING.md) |
-| Agent and deployment rules | [CLAUDE.md](CLAUDE.md), [Cloud guide](CLAUDE-CLOUD-HANDOFF.md) |
+| Contributing and operational rules | [CONTRIBUTING](CONTRIBUTING.md), [AGENTS](AGENTS.md) |
+| Documentation authority and navigation | [Documentation map](docs/README.md), [manifest](docs/manifest.json) |
 | Network, HTTPS and adding games | [Network](docs/runbooks/network.md), [HTTPS](docs/runbooks/party-https.md), [add a game](docs/runbooks/add-a-game.md) |
 
 Findings, old PR bodies and historical handoffs record what was true at their date; they do not
@@ -66,14 +67,16 @@ Use the canonical HTTPS origin for Party identity. The AP is internal `wlan0` at
 | `deploy/`, `ops/` | Deployment templates and owner-run release/recovery tools |
 | `avrana-party.nginx`, `avrana-captive.conf` | Reviewed nginx and captive DNS configuration |
 | `tests/` | Offline unit/modules/browser suites, cross-repo harness and separate live-appliance tests |
-| `telemetry/`, `docs/` | Telemetry tooling; architecture, runbooks, strategy and dated findings |
+| `telemetry/`, `docs/` | Telemetry tooling; [documentation map](docs/README.md), architecture, runbooks, strategy and dated findings |
+| `experiments/` | [Research branch inventory](docs/branches.json) and explicitly archived experiments |
 
 ## Development and verification
 
 Work on an issue-scoped branch from current main, then open a PR. Deployment and service restarts
 are separate owner-approved actions; never edit production checkouts.
 
-`npm ci` installs tooling. `npm run test:offline` runs Python unit, Node module and localhost
+`npm ci` installs tooling. `npm run check:repo` validates repository governance and generated
+freshness. `npm run test:offline` runs Python unit, Node module and localhost
 browser checks; Linux CI also supplies nginx/logrotate gates. `npm run check:ui` and
 `python3 -m avrana.contracts.catalog --check` check generated assets. See [TESTING](docs/TESTING.md)
 for platform setup, historical results and cross-repo commands.
@@ -81,4 +84,4 @@ for platform setup, historical results and cross-repo commands.
 `npm test`, soak and fault target the live appliance on Party Wi-Fi and are not offline checks.
 Real phones, offline operation, Wi-Fi capacity, streaming hardware, latency and power require
 separate bounded hardware/human evidence. Historical portal and arcade records remain in Git
-history, dated findings and [the historical Claude log](CLAUDE-HANDOFF.md).
+history, dated findings and [the historical Claude log](docs/archive/handoffs/2026-09-25-claude-log.md).

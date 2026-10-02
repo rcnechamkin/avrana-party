@@ -3,7 +3,7 @@
 Status: **research and recommendations from 2026-09-24; source-flow note reconciled 2026-10-01.**
 That research session made no networking changes; current topology is in SYSTEM. Every item
 that would change nginx, dnsmasq, NetworkManager, Avahi, connectivity-check handling or Wi-Fi
-security needs the owner's explicit approval (`CLAUDE.md`). Platform facts are from web sources
+security needs the owner's explicit approval ([AGENTS](../../AGENTS.md)). Platform facts are from web sources
 listed at the end and are version-dependent; the test list below is how to confirm them.
 
 ## The goal and the principles

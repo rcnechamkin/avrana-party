@@ -88,7 +88,7 @@ slots, but found latency stalls and resource contention with the arcade. Preserv
 in [the latency finding](findings/2026-09-24-ps1-latency.md) and
 [the slice finding](findings/2026-09-24-ps1-bomberman-party-slice.md). Hardware display/capture and
 streaming-provider alternatives remain research candidates in the
-[substrate decision matrix](AVRANA-OPEN-SOURCE-SUBSTRATE.md).
+[substrate decision matrix](research/AVRANA-OPEN-SOURCE-SUBSTRATE.md).
 
 Personal Viewports should prove readability and preference against a full shared frame, then
 measure latency and stability with real phones. Auto-detection and per-title result adapters
@@ -129,7 +129,7 @@ Use the [network runbook](runbooks/network.md) and dated power findings for the 
 ## Standing boundaries and historical context
 
 Develop on issue-scoped branches; review and test before merge. Deployment, live configuration
-and restarts are separate owner-approved steps ([CLAUDE.md](../CLAUDE.md)). No direct production
+and restarts are separate owner-approved steps ([AGENTS](../AGENTS.md)). No direct production
 editing. Keep credentials, ROMs/BIOS/cores, runtime data and raw telemetry out of Git.
 
 There is no universal gameplay engine, cloud-account requirement, proprietary game store,

@@ -74,6 +74,9 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 
 ## Branch roles and historical inventories
 
+The [retention inventory](branches.json) records the later GitHub branch audit. The rows below
+retain their dated historical context; neither inventory assigns work or establishes deployment.
+
 Production progression is historical evidence, not an instruction to synchronize to main:
 
 - 2026-09-27: `7581baa`, shell and arcade AP fix; Party Core was present as source but inactive

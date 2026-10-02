@@ -12,7 +12,7 @@ Only one thing is both **working** and **different** today: phones join a local 
 see `2026-09-24-party-network-and-offline-mode.md`). Everything that would make someone choose Avrana over a Switch
 or Jackbox — a fun no-TV native game, Personal Viewports, one party carried across games — is
 unbuilt or unmeasured. And the hardware is the weakest link: the Pi can't yet stay reliably
-powered even from a wall supply (see `CLAUDE-HANDOFF.md`, power).
+powered even from a wall supply (see `docs/archive/handoffs/2026-09-25-claude-log.md`, power).
 
 ## Competitors
 

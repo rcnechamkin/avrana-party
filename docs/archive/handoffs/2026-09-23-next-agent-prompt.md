@@ -52,7 +52,7 @@ work on countries, provinces, armies, phases or `diplomacy/diplomacy`.
 2. `docs/findings/2026-09-23-bluff-multi-agent-pass.md`: what was built and verified.
 3. `games/bluff/README.md` in the game repo: architecture, privacy guarantees, lifecycle,
    test commands, limitations.
-4. `CLAUDE.md` and `CLAUDE-HANDOFF.md` in `avrana-party` (the arcade/infra context).
+4. `CLAUDE.md` and `docs/archive/handoffs/2026-09-25-claude-log.md` in `avrana-party` (the arcade/infra context).
 
 ## Where things are
 

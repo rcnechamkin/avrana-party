@@ -11,3 +11,14 @@ web/party/lib/avatars.js text eol=lf
 web/party/art/*.svg text eol=lf
 tools/build-art.mjs text eol=lf
 assets/vendor/lan-games-art/*.svg text eol=lf
+
+# GitHub presentation only; existing text/eol policy above remains unchanged.
+web/party/styles.css linguist-generated=true
+web/party/lib/icons.js linguist-generated=true
+web/party/lib/avatars.js linguist-generated=true
+web/party/avatars/*.svg linguist-generated=true
+web/party/art/*.svg linguist-generated=true
+web/party/catalog.json linguist-generated=true
+contracts/catalogs/lan-games.json linguist-generated=true
+assets/vendor/** linguist-vendored=true
+assets/vendor/lan-games-art/*.svg linguist-generated=true

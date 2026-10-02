@@ -2,7 +2,6 @@
   "name": "avrana-party",
   "version": "1.0.0",
   "description": "A portable, self-contained local multiplayer appliance. A Raspberry Pi 4 hosts the games; phones join its Wi-Fi (\"Avrana Party\") and act as screens and controllers. Core play needs no internet, accounts or app installs.",
-  "main": "index.js",
   "scripts": {
     "test": "playwright test --grep-invert @heavy",
     "test:all": "playwright test",
@@ -26,14 +25,13 @@
     "build:ui": "npm run build:icons && npm run build:avatars && npm run build:art && npm run build:css",
     "check:ui": "node tools/check-ui.mjs",
     "build:avatars": "node tools/build-avatars.mjs",
-    "build:art": "node tools/build-art.mjs"
+    "build:art": "node tools/build-art.mjs",
+    "check:repo": "node tools/repo-check.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rcnechamkin/avrana-party.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/rcnechamkin/avrana-party/issues"
@@ -48,5 +46,9 @@
     "daisyui": "^5.7.46",
     "lucide-static": "^1.48.0",
     "tailwindcss": "^4.3.3"
+  },
+  "private": true,
+  "engines": {
+    "node": "22.x"
   }
 }

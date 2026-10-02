@@ -37,7 +37,7 @@ two disagree (slots, id). The disc image is the owner's own copy under `/srv` on
 ## 3. An external runtime (like the arcade)
 
 Its own service behind an nginx location (a live nginx change: owner approval, byte-identical
-files — `CLAUDE.md`), plus a builtin manifest with `runtime.type: external` and the path it is
+files — [AGENTS](../../AGENTS.md)), plus a builtin manifest with `runtime.type: external` and the path it is
 served at. Follow `arcade/` as the example.
 
 ## Later (design only)

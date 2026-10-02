@@ -77,7 +77,7 @@ Identifiers and what they authorize: `docs/adr/0003-ids-and-keys.md`. Lifecycle 
 - The original pre-playtest freeze is historical: BLUFF’s Party-session bridge has since landed
   (ADR 0006). Current issue scope and sequencing belong to Linear.
 - A single origin requires an nginx change on a live system; it needs an explicit proposal and
-  owner approval (`CLAUDE.md`).
+  owner approval ([AGENTS](../../AGENTS.md)).
 - LAN Games' client-minted token must eventually be replaced by a server-issued device token; the
   migration has to keep the live service working.
 - The platform adds at least one process (the party service) on a Pi with a power problem; it
