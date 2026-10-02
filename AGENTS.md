@@ -66,3 +66,18 @@ Windows Python naming and Linux nginx/logrotate gates; CI is the Linux baseline.
 Tier 1 = pure; Tier 2 = localhost simulation; Tier 3 = physical Pi/phones/Party Wi-Fi.
 `npm test`, soak and fault target live hardware: never use them as offline checks.
 Record exact revision, command, environment, date, skips/failures and evidence tier.
+
+## Graphify: derived navigation only
+
+See [Graphify](docs/GRAPHIFY.md). Before broad repository searching or architecture questions,
+run `python tools/graphify_context.py ensure --architecture`, then a scoped
+`python tools/graphify_context.py query "question" --architecture` where useful. Verify cited
+source files/tests and canonical docs. Focused reads/debugging/tests can go directly to source.
+Graphify is derived context only: Linear owns live work/status/priorities; canonical docs/ADRs
+own decisions and intended architecture; code/tests own implementation. Inferred edges are
+hypotheses. Check semantic freshness separately with `check-semantic`; stale/missing documentation
+context means read canonical docs directly or refresh through interactive host-agent Graphify.
+CI uses local ASTs and never requires a model API credential. A scoped read-only `LINEAR_API_KEY`
+allows `refresh` to generate private work context; use live Linear for decisions and reject expired
+snapshots. Never edit generated graphs/receipts/snapshots or treat them as authority. Claude's
+search reminder is nonblocking; Codex follows AGENTS rather than a PreToolUse hook.

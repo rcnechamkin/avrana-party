@@ -25,8 +25,9 @@ arcade/evidence/*
 !arcade/evidence/gaunt2-mame2010-audit.json
 !arcade/evidence/mame2010-gauntlet.c
 
-# Local agent/editor config (no project-shared settings; both files are default)
-.claude/
+# Local agent/editor state; only the reviewed project search reminder is shared
+.claude/*
+!.claude/settings.json
 
 # Safety net
 .env*
@@ -66,3 +67,8 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Derived context, private Linear exports, and machine-specific Graphify state
+/.graphify-context/
+/graphify-out/
+/graphify-public/

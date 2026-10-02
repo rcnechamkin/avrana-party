@@ -34,6 +34,18 @@ jobs:
       - name: Repository integrity and generated freshness
         run: npm run check:repo
 
+      - name: Derived context fixture and configuration checks (no credentials)
+        run: |
+          python3 -m unittest discover -s tests/context -v
+          python3 tools/graphify_context.py check-config
+          python3 tools/graphify_context.py check-semantic
+
+      - name: Deterministic Graphify AST smoke check (no model backend)
+        run: |
+          python3 -m pip install graphifyy==0.9.74
+          python3 tools/graphify_context.py refresh --architecture
+          python3 tools/graphify_context.py status --architecture
+
       # Pure unit tests: no browser is launched, so no `playwright install`.
       - name: Soak metric maths
         run: npx playwright test tests/soak-metrics.spec.ts

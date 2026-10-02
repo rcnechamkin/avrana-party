@@ -22,3 +22,5 @@ web/party/catalog.json linguist-generated=true
 contracts/catalogs/lan-games.json linguist-generated=true
 assets/vendor/** linguist-vendored=true
 assets/vendor/lan-games-art/*.svg linguist-generated=true
+
+context/graphify/*.json linguist-generated=true
