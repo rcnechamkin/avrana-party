@@ -174,6 +174,21 @@ class ContextTests(unittest.TestCase):
         c.write_json(self.root / '.graphify-context/linear.json', snapshot)
         self.assertTrue(c.semantic_reasons(self.root, self.root, True))
 
+    def test_semantic_fingerprint_is_portable_across_checkout_line_endings(self):
+        original = c.semantic_inputs(self.root, self.root)[2]
+        path = self.root / 'docs/decision.md'
+        path.write_bytes(path.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
+        self.assertEqual(original, c.semantic_inputs(self.root, self.root)[2])
+        path.write_bytes(path.read_bytes() + b'New decision.\r\n')
+        self.assertNotEqual(original, c.semantic_inputs(self.root, self.root)[2])
+
+    def test_shared_graph_side_effects_cannot_be_committed(self):
+        self.write('context/graphify/cache/last_query_stamp', 'synthetic timestamp')
+        subprocess.run(['git', '-C', str(self.root), 'add', '--force',
+                        'context/graphify/cache/last_query_stamp'], check=True)
+        with self.assertRaisesRegex(c.ContextError, 'caches stay local'):
+            c.check_config(self.root, self.root)
+
     def test_nonportable_semantic_sources_rejected(self):
         c.prepare_semantic(self.root, self.root)
         corpus = self.root / '.graphify-context/semantic-input'

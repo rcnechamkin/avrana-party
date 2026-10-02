@@ -268,8 +268,12 @@ def update_peer_docs(root):
 def semantic_inputs(root, toolkit=TOOLKIT, with_linear=False):
     cfg, files, _, _ = inputs(root, toolkit)
     docs = {name: path for name, path in files.items() if path.suffix == '.md'}
+    # Git checkouts can use CRLF on Windows and LF on Linux. Those are the same
+    # documentation content; Graphify's per-corpus manifest still verifies raw
+    # bytes during acceptance, while the portable receipt hashes normalized LF.
     metadata = {'schema_version': SCHEMA, 'graphify_version': GRAPHIFY_VERSION,
-                'inputs': {name: digest(path.read_bytes()) for name, path in docs.items()},
+                'input_hash_algorithm': 'sha256-markdown-lf',
+                'inputs': {name: digest(path.read_bytes().replace(b'\r\n', b'\n')) for name, path in docs.items()},
                 'authority_hash': digest(AUTHORITY.encode())}
     if with_linear:
         snapshot = current_snapshot(root, cfg)
@@ -594,6 +598,9 @@ def check_config(root, toolkit):
     tracked = git(root, 'ls-files').splitlines()
     if any(p.startswith(('graphify-out/', 'graphify-public/', '.graphify-context/')) for p in tracked):
         raise ContextError('Generated graphs/Linear state/machine data must not be tracked.')
+    shared_products = {'context/graphify/semantic-graph.json', 'context/graphify/semantic-receipt.json'}
+    if any(p.startswith('context/graphify/') and p not in shared_products for p in tracked):
+        raise ContextError('Only the reviewed semantic graph and receipt may be shared; caches stay local.')
     agents = (root / 'AGENTS.md').read_text(encoding='utf-8')
     if 'Graphify' not in agents or 'Linear' not in agents or 'derived' not in agents:
         raise ContextError('Agent authority and Graphify guidance missing.')

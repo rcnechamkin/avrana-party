@@ -72,3 +72,7 @@ node_modules/
 /.graphify-context/
 /graphify-out/
 /graphify-public/
+# Graphify query/export side effects beside the reviewed shared products stay local.
+/context/graphify/*
+!/context/graphify/semantic-graph.json
+!/context/graphify/semantic-receipt.json
