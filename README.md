@@ -1,6 +1,6 @@
 # Avrana Party
 
-**Portable, local-first multiplayer. Phones are the controllers. The Pi is the console.**
+**Portable, local-first multiplayer. Phones are the screens and the controllers. The Pi is the console.**
 
 Avrana Party turns a Raspberry Pi into a self-contained multiplayer game system. Players join its Wi-Fi, open a browser on their phones, and start playing.
 
