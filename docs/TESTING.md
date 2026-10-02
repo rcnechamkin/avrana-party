@@ -1,5 +1,15 @@
 # Testing: every suite, where it lives, how to run it
 
+AVR-130 offline coverage: `python -m unittest discover -s tests/unit -p test_arcade_stream.py`
+tests Party ticket admission, stable slots, reverse-order reconnect, 60-second reservation
+grace and expiry, immediate Leave, duplicate binding, stale/malformed/wrong-audience/expired
+tickets, spectator refusal, and standalone first-free allocation with fake media. Managed
+runtime tests cover session end/switch; the arcade route checks current ownership before input.
+`npx playwright test -c playwright.offline.config.ts tests/offline/arcade.spec.ts` checks fresh
+authenticated ticket POSTs before sockets, hello-only credentials, refusal, Leave, and the
+existing reconnect UI. Real phones, emulator and encoder remain acceptance checks in
+`docs/runbooks/arcade-party-provider.md`; no real-device acceptance is claimed.
+
 Status: inventory from 2026-09-24 (counts are from that day's runs). Commands run from the repo
 root of the branch named; "Pi" means `ssh party` (only for suites that need Linux or the appliance).
 Claude Code Cloud can run offline tests after `npm ci` and `npx playwright install` where needed;

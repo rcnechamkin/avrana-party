@@ -42,6 +42,15 @@
 
 ## Current state (updated 2026-09-19)
 
+AVR-130 controller ownership: in Party-managed mode, the browser obtains an authenticated
+`arcade-gauntlet2` Party session ticket on each connection and sends it in the WebSocket hello
+body. The server uses `GameSide.admit()`'s stable game token to reserve the same slot across
+disconnects for 60 seconds, without renumbering other players. Held input clears immediately.
+Leave releases ownership immediately when received; duplicate connections replace the old input
+binding on the same slot. Session end, switch and relaunch clear old reservations. Spectators
+receive a non-player response. Standalone mode retains first-free slots freed on disconnect.
+See `docs/runbooks/arcade-party-provider.md` for security and remaining real-phone checks.
+
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.
 
