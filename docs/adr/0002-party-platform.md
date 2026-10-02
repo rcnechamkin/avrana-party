@@ -45,7 +45,7 @@ Continuing per-game identity would multiply exactly the systems the product is m
 7. **Not a universal gameplay framework.** Rules, state, rendering and netcode stay with each game.
    Platform contracts grow only when two consumers need them.
 
-Proposed mechanisms (to be confirmed when built, see ROADMAP N5): a separate small party
+Original proposed mechanisms (2026-09-24; later implementation in ADRs 0006–0011): a separate small party
 service on the same origin as everything else (e.g. `/party/`), a server-issued device cookie,
 top-level navigation driven by `party.js` (not an iframe shell, not a single-page rewrite of games),
 a thin bridge in the LAN Games fork at the connect handshake and the lifecycle push, and manifests
@@ -74,10 +74,10 @@ Identifiers and what they authorize: `docs/adr/0003-ids-and-keys.md`. Lifecycle 
 
 - New games must not build their own login, profile store, chat, reconnect, team or spectator
   systems; they wait for or contribute to the platform versions.
-- BLUFF's identity code is left alone until after its real-phone playtest (ROADMAP N2), so the
-  playtest measures the game, not a moving platform.
+- The original pre-playtest freeze is historical: BLUFF’s Party-session bridge has since landed
+  (ADR 0006). Current issue scope and sequencing belong to Linear.
 - A single origin requires an nginx change on a live system; it needs an explicit proposal and
-  owner approval (ROADMAP N3).
+  owner approval (`CLAUDE.md`).
 - LAN Games' client-minted token must eventually be replaced by a server-issued device token; the
   migration has to keep the live service working.
 - The platform adds at least one process (the party service) on a Pi with a power problem; it

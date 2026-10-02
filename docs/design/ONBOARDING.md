@@ -1,14 +1,20 @@
 # Onboarding ("tap to join") and connectivity
 
-Status: **research and recommendations (2026-09-24). No networking has been changed.** Every item
+Status: **research and recommendations from 2026-09-24; source-flow note reconciled 2026-10-01.**
+That research session made no networking changes; current topology is in SYSTEM. Every item
 that would change nginx, dnsmasq, NetworkManager, Avahi, connectivity-check handling or Wi-Fi
-security needs the owner's explicit approval (ROADMAP N3). Platform facts are from web sources
+security needs the owner's explicit approval (`CLAUDE.md`). Platform facts are from web sources
 listed at the end and are version-dependent; the test list below is how to confirm them.
 
 ## The goal and the principles
 
+ADR 0011 is the current source contract: canonical Party/game surfaces automatically resume
+presence with an Avrana profile, with no normal Join or Leave button. Public/Demo admission is
+a future distinct mode. The networking research below is dated; SYSTEM and the HTTPS runbook
+own deployed evidence. Console-model deployment/phone proof remains AVR-212.
+
 ```
-power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL browser → join the party
+power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL browser → set/resume a local profile → automatic Party presence
 ```
 
 - **No-app baseline:** Wi-Fi + a normal web browser. An optional app may later improve onboarding

@@ -1,11 +1,19 @@
 # ADR 0006 — Party Core v0 and the party ↔ game session protocol v0
 
-Status: **proposed** (implemented and tested; merged to `main` in PRs #12 and #13; not deployed; no game
-implements the game side yet).
+Status: **implemented and merged** (Party PRs #12/#13); Party Core and the BLUFF game side
+are **deployed, server-side verified 2026-09-29** (AVR-51). See
+[deployment evidence](../findings/2026-09-29-party-core-deploy.md) and [SYSTEM](../SYSTEM.md).
+Real-phone proof is separate. Status reconciled 2026-10-01.
+
+**Amendments:** ADRs 0007/0008 implement host navigation, ADR 0009 adds Party-managed arcade,
+ADR 0010 adds Play/Watch, and accepted/merged ADR 0011 adds automatic profile-backed presence,
+authoritative location, Party-owned setup and held results. ADR 0011 deployment/phone proof
+remains AVR-212. Context and original deferrals below describe the 2026-09-27 decision, not a
+live backlog or deployment report.
 Date: 2026-09-27. Builds on ADR 0002 (party platform), ADR 0003 (ids and keys), ADR 0005 (LAN
 provider launch) and `docs/findings/2026-09-27-party-bluff-boundary.md` (PR #10).
 
-## Context
+## Context (2026-09-27)
 
 Nothing authoritative runs in production. "Players" are LAN Games connections holding a
 browser-minted `wc-token`, which is at once device, person, seat key and reconnect credential
@@ -33,7 +41,9 @@ Game concepts do not move into Party Core because BLUFF happens to use them.
 
 ### D2. Presence is liveness, and playing is not leaving
 
-- **Membership** ends only on an explicit Leave.
+- **Membership** is not removed by silence or game navigation. The lower-level `leave`
+  operation removes it; ADR 0011 exposes no ordinary Leave UI. Idle/restart cleanup remains
+  a lifecycle boundary, not a browser button.
 - **Presence** is `here` while any authenticated party request arrived within 45 s: Party Home's
   long poll, a heartbeat from a game page, or a ticket fetch. Otherwise it is `away`.
 - **Playing:** a member holding a place in the active session is `playing`. A host who is
@@ -46,8 +56,9 @@ Game concepts do not move into Party Core because BLUFF happens to use them.
 ### D3. Device identity
 
 - A server-issued 256-bit token, stored hash-only.
-- Cookie `avrana_device; Path=/party/; HttpOnly; Secure; SameSite=Lax`, issued **only** by an
-  explicit Join.
+- Cookie `avrana_device; Path=/party/; HttpOnly; Secure; SameSite=Lax`, issued by the guarded
+  join POST. **ADR 0011 amendment:** canonical pages call it automatically with an Avrana
+  profile; the original manual Join ceremony is superseded. GET does not create membership.
 - Game pages' own requests (`/games/…`) never carry it. A game page may still call
   `/party/api/…`, which does.
 - Forged or unknown values are never adopted.
@@ -119,10 +130,13 @@ game derives `game_token(key, sid, pid)`, a stable secret it may use where LAN G
   does not bind tickets to a connection or make them single-use.
 - **The party is memory-only.** A reboot or restart starts a new party; device identities
   survive. Reboot survival stays OPEN (`PARTY-LIFECYCLE.md`).
-- **Not proven:** real phones, real nginx in front of `/party/api/`, and iOS sleep/wake timing.
-  These are hardware checks (Tier 3).
+- **Evidence update:** real nginx/API deployment is server-side verified in AVR-51 findings;
+  real phones and iOS sleep/wake timing still need separate Tier 3 evidence.
 
-## Consequences
+## Consequences (original implementation plan, 2026-09-27)
+
+The BLUFF game side and deployment described below have since landed; later ADRs amend the
+navigation/results deferrals. This retained plan does not assign current work; consult Linear.
 
 - Next: the games server implements `GameSide`, for BLUFF first:
   - the two routes;

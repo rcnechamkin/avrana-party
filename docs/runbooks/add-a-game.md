@@ -32,7 +32,7 @@ Add `ps1/titles/<id>.json` (keys and rules: `ps1/profiles.py`; examples: `worms.
 `bomberman.json`), then `python ps1/profiles.py list` and the tests in `ps1/tests/`. Add the matching
 capability manifest `experiments/manifests/builtin/ps1-<id>.json` — `cross_check_ps1` fails if the
 two disagree (slots, id). The disc image is the owner's own copy under `/srv` on the Pi and is
-**never** copied or committed. Running it is power-gated (ROADMAP N4): owner go-ahead first.
+**never** copied or committed. Running it is power-gated (ROADMAP’s emulation research boundaries): owner go-ahead first.
 
 ## 3. An external runtime (like the arcade)
 

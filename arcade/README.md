@@ -1,14 +1,20 @@
 # Avrana Party Gauntlet II streaming prototype
 
+> **Current release boundary (2026-10-01):** SYSTEM owns deployed revisions. AVR-134’s
+> Party-managed runtime is deployed, server-side verified; ADR 0011 is merged source awaiting
+> AVR-212 deployment/phone proof. AVR-130 reservations merged in PR #35 during this
+> reconciliation; published findings have not verified deployment or real-phone acceptance.
+> The implementation notes and prototype measurements below are dated evidence.
+>
 > **Network note (2026-09-24):** mentions below of `wlan1` as the party AP and `wlan0` as the
 > home/management link are from before the USB Wi-Fi adapter was removed. Today the AP is the internal
 > `wlan0` (`10.42.0.1`) and management is `eth0` (`docs/runbooks/network.md`). Side effect: `/stats`
 > labels every peer's path `other` because `ap_addresses()` looks for `wlan1`. The fix (find the AP
 > by the party address `10.42.0.1`, whatever the interface) is on `main` (PR #8, 2026-09-27),
-> pinned by `tests/unit/test_arcade_stream.py` `ApAddresses`; it is not deployed until the owner
-> fast-forwards production and restarts the arcade. Streaming itself is unaffected.
+> pinned by `tests/unit/test_arcade_stream.py` `ApAddresses`, and deployed with the 2026-09-27
+> arcade restart (`docs/findings/2026-09-27-production-deploy.md`). Streaming itself is unaffected.
 
-> **Code note (2026-09-26, branch `claude/dreamy-carson-sja5mq`, not deployed):**
+> **Code note (2026-09-26, foundation merged/deployed; original branch `claude/dreamy-carson-sja5mq`):**
 > - `stream.py` opens its pads through `avrana.providers.uinput_gamepad` and runs RetroArch through
 >   `avrana.providers.retroarch` (ADR 0004). The behaviour is identical, and a test pins it.
 > - `/stats` gains a `providers` block.
@@ -31,7 +37,7 @@
 >   "no picture" failures, gives up after 20 s instead of "Connecting…" forever, and "Other games"
 >   goes to Party Home (`/party/`) on HTTPS (`/` stays on plain HTTP). See
 >   `docs/findings/2026-09-29-gauntlet-launch.md`.
-> - **Party-launched (AVR-134, ADR 0009; proposed, not deployed):** the drop-in
+> - **Party-launched (AVR-134, ADR 0009; deployed 2026-09-29, server-side verified):** the drop-in
 >   `deploy/arcade/avrana-party-session.conf` and a Party session key switch this on. The page,
 >   controllers and `/stats` stay up, but RetroArch and the encode run only between Party Core's
 >   signed launch and end, on `127.0.0.1:8098`. So Gauntlet II never runs beside BLUFF or another
@@ -40,16 +46,18 @@
 > - The Selkies row below is out of date: pixelflux 2.1 now has a Pi 4 V4L2 encoder (see the
 >   substrate decision matrix, spike S3).
 
-## Current state (updated 2026-09-19)
+## AVR-130 controller ownership (merged source, PR #35)
 
-AVR-130 controller ownership: in Party-managed mode, the browser obtains an authenticated
+Controller ownership: in Party-managed mode, the browser obtains an authenticated
 `arcade-gauntlet2` Party session ticket on each connection and sends it in the WebSocket hello
 body. The server uses `GameSide.admit()`'s stable game token to reserve the same slot across
 disconnects for 60 seconds, without renumbering other players. Held input clears immediately.
-Leave releases ownership immediately when received; duplicate connections replace the old input
+The controller-release button releases ownership immediately when received; it does not remove Party presence; duplicate connections replace the old input
 binding on the same slot. Session end, switch and relaunch clear old reservations. Spectators
 receive a non-player response. Standalone mode retains first-free slots freed on disconnect.
 See `docs/runbooks/arcade-party-provider.md` for security and remaining real-phone checks.
+
+## Historical prototype baseline (2026-09-19/20)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.

@@ -1,27 +1,27 @@
 # Full Mode web shell: `https://party.avrana.net/party/`
 
-Status (2026-09-26):
-- The foundation code and Tier 1?2 tests were merged in PR #3 (`a671955`).
-- Shell assimilation adds profile/chat/catalog adapters on its review branch; see `LAN-GAMES-ASSIMILATION.md`.
-- It is **not deployed**, and **no real phone has loaded it yet.**
-- Decisions: ADR 0004. Deployment: `docs/runbooks/party-https.md`, section "Full Mode web shell".
+Status reconciled 2026-10-01: **implemented on main and deployed** at verified Party release
+`956b968` (2026-09-29). Foundation PR #3 and assimilation/provider integration are merged;
+Party Core runs behind `/party/api/`. Current main adds ADR 0011 in PR #34 / Games #13;
+deployment and Tier 3 phone proof remain AVR-212. [SYSTEM](../SYSTEM.md) owns exact revisions.
+Decisions: ADRs 0004 and 0006–0011. Deployment procedure: `docs/runbooks/party-https.md`.
 
 ## What it is
 
 This is the first Avrana-owned page on the secure origin. It is static files under `/party/`,
-served by nginx from the 443 server only, with no daemon, port or systemd unit. It uses the secure
+served by nginx from the 443 server only, with no shell daemon, port or systemd unit. Party Core is a separate service behind
+`/party/api/`; static delivery does not eliminate its authority. It uses the secure
 context, but no page depends on it: every feature degrades silently.
 
 | Page | For | What it shows |
 |---|---|---|
 | `/party/` | guests | "Connected to the party · 🔒 Secure"; the games installed on this Party box, each with what it will be like on **this phone** ("Works on this phone" / "Works, with limits" / "You can watch" / "Not on this phone" + one plain sentence) and its live state ("1 of 2 playing", "Full right now", "Not running right now"); individual browser titles alongside arcade and experimental PS1 metadata; the shared Avrana profile and Party Chat; favorites/history and search/group-size filters; a "This phone" disclosure (secure connection, saved offline, live video, keeping the screen on, sound, controllers, vibration) |
-| `/party/` with Party Core answering `/party/api/state` (Party mode, ADR 0007; not deployed) | guests | the same page plus a Party panel: Join, who is here and who hosts, Leave; party games start only from the host ("Start for everyone") and every joined phone follows into the game; while it is on, Rejoin (and End for the host). Without Party Core the page is unchanged |
+| `/party/` with Party Core (current source, ADR 0011) | members | Automatic presence with an Avrana profile, roster/host, home or Party-owned full-screen Play/Watch setup; host-only Start. No normal Join/Leave buttons. Authoritative location sends members to the round/held results; host controls live in the game. Without Core/profile, standalone catalog access remains supported |
 | `/party/` while the Pi is out of reach | guests | "Can’t reach the party. Make sure this phone is on the Avrana Party Wi-Fi", Try again, and a link to the basic HTTP version; it recovers by itself when the phone is back online |
 | `/party/diag/` (also `/party/#diag`) | owner, developers, agents | every capability with its status, evidence level and note; the seat evaluation for every game in the catalog (installed or not); the providers of this Party box; offline-copy state; deep checks (WebGPU adapter, DataChannel loopback); a keep-awake test; a copyable `avrana.diagnostics/v0` report; the user agent, labelled as never used for decisions |
 
-The arcade phone page (`/arcade/`) uses the shell's `lib/keep-awake.js`. Party Home and the PS1 page
-should adopt `lib/capabilities.js`, `lib/keep-awake.js` and `lib/shell.js` when they move to the
-HTTPS origin.
+Party Home uses the shell modules on HTTPS; the arcade phone page uses `lib/keep-awake.js`
+and authoritative Party follow. PS1 adoption remains experiment work, not runtime promotion.
 
 ## Files
 
@@ -102,24 +102,25 @@ pointer and preferences are reported separately. The report never contains the u
 - Screen Wake Lock needs a secure context. Per MDN BCD, iOS Safari supports it from 16.4 in a tab and
   from 18.4 in Home Screen apps.
 
-## Arcade phone page changes (same branch)
+## Arcade behavior and remaining reconnect gap
 
 - The screen stays on during play.
 - "Both controllers are in use" is shown only when `/arcade/stats` says the game is full.
   Otherwise the page says it "Can’t connect right now".
 - A drop triggers "Reconnecting…" with up to five quiet retries, paused while the phone is locked.
-- "Leave" replaces "Disconnect".
+- Stream disconnect is lower-level stream behavior, not ordinary Leave Party UI.
+  ADR 0011 source keeps member pages at the authoritative Party location.
 - The raw stats JSON is shown only with `#diag`.
 - Every id and text the live suite relies on is kept (tested offline).
 - **This goes live with the production fast-forward**, not with the shell deploy: `stream.py`
   serves `index.html` from the checkout on every request (runbook, "When the arcade changes go
   live").
-- A reconnect keeps trying while `/stats` still counts the dropped phone. Without seat tickets the
-  arcade has no way to reclaim a slot, so a reconnecting phone can come back as the other player if
-  its old slot hasn't been freed yet (the server notices within a few seconds). Seat tickets (PS1
-  already has them) fix this later.
+- Party session tickets/navigation alone do not guarantee a controller slot. AVR-130 source
+  merged in PR #35 during this reconciliation adds stable session-local reservations and
+  60-second grace. Deployment/real-phone acceptance remains unverified by published findings.
+  Preserve the broader seat grace/release requirements in `PARTY-LIFECYCLE.md`; PS1 remains an experiment.
 
-## Tested where
+## Tested where (source coverage; results need a dated run)
 
 | Claim | Tier | Test |
 |---|---|---|

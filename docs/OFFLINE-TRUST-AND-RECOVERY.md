@@ -1,8 +1,9 @@
 # Avrana Party — Offline Trust, HTTPS, Limited Operation, and Recovery
 
-> **Status: design direction, not deployed implementation.** The live appliance currently
-> serves local HTTP. Read `ROADMAP.md` and `runbooks/network.md` before treating any
-> certificate or app recovery path below as available.
+> **Status: design direction, not deployed implementation.** Canonical Full Mode HTTPS is deployed at
+> `https://party.avrana.net`; plain HTTP remains for legacy/recovery access. Read `SYSTEM.md`
+> and `runbooks/party-https.md` for deployed evidence, `ROADMAP.md` for strategy and Linear
+> for active work. Broader trust/recovery proposals below are not all implemented.
 
 ## Purpose
 

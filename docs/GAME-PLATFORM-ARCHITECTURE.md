@@ -1,7 +1,8 @@
 # Avrana Party — Game Platform Architecture
 
-> **Status: design direction, not deployed implementation.** Read `ROADMAP.md` and
-> `design/PARTY-PLATFORM.md` for accepted decisions and current sequencing.
+> **Status: design direction, not deployed implementation.** Read `design/PARTY-PLATFORM.md` and ADRs 0006–0011
+> for current contracts, `SYSTEM.md` for deployed state, `ROADMAP.md` for strategy, and Linear
+> for live sequencing. Broader concepts below are research, not an implemented SDK.
 
 ## Purpose
 
@@ -390,7 +391,9 @@ viewState(gameState, seatId)
 
 ## Game Lifecycle
 
-Preferred lifecycle:
+Earlier conceptual lifecycle (historical; ADRs 0010/0011 supersede manual join/lobby flow).
+Current member flow is automatic profile presence → home → Party setup → game → held results;
+only the host moves it. The sequence below is not a current UI contract:
 
 ```text
 Join Party

@@ -1,5 +1,9 @@
 # Handoff prompt: next agent (written 2026-09-23)
 
+> **Historical handoff only (reconciled 2026-10-01).** All instructions below, including
+> roadmap references and proposed next actions, are superseded as execution guidance. Use the
+> current Linear issue, root `CLAUDE.md` and `docs/SYSTEM.md`. The dated record is preserved.
+
 > **Superseded (2026-09-24 evening): historical.** Current: `README.md` → "Start here". Since then the
 > USB adapter was removed (AP on the internal `wlan0`, Pi at `10.0.0.142` on eth0), power is clean,
 > and the laptop is the only editing environment for the games fork too (`docs/SYSTEM.md`).

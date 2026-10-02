@@ -1,7 +1,8 @@
 # Avrana UI design system (prototype era)
 
-Status (2026-09-28): **TESTED** offline on branch `chore/ui-design-system` (games side:
-`avrana-party-games` `fix/bluff-ui-polish`); not deployed.
+Status reconciled 2026-10-01: prototype system **merged** in Party PR #19 and present in the
+verified shell release (SYSTEM). The 2026-09-28 offline branch evidence remains historical;
+newer ADR 0011 setup/results UI is merged source with deployment/phone proof pending AVR-212.
 This is a **temporary, replaceable** visual system that makes the current pages coherent and
 pleasant on phones. It is **not** the final Avrana brand: no final logo, palette, typeface or
 art direction is decided here. When the real identity arrives, replace the theme block and the
@@ -91,12 +92,11 @@ Icon-only buttons (the favourite star) always carry an `aria-label`.
 (`Phone only` / `TV optional` / `Needs the TV` from the contract's `screen`); how you play when it
 adds something; summary; fit for this phone; live state; Play. One column on phones and tablets, two
 from `xl` (tiles need ≈ 400 px). No ratings, prices or store language. Favourites show as a filled
-star. In Party mode (ADR 0007) a party game's one action follows the party: "Start for everyone"
-(host, primary), "The host starts it" (disabled), "Join the party to play" (outline), "Rejoin"
-(primary) or "Party is playing …" (disabled); standalone tiles are unchanged. The Party panel is one
-`avrana-surface` under "you": who is here and who hosts, the game that is on with Rejoin (and
-"End the game for everyone", outline error, for the host), and a polite live region for
-"The host started … Joining…".
+star. ADR 0011 source uses automatic profile-backed presence and authoritative location;
+there are no normal Join/Leave or Rejoin offers. At home the host chooses a Party game. Setup
+is a full-screen Party scene with roster, Play/Watch, How to play and host-only Start (or a
+follower’s waiting state). Game/results own the viewport; host End, Play again and Party Home
+live in game chrome. These console changes await AVR-212 deployment/phone proof.
 
 ## Player avatars
 

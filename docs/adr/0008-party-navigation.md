@@ -2,7 +2,7 @@
 
 **Superseded in part by ADR 0011 (the console model):** pages no longer follow only moves they watched, and the in-game Party status line is gone. Party Core's single `location` decides where every member page is, on load and on every move; host controls live in the game's own chrome.
 
-Status: **proposed**. Implemented and TESTED on a laptop on branches `fix/avr-128-party-navigation`
+Status: **implemented and merged**. Implemented and TESTED on a laptop on branches `fix/avr-128-party-navigation`
 (this repository) and `fix/avr-128-follow-party` (games). Merged (PR #30, games #11) and
 **deployed 2026-09-29**, verified server-side (`docs/findings/2026-09-29-avr128-134-deploy.md`);
 not yet tried on a real phone. Date: 2026-09-29. Linear AVR-128. Extends ADR 0007, which covered Party Home
@@ -74,8 +74,8 @@ PARTY-LIFECYCLE R2 and R5, the `in_game → launching` switch, and "Switching be
   - `tests/offline/party-mode.test.mjs` and `tests/offline/party-follow.test.mjs`.
   - `tests/provider/party-home.spec.ts` (AVR-128 cases).
 
-**What this does not do:**
-- **The arcade is not a Party activity yet.** The emulator runs as an always-on service (`avranaparty-arcade`), which Party Core does not start or stop. Stopping it is an owner step (ROADMAP N4). An arcade page follows the party into a party game, but Gauntlet II and a party game can still run at the same time. Making the arcade a Party-launched provider means giving it the launch/end half of the session protocol and letting Party Core stop it. That is a separate, owner-approved change (unit and privileges), tracked as Linear AVR-134.
+**Original scope limitations (2026-09-29; subsequent implementation noted below):**
+- **The arcade is not a Party activity yet.** The emulator runs as an always-on service (`avranaparty-arcade`), which Party Core does not start or stop. Stopping production outside its Party lifecycle is an owner step. An arcade page follows the party into a party game, but Gauntlet II and a party game can still run at the same time. Making the arcade a Party-launched provider means giving it the launch/end half of the session protocol and letting Party Core stop it. That is a separate, owner-approved change (unit and privileges), tracked as Linear AVR-134.
   **Update:** ADR 0009 (AVR-134) does this without new privileges. Party Core starts and stops the
   arcade's runtime through the session protocol, on a loopback control port.
 - **Order of deployment.** The follower ships in the Party web release (`/party/lib/party-follow.js`) and the games fork loads it. Either can deploy first:

@@ -1,8 +1,12 @@
 # Claude Code handoff: Avrana Party
 
+> **Historical log (current pointer reconciled 2026-10-01).** All dated banners and next-step
+> instructions below are historical, including obsolete roadmap item references. Linear owns
+> current issue scope/sequencing; SYSTEM owns deployed evidence; ADRs/design docs own contracts.
+
 > **Read this first (2026-09-24 evening).** This file is mostly a **historical log** of the arcade
 > work (2026-09-19/20) with dated banners. Current truth lives elsewhere — start at `README.md` →
-> "Start here": status and the next action in `docs/ROADMAP.md`, machines/repos/branches in
+> "Start here": live status and next task in Linear, strategy in `docs/ROADMAP.md`, machines/repos/branches in
 > `docs/SYSTEM.md`, networking in `docs/runbooks/network.md`, tests in `docs/TESTING.md`.
 > **Since 2026-09-24:** the USB Wi-Fi adapter is gone; the party AP runs on the Pi's internal radio
 > (`wlan0`, `10.42.0.1`) and the Pi reaches home over `eth0` (`10.0.0.142`). Anything below that

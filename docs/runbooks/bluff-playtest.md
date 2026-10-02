@@ -130,8 +130,8 @@ that records public state frames (connected flags, `step`, public log) without t
 | Chat wanted? / One more game? / Fun (1–5) | | | | |
 
 Keep: `$RUN-server.log`, `$RUN-health.log`, the screen recordings, the power readings. Write the
-results up as a dated `docs/findings/` entry; they set the platform timers and the F-item order
-(ROADMAP N5).
+results up as a dated `docs/findings/` entry; they inform platform timer/product decisions.
+Live issue order, acceptance and ownership belong to Linear, not the former roadmap F-items.
 
 ## Known risks
 

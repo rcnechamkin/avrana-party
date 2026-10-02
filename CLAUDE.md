@@ -32,9 +32,13 @@ Do not treat management-LAN success as Party-WLAN validation.
 
 ## Where truth lives
 
-Status and the next action: `docs/ROADMAP.md` · what runs where: `docs/SYSTEM.md` · every test:
-`docs/TESTING.md` · design: `docs/design/README.md` · decisions: `docs/adr/` · measured facts:
-`docs/findings/` (newest dated file wins). Record new decisions and findings there, not only in chat.
+Live status, next issue, active sequencing, blockers, acceptance and ownership: **Linear**
+(https://linear.app/avranakern). Strategic direction: `docs/ROADMAP.md`. Deployed state/topology:
+`docs/SYSTEM.md` supported by dated `docs/findings/`. Architecture/product contracts:
+`docs/adr/` and `docs/design/README.md`. Test commands and evidence tiers: `docs/TESTING.md`.
+GitHub `main` owns current source/code/tests; it may be ahead of verified production. A merged PR
+is not deployment evidence. Dated findings, PR bodies and old handoffs are historical snapshots,
+not current task instructions. Record new decisions/findings in the repo, not only in chat.
 Label claims honestly: LIVE / TESTED / EXPERIMENT / PROPOSED / OPEN; a simulation is not a
 measurement, and a proposal is not a decision.
 
@@ -67,7 +71,8 @@ compatibility. Preserve standalone access; no new global features in its legacy 
 
 ## Hard rules
 
-- **`main` is production.** Develop on `docs/*`, `experiment/*`, `fix/*` or `chore/*` branches;
+- **`main` is canonical source; production is a separately deployed revision.** Develop on
+  `docs/*`, `experiment/*`, `fix/*` or `chore/*` branches;
   review and test before merging to `main`. Never force-push, rewrite history or deploy experiments.
 - **Pi:** inspect before changing; no `sudo` (the owner types it); no changes to NetworkManager,
   nginx, dnsmasq, systemd units, the live services (`avranaparty-games` :8096,
@@ -84,7 +89,7 @@ compatibility. Preserve standalone access; no new global features in its legacy 
   agent work during one (each SSH session is a CPU burst).
 - PS1/emulator runs: bounded and supervised only (`ps1/tools/supervised-run.sh`, or a party-launched
   session you stop yourself); never unattended. Soak, viewer scaling past 5 or stopping the arcade
-  need the owner (ROADMAP N4).
+  need the owner (see ROADMAP’s emulation research boundaries).
 - **Never commit or print:** passwords, Wi-Fi keys or home network names, tokens, keys, ROMs, BIOS,
   emulator cores, saves, runtime data. Before every push: inspect the diff, scan for secrets and
   binaries, confirm the branch.
@@ -94,8 +99,11 @@ compatibility. Preserve standalone access; no new global features in its legacy 
   `~/avrana-party-games.git`, Pi dev clone `~/avrana-lab/avrana-party-games`); the live
   `/home/cody/LAN-Games` is never edited.
 
-## Product rules (`docs/design/PARTY-PLATFORM.md`, ADRs 0002/0003)
+## Product rules (`docs/design/PARTY-PLATFORM.md`, ADRs 0002/0003/0010/0011)
 
+- Current source (ADR 0011): profile-backed automatic presence; no normal Join or Leave UI;
+  one authoritative Party location; host-owned navigation, Party-owned setup and held results.
+  Deployment/real-phone verification is AVR-212; consult SYSTEM for verified revisions.
 - Device ≠ Profile ≠ Presence ≠ Seat; Admin ≠ Party Host. Names never authorize; games never see
   device tokens; credentials never appear in URLs or logs.
 - One appliance = one party; guest-first, browser-first, offline-first; TV, app and captive portal
@@ -108,7 +116,9 @@ compatibility. Preserve standalone access; no new global features in its legacy 
 Read `CLAUDE-CLOUD-HANDOFF.md` before a Cloud task. Clone from GitHub → make a branch → run
 offline/unit checks first (`docs/TESTING.md`; `npm ci && npm run test:offline`, in Cloud with
 `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`; the real-nginx test needs `nginx` installed) → push for review. Browser E2E in `tests/` targets
-the live appliance and needs the Party Wi-Fi; Cloud cannot run it. Pi-only validation belongs in
-`~/avrana-lab/` on dev ports. After review, merge to GitHub `main`, then fast-forward the clean
-production checkout `/home/cody/avrana-party` to that exact commit. Restarting services or changing
-live configuration is a separate, owner-approved deployment step.
+the live appliance when selected by the live configuration and needs the Party Wi-Fi; Cloud cannot run it.
+Offline/provider configurations use local harnesses. Pi-only validation belongs in
+`~/avrana-lab/` on dev ports. After review, merge to GitHub `main`. An owner-approved deployment
+selects an exact reviewed commit before fast-forwarding the clean production checkout
+`/home/cody/avrana-party`. Synchronizing that checkout, restarting services and changing live
+configuration are deployment actions, separate from merge.

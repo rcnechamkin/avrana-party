@@ -78,7 +78,7 @@ Lower: fixed-height, `overflow:hidden` layout clips at large text — check on o
 text during the playtest and record what clips. BLUFF uses no sound, so there are no audio-only
 cues (`audio_required: false`).
 
-**Platform defaults to extract** (when a second game needs them — the rule in ROADMAP N5):
+**Platform defaults to extract** (when a second game needs them — see ROADMAP’s product direction):
 `Hub.announce(text)` (deduplicated live region), `Hub.tappable(el, label, fn, pressed)`, focus
 restore by `data-k` across renders, `.sr-only` and a default `:focus-visible` ring in the shared
 stylesheet, `role="status"` on toasts and the connection banner, `aria-pressed` on chips, `--faint`

@@ -50,7 +50,10 @@ Steps 1–3 need no sudo. Measure power with the usual rule: sample on the Pi an
    - Expect no `retroarch` process: `pgrep -a retroarch` prints nothing.
 2. **Only loopback listens on 8098.** `ss -ltnp | grep 8098` shows `127.0.0.1:8098` only.
 3. **Idle is cheap.** `top -bn1 | head -15` shows no RetroArch, and Python sits near idle. Record CPU and `vcgencmd measure_temp`.
-4. **Party Home offers it.** On two phones, both Join. Gauntlet II shows "Start for everyone" to the Party Host only.
+4. **Party Home offers it.** Use the deployed release’s membership flow on two phones.
+   The 2026-09-29 release used manual membership; ADR 0011 source gains/resumes presence
+   automatically with a saved local profile, with no normal Join/Leave UI (deployment/phone
+   proof: AVR-212). Gauntlet II launch is host-only in both versions.
 5. **Start.**
    - The host starts Gauntlet II. Both phones move to `/arcade/`.
    - Tap Play: a picture, controls and sound.
@@ -101,7 +104,7 @@ If only the arcade drop-in is removed, Party Core still lists Gauntlet II. Its l
   can reuse it. A reconnect during grace binds the same slot immediately. A duplicate tab takes
   over that slot and closes the previous socket; old input and old cleanup cannot affect it.
   The replaced tab stops automatic retries until its user taps Play, avoiding takeover loops.
-- **Release:** the arcade Leave button sends `{type: 'leave'}` before closing, releasing ownership
+- **Release:** the arcade controller Leave button (not Leave Party) sends `{type: 'leave'}` before closing, releasing ownership
   immediately when the server receives it. A lost Leave message follows ordinary disconnect
   grace. End, switch, a newer launch, runtime stop or process restart discard reservations.
   Previous-session tickets cannot claim seats in a new session.

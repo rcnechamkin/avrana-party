@@ -1,5 +1,11 @@
 # Runbook: real-phone BLUFF reconnect and session end in a Party session (AVR-23, AVR-24)
 
+> **Historical lab procedure (2026-09-27/28), not the current console UX.** The manual
+> Join, game lobby and Back/Rejoin steps below apply to that lab revision. ADR 0011 source
+> uses automatic profile-backed presence, Party-owned setup, authoritative follow and held
+> results. AVR-51’s HTTPS deployment has since landed; SYSTEM owns deployed evidence. Use
+> AVR-212’s current acceptance scope for console deployment/real-phone verification.
+
 Status: **PREPARED 2026-09-27, not run.** The laptop run is TESTED
 (`docs/findings/2026-09-28-bluff-party-reconnect.md`); this is the owner's real-phone check that
 AVR-23 still needs. It is a supervised lab run on the Pi's dev port, not a deployment: no sudo, no
