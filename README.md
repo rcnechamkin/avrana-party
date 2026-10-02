@@ -1,87 +1,108 @@
 # Avrana Party
 
-A portable local multiplayer appliance. A Raspberry Pi 4 runs the games; phones join its
-“Avrana Party” Wi-Fi and play in a normal browser. Core play needs no internet, cloud accounts
-or app installs. **The game may change; the party does not.**
+Avrana Party is a multiplayer game system for people in the same room. A Raspberry Pi 4
+hosts the games and its own Wi-Fi network. Players connect their phones and open a browser;
+each phone becomes a screen, a controller, or both. Core play needs no internet connection,
+account, or app installation. A TV is optional.
 
-## Start here
+On a configured appliance, connect to **Avrana Party** Wi-Fi and open
+`https://party.avrana.net/party/`. That address works on the Party network; it is not a public
+website.
 
-| You want to know… | Canonical source |
+## What's in the project
+
+- **Party Home:** a game catalog, player profiles, chat, favorites, and recently played games.
+- **Party Core:** keeps track of the players, the host, and the current game. In current source,
+  the host moves the group through game selection, Play or Watch setup, play, and results.
+- **Browser games:** maintained LAN Games titles and BLUFF, a bluffing card game. Their source
+  lives in the separate, currently private [Games repository](https://github.com/rcnechamkin/avrana-party-games).
+- **Arcade streaming:** Gauntlet II runs on the Pi and streams to phones over WebRTC, with two
+  controller slots.
+
+PS1 support and per-phone views of a shared screen remain experiments. Some features on `main`
+have not been verified on the deployed appliance or on real phones. [SYSTEM](docs/SYSTEM.md)
+records verified deployments; [TESTING](docs/TESTING.md) explains what each kind of test proves.
+
+## Run the UI locally
+
+You can work on the interface and run offline tests without a Pi. Install **Node.js 22**,
+**npm**, and **Python 3.12 or newer**, then:
+
+```sh
+git clone https://github.com/rcnechamkin/avrana-party.git
+cd avrana-party
+npm ci
+npm run dev
+```
+
+Open **http://127.0.0.1:8180/party/**. Stop the server with Ctrl+C.
+
+The development server serves the Party interface with a stub games hub and simulated arcade
+status. It does not start Party Core, playable browser games, or an emulator. Testing complete
+browser-game sessions requires a Games checkout and the
+[cross-repository test harness](docs/TESTING.md#lan-games-provider-cross-repository-tests).
+
+`npm run dev` calls `python3`. On Windows, if Python is available as `python` instead, use:
+
+```powershell
+python -m avrana.web.devserver --port 8180
+```
+
+Setting up a Pi is a separate process. See the [deployment files and tools](deploy/README.md)
+and [network runbook](docs/runbooks/network.md). The local preview does not configure an appliance.
+
+## Run the checks
+
+With the dependencies above installed and `python3` available:
+
+```sh
+npm run check:repo
+npx playwright install chromium
+npm run test:offline
+```
+
+These check repository structure, documentation links, generated files, Python and JavaScript
+logic, and browser behavior against a local test server. Linux CI also runs nginx and logrotate
+checks. See [CONTRIBUTING](CONTRIBUTING.md#set-up-and-test-locally) for Windows commands and
+[TESTING](docs/TESTING.md) for individual suites and setup details.
+
+**`npm test` targets the live Pi.** Use the offline commands above for local development.
+Browser tests at phone-sized viewports do not replace testing on real iPhones or Android phones.
+
+## Contribute
+
+Start with [CONTRIBUTING](CONTRIBUTING.md). Check [Linear](https://linear.app/avranakern) for active
+work and [open pull requests](https://github.com/rcnechamkin/avrana-party/pulls) for changes already
+underway. If you cannot access Linear, ask the maintainer to confirm the scope before starting.
+The [roadmap](docs/ROADMAP.md) describes longer-term plans.
+
+| Area | Where to look |
 |---|---|
-| Current source/code/tests | GitHub `main` in Party and [Games](https://github.com/rcnechamkin/avrana-party-games) |
-| Live priorities, next task, blockers, acceptance and ownership | [Linear](https://linear.app/avranakern) |
-| Architecture and product contracts | [ADRs](docs/adr/) and [design docs](docs/design/README.md) |
-| Deployed topology and verified revisions | [SYSTEM](docs/SYSTEM.md), supported by dated [findings](docs/findings/) |
-| Strategic direction and milestones | [ROADMAP](docs/ROADMAP.md) |
-| Test commands and evidence tiers | [TESTING](docs/TESTING.md) |
-| Contributing and operational rules | [CONTRIBUTING](CONTRIBUTING.md), [AGENTS](AGENTS.md) |
-| Documentation authority and navigation | [Documentation map](docs/README.md), [manifest](docs/manifest.json) |
-| Network, HTTPS and adding games | [Network](docs/runbooks/network.md), [HTTPS](docs/runbooks/party-https.md), [add a game](docs/runbooks/add-a-game.md) |
+| Party interface | `web/party/`; CSS source in `web/src/` |
+| Party service and game integration | `avrana/`, `contracts/` |
+| Arcade streaming | `arcade/` |
+| Tests | `tests/` |
+| Deployment and maintenance | `deploy/`, `ops/`, `telemetry/` |
+| Architecture, procedures, and findings | [Documentation map](docs/README.md) |
 
-Findings, old PR bodies and historical handoffs record what was true at their date; they do not
-assign current work. Linear owns live sequencing.
+Before editing built CSS, icons, avatars, artwork, or catalogs, read the
+[generated-file guide](docs/GENERATED.md). Change the source and regenerate the output.
+For bug reports, include the device/browser, steps to reproduce, expected and actual results,
+and whether you used the local preview or an appliance. Leave out credentials and personal data.
 
-## Current source and verified production
+## Project records
 
-Current main includes [Party PR #34](https://github.com/rcnechamkin/avrana-party/pull/34) and
-[Games PR #13](https://github.com/rcnechamkin/avrana-party-games/pull/13), implementing
-[ADR 0011](docs/adr/0011-party-console-model.md). A browser with an Avrana profile gains or resumes
-presence automatically on the canonical Party/game surfaces. Normal play has no Join or Leave
-button. The host moves one authoritative Party location through home, Party-owned full-screen
-setup, game and held results. Play or Watch and host-only Start come from ADR 0010.
+GitHub `main` holds current source and tests. Linear holds current assignments. SYSTEM records
+verified deployed state. Accepted [architecture decisions](docs/adr/) and
+[design documents](docs/design/README.md) describe the contracts; proposals and historical notes
+keep their own status labels. A merged change is not evidence of deployment.
 
-**Source is ahead of verified production.** The latest repository deployment finding records
-Party **`956b968`** and Games **`c6d7b52`** on 2026-09-29. It verifies Party Core, authoritative
-navigation (AVR-128), Party-managed arcade lifecycle (AVR-134) and BLUFF pregame (AVR-129) on the
-server. Deployment and real-phone verification of ADR 0011 remain with **AVR-212**. Merged PRs and
-automated browsers do not establish production or phone acceptance; see [SYSTEM](docs/SYSTEM.md).
+[AGENTS.md](AGENTS.md) contains the shared rules for contributors and coding agents, including
+production access and handling secrets. Old handoffs are preserved in the
+[archive](docs/archive/README.md) and do not assign current work.
 
-| Surface | State |
-|---|---|
-| Party Home `/party/` | Implemented and deployed with profile, catalog, shared Party Chat, favorites/history and Party Core; current source adds the console model above |
-| Native browser games | Private Games fork supplies the maintained LAN Games titles; BLUFF is the first native Avrana testbed, with server-authoritative rules, filtered private hands and Party sessions |
-| Gauntlet II `/arcade/` | Shared WebRTC stream, two controller slots; emulator/encode run for the Party session. AVR-130 reconnect reservations merged in PR #35 during this reconciliation; deployment/phone acceptance remains unverified by published findings |
-| PS1 / Personal Viewports | Research on experiment branches; metadata is not an installed production runtime |
+## License
 
-BLUFF discovery/direct launch has dated iPhone evidence; the full group playtest and newer Party
-flows still need their own phone evidence. Earlier Gauntlet two-iPhone play likewise does not
-prove the current console flow.
-
-## URLs on the Party Wi-Fi
-
-- `https://party.avrana.net/party/`: Party Home; `/party/diag/`: diagnostics.
-- `https://party.avrana.net/`: maintained legacy Games hub; `/arcade/`: Gauntlet II.
-- `http://10.42.0.1/` (also `http://party.local/`): legacy/recovery entry, a separate origin.
-- `http://10.42.0.1/hotspot-detect.html`: Apple probe deliberately returns `Success` without a popup.
-
-Use the canonical HTTPS origin for Party identity. The AP is internal `wlan0` at `10.42.0.1`;
-`eth0` carries upstream/management traffic. TV and captive portal are optional.
-
-## Repository contents
-
-| Path | Purpose |
-|---|---|
-| `avrana/`, `contracts/` | Party Core, session protocol, providers, capability evaluation, Game Contracts and appliance grants |
-| `web/party/`, `web/src/` | Static Full Mode shell and generated UI sources/assets |
-| `arcade/` | Gauntlet II stream and runtime integration |
-| `deploy/`, `ops/` | Deployment templates and owner-run release/recovery tools |
-| `avrana-party.nginx`, `avrana-captive.conf` | Reviewed nginx and captive DNS configuration |
-| `tests/` | Offline unit/modules/browser suites, cross-repo harness and separate live-appliance tests |
-| `telemetry/`, `docs/` | Telemetry tooling; [documentation map](docs/README.md), architecture, runbooks, strategy and dated findings |
-| `experiments/` | [Research branch inventory](docs/branches.json) and explicitly archived experiments |
-
-## Development and verification
-
-Work on an issue-scoped branch from current main, then open a PR. Deployment and service restarts
-are separate owner-approved actions; never edit production checkouts.
-
-`npm ci` installs tooling. `npm run check:repo` validates repository governance and generated
-freshness. `npm run test:offline` runs Python unit, Node module and localhost
-browser checks; Linux CI also supplies nginx/logrotate gates. `npm run check:ui` and
-`python3 -m avrana.contracts.catalog --check` check generated assets. See [TESTING](docs/TESTING.md)
-for platform setup, historical results and cross-repo commands.
-
-`npm test`, soak and fault target the live appliance on Party Wi-Fi and are not offline checks.
-Real phones, offline operation, Wi-Fi capacity, streaming hardware, latency and power require
-separate bounded hardware/human evidence. Historical portal and arcade records remain in Git
-history, dated findings and [the historical Claude log](docs/archive/handoffs/2026-09-25-claude-log.md).
+The package metadata currently says ISC, but the repository has no LICENSE file. The owner
+has not resolved that discrepancy. See [CONTRIBUTING](CONTRIBUTING.md#licensing-and-sensitive-reports)
+for the current notice; existing third-party notices remain in place.
