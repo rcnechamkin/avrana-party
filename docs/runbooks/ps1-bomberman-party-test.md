@@ -1,5 +1,9 @@
 # Runbook: Bomberman on real phones through Party Home (PS1 slice)
 
+> **Experiment-only procedure.** The 2026-09-24 Party service/PS1 branch below has its
+> own old Join UI and is not the current Party Core/ADR 0011 normal flow. Do not promote it
+> as a canonical console contract. Current issue scope is in Linear; deployed state is in SYSTEM.
+
 Status: **ready to run** (2026-09-24). Everything below was exercised on the Pi with *simulated*
 phones over eth0 (`docs/findings/2026-09-24-ps1-bomberman-party-slice.md`); this run is the first
 with real phones on the party Wi-Fi. About 30 minutes. Leave any result blank if it wasn't measured.

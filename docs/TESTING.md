@@ -1,17 +1,14 @@
 # Testing: every suite, where it lives, how to run it
 
-AVR-130 offline coverage: `python -m unittest discover -s tests/unit -p test_arcade_stream.py`
-tests Party ticket admission, stable slots, reverse-order reconnect, 60-second reservation
-grace and expiry, immediate Leave, duplicate binding, stale/malformed/wrong-audience/expired
-tickets, spectator refusal, and standalone first-free allocation with fake media. Managed
-runtime tests cover session end/switch; the arcade route checks current ownership before input.
-`npx playwright test -c playwright.offline.config.ts tests/offline/arcade.spec.ts` checks fresh
-authenticated ticket POSTs before sockets, hello-only credentials, refusal, Leave, and the
-existing reconnect UI. Real phones, emulator and encoder remain acceptance checks in
-`docs/runbooks/arcade-party-provider.md`; no real-device acceptance is claimed.
+Guide reconciled 2026-10-01. Commands run from the repo root of the named branch/checkouts.
+Results are dated evidence per row; rows without an explicit date in the legacy/experiment
+inventory retain the 2026-09-24 snapshot. Counts are not a fresh run of current main.
+“Pi” means the appliance; Linux-only offline gates can run in Linux CI without the Pi.
 
-Status: inventory from 2026-09-24 (counts are from that day's runs). Commands run from the repo
-root of the branch named; "Pi" means `ssh party` (only for suites that need Linux or the appliance).
+Keep three kinds of evidence separate: automated/source verification (Tier 1–2), deployed
+server-side verification (exact releases in [SYSTEM](SYSTEM.md) and dated findings), and real
+phone/human acceptance (Tier 3). AVR-51 was deployed 2026-09-29; ADR 0011 is merged source,
+with deployment and phone proof pending AVR-212. A deployment curl check is not phone proof.
 Claude Code Cloud can run offline tests after `npm ci` and `npx playwright install` where needed;
 the offline checks on `main` also run in GitHub Actions (see "Offline CI lane" below).
 The `tests/` browser suite targets the live Pi and requires Party Wi-Fi and local name resolution;
@@ -19,9 +16,24 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 **Never run heavy suites on the Pi during a power measurement** — each SSH session is a CPU burst
 (`docs/findings/2026-09-24-new-psu-power-baseline.md`).
 
+## AVR-130 source coverage (PR #35 merged during AVR-213)
+
+AVR-130 offline coverage: `python -m unittest discover -s tests/unit -p test_arcade_stream.py`
+tests Party ticket admission, stable slots, reverse-order reconnect, 60-second reservation
+grace and expiry, immediate controller release, duplicate binding, stale/malformed/wrong-audience/expired
+tickets, spectator refusal, and standalone first-free allocation with fake media. Managed
+runtime tests cover session end/switch; the arcade route checks current ownership before input.
+`npx playwright test -c playwright.offline.config.ts tests/offline/arcade.spec.ts` checks fresh
+authenticated ticket POSTs before sockets, hello-only credentials, refusal, controller release, and the
+existing reconnect UI. Real phones, emulator and encoder remain acceptance checks in
+`docs/runbooks/arcade-party-provider.md`; no real-device acceptance is claimed.
+
+The arcade controller-release button is lower-level seat cleanup, not Leave Party.
+Published deployment evidence has not advanced to this source; physical acceptance is pending.
+
 ## This repository (`rcnechamkin/avrana-party`)
 
-| Suite | Branch | Command | Where | Needs | Result 2026-09-24 |
+| Suite | Branch | Command | Where | Needs | Recorded result (date in row; otherwise 2026-09-24) |
 |---|---|---|---|---|---|
 | Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm test` (fast), `npm run test:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; a hosts-file line `10.42.0.1 party.avrana` (Windows: `C:\Windows\System32\drivers\etc\hosts`, edited as administrator) | not run today (would take the laptop off the home network) |
 | Soak / fault harness (`@heavy`) | `main` | `npm run soak`, `npm run fault` | laptop on the Party Wi-Fi | live Pi; owner go-ahead for load | not run |
@@ -47,24 +59,29 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 `test-results/` is generated and Git-ignored.
 
-## Offline CI lane and what Cloud can run (`main`, TESTED 2026-09-26)
+## Offline CI lane and what Cloud can run (current main)
 
-`.github/workflows/offline-checks.yml` ("Offline checks") runs on every pull request, on pushes to
-`main`, and on demand. It pins Node **22.22.2** (npm 10.9.7), the versions of the validated Cloud
-run, and executes exactly these commands, which also pass in a Claude Code Cloud checkout:
+`.github/workflows/offline-checks.yml` (“Offline checks”) runs on PRs, main pushes and demand.
+It pins Node 22.22.2. Its current offline commands are:
 
 ```sh
 npm ci
 npx playwright test tests/soak-metrics.spec.ts
 cmp avrana-party.nginx arcade/nginx-site
+AVRANA_REQUIRE_NGINX=1 AVRANA_REQUIRE_LOGROTATE=1 python3 -m unittest discover -s tests/unit -v
+npm run check:ui
+python3 -m avrana.contracts.catalog --check
+node --test 'tests/offline/*.test.mjs'
+npx playwright install --with-deps chromium
+npx playwright test -c playwright.offline.config.ts
 ```
 
-`soak-metrics.spec.ts` uses no `page`/`browser` fixture, so no `npx playwright install` is needed;
-the `cmp` step is the repository half of the CLAUDE.md byte-identity rule (the live-site half needs
-the Pi). Under `CI=true` the config retries twice and forbids `test.only`. Evidence:
-`docs/findings/2026-09-26-cloud-offline-ci-lane.md`.
+CI installs nginx and logrotate for the Linux gates. Local runs may skip those gates if their
+binaries are unavailable; Windows also cannot exercise Linux process/symlink paths. The metrics
+spec needs no browser fixture/binary. The `cmp` is source byte-identity, not a check of live nginx.
+The original lane's dated results remain in `findings/2026-09-26-cloud-offline-ci-lane.md`.
 
-Every other spec in `tests/` on `main` targets the live Pi at `http://party.avrana` and **cannot run
+Every other top-level spec in `tests/` on `main` targets the live Pi at `http://party.avrana` and **cannot run
 in Cloud or CI**. None is known to be broken; in Cloud they fail before reaching any product code.
 
 | Spec | Hardware / real-device dependency | Why Cloud fails today |
@@ -80,12 +97,12 @@ Classification: **hardware/live-appliance-dependent** — all of the rows above.
 **Cloud-environment-incompatible** (on top of that) — `party.avrana` does not resolve outside the
 Party Wi-Fi, and the Cloud image's pre-installed Chromium (revision 1194) does not match Playwright
 1.63 (`chromium_headless_shell-1243`, WebKit); `npx playwright install` fixes only the latter.
-**Failing/broken** — none observed. Python files on `main` (`arcade/*.py`, `install-*.py`,
-`experiments/diplomacy/validate_engine.py`, `arcade/test-receiver.py`) are Pi tools or installers,
-not unit tests (GStreamer, evdev, aiohttp, `/srv` ROM paths, nginx/NetworkManager). The pure suites
-listed above on experiment branches are candidates for this lane once those branches are merged.
+**Failure interpretation:** a resolver/browser dependency failure outside the Party network
+is not a product regression. Pi tools/installers in `arcade/` and `install-*.py` are not the
+pure unit runner; `tests/unit/` contains the offline suites on main. Experimental suites remain
+branch-specific; do not mistake their historical results for current release verification.
 
-## Test tiers and the foundation suites (branch `claude/dreamy-carson-sja5mq`, TESTED 2026-09-26 in Cloud)
+## Test tiers and source suites (main; recorded results dated per row)
 
 | Tier | Meaning | Runs in |
 |---|---|---|
@@ -93,7 +110,7 @@ listed above on experiment branches are candidates for this lane once those bran
 | **2: simulated Party** | localhost only: a real nginx with the committed site and stand-in upstreams; real Chromium against `avrana/web/devserver.py` on 127.0.0.1 (a secure context, like the real origin) | Cloud, CI, laptop |
 | **3: hardware** | the Pi, real phones, the AP, HDMI, the H.264 encoder, power: `tests/*.spec.ts` (live), runbooks | Party Wi-Fi only; never claimed from a lower tier |
 
-| Suite | Tier | Command | Result (Cloud) |
+| Suite | Tier | Command | Recorded automated result (initial foundation rows: Cloud 2026-09-26) |
 |---|---|---|---|
 | Contracts (vocabulary, Game Contract v0, appliance profile, catalog freshness, grants, adapters named in the profile) | 1 | `python3 -m unittest discover -s tests/unit` | all pass (with the suites below: 62) |
 | Seat evaluation: 18 shared vectors, fuzzed properties (a weak seat never changes another; unknown ≠ no) | 1 | same | pass |
@@ -103,28 +120,31 @@ listed above on experiment branches are candidates for this lane once those bran
 | nginx: static rules + a **real nginx** run (HTTP captive/apps unchanged; `/party/` HTTPS-only with headers; origin JSON) | 1 + 2 | same, with `AVRANA_REQUIRE_NGINX=1` (skips without nginx otherwise) | pass (nginx 1.24) |
 | Browser modules: probe (fake browsers), evaluation vectors, keep-awake lifecycle, service worker in a VM | 1 | `node --test 'tests/offline/*.test.mjs'` | 41 pass |
 | Full Mode page, diagnostics, arcade page states (fake signalling), offline copy with Chromium offline mode | 2 | `npx playwright test -c playwright.offline.config.ts` (Cloud: `PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium`) | 42 pass (2 Chromium projects) |
-| Party Core v0 (`avrana.party`): explicit Join, server-issued device cookie, presence as liveness (a player in the game stays `playing`), host grace/succession, versioned host actions, one session launching→active→ending→ended, stale reports refused, 150-seed fuzz; HTTP guards (Host, Origin, JSON, size), no token in bodies/logs, long poll | 1 | same (`test_party_core`, `test_party_service`) | 47 pass (laptop + Linux + CI, 2026-09-27; PR #12) |
+| Party Core v0 (`avrana.party`): guarded join/resume API (automatically called by profile-backed pages in ADR 0011 source), server-issued device cookie, presence as liveness (a player in the game stays `playing`), host grace/succession, versioned host actions, one session launching→active→ending→ended, stale reports refused, 150-seed fuzz; HTTP guards (Host, Origin, JSON, size), no token in bodies/logs, long poll | 1 | same (`test_party_core`, `test_party_service`) | 47 pass (laptop + Linux + CI, 2026-09-27; PR #12) |
 | Console model (ADR 0011): one `location` (home/setup/game/results) moved only by the host (host-only Party Home from results, Play again as a new setup, End home, a direct game), the same for every phone; avatars are bundled Gaze ids only; `destination()` for every page and location (Party Home, the round's game, other party games, standalone titles; host and follower alike; no profile or an old Party Core moves nobody); the follower's routing on load and on every move, automatic presence with a profile, the host API; games: held Party results, host-only end, onboarding facts pinned to the rules | 1 | `test_party_core` `ConsoleLocation`; `node --test tests/offline/party-mode.test.mjs tests/offline/party-follow.test.mjs`; games `tests/test_bluff_party_pregame.py`, `tests/test_bluff_briefing.py` | pass (laptop, 2026-09-29) |
 | Party pregame (AVR-129, ADR 0010): a pregame game opens in `setup` (a committed move, nothing at the game); members choose Play or Watch; host-only start with `if_version`; refused while anyone here has not chosen or outside min/max; away members never block, a member joining during setup must choose; choices become the roster roles (players first); `round_on` during a round, late arrivals watch; `setup` tickets for the named game; host End or switch from setup never reaches the game; a failed launch after setup sends everyone home; fuzz with choices/starts; every session-protocol flow test again through setup (`PregameFlow`); `setupPanel()`, arrival/tiles during setup, `choose`/`startRound` (stale retried once, `unresolved` never) | 1 | same (`test_party_core` `Pregame`, `test_party_service` `PregameHttp`, `test_party_session_flow` `PregameFlow`) + `node --test tests/offline/party-mode.test.mjs` | 169 party unit tests and 80 module tests pass (laptop, 2026-09-29) |
 | Arcade as a Party-launched provider (AVR-134, ADR 0009): launch starts / end stops the runtime under one lock; forged, replayed, expired or misaddressed messages change nothing; a failed or slow start is stopped again; a launch over a lost end stops the old run first; an end during a start waits for it; stale ends (idle: ok; while a newer run: 409); an unconfirmed stop; abandon reports once and never hangs; loopback/unproxied/size/JSON guard; configure needs key + loopback party URL; cross-component: real Party Core + HTTP link + reference BLUFF + managed arcade over HTTP, one timeline, BLUFF and the arcade never both running across switches, start failure, a start slower than the link (rolled back), restart recovery, abandon to lobby; `stream.py` idle → launch → end → relaunch and the fatal `abandoned` report; Party Core's failed-launch rollback `end`, per-game link timeouts; deploy drop-in/config agreement, nginx never names :8098 | 1 | same (`test_party_managed`, `test_arcade_stream` `ManagedArcade`, `test_party_service`, `test_party_session_flow` `LinkTimeouts`, `test_party_core_deploy`) | 139 party tests pass, 5 runs in a row; arcade tests pass except the 3 known Windows-only ones (laptop, 2026-09-29) |
-| Party navigation (AVR-128, ADR 0008): `nav` moves only on committed transitions; host-only switch/end with `if_version`; a switch ends the old game's runtime before the next launch (recording provider link: no overlap), stops if the old game does not confirm; concurrent and stale host tabs leave exactly one activity; non-host/stranger refused; Leave never moves the party; a ticket naming another game is refused and old tickets die on a switch; fuzz with switches (`nav` never points at another game than the active one); `follow()` and the in-game follower module | 1 | same (`test_party_core` `Navigation`, `test_party_service` `PartyNavigation`/`UnconfirmedSwitch`, `test_party_session_flow`) + `node --test tests/offline/party-mode.test.mjs tests/offline/party-follow.test.mjs` | 118 party unit tests and 76 module tests pass (laptop, 2026-09-29) |
-| Party Core deployment package (AVR-51; committed, not deployed): config/unit templates agree with the service, contracts and appliance grants; the committed site carries `deploy/party-core/nginx-party-api.location` verbatim, HTTPS only; key script makes a 0600 key the protocol reads, never prints it, refuses overwrite. `test_nginx_site` Tier 2 runs real nginx with the real party service behind `/party/api/` (state, Join cookie flags, Origin refusal, long poll, `/internal/` never reaches the party) | 1–2 | same (`test_party_core_deploy`, `test_nginx_site`; Tier 2 and the key script need Linux, CI requires nginx) | Tier 1 on Windows; Tier 2 + key script: CI |
+| Party navigation (AVR-128, ADR 0008): `nav` moves only on committed transitions; host-only switch/end with `if_version`; a switch ends the old game's runtime before the next launch (recording provider link: no overlap), stops if the old game does not confirm; concurrent and stale host tabs leave exactly one activity; non-host/stranger refused; low-level removal never moves the party (no normal Leave UI); a ticket naming another game is refused and old tickets die on a switch; fuzz with switches (`nav` never points at another game than the active one); `follow()` and the in-game follower module | 1 | same (`test_party_core` `Navigation`, `test_party_service` `PartyNavigation`/`UnconfirmedSwitch`, `test_party_session_flow`) + `node --test tests/offline/party-mode.test.mjs tests/offline/party-follow.test.mjs` | 118 party unit tests and 76 module tests pass (laptop, 2026-09-29) |
+| Party Core deployment package (AVR-51; deployed 2026-09-29, server-side evidence in `findings/2026-09-29-party-core-deploy.md`; tests here verify source/config): config/unit templates agree with the service, contracts and appliance grants; the committed site carries `deploy/party-core/nginx-party-api.location` verbatim, HTTPS only; key script makes a 0600 key the protocol reads, never prints it, refuses overwrite. `test_nginx_site` Tier 2 runs real nginx with the real party service behind `/party/api/` (state, join POST cookie flags, Origin refusal, long poll, `/internal/` never reaches the party) | 1–2 | same (`test_party_core_deploy`, `test_nginx_site`; Tier 2 and the key script need Linux, CI requires nginx) | Tier 1 on Windows; Tier 2 + key script: CI |
 | Log and telemetry bounds (AVR-30): the telemetry logrotate rule covers exactly the sampler's file (never hand-made evidence) and the installer installs it; journald caps are explicit; `docs/runbooks/logs-and-retention.md` names every source; the arcade's client-stats log rotates and keeps the newest record; real logrotate rotates past 10 MB and the sampler's `>>` appends again | 1–2 | same (`test_log_bounds`, `test_arcade_stream` ClientStatsLog; real logrotate needs Linux, CI requires it) | Tier 1 on Windows (2026-09-29); real logrotate: CI |
 | Party session protocol v0 (`avrana.party.protocol`, ADR 0006): shared vectors, ticket audience/session/expiry/tamper/type confusion, stable game token, replay, `GameSide`; end to end over HTTP with a reference game: launch roster, ticket admit + reconnect = same identity, spectator, server-to-server completed/abandoned, browser-forged/stale/replayed reports refused, end for everyone | 1–2 | same (`test_party_protocol`, `test_party_session_flow`) | 32 pass (laptop + Linux + CI, 2026-09-27; PR #13) |
 | Catalog is fresh | 1 | `python3 -m avrana.contracts.catalog --check` | clean |
 | Generated UI assets are fresh (`web/party/styles.css` from `web/src/party.css`, `web/party/lib/icons.js` from Lucide; `docs/UI-DESIGN-SYSTEM.md`) | 1 | `npm run check:ui` | clean (laptop, 2026-09-27) |
 
 `npm run test:offline` runs the three offline runners in order. `npm run dev` serves the simulated
-Party at `http://127.0.0.1:8180/party/`. CI runs everything in this table (see
-`.github/workflows/offline-checks.yml`). WebKit is not used offline: Playwright's WebKit on
+Party at `http://127.0.0.1:8180/party/`. Party CI runs this repository’s offline runners
+(see `.github/workflows/offline-checks.yml`); Games-side tests run in Games CI, and the
+combined provider harness is separate explicit-checkout verification. WebKit is not used offline: Playwright's WebKit on
 Linux is not iPhone Safari. Tier 3 for these features is the phone checklist in
 `docs/runbooks/party-https.md`.
 
 ## The games fork (Avrana Party Games — a separate repository)
 
-Not on GitHub yet: the laptop backup is the bare repo `~/avrana-party-games.git`, the Pi dev clone is
-`~/avrana-lab/avrana-party-games` (see `docs/SYSTEM.md`). Never use its `abandoned/classic-diplomacy`
-branch.
+Private GitHub `rcnechamkin/avrana-party-games` is canonical, with independent CI. Use an explicit
+local checkout for cross-repository tests (see below), not production paths. Games PR #13 is
+merged source for ADR 0011; verified deployment remains `c6d7b52` in SYSTEM. Never use its
+`abandoned/classic-diplomacy` branch. The following table is historical 2026-09-24 evidence,
+including failures against then-main; it is not a current-main failure report.
 
 | Suite | Branch | Command | Result 2026-09-24 |
 |---|---|---|---|
@@ -134,6 +154,10 @@ branch.
 | Browser playtests (puppeteer-core) | `main` | `node tests/playtest_<game>.mjs` | not run today; there is no BLUFF browser playtest yet |
 
 ## What is NOT covered by any automated test (manual only)
+
+Live-appliance Playwright can verify browser/server behavior against a deployed Pi, but does
+not establish human interaction on actual iPhone/Android hardware. Record release hashes,
+network path and real devices separately before claiming phone acceptance.
 
 Real iPhone Safari and Android Chrome behaviour (captive probes offline, `party.local`, sleep/wake,
 WebRTC on iOS), real Wi-Fi with several phones (the AP's client ceiling), H.264 on the Pi's encoder,
@@ -165,29 +189,31 @@ Windows uses .venv/Scripts/python.exe and PowerShell $env:NAME assignments. The
 harness binds 127.0.0.1:8182, imports actual donor routes/chat/game sockets and serves
 the real shell with its CSP. A second instance on 127.0.0.1:8183 (`--party-session`,
 `tests/provider/party_harness.py`) also runs the real Party service behind `/party/api/`
-(the games server gets a throwaway BLUFF key and the party's loopback URL, both halves of its
-party-session config), so `party-session.spec.ts` drives Join, launch, tickets, End and the
-real BLUFF page on one origin: reload, sleep/wake, a lost or timed-out ticket request return
-the same seat and hand; another member, a forged or stale ticket, a wc-token and a stranger
-never take a seat or see a hand; a phone asleep through the end shows the end and joins the
-rematch as a new session; a watcher becomes a player at the next launch (AVR-22/23/24).
-`party-home.spec.ts` drives the real Party Home instead (AVR-20/AVR-127): phones Join on
-`/party/`; only the host is offered "Start for everyone" and Party Core refuses anyone else; one
-start takes every joined phone into the same BLUFF session with its Party identity; Back to Party
-offers Rejoin without bouncing; a reopened or stale tab resolves to the current game; a start from
-a stale view is re-checked and happens once; the host leaving mid-game hands over without ending
-it; a failed start stays in the lobby and a second party game cannot start over the first
-(the harness configures a second party game, `chess`, with no game side); and the same shell with
-no Party Core (8182) stays the plain catalog. AVR-128 (ADR 0008) adds: the host's in-game "End for
-everyone" (two taps; not offered to others, and Party Core refuses them) takes every player inside
-BLUFF back to Party Home; a host switch ends BLUFF before the next launch, a same-game switch is a
-new session that BLUFF pages join on their own, and a switch to a game that cannot start sends the
-players inside BLUFF home; Party Home offers the host "Switch everyone" instead of a second game.
-In `party-session.spec.ts`, a phone asleep through the host's end now follows the Party home on
-waking and joins the rematch from Party Home. These run once, in the android-size project, with a
-Pixel-sized and an iPhone-sized phone; the whole provider run expects 31 passed and 19 skipped (laptop, 2026-09-29, AVR-129). `party-pregame.spec.ts` (AVR-129) resets with `?pregame=1`, so BLUFF runs the Party's pregame as in production: every phone lands on BLUFF's setup screen; only the host has Start, disabled until everyone chose and two play (Party Core refuses `not_host`, `unresolved`, `player_count`); players are dealt only their own cards in every frame, a spectator sees every hand, and `round_on` refuses a role change mid-round; a first-time phone gets the briefing before Play counts; the host can cancel the setup. In a Party round BLUFF has no ready/start of its own; the helpers wait for the deal. The real-phone version is
-`docs/runbooks/bluff-party-reconnect.md`. Arcade health is simulated. It rejects metadata drift
-before starting. Runtime test avatar/media directories stay ignored in the local
-games checkout. Tests use synthetic identities; no Pi, WLAN, TV, ROM or emulator.
+(the games server gets a throwaway BLUFF key and the Party's loopback URL).
+
+Current source coverage:
+
+- `party-session.spec.ts`: protocol join/resume, launch, tickets and End with real BLUFF;
+  reload and lost/timed-out ticket requests keep identity/hand. Forged/stale tickets, legacy
+  tokens and strangers cannot take another seat or see private state.
+- `party-home.spec.ts`: profile-backed automatic presence, host-only direct launch and End,
+  authoritative follow on reload/reopen, blocked follower browsing, stale start, switch ordering,
+  failure rollback and no-Core/standalone compatibility. Host succession uses the lower-level
+  removal API in a test; it does not imply a Leave UI.
+- `party-pregame.spec.ts`: `?pregame=1` exercises the ADR 0011 full-screen setup on **Party Home**,
+  How to play before first Play, Play/Watch choices, host-only Start and refusal reasons,
+  player-only private hands versus the Party spectator view, role lock, late arrival/reconnect,
+  host End and held results with host Play again/Party Home. Party round BLUFF has no independent
+  ready/start or automatic results-to-lobby timer.
+
+These are localhost Chromium tests with phone-size viewports, not real iPhone/Android runs.
+Recorded pre-ADR-0011 provider counts (31 passed/19 skipped, 2026-09-29 AVR-129) are historical;
+consult the current run rather than treating those totals as current console acceptance.
+The [phone runbook](runbooks/bluff-party-reconnect.md) includes older release-specific checks;
+apply ADR 0011 acceptance via AVR-212 once that release is deployed. Arcade health is simulated;
+AVR-130 reservation source merged in PR #35; physical acceptance remains pending. The harness rejects metadata drift, uses
+synthetic identities and keeps generated avatar/media data ignored in the local Games checkout.
+No Pi, WLAN, TV, ROM or emulator is used.
+
 CI independently checks each repo; private cross-repo checkout credentials are not
 introduced. Linux CI supplies nginx/rsync/bash gates unavailable on this Windows host.

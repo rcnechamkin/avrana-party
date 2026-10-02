@@ -1,9 +1,13 @@
 # Game integration: capabilities, runtime, and the party contract
 
-Status: **draft contract (2026-09-24); nothing here is built.** Field names and enums will change
-when the first two consumers use them. Context: `PARTY-PLATFORM.md`, `docs/adr/0003-ids-and-keys.md`,
+Status: **integration guide reconciled 2026-10-01.** Current contracts are Game Contract v0
+(ADR 0004), `avrana.party-session/v0` (ADR 0006), Party-managed arcade lifecycle (ADR 0009),
+Play/Watch (ADR 0010) and authoritative console location/follow (ADR 0011). ADR 0011 is merged
+source ahead of verified production; AVR-212 owns deployment/phone proof. See [SYSTEM](../SYSTEM.md).
+Sections explicitly marked draft, experiment or historical below are retained design evidence,
+not a new SDK contract. Context: `PARTY-PLATFORM.md`, `docs/adr/0003-ids-and-keys.md`,
 `GAME-INSTALLATION.md`, `PERSONAL-VIEWPORTS.md`. Code references: `core/…`, `web/…`, `games/…` and
-`server.py` are in the Avrana Party Games fork (not published yet; Pi dev clone
+`server.py` are in the private GitHub `rcnechamkin/avrana-party-games` fork (Pi dev clone
 `~/avrana-lab/avrana-party-games`); `arcade/…` is in this repo; `ps1/…` is on branch
 `ps1-emulation` of this repo (title profiles and the `hello` token: `experiment/ps1-title-profiles`).
 
@@ -18,7 +22,7 @@ A game touches the platform through three **separate** things. Keeping them sepa
 Rule: **the package describes and requests; the appliance decides.** A manifest can never set its
 own trust tier, URL path or id namespace. Installation is covered in `GAME-INSTALLATION.md`.
 
-### How the pieces connect (target shape, not built)
+### Broader target shape (conceptual; seats/votes/event store and PS1 are not all built)
 
 ```mermaid
 flowchart LR
@@ -43,14 +47,14 @@ flowchart LR
   PS --- DB
 ```
 
-The party service decides *who* and *what next*; each game decides *how the game plays*. Games
-never see device tokens; the party never runs game rules.
+The party service decides membership and host-authorized game movement; each game decides
+*how the game plays*. Games never see device tokens; the party never runs game rules.
 
 ---
 
-## 1. Capability manifest v0 (draft)
+## 1. Earlier capability manifest v0 (historical draft)
 
-> **Game Contract v0 (2026-09-26, branch `claude/dreamy-carson-sja5mq`, ADR 0004):** the contract for
+> **Game Contract v0 (merged on main, ADR 0004):** the contract for
 > `main` is `contracts/games/*.json`, validated by `avrana/contracts/game.py` (field reference:
 > `contracts/README.md`). It grows from manifest v0 below, keeping the ids, enums and strictness. It
 > adds ordered **presentations**, each with required and optional capabilities; a Personal Viewport
@@ -144,18 +148,24 @@ players, solo, tv, category and an `EXTERNAL` list), never hand-written per game
 | `external` | a platform-known service (today's arcade and PS1 stream servers) | built-in |
 
 `resources` name platform-defined exclusive resources (e.g. the single `emulator_slot`: only one
-emulated game runs at a time on a Pi 4 — CPU, one hardware encoder budget, power). Today nothing
-enforces that; the party launcher will.
+emulated game runs at a time on a Pi 4 — CPU, one hardware encoder budget, power). Party-managed
+Gauntlet II launch/end now enforces its runtime lifecycle (AVR-134);
+PS1 integration and broader resource allocation remain experimental/future.
 
 ---
 
-## 3. The party contract (four optional pieces)
+## 3. Integration boundaries: implemented protocol versus earlier draft
+
+Current source uses session launch/tickets/completion from ADR 0006; host-authoritative
+navigation from AVR-128; Party-owned Play/Watch from ADR 0010; and ADR 0011 automatic presence,
+full-screen setup and held results. The earlier ticket/event/permission-hook ideas below remain
+drafts or PS1 experiment descriptions where labeled. Do not implement them as a second SDK.
 
 Without any of them a game keeps working exactly as today. With them it joins the party.
 
 ### 3.1 Seat ticket handshake (v1)
 
-> **Superseded for party sessions by `avrana.party-session/v0` (ADR 0006, proposed, 2026-09-27):**
+> **Superseded for party sessions by `avrana.party-session/v0` (ADR 0006, merged and deployed; dated production evidence in SYSTEM):**
 > tickets carry a session id and an opaque participant id instead of a slot, and completion is a
 > signed server-to-server report. The text below is the earlier design and the PS1 experiment.
 
@@ -166,7 +176,7 @@ Without any of them a game keeps working exactly as today. With them it joins th
 > view, sent in the WebSocket hello; the game assigns exactly that slot and turns first-come off.
 > **Deviations from the text below:** tickets are not single-use (reuse within 5 minutes returns the
 > same seat to the same phone; a leaked ticket could take that seat until it expires), and there is
-> no separate game key — the slot is bound directly. The LAN Games bridge is not built.
+> no separate game key — the slot is bound directly. This describes the old PS1 experiment; the current BLUFF bridge uses ADR 0006.
 
 - The party issues a **short-lived, single-use ticket** bound to one presence and **one game**
   (an audience `game_id`, so it can't be replayed into another game).
@@ -189,7 +199,7 @@ Without any of them a game keeps working exactly as today. With them it joins th
   only because built-in code is trusted; per-game isolation starts with sandboxed third-party games
   (`GAME-INSTALLATION.md`).
 
-### 3.2 Event sink
+### 3.2 Broader event sink (draft; signed session reports already exist)
 
 The game (or a thin observer beside it) reports lifecycle events. Draft envelope:
 `{v, party_id, game_id, instance, ts, kind, presence_id, seat_id, provenance, data}`; kinds:
@@ -199,15 +209,22 @@ can emit only `platform_observed` unless a per-game adapter exists; community ga
 `community` trust-tier label (not a provenance value). Flags travel with results: bot seats, autopilot turns, forfeits, abandoned games
 (never a win).
 
-### 3.3 `party.js` follow client
+### 3.3 Implemented authoritative location/follow client (ADR 0011)
 
-A tiny script that holds the party socket, knows `nav_seq`, follows party navigation to URLs the
-**platform** assigned (manifest ids → platform paths), and offers "Party Home". For LAN Games it is
-injected once by the shared `hubnet.js` (except **WORDCLASH**, which has its own room engine and
-needs its own bridge or stays legacy). For untrusted games it must live in a **platform frame**
-outside the game, because a game's own JavaScript must never be able to call host controls.
+`web/party/lib/party-mode.js` supplies `destination(view, here)`. Party Home and
+`party-follow.js` on canonical game/arcade surfaces apply the Party Core location on load,
+reconnect and every change using `location.replace`. Presence gains/resumes automatically for
+an Avrana profile; no normal Join/Leave button or optional Rejoin/Party Home offer. Home/setup
+render on Party Home; game/held results render on the named game page. Only the host moves it.
+A standalone title may stay open while the Party is home and follows when the host moves it.
 
-### 3.4 Host checks
+The Games integration script loads the follower, hides global Party chrome during a Party
+round, and exposes `window.AvranaParty` for host controls in game chrome (ADR 0011). Standalone
+access remains supported without Party Core/profile or on plain HTTP. This is the implemented
+built-in integration, not a proposed API for untrusted games; sandbox/frame isolation remains
+future design. Deployment/phone validation of these console changes is AVR-212.
+
+### 3.4 Earlier generic permission-hook proposal (not an implemented SDK)
 
 Games gain one permission hook — a `may(participant, verb)` check where they dispatch actions
 (start, settings, end, rematch) — that allows everything by default and asks the party when a game
@@ -215,9 +232,16 @@ runs party-launched. Rule gates (minimum players) stay game-specific.
 
 ---
 
-## 4. What today's code duplicates (and where it converges)
+## 4. Historical gap analysis: 2026-09-24 code duplicates
 
-From a read-only audit of the LAN Games fork, BLUFF, the arcade and PS1 (2026-09-24):
+The table below preserves the read-only 2026-09-24 audit, before Party Core/session/nav/arcade
+rollout. “Today” means that date, not current main or production. In particular its “arcade 0 s”
+row describes legacy allocation, not current source. **AVR-130 reconnect reservations merged
+in Party PR #35 during this reconciliation.** The arcade now admits Party tickets and reserves
+stable session-local slots for 60 seconds; explicit controller release frees a slot without
+removing Party presence. Deployment and real-phone acceptance remain unverified by published
+findings. Automatic presence/follow alone does not prove slot preservation. Preserve the broader
+seat/grace rules in `PARTY-LIFECYCLE.md`; do not claim physical acceptance or a universal SDK.
 
 | Concept | Today | Platform version | Stays in the game | Smallest seam |
 |---|---|---|---|---|
@@ -235,7 +259,7 @@ From a read-only audit of the LAN Games fork, BLUFF, the arcade and PS1 (2026-09
 normal. The platform rule is therefore "every connection resolves to one presence; input streams
 (controller slots) accept one controlling connection per seat", not "one socket per person".
 
-### Security gaps noticed in passing (not yet fixed)
+### Security observations from that audit (historical; not a fresh validation)
 
 - The arcade's `/stats` is reachable through nginx today (`party.local/arcade/stats`) and exposes
   peer IPs and client stats; PS1 restricts the same endpoint to localhost.

@@ -1,9 +1,13 @@
 # LAN Games provider boundary
 
-Status: audited 2026-09-26 before implementation. Review branch only; not deployed.
-Base: Avrana 459d4cd, games fork 2cf4831. Builds on merged assimilation PR #5.
+Status reconciled 2026-10-01: **implemented and merged** (Party PR #7 / Games PR #1), deployed
+with the fork/shell cutover; [SYSTEM](../SYSTEM.md) owns verified revisions. Builds on assimilation
+PR #5. The ownership audit retains the 2026-09-26 baseline (Party `459d4cd`, Games `2cf4831`);
+then-missing Party Home/roster/BLUFF grants are historical observations. ADRs 0006–0011 add those
+capabilities; current main follows authoritative Party location, with no normal Join/Leave UI
+and host controls in game chrome. ADR 0011 deployment/phone proof remains AVR-212.
 
-## Concrete ownership audit
+## Historical concrete ownership audit (2026-09-26)
 
 | Area / actual implementation | Classification / boundary |
 | --- | --- |
@@ -27,7 +31,7 @@ Base: Avrana 459d4cd, games fork 2cf4831. Builds on merged assimilation PR #5.
 | Server state | Game sessions and chat are process memory; avatars/media/venue are ignored runtime files. No new database. |
 | TV QR links | Game-owned join links. Preserve secure protocol and integrated marker when linking to the phone game. |
 
-## Implemented review-branch contract
+## Implemented provider contract (with subsequent Party amendments)
 
 Avrana owns discovery, launch identity, global navigation, profile, library and Party
 Chat. LAN Games owns game-specific rules, lobbies, hands, controls and assets.
@@ -39,8 +43,8 @@ https://party.avrana.net/party/ in production; no arbitrary return URL is accept
 
 HTTP/IP/.local profiles remain separate origins; no unsafe storage recovery.
 Existing legacy identity authorization and chat clear semantics remain debt.
-Authoritative roster/session state, Party Home, per-game chat and PS1 execution
-promotion are outside this sprint.
+Party Core now owns authoritative roster/session state and Party Home is implemented.
+Per-game chat and PS1 execution promotion remain outside this provider contract.
 
 ## Deterministic metadata flow
 
@@ -57,7 +61,8 @@ changes, regenerate/review/copy this public JSON and rebuild Avrana; do not edit
 provider-owned fields by hand. Both repos have drift/normalization tests.
 
 BLUFF retains existing ID bluff and its explicit private-hand/spectator contract.
-Its public name/summary/counts come from the provider; it remains uninstalled.
+Its public name/summary/counts come from the provider; BLUFF is granted and listed in
+Party Home since AVR-91 (2026-09-28).
 The 29 existing LAN grants are unchanged. PS1/RetroArch experimental entries and
 arcade grants remain unchanged. Unknown late-join/spectator/private-hand facts
 remain flagged for review instead of invented from registry metadata.
@@ -79,9 +84,9 @@ standalone. No arbitrary return URL is supported.
 
 The donor bootstrap loads before clients, including WORDCLASH. Source-declared
 data-avrana-* controls gate global profile/photo/avatar entries and old hub links.
-One Back to Party control occupies normal document flow. A contained game room
-and declared viewport/screens retain the remaining height, bounding fixed overlays
-without covering controls. Game-specific UI is preserved. Existing global profile
+Outside a Party round, a Back to Party control occupies normal document flow. During a Party
+round ADR 0011 hides that bar and follows authoritative location; only the host moves the
+Party via game chrome. A contained game room retains height for controls and overlays. Game-specific UI is preserved. Existing global profile
 name is read-only in integrated game joins; editing lives in /party/.
 Standalone remains supported for development and old links. TV links/QRs preserve
 HTTPS and the marker; this is navigation compatibility, not TV execution validation.
@@ -106,10 +111,13 @@ show competing global chat nor open a second chat socket. Returning to Party
 reconnects to that same rolling history. Chat counts remain connections, not roster.
 Identity is local origin-scoped compatibility, not accounts. HTTP/.local/IP storage
 cannot be recovered across origins. Legacy token authorization and chat clear
-semantics, authoritative roster/session service, per-game chat, deeper extraction,
+semantics, per-game chat, deeper extraction,
 PS1 execution, TV/Personal Viewport and Companion remain later work.
 
-## Coordinated review / deployment order
+## Historical coordinated review / deployment order (2026-09-26 sprint)
+
+The PRs and initial cutover below have landed. This is historical dependency rationale, not
+the current task queue; Linear owns live work and SYSTEM owns deployed revisions.
 
 1. Review and merge donor PR first; standalone remains backward compatible.
 2. Review and merge platform PR second. It refuses unsupported donor launches.

@@ -1,12 +1,18 @@
 # Party lifecycle: party, presence, host, seats
 
-Status: **design (2026-09-24). Rules are proposals checked by an offline simulation.** Party Core
-v0 (ADR 0006) since implements the party, presence, host and one-session rules; R2/R5 navigation
-and the host's `in_game → launching` switch (end first) are implemented per ADR 0008 (AVR-128;
-TESTED on a laptop, not on phones). The pregame (a round's Play or Watch, host-only start, roles
-fixed until the next setup) is Party Core's `setup` state per ADR 0010 (AVR-129). Seats,
-intermission seating, votes and kicks are not built. Simulation: `experiments/party-model/` on branch `experiment/party-sim` (52 tests incl. a
-300-seed fuzz). Concepts: `PARTY-PLATFORM.md` §5; identifiers: `docs/adr/0003-ids-and-keys.md`.
+Status: **canonical lifecycle narrative, reconciled 2026-10-01.** Party Core v0 implements
+membership, liveness, host grace/succession and one session (ADR 0006); AVR-128 authoritative
+navigation, ADR 0010 Play/Watch with host-only Start, and AVR-134 arcade lifecycle are deployed,
+server-side verified. ADR 0011 console behavior is accepted/merged source; deployment and
+Tier 3 phone validation remain AVR-212. [SYSTEM](../SYSTEM.md) owns verified revisions.
+
+The earlier offline model (`experiments/party-model/`, `experiment/party-sim`, 52 tests + fuzz)
+is historical design evidence. Its socket-based presence and lobby/intermission UI are not the
+current console contract. Seat reservation/grace/release rules below remain requirements for
+integration. AVR-130 arcade reservation changes merged during this reconciliation in PR #35,
+with deployment/real-phone acceptance still unverified by published findings. They do not prove that
+a universal seat layer, votes, kicks or intermission seating is implemented.
+Concepts: `PARTY-PLATFORM.md` §5; identifiers: [ADR 0003](../adr/0003-ids-and-keys.md).
 
 ## Locked decisions this document implements
 
@@ -29,7 +35,7 @@ intermission seating, votes and kicks are not built. Simulation: `experiments/pa
   refill always gets a new seat id and a new game key.
 - **R4 — deadlines hold at apply time.** Every due timer (host grace, launch timeout, seat grace and
   release, table abandon, vote close, party idle) is applied *before* each operation, not only by a
-  background tick. A vote after its deadline, a "ready" after the launch timed out, or a request from
+  background tick. A vote after its deadline, a start after the launch timed out, or a request from
   a host whose grace ran out is refused even if no tick has run. Timer-driven changes bump the
   version like any other change.
 - **R5 — navigation is keyed by `(party_id, nav_seq)`.** `nav_seq` restarts in a new party, so a
@@ -39,40 +45,61 @@ intermission seating, votes and kicks are not built. Simulation: `experiments/pa
 
 ## State machines
 
-### Party
+### Party location (ADR 0011 product states)
 
 ```mermaid
 stateDiagram-v2
-  [*] --> lobby: first Join (party created; opening the page only observes)
-  lobby --> launching: host selects a game (launch_id; always-on games are ready at once)
-  launching --> in_game: ready AND launch_id matches → deal seats, nav+1
-  launching --> lobby: failed / timeout / host cancels (nav unchanged)
-  in_game --> intermission: game ends / host ends / crash / table abandoned → save seating, nav+1 home
-  in_game --> launching: host switches game (current session ends first)
-  intermission --> launching: host picks a rematch or the next game
-  intermission --> lobby: host "Home"
-  lobby --> ended: host ends / idle with nobody connected / admin
-  in_game --> ended: host ends (session abandoned)
-  intermission --> ended: host ends / idle
-  ended --> [*]: next connect creates a NEW party (devices and profiles are appliance-scoped)
+  [*] --> home: profile-backed automatic presence
+  home --> setup: host selects a pregame title
+  setup --> game: Play/Watch chosen; host Start; launch confirmed
+  setup --> home: host cancels or launch fails
+  home --> game: host launches a direct title; launch confirmed
+  game --> results: game reports completion; results held
+  game --> home: host End confirmed
+  results --> setup: host Play again for a pregame title
+  results --> game: host relaunches a direct title
+  results --> home: host Party Home; held game room released
+  home --> [*]: idle expiry or administrative cleanup
 ```
 
-### Presence
+This is the shared **location**, not a replacement for protocol states
+`setup/launching/active/ending/ended`. While a pregame launch is pending the location remains
+setup; failed launch returns home. Host switching ends the old session before launching the
+next; an unconfirmed stop blocks the switch. Core's idle `lobby` maps to home. Completed results
+are held until the host moves on; there is no game's automatic lobby timer in a Party round.
+All member surfaces follow the authoritative location on load/reconnect/change. A finished
+session outcome controls whether it exposes results or home; see ADR 0011 and `core.py`.
+
+### Presence (current membership and liveness)
 
 ```mermaid
 stateDiagram-v2
-  [*] --> connected: Join with a device token (new presence "Player N")
-  connected --> reconnecting: last tab/socket closes
-  reconnecting --> connected: same device (or a trusted profile move)
-  reconnecting --> away: PRESENCE_GRACE elapsed
-  away --> connected: returns
-  connected --> left: "Leave party" / kicked
-  reconnecting --> left: kicked
-  away --> left: kicked
-  left --> connected: same device rejoins (unless kicked from this party) — same presence, late-join rules
+  [*] --> here: canonical page automatically POSTs join with an Avrana profile
+  here --> away: no authenticated Party activity within LIVE_WINDOW
+  away --> here: request resumes membership
+  here --> playing: member has a place in the active session
+  away --> playing: active-session membership
+  playing --> here: session ends and browser is live
+  playing --> away: session ends and browser is not live
+  here --> removed: low-level removal or administrative cleanup
+  away --> removed: low-level removal or administrative cleanup
+  playing --> removed: low-level removal or administrative cleanup
+  removed --> here: automatic join if admission permits
 ```
+
+Normal browser flow has **no Leave Party UI**. Silence, screen lock, a tab closing or navigation
+into a game does not itself remove membership. Core derives liveness from authenticated Party
+requests (polls, game heartbeats, ticket fetches); active-session members count as playing.
+The game owns its own disconnect/autopilot timers. The lower-level `leave` operation still
+exists for removal/cleanup and tests; kick/admin/session cleanup policies still need explicit
+semantics. A future kick policy must prevent automatic re-admission for that Party. No kick UI
+or Public/Demo admission is claimed implemented here.
 
 ### Host role
+
+Grace and succession are implemented; voluntary transfer below remains the broader design.
+Current Core selects the earliest-joined eligible member who is here or playing. Removal uses
+the low-level operation; no ordinary Leave button is implied.
 
 ```mermaid
 stateDiagram-v2
@@ -84,9 +111,16 @@ stateDiagram-v2
   vacant --> held: next eligible player connects (from vacant, may be the old host)
 ```
 
-"Eligible" = a connected player presence: not a TV/"screen" presence, not someone who left.
+Current Core eligibility means a non-removed member who is here or playing; it does not
+require a game seat. A future TV/public surface never becomes host. The graph also retains
+proposed voluntary transfer and uses reconnecting as a description of loss of liveness.
 
-### Seat (per game session)
+### Seat (per game session; reservation/grace requirements)
+
+Preserve these rules for AVR-130 acceptance. BLUFF owns its reconnect identity. Party PR #35
+adds arcade session-local, 60-second reservations in source; published findings have not verified
+their deployment or physical acceptance. Disconnect must neutralize input without freeing a reserved slot;
+only explicit release permits a new owner. This diagram is the target seat contract.
 
 ```mermaid
 stateDiagram-v2
@@ -103,7 +137,11 @@ stateDiagram-v2
   released --> open: the slot is free; a refill gets a NEW seat id and game key
 ```
 
-## Awkward states and their rules
+## Awkward states and their rules (design requirements unless marked current)
+
+The table preserves broader seat/liveness requirements from the model. Current Core uses
+request-based liveness and game-owned grace, rather than a socket-count-based presence machine.
+“Leaves” below means lower-level removal or a game-level release, never normal Party Leave UI.
 
 | Situation | Rule |
 |---|---|
@@ -114,29 +152,32 @@ stateDiagram-v2
 | Spectator promoted while the owner of the last seat reconnects | The owner always reclaims their own seat (R3); only a released seat is contested; first committed request wins, the loser spectates with priority next deal |
 | The only player disconnects mid-game | Neutral → away → the game pauses; TABLE_ABANDON after the **last occupied seat emptied** (disconnected or away — counted from that moment, not from a tick) the session ends as `abandoned`, the party goes home with seating saved, and an emulator is stopped to save power |
 | Every phone sleeps | Host becomes vacant after grace; the party waits; it ends after PARTY_IDLE with nobody connected |
-| Same phone, two tabs | One presence; disconnected only when the last tab closes; the newest tab owns seat input, older ones show "opened elsewhere" |
+| Same phone, two tabs | One membership; current Core liveness follows authenticated activity, not individual tab closure. Target input rule: newest controlling connection owns a seat, older ones show "opened elsewhere" |
 | Seat owner returns after the host gave the seat away | Spectator, with priority at the next deal; their old game key is dead |
-| Late join during launching | Treated as the lobby: seats are dealt at *ready*, not at *select* |
-| Game or service crash | `session_ended{crashed}`, home with seating kept; retrying is the host's call |
+| Arrival during setup/launch | During setup, a member who is here must choose Play/Watch; start freezes the roster, and subsequent arrivals watch (ADR 0010) |
+| Game or service crash | Historical target: report the crash and preserve seating where supported. Current protocol outcomes are `completed`, `abandoned`, `ended_by_host`, `launch_failed`; Core restart resets the memory-only Party. Retry is the host’s call |
 | Host is the only player and leaves | Immediate succession to another connected player, otherwise vacant |
-| An emulated game refuses to start (power gate, port busy) | Back to the previous screen; `nav_seq` never moved; a system message says why; the title is greyed out |
+| An emulated game refuses to start (power gate, port busy) | Current Party launch fails to home; no game location is committed. Setup may already have been committed. Future power-gate messaging must follow this authority |
 | Switching between emulated games | End A (everyone sees "Starting B…"), stop A's service, launch B; a late "ready" from a cancelled launch is ignored by `launch_id` and that service is stopped |
 | A profile moves to a new phone mid-game | The old device's sockets close; the seat gets a new game key |
-| A phone was asleep when the host started the game | Dealt a seat (neutral until it returns) if it dropped **less than PRESENCE_GRACE ago**: a lobby member is not a late joiner. Asleep longer ("away") → spectator, seat at the next deal. **OPEN:** always deal lobby members instead? (risk: seats held for people who left without saying so) |
+| A phone sleeps during setup/start | Current ADR 0010: away members do not block Start; only here members’ choices form the starting roster, and arrivals after Start watch. Existing game seats follow game-owned reconnect policy. Future seat reservation across other runtimes must keep disconnected/away seats reserved until release. PR #35’s arcade reservations need AVR-130 physical acceptance. |
 
-## Proposed defaults (proposals, not decisions)
+## Timers: implemented Core values and proposed seat/model defaults
 
 | Timer | Value | Precedent |
 |---|---|---|
-| HOST_GRACE | 30 s | none (no existing game has a host); a proposal |
+| HOST_GRACE | 30 s | implemented in Party Core after the 45 s liveness window |
 | PRESENCE_GRACE, SEAT_GRACE | 60 s (a game may set longer) | PS1 holds a slot 30 s; BLUFF waits 30 s (prompts) / 60 s (own turn) before autopilot |
-| Succession | earliest-joined connected eligible player (deterministic, explainable); random is acceptable | owner: "random/simple" |
+| Succession | earliest-joined eligible member here or playing (deterministic) | implemented in Party Core |
 | LAUNCH_TIMEOUT | 60 s | — |
 | TABLE_ABANDON | 5 min | BLUFF |
 | Away-seat auto-release | only for games that declare open seats, after 5 min; otherwise the host removes | — |
 | PARTY_IDLE | 3 h with nobody connected (plane naps); never while anyone is connected | — |
 
-Tune the grace timers from the N2 real-phone playtest.
+Current Core uses LIVE_WINDOW 45 s, HOST_GRACE 30 s past liveness, LAUNCH_TIMEOUT 60 s,
+END_TIMEOUT 15 s and PARTY_IDLE 3 h (no live members/session). Members in an active session
+count as playing. The table retains proposed seat/model defaults, not evidence of arcade
+deployment or physical behavior. Tune future seat policies from real-phone evidence and AVR-130, with scope in Linear.
 
 ## Still open
 
@@ -145,21 +186,22 @@ Tune the grace timers from the N2 real-phone playtest.
 - **A. Ephemeral** — a reboot starts a new party. Simplest; guests lose names and seating.
 - **B. Resume if fresh** — snapshot the party (presences, personas, host, seating, teams, queue —
   never a live game session) to durable storage on every change; on boot, resume if the snapshot is
-  under ~30 min old (land in the lobby, everyone reconnecting, host grace starting at boot);
+  under ~30 min old (land at home, everyone reconnecting, host grace starting at boot);
   otherwise start new.
 - **C. Ask** — the first player to connect after boot chooses "Resume the 21:40 party" or "New party".
 
 B (with C as a fallback) fits the known failure mode — under-voltage resets — but the decision is
-the owner's. Also open: the exact succession policy, the detour policy for forced navigation,
+the owner's. Current Core is memory-only; device identity can survive, but Party state does not.
+Succession is already deterministic and navigation is settled by ADR 0011. Still open:
 spectator voting/nominating, host-less kiosk parties, and:
 
 - **`if_version` scope.** The version is party-wide, so a guest joining or a phone reconnecting
   makes the host's in-flight request stale ("the party changed — try again"). Safe but occasionally
   annoying; the alternative is a narrower version covering only lobby/seat/launch state.
 
-(Not open, for reference: opening the party page — or a captive-portal WebView loading it — only
-*observes*; only an explicit Join creates a presence, per `PARTY-PLATFORM.md` §13. The model checks
-this as `observe()`.)
+Presence now resumes automatically with a profile on canonical Party/game surfaces through a
+POST (ADR 0011). The old model's `observe()` rule remains historical simulation evidence;
+it does not require a Join button. Captive probes remain outside this flow.
 
 **Kick (proposed for v0; owner to confirm — not in the locked decisions or an ADR):** a kick removes the presence from the current party and bars that
 *device token* from rejoining this party. It is **not a ban**: a private tab is a new device, so

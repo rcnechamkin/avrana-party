@@ -1,7 +1,12 @@
 # ADR 0011 — The console model: one party, one place, the host moves it
 
-Status: **proposed**. Implemented and TESTED on a laptop (branches `feat/party-console-model` in
-this repository and in the games fork); not merged, not deployed, not yet on real phones.
+Status: **accepted; implementation merged to main** in
+[Party PR #34](https://github.com/rcnechamkin/avrana-party/pull/34) and companion
+[Games PR #13](https://github.com/rcnechamkin/avrana-party-games/pull/13). Tier 1–2 source
+verification is recorded below. Production deployment and Tier 3 real-phone validation remain
+pending [AVR-212](https://linear.app/avranakern/issue/AVR-212/deploy-and-real-phone-verify-adr-0011-console-model).
+Latest verified production remains Party `956b968` / Games `c6d7b52`; see [SYSTEM](../SYSTEM.md).
+Status reconciled 2026-10-01; the decision below is unchanged.
 Date: 2026-09-29. Supersedes the "offer, don't bounce" reconnect rule of ADR 0007 §6, the
 "follow only moves you watched" rule and the in-game Party panel of ADR 0008, and moves the setup
 panel of ADR 0010 off the game page. Keeps everything else of ADRs 0006–0010.

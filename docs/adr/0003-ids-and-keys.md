@@ -110,7 +110,7 @@ presence 0..1──1 team           (per party)
 
 ## Consequences
 
-- The fork bridge (ROADMAP N5, F5) must disable the arbitrary-token path for party-launched
+- The fork bridge (implemented for Party sessions, ADR 0006) must disable the arbitrary-token path for party-launched
   sessions, or a client could present someone else's game key as its "token".
 - Seat tickets carry an audience (`game_id`). Sandboxed third-party games verify them with a
   per-game key or a per-game unix socket, never one key shared by every game (which would let any

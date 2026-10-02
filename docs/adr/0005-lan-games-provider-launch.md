@@ -1,6 +1,11 @@
 # ADR 0005: LAN Games provider launches
 
-Status: IMPLEMENTED on review branches, pending review; not deployed.
+Status: **implemented and merged** (Party PR #7 / Games PR #1); provider launches and fork
+cutover are deployed ([2026-09-27 finding](../findings/2026-09-27-production-deploy.md)).
+Status reconciled 2026-10-01; [SYSTEM](../SYSTEM.md) owns verified runtime revisions.
+The decision below is the original provider boundary. ADRs 0006–0011 subsequently add Party
+session/roster authority and replace fixed return chrome during Party rounds with authoritative
+follow and host-owned controls. Original sprint deferrals below are historical, not the queue.
 Date: 2026-09-26. Builds on ADR 0004 and merged shell assimilation PR #5.
 
 Avrana owns identity/profile, global navigation, discovery, library and Party Chat.
@@ -31,4 +36,4 @@ Decisions:
 Consequences: two coordinated PRs, explicit deployment version gate and hardware
 acceptance after review. Existing pre-upgrade browser SWs require update testing.
 Cross-origin historical storage, legacy authorization, authoritative session state
-and deeper transport extraction remain debt. Details: LAN-GAMES-PROVIDER.md.
+and deeper transport extraction remain debt. Details: [LAN-GAMES-PROVIDER](../design/LAN-GAMES-PROVIDER.md).

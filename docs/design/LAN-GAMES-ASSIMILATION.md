@@ -1,6 +1,9 @@
 # LAN Games assimilation
 
-Status: implementation on a review branch; not deployed to the Pi.
+Status reconciled 2026-10-01: **implemented and merged** (Party PR #5), deployed with the shell;
+see [SYSTEM](../SYSTEM.md). The parts audit below preserves the pre-implementation inventory.
+ADRs 0006–0011 subsequently add Party authority and console behavior; their contracts govern
+current flow. ADR 0011 is merged source with deployment/phone proof pending AVR-212.
 
 LAN Games is legacy MVP infrastructure undergoing assimilation into Avrana Party.
 It is not an independent product boundary. New cross-game identity, profile, chat,
@@ -30,10 +33,10 @@ is excluded. The fork also has BLUFF, which is not installed on the live donor.
 | Persistence | Existing localStorage and avatar files | No database, account system or new identity authority |
 
 Do not copy the legacy root service-worker registration, global navigation, branding or
-profile/chat singleton into /party/. Legacy pages may still show the old shell until
-a later donor-repository change. Eventually retire those global UI surfaces after game
-pages link back to Avrana and consume its shared adapters; keep game-specific controls,
-lobbies, rules, private hands and spectator UI.
+profile/chat singleton into /party/. Integrated Games pages already gate legacy global UI via
+ADR 0005; ADR 0011 source follows Party location and hides Party chrome during a round.
+Keep game-specific controls, rules, private hands and spectator UI; standalone compatibility
+retains its own lobby and return controls.
 
 ## Identity and chat limits
 
@@ -72,16 +75,16 @@ Shared-stream and optional crop Personal Viewport contracts describe requirement
 they do not claim runtime availability or hardware validation. No ROM paths, runtime
 implementation or experiment services are imported.
 
-## Validation and next step
+## Validation evidence and subsequent integration
 
 Cloud tests cover compatibility keys, safe photo paths, transport protocol/reconnect,
 multiple providers, metadata validation, per-seat capabilities and shell interaction.
 They cannot validate real phone chat/photo flows, legacy game joins, PS1 execution,
 TV or streaming hardware. No Pi deployment in this sprint.
 
-Next: a reviewed donor-repository change should replace global legacy navigation with
-a return to /party/, consume the shared profile adapter, and retire duplicate hub UI.
-Then extract session-scoped chat/roster authority without losing the existing channel.
+Providerization has landed; do not repeat the original donor-navigation migration. Party Core
+now owns roster/session authority. The chat transport still has legacy authorization/clear debt;
+any further extraction has scope, acceptance and sequencing in Linear.
 
 Catalog attribution: [LAN Games notice](../references/LAN-GAMES-NOTICE.md).
 Validation: [sprint findings](../findings/2026-09-26-shell-assimilation.md).

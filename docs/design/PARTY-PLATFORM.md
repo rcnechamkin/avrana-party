@@ -1,9 +1,13 @@
 # Avrana Party platform: what it is and how it fits together
 
-Status: **design direction (accepted 2026-09-24; locked decisions updated the same night).
-Nothing here is built unless marked EXISTS.** This is the hub document; details live in the
-focused documents listed below. Decisions: `docs/adr/0002-party-platform.md` (the platform),
-`docs/adr/0003-ids-and-keys.md` (identifiers). Sequencing: `docs/ROADMAP.md`, item **N5**.
+Status: **canonical design direction, reconciled 2026-10-01.** Party Core, Party Home,
+session integration and authoritative navigation are implemented. ADR 0011 is accepted and
+merged in Party PR #34 / Games PR #13; deployment and Tier 3 phone validation remain AVR-212.
+See [SYSTEM](../SYSTEM.md) for verified production, which may lag source. This is the hub;
+ADRs 0002/0003 define platform/identity invariants and ADRs 0006–0011 define implemented sessions,
+pregame and console behavior. Broader profiles, teams, votes, progression, moderation and
+third-party installation below remain design direction unless explicitly marked implemented.
+Linear owns live sequencing; [ROADMAP](../ROADMAP.md) owns strategic direction.
 
 Read this before designing anything a player touches: a game, a lobby, a login, a chat, a stat.
 It is written for someone arriving months from now with no other context.
@@ -30,10 +34,12 @@ a phone game launcher.
 > **The game may change. The party does not.**
 
 Technically, that sentence means: **the Party is a long-lived object that outlives every game
-session.** People join the *party* once. Its members, their names and personas, the host, the
-seating, teams, chat, queue and running history live in the party layer. A game is a session the
-party starts and ends; when it ends, everyone returns to the party, and the next game starts with
-the same people already seated — no one re-joins, re-names or re-navigates. (Whether the party
+session.** A browser with an Avrana profile automatically gains or resumes presence on the canonical
+Party/game surfaces, without normal Join or Leave buttons (ADR 0011). Members and host belong to Party Core; richer personas, persistent seating, teams, queue and
+progression remain broader platform design. Chat and local launch history use shared adapters. A game is a session the
+party starts and ends. A finished round holds its results until the host chooses Play again or
+Party Home; host End returns everyone home. Party identity carries forward, while the next
+setup chooses Play or Watch and the game binds its roster — no manual re-join or navigation. (Whether the party
 also survives an appliance *reboot* is still open: §16.)
 
 Avrana owns the **party lifecycle, profiles, guests, device recognition, presence, seats, roles,
@@ -111,7 +117,7 @@ Durable. A design that breaks one needs an explicit, recorded reason.
 Join the Avrana Wi-Fi  →  open the party address  →  the browser is the player's complete interface
 ```
 
-Over time the browser handles identity/profile selection, the party lobby, navigation, controller
+Over time the browser handles identity/profile selection, Party Home/setup, navigation, controller
 UI, WebRTC video, WebSocket input, chat, private information, voting, achievements and stats,
 profile settings and reconnection. Onboarding details, the party address and the party-LAN vs
 optional-upstream model are in `ONBOARDING.md`.
@@ -121,20 +127,12 @@ optional-upstream model are in `ONBOARDING.md`.
   (`:8198`) shares cookies but has separate localStorage and a different Origin. Either way a player
   can look like two devices — two presences, two seats, two votes. Cookies ignore ports, so a dev
   instance on another port of the same host receives production cookies.
-- **Which origin is still open**, but the leading option is **`http://10.42.0.1` as the canonical
-  origin**, because it always resolves (QR codes carry it) — with `party.local` (mDNS; uneven on
-  Android) redirecting to it for people who type the name (`ONBOARDING.md`). Mixing the two without
-  a redirect is the thing to avoid.
-- **Plain HTTP on a LAN** is a non-secure context: no `Secure` cookies, no secure-context-only APIs,
-  no TLS on guests' phones.
-- **Update 2026-09-26 (ADR 0004 D1):** the two bullets above predate HTTPS.
-  - `https://party.avrana.net` (a browser-trusted certificate, resolved by Party DNS) has been LIVE
-    since 2026-09-25. It is the canonical origin for Avrana-owned pages, under `/party/` on the 443
-    server.
-  - `http://10.42.0.1` stays for captive probes, LAN Games and recovery. HTTP and HTTPS are separate
-    origins, so party identity lives on HTTPS and its cookie is `Secure`.
-  - Full Mode features (offline copy, keep-awake, capability probe) are in
-    `docs/design/FULL-MODE.md`.
+- **Canonical origin:** `https://party.avrana.net`, browser-trusted and resolved by Party DNS,
+  has been live since 2026-09-25 (ADR 0004). Avrana-owned pages live under `/party/` on 443;
+  integrated games and arcade share that origin. The Party cookie is `Secure`.
+- `http://10.42.0.1` remains for captive probes, legacy access and recovery. HTTP, HTTPS and
+  hostname variants are separate origins; do not invent cross-origin identity recovery.
+- Full Mode features (offline copy, keep-awake, capability probe) are in `FULL-MODE.md`.
 - **Captive portal = convenience.** Never select a profile, trust a device or run a game inside the
   captive-portal mini-browser.
 - **Per-player accessibility is free here:** every player has a private UI, so larger text,
@@ -148,7 +146,7 @@ Do not collapse "player" into one object. Identifier rules are in ADR 0003.
 
 | Concept | What it is | Lifetime | Key |
 |---|---|---|---|
-| **Party** | The persistent unit people join: members, host, *seating* (who holds which game slot, carried from one game to the next — never physical position), current game, queue, teams, chat. Exactly one active per appliance. | From first join until ended (reboot survival OPEN) | `party_id` |
+| **Party** | The persistent unit people join: members, host, *seating* (who holds which game slot, carried from one game to the next — never physical position), current game, queue, teams, chat. Exactly one active per appliance. | From automatic presence until ended (current Core is memory-only; reboot survival OPEN) | `party_id` |
 | **Device** | A recognized browser installation. | Months; revocable | server-issued random token in a cookie (hash stored) |
 | **Profile** | A persistent human identity: name, avatar, preferences, history, stats, achievements. Optional. | Until deleted/merged | `profile_id` |
 | **Guest** | A participant with no saved profile ("Player 3", renamed "Megan"). | The party | `presence_id` |
@@ -231,6 +229,11 @@ Capability evaluation uses only the derived game role (`evaluate_seat(game, caps
 
 ## 6. Guest-first and saved profiles
 
+Current source uses the existing local name/Gaze avatar profile for automatic Party presence,
+including join/resume on load, Core restart and profile save. This local profile is not a cloud
+account or the richer persistent profile/trust system below. Without a profile or Party Core,
+standalone access remains supported. The following describes the broader guest/profile design.
+
 - Joining never requires a profile. Default names are **Player 1, Player 2, Player 3**; a guest can
   rename immediately (*Player 3 → Megan*).
 - Later: **"Save Megan as a profile?"** If saved, the history Megan gathered as a guest links to the
@@ -267,7 +270,7 @@ Entirely separate. A host can never escalate to admin.
 | Cannot | — | Touch profiles, devices, PINs, installation or admin settings; see other players' hidden game state |
 
 - **Host is disposable** (`PARTY-LIFECYCLE.md`): reconnect grace, then succession to another
-  eligible connected player (proposed: the earliest-joined; random is acceptable); voluntary
+  eligible member (current Core: earliest-joined member who is here or playing); proposed voluntary
   transfer; a returning old host is an ordinary player; no "claim host" action.
 - Normal players always keep authority over their own profile, controls, avatar/persona and
   accessibility preferences.
@@ -277,10 +280,10 @@ Entirely separate. A host can never escalate to admin.
   whether saved profiles are shown to guests. A simple preset pair may bundle them — without any
   enterprise role system:
   - **Friends / Private party** (default): the Wi-Fi password is the only gate; no join code in v0.
-  - **Public / Demo party:** new presences wait for **host admission** (covers strangers, kick
+  - **Public / Demo party (future distinct admission mode):** new presences wait for **host admission** (covers strangers, kick
     evasion and duplicate presences); an optional short party code in the QR's URL fragment with a
     typed fallback; the admin (over SSH in v0) picks the first host, also after idle or reboot; no
-    web admin on the guest Wi-Fi.
+    web admin on the guest Wi-Fi. This future mode does not restore a normal Join ceremony.
 - **Kick ≠ ban.** A kick removes a presence from the current party and says so publicly. Because a
   private tab is a new device, it is not a ban; only the Wi-Fi password or Public-mode admission
   keeps someone out.
@@ -289,47 +292,41 @@ Entirely separate. A host can never escalate to admin.
 
 ## 8. The Party, Party Home and synchronized navigation
 
-The party (illustrative, not a schema): `id · state (lobby | launching | in_game | intermission |
-ended) · host · presences · seating · current game session and seats · spectators · teams · queue ·
-votes · chat · nav {seq, target} · started_at`. Its state machine and every awkward case are in
-`PARTY-LIFECYCLE.md`.
+Party Core exposes one authoritative `location = {at: home | setup | game | results, game,
+session}` (ADR 0011). It is derived from committed navigation and session state, not a second
+client-owned state machine. Only the host moves the Party. The internal idle state may still be
+named `lobby`; the product location is `home`.
 
-**Party Home** is not just a launcher: who is present, host, ready, spectating; the current game;
-recent games; the queue and vote status; party stats; reconnect state.
+**Party Home is implemented** at `/party/`: roster/host, profile, catalog, Party Chat and shared
+library. In current source it also owns the full-screen setup scene: choose Play or Watch, read
+How to play, and wait for host-only Start. Queue/votes, teams and richer party stats remain future
+concepts, not current Home features.
 
-```
-AVRANA PARTY
-Cody      Host       Ready
-Audrey               Ready
-Nick                 Ready
-Sam       Spectator
+**Authoritative follow is implemented.** `party-mode.js` supplies `destination(view, here)`;
+Party Home, `party-follow.js` on game pages and the arcade apply it on load, reconnect and every
+change with `location.replace`. Home/setup render on Party Home; game/results render on the
+named game's page. A phone asleep through a move follows the current location on wake.
 
-NOW PLAYING   Worms Armageddon
-UP NEXT       Bomberman   4 votes
-              BLUFF       2 votes
-```
+Normal flow has no Join or Leave button. Profile-backed presence resumes automatically.
+During a round, Party Home cannot be browsed and another game cannot be opened. A standalone
+title may remain open while the Party is home, then follows when the host moves the Party.
+Followers do not get optional detour prompts or Rejoin offers. Host controls live in the game's
+chrome; a game's own completion holds results until the host selects Play again or Party Home.
+Host End goes home. Failed launches resolve to home; intent alone is not navigation authority.
 
-**Synchronized navigation.** Today each person clicks into each LAN game separately; that is wrong
-for this product.
-
-```
-Host selects Bomberman → (streamed games: the service starts; "Starting…") → ready
-  → nav.seq += 1, nav.target = bomberman → broadcast → EVERY party browser follows
-  → personas, seating and roles persist
-```
-
-- Mechanism (proposed): top-level navigation driven by a tiny shared `party.js` holding one party
-  socket; not an iframe shell and not a single-page rewrite of every game.
-- **"What is my party doing?"** — a phone that slept or reloaded asks on wake and is taken to the
-  current state; `nav_seq` makes it idempotent.
-- Navigation moves only when a transition has actually happened (a failed launch never moves it).
-- Only one emulated game runs at a time on a Pi 4 (CPU, one hardware encoder budget, power).
-- **Detours:** someone deliberately in their profile/settings gets a prompt ("The party moved to
-  Bomberman — Go"), not a yank. Exact policy OPEN.
+AVR-128 navigation, ADR 0010 pregame and AVR-134 Party-managed arcade lifecycle are already
+recorded as deployed. ADR 0011's console presentation/follow changes are merged source ahead
+of verified production; AVR-212 owns deployment and phone proof. PS1 remains experimental.
 
 ---
 
 ## 9. Seats, spectators and teams
+
+These are seat/grace design requirements, not a claim of a complete platform seat layer.
+BLUFF preserves its session participant identity. AVR-130 arcade controller reservations merged
+in PR #35 during this reconciliation: stable session-local slots, neutral input on disconnect,
+60-second grace and explicit controller release. Published findings do not verify deployment
+or real-phone acceptance. Controller release does not remove Party presence. See `PARTY-LIFECYCLE.md`.
 
 - **Seats** support disconnect grace, **neutral input while disconnected**, reclaim on reconnect,
   game-specific slot assignment, and team membership. A disconnected or away seat is never "free";
@@ -393,7 +390,7 @@ Host selects Bomberman → (streamed games: the service starts; "Starting…") �
 A game touches the platform through three separate things — **capabilities** (the manifest: what
 the game is), a **runtime request** (how its code runs) and a **grant** (what the appliance allows)
 — and joins the party through four optional pieces: a seat-ticket handshake (first WebSocket
-message, bound to one game), an event sink with provenance, the `party.js` follow client, and host
+message, bound to one game), an event sink with provenance, the implemented `party-follow.js` client (ADR 0011), and host
 checks. Without them a game keeps working as today. Everything is in `GAME-INTEGRATION.md`; native
 game design is in `NATIVE-GAMES.md`; installation is in `GAME-INSTALLATION.md`.
 
@@ -409,17 +406,13 @@ native testbed, not the product.
 Threats: mischievous guests on the same Wi-Fi (impersonation, stat spoiling, double voting, host
 grabbing); cookie sniffing on an open or shared-password network; web pages on a phone that also
 has mobile data; and — once open installation exists — **a malicious or buggy game**. Anyone with
-SD-card or SSH access is an admin by design. Parameters are suggestions to confirm when built.
+SD-card or SSH access is an admin by design. Future profile/admin parameters are suggestions to confirm when built.
 
-**Accepted risk (Friends parties):** the party network runs plain HTTP. *(2026-09-26: Full Mode
-pages and anything moved to `https://party.avrana.net` are now TLS-protected on the Party Wi-Fi;
-LAN Games on port 80 and every HTTP origin are still plain.)* The party Wi-Fi should
-never be open (it is WPA2-Personal today, observed 2026-09-24; *requiring* WPA2+ is recommended,
-not yet decided), but **anyone who has the Wi-Fi
-password can read and alter other guests' traffic**: hidden roles, device cookies (i.e. that
-phone's presence, host included) and any PIN typed over Wi-Fi. That is accepted for a friends
-party; client isolation on the AP (`wifi.ap-isolation`, a live change needing approval) is a cheap
-extra that blocks guest-to-guest spoofing.
+**Transport boundary (Friends parties):** canonical Full Mode and integrated game traffic on
+`https://party.avrana.net` is TLS-protected. Legacy plain HTTP remains exposed to traffic
+inspection/alteration by peers on a shared-password network; do not extend that accepted legacy
+risk to HTTPS credentials or hidden state. The Wi-Fi must not be open. Client isolation
+(`wifi.ap-isolation`) is a possible extra control and a live change requiring owner approval.
 
 **MUST before profiles ship**
 - Server-issued device token (`secrets.token_urlsafe(32)`) in an `HttpOnly; SameSite=Lax` cookie
@@ -428,12 +421,14 @@ extra that blocks guest-to-guest spoofing.
   servers, not from same-origin JavaScript). Store only its SHA-256; revoke = delete. It unlocks the
   "Welcome back" picker; it never grants admin or skips the admin PIN; on a device the owner chose
   to trust, it skips that profile's PIN.
-- One canonical origin (see §4; leading option: `http://10.42.0.1`); nginx allowlists the app's
+- One canonical HTTPS origin (`https://party.avrana.net`, §4); nginx allowlists the app's
   host names (also defeats DNS rebinding), while the default server keeps answering the
   captive-portal probe paths exactly as today (returning 444 only for everything else).
 - Origin checks on every WebSocket upgrade and POST to party and admin endpoints once identity
-  rides on a cookie; GET never mutates. A presence is created only by an explicit **Join** (a POST),
-  never on page load or socket open — so captive-portal WebViews don't create ghost presences.
+  rides on a cookie; GET never mutates. On canonical Party/game surfaces, a browser with an
+  Avrana profile automatically calls the guarded `join` POST on load/resume; no normal Join or
+  Leave UI. Page rendering and socket opens alone do not authorize membership. Captive probes
+  remain separate and do not select profiles or participate in the Party.
 - Authorization only from server-resolved ids; never from names or client-sent ids.
 - **Admin:** v0 has **no web admin** — administration is an SSH command-line tool (V1.0 is for the
   owner), so there is nothing for a guest to brute-force or cross-site-request. A later web admin:
@@ -507,9 +502,11 @@ databases, Argon2 dependencies, device fingerprinting, email recovery, CAPTCHAs.
 
 ---
 
-## 15. What exists today (2026-09-24)
+## 15. Historical integration baseline (2026-09-24)
 
-Full audit with file references: `GAME-INTEGRATION.md` §4. In short: identity, reconnect, presence,
+The following predates Party Core and ADRs 0006–0011; it is historical gap analysis, not current
+status. Current source is described in §8; deployed evidence lives in SYSTEM.
+Audit with file references: `GAME-INTEGRATION.md` §4. At that date: identity, reconnect, presence,
 seats, spectators, late join, navigation and launch each exist **separately** in two or more places
 (LAN Games core, BLUFF, WORDCLASH, the arcade, PS1) with different semantics — at least five grace
 behaviours, four token validators, five late-join policies — and **no host authority, no party, no
@@ -531,7 +528,7 @@ core) · proprietary store (no) · native app required (no) · captive portal re
    what the QR code carries.
 2. Device-token migration from LAN Games' client-minted `wc-token` without breaking the live service.
 3. Whether a party survives an appliance reboot (options in `PARTY-LIFECYCLE.md`).
-4. Exact host succession policy (proposal: earliest-joined connected player).
+4. Broader host transfer policy; current Core already selects the earliest-joined eligible member.
 5. Third-party game sandbox/trust model (`GAME-INSTALLATION.md`).
 6. Upstream-internet architecture (`ONBOARDING.md`).
 7. Packaging format for third-party games.
@@ -539,10 +536,10 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 9. Exact Personal Viewport metadata format.
 10. How hot-seat emulation attributes results (probably: it doesn't).
 11. Final V1 hardware (power, battery, enclosure, display for QR codes).
-12. Forced-navigation policy during detours; confirming the proposed TV "screen" presence; whether a kick
+12. Confirming the proposed TV "screen" presence (player navigation is settled by ADR 0011); whether a kick
     should ever reach beyond the current party (v0: this party only — `PARTY-LIFECYCLE.md`); spectator nominating;
     party teams vs in-game teams; whether an admin PIN exists before any web
-    admin (ROADMAP near-term vs §13); whether a hot-seat setting may give one device several presences
+    admin (§13); whether a hot-seat setting may give one device several presences
     (ADR 0003 allows it, the model forbids it); what `ps1-bomberman` declares for `late_join`;
     name length/Unicode (LAN Games caps names at 14 ASCII characters);
     profile database location and backups; admin surface on the guest Wi-Fi vs home LAN only;
@@ -557,20 +554,20 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 | **BLUFF** | Working title of the first native Avrana game: a Coup-inspired hidden-role card game, built as a LAN Games module in the Avrana Party Games fork |
 | **LAN Games** | The retired-upstream (BEACNpool, MIT) browser party-game server running live on the Pi (~28 games); Avrana maintains a fork |
 | **Avrana Party Games** | Avrana's fork of LAN Games, where native games such as BLUFF are developed (also called "the fork" or "the games fork" — same repo) |
-| **Party Home** | The platform's own screen for the whole party (who is here, host, current game, what next); not built yet |
-| **Hub** | Today's LAN Games start page (`/`) with its game tiles — the thing Party Home would replace |
-| **Lobby** | A single game's pre-game waiting room (ready/start), inside that game; also the Party state before any game (`PARTY-LIFECYCLE.md`) |
+| **Party Home** | Implemented at `/party/`: roster/host/catalog and, in ADR 0011 source, the Party-owned full-screen setup; runtime revision in SYSTEM |
+| **Hub** | Today's LAN Games start page (`/`) with its game tiles — a maintained standalone/legacy surface alongside Party Home |
+| **Lobby** | A single game's pre-game waiting room (ready/start), inside that game; Core’s idle `lobby` label maps to the `home` location (`PARTY-LIFECYCLE.md`) |
 | **Screen presence** | A TV joined to the party that sees the public view (proposed); never host, seat or voter. "TV view" means what it shows |
 | **WORDCLASH, FIFTH SIGNAL, …** | Individual LAN Games titles (WORDCLASH has its own room engine) |
 | **Arcade** | The live Gauntlet II stream: one RetroArch → one hardware H.264 encode → WebRTC to phones |
-| **PS1 stream** | The same shared-stream design for PlayStation titles (branch `ps1-emulation`, with title profiles on `experiment/ps1-title-profiles`; power-gated — awaiting the owner's go-ahead for a supervised stage since power is clean without the USB adapter) |
+| **PS1 stream** | Shared-stream PlayStation experiment (`ps1-emulation`, title profiles on `experiment/ps1-title-profiles`); bounded supervised evidence in dated findings, no production promotion |
 | **Multitap** | A PlayStation adapter that gives one controller port four pads; how 4-player PS1 games get their players |
 | **`hello`** | The first WebSocket message a LAN Games client sends; where identity enters a game today |
 | **`wc-token`** | LAN Games' browser-held identity token (client-mintable today) |
 | **Game key** | The secret per-(game session, participant) key the platform gives a game instead of any device identity (ADR 0003) |
 | **Grant** | The appliance's record of what an installed game may do (trust tier, permissions, assigned path) — decided by the admin, never by the game |
-| **Fork cutover** | Replacing the live LAN Games service with the fork plus the party bridge (a gated, owner-approved step) |
-| **N2, N4, N5, F1–F8** | Roadmap item numbers in `docs/ROADMAP.md` (N2 = the BLUFF playtest, N4 = PS1, N5 = the platform, F = its foundations) |
+| **Fork cutover** | Replacing the live LAN Games service with the fork plus the party bridge (completed in production 2026-09-27; future updates remain owner-approved) |
+| **N2, N4, N5, F1–F8** | Historical roadmap item numbers (retired as a live queue) (N2 = the BLUFF playtest, N4 = PS1, N5 = the platform, F = its foundations) |
 | **AP** | The Wi-Fi access point the phones join (the Pi's internal radio, `wlan0`, at `10.42.0.1`) |
 | **E1–E8, L1/L2** | Event numbers in the BLUFF playtest runbook; the server (L1) and radio (L2) layers of the load-test plan |
 | **PoC** | Proof of concept (an experiment, never production) |
@@ -581,7 +578,7 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 
 ## References
 
-ADRs `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md` · roadmap `docs/ROADMAP.md` (N5) · BLUFF
+ADRs `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md` · strategic roadmap `docs/ROADMAP.md` · BLUFF
 lifecycle/security precedent `docs/findings/2026-09-23-bluff-multi-agent-pass.md` · PS1 slots
 `ps1/README.md`, `ps1/stream_ps1.py` (branch `ps1-emulation`) · arcade `arcade/README.md` ·
 simulations `experiments/party-model/`, `experiments/viewports/` (branch `experiment/party-sim`).
