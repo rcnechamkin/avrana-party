@@ -158,12 +158,13 @@ There are a few different records in the project, and they deliberately answer d
 |---|---|
 | What does the current code do? | GitHub `main` |
 | What is being worked on next? | [Linear](https://linear.app/avranakern) |
-| What is actually deployed? | [SYSTEM](docs/SYSTEM.md) |
+| What is actually deployed? | `/party/api/status` on the appliance ([STATUS-ENDPOINT](docs/design/STATUS-ENDPOINT.md)); [SYSTEM](docs/SYSTEM.md) summarizes verified state |
 | What architectural decisions have been accepted? | [ADRs](docs/adr/) |
 | How should the system behave? | [Design docs](docs/design/README.md) |
 | Where is the project heading? | [ROADMAP](docs/ROADMAP.md) |
 | What does each test actually prove? | [TESTING](docs/TESTING.md) |
 | What rules should contributors and coding agents follow? | [AGENTS.md](AGENTS.md) |
+| How does a change get from an idea to a playtested deployment? | [WORKFLOW](docs/WORKFLOW.md) |
 
 A merged PR means the source changed. It does not automatically mean that change has been deployed or tested on real hardware.
 

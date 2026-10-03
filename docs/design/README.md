@@ -26,6 +26,11 @@ Read in this order:
    - `GAME-INSTALLATION.md` — open installation without a store; trust tiers
    - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
      the hub/BLUFF audit
+   - `PARTY-GAMES-CONTRACT.md` — the versioned Party ↔ Games boundary, its two declarations
+     and the checker both CIs run
+   - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)
+   - `STATUS-ENDPOINT.md` — `GET /party/api/status`: the running build and its health
+     (`avrana.status/v0`)
    - `COMMUNICATION.md` — chat as a platform capability: transport, policy, presentation and
      game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
 

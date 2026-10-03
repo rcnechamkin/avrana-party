@@ -1,9 +1,16 @@
 {
   "schema_version": 1,
   "external_authorities": [{"name": "Linear", "url": "https://linear.app/avranakern", "canonical_for": "live-work"}, {"name": "GitHub main", "url": "https://github.com/rcnechamkin/avrana-party/tree/main", "canonical_for": "current-source"}],
-  "root_entries": [".gitattributes", ".github", ".gitignore", "AGENTS.md", "CLAUDE.md", "CODEX-HANDOFF.md", "CONTRIBUTING.md", "README.md", "arcade", "assets", "avrana", "avrana-captive.conf", "avrana-party.nginx", "contracts", "deploy", "docs", "experiments", "install-captive-dns.py", "install-portal.py", "ops", "package-lock.json", "package.json", "playwright.config.ts", "playwright.offline.config.ts", "playwright.provider.config.ts", "portal", "telemetry", "tests", "tools", "web", ".graphify.json", ".graphifyignore", ".claude", "context"],
+  "root_entries": [".gitattributes", ".github", ".gitignore", "AGENTS.md", "CLAUDE.md", "CODEX-HANDOFF.md", "CONTRIBUTING.md", "README.md", "arcade", "assets", "avrana", "avrana-captive.conf", "avrana-party.nginx", "contracts", "deploy", "docs", "experiments", "install-captive-dns.py", "install-portal.py", "ops", "package-lock.json", "package.json", "playwright.config.ts", "playwright.offline.config.ts", "playwright.party.config.ts", "playwright.provider.config.ts", "portal", "telemetry", "tests", "tools", "web", ".graphify.json", ".graphifyignore", ".claude", "context"],
   "documents": [
     {"path": "docs/GRAPHIFY.md", "class": "runbook", "status": "current", "authority": "procedure"},
+    {"path": "docs/WORKFLOW.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "development-workflow", "last_verified": "2026-10-02"},
+    {"path": "docs/CROSS-REPO.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "cross-repository-workflow", "last_verified": "2026-10-02"},
+    {"path": "docs/agents/IMPLEMENTATION-REPORT.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "implementation-report", "last_verified": "2026-10-02"},
+    {"path": "docs/design/DEPLOYMENT-MANIFEST.md", "class": "design", "status": "mixed", "authority": "scoped-contract", "status_marker": "Status: **implemented on main (AVR-232)**; written by `ops/deploy.sh` on the Pi; read by", "last_verified": "2026-10-02"},
+    {"path": "docs/design/STATUS-ENDPOINT.md", "class": "design", "status": "mixed", "authority": "scoped-contract", "status_marker": "Status: **implemented on main (AVR-232)**; served by Party Core (`avrana/party/service.py` via", "last_verified": "2026-10-02"},
+    {"path": "docs/design/PARTY-GAMES-CONTRACT.md", "class": "design", "status": "mixed", "authority": "scoped-contract", "status_marker": "Status: **implemented on main (AVR-233)**; a declaration of behavior that already exists, not a", "last_verified": "2026-10-02"},
+    {"path": "docs/runbooks/deploy.md", "class": "runbook", "status": "current", "authority": "procedure", "last_verified": "2026-10-02"},
     {"path": "docs/findings/2026-10-02-repository-governance.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
     {"path": "docs/findings/2026-10-02-architecture-review.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
     {"path": "docs/findings/2026-10-02-architecture-audits.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
