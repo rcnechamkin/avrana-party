@@ -31,6 +31,8 @@ Guards: an allowed Host header on every request (DNS rebinding); POSTs need an a
 (CSRF) and a JSON body of at most 8 KiB; every response is `Cache-Control: no-store`. The device
 token lives only in the cookie; it is never logged and never in a body or URL. Game servers are
 reached only through a GameLink (the session protocol), never with a device or member id.
+Bounds (AVR-218): at most MAX_WAITERS long polls block at once (extra ones get the current view
+at once, a short poll), and the listen backlog is REQUEST_QUEUE_SIZE so phone wake storms queue.
 """
 import argparse
 import http.server
@@ -43,6 +45,8 @@ from avrana.party import core, identity
 
 MAX_BODY = 8192
 MAX_WAIT = 25.0
+MAX_WAITERS = 64            # AVR-218: concurrent blocked long polls; beyond it a poll returns at once
+REQUEST_QUEUE_SIZE = 128    # AVR-218: listen backlog (socketserver default 5 drops reconnect storms)
 
 
 class NoGameLink:
@@ -65,6 +69,7 @@ class PartyService:
         self.link = link or NoGameLink()
         self.lock = threading.Lock()
         self.changed = threading.Condition(self.lock)
+        self.waiters = 0
 
     def _notify(self):
         self.changed.notify_all()
@@ -83,11 +88,17 @@ class PartyService:
         with self.lock:
             if device_id:
                 self._touch_locked(device_id)
-            while since is not None and self.core.party.version == since:
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    break
-                self.changed.wait(left)
+            if since is not None and self.core.party.version == since and wait > 0 \
+                    and self.waiters < MAX_WAITERS:
+                self.waiters += 1
+                try:
+                    while self.core.party.version == since:
+                        left = deadline - time.monotonic()
+                        if left <= 0:
+                            break
+                        self.changed.wait(left)
+                finally:
+                    self.waiters -= 1
             return self.core.view(device_id)
 
     def _touch_locked(self, device_id):
@@ -151,10 +162,26 @@ class PartyService:
             self.link.end(s)
         with self.lock:
             if ok:
-                self.core.launch_accepted(s.id)
+                accepted = self.core.launch_accepted(s.id)
             else:
+                accepted = True
                 self.core.launch_failed(s.id, detail or 'The game did not start.')
             self._notify()
+        if ok and not accepted:
+            # AVR-223: the party moved on while the launch was in flight (the host cancelled it,
+            # or LAUNCH_TIMEOUT passed): the runtime that just came up would be orphaned. Stop it.
+            self.link.end(s)
+        return s
+
+    def game_reported_end(self, session_id, outcome):
+        """The game's own `ended` (via the session protocol). A completed round is held on the
+        game's results screen until the host moves on (ADR 0011); an abandoned one has nothing to
+        hold, so the party goes home and the game is released at once (AVR-223)."""
+        with self.lock:
+            s = self.core.game_reported_end(session_id, outcome)
+            self._notify()
+        if s.outcome == 'abandoned':
+            self.link.end(s)
         return s
 
     def end(self, device_id, if_version):
@@ -337,10 +364,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None, internal_routes=None):
+    server_cls = type('PartyServer', (http.server.ThreadingHTTPServer,),
+                      {'request_queue_size': REQUEST_QUEUE_SIZE, 'daemon_threads': True})
     handler = type('BoundHandler', (Handler,), {'service': service, 'cfg': cfg,
                                                 'extra_routes': dict(extra_routes or {}),
                                                 'internal_routes': dict(internal_routes or {})})
-    return http.server.ThreadingHTTPServer((host, port), handler)
+    return server_cls((host, port), handler)
 
 
 def load_games(entries):

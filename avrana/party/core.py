@@ -257,8 +257,11 @@ class PartyCore:
             self._close(s, 'launch_failed', 'The game did not start in time.')
         if s is not None and s.state == ENDING and now - s.state_since >= END_TIMEOUT:
             s.game_confirmed_end = False
+            switching = party.pending is not None
             party.pending = None                  # a switch never starts over a game that
-            self._close(s, 'ended_by_host')       # did not confirm its end
+            self._close(s, 'ended_by_host',       # did not confirm its end (AVR-223: say so)
+                        'The last game did not stop, so the next one did not start.' if switching
+                        else 'The game did not confirm the end in time.')
         if party.pending is not None and s is not None and s.state == ENDED \
                 and now - s.state_since >= END_TIMEOUT:
             party.pending = None                  # nobody opened the next game: drop the switch
@@ -538,6 +541,11 @@ class PartyCore:
             return None
         s = self._open_session(host, self.games[game_id])
         s.replaced = old.id                   # a failed start now sends everyone home
+        if self.party.nav['session'] != s.id:
+            # AVR-223: followers were at the old game; `nav` moves straight to the next session
+            # (location `setup` while it launches) instead of bouncing through Party Home
+            self._navigate('game', s)
+            self._commit()
         return s
 
     def end_confirmed(self, session_id, confirmed):
@@ -573,8 +581,8 @@ class PartyCore:
             s.detail = detail
         for member_id in s.participants:
             self.party.released_at[member_id] = now
-        moved = outcome == 'ended_by_host' or (outcome == 'launch_failed'
-                                               and (s.replaced or s.pregame))
+        moved = outcome in ('ended_by_host', 'abandoned') or (outcome == 'launch_failed'
+                                                              and (s.replaced or s.pregame))
         if moved and self.party.pending is None:
             self._home_unless_live()          # the host's end, or a failed switch: everyone home
         self._commit()
@@ -595,13 +603,14 @@ class PartyCore:
         """Where the whole party is: {'at': 'home'|'setup'|'game'|'results', 'game', 'session'}.
         It follows `nav` (committed moves only): a round being set up or starting is `setup`; a
         round on (or ending in a switch) is `game`; a round the game itself finished is
-        `results` until the host moves on."""
+        `results` until the host moves on. An abandoned round (the game or its runtime gave up)
+        has no results screen to hold: the party is home (AVR-223)."""
         n, s = self.party.nav, self.party.session
         if n['to'] != 'game' or s is None or s.id != n['session']:
             return {'at': 'home', 'game': None, 'session': None}
         at = {SETUP: 'setup', LAUNCHING: 'setup', ACTIVE: 'game', ENDING: 'game'}.get(s.state)
         if at is None:
-            at = 'results' if s.outcome in ('completed', 'abandoned') else 'home'
+            at = 'results' if s.outcome == 'completed' else 'home'
         if at == 'home':
             return {'at': 'home', 'game': None, 'session': None}
         return {'at': at, 'game': s.game_id, 'session': s.id}

@@ -578,6 +578,46 @@ class PregameHttp(ServiceCase):
         self.assertEqual(len(self.link.launched), 1)
 
 
+class SlowLink(FakeLink):
+    """A launch that only returns once the test says so (the runtime is still coming up)."""
+
+    def __init__(self):
+        super().__init__(True)
+        self.release = threading.Event()
+
+    def launch(self, session, roster):
+        self.release.wait(10)
+        return super().launch(session, roster)
+
+
+class LaunchRaces(ServiceCase):
+    def make_link(self):
+        return SlowLink()
+
+    def test_a_launch_that_lands_after_the_host_cancelled_is_stopped(self):
+        """AVR-223 (2): the party moved on while the launch was in flight; the runtime that then
+        comes up is ended, never left running beside whatever starts next."""
+        ana = self.phone()
+        _, v, _ = ana.post('join', {'name': 'Ana'})
+        t = threading.Thread(target=ana.post, args=('session/launch',
+                             {'game': 'bluff', 'if_version': v['version']}), daemon=True)
+        t.start()
+        for _ in range(200):                                   # until the session is launching
+            _, v, _ = self.phone().state()
+            if v.get('session') and v['session']['state'] == 'launching':
+                break
+            time.sleep(0.02)
+        sid = v['session']['id']
+        host = self.phone()
+        host.cookie = ana.cookie
+        status, v, _ = host.post('session/end', {'if_version': v['version']})
+        self.assertEqual((status, v['session']['outcome']), (200, 'launch_failed'))
+        self.link.release.set()
+        t.join(5)
+        self.assertEqual(self.link.ended, [sid])
+        self.assertEqual(self.phone().state()[1]['state'], 'lobby')
+
+
 class FailingLaunch(ServiceCase):
     link_ok = False
 
@@ -590,6 +630,48 @@ class FailingLaunch(ServiceCase):
         # AVR-134: the failed launch is also ended at the game, so a runtime that came up late
         # (after the link gave up) or half-started is stopped before anything else can start
         self.assertEqual(self.link.ended, [v['session']['id']])
+
+
+class Bounds(ServiceCase):
+    """AVR-218: listen backlog and the cap on blocked long polls."""
+
+    def test_listen_backlog_is_raised(self):
+        self.assertEqual(self.server.request_queue_size, service.REQUEST_QUEUE_SIZE)
+        self.assertGreater(service.REQUEST_QUEUE_SIZE, 5)
+        self.assertTrue(self.server.daemon_threads)
+
+    def test_extra_waiter_beyond_the_cap_returns_at_once(self):
+        orig = service.MAX_WAITERS
+        service.MAX_WAITERS = 1
+        self.addCleanup(setattr, service, 'MAX_WAITERS', orig)
+        _, v, _ = self.phone().state()
+        since = v['version']
+        first = threading.Thread(target=self.svc.view, args=(None, since, 5.0), daemon=True)
+        first.start()
+        deadline = time.monotonic() + 3
+        while self.svc.waiters < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(self.svc.waiters, 1)
+        t0 = time.monotonic()
+        view = self.svc.view(None, since, 5.0)       # saturated: degrades to a short poll
+        self.assertLess(time.monotonic() - t0, 1.0)
+        self.assertEqual(view['version'], since)
+        self.assertEqual(self.svc.waiters, 1)
+        self.svc.call('join', self.store.issue()[0] if hasattr(self.store, 'issue') else 'x', 'Ana', None)             if False else None
+        with self.svc.lock:                           # release the first waiter
+            self.svc.core.party.version += 1
+            self.svc.changed.notify_all()
+        first.join(3)
+        self.assertEqual(self.svc.waiters, 0)
+
+    def test_wait_zero_is_unchanged_when_saturated(self):
+        orig = service.MAX_WAITERS
+        service.MAX_WAITERS = 0
+        self.addCleanup(setattr, service, 'MAX_WAITERS', orig)
+        t0 = time.monotonic()
+        self.svc.view(None, None, 0)
+        self.svc.view(None, 1, 0)
+        self.assertLess(time.monotonic() - t0, 1.0)
 
 
 if __name__ == '__main__':
