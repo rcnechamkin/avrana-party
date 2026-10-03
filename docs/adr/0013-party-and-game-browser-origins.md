@@ -99,6 +99,9 @@ admin APIs makes every game bug a Party bug.
 
 ## Deliberately open
 
+A mechanism proposal for every item below, with the decisions it needs, is in
+[BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) (2026-10-03, proposed, not accepted).
+
 The game hostname(s) and whether each game gets its own; the exact host-control and heartbeat
 transport; how Limited Mode (ADR 0012) names and reaches the two origins over plain HTTP; the
 community sandbox tier.

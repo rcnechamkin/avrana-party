@@ -102,6 +102,9 @@ microphone, and the `Secure` cookie itself. Those cannot be wished into existenc
 
 ## Deliberately open
 
+A mechanism proposal for every item below, with the decisions it needs, is in
+[LIMITED-MODE](../design/LIMITED-MODE.md) (2026-10-03, proposed, not accepted).
+
 The exact Limited Mode credential, its mapping to `device_id`, how a phone moves between modes
 without losing its member, what the HTTP doorway page shows, whether `/` becomes Party Home, and
 what the QR code carries (ADR 0004's open items remain open).
