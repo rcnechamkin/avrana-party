@@ -60,6 +60,16 @@ def check_party(party):
     expect(constant(protocol, 'PREFIX'), sp['prefix'], 'session protocol prefix', where)
     expect(sha256_normalized(protocol), sp['reference_sha256'], 'session protocol file digest', where)
     expect(sha256_normalized(party / sp['vectors']), sp['vectors_sha256'], 'session protocol vectors digest', where)
+    res = d['result']
+    reference = party / res['reference']
+    expect(constant(reference, 'SCHEMA'), res['schema'], 'result schema', where)
+    expect(sha256_normalized(reference), res['reference_sha256'], 'result reference file digest', where)
+    expect(sha256_normalized(party / res['vectors']), res['vectors_sha256'], 'result vectors digest', where)
+    expect(load(party / res['vectors'], 'result vectors').get('schema'), res['schema'],
+           'result vectors schema', res['vectors'])
+    if "payload['result']" not in protocol.read_text(encoding='utf-8'):
+        raise Drift(f'result carriage drifted: {where} declares {res["carried_by"]!r} but '
+                    f'{sp["reference"]} does not carry a result in `ended`')
     sessions = party / 'avrana/party/sessions.py'
     r = d['routes']
     expect(constant(sessions, 'TICKET_ROUTE'), r['party_ticket'], 'party ticket route', where)
@@ -90,6 +100,19 @@ def check_games(games):
     expect(constant(vendored, 'VERSION'), sp['version'], 'vendored protocol version', where)
     expect(sha256_normalized(vendored), sp['vendored_sha256'], 'vendored protocol file digest', where)
     expect(sha256_normalized(games / sp['vectors']), sp['vectors_sha256'], 'vendored vectors digest', where)
+    res = d['result']
+    vendored_result = games / res['vendored']
+    expect(constant(vendored_result, 'SCHEMA'), res['schema'], 'vendored result schema', where)
+    expect(sha256_normalized(vendored_result), res['vendored_sha256'], 'vendored result file digest', where)
+    expect(sha256_normalized(games / res['vectors']), res['vectors_sha256'], 'vendored result vectors digest', where)
+    for slug in res['reported_by']:
+        if slug not in d['party_side_games']:
+            raise Drift(f'result reporters drifted: {where} lists {slug!r} under result.reported_by '
+                        'but not under party_side_games')
+        game = games / 'games' / slug / 'game.py'
+        if not game.exists() or 'def game_result(' not in game.read_text(encoding='utf-8'):
+            raise Drift(f'result reporters drifted: {where} says {slug!r} reports results but '
+                        f'games/{slug}/game.py defines no game_result()')
     session = games / 'core/party_session.py'
     r = d['routes']
     expect(constant(session, 'ENDED_PATH'), r['party_ended'], 'games ended route', where)
@@ -120,6 +143,15 @@ def check_cross(party, games, p, g):
                     'avrana/party/protocol.py (Party); re-vendor both files and update both declarations')
     if gs['vectors_sha256'] != ps['vectors_sha256']:
         raise Drift('session protocol vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
+    pr, gr = p['result'], g['result']
+    if gr['schema'] != pr['schema'] or gr['carried_by'] != pr['carried_by']:
+        raise Drift(f'result schema drifted: Games {gr["schema"]!r} via {gr["carried_by"]!r} vs '
+                    f'Party {pr["schema"]!r} via {pr["carried_by"]!r}')
+    if gr['vendored_sha256'] != pr['reference_sha256']:
+        raise Drift('result envelope drifted: core/party_result.py (Games) is not byte-identical to '
+                    'avrana/party/result.py (Party); re-vendor the file and update both declarations')
+    if gr['vectors_sha256'] != pr['vectors_sha256']:
+        raise Drift('result vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
     for key in ('party_ticket', 'party_ended', 'game_launch', 'game_end'):
         if p['routes'][key] != g['routes'][key]:
             raise Drift(f'route {key} drifted: Party {p["routes"][key]!r} vs Games {g["routes"][key]!r}')
@@ -137,7 +169,8 @@ def check_cross(party, games, p, g):
 
 def run(party, games=None):
     p = check_party(party)
-    print(f'Party implements {p["contract"]} ({p["session_protocol"]["version"]}, {p["launch"]["integration"]}): OK')
+    print(f'Party implements {p["contract"]} ({p["session_protocol"]["version"]}, '
+          f'{p["result"]["schema"]}, {p["launch"]["integration"]}): OK')
     if games is None:
         print('Games checkout not given: cross-repository checks NOT run (pass --games)')
         return

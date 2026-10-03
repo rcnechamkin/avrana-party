@@ -10,6 +10,9 @@ foundation merged in PR #3; deployment is a separate action.
 | `games/<id>.json` | `avrana.game/v0` (Game Contract) | `avrana/contracts/game.py` |
 | `appliances/<id>.json` | `avrana.appliance/v0` | `avrana/contracts/appliance.py` |
 | `vectors/evaluate.v0.json` | shared test vectors | `tests/unit/test_evaluate.py`, `tests/offline/evaluate.test.mjs` |
+| `vectors/party-session.v0.json` | session protocol vectors (ADR 0006) | `tests/unit/test_party_protocol.py`; vendored by Games |
+| `vectors/game-result.v1.json` | `avrana.game-result/v1` cases (ADR 0015) | `tests/unit/test_party_result.py`; vendored by Games |
+| `party-games.v0.json` | Party ↔ Games contract declaration | `tools/contract_check.py` |
 | → `web/party/catalog.json` | `avrana.catalog/v0` (generated) | `python3 -m avrana.contracts.catalog [--check]` |
 
 ```sh

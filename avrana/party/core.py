@@ -47,6 +47,8 @@ import re
 import secrets
 import unicodedata
 
+from avrana.party import result as game_result
+
 LIVE_WINDOW = 45.0         # s since the last party request before a member counts as away
 HOST_GRACE = 30.0          # s an away host keeps the role before succession (PARTY-LIFECYCLE.md)
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
@@ -138,6 +140,8 @@ class GameSession:
         self.state = LAUNCHING
         self.state_since = now
         self.outcome = None
+        self.result = None              # the accepted game result (ADR 0015), or None
+        self.result_refused = None      # why a reported result was not accepted, or None
         self.detail = None              # e.g. why a launch failed; shown to people
         self.game_confirmed_end = None  # True/False once an end-for-everyone was attempted
         self.replaced = None            # the session a host switch ended for this one (AVR-128)
@@ -557,10 +561,15 @@ class PartyCore:
         self._close(s, 'ended_by_host')
         return True
 
-    def game_reported_end(self, session_id, outcome):
+    def game_reported_end(self, session_id, outcome, result=None):
         """The game says its session is over ('completed' or 'abandoned'). The caller has already
         authenticated the report as coming from that game's server. Anything but the live, active
-        session is refused, so an old report can never end (or resurrect) a newer session."""
+        session is refused, so an old report can never end (or resurrect) a newer session.
+
+        `result` is the structured result the report carried, if any (ADR 0015). The end and the
+        result are judged separately: an authentic report ends the session whatever its result
+        looks like, and a result that is not acceptable is dropped (`s.result_refused` says why),
+        never repaired. A session ends once, so it has at most one result."""
         self._timed()
         if outcome not in ('completed', 'abandoned'):
             raise Refused('bad_outcome', 'Unknown outcome.')
@@ -572,7 +581,34 @@ class PartyCore:
             self._close(s, 'ended_by_host')
         else:
             self._close(s, outcome)
+        if result is not None:
+            self._accept_result(s, result)
         return s
+
+    def _accept_result(self, s, reported):
+        """THE boundary for game results (ADR 0015): the only place a result becomes the party's.
+        It runs once per session, after the session closed, on a report already authenticated and
+        bound to this session. An accepted result is kept on the session as the party's own
+        record: the game's checked result plus what only the party knows (which member each
+        participant was). History, stats and retention (AVR-71) start from this record; nothing
+        is persisted here."""
+        if s.outcome != 'completed':
+            s.result_refused = 'not_completed'     # abandoned, or the host's end won the race
+            return
+        players = [p.id for p in s.participants.values() if p.role == 'player']
+        try:
+            checked = game_result.check(reported, s.game_id, players)
+        except game_result.Refused as e:
+            s.result_refused = str(e)
+            return
+        member_of = {p.id: p.member_id for p in s.participants.values()}
+        record = {'schema': checked['schema'], 'session': s.id, 'game': checked['game'],
+                  'outcome': s.outcome, 'mode': checked['mode'],
+                  'standings': [dict(entry, member=member_of[entry['participant']])
+                                for entry in checked['standings']]}
+        if 'data' in checked:
+            record['data_schema'], record['data'] = checked['data_schema'], checked['data']
+        s.result = record
 
     def _close(self, s, outcome, detail=None):
         now = self.clock()
