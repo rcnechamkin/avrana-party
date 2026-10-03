@@ -6,7 +6,7 @@ import json
 import threading
 import unittest
 
-from avrana.party import core, protocol, sessions
+from avrana.party import core, protocol, result, sessions
 from avrana.party.protocol import Invalid
 
 from test_party_service import HOST, ORIGIN, BLUFF, Phone, ServiceCase
@@ -254,6 +254,90 @@ class Flow(ServiceCase):
         late = protocol.ended_message(KEY, 'bluff', sid1, 'abandoned')     # old session, valid sig
         self.assertEqual(self.game.report(late)[0], 409)
         self.assertEqual(self.ben.state()[1]['state'], 'active')          # the new game runs on
+
+    # ---- structured results (ADR 0015) ---------------------------------------------------------------
+    def result_for(self, winner=0, **change):
+        pids = [r['participant'] for r in self.game.launches[-1] if r['role'] == 'player']
+        r = {'schema': result.SCHEMA, 'game': {'id': 'bluff', 'build': 'sha256:abc'},
+             'mode': 'competitive',
+             'standings': [{'participant': p, 'standing': 'won' if i == winner else 'lost'}
+                           for i, p in enumerate(pids)],
+             'data_schema': 'bluff.result/v1', 'data': {'steps': 9}}
+        r.update(change)
+        return r
+
+    def test_the_game_server_reports_a_result_and_the_party_keeps_it(self):
+        sid = self.launch()
+        status, body = self.game.report(self.game.side.ended('completed', result=self.result_for()))
+        self.assertEqual((status, body), (200, {'ok': True, 'result': 'accepted'}))
+        s = self.svc.core.party.session
+        self.assertEqual((s.id, s.outcome, s.result['session'], s.result['mode']),
+                         (sid, 'completed', sid, 'competitive'))
+        members = {m['name']: m['id'] for m in self.ben.state()[1]['members']}
+        self.assertEqual({e['member']: e['standing'] for e in s.result['standings']},
+                         {members['Ana']: 'won', members['Ben']: 'lost'})
+        self.assertEqual(self.ben.state()[1]['location']['at'], 'results')    # lifecycle unchanged
+
+    def test_a_refused_result_is_reported_as_refused_and_the_session_still_ends(self):
+        self.launch()
+        bad = self.result_for(schema='avrana.game-result/v2')
+        status, body = self.game.report(self.game.side.ended('completed', result=bad))
+        self.assertEqual((status, body), (200, {'ok': True, 'result': 'refused', 'reason': 'schema'}))
+        s = self.svc.core.party.session
+        self.assertEqual((s.outcome, s.result, s.result_refused), ('completed', None, 'schema'))
+
+    def test_a_replayed_or_second_result_never_replaces_the_first(self):
+        sid = self.launch()
+        first = protocol.ended_message(KEY, 'bluff', sid, 'completed', result=self.result_for(0))
+        self.assertEqual(self.game.report(first)[1].get('result'), 'accepted')
+        kept = json.dumps(self.svc.core.party.session.result, sort_keys=True)
+        self.assertEqual(self.game.report(first)[0], 403)                       # replay
+        second = protocol.ended_message(KEY, 'bluff', sid, 'completed', result=self.result_for(1))
+        self.assertEqual(self.game.report(second)[0], 409)                      # the session is over
+        self.assertEqual(json.dumps(self.svc.core.party.session.result, sort_keys=True), kept)
+
+    def test_a_result_for_a_stale_session_is_refused_whole(self):
+        sid1 = self.launch()
+        old = self.result_for()
+        self.game.report(self.game.side.ended('abandoned'))
+        self.launch()
+        late = protocol.ended_message(KEY, 'bluff', sid1, 'completed', result=old)
+        self.assertEqual(self.game.report(late)[0], 409)
+        s = self.svc.core.party.session
+        self.assertEqual((s.state, s.result), ('active', None))                 # the new game runs on
+
+    def test_a_result_from_the_wrong_issuer_or_key_is_refused_whole(self):
+        sid = self.launch()
+        r = self.result_for()
+        for bad in (protocol.ended_message(protocol.new_key(), 'bluff', sid, 'completed', result=r),
+                    protocol.ended_message(KEY, 'spades', sid, 'completed', result=r)):
+            self.assertEqual(self.game.report(bad)[0], 403)
+        s = self.svc.core.party.session
+        self.assertEqual((s.state, s.result), ('active', None))
+
+    def test_a_browser_cannot_submit_or_forge_a_result(self):
+        sid = self.launch()
+        r = self.result_for()
+        signed = protocol.ended_message(KEY, 'bluff', sid, 'completed', result=r)
+        # through the reverse proxy the route does not exist, even with a correctly signed message
+        self.assertEqual(self.game.report(signed, headers={'X-Forwarded-For': '10.42.0.23'})[0], 404)
+        # the phone's own API has no route that takes a result, signed or bare
+        for route, body in (('session/ended', {'message': signed}), ('session/result', {'result': r}),
+                            ('session/ticket', {'result': r})):
+            status, _, _ = self.ana.post(route, body)
+            self.assertIn(status, (200, 404), route)                            # ticket: field ignored
+        # a ticket is not a report, and an unsigned result is nothing
+        _, t, _ = self.ticket(self.ana)
+        for bad in (t['ticket'], json.dumps(r)):
+            self.assertEqual(self.game.report(bad)[0], 403)
+        s = self.svc.core.party.session
+        self.assertEqual((s.state, s.result), ('active', None))
+
+    def test_an_oversized_report_is_refused_before_it_is_read_as_a_message(self):
+        self.launch()
+        status, _ = self.game.report('aps0.' + 'A' * 9000 + '.AAAA')
+        self.assertEqual(status, 413)
+        self.assertEqual(self.svc.core.party.session.state, 'active')
 
     # ---- end for everyone ---------------------------------------------------------------------------
     def test_end_for_everyone_resets_the_game_and_kills_tickets(self):

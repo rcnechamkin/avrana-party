@@ -12,14 +12,19 @@ Browser -> party (cookie-authenticated, Origin-checked, never in a URL):
 
 Game -> party (server to server, loopback and unproxied only, signed):
     POST /internal/party-session/v0/ended   {"message": <ended>}   -> 200 {"ok": true}
+    When the message carries a `result` (avrana.party.result, ADR 0015) the reply adds
+    "result": "accepted", or "result": "refused" with a "reason". Either way the session ended.
 
 The game URL and key come from the appliance's grant for that game (config), never from the game.
 """
 import json
+import logging
 import urllib.error
 import urllib.request
 
 from avrana.party import core, protocol
+
+log = logging.getLogger('avrana.party.sessions')
 
 LAUNCH_PATH = '/avrana/session/v0/launch'
 END_PATH = '/avrana/session/v0/end'
@@ -111,9 +116,17 @@ def routes(service, endpoints):
         except protocol.Invalid as e:
             return _send(h, 403, {'error': 'bad_message', 'reason': str(e)})
         try:
-            service.game_reported_end(p['sid'], p['outcome'])
+            s = service.game_reported_end(p['sid'], p['outcome'], p.get('result'))
         except core.Refused as e:
             return _refused(h, e)
-        return _send(h, 200, {'ok': True})
+        reply = {'ok': True}
+        if 'result' in p:                         # the end counted; say what became of the result
+            if s.result is not None:
+                reply['result'] = 'accepted'
+            else:
+                reply.update(result='refused', reason=s.result_refused)
+                log.warning('game %s session %s: result refused (%s)', ep.game_id, p['sid'],
+                            s.result_refused)
+        return _send(h, 200, reply)
 
     return {('POST', TICKET_ROUTE): ticket}, {ENDED_ROUTE: ended}

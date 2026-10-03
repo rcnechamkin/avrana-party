@@ -28,6 +28,11 @@ Both name the same components:
 - **session protocol**: version `avrana.party-session/v0`, prefix `aps0`, the SHA-256 of the
   reference file (`avrana/party/protocol.py`, vendored unchanged as `core/party_protocol.py` in
   Games) and of the shared test vectors;
+- **result envelope** ([ADR 0015](../adr/0015-game-result-envelope.md)): schema
+  `avrana.game-result/v1`, carried as `ended.result`; the SHA-256 of the reference file
+  (`avrana/party/result.py`, vendored unchanged as `core/party_result.py` in Games) and of its
+  vectors. Games also lists which games report a result (`result.reported_by`), and the checker
+  requires each of them to be a party-side game that defines `game_result()`;
 - **routes**: the party's ticket route, the party's loopback `ended` route, the game's launch
   and end routes under `/games/<slug>/`;
 - **launch integration**: `avrana.lan-launch/v1`, the `avrana=1` marker, the fixed `/party/`
@@ -43,8 +48,9 @@ from either repository):
 
 1. proves Party's declaration against Party's constants and file digests;
 2. proves Games' declaration against Games' constants, mounted routes, exporter and drop-in;
-3. compares the two: same contract version, identical protocol file and vectors, same routes,
-   launch and environment names, identical catalog snapshot.
+3. compares the two: same contract version, identical protocol file and vectors, same result
+   schema with an identical reference file and vectors, same routes, launch and environment
+   names, identical catalog snapshot.
 
 Every failure names the drifted component and the file to change. It runs in Party's
 `Cross-repo contract` workflow and Games' `cross-repo` job, each against the other repository's
@@ -58,8 +64,8 @@ python3 tools/contract_check.py --games ../avrana-party-games
 ## Changing the contract
 
 1. Change the code and tests on both sides on paired `avr-N` branches.
-2. Re-vendor `protocol.py` and the vectors into Games when the protocol changed; update both
-   declarations' digests (the tests in both repositories print the expected values).
+2. Re-vendor `protocol.py`, `result.py` and their vectors into Games when either changed;
+   update both declarations' digests (the tests in both repositories print the expected values).
 3. Bump `contract` / `requires` to `avrana.party-games/v1` only when a Games built against v0
    would no longer work against the new Party. Additive, backwards-compatible changes keep v0.
 4. The deployment manifest and `/party/api/status` report the version Party implements; the

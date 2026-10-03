@@ -174,12 +174,13 @@ class PartyService:
             self.link.end(s)
         return s
 
-    def game_reported_end(self, session_id, outcome):
+    def game_reported_end(self, session_id, outcome, result=None):
         """The game's own `ended` (via the session protocol). A completed round is held on the
         game's results screen until the host moves on (ADR 0011); an abandoned one has nothing to
-        hold, so the party goes home and the game is released at once (AVR-223)."""
+        hold, so the party goes home and the game is released at once (AVR-223). `result` is the
+        structured result the report carried, if any (ADR 0015)."""
         with self.lock:
-            s = self.core.game_reported_end(session_id, outcome)
+            s = self.core.game_reported_end(session_id, outcome, result)
             self._notify()
         if s.outcome == 'abandoned':
             self.link.end(s)

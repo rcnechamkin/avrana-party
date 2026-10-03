@@ -8,13 +8,14 @@ import unittest
 
 from avrana import REPO_ROOT
 from avrana.contracts import party_games
-from avrana.party import protocol, sessions
+from avrana.party import protocol, result, sessions
 
 spec = importlib.util.spec_from_file_location('contract_check', REPO_ROOT / 'tools/contract_check.py')
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
 
 PARTY_FILES = ['contracts/party-games.v0.json', 'avrana/party/protocol.py', 'avrana/party/sessions.py',
+               'avrana/party/result.py', 'contracts/vectors/game-result.v1.json',
                'avrana/contracts/lan_catalog.py', 'contracts/vectors/party-session.v0.json',
                'contracts/catalogs/lan-games.json', 'deploy/arcade/avrana-party-session.conf',
                'docs/runbooks/party-core-deploy.md']
@@ -31,6 +32,11 @@ def fake_games(root, party_decl):
     shutil.copyfile(REPO_ROOT / 'avrana/party/protocol.py', root / 'core/party_protocol.py')
     shutil.copyfile(REPO_ROOT / 'contracts/vectors/party-session.v0.json', root / 'tests/vectors/party-session.v0.json')
     shutil.copyfile(REPO_ROOT / 'contracts/catalogs/lan-games.json', root / 'provider/catalog.json')
+    shutil.copyfile(REPO_ROOT / 'avrana/party/result.py', root / 'core/party_result.py')
+    shutil.copyfile(REPO_ROOT / 'contracts/vectors/game-result.v1.json', root / 'tests/vectors/game-result.v1.json')
+    (root / 'games/bluff').mkdir(parents=True)
+    (root / 'games/bluff/game.py').write_text('class S:\n    def game_result(self, ref):\n        return None\n',
+                                              encoding='utf-8')
     (root / 'core/party_session.py').write_text(f'KEYS_ENV = "{p["environment"]["keys_dir"]}"\n'
                                                 f'ENDED_PATH = "{p["routes"]["party_ended"]}"\n', encoding='utf-8')
     (root / 'server.py').write_text(f'@app.post("/games/{{slug}}{p["routes"]["game_launch"]}")\n'
@@ -43,6 +49,11 @@ def fake_games(root, party_decl):
                                  'vendored_sha256': p['session_protocol']['reference_sha256'],
                                  'vectors': 'tests/vectors/party-session.v0.json',
                                  'vectors_sha256': p['session_protocol']['vectors_sha256']},
+            'result': {'schema': p['result']['schema'], 'carried_by': p['result']['carried_by'],
+                       'vendored': 'core/party_result.py', 'vendored_sha256': p['result']['reference_sha256'],
+                       'vectors': 'tests/vectors/game-result.v1.json',
+                       'vectors_sha256': p['result']['vectors_sha256'], 'reported_by': ['bluff']},
+            'party_side_games': ['bluff', 'expo'],
             'routes': dict(p['routes']), 'launch': dict(p['launch']), 'environment': dict(p['environment'])}
     (root / 'provider/avrana-contract.json').write_text(json.dumps(decl), encoding='utf-8')
     return decl
@@ -60,6 +71,8 @@ class Declaration(unittest.TestCase):
         self.assertEqual(party_games.versions(d), {'party_games': 'avrana.party-games/v0',
                                                    'party_session': protocol.VERSION,
                                                    'lan_launch': 'avrana.lan-launch/v1'})
+
+        self.assertEqual((d['result']['schema'], d['result']['carried_by']), (result.SCHEMA, 'ended.result'))
 
     def test_party_side_check_passes_on_this_checkout(self):
         checker.check_party(REPO_ROOT)
@@ -105,6 +118,57 @@ class Mutations(unittest.TestCase):
         with self.assertRaises(checker.Drift) as cm:
             self.run_all()
         self.assertIn('re-vendor', str(cm.exception))
+
+    def test_result_module_edit_without_redeclaring_is_named(self):
+        with open(self.party / 'avrana/party/result.py', 'a', encoding='utf-8') as f:
+            f.write('\n# a change\n')
+        with self.assertRaises(checker.Drift) as cm:
+            checker.check_party(self.party)
+        self.assertIn('result reference file digest', str(cm.exception))
+
+    def test_result_change_redeclared_but_not_revendored_is_cross_drift(self):
+        with open(self.party / 'avrana/party/result.py', 'a', encoding='utf-8') as f:
+            f.write('\n# a change\n')
+        self.decl['result']['reference_sha256'] = checker.sha256_normalized(self.party / 'avrana/party/result.py')
+        self.write_party()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('result envelope drifted', str(cm.exception))
+
+    def test_games_on_another_result_schema_is_named(self):
+        self.games_decl['result']['schema'] = 'avrana.game-result/v2'
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('result schema', str(cm.exception))
+
+    def test_result_vectors_divergence_is_named(self):
+        with open(self.games / 'tests/vectors/game-result.v1.json', 'a', encoding='utf-8') as f:
+            f.write('\n')
+        self.games_decl['result']['vectors_sha256'] = checker.sha256_normalized(
+            self.games / 'tests/vectors/game-result.v1.json')
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('result vectors drifted', str(cm.exception))
+
+    def test_a_declared_result_reporter_must_define_game_result(self):
+        (self.games / 'games/bluff/game.py').write_text('class S:\n    pass\n', encoding='utf-8')
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('defines no game_result()', str(cm.exception))
+
+    def test_a_result_reporter_must_be_a_party_side_game(self):
+        self.games_decl['result']['reported_by'] = ['snake']
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('not under party_side_games', str(cm.exception))
+
+    def test_a_declaration_without_the_result_section_is_a_readable_failure(self):
+        del self.games_decl['result']
+        self.write_games()
+        self.assertEqual(checker.main(['--party', str(self.party), '--games', str(self.games)]), 1)
 
     def test_games_requiring_a_newer_contract_fails(self):
         self.games_decl['requires'] = 'avrana.party-games/v1'
