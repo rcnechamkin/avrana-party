@@ -264,7 +264,7 @@ class ApplianceAndCatalog(unittest.TestCase):
         built = catalog.build(VOCAB, self.appliance, self.contracts)
         self.assertEqual(built['schema'], 'avrana.catalog/v0')
         installed = [g for g in built['games'] if g['installed']]
-        self.assertEqual(len(installed), 31)
+        self.assertEqual(len(installed), 32)
         self.assertEqual([g['id'] for g in installed if g['provider'] != 'lan-games'], ['arcade-gauntlet2'])
         self.assertEqual(next(g for g in installed if g['id'] == 'arcade-gauntlet2')['entry'], '/arcade/')
         bomber = next(g for g in built['games'] if g['id'] == 'ps1-bomberman')

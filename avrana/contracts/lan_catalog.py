@@ -11,6 +11,9 @@ SLUG = re.compile(r'^[a-z][a-z0-9_-]{0,35}$')
 FIELDS = {'slug', 'title', 'icon', 'summary', 'min_p', 'max_p', 'tv', 'category'}
 
 V1_FIELDS = FIELDS | {'id', 'description', 'launch', 'solo', 'art', 'accent', 'playersLabel'}
+# Avrana-native games keep their bare slug as the id; donor titles are `lan-<slug>`. The Party
+# session protocol names a game by this id and the Games server by its slug, so they must match.
+FIRST_PARTY = ('bluff', 'expo')
 
 def parse(doc, vocab):
     if not isinstance(doc, dict) or set(doc) != {'schema', 'source', 'games'}:
@@ -32,7 +35,7 @@ def parse(doc, vocab):
         slug = row['slug']
         if not isinstance(slug, str) or not SLUG.fullmatch(slug):
             raise ValueError('LAN catalog: invalid slug')
-        cid = 'bluff' if v1 and slug == 'bluff' else 'lan-' + slug
+        cid = slug if v1 and slug in FIRST_PARTY else 'lan-' + slug
         if v1 and (row['id'] != cid or row['launch'] != f'/games/{slug}/'):
             raise ValueError('LAN catalog: invalid canonical identity/direct target')
         if v1 and (type(row['solo']) is not bool or not isinstance(row['description'], str)
