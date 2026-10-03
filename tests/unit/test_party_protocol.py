@@ -89,7 +89,7 @@ class Tickets(unittest.TestCase):
 
     def test_carries_no_identity_beyond_the_participant(self):
         payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
-        self.assertEqual(set(payload), {'v', 'typ', 'iss', 'aud', 'sid', 'iat', 'exp', 'pid', 'role'})
+        self.assertEqual(set(payload), {'v', 'typ', 'iss', 'aud', 'sid', 'iat', 'exp', 'pid', 'role', 'jti'})   # jti: random, no identity
 
     def test_expired(self):
         self.refused(self.ticket(), 'expired', now=NOW + P.TICKET_TTL)
@@ -226,6 +226,14 @@ class GameSideLifecycle(unittest.TestCase):
         a = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
         b = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 10)
         self.assertEqual(side.admit(a, now=NOW + 11), side.admit(b, now=NOW + 11))
+
+    def test_two_tickets_in_the_same_second_are_distinct(self):
+        """iat is whole seconds; a reconnect right after a connect must not look like a replay."""
+        side = self.launched()
+        a = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        b = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        self.assertNotEqual(a, b)
+        self.assertEqual(side.admit(a, now=NOW + 1), side.admit(b, now=NOW + 1))
 
     def test_refused_ticket_is_not_spent(self):
         side = self.launched()

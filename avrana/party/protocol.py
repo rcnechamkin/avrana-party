@@ -159,7 +159,10 @@ def mint_ticket(key, game, sid, participant, role, now=None, ttl=TICKET_TTL):
     if role not in ROLES or not PID.match(participant) or not GAME_ID.match(game):
         raise ValueError('bad ticket fields')
     payload = _base('ticket', 'party', game, sid, now, ttl)
-    payload.update({'pid': participant, 'role': role})
+    # `jti` makes every ticket distinct even within one second (iat has whole-second resolution),
+    # so a single-use ledger (AVR-52) never mistakes a fresh reconnect ticket for a replay. An
+    # older verifier ignores the field; the vectors (minted without it) still verify.
+    payload.update({'pid': participant, 'role': role, 'jti': secrets.token_hex(8)})
     return seal(key, payload)
 
 
