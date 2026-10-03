@@ -13,8 +13,9 @@ not a new SDK contract. Context: `PARTY-PLATFORM.md`, `docs/adr/0003-ids-and-key
 
 **Architecture reconciliation 2026-10-02 (accepted direction, not implemented):** game clients move
 to a separate browser origin ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)); native games become isolated processes behind a
-game registry and LAN Games retires as a runtime ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)); tickets become single-use and
-results cross the boundary in a versioned envelope owned by AVR-237 (ADR 0006 amendment). The
+game registry and LAN Games retires as a runtime ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)); results
+cross the boundary in a versioned envelope owned by AVR-237 (ADR 0006 amendment). Single-use
+tickets (AVR-52) are the one part already merged in Party source. The
 target diagram below shows that model. The implemented contracts in §3 are unchanged, and BLUFF
 still runs through LAN Games infrastructure until the retirement work lands.
 
@@ -74,7 +75,7 @@ are targets, not deployed components.
 
 ### Current state and earlier target shape (historical diagram, 2026-09-24)
 
-**BLUFF still traverses LAN Games infrastructure.** In deployed source every browser page — Party
+**BLUFF still traverses LAN Games infrastructure.** In current source every browser page — Party
 Home, the games and the arcade — is served from the one origin `https://party.avrana.net`, and
 BLUFF and the donor titles run as modules inside the LAN Games fork's single process (port 8096),
 bridged to Party Core by `avrana.party-session/v0`. The diagram below is the earlier conceptual
@@ -228,13 +229,15 @@ full-screen setup and held results. The earlier ticket/event/permission-hook ide
 drafts or PS1 experiment descriptions where labeled. Do not implement them as a second SDK.
 
 Without any of them a game keeps working exactly as today. With them it joins the party.
-(That sentence describes standalone LAN Games compatibility in deployed source. Standalone LAN
+(That sentence describes standalone LAN Games compatibility in current source. Standalone LAN
 Games is not a supported product mode going forward, [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md); a native game is a Party
 consumer by construction.)
 
 **Tickets, forward direction (ADR 0003/0006 amendments, 2026-10-02):** symmetric HMAC, single-use
-at admission (AVR-52), a fresh ticket per reconnect carrying the same participant id. v0 as
-deployed still accepts a replayed ticket within its 120 s lifetime.
+at admission, a fresh ticket per reconnect carrying the same participant id. Single-use
+admission is implemented in Party source (AVR-52, PR #42: `GameSide.admit()` refuses a second
+presentation as `replay`). The verified production revision in [SYSTEM](../SYSTEM.md) predates
+it, so do not assume a deployed game side refuses replays until that is evidenced.
 
 ### 3.1 Seat ticket handshake (v1)
 
@@ -299,7 +302,7 @@ A standalone title may stay open while the Party is home and follows when the ho
 
 The Games integration script loads the follower, hides global Party chrome during a Party
 round, and exposes `window.AvranaParty` for host controls in game chrome (ADR 0011). Standalone
-access still works in deployed source without Party Core/profile or on plain HTTP; it is a
+access still works in current source without Party Core/profile or on plain HTTP; it is a
 retiring compatibility surface, not a product mode ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)). This is the implemented
 built-in integration, not a proposed API for untrusted games; sandbox/frame isolation remains
 future design. Deployment/phone validation of these console changes is AVR-212.

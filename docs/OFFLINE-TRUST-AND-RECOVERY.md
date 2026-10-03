@@ -4,6 +4,13 @@
 > `https://party.avrana.net`; plain HTTP remains for legacy/recovery access. Read `SYSTEM.md`
 > and `runbooks/party-https.md` for deployed evidence, `ROADMAP.md` for strategy and Linear
 > for active work. Broader trust/recovery proposals below are not all implemented.
+>
+> **Terminology reconciled 2026-10-02 with [ADR 0012](adr/0012-limited-mode-party-survives-https-loss.md).**
+> **Limited Mode** means one specific thing: the Party operating without trusted HTTPS. It is
+> accepted direction and not implemented; production serves `/party/` HTTPS-only. Other degraded
+> conditions (corrupt package, failed update, low storage, crash loop, thermal limits, a weak
+> seat) are **recovery or reduced-capability states**, not Limited Mode. The app-courier and
+> permanent-device-identity ideas below remain proposals; an app is never the baseline.
 
 ## Purpose
 
@@ -110,13 +117,23 @@ This should appear normal.
 
 Do not show an ominous “OFFLINE” warning merely because the Internet is absent.
 
-### Recovery / Limited Mode
+### Limited Mode
 
-One or more capabilities are degraded.
+Trusted HTTPS is unavailable (ADR 0012): the public certificate is expired or invalid, Party DNS
+is bypassed, or the browser otherwise cannot establish a trusted connection.
+
+The Party itself keeps working: membership, presence, host authority, synchronized navigation,
+game selection and compatible games. Secure-context features degrade individually and visibly.
+Limited Mode needs its own explicit identity/continuity model; the `Secure` Party cookie is never
+weakened to make it work.
+
+### Recovery / reduced capability (not Limited Mode)
+
+One or more capabilities are degraded for a reason other than transport trust. These can occur
+in Full Mode or Limited Mode and are reported per capability, game or seat.
 
 Possible triggers:
 
-- expired or invalid public certificate
 - corrupted package
 - incompatible game version
 - failed system update
@@ -145,6 +162,9 @@ Internally, do not implement one global boolean such as:
 ```text
 limited_mode = true
 ```
+
+"Limited Mode" is the consumer-facing name for the transport-trust state. Internally it is one
+input (`public HTTPS healthy?`, `secure browser context?`) among the capabilities below.
 
 The system should evaluate:
 
@@ -511,7 +531,8 @@ The native app may still pair/authenticate using the permanent device identity, 
 
 However, a new publicly trusted browser certificate cannot be generated from nothing while offline.
 
-Browser-only users remain in a degraded capability state until a valid certificate can be obtained.
+Browser-only users remain in Limited Mode until a valid certificate can be obtained. Per ADR 0012
+they still have a usable Party and compatible games.
 
 ---
 
@@ -615,6 +636,9 @@ Works normally.
 
 ### Limited
 
+(A per-game availability label. It is not the same thing as Limited Mode, although Limited Mode
+is one reason a game can be Limited.)
+
 Playable, but one or more features differ.
 
 Examples:
@@ -645,7 +669,9 @@ Treat these as high-priority requirements:
 5. prove app-to-device maintenance transfer without Internet
 6. prove an expired public cert does not prevent native app recovery
 7. prove mixed app/browser seats can use different execution paths
-8. prove Limited/Recovery UI accurately reflects actual per-seat capabilities
+8. prove Limited Mode and recovery UI accurately reflect actual per-seat capabilities
+9. prove the Party itself (membership, presence, host, navigation, compatible play) survives an
+   expired certificate, with an explicit Limited Mode identity model (ADR 0012, AVR-225)
 
 ---
 
@@ -657,6 +683,7 @@ Treat these as high-priority requirements:
 - Certificate repair should be automatic where safe.
 - The system should renew before the edge of expiry.
 - One weak seat should not degrade the whole party.
+- Losing trusted HTTPS yields Limited Mode, not an unusable Party.
 - Recovery should preserve as many games/seats as possible.
 - Consumers should see consequences and remedies, not PKI jargon.
 - Expert users may inspect detailed telemetry.

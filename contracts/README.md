@@ -59,7 +59,7 @@ appliance, and the validator rejects them by name.
 | `late_join` | `spectator_only` \| `next_round` \| `supported` | `spectator_only` |
 | `spectators` | `none` \| `watch` | `watch` |
 | `private_player_ui` | boolean; needs a player presentation rendered on the phone | `false` |
-| `runtime.type` | `lan_games_module` \| `emulator_profile` \| `external` | required |
+| `runtime.type` | `lan_games_module` (legacy/retiring, [ADR 0014](../docs/adr/0014-native-games-isolated-lan-games-retired.md); not for new games) \| `emulator_profile` \| `external` | required |
 | `runtime.start` | `always_on` \| `service` | `always_on` for LAN modules, otherwise required |
 | `runtime.profile` | the emulator title profile; only for `emulator_profile` | — |
 | `runtime.resources` | `emulator_slot`, `hw_encoder`, `host_rendering`, `hdmi` (capacity, not authority) | `[]` |

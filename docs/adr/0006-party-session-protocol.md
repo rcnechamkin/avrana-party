@@ -20,8 +20,9 @@ table is not altered. The accepted direction beyond v0:
 
 - **Replayable tickets are superseded by single-use admission.** v0's "does not … make them
   single-use" (Threat assumptions) was a temporary gap against ADR 0003, which always specified
-  single use. AVR-52 closes it; the implementation is tracked there and recorded in this ADR when
-  merged.
+  single use. AVR-52 closed it in Party source (PR #42): see "Amendments 2026-10-02" at the end
+  of this ADR for the mechanism. That is merged source, not a verified deployment; a game that
+  vendors `protocol.py` gets it only when it takes the new copy.
 - **Reconnect fetches a fresh ticket** for the same member and session; the participant id and
   the derived `game_token` are unchanged, so the game-side identity is stable.
 - **Tickets stay symmetric HMAC capabilities.** No asymmetric signatures for session tickets

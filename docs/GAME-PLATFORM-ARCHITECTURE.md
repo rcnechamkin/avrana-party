@@ -35,7 +35,7 @@ deployed; Linear owns sequencing.
 | Operations | **Generic routing and one provisioning path** for identity, grants, keys and registration; no per-title nginx blocks (AVR-236) | target; not built |
 | Durable data | **Party owns durable profiles, results and history.** Device identity is not human identity; a browser-stored name/avatar is not durable identity; persistent facts need an optional server-side Profile | target; no Profile store or result store exists |
 | Results | **Games submit versioned result data**; Party validates, attributes and is the only writer. Schema is AVR-237, not yet designed | target |
-| Tickets | Symmetric HMAC, single-use, fresh ticket on reconnect; public-key signatures only for package/update provenance (ADR 0003/0006 amendments) | v0 deployed with replayable tickets; AVR-52 closes the gap |
+| Tickets | Symmetric HMAC, single-use, fresh ticket on reconnect; public-key signatures only for package/update provenance (ADR 0003/0006 amendments) | single-use admission merged in Party source (AVR-52, PR #42); verified production predates it |
 | LAN Games | **Legacy/Donor only.** MVP infrastructure; not a future runtime; standalone play and `wc-token` admission retire; code kept as donor/reference and Classics source material (ADR 0014) | still deployed until retirement lands |
 | Validation sequence | **BLUFF → Checkers → Spades.** BLUFF is the first Avrana-native vertical slice; Checkers is the first clean proof outside the LAN Games runtime; Spades pressure-tests teams, private hands, reconnect, scoring and richer results | BLUFF exists; Checkers and Spades do not |
 

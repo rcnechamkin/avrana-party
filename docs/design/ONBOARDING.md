@@ -79,8 +79,25 @@ power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL brows
 >   recovery.
 > - The QR target is still OPEN: an HTTP doorway that hands off to HTTPS, or the HTTPS name
 >   directly. That depends on how Party DNS behaves under Private DNS or VPNs.
+>
+> **Update 2026-10-02 (accepted direction, not implemented):**
+> - "One canonical origin" below means one canonical **Party** origin. It still matters exactly as
+>   described: Party identity must not be split across aliases (`10.42.0.1`, `party.local`,
+>   `party.avrana.net`, HTTP vs HTTPS), or one phone becomes two presences.
+> - Game clients move to a **separate game origin**
+>   ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)). That is deliberate, not an alias
+>   problem: the game origin carries no Party identity at all, only a session ticket, so it cannot
+>   create a second presence. Onboarding links, QR codes and NFC tags always target the Party
+>   origin, never a game origin.
+> - "HTTPS only" for `/party/` is the deployed behavior.
+>   [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md) accepts a Limited Mode in
+>   which the Party stays usable without trusted HTTPS, with its own explicit identity model. What
+>   the doorway and the QR code do in that mode is part of AVR-225 and remains open here.
+> - `http://10.42.0.1` reaching "LAN Games" is the deployed legacy hub. It is not the fallback
+>   product; LAN Games is retiring as a runtime
+>   ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)).
 
-- **One canonical origin, or one phone becomes two presences.** A QR code that carries the IP plus
+- **One canonical Party origin, or one phone becomes two presences.** A QR code that carries the IP plus
   people typing `party.local` would give each phone two cookie jars (two presences, two seats, two
   votes) — see `PARTY-PLATFORM.md` §4.
 - **Leading option: `http://10.42.0.1` is the canonical origin** (it always resolves; QR codes and

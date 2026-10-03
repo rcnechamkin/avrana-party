@@ -69,7 +69,8 @@ depending on the ones before it; issue state, scope and acceptance live in Linea
 duplicated here. None of it is deployed.
 
 1. **Decision-record reconciliation** — ADRs and design documents agree with the decisions.
-2. **Single-use tickets** — close the v0 replay gap; reconnect fetches a fresh ticket.
+2. **Single-use tickets** — close the v0 replay gap; reconnect fetches a fresh ticket. Merged in
+   Party source on 2026-10-02 (PR #42); deployment evidence is separate.
 3. **Party/game origin boundary** — game clients leave the trusted Party origin.
 4. **Service/process isolation** — per-game process, service identity, secrets and state.
 5. **Canonical manifest** — one per-game source for catalogue and runtime metadata.

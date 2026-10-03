@@ -137,8 +137,9 @@ Dated clarification; the invariants and the historical token mapping in §5 are 
 
 - **Single-use remains the accepted invariant for seat/session tickets** (§3: "short … single
   use"). ADR 0006's `avrana.party-session/v0` temporarily implemented *replayable* bearer tickets
-  within their 120 s lifetime and recorded that as a deferral. AVR-52 closes that implementation
-  gap; it is not a new decision.
+  within their 120 s lifetime and recorded that as a deferral. AVR-52 closed that implementation
+  gap in Party source (PR #42, ADR 0006 "Amendments 2026-10-02"); it is not a new decision, and
+  merged source is not deployment evidence.
 - **Reconnect obtains a fresh ticket.** A ticket is spent on admission; a reconnecting browser
   fetches a new one for the same member and session, which carries the same participant id.
 - **Profile is an optional, durable, server-side person principal.** Before Avrana stores

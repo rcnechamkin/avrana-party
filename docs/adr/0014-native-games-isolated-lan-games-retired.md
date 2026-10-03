@@ -114,6 +114,12 @@ permanent runtime by default.
 - **ADR 0003 §5 mapping** "Standalone (non-party) play keeps working as today until the fork
   cutover": the cutover happened (2026-09-27); standalone play is now retiring rather than being
   preserved.
+- **ADRs 0007, 0008, 0010 and 0011** each keep standalone LAN titles working outside a Party
+  session ("Standalone titles are unchanged", "Standalone play … keeps the game's own lobby", "a
+  standalone title may stay open while the party is home"). Those clauses are accurate for
+  current source and are not rewritten; they stop being requirements when standalone LAN Games
+  is retired. ADR 0009's standalone *arcade* path is a separate rollback mechanism and is not
+  affected by this ADR.
 
 ## Consequences
 

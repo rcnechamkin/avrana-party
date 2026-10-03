@@ -294,7 +294,7 @@ Current source uses the existing local name/Gaze avatar profile for automatic Pa
 including join/resume on load, Core restart and profile save. This local profile is not a cloud
 account or the richer persistent profile/trust system below, and it is **not durable human
 identity**: it is a browser-stored display value. Without a profile or Party Core, standalone
-access still works in deployed source; standalone LAN Games play is retiring as a product mode
+access still works in current source; standalone LAN Games play is retiring as a product mode
 (ADR 0014). The following describes the broader guest/profile design, whose prerequisite is an
 explicit optional server-side Profile entity.
 

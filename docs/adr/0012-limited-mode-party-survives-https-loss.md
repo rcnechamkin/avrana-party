@@ -19,7 +19,7 @@ only in the trusted HTTPS origin.
 
 The appliance is designed to run offline for days or weeks. Its certificate is a public Let's
 Encrypt certificate that must be renewed through an upstream connection the Party does not
-otherwise need. The 2026-10-02 architecture review (recorded in Linear under AVR-224) concluded
+otherwise need. The [2026-10-02 architecture review](../findings/2026-10-02-architecture-review.md) (Linear AVR-224) concluded
 that a product whose core experience disappears when a certificate lapses, when Party DNS is
 overridden by a phone's private DNS, or when a browser refuses the chain, has made trusted TLS a
 hard dependency that the product principles ("offline-first", "no app", "no Internet") forbid.

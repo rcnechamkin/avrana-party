@@ -88,7 +88,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   states, UI or protocol surface to Standard Mode ([ADR 0014](0014-native-games-isolated-lan-games-retired.md) decision 10).
 - Decision 3's "a standalone title may stay open while the party is home (a personal game)" and
   decision 7's "standalone play" describe LAN Games standalone compatibility, which ADR 0014
-  retires as a product mode; they remain true of deployed source until that retirement lands.
+  retires as a product mode; they remain true of current source until that retirement lands.
 - Decision 5's `window.AvranaParty` host controls keep their product meaning; their same-origin
   transport is revisited by [ADR 0013](0013-party-and-game-browser-origins.md).
 
