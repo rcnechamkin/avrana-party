@@ -13,6 +13,34 @@ live backlog or deployment report.
 Date: 2026-09-27. Builds on ADR 0002 (party platform), ADR 0003 (ids and keys), ADR 0005 (LAN
 provider launch) and `docs/findings/2026-09-27-party-bluff-boundary.md` (PR #10).
 
+## Amendment (2026-10-02): forward direction
+
+`avrana.party-session/v0` below is preserved as the implemented, deployed truth. Its message
+table is not altered. The accepted direction beyond v0:
+
+- **Replayable tickets are superseded by single-use admission.** v0's "does not … make them
+  single-use" (Threat assumptions) was a temporary gap against ADR 0003, which always specified
+  single use. AVR-52 closed it in Party source (PR #42): see "Amendments 2026-10-02" at the end
+  of this ADR for the mechanism. That is merged source, not a verified deployment; a game that
+  vendors `protocol.py` gets it only when it takes the new copy.
+- **Reconnect fetches a fresh ticket** for the same member and session; the participant id and
+  the derived `game_token` are unchanged, so the game-side identity is stable.
+- **Tickets stay symmetric HMAC capabilities.** No asymmetric signatures for session tickets
+  (ADR 0003 amendment, 2026-10-02).
+- **Results will cross the Party/game boundary** in a versioned result message/envelope. The v0
+  `ended` report carries "no results in v0"; that deferral is being taken up.
+- **Party owns accepted persistent history and stat attribution.** The game determines the
+  outcome and reports it; Party validates, attributes (presence, optional Profile) and is the only
+  writer of the durable record ([ADR 0014](0014-native-games-isolated-lan-games-retired.md) decision 9).
+- **The exact result schema is not defined here.** It is
+  [AVR-237](https://linear.app/avranakern/issue/AVR-237/define-partygame-result-envelope-v1-before-the-second-native-game)
+  work and will be recorded after the protocol is designed.
+- **D1 ownership table:** "scores, results" remain the game's to *determine*; the durable
+  cross-session record of them is the Party's. **D3:** "A game page may still call
+  `/party/api/…`" describes v0 and is removed by [ADR 0013](0013-party-and-game-browser-origins.md).
+  **D6:** LAN Games' `GameSession` is one game-side implementation and is retiring with its
+  runtime (ADR 0014).
+
 ## Context (2026-09-27)
 
 Nothing authoritative runs in production. "Players" are LAN Games connections holding a

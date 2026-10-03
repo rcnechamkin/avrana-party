@@ -6,6 +6,13 @@ reference. Prepared 2026-09-27. Every production step needs `sudo`, so the owner
 shell disables LAN launches ("Games update needed") unless `/api/games` advertises
 `avrana.lan-launch/v1`, and today's upstream server does not.
 
+**Note 2026-10-02:** the fork this runbook deployed is still the production games runtime
+([SYSTEM](../SYSTEM.md)), so the procedure and rollback below remain valid. It is also retiring:
+[ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) keeps LAN Games as
+donor/reference code and moves native games to isolated processes. That retirement is not
+performed; nothing here authorizes it. "Retire `/home/cody/LAN-Games`" at the end of this runbook
+refers to the upstream rollback checkout, not to that architectural retirement.
+
 ## Before-state (read on the Pi, 2026-09-27)
 
 | Item | Value |

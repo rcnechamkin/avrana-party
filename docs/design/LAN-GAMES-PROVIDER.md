@@ -7,6 +7,15 @@ then-missing Party Home/roster/BLUFF grants are historical observations. ADRs 00
 capabilities; current main follows authoritative Party location, with no normal Join/Leave UI
 and host controls in game chrome. ADR 0011 deployment/phone proof remains AVR-212.
 
+> **Status banner (2026-10-02): historical and currently-deployed provider boundary, being
+> superseded by [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md).** LAN Games is retiring as an Avrana runtime; standalone LAN
+> Games is not a supported product mode; `wc-token` player admission is retiring; game clients
+> move off the Party origin ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)). The operational facts below (catalog export,
+> launch marker, shared keys, service-worker scoping, deployment dependency) remain true of
+> production and must be respected until the runtime is actually removed and that removal is
+> verified in [SYSTEM](../SYSTEM.md). Phrases such as "standalone remains supported" and "return
+> is fixed `/party/` on the same origin" are deployed behaviour, not forward architecture.
+
 ## Historical concrete ownership audit (2026-09-26)
 
 | Area / actual implementation | Classification / boundary |

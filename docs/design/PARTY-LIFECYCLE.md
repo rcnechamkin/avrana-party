@@ -12,6 +12,27 @@ current console contract. Seat reservation/grace/release rules below remain requ
 integration. AVR-130 arcade reservation changes merged during this reconciliation in PR #35,
 with deployment/real-phone acceptance still unverified by published findings. They do not prove that
 a universal seat layer, votes, kicks or intermission seating is implemented.
+
+**Terminology and direction reconciled 2026-10-02** (ADRs
+[0012](../adr/0012-limited-mode-party-survives-https-loss.md),
+[0013](../adr/0013-party-and-game-browser-origins.md),
+[0014](../adr/0014-native-games-isolated-lan-games-retired.md); ADR 0003/0011 amendments):
+
+- **"Profile" has two meanings below; keep them apart.** Where the state machines say presence
+  is gained "with an Avrana profile" or is "profile-backed", that is the implemented
+  browser-stored name/avatar: a display value that triggers automatic presence, not identity
+  authority and not durable. Where rules say "saved profile" (R6, "a profile moves to a new
+  phone"), that is the future optional, durable, server-side Profile, which is not built. Device
+  identity (the cookie) and live Party identity (presence, seat) are a third thing, separate from
+  both.
+- **One active Standard Mode activity.** The single party/session state machine here is the
+  product model, not a v0 limitation; simultaneous games or tables are outside Standard Mode.
+- **Results.** "Results held" is the game's results screen held at the Party location. The
+  durable cross-session record of results is Party-owned and not yet built (AVR-237).
+- **Standalone and same-origin behavior** described below is current source. Standalone LAN
+  Games retires with its runtime, and game pages move to a separate origin; the lifecycle rules
+  (one location, host moves it, automatic presence) are unchanged by either. Limited Mode must
+  preserve these state machines; its identity model is AVR-225.
 Concepts: `PARTY-PLATFORM.md` §5; identifiers: [ADR 0003](../adr/0003-ids-and-keys.md).
 
 ## Locked decisions this document implements

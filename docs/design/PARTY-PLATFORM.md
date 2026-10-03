@@ -9,6 +9,14 @@ pregame and console behavior. Broader profiles, teams, votes, progression, moder
 third-party installation below remain design direction unless explicitly marked implemented.
 Linear owns live sequencing; [ROADMAP](../ROADMAP.md) owns strategic direction.
 
+**Architecture reconciliation 2026-10-02.** ADRs [0012](../adr/0012-limited-mode-party-survives-https-loss.md)
+(Full/Limited Mode), [0013](../adr/0013-party-and-game-browser-origins.md) (Party origin vs game
+origin) and [0014](../adr/0014-native-games-isolated-lan-games-retired.md) (isolated native games;
+LAN Games retired) are accepted direction and **not implemented**. Sections below say
+"**Current**" for what source/production does today and "**Target**" for the accepted
+architecture. Until the migrations land and are verified, one HTTPS origin, the LAN Games fork
+and HTTPS-only Party Home remain the deployed reality ([SYSTEM](../SYSTEM.md)).
+
 Read this before designing anything a player touches: a game, a lobby, a login, a chat, a stat.
 It is written for someone arriving months from now with no other context.
 
@@ -21,6 +29,7 @@ It is written for someone arriving months from now with no other context.
 | `PERSONAL-VIEWPORTS.md` | per-phone crops of one shared split-screen stream |
 | `ONBOARDING.md` | tap/scan to join, party address, no-app baseline, party LAN vs upstream internet |
 | `GAME-INSTALLATION.md` | open installation without a store, trust tiers, emulator profiles |
+| `FULL-MODE.md` | the deployed HTTPS shell and the accepted Full Mode / Limited Mode target |
 | `docs/findings/2026-09-24-product-differentiation.md` | why anyone would choose this; where it loses; what to prove first |
 
 ---
@@ -46,6 +55,12 @@ Avrana owns the **party lifecycle, profiles, guests, device recognition, presenc
 personas, host and admin authority, synchronized navigation, reconnect, spectators, teams, chat,
 voting, stats provenance, achievements and game capability metadata.** Games plug into those
 where appropriate.
+
+Avrana is also the **only owner and writer of the durable record**: persistent cross-session
+results, history, stats, person/profile attribution and provenance. Games decide what happened in
+a round and report it; they are **isolated consumers of platform services** (identity for the
+session, tickets, navigation, results intake), not co-owners of the platform's state
+([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)).
 
 ### What this is not
 
@@ -87,11 +102,21 @@ Durable. A design that breaks one needs an explicit, recorded reason.
 13. **Reduce social friction; never add account or setup friction.**
 14. **The phone is not just a controller.** It is each player's private, dynamic surface; native
     games should use it (`NATIVE-GAMES.md`).
-15. **One appliance, one party.** Not a multi-tenant game server.
+15. **One appliance, one party, one active activity.** Not a multi-tenant game server, and in
+    Standard Mode not a room of simultaneous side games (ADR 0011, ADR 0014). A future Developer
+    Mode may relax this for technical users without shaping Standard Mode.
 16. **TV optional.** The core experience works on phones alone; a game may require a TV.
 17. **No app required.** Wi-Fi + a normal browser; an app may only add convenience.
 18. **Open, not a store.** Anyone may install Avrana-compatible games; trust is the appliance
     owner's decision.
+19. **Trusted HTTPS is preferred, never required.** Losing the certificate degrades individual
+    capabilities (Limited Mode); it does not disable the Party
+    ([ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md)).
+20. **Game code is not Party code.** The trusted Party shell and game clients are separate browser
+    trust domains; playing a game never gives its JavaScript Party, member or admin authority
+    ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)).
+21. **Party owns the durable record; games report.** Results, history, stats and profile
+    attribution are written only by the platform.
 
 ---
 
@@ -109,6 +134,20 @@ Durable. A design that breaks one needs an explicit, recorded reason.
 | Captive portal? | **Not required.** Optional glue only. |
 | Phones forming one big distributed display? | **Experimental only** (§14). |
 
+### 3.1 Decisions added 2026-10-02 (accepted direction; implementation tracked in Linear)
+
+| Question | Decision | Record |
+|---|---|---|
+| Does the Party need a valid trusted certificate? | **No.** Full Mode (trusted HTTPS) is preferred; Limited Mode keeps membership, presence, host authority, navigation, game selection and compatible play. HTTPS-only features degrade individually and visibly. The `Secure` cookie is never weakened; Limited Mode gets an explicit identity model. | ADR 0012 |
+| Do the Party shell and games share a browser origin? | **No (target).** A trusted Party origin owns device identity, the Party API, membership/presence, host/platform controls and profile/system surfaces. A game origin receives only session-scoped authority (tickets). | ADR 0013 |
+| Is LAN Games the native-game runtime? | **No.** It was MVP infrastructure. Standalone LAN Games is not a product mode; `wc-token` player admission retires; the code remains donor/reference material. | ADR 0014 |
+| How do native games run? | As **independent platform consumers**: own process, own service identity and secrets, generic routing from a game registry, one provisioning path, one canonical manifest, no game-specific Party Core logic. | ADR 0014 |
+| Who owns results and history? | **Party.** Games determine and report structured, versioned results; Party alone writes the persistent cross-session record. The wire schema is AVR-237, not yet designed. | ADR 0006 amendment, ADR 0014 |
+| Simultaneous activities? | **Not in Standard Mode.** One appliance, one Party, one active activity. Developer Mode, if ever, is separate. | ADR 0011 amendment |
+| What is a person? | **Device identity is not human identity, and a browser-stored name/avatar is not durable identity.** Persistent facts about a person require an explicit, optional, server-side Profile. | ADR 0003 amendment |
+| Ticket cryptography? | **Symmetric HMAC, single-use; reconnect fetches a fresh ticket.** Public-key signatures are reserved for package/update provenance. | ADR 0003 / 0006 amendments |
+| Native-game validation order? | **BLUFF** (first Avrana-native vertical slice, done in product terms) → **Checkers** (first clean proof outside the LAN Games runtime) → **Spades** (teams, private hands, reconnect, scoring, richer results). SDK/package formats freeze only after these. | ADR 0014 |
+
 ---
 
 ## 4. The product surface: browser-first, offline-first
@@ -122,17 +161,34 @@ UI, WebRTC video, WebSocket input, chat, private information, voting, achievemen
 profile settings and reconnection. Onboarding details, the party address and the party-LAN vs
 optional-upstream model are in `ONBOARDING.md`.
 
-- **One canonical origin.** Everything a player uses is served from one origin through nginx. A
+- **One canonical *Party* origin.** Party identity lives in exactly one browser origin. A
   different host name (`10.42.0.1` vs `party.local`) gets a separate cookie jar; a different port
   (`:8198`) shares cookies but has separate localStorage and a different Origin. Either way a player
   can look like two devices — two presences, two seats, two votes. Cookies ignore ports, so a dev
-  instance on another port of the same host receives production cookies.
-- **Canonical origin:** `https://party.avrana.net`, browser-trusted and resolved by Party DNS,
-  has been live since 2026-09-25 (ADR 0004). Avrana-owned pages live under `/party/` on 443;
-  integrated games and arcade share that origin. The Party cookie is `Secure`.
-- `http://10.42.0.1` remains for captive probes, legacy access and recovery. HTTP, HTTPS and
-  hostname variants are separate origins; do not invent cross-origin identity recovery.
-- Full Mode features (offline copy, keep-awake, capability probe) are in `FULL-MODE.md`.
+  instance on another port of the same host receives production cookies. That is why Party
+  identity is never spread across origins and never recovered across them.
+- **Trusted Party origin:** `https://party.avrana.net`, browser-trusted and resolved by Party DNS,
+  has been live since 2026-09-25 (ADR 0004). Avrana-owned pages live under `/party/` on 443. The
+  Party cookie is `Secure`. It owns device identity, the Party API, membership and presence, host
+  and platform controls, and profile/system surfaces.
+- **Game origin (Target, ADR 0013).** Game clients are served from a separate browser origin
+  (near-term preference: a separate hostname on the appliance under the existing certificate and
+  Party DNS model). A game origin receives only game/session-scoped authority — Party-issued
+  participant/session tickets — and its JavaScript cannot act as the member against Party, host or
+  admin APIs. Stronger sandboxing for untrusted community games is a later tier.
+  **Current:** integrated games and the arcade are still served from the Party origin; the earlier
+  statement that "everything a player uses is served from one origin" is superseded as a target
+  and remains true only as a description of today's deployment.
+- **Full Mode and Limited Mode (Target, ADR 0012).** Trusted HTTPS is Full Mode and stays the
+  default. When it is unavailable, the Party remains usable in a visibly degraded Limited Mode:
+  membership, presence, host authority, synchronized navigation, game selection and compatible
+  play continue; secure-context features degrade per capability and per seat. Limited Mode has its
+  own explicit identity/continuity model; the `Secure` cookie is not weakened.
+  **Current:** `/party/` is HTTPS-only; `http://10.42.0.1` serves captive probes and the legacy
+  LAN Games hub. HTTP, HTTPS and hostname variants are separate origins; do not invent
+  cross-origin identity recovery.
+- Deployed Full Mode features (offline copy, keep-awake, capability probe) and the accepted
+  Full/Limited target contract are in `FULL-MODE.md`.
 - **Captive portal = convenience.** Never select a profile, trust a device or run a game inside the
   captive-portal mini-browser.
 - **Per-player accessibility is free here:** every player has a private UI, so larger text,
@@ -148,7 +204,7 @@ Do not collapse "player" into one object. Identifier rules are in ADR 0003.
 |---|---|---|---|
 | **Party** | The persistent unit people join: members, host, *seating* (who holds which game slot, carried from one game to the next — never physical position), current game, queue, teams, chat. Exactly one active per appliance. | From automatic presence until ended (current Core is memory-only; reboot survival OPEN) | `party_id` |
 | **Device** | A recognized browser installation. | Months; revocable | server-issued random token in a cookie (hash stored) |
-| **Profile** | A persistent human identity: name, avatar, preferences, history, stats, achievements. Optional. | Until deleted/merged | `profile_id` |
+| **Profile** | The optional, durable, **server-side** human identity: name, avatar, preferences, history, stats, achievements. The only thing persistent facts about a person may attach to. Not yet built; the browser-stored name/avatar used for presence today is a display value, not a Profile (ADR 0003 amendment 2026-10-02). | Until deleted/merged | `profile_id` |
 | **Guest** | A participant with no saved profile ("Player 3", renamed "Megan"). | The party | `presence_id` |
 | **Presence** | A profile or guest participating in the party, from one device at a time (possibly several tabs; a profile moving to a new phone closes the old phone's connections). Proposed: a TV joins as a *screen* presence (sees the public view; never host, seat or voter). | The party | `presence_id` |
 | **Seat** | A temporary binding: presence → a player/controller slot in the current game session. | One game session; the party's *seating* (who holds which slot) carries forward | `seat_id` |
@@ -175,6 +231,11 @@ authorize nothing; only credentials resolved on the server do; names never do.
 **What a game sees:** a secret **game key** scoped to (game session, participant) plus the persona
 to display — never a device token or profile secret. Where the seat is bound depends on the game
 (LAN Games at its countdown; PS1 and the arcade at connect) — see `GAME-INTEGRATION.md`.
+
+**Live identity vs durable identity.** Device, Presence and Seat are *live* Party identity: they
+say who is here tonight. Profile is *durable* identity: it says who a person is across nights.
+They stay separate concepts. Until a Profile entity exists, nothing persistent is stored about a
+person, and cross-session history is not attributed to a browser's display name.
 
 ### 5.1 State model review (2026-09-26, PROPOSED)
 
@@ -231,8 +292,11 @@ Capability evaluation uses only the derived game role (`evaluate_seat(game, caps
 
 Current source uses the existing local name/Gaze avatar profile for automatic Party presence,
 including join/resume on load, Core restart and profile save. This local profile is not a cloud
-account or the richer persistent profile/trust system below. Without a profile or Party Core,
-standalone access remains supported. The following describes the broader guest/profile design.
+account or the richer persistent profile/trust system below, and it is **not durable human
+identity**: it is a browser-stored display value. Without a profile or Party Core, standalone
+access still works in current source; standalone LAN Games play is retiring as a product mode
+(ADR 0014). The following describes the broader guest/profile design, whose prerequisite is an
+explicit optional server-side Profile entity.
 
 - Joining never requires a profile. Default names are **Player 1, Player 2, Player 3**; a guest can
   rename immediately (*Player 3 → Megan*).
@@ -280,7 +344,11 @@ Entirely separate. A host can never escalate to admin.
   whether saved profiles are shown to guests. A simple preset pair may bundle them — without any
   enterprise role system:
   - **Friends / Private party** (default): the Wi-Fi password is the only gate; no join code in v0.
-  - **Public / Demo party (future distinct admission mode):** new presences wait for **host admission** (covers strangers, kick
+    **Network reachability is the practical root of admission** in this mode: a browser that can
+    reach the Party on the appliance's network and holds a name is admitted. That is a deliberate
+    product choice for private parties, not an oversight, and it holds in Limited Mode too.
+  - **Public / Demo party (future distinct admission mode):** stronger admission can later require
+    explicit host approval, a PIN or a QR code. New presences wait for **host admission** (covers strangers, kick
     evasion and duplicate presences); an optional short party code in the QR's URL fragment with a
     typed fallback; the admin (over SSH in v0) picks the first host, also after idle or reboot; no
     web admin on the guest Wi-Fi. This future mode does not restore a normal Join ceremony.
@@ -313,6 +381,12 @@ title may remain open while the Party is home, then follows when the host moves 
 Followers do not get optional detour prompts or Rejoin offers. Host controls live in the game's
 chrome; a game's own completion holds results until the host selects Play again or Party Home.
 Host End goes home. Failed launches resolve to home; intent alone is not navigation authority.
+
+**One active activity (Standard Mode).** `location` is singular by design: one appliance, one
+Party, one activity at a time. Simultaneous games or tables are not a Standard Mode feature and
+do not shape Party Core, routing or results (ADR 0011 amendment 2026-10-02). The "standalone title
+may remain open while the Party is home" behaviour above is LAN Games compatibility in deployed
+source and retires with standalone LAN Games (ADR 0014).
 
 AVR-128 navigation, ADR 0010 pregame and AVR-134 Party-managed arcade lifecycle are already
 recorded as deployed. ADR 0011's console presentation/follow changes are merged source ahead
@@ -371,6 +445,12 @@ or real-phone acceptance. Controller release does not remove Party presence. See
 | `platform_observed` | The platform saw it | Cody held Bomberman slot 2 for 14 minutes |
 | `manually_recorded` | A person entered it (only if ever supported) | "Purple won Worms", typed by the host |
 
+- **Party is the owner and only writer** of persistent cross-session results, history, stats,
+  person/profile attribution and provenance. A game determines its own outcome and reports a
+  structured, versioned result; Party validates, attributes and stores it. **Current:** the v0
+  `ended` report carries only `completed`/`abandoned` and nothing is persisted; the result
+  envelope is AVR-237 and its schema is not designed yet. Game-local scoreboards are a game's
+  own presentation, never the platform's record.
 - Native games can report authoritative events; **emulated games produce no results** unless a
   per-game adapter exists; hot-seat games can't even attribute turns. **Participation is never a
   win.** Flags that change meaning travel with results: bot seats, autopilot, forfeits, abandoned
@@ -394,6 +474,19 @@ message, bound to one game), an event sink with provenance, the implemented `par
 checks. Without them a game keeps working as today. Everything is in `GAME-INTEGRATION.md`; native
 game design is in `NATIVE-GAMES.md`; installation is in `GAME-INSTALLATION.md`.
 
+**Target (ADR 0014): games are isolated consumers of platform services.** Each native game is an
+independent process with its own service identity, secrets and state, reached through generic
+routing from a runtime-readable game registry, provisioned through one path, described by one
+canonical manifest from which catalogue and runtime metadata derive, and served from the game
+origin (ADR 0013). Party Core carries no game-specific logic. **Current:** BLUFF and the donor
+titles run inside the LAN Games fork's single process on the Party origin; that fork is retiring
+as a runtime and remains donor/reference code.
+
+**Validation order:** BLUFF is the first Avrana-native game and vertical slice. Checkers is the
+first deliberately simple proof that a game can live outside the LAN Games runtime on the new
+boundary. Spades then pressure-tests teams, private hands, reconnect, scoring and richer results.
+SDK, package (`.avrgame`) and provider abstractions are frozen only after those proofs.
+
 **Hook strategy:** the platform should eventually demonstrate three kinds of hook, not one title:
 native Jackbox-like games with no TV; native action/arcade games designed around Avrana; and
 emulated multiplayer (including **Personal Viewports**, `PERSONAL-VIEWPORTS.md`). BLUFF is an early
@@ -413,6 +506,15 @@ SD-card or SSH access is an admin by design. Future profile/admin parameters are
 inspection/alteration by peers on a shared-password network; do not extend that accepted legacy
 risk to HTTPS credentials or hidden state. The Wi-Fi must not be open. Client isolation
 (`wifi.ap-isolation`) is a possible extra control and a live change requiring owner approval.
+**Limited Mode (Target, ADR 0012)** runs the Party without trusted TLS; it therefore carries its
+own credential (never the `Secure` device cookie), says so visibly, and grants no admin or
+elevated authority. What hidden-information games may do in Limited Mode is part of AVR-225.
+
+**Browser trust boundary (Target, ADR 0013):** the Party origin and the game origin are separate
+trust domains. Path-scoped `HttpOnly` cookies keep the device token from game *servers* but not
+from same-origin game *JavaScript*, which today can call `/party/api/` as the viewer. The target
+removes that: game pages hold tickets only. **Current:** one origin; treat every game page as able
+to act as the member until the split lands.
 
 **MUST before profiles ship**
 - Server-issued device token (`secrets.token_urlsafe(32)`) in an `HttpOnly; SameSite=Lax` cookie
@@ -421,7 +523,8 @@ risk to HTTPS credentials or hidden state. The Wi-Fi must not be open. Client is
   servers, not from same-origin JavaScript). Store only its SHA-256; revoke = delete. It unlocks the
   "Welcome back" picker; it never grants admin or skips the admin PIN; on a device the owner chose
   to trust, it skips that profile's PIN.
-- One canonical HTTPS origin (`https://party.avrana.net`, §4); nginx allowlists the app's
+- One canonical HTTPS *Party* origin (`https://party.avrana.net`, §4; games move to a separate
+  origin under ADR 0013); nginx allowlists the app's
   host names (also defeats DNS rebinding), while the default server keeps answering the
   captive-portal probe paths exactly as today (returning 444 only for everything else).
 - Origin checks on every WebSocket upgrade and POST to party and admin endpoints once identity
@@ -465,11 +568,12 @@ Store only names, avatars (re-encoded to PNG/JPEG), preferences and stats.
 presence and says so publicly — it is not a ban**; one person can hold several presences, so a vote
 can be stuffed — eligibility freezes when a round opens and **the host decides**, so votes stay
 advisory; that is accepted for Friends parties. Only the Wi-Fi password — or host admission in
-Public/Demo mode (§7) — keeps someone out. **Built-in games are not isolated from each other:** the
-LAN Games fork is one process, so any module could read any game's keys; this is acceptable only
-because built-in code is trusted.
+Public/Demo mode (§7) — keeps someone out. **Built-in games are not isolated from each other
+today:** the LAN Games fork is one process, so any module could read any game's keys; this is
+acceptable only because built-in code is trusted. It is the deployed state, not the target:
+ADR 0014 gives each native game its own process, identity and key.
 
-**For untrusted games (later):** no untrusted in-process code; every response under an untrusted
+**For untrusted games (later; a stronger tier on top of ADR 0013's origin split):** no untrusted in-process code; every response under an untrusted
 game's path gets `Content-Security-Policy: sandbox allow-scripts` and `nosniff`, inside a platform
 frame that exposes no host verbs over `postMessage`; game endpoints authenticate by ticket and
 accept the sandbox's `null` Origin, while party and admin endpoints reject it; sandboxed games are
@@ -526,12 +630,17 @@ core) · proprietary store (no) · native app required (no) · captive portal re
    *Partly decided 2026-09-26 (ADR 0004 D1):* the canonical origin is `https://party.avrana.net`, and
    Avrana pages are under `/party/`. Still open: whether `/` becomes Party Home, an HTTP doorway, and
    what the QR code carries.
-2. Device-token migration from LAN Games' client-minted `wc-token` without breaking the live service.
+2. ~~Device-token migration from LAN Games' client-minted `wc-token` without breaking the live service.~~
+   *Decided 2026-10-02 (ADR 0014):* `wc-token` player admission retires with standalone LAN Games;
+   there is no migration to a future player identity. Re-homing avatars/chat keyed by it is open.
 3. Whether a party survives an appliance reboot (options in `PARTY-LIFECYCLE.md`).
 4. Broader host transfer policy; current Core already selects the earliest-joined eligible member.
-5. Third-party game sandbox/trust model (`GAME-INSTALLATION.md`).
+5. Third-party game sandbox/trust model (`GAME-INSTALLATION.md`). *Partly decided 2026-10-02:* the
+   Party/game origin split (ADR 0013) and per-game process isolation (ADR 0014) apply to all games;
+   the community sandbox tier on top remains open.
 6. Upstream-internet architecture (`ONBOARDING.md`).
-7. Packaging format for third-party games.
+7. Packaging format for third-party games (`.avrgame`): deliberately unfrozen until Checkers and
+   Spades prove the native boundary (ADR 0014).
 8. Exact onboarding path across iOS and Android (needs the real-phone tests in `ONBOARDING.md`).
 9. Exact Personal Viewport metadata format.
 10. How hot-seat emulation attributes results (probably: it doesn't).
@@ -544,6 +653,10 @@ core) · proprietary store (no) · native app required (no) · captive portal re
     name length/Unicode (LAN Games caps names at 14 ASCII characters);
     profile database location and backups; admin surface on the guest Wi-Fi vs home LAN only;
     host-less kiosk parties.
+13. *Added 2026-10-02:* the Limited Mode identity/continuity model (AVR-225); the game hostname(s)
+    and the host-control/heartbeat transport across origins (AVR-226); the result envelope
+    (AVR-237); the registry format and provisioning path (AVR-236); how chat, avatars and library
+    keys leave the LAN Games donor (AVR-228).
 
 ---
 
@@ -551,11 +664,15 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 
 | Term | Meaning |
 |---|---|
-| **BLUFF** | Working title of the first native Avrana game: a Coup-inspired hidden-role card game, built as a LAN Games module in the Avrana Party Games fork |
-| **LAN Games** | The retired-upstream (BEACNpool, MIT) browser party-game server running live on the Pi (~28 games); Avrana maintains a fork |
+| **BLUFF** | Working title of the first native Avrana game: a Coup-inspired hidden-role card game. Currently built as a LAN Games module in the Avrana Party Games fork; it moves to the isolated native boundary as LAN Games retires (ADR 0014) |
+| **Checkers / Spades** | Planned validation games (ADR 0014): Checkers is the first clean platform-boundary proof after BLUFF, not the first native game; Spades is the richer pressure test. Neither exists yet |
+| **LAN Games** | The retired-upstream (BEACNpool, MIT) browser party-game server (~28 games); Avrana maintains a fork, still deployed. MVP infrastructure, retiring as an Avrana runtime; kept as donor/reference code (ADR 0014) |
+| **Full Mode / Limited Mode** | The Party over trusted HTTPS / the same Party when trusted HTTPS is unavailable, with capabilities degraded individually and visibly (ADR 0012; Limited Mode is not implemented) |
+| **Standard Mode / Developer Mode** | The consumer product: one appliance, one Party, one active activity / a possible future mode for technical users that may relax that, kept outside the consumer architecture |
+| **Party origin / game origin** | The trusted browser origin for Party surfaces and identity / the separate origin game clients are served from, holding tickets only (ADR 0013; target, not deployed) |
 | **Avrana Party Games** | Avrana's fork of LAN Games, where native games such as BLUFF are developed (also called "the fork" or "the games fork" — same repo) |
 | **Party Home** | Implemented at `/party/`: roster/host/catalog and, in ADR 0011 source, the Party-owned full-screen setup; runtime revision in SYSTEM |
-| **Hub** | Today's LAN Games start page (`/`) with its game tiles — a maintained standalone/legacy surface alongside Party Home |
+| **Hub** | Today's LAN Games start page (`/`) with its game tiles — a legacy standalone surface still deployed alongside Party Home; not a product mode and retiring (ADR 0014) |
 | **Lobby** | A single game's pre-game waiting room (ready/start), inside that game; Core’s idle `lobby` label maps to the `home` location (`PARTY-LIFECYCLE.md`) |
 | **Screen presence** | A TV joined to the party that sees the public view (proposed); never host, seat or voter. "TV view" means what it shows |
 | **WORDCLASH, FIFTH SIGNAL, …** | Individual LAN Games titles (WORDCLASH has its own room engine) |
@@ -563,7 +680,7 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 | **PS1 stream** | Shared-stream PlayStation experiment (`ps1-emulation`, title profiles on `experiment/ps1-title-profiles`); bounded supervised evidence in dated findings, no production promotion |
 | **Multitap** | A PlayStation adapter that gives one controller port four pads; how 4-player PS1 games get their players |
 | **`hello`** | The first WebSocket message a LAN Games client sends; where identity enters a game today |
-| **`wc-token`** | LAN Games' browser-held identity token (client-mintable today) |
+| **`wc-token`** | LAN Games' browser-held identity token (client-mintable today); retiring as player admission, never a future player identity (ADR 0014) |
 | **Game key** | The secret per-(game session, participant) key the platform gives a game instead of any device identity (ADR 0003) |
 | **Grant** | The appliance's record of what an installed game may do (trust tier, permissions, assigned path) — decided by the admin, never by the game |
 | **Fork cutover** | Replacing the live LAN Games service with the fork plus the party bridge (completed in production 2026-09-27; future updates remain owner-approved) |
@@ -578,7 +695,10 @@ core) · proprietary store (no) · native app required (no) · captive portal re
 
 ## References
 
-ADRs `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md` · strategic roadmap `docs/ROADMAP.md` · BLUFF
+ADRs `docs/adr/0002-party-platform.md`, `docs/adr/0003-ids-and-keys.md`,
+[0012](../adr/0012-limited-mode-party-survives-https-loss.md),
+[0013](../adr/0013-party-and-game-browser-origins.md),
+[0014](../adr/0014-native-games-isolated-lan-games-retired.md) · strategic roadmap `docs/ROADMAP.md` · BLUFF
 lifecycle/security precedent `docs/findings/2026-09-23-bluff-multi-agent-pass.md` · PS1 slots
 `ps1/README.md`, `ps1/stream_ps1.py` (branch `ps1-emulation`) · arcade `arcade/README.md` ·
 simulations `experiments/party-model/`, `experiments/viewports/` (branch `experiment/party-sim`).
