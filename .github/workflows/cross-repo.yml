@@ -34,15 +34,24 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
+          # A failure to list the other repository's branches must fail this job: falling back to
+          # main would report compatibility that was never checked against the paired branch.
+          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git \
+            | awk '{print $2}' | sed 's#refs/heads/##')
+          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
           avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
-          ref=main
+          ref=main; why='no AVR id in this branch name'
           if [ -n "$avr" ]; then
-            match=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git \
-              | awk '{print $2}' | sed 's#refs/heads/##' | grep -iE "(^|[/-])${avr}([-/]|$)" | head -1 || true)
-            [ -n "$match" ] && ref=$match
+            why="no Games branch carries $avr"
+            if echo "$heads" | grep -qxF "$BRANCH"; then
+              ref=$BRANCH; why='same branch name'
+            else
+              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
+              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
+            fi
           fi
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "Games ref for this run: $ref (AVR id: ${avr:-none})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v7
         with:
           repository: rcnechamkin/avrana-party-games

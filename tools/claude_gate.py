@@ -20,7 +20,9 @@ import sys
 
 BLOCK = [
     (r'\bgit\s+push\b[^|;&]*\s(--force|-f|--force-with-lease)\b', 'force-push is forbidden (AGENTS.md: never rewrite history)'),
-    (r'\bgit\s+merge\b(?![^|;&]*--ff-only[^|;&]*origin/main)', 'merging locally is not how changes land: open a PR; merges are the owner\'s decision'),
+    # Bringing origin/main into a branch is the prescribed way to sync (never rebase or force-push);
+    # merging anything else locally is asked about.
+    (r'\bgit\s+merge\b(?![^|;&]*\borigin/main\b)(?![^|;&]*--(abort|continue)\b)', 'merging locally is not how changes land: open a PR; merges are the owner\'s decision'),
     (r'\bgh\s+pr\s+merge\b', 'merging a PR is the owner\'s decision (AGENTS.md)'),
     (r'\bgit\s+rebase\b', 'rebasing rewrites history on a shared branch; prefer a new commit'),
     (r'\bgit\s+(reset\s+--hard|checkout\s+--\s|restore\s+--source)\b.*\bmain\b', 'rewriting main locally is forbidden'),

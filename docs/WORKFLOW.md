@@ -16,6 +16,11 @@ apparent conflicts are different questions (merged source may be ahead of produc
 5. Draft/proposed documentation (direction, not contract)
 6. Historical documentation: findings, archives, old handoffs (evidence of what was true when written)
 
+An accepted ADR whose status says "not implemented" (0012–0014 as of 2026-10-02: Limited Mode,
+separate Party and game origins, isolated native games with LAN Games retiring) is the direction
+new work must respect, not a description of code or of the appliance. Rows 1 and 2 say what
+exists; such an ADR says where it is going.
+
 The deployed appliance is authoritative about what is running: the
 [deployment manifest](design/DEPLOYMENT-MANIFEST.md) and `/party/api/status`
 ([STATUS-ENDPOINT](design/STATUS-ENDPOINT.md)). Chat history is never a source of truth.

@@ -98,6 +98,8 @@ class Document(unittest.TestCase):
         doc = self.build(FakeProbes())
         self.assertIsNone(doc['deployment'])
         self.assertIn('deployed_at', doc['manifest_error'])
+        self.assertNotIn(str(self.manifest), doc['manifest_error'])     # no filesystem path in public
+        self.assertNotIn(str(self.manifest.parent), json.dumps(doc))
         self.assertIn('deployment manifest malformed', doc['summary']['reasons'])
         self.assertEqual(doc['summary']['state'], 'degraded')
 

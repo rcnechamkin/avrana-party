@@ -42,6 +42,7 @@ class Gate(unittest.TestCase):
         for command in ['git status', 'git push -u origin feat/avr-1-x', 'git fetch origin', 'npm run check:repo',
                         'bash ops/deploy.sh --party a --games b --dry-run', 'bash ops/deploy.sh --help',
                         'python -m unittest', 'gh pr create --title x', 'git merge --ff-only origin/main',
+                        'git merge --no-edit origin/main', 'git merge --abort',
                         'ssh party "git -C /home/cody/avrana-party log -1"']:
             self.assertEqual(bash(command)[0], 'ok', command)
 

@@ -7,6 +7,15 @@ protocol), [ADR 0005](../adr/0005-lan-games-provider-launch.md) and
 [GAME-INTEGRATION](GAME-INTEGRATION.md) §3. This page explains how compatibility became
 machine-testable.
 
+**Scope: the boundary as implemented today.** v0 describes Party and the LAN Games fork as they
+run now: one browser origin (hence the fixed `/party/` return path), the `avrana.lan-launch/v1`
+integration and the fork's catalog export. It is not the target architecture.
+[ADR 0013](../adr/0013-party-and-game-browser-origins.md) (separate game origin) and
+[ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) (isolated native games; LAN
+Games retiring) are accepted and not implemented; when that work changes the boundary, the
+declarations change with it through the procedure below. Nothing here makes a LAN Games module
+the path for a new native game.
+
 ## The two declarations
 
 | Repository | File | Says |

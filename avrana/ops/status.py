@@ -179,7 +179,8 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         if deployed is None:
             reasons.append('no deployment manifest')
     except manifest.ManifestError as e:
-        deployed, manifest_error = None, str(e)
+        # The error names the file; the public document never carries a filesystem path.
+        deployed, manifest_error = None, str(e).replace(str(cfg['manifest']), 'deployment manifest')
         reasons.append('deployment manifest malformed')
     party = _repo('party', deployed, probes.checkout(cfg['party_checkout']))
     games = _repo('games', deployed, probes.checkout(cfg['games_checkout']))
