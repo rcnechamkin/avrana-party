@@ -96,3 +96,15 @@ each other, not one shared console:
 - Old sessions' tabs, sessionStorage memories and offers are simply ignored: the location decides.
 - Not verified on real phones (Tier 3). A phone asleep through a move lands where the party is on
   wake; iOS/Android back-button behaviour after `location.replace` is untested.
+
+## Amendments
+
+- **2026-10-02 (AVR-223, lifecycle edge cases from the hostile audit).** `results` is held only
+  for a round the game reports as `completed`. An `abandoned` round (the game, or a managed
+  runtime, gave up) has no results screen worth standing on: the party goes home at once and the
+  session is ended at the game so nothing is held. A host switch moves `nav` to the next session as
+  soon as it exists (location `setup` while it launches) instead of passing through Party Home. An
+  end that the game does not confirm within `END_TIMEOUT` records a `detail` (and names the dropped
+  switch); the link's `end` gives up before that timer does. A launch that succeeds after the party
+  cancelled or timed it out is ended at the game. PARTY-LIFECYCLE.md already described the
+  abandoned → home behaviour; Core now matches it.

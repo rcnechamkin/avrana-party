@@ -578,6 +578,46 @@ class PregameHttp(ServiceCase):
         self.assertEqual(len(self.link.launched), 1)
 
 
+class SlowLink(FakeLink):
+    """A launch that only returns once the test says so (the runtime is still coming up)."""
+
+    def __init__(self):
+        super().__init__(True)
+        self.release = threading.Event()
+
+    def launch(self, session, roster):
+        self.release.wait(10)
+        return super().launch(session, roster)
+
+
+class LaunchRaces(ServiceCase):
+    def make_link(self):
+        return SlowLink()
+
+    def test_a_launch_that_lands_after_the_host_cancelled_is_stopped(self):
+        """AVR-223 (2): the party moved on while the launch was in flight; the runtime that then
+        comes up is ended, never left running beside whatever starts next."""
+        ana = self.phone()
+        _, v, _ = ana.post('join', {'name': 'Ana'})
+        t = threading.Thread(target=ana.post, args=('session/launch',
+                             {'game': 'bluff', 'if_version': v['version']}), daemon=True)
+        t.start()
+        for _ in range(200):                                   # until the session is launching
+            _, v, _ = self.phone().state()
+            if v.get('session') and v['session']['state'] == 'launching':
+                break
+            time.sleep(0.02)
+        sid = v['session']['id']
+        host = self.phone()
+        host.cookie = ana.cookie
+        status, v, _ = host.post('session/end', {'if_version': v['version']})
+        self.assertEqual((status, v['session']['outcome']), (200, 'launch_failed'))
+        self.link.release.set()
+        t.join(5)
+        self.assertEqual(self.link.ended, [sid])
+        self.assertEqual(self.phone().state()[1]['state'], 'lobby')
+
+
 class FailingLaunch(ServiceCase):
     link_ok = False
 
