@@ -28,3 +28,13 @@ as vendored for GitHub; existing byte/line-ending rules remain unchanged.
 generated. `python3 -m avrana.web.build --out <temporary-directory>` copies the shell, stamps
 the service worker and creates `version.json` for a release. That output, test reports, dependency
 caches, installer backups and runtime data are not committed source. A local build is not a deploy.
+
+## Derived Graphify context
+
+[Graphify](GRAPHIFY.md) lists source scopes and exact commands. `graphify-public/`, `graphify-out/`
+and `.graphify-context/` are ignored derived products; Linear exports are private and never uploaded.
+Optional `context/graphify/semantic-graph.json` and `semantic-receipt.json` are generated together
+by interactive host-agent extraction plus `accept-semantic`; never hand-edit them.
+`check-semantic` flags stale docs, while `status` verifies AST hashes and Linear TTL where applicable.
+No Graphify product is authoritative. These optional/ignored outputs are not required by the
+manifest's product-build provenance mappings; their metadata is checked by the shared toolkit.

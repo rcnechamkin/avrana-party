@@ -83,3 +83,10 @@ Do not put credentials or exploit details exposing a live appliance in a public 
 offers private vulnerability reporting, use the repository Security tab; otherwise ask the
 maintainer for a private channel without including sensitive details. No private address or
 reporting service is assumed here.
+
+## Derived architecture navigation
+
+Use [Graphify](docs/GRAPHIFY.md) before broad searches where useful, after checking freshness.
+Read original docs/code to verify results and live Linear to choose work. CI extracts local ASTs
+without model credentials and flags stale semantic documentation. Interactive host-agent sessions
+refresh semantics. Never hand-edit a generated graph, receipt or private Linear snapshot.

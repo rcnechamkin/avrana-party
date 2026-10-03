@@ -1,0 +1,75 @@
+# Single implementation shared with Games. Never uses a model API or mutates Linear/Git.
+name: Graphify refresh implementation
+on:
+  workflow_call:
+    inputs:
+      toolkit_ref:
+        required: true
+        type: string
+      require_linear:
+        default: false
+        type: boolean
+    secrets:
+      LINEAR_API_KEY:
+        required: false
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: ${{ inputs.toolkit_ref }}
+          path: toolkit
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Architecture docs follow current GitHub main, not the executable toolkit pin.
+      - uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: main
+          path: party-docs
+          persist-credentials: false
+      - name: Install pinned local AST extractor (no model extras)
+        run: python -m pip install graphifyy==0.9.74
+      - name: Check shared toolkit and repository configuration
+        run: |
+          python -m unittest discover -s toolkit/tests/context -v
+          python toolkit/tools/graphify_context.py --repo source --toolkit toolkit --party-docs party-docs check-config
+      - name: Regenerate local code context and flag semantic documentation freshness
+        run: python toolkit/tools/graphify_context.py --repo source --toolkit toolkit --party-docs party-docs refresh --architecture
+      - name: Publish public code context only
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphify-architecture-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            source/graphify-public/graph.json
+            source/graphify-public/GRAPH_REPORT.md
+            source/graphify-public/manifest.json
+            source/graphify-public/avrana-context.json
+      - name: Read-only Linear sync (private output is never uploaded)
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          REQUIRE_LINEAR: ${{ inputs.require_linear }}
+        shell: bash
+        run: |
+          if [ -z "$LINEAR_API_KEY" ]; then
+            echo '::warning::LINEAR_API_KEY missing; Linear refresh SKIPPED. No fresh Linear context exists for this run.'
+            echo 'Linear refresh skipped: missing LINEAR_API_KEY; no fresh Linear context claimed.' >> "$GITHUB_STEP_SUMMARY"
+            if [ "$REQUIRE_LINEAR" = true ]; then exit 1; fi
+            exit 0
+          fi
+          python toolkit/tools/graphify_context.py --repo source --toolkit toolkit --party-docs party-docs refresh
+          python toolkit/tools/graphify_context.py --repo source --toolkit toolkit --party-docs party-docs status
+          echo 'Read-only Linear sync verified. Private snapshots and graphs were not uploaded. Semantic freshness is reported separately.' >> "$GITHUB_STEP_SUMMARY"

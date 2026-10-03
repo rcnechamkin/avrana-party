@@ -1,0 +1,12 @@
+# Direct Graphify scans exclude derived/machine state. The Avrana wrapper also
+# uses .graphify.json and docs/manifest.json to prepare a bounded input corpus.
+.graphify-context/
+graphify-out/
+graphify-public/
+context/graphify/
+node_modules/
+experiments/
+docs/archive/
+docs/findings/
+docs/research/
+assets/vendor/

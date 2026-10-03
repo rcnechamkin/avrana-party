@@ -33,3 +33,5 @@ Only the external Linear authority has `live-work` scope.
 Add a manifest entry with each new document. Keep links relative, date findings, and preserve
 status banners. Update classification when promoting/archiving work, with evidence and review.
 Run `npm run check:repo`; see [REPOSITORY-GOVERNANCE](REPOSITORY-GOVERNANCE.md) for its scope.
+
+[Graphify](GRAPHIFY.md) documents derived navigation context only; it adds no authority domain.

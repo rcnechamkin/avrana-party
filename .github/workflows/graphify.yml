@@ -1,0 +1,20 @@
+name: Graphify derived context
+on:
+  push:
+    branches: [main, chore/graphify-derived-context]
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: graphify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  derived-context:
+    uses: ./.github/workflows/graphify-refresh.yml
+    with:
+      toolkit_ref: ${{ github.sha }}
+      require_linear: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/chore/graphify-derived-context' }}
+    secrets:
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
