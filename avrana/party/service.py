@@ -355,6 +355,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _join(self, device, body):
         cookie = None
+        if device is None and identity.ambiguous(self.headers.get('Cookie')):
+            # Two device cookies: one of them was planted (identity.read_cookie). Minting a third
+            # would not help, since the planted one would still shadow it, so say so instead.
+            return _send(self, 409, {'error': 'ambiguous_identity', 'message':
+                                     "This phone sent two Party identities. Clear this site's "
+                                     'data in the browser, then open Party again.'})
         if device is None:
             core.clean_name(body.get('name'))              # refuse a bad name before minting
             token, device = self.service.store.issue()
