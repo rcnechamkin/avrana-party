@@ -25,6 +25,11 @@ Read in this order:
 3. Then whichever focused document matches the work:
    - `FULL-MODE.md` — the deployed HTTPS shell (capability probe, offline copy, keep-awake) and
      the accepted Full Mode / Limited Mode target contract, kept explicitly separate
+   - `LIMITED-MODE.md` — **proposed** mechanisms for ADR 0012 (doorway, canonical HTTP origin,
+     separate credential, continuity options) and the decisions the owner must make (AVR-225)
+   - `BROWSER-ORIGINS.md` — **proposed** mechanisms for ADR 0013 (game host name, the Party
+     bridge frame and its closed verb set, the `__Host-` cookie) and the decisions required
+     (AVR-226)
    - `LAN-GAMES-ASSIMILATION.md` — **historical**: the completed MVP assimilation, donor inventory,
      profile/chat compatibility and provider catalogs; superseded going forward by ADR 0014
    - `LAN-GAMES-PROVIDER.md` — **historical / currently deployed** provider boundary, being
