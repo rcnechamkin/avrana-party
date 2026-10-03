@@ -1,6 +1,10 @@
 {
-  "hosts": ["party.avrana.net"],
-  "origins": ["https://party.avrana.net"],
+  "hosts": [
+    "party.avrana.net"
+  ],
+  "origins": [
+    "https://party.avrana.net"
+  ],
   "secure_cookie": true,
   "devices": "/var/lib/avrana-party-core/devices.json",
   "games": {
@@ -19,5 +23,22 @@
       "key_file": "/etc/avrana-party/game-keys/arcade-gauntlet2.key",
       "timeout": 25
     }
+  },
+  "status": {
+    "manifest": "/var/lib/avrana-party/deployment.json",
+    "party_checkout": "/home/cody/avrana-party",
+    "games_checkout": "/home/cody/avrana-party-games",
+    "web_root": "/var/www/avrana-party/web",
+    "certificate": "/etc/avrana-party/tls/current/fullchain.pem",
+    "games_url": "http://127.0.0.1:8096",
+    "arcade_url": "http://127.0.0.1:8098",
+    "units": [
+      "avrana-party-core",
+      "avranaparty-games",
+      "avranaparty-arcade",
+      "nginx",
+      "NetworkManager",
+      "avrana-party-certificate.timer"
+    ]
   }
 }

@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# The one deterministic deployment entry point for the appliance. Owner-run, on the Pi, as root:
+#
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --party <sha> --games <sha> [--dry-run]
+#
+# It never decides *what* to deploy: both target commits are explicit arguments (the reviewed,
+# CI-green commits named in the PRs). It then, in order:
+#   1. refuses to run twice at once, on a dirty checkout (unless --allow-dirty), on a Party commit
+#      that is not on origin/main (unless --allow-branch), or while a game session is live
+#      (unless --force-busy);
+#   2. records the before-state (JSON) under /var/backups/avrana-party/deploy-<UTC>/;
+#   3. stops only the services whose code changes, checks both repositories out at exactly the
+#      named commits (detached, so forward, backward and rollback deployments are the same
+#      operation and no local branch is ever moved or reset), installs a fresh atomic web release
+#      when Party changed, and starts those services again; a failure after a stop puts both
+#      checkouts back where they were (same branch or commit, never --force/--hard) and restarts;
+#   4. writes the deployment manifest (/var/lib/avrana-party/deployment.json, avrana.deployment/v0);
+#   5. runs the post-deploy smoke checks (python3 -m avrana.ops.smoke) and records the result.
+# docs/runbooks/deploy.md explains the arguments, the paths and what to do when a step fails.
+# Keys, certificates, nginx, NetworkManager and systemd unit files are never touched here.
+set -Eeuo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+
+# Everything runs inside main(), called on the last line: bash then parses the whole file before
+# executing any of it, so checking out a different version of this very script mid-run (step 3)
+# cannot change what this run does.
+main() {
+
+party_checkout=${AVRANA_PARTY_CHECKOUT:-/home/cody/avrana-party}
+games_checkout=${AVRANA_GAMES_CHECKOUT:-/home/cody/avrana-party-games}
+web_root=${AVRANA_WEB_ROOT:-/var/www/avrana-party/web}
+manifest=${AVRANA_DEPLOYMENT_MANIFEST:-/var/lib/avrana-party/deployment.json}
+backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
+party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
+party_host=${AVRANA_PARTY_HOST:-party.avrana.net}
+checkout_user=${AVRANA_CHECKOUT_USER:-cody}
+party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
+games_units=(avranaparty-games)                      # code in the games repository
+
+party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0
+
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+die() { echo "deploy: $*" >&2; exit 1; }
+systemctl() { command "${AVRANA_SYSTEMCTL:-systemctl}" "$@"; }
+log() { echo "[$(date -u +%H:%M:%SZ)] $*"; }
+
+while (($#)); do
+    case $1 in
+        --party) party_sha=${2:-}; shift 2 ;;
+        --games) games_sha=${2:-}; shift 2 ;;
+        --dry-run) dry_run=1; shift ;;
+        --allow-dirty) allow_dirty=1; shift ;;
+        --allow-branch) allow_branch=1; shift ;;
+        --force-busy) force_busy=1; shift ;;
+        --skip-smoke) skip_smoke=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "unknown argument $1 (see --help)" ;;
+    esac
+done
+[[ $party_sha =~ ^[0-9a-f]{40}$ ]] || die '--party needs a full 40-character commit SHA'
+[[ $games_sha =~ ^[0-9a-f]{40}$ ]] || die '--games needs a full 40-character commit SHA'
+# AVRANA_DEPLOY_UNPRIVILEGED=1 and AVRANA_SYSTEMCTL exist for the automated test of this script
+# against throwaway checkouts (tests/unit/test_deploy_script.py); production runs as root.
+[[ $EUID -eq 0 || $dry_run -eq 1 || ${AVRANA_DEPLOY_UNPRIVILEGED:-0} == 1 ]] \
+    || die 'run as root (sudo); services and the web root need it'
+[[ -d $party_checkout/.git && -d $games_checkout/.git ]] || die "checkouts missing: $party_checkout, $games_checkout"
+
+# Git runs as the checkout owner so object files never become root-owned.
+g() {
+    local repo=$1; shift
+    if [[ $EUID -eq 0 && $checkout_user != root ]]; then sudo -u "$checkout_user" git -C "$repo" "$@"
+    else git -C "$repo" "$@"; fi
+}
+py() { (cd "$party_checkout" && PYTHONDONTWRITEBYTECODE=1 python3 "$@"); }
+
+# ---- 1. refuse unsafe states -----------------------------------------------------------------
+if command -v flock >/dev/null; then
+    # The braces keep 2>/dev/null from becoming this shell's stderr for the rest of the run.
+    { exec 9>/run/lock/avrana-deploy.lock; } 2>/dev/null || exec 9>/tmp/avrana-deploy.lock
+    flock -n 9 || die 'another deployment is running'
+fi
+
+for repo in "$party_checkout" "$games_checkout"; do
+    if [[ -n $(g "$repo" status --porcelain --untracked-files=no) ]]; then
+        [[ $allow_dirty -eq 1 ]] && log "WARNING: $repo has uncommitted changes (--allow-dirty)" \
+            || die "$repo has uncommitted changes; deploy only clean, reviewed commits (or --allow-dirty)"
+    fi
+done
+before_party=$(g "$party_checkout" rev-parse HEAD)
+before_games=$(g "$games_checkout" rev-parse HEAD)
+# What to return to on rollback: the branch that was checked out, or the commit when detached.
+before_party_ref=$(g "$party_checkout" symbolic-ref --quiet --short HEAD || echo "$before_party")
+before_games_ref=$(g "$games_checkout" symbolic-ref --quiet --short HEAD || echo "$before_games")
+log "before: party $before_party, games $before_games"
+
+g "$party_checkout" fetch --quiet origin || die 'git fetch origin failed in the Party checkout'
+g "$party_checkout" cat-file -e "$party_sha^{commit}" 2>/dev/null || die "Party commit $party_sha is not fetchable"
+if ! g "$party_checkout" merge-base --is-ancestor "$party_sha" origin/main; then
+    [[ $allow_branch -eq 1 ]] && log "WARNING: $party_sha is not on origin/main (--allow-branch)" \
+        || die "$party_sha is not on origin/main; merge first (or --allow-branch for a supervised test)"
+fi
+g "$games_checkout" fetch --quiet --all 2>/dev/null || true   # the Games clone may come from a bundle
+g "$games_checkout" cat-file -e "$games_sha^{commit}" 2>/dev/null \
+    || die "Games commit $games_sha is not in $games_checkout; stage it first (docs/runbooks/games-fork-deploy.md)"
+
+party_changed=0; games_changed=0
+[[ $before_party == "$party_sha" ]] || party_changed=1
+[[ $before_games == "$games_sha" ]] || games_changed=1
+if [[ $party_changed -eq 0 && $games_changed -eq 0 ]]; then
+    log 'both checkouts are already at the requested commits'
+fi
+
+busy=$(curl -s -m 5 -H "Host: $party_host" "$party_core_url/party/api/state" \
+    | python3 -c 'import json,sys
+try:
+    s = json.load(sys.stdin).get("session")
+    print("busy" if s and s.get("state") in ("setup", "launching", "active", "ending") else "idle")
+except Exception:
+    print("unknown")' 2>/dev/null || echo unknown)
+if [[ $busy == busy ]]; then
+    [[ $force_busy -eq 1 ]] && log 'WARNING: a game session is live (--force-busy)' \
+        || die 'a game session is live; wait for the party to return home (or --force-busy)'
+fi
+log "party core: $busy"
+
+restart=()
+[[ $party_changed -eq 1 ]] && restart+=("${party_units[@]}") || true
+[[ $games_changed -eq 1 ]] && restart+=("${games_units[@]}") || true
+log "plan: party $before_party -> $party_sha (changed=$party_changed), games $before_games -> $games_sha (changed=$games_changed)"
+log "plan: restart ${restart[*]:-nothing}; web release $([[ $party_changed -eq 1 ]] && echo yes || echo no)"
+if [[ $dry_run -eq 1 ]]; then
+    # Up to here the script only read state and fetched remote refs: no file, checkout, service,
+    # backup or manifest was touched.
+    log 'dry run: nothing changed'
+    exit 0
+fi
+
+# ---- 2. before-state --------------------------------------------------------------------------
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup=$backup_root/deploy-$stamp
+install -d -m 0750 "$backup"
+py -m avrana.ops.manifest write --out "$backup/before.json" --party "$party_checkout" \
+    --games "$games_checkout" --web-root "$web_root" --allow-dirty --tool-sha "$party_sha" >/dev/null
+[[ -L $web_root/current ]] && readlink -f "$web_root/current" > "$backup/web-release-before" || true
+log "before-state recorded in $backup"
+
+# ---- 3. stop, update, start (with rollback) ---------------------------------------------------
+stopped=()
+rollback() {
+    local rc=$?
+    trap - ERR
+    log "FAILED (exit $rc); rolling back"
+    # Never --force or reset --hard: local changes (only possible with --allow-dirty) survive, and
+    # no branch was moved by this script, so returning to the earlier ref restores the exact state.
+    g "$party_checkout" checkout --quiet "$before_party_ref" || log "ROLLBACK INCOMPLETE: party checkout not restored"
+    g "$games_checkout" checkout --quiet "$before_games_ref" || log "ROLLBACK INCOMPLETE: games checkout not restored"
+    if [[ -f $backup/web-release-before ]] && [[ -d $(cat "$backup/web-release-before") ]]; then
+        ln -sfn "$(cat "$backup/web-release-before")" "$web_root/current.new" && mv -Tf "$web_root/current.new" "$web_root/current"
+    fi
+    for unit in ${stopped[@]+"${stopped[@]}"}; do systemctl start "$unit" || true; done
+    log "after rollback: party $(g "$party_checkout" rev-parse HEAD), games $(g "$games_checkout" rev-parse HEAD)"
+    log "expected:       party $before_party, games $before_games; services restarted. No manifest was written."
+    exit "$rc"
+}
+trap rollback ERR
+
+for unit in ${restart[@]+"${restart[@]}"}; do
+    systemctl stop "$unit"; stopped+=("$unit"); log "stopped $unit"
+done
+if [[ $party_changed -eq 1 ]]; then
+    g "$party_checkout" checkout --quiet --detach "$party_sha"
+    [[ $(g "$party_checkout" rev-parse HEAD) == "$party_sha" ]] || { log 'party checkout is not at the requested commit'; false; }
+    log "party at $party_sha"
+    AVRANA_ALLOW_DIRTY=$allow_dirty bash "$party_checkout/ops/install-party-web.sh" "$party_checkout"
+fi
+if [[ $games_changed -eq 1 ]]; then
+    g "$games_checkout" checkout --quiet --detach "$games_sha"
+    [[ $(g "$games_checkout" rev-parse HEAD) == "$games_sha" ]] || { log 'games checkout is not at the requested commit'; false; }
+    log "games at $games_sha"
+fi
+# Start order matters: providers first, then the party that launches into them.
+for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
+    for s in ${stopped[@]+"${stopped[@]}"}; do
+        if [[ $s == "$unit" ]]; then systemctl start "$unit"; log "started $unit"; fi
+    done
+done
+for unit in ${restart[@]+"${restart[@]}"}; do
+    sleep 1
+    systemctl is-active --quiet "$unit" || { log "$unit did not stay active"; false; }
+done
+trap - ERR
+
+# ---- 4. manifest -----------------------------------------------------------------------------
+py -m avrana.ops.manifest write --out "$manifest" --party "$party_checkout" --games "$games_checkout" \
+    --web-root "$web_root" --tool-sha "$party_sha" $([[ $allow_dirty -eq 1 ]] && echo --allow-dirty) \
+    --restarted ${restart[@]+"${restart[@]}"}
+cp "$manifest" "$backup/after.json"
+log "deployment manifest written: $manifest"
+
+# ---- 5. smoke ---------------------------------------------------------------------------------
+if [[ $skip_smoke -eq 1 ]]; then
+    py -m avrana.ops.manifest smoke "$manifest" skipped
+    log 'smoke checks skipped (--skip-smoke); the manifest says so'
+    exit 0
+fi
+sleep 2
+if py -m avrana.ops.smoke | tee "$backup/smoke.txt"; then
+    py -m avrana.ops.manifest smoke "$manifest" passed
+    log 'deployment complete; smoke passed. Physical phone acceptance is still a human step.'
+else
+    py -m avrana.ops.manifest smoke "$manifest" failed
+    log "deployment applied but smoke FAILED (see $backup/smoke.txt); decide: fix forward or roll back with"
+    log "  sudo bash $party_checkout/ops/deploy.sh --party $before_party --games $before_games"
+    exit 2
+fi
+}
+
+main "$@"
