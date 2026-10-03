@@ -6,6 +6,10 @@ Status reconciled 2026-10-01; [SYSTEM](../SYSTEM.md) owns verified runtime revis
 The decision below is the original provider boundary. ADRs 0006–0011 subsequently add Party
 session/roster authority and replace fixed return chrome during Party rounds with authoritative
 follow and host-owned controls. Original sprint deferrals below are historical, not the queue.
+**Superseded for long-term architecture (2026-10-02):** [ADR 0014](0014-native-games-isolated-lan-games-retired.md)
+retires LAN Games as an Avrana runtime and standalone LAN Games as a product mode. This ADR
+remains the accurate record of the provider boundary that is **still deployed**, and is kept as
+history and current-deployment context until retirement is performed and verified.
 Date: 2026-09-26. Builds on ADR 0004 and merged shell assimilation PR #5.
 
 Avrana owns identity/profile, global navigation, discovery, library and Party Chat.

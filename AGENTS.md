@@ -26,8 +26,44 @@ curl is not a phone test; a simulation is not a measurement. Chat history is not
 
 ## Starting work
 
+<<<<<<< HEAD
 Given `Implement AVR-N` (`python tools/avr_context.py AVR-N` gathers the issue, paired
 branches, PRs and the deployed build in one read-only pass):
+=======
+- This repository owns the appliance platform, Party Core, shell, contracts, arcade integration,
+  tests and operations tooling. [Games](https://github.com/rcnechamkin/avrana-party-games) is a
+  separate repository with independent CI. See [provider ownership](docs/design/LAN-GAMES-PROVIDER.md).
+- Fetch GitHub `origin`, inspect status, current main and open PRs, then create an issue-scoped
+  `docs/avr-N-*`, `chore/avr-N-*`, `fix/avr-N-*`, `feat/avr-N-*` or `experiment/avr-N-*` branch.
+  Use a descriptive scope when no issue exists. Disclose a stacked PR's dependency and base.
+  Preserve unrelated changes. Review/test through a PR; never force-push or rewrite history.
+- No deployment, production checkout edits/pulls, service restarts, sudo, live nginx/DNS,
+  NetworkManager, systemd, certificate or Wi-Fi changes without an explicit owner deployment
+  instruction. The Pi is a deployment/test target, never a development workspace. Operations
+  commands in a document are not permission to run them. See [deployment index](deploy/README.md).
+- Keep `avrana-party.nginx` and `arcade/nginx-site` byte-identical. Live-site equality requires
+  separate authorized evidence. Preserve the deployed ADR 0004 behavior — HTTPS-only `/party/`,
+  service-worker scope, no HSTS / `Service-Worker-Allowed`, capability vocabulary and
+  contract/grant boundary — in unrelated work. HTTPS-only `/party/` is current behavior, not a
+  permanent invariant: [ADR 0012](docs/adr/0012-limited-mode-party-survives-https-loss.md)
+  accepts Limited Mode, and its scoped Linear issue (AVR-225) may change it deliberately. Never
+  weaken the `Secure` Party cookie or add HSTS to get there.
+- Preserve platform ownership of cross-game identity, presence, chat, library, navigation and
+  durable results/history; do not add parallel stores/tokens in Games. Device, Profile, Presence
+  and Seat are distinct; a browser-stored name/avatar is not a durable Profile. Admin is distinct
+  from Party Host. See [platform design](docs/design/PARTY-PLATFORM.md).
+- ADRs 0012–0014 are accepted direction, not deployed: Limited Mode, a separate game origin and
+  isolated native-game processes. The LAN Games fork is still the deployed runtime but is
+  retiring; do not build new native games as LAN Games modules or treat standalone LAN Games,
+  `wc-token` admission or a shared Party/game origin as requirements to preserve in new design.
+- Never commit or print credentials, private keys, Wi-Fi secrets, ROMs, BIOS, emulator cores,
+  saves, runtime databases, personal telemetry or raw measurement logs. Inspect diffs and file
+  lists for these before every push. Use synthetic test identities and temporary data.
+- [Retained research branches](docs/branches.json) are noncanonical evidence, not a merge queue.
+  Never wholesale-merge them or resurrect [abandoned Diplomacy](experiments/archive/diplomacy/README.md).
+  Hardware/emulator runs must be bounded and supervised; heavy load needs owner authorization.
+  Never poll SSH or run parallel work during power measurements.
+>>>>>>> origin/main
 
 1. Read the Linear issue. It is the desired delta: Outcome, Acceptance Criteria, Out of Scope,
    Repositories, Tests Required, Dependencies, Open Decisions. If Open Decisions holds an

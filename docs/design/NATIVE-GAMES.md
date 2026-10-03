@@ -3,6 +3,11 @@
 Status: design principles and recommended primitives (2026-09-24). Nothing here is built beyond
 what LAN Games/BLUFF already contain. Context: `PARTY-PLATFORM.md`, `GAME-INTEGRATION.md`.
 
+Reconciled 2026-10-02: LAN Games is retiring as an Avrana runtime and is donor/reference code
+([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)); there is no Avrana SDK yet. Transport wording below is aligned with the
+deployed HTTPS origin (ADR 0004) and the accepted Full/Limited Mode direction ([ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md)).
+Game UX primitives are otherwise unchanged by that reconciliation.
+
 ## 1. The principle
 
 The smartphone in each player's hand is a **private, dynamic player surface**, not a gamepad.
@@ -44,15 +49,18 @@ No single title defines the product. The platform should eventually demonstrate 
 3. **Emulated multiplayer:** Worms, Bomberman, split-screen classics (with Personal Viewports),
    retro party experiences, with legally user-supplied content where required.
 
-BLUFF (the Coup-inspired card game) remains an early native **testbed** for hidden information,
-private views and lifecycle. It does not by itself define the product.
+BLUFF (the Coup-inspired card game) is the first Avrana-native game and remains an early native
+**testbed** for hidden information, private views and lifecycle. It does not by itself define the
+product. The platform boundary is then validated by Checkers (the first deliberately simple game
+built outside the LAN Games runtime) and Spades (teams, private hands, reconnect, scoring, richer
+results) — ADR 0014.
 
 ## 3. Where shared code belongs: four homes
 
 | Home | What | Owned by |
 |---|---|---|
 | **Party service** | identity, presence, seats, host, navigation, votes on *what to play*, chat, stats/events, accessibility preferences | the platform, across games |
-| **Game SDK** | shared server code that runs *inside* the game's own process (LAN Games' `core/session.py` already is this) | shared library, game-run |
+| **Game SDK** | shared server code that runs *inside* the game's own process. **Does not exist yet.** LAN Games' `core/session.py` is not the SDK: it is donor code containing useful patterns (session lifecycle, per-viewer state, timers) from which public SDK/runtime primitives may later be extracted, once Checkers and Spades show what two independent games actually share | shared library, game-run |
 | **Client UI kit** | optional phone widgets a game may use | shared library, game-used |
 | **Game logic** | rules, scoring, tallies, tie-breaks, answer matching, turn order, role dealing, real-time loops | each game |
 
@@ -76,7 +84,7 @@ or anonymous answer at all.
    at the deadline or when every eligible player answered. It returns sealed answers and nothing
    more — scoring stays in the game. *(Evidence: only BLUFF checks a prompt id today; in trivia a
    late pick for question 3 can score on question 4.)*
-3. **Clock and transitions (SDK, mostly built).** One authoritative deadline in absolute server
+3. **Clock and transitions (SDK; the pattern exists in LAN Games donor code).** One authoritative deadline in absolute server
    time; a scheduled `at` so every phone flips to the next beat together; full state on wake.
 4. **Private per-viewer views + a leak test (SDK + CI).** The game supplies one view per viewer
    kind (seat, spectator, public); the platform ships an every-phase × every-viewer leak test and
@@ -84,7 +92,8 @@ or anonymous answer at all.
 5. **Public table view (UI kit + a manifest rule).** Every native game renders its public view on
    phones; a TV is just one more public viewer. Reveals are server-timed.
 6. **Event sink (party service).** Results, stats and achievements with provenance, and flags for
-   bots, autopilot turns and forfeits.
+   bots, autopilot turns and forfeits. The game determines and reports; Party is the only writer
+   of the persistent record (the result envelope is AVR-237, not yet designed).
 7. **Per-player accessibility (party service + UI kit).** Move today's per-device preferences
    (motion, contrast, haptics, sound in `hubnet.js`) onto the presence/profile and hand them over
    with the seat. Widgets apply text size, contrast, motion, handedness, haptics and colour-safe
@@ -114,19 +123,24 @@ or anonymous answer at all.
   plausible reaction; reject impossible times; short lockout for early presses; seeded random for
   near-ties, and say so on screen; keep sockets awake with pings while armed. A cheater can fake
   reaction times, but the plausibility window bounds the gain.
-- **Sleeping phones.** Over plain HTTP there is no Wake Lock and iOS doesn't vibrate, so nothing
-  can wake a sleeping phone. The server never extends one phone's deadline; slack comes from
-  presence ("everyone's in" counts only eligible, present players). Give idle players something
-  to look at.
+- **Sleeping phones.** Screen Wake Lock needs a secure context: in Full Mode (trusted HTTPS) the
+  shell can keep a screen on during play, and in Limited Mode or on any plain-HTTP page it cannot
+  (ADR 0012); iOS doesn't vibrate either way. Design as if nothing can wake a sleeping phone. The
+  server never extends one phone's deadline; slack comes from presence ("everyone's in" counts
+  only eligible, present players). Give idle players something to look at.
 
 ## 6. Privacy and anonymity
 
 - **Filter on the server only**: never hide with CSS, never leave private data in the page, never
-  put private fields in broadcast events. Limit: this stops other *browsers*, not someone sniffing
-  the Wi-Fi. The party network is plain HTTP, and WPA2 does **not** protect guests from each other:
-  anyone with the Wi-Fi password can read and alter plain-HTTP traffic, hidden roles included. That
-  is an accepted risk for friends parties (`PARTY-PLATFORM.md` §13); AP client isolation is a cheap
-  extra, and real network secrecy would need HTTPS, which offline guest phones can't easily have.
+  put private fields in broadcast events. Limit: this stops other *browsers*; network secrecy
+  depends on the transport. In **Full Mode** Party and integrated game traffic runs over the
+  browser-trusted `https://party.avrana.net` origin (live since 2026-09-25, ADR 0004), so peers on
+  the Wi-Fi cannot read hidden roles. On **plain HTTP** — the legacy hub today, and Limited Mode
+  when it exists (ADR 0012) — WPA2 does **not** protect guests from each other: anyone with the
+  Wi-Fi password can read and alter the traffic, hidden roles included. That is an accepted risk
+  for friends parties (`PARTY-PLATFORM.md` §13) and must be visible to players; AP client
+  isolation is a cheap extra. *(The 2026-09-24 text said the party network was plain HTTP and that
+  offline phones could not easily have HTTPS; browser-trusted HTTPS has since shipped.)*
 - **Side channels:** show identical screens to everyone not acting; push state to every socket on
   every change; no role-specific sounds or vibrations others could notice.
 - **Anonymity levels** (each game states which it offers): *to other players* (no author in anyone

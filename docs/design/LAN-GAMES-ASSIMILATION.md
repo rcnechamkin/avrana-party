@@ -5,6 +5,15 @@ see [SYSTEM](../SYSTEM.md). The parts audit below preserves the pre-implementati
 ADRs 0006–0011 subsequently add Party authority and console behavior; their contracts govern
 current flow. ADR 0011 is merged source with deployment/phone proof pending AVR-212.
 
+> **Status banner (2026-10-02): historical record of a completed transition; LAN Games is
+> scheduled for retirement.** This document records the completed MVP/assimilation transition
+> that put LAN Games behind Avrana's shell. LAN Games is now scheduled for retirement as an
+> Avrana runtime, and standalone LAN Games is not a supported product mode. Keep this document as
+> historical implementation evidence and as donor/reference documentation until retirement is
+> complete; do not rewrite it to match later architecture. The current forward architecture is
+> [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md). Statements below that LAN Games "supplies" pages or transports, or that
+> standalone compatibility is retained, describe what is still deployed, not the target.
+
 LAN Games is legacy MVP infrastructure undergoing assimilation into Avrana Party.
 It is not an independent product boundary. New cross-game identity, profile, chat,
 presence, favorites, history, navigation, and catalog functionality belongs to Avrana Party.

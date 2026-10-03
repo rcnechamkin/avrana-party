@@ -14,6 +14,7 @@ import argparse
 import http.client
 import json
 import platform
+import re
 import socket
 import ssl
 import subprocess
@@ -215,11 +216,13 @@ def _dig(server, name):
                            capture_output=True, timeout=TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    lines = [l for l in r.stdout.decode('ascii', 'replace').split() if l]
-    return lines[-1] if lines else ('' if r.returncode == 0 else None)
+    answers = re.findall(r'^\d{1,3}(?:\.\d{1,3}){3}$', r.stdout.decode('ascii', 'replace'), re.M)
+    if answers:
+        return answers[-1]
+    return '' if r.returncode == 0 else None      # answered with no A record, or never answered
 
 
-def run_pi(http=None, probes=None, units=None):
+def run_pi(http=None, probes=None, units=None, resolver=None):
     http = http or Http()
     probes = probes or status_module.Probes()
     units = units if units is not None else status_module.DEFAULT_CONFIG['units']
@@ -230,7 +233,7 @@ def run_pi(http=None, probes=None, units=None):
                check_games_provider(http), check_arcade(http), check_encoder(http)]
     results += check_units(units)
     results.append(check_certificate(probes.certificate_not_after(status_module.DEFAULT_CONFIG['certificate'])))
-    results.append(check_dns())
+    results.append(check_dns(resolver=resolver))
     return results
 
 

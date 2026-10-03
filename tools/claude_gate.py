@@ -43,6 +43,20 @@ def normalize(path):
     return path.replace('\\', '/')
 
 
+def repo_relative(path):
+    """The path relative to its checkout root (the nearest ancestor holding .git: a directory in a
+    clone, a file in a worktree). A path outside any checkout falls back to the part after the
+    last directory named like one of the two repositories."""
+    parts = path.split('/')
+    for i in range(len(parts) - 1, 0, -1):
+        if os.path.exists('/'.join(parts[:i]) + '/.git'):
+            return '/'.join(parts[i:])
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i].startswith('avrana-party'):
+            return '/'.join(parts[i + 1:])
+    return path
+
+
 def evaluate(payload):
     """(decision, message): decision is 'ask', 'warn' or 'ok'."""
     tool = payload.get('tool_name', '')
@@ -55,11 +69,7 @@ def evaluate(payload):
         return 'ok', ''
     if tool in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
         path = normalize(inp.get('file_path', '') or inp.get('notebook_path', '') or '')
-        rel = path
-        for marker in ('/avrana-party-games', '/avrana-party'):
-            if marker in rel:
-                rel = rel.split(marker, 1)[1].lstrip('/')
-                rel = rel.split('/', 1)[1] if rel.startswith(('wt-', '.wt-')) or re.match(r'^\.wt', rel) else rel
+        rel = repo_relative(path)
         if any(rel.startswith(h) for h in HISTORICAL):
             # editing an EXISTING finding or archive needs intent (CI: the historical-edit label);
             # writing a new dated finding is how evidence is added and is never questioned.

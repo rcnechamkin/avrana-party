@@ -10,7 +10,7 @@ On a configured appliance, connect to **Avrana Party** Wi-Fi and open:
 
 `https://party.avrana.net/party/`
 
-That address works locally on the Party network. It is not a public website.
+That address works locally on the Party network. It is not a public website. Today Party Home needs that trusted HTTPS address; keeping the Party usable when the certificate is unavailable is accepted direction ([ADR 0012](docs/adr/0012-limited-mode-party-survives-https-loss.md)), not yet built.
 
 **The game may change; the party does not.**
 
@@ -20,7 +20,7 @@ Avrana Party is still in active development. Some parts are already working on t
 
 ### Party Home
 
-Party Home is the main interface players see on their phones. It handles the game catalog, player profiles, Party Chat, favorites, recently played games, and navigation through the Party.
+Party Home is the main interface players see on their phones. It handles the game catalog, each player's local name and avatar, Party Chat, favorites, recently played games, and navigation through the Party. The name and avatar live in the browser; durable server-side player profiles do not exist yet.
 
 ### Party Core
 
@@ -32,7 +32,7 @@ The host controls the shared flow through game selection, Play or Watch setup, g
 
 Avrana Party supports games that run directly in the browser.
 
-BLUFF is currently the main native Avrana testbed, alongside maintained LAN Games titles. Game source lives in the separate, currently private [Games repository](https://github.com/rcnechamkin/avrana-party-games).
+BLUFF is the first native Avrana game and the main testbed. It currently runs alongside a set of LAN Games titles inside the LAN Games fork, which is still the deployed browser-game runtime but is being retired in favor of isolated native games ([ADR 0014](docs/adr/0014-native-games-isolated-lan-games-retired.md)). Game source lives in the separate, currently private [Games repository](https://github.com/rcnechamkin/avrana-party-games).
 
 ### Arcade streaming
 

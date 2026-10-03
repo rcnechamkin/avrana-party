@@ -13,6 +13,7 @@ second description of product state. [Linear](https://linear.app/avranakern) alo
 | [SYSTEM](SYSTEM.md) | Verified deployment/topology | Current reference, observations explicitly dated | GitHub main for source; findings for supporting evidence |
 | [TESTING](TESTING.md) | Commands and evidence semantics | Current guide; old counts remain dated results | CI on the actual revision; runbooks for physical checks |
 | [ADRs](adr/) | Architectural decisions | Read each actual status and partial amendments | Proposed portions do not override accepted decisions |
+| ADRs [0012](adr/0012-limited-mode-party-survives-https-loss.md), [0013](adr/0013-party-and-game-browser-origins.md), [0014](adr/0014-native-games-isolated-lan-games-retired.md) (2026-10-02) | Limited Mode; Party origin vs game origin; isolated native games and LAN Games retirement. They amend ADRs 0002–0006 and 0011 by dated amendment | Accepted direction, **not implemented or deployed** | SYSTEM for what runs today; Linear for sequencing |
 | [Design index](design/README.md) | Product contracts and detailed designs | Mix of canonical contracts and explicitly proposed mechanisms | ADRs resolve decisions; SYSTEM establishes deployment |
 | [UI design system](UI-DESIGN-SYSTEM.md) | Current source UI contract and build guide | Prototype visual system, not a final brand decision | [Generated sources](GENERATED.md) |
 | [ROADMAP](ROADMAP.md) | Strategic direction/milestone outcomes | Current strategy, no assignments | Linear for next task, blockers, acceptance and ownership |

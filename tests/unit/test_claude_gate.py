@@ -56,6 +56,14 @@ class Gate(unittest.TestCase):
         self.assertIn('generated', message)
         self.assertEqual(edit(str(REPO_ROOT / 'avrana' / 'party' / 'core.py'))[0], 'ok')
 
+    def test_paths_resolve_relative_to_the_checkout_whatever_it_is_called(self):
+        self.assertEqual(gate.repo_relative(gate.normalize(str(REPO_ROOT / 'web' / 'party' / 'styles.css'))),
+                         'web/party/styles.css')
+        # a checkout nested in directories that repeat the repository name (GitHub Actions' layout)
+        self.assertEqual(gate.repo_relative('/nowhere/avrana-party/avrana-party/avrana/party/protocol.py'),
+                         'avrana/party/protocol.py')
+        self.assertEqual(gate.repo_relative('/nowhere/avrana-party.wt-x/docs/findings/a.md'), 'docs/findings/a.md')
+
     def test_existing_historical_documents_warn_and_new_ones_do_not(self):
         existing = next((REPO_ROOT / 'docs' / 'findings').glob('*.md'))
         decision, message = edit(str(existing))

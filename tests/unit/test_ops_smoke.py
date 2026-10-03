@@ -55,13 +55,13 @@ class Checks(unittest.TestCase):
     def test_healthy_pi_passes_everything_it_can_see(self):
         http = ScriptedHttp(healthy_table())
         probes = type('P', (), {'certificate_not_after': lambda self, p: NOW + timedelta(days=80)})()
-        results = smoke.run_pi(http, probes, units=[])
+        results = smoke.run_pi(http, probes, units=[], resolver=lambda server, name: server)
         by = self.names(results)
         for name in ('captive_probe', 'party_home', 'party_core', 'status', 'games_provider', 'arcade'):
             self.assertEqual(by[name], smoke.PASS, name)
         self.assertEqual(by['encoder'], smoke.SKIP)         # emulator idle: nothing to encode
-        self.assertNotEqual(by['dns'], smoke.FAIL)          # dig may be missing here: skip, never pass
-        self.assertEqual(by['certificate'], smoke.PASS if True else None)
+        self.assertEqual(by['dns'], smoke.PASS)
+        self.assertEqual(by['certificate'], smoke.PASS)
         # HTTPS checks speak to the Pi's loopback but validate the party host name (SNI/Host).
         self.assertIn(('https', '127.0.0.1', 443, '/party/', smoke.HOST), http.calls)
 
@@ -74,7 +74,8 @@ class Checks(unittest.TestCase):
         table[(8098, '/stats')] = ok_json({'players': 0, 'error': 'encoder died', 'emulator_running': True,
                                            'sample_age_s': {'video': 42.0}})
         del table[(443, '/party/api/status')]
-        results = smoke.run_pi(ScriptedHttp(table), type('P', (), {'certificate_not_after': lambda s, p: NOW})(), units=[])
+        results = smoke.run_pi(ScriptedHttp(table), type('P', (), {'certificate_not_after': lambda s, p: NOW})(), units=[],
+                               resolver=lambda server, name: None)
         by = {r.name: r for r in results}
         self.assertEqual(by['captive_probe'].status, smoke.FAIL)
         self.assertIn('Success', by['captive_probe'].detail)
@@ -88,7 +89,22 @@ class Checks(unittest.TestCase):
         self.assertEqual(by['arcade'].status, smoke.FAIL)
         self.assertEqual(by['encoder'].status, smoke.FAIL)
         self.assertEqual(by['certificate'].status, smoke.FAIL)
+        self.assertEqual(by['dns'].status, smoke.SKIP)                 # no answer at all: not run, not passed
         self.assertFalse(smoke.summarize(results)['ok'])
+
+    def test_dig_output_is_parsed_for_addresses_only(self):
+        def fake(stdout, code):
+            return lambda *a, **k: subprocess.CompletedProcess(a, code, stdout=stdout)
+        original = smoke.subprocess.run
+        try:
+            smoke.subprocess.run = fake(b'10.42.0.1\n', 0)
+            self.assertEqual(smoke._dig('10.42.0.1', smoke.HOST), '10.42.0.1')
+            smoke.subprocess.run = fake(b';; communications error to 10.42.0.1#53: timed out\n', 9)
+            self.assertIsNone(smoke._dig('10.42.0.1', smoke.HOST))
+            smoke.subprocess.run = fake(b'', 0)
+            self.assertEqual(smoke._dig('10.42.0.1', smoke.HOST), '')
+        finally:
+            smoke.subprocess.run = original
 
     def test_degraded_status_fails_with_its_reasons(self):
         table = healthy_table()

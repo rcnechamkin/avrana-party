@@ -74,6 +74,24 @@ each other, not one shared console:
    BLUFF's omniscient view; players and TVs never); tickets, seats, reconnects; standalone play
    (no Party Core, no profile, or plain HTTP: the pages are exactly what they were).
 
+## Amendment (2026-10-02): one Standard Mode activity
+
+The decision above is unchanged. This adds the product-level invariant it already implied:
+
+- **Standard Mode has exactly one authoritative Party activity/location.** One appliance, one
+  Party, one active activity at a time; `location` is singular by design, not by current
+  limitation.
+- **Simultaneous games or tables are not a Standard Mode product feature.** Standard Mode
+  architecture (Party Core, routing, the registry, results) is not shaped around side games.
+- **Any future Developer Mode relaxation is explicitly separate.** If multi-activity
+  experimentation is ever exposed to technical users, it is a distinct mode that must not add
+  states, UI or protocol surface to Standard Mode ([ADR 0014](0014-native-games-isolated-lan-games-retired.md) decision 10).
+- Decision 3's "a standalone title may stay open while the party is home (a personal game)" and
+  decision 7's "standalone play" describe LAN Games standalone compatibility, which ADR 0014
+  retires as a product mode; they remain true of current source until that retirement lands.
+- Decision 5's `window.AvranaParty` host controls keep their product meaning; their same-origin
+  transport is revisited by [ADR 0013](0013-party-and-game-browser-origins.md).
+
 ## Consequences
 
 - Party Core: `location()`, `go_home()`, member `avatar` (`avrana/party/core.py`), `POST

@@ -5,6 +5,15 @@ phone check passed, while laptop Wi-Fi validation and automatic renewal remain
 open.** This runbook records the baseline and the narrow deployment path.
 GitHub `main` remains unchanged until the branch is fully validated and reviewed.
 
+**Note 2026-10-02:** this runbook deploys and verifies Full Mode (trusted HTTPS), and its
+HTTPS-only `/party/` is the deployed behavior. [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md)
+accepts a Limited Mode in which the Party stays usable when trusted HTTPS is unavailable; it is
+not implemented, and no step below provides it. "Recovery" in this runbook means restoring the
+certificate, not Limited Mode. No HSTS remains a hard rule. References to LAN Games describe the
+games runtime behind nginx (upstream at this runbook's baseline, the fork since 2026-09-27),
+which is still deployed and is retiring as a runtime
+([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)).
+
 ## Baseline and intended behavior
 
 - The Pi is `RaspberryPi`, with `eth0` at `10.0.0.142/24` for management and
