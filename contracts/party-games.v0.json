@@ -1,0 +1,35 @@
+{
+  "contract": "avrana.party-games/v0",
+  "implemented_by": "rcnechamkin/avrana-party",
+  "description": "What Party implements at the Party <-> Games boundary today. Games declares what it requires in provider/avrana-contract.json. tools/contract_check.py verifies both against code and against each other; docs/design/PARTY-GAMES-CONTRACT.md explains the fields.",
+  "session_protocol": {
+    "version": "avrana.party-session/v0",
+    "prefix": "aps0",
+    "reference": "avrana/party/protocol.py",
+    "reference_sha256": "50777e8ef31840218bf4e89aba0c35a9d3d692656a9126d1206a701c8ff39a5b",
+    "vectors": "contracts/vectors/party-session.v0.json",
+    "vectors_sha256": "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245",
+    "decision": "docs/adr/0006-party-session-protocol.md"
+  },
+  "routes": {
+    "party_ticket": "/party/api/session/ticket",
+    "party_ended": "/internal/party-session/v0/ended",
+    "game_launch": "/avrana/session/v0/launch",
+    "game_end": "/avrana/session/v0/end"
+  },
+  "launch": {
+    "integration": "avrana.lan-launch/v1",
+    "marker": "avrana=1",
+    "return_path": "/party/",
+    "advertised_at": "/api/games"
+  },
+  "environment": {
+    "keys_dir": "AVRANA_PARTY_KEYS",
+    "party_url": "AVRANA_PARTY_URL"
+  },
+  "catalog": {
+    "snapshot": "contracts/catalogs/lan-games.json",
+    "source_repository": "rcnechamkin/avrana-party-games",
+    "source_path": "provider/catalog.json"
+  }
+}

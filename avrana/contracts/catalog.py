@@ -24,6 +24,9 @@ DEFAULT_APPLIANCE = CONTRACTS_DIR / 'appliances' / 'avrana-pi4.json'
 DEFAULT_OUT = WEB_DIR / 'catalog.json'
 DEFAULT_ARTWORK = CONTRACTS_DIR / 'artwork.json'
 ARTWORK_REF = re.compile(r'^(lan|kenney):([A-Za-z0-9_]{1,40})$')
+# Avrana-native games the provider lists that also carry an explicit contract here (private hands,
+# spectators, Party roster permission): the donor row supplies only display metadata and players.
+FIRST_PARTY = lan_catalog.FIRST_PARTY
 
 
 def load_artwork(path=DEFAULT_ARTWORK, web=WEB_DIR):
@@ -56,9 +59,9 @@ def load_contracts(directory, vocab):
         donor = lan_catalog.load(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
         for cid, c in donor.items():
             if cid in contracts:
-                if cid != 'bluff':
+                if cid not in FIRST_PARTY:
                     raise ValueError('duplicate donor/game contract ids')
-                # Keep BLUFF's explicit hand/spectator/capability contract, player counts
+                # Keep a first-party game's explicit hand/spectator/capability contract, player counts
                 # included: the Game Contract is the one source Party Core and this catalog both
                 # read (AVR-229, ADR 0014 decision 7). The donor's count describes its standalone
                 # lobby (bots can fill seats), not a Party round. Only display text comes from it.

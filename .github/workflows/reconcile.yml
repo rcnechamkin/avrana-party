@@ -1,0 +1,47 @@
+# Weekly drift reconciliation (docs/WORKFLOW.md step 16): deterministic comparisons between Linear,
+# GitHub, both repositories and (when reachable) the deployed Pi. Publishes ONE report as a job
+# summary and an artifact; never fails the build, never writes to Linear or GitHub. The Pi is only
+# reachable on the Party LAN, so deployed-version checks run from a laptop with --status-url.
+name: Drift reconciliation
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: main
+          path: games
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reconcile
+        working-directory: party
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: |
+          python3 tools/reconcile.py --games ../games --out ../reconcile-report
+          cat ../reconcile-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reconcile-report-${{ github.run_id }}
+          path: |
+            reconcile-report.md
+            reconcile-report.json
+          retention-days: 60

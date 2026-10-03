@@ -14,17 +14,18 @@ class DonorCatalog(unittest.TestCase):
 
     def test_known_library_is_individual_valid_contracts(self):
         games = lan_catalog.parse(self.source, VOCAB)
-        self.assertEqual(len(games), 30)
+        self.assertEqual(len(games), 31)
         self.assertIn('lan-wordclash', games)
         self.assertNotIn('lan-template', games)
         self.assertNotIn('lan-bluff', games)
+        self.assertNotIn('lan-expo', games)
         self.assertEqual(games['lan-chess']['players'], {'min': 1, 'max': 2})
         self.assertEqual(games['lan-fifthsignal']['screen'], 'tv_required')
         for cid, contract in games.items():
             self.assertEqual(game.validate(contract, VOCAB), contract)
             self.assertNotIn('entry', contract)
             self.assertNotIn('launchTarget', contract['extensions']['net.avrana.catalog'])
-            self.assertEqual(contract['extensions']['net.avrana.catalog']['legacySlug'], ('bluff' if cid == 'bluff' else cid[4:]))
+            self.assertEqual(contract['extensions']['net.avrana.catalog']['legacySlug'], (cid if cid in lan_catalog.FIRST_PARTY else cid[4:]))
 
     def test_bad_or_authority_bearing_metadata_is_rejected(self):
         for key, value in [('slug', '../party'), ('min_p', True), ('max_p', 99),
@@ -47,7 +48,7 @@ class DonorCatalog(unittest.TestCase):
                          {'lan-games', 'arcade', 'retroarch-ps1'})
         self.assertEqual(result['collections'], [])
         installed = [g for g in result['games'] if g['installed']]
-        self.assertEqual(len(installed), 31)
+        self.assertEqual(len(installed), 32)
         self.assertEqual(next(g for g in installed if g['id'] == 'lan-chess')['entry'], '/games/chess/')
         # BLUFF is live in the Games fork; the appliance grants it under its own ID.
         bluff = next(g for g in installed if g['id'] == 'bluff')
@@ -55,6 +56,14 @@ class DonorCatalog(unittest.TestCase):
                          ('/games/bluff/', '/games/bluff/', 'current'))
         self.assertEqual(bluff['integration'], 'avrana.lan-launch/v1')
         self.assertTrue(bluff['private_player_ui'])
+        # EXPO (working title) likewise: the explicit contract keeps its private hands, spectators
+        # and Party roster permission; the donor row supplies display metadata and player counts.
+        expo = next(g for g in installed if g['id'] == 'expo')
+        self.assertEqual((expo['entry'], expo['launchTarget'], expo['status']),
+                         ('/games/expo/', '/games/expo/', 'current'))
+        self.assertTrue(expo['private_player_ui'])
+        self.assertEqual(expo['spectators'], 'watch')
+        self.assertEqual(expo['players'], {'min': 2, 'max': 5})
         for cid in ('ps1-bomberman', 'ps1-worms'):
             entry = next(g for g in result['games'] if g['id'] == cid)
             self.assertFalse(entry['installed'])

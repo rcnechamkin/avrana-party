@@ -1,0 +1,42 @@
+{
+  "contract": "avrana.game/v0",
+  "id": "expo",
+  "name": "EXPO",
+  "summary": "One crew. Every card matters.",
+  "kind": "native",
+  "players": {"min": 2, "max": 5},
+  "screen": "no_tv_needed",
+  "input": {"model": "browser_native"},
+  "late_join": "spectator_only",
+  "spectators": "watch",
+  "private_player_ui": true,
+  "runtime": {
+    "type": "lan_games_module",
+    "permissions": ["party_roster"]
+  },
+  "presentations": [
+    {
+      "id": "phone_table",
+      "method": "browser_native",
+      "roles": ["player", "spectator"],
+      "requires": {
+        "device": ["websocket"],
+        "runtime": ["runtime.lan_games"]
+      },
+      "optional": {
+        "device": ["wake_lock", "storage.local"]
+      }
+    }
+  ],
+  "fallback": "spectate",
+  "accessibility": {
+    "timing_pressure": true,
+    "audio_required": false,
+    "color_independent": true,
+    "reduced_motion_respected": true,
+    "text_scalable": true
+  },
+  "extensions": {
+    "net.avrana.party": {"pregame": true}
+  }
+}

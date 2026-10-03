@@ -120,7 +120,7 @@ class CommandLine(unittest.TestCase):
     def test_show_is_deterministic_json(self):
         first = self.run_cli('--show', str(EXAMPLE))
         self.assertEqual(first, self.run_cli('--show', str(EXAMPLE)))
-        self.assertEqual(set(json.loads(first[1])), {'bluff', 'arcade-gauntlet2'})
+        self.assertEqual(set(json.loads(first[1])), {'bluff', 'expo', 'arcade-gauntlet2'})
 
     def test_check_fails_and_names_the_drifted_field(self):
         with tempfile.TemporaryDirectory() as tmp:

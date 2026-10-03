@@ -26,7 +26,21 @@ Checks cover:
 - no conflict markers in small first-party text files; no additional root handoff/log files;
 - brief agent compatibility layers link to AGENTS and declare no independent authority;
 - generated mappings/check identifiers, GitHub generated/vendor annotations and nginx byte equality;
-- retained branch records are noncanonical and forbid wholesale merges.
+- retained branch records are noncanonical and forbid wholesale merges;
+- optional `supersedes` entries name existing manifest documents that are already archived or
+  historical; optional `last_verified` is a past ISO date;
+- a current document that links into `docs/archive/` (or to a historical/archived document) must
+  label the citation as history on the same line (archive, historical, superseded, preserved).
+
+Two related checks are separate modes of the same script:
+
+- `python3 tools/repo-check.py --changed-since BASE` fails when `BASE...HEAD` modifies, deletes or
+  moves a file under `docs/archive/` or `docs/findings/` (adding a new finding is always allowed).
+  CI runs it on pull requests; the `historical-edit` PR label passes `--allow-historical` for an
+  intentional correction or move.
+- Staleness is informational: after `Repository integrity: OK` the checker lists current
+  documents whose `last_verified` is absent or older than `--staleness-days` (default 120). It
+  never fails for that reason.
 
 The checker is deliberately a bounded Markdown link checker, not a full CommonMark renderer:
 use ordinary inline/reference links, angle brackets for spaces, and standard heading anchors.

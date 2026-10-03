@@ -7,6 +7,9 @@ second description of product state. [Linear](https://linear.app/avranakern) alo
 
 | Document/category | Purpose and authority | Status / limits | Look here instead |
 |---|---|---|---|
+| [WORKFLOW](WORKFLOW.md) | The development loop from a Linear issue to a playtested deployment; Linear state mapping; issue structure; what CI enforces | Current reference | [AGENTS](../AGENTS.md) for agent rules; Linear for live work |
+| [CROSS-REPO](CROSS-REPO.md) | Branch pairing, paired PRs and what each CI runs against the other repository | Current reference | [Party ↔ Games contract](design/PARTY-GAMES-CONTRACT.md) for the interface itself |
+| [Implementation report](agents/IMPLEMENTATION-REPORT.md) | The one completion-report format | Current reference | AGENTS for what Done means |
 | [SYSTEM](SYSTEM.md) | Verified deployment/topology | Current reference, observations explicitly dated | GitHub main for source; findings for supporting evidence |
 | [TESTING](TESTING.md) | Commands and evidence semantics | Current guide; old counts remain dated results | CI on the actual revision; runbooks for physical checks |
 | [ADRs](adr/) | Architectural decisions | Read each actual status and partial amendments | Proposed portions do not override accepted decisions |
@@ -34,5 +37,9 @@ Only the external Linear authority has `live-work` scope.
 Add a manifest entry with each new document. Keep links relative, date findings, and preserve
 status banners. Update classification when promoting/archiving work, with evidence and review.
 Run `npm run check:repo`; see [REPOSITORY-GOVERNANCE](REPOSITORY-GOVERNANCE.md) for its scope.
+
+Optional manifest fields: `supersedes` (a list of archived/historical documents this one
+replaces) and `last_verified` (the date someone last checked the document against code). Both are
+validated; an old `last_verified` is reported, never failed.
 
 [Graphify](GRAPHIFY.md) documents derived navigation context only; it adds no authority domain.

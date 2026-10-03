@@ -915,6 +915,64 @@
       "artwork": "art/lan-euchre.svg"
     },
     {
+      "id": "expo",
+      "name": "EXPO",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 5
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "watch",
+      "private_player_ui": true,
+      "fallback": "spectate",
+      "installed": true,
+      "entry": "/games/expo/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_table",
+          "method": "browser_native",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": [
+              "websocket"
+            ]
+          },
+          "optional": {
+            "device": [
+              "wake_lock",
+              "storage.local"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "lan-games",
+      "launchTarget": "/games/expo/",
+      "status": "current",
+      "legacySlug": "expo",
+      "icon": "🌊",
+      "category": "cards",
+      "description": "Cooperative trick-taking with private hands, sonar communication, mission tasks and a captain-controlled Tonoja for two players. Disputed source missions remain unavailable.",
+      "solo": false,
+      "art": null,
+      "accent": "#65e5dd",
+      "playersLabel": "2–5 players",
+      "integration": "avrana.lan-launch/v1",
+      "summary": "One crew. Every card matters."
+    },
+    {
       "id": "lan-famfeud",
       "name": "FAM FEUD",
       "kind": "native",
