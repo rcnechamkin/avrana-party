@@ -592,5 +592,47 @@ class FailingLaunch(ServiceCase):
         self.assertEqual(self.link.ended, [v['session']['id']])
 
 
+class Bounds(ServiceCase):
+    """AVR-218: listen backlog and the cap on blocked long polls."""
+
+    def test_listen_backlog_is_raised(self):
+        self.assertEqual(self.server.request_queue_size, service.REQUEST_QUEUE_SIZE)
+        self.assertGreater(service.REQUEST_QUEUE_SIZE, 5)
+        self.assertTrue(self.server.daemon_threads)
+
+    def test_extra_waiter_beyond_the_cap_returns_at_once(self):
+        orig = service.MAX_WAITERS
+        service.MAX_WAITERS = 1
+        self.addCleanup(setattr, service, 'MAX_WAITERS', orig)
+        _, v, _ = self.phone().state()
+        since = v['version']
+        first = threading.Thread(target=self.svc.view, args=(None, since, 5.0), daemon=True)
+        first.start()
+        deadline = time.monotonic() + 3
+        while self.svc.waiters < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(self.svc.waiters, 1)
+        t0 = time.monotonic()
+        view = self.svc.view(None, since, 5.0)       # saturated: degrades to a short poll
+        self.assertLess(time.monotonic() - t0, 1.0)
+        self.assertEqual(view['version'], since)
+        self.assertEqual(self.svc.waiters, 1)
+        self.svc.call('join', self.store.issue()[0] if hasattr(self.store, 'issue') else 'x', 'Ana', None)             if False else None
+        with self.svc.lock:                           # release the first waiter
+            self.svc.core.party.version += 1
+            self.svc.changed.notify_all()
+        first.join(3)
+        self.assertEqual(self.svc.waiters, 0)
+
+    def test_wait_zero_is_unchanged_when_saturated(self):
+        orig = service.MAX_WAITERS
+        service.MAX_WAITERS = 0
+        self.addCleanup(setattr, service, 'MAX_WAITERS', orig)
+        t0 = time.monotonic()
+        self.svc.view(None, None, 0)
+        self.svc.view(None, 1, 0)
+        self.assertLess(time.monotonic() - t0, 1.0)
+
+
 if __name__ == '__main__':
     unittest.main()
