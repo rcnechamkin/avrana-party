@@ -5,6 +5,9 @@
   "documents": [
     {"path": "docs/GRAPHIFY.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/findings/2026-10-02-repository-governance.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
+    {"path": "docs/findings/2026-10-02-architecture-review.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
+    {"path": "docs/findings/2026-10-02-architecture-audits.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
+    {"path": "docs/findings/2026-10-02-avr130-deploy.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
     {"path": "AGENTS.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "agent-invariants"},
     {"path": "CLAUDE.md", "class": "canonical", "status": "current", "authority": "entry-point-only"},
     {"path": "CODEX-HANDOFF.md", "class": "canonical", "status": "current", "authority": "entry-point-only"},
