@@ -162,10 +162,26 @@ class PartyService:
             self.link.end(s)
         with self.lock:
             if ok:
-                self.core.launch_accepted(s.id)
+                accepted = self.core.launch_accepted(s.id)
             else:
+                accepted = True
                 self.core.launch_failed(s.id, detail or 'The game did not start.')
             self._notify()
+        if ok and not accepted:
+            # AVR-223: the party moved on while the launch was in flight (the host cancelled it,
+            # or LAUNCH_TIMEOUT passed): the runtime that just came up would be orphaned. Stop it.
+            self.link.end(s)
+        return s
+
+    def game_reported_end(self, session_id, outcome):
+        """The game's own `ended` (via the session protocol). A completed round is held on the
+        game's results screen until the host moves on (ADR 0011); an abandoned one has nothing to
+        hold, so the party goes home and the game is released at once (AVR-223)."""
+        with self.lock:
+            s = self.core.game_reported_end(session_id, outcome)
+            self._notify()
+        if s.outcome == 'abandoned':
+            self.link.end(s)
         return s
 
     def end(self, device_id, if_version):

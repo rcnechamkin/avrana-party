@@ -6,7 +6,7 @@ import json
 import threading
 import unittest
 
-from avrana.party import protocol, sessions
+from avrana.party import core, protocol, sessions
 from avrana.party.protocol import Invalid
 
 from test_party_service import HOST, ORIGIN, BLUFF, Phone, ServiceCase
@@ -20,7 +20,7 @@ class ReferenceGame:
     def __init__(self, party_port):
         self.side = protocol.GameSide(KEY, 'bluff')
         self.party_port = party_port
-        self.launches, self.ends = [], []
+        self.launches, self.ends, self.end_posts = [], [], 0
         game = self
 
         class H(http.server.BaseHTTPRequestHandler):
@@ -33,6 +33,7 @@ class ReferenceGame:
                     if self.path == sessions.LAUNCH_PATH:
                         game.launches.append(game.side.on_launch(body['message']))
                     elif self.path == sessions.END_PATH:
+                        game.end_posts += 1
                         game.ends.append(game.side.on_end(body['message']))
                     else:
                         raise Invalid('route')
@@ -98,7 +99,10 @@ class LinkTimeouts(unittest.TestCase):
                 s = type('S', (), {'game_id': gid, 'id': 'session-' + 'a' * 32})()
                 self.assertEqual(link.launch(s, []), (True, None))
                 self.assertTrue(link.end(s))
-        self.assertEqual([t for _, t in seen], [5, 5, 25, 25])
+        # AVR-223: an `end` never waits longer than Party Core's own END_TIMEOUT, so a game that
+        # does not stop is reported unconfirmed (and a switch says why) before the party gives up
+        self.assertEqual([t for _, t in seen], [5, 5, 25, sessions.END_LINK_TIMEOUT])
+        self.assertLess(sessions.END_LINK_TIMEOUT, core.END_TIMEOUT)
         self.assertEqual(seen[2][0], 'http://127.0.0.1:2' + sessions.LAUNCH_PATH)
 
 
@@ -215,10 +219,14 @@ class Flow(ServiceCase):
         self.assertEqual((v['state'], v['session']['id'], v['session']['outcome']),
                          ('lobby', sid, 'completed'))
 
-    def test_abandoned_is_distinct(self):
+    def test_abandoned_is_distinct_and_releases_the_game(self):
         self.launch()
         self.game.report(self.game.side.ended('abandoned'))
-        self.assertEqual(self.ben.state()[1]['session']['outcome'], 'abandoned')
+        _, v, _ = self.ben.state()
+        self.assertEqual((v['session']['outcome'], v['location']['at']), ('abandoned', 'home'))
+        # AVR-223: nothing is held on an abandoned round, so the party ends it at the game too
+        # (the game already forgot the session, so it refuses; the party does not mind)
+        self.assertEqual(self.game.end_posts, 1)
 
     def test_a_browser_cannot_forge_completion(self):
         sid = self.launch()

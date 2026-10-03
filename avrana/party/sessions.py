@@ -36,6 +36,12 @@ class GameEndpoint:
                                         # starts a heavy runtime on launch (the arcade) needs more
 
 
+# The link waits for an `end` less long than Party Core does (core.END_TIMEOUT): a game that does
+# not stop in time is then reported as unconfirmed (and a pending switch says why) instead of the
+# party's timer closing the session first and dropping the switch silently (AVR-223).
+END_LINK_TIMEOUT = core.END_TIMEOUT - 3.0
+
+
 class HttpGameLink:
     """Implements service.PartyService's GameLink with protocol messages."""
 
@@ -66,7 +72,7 @@ class HttpGameLink:
         if ep is None:
             return False
         msg = protocol.end_message(ep.key, ep.game_id, session.id)
-        return self._post(ep.url + END_PATH, msg, ep.timeout)[0]
+        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT))[0]
 
 
 def routes(service, endpoints):
@@ -105,7 +111,7 @@ def routes(service, endpoints):
         except protocol.Invalid as e:
             return _send(h, 403, {'error': 'bad_message', 'reason': str(e)})
         try:
-            service.call('game_reported_end', p['sid'], p['outcome'])
+            service.game_reported_end(p['sid'], p['outcome'])
         except core.Refused as e:
             return _refused(h, e)
         return _send(h, 200, {'ok': True})

@@ -378,6 +378,7 @@ class Session(unittest.TestCase):
         self.clock.advance(core.END_TIMEOUT)
         self.pc.tick()
         self.assertEqual((s.state, s.game_confirmed_end), (core.ENDED, False))
+        self.assertIn('did not confirm', s.detail)                     # AVR-223: never silent
         self.launch()                                                  # a new game can start
 
     def test_game_report_during_ending_counts_as_confirmation(self):
@@ -486,7 +487,31 @@ class Navigation(unittest.TestCase):
         self.start()
         _, b = self.switch('bomber')
         self.pc.launch_failed(b.id, 'down')
-        self.assertEqual((self.nav()['to'], self.nav()['from']), ('home', 'bluff'))
+        self.assertEqual((self.nav()['to'], self.nav()['from']), ('home', 'bomber'))
+
+    def test_a_switch_never_bounces_through_party_home(self):
+        """AVR-223 (3): once the old game has stopped, `nav` goes straight to the next session
+        while it launches; followers see `setup`, not a flash of Party Home."""
+        self.start()
+        old, b = self.switch('bomber')
+        loc = self.pc.location()
+        self.assertEqual((self.nav()['to'], self.nav()['session'], loc['at'], loc['game']),
+                         ('game', b.id, 'setup', 'bomber'))
+        seq = self.nav()['seq']
+        self.pc.launch_accepted(b.id)
+        self.assertEqual((self.nav()['seq'], self.pc.location()['at']), (seq, 'game'))  # one move
+
+    def test_a_switch_whose_old_game_never_stops_says_why(self):
+        """AVR-223 (4): the end timer, not only the link's reply, surfaces the dropped switch."""
+        self.start()
+        old = self.pc.begin_switch('device-a', 'bomber', self.v())
+        self.clock.advance(core.END_TIMEOUT + 1)
+        self.pc.tick()
+        view = self.pc.view('device-b')
+        self.assertEqual((old.state, old.outcome, view['switching_to'], view['nav']['to']),
+                         (core.ENDED, 'ended_by_host', None, 'home'))
+        self.assertIn('did not stop, so the next one did not start', view['session']['detail'])
+        self.assertIsNone(self.pc.launch_pending())
 
     def test_host_cancelling_the_switched_launch_sends_everyone_home(self):
         self.start()
@@ -762,11 +787,22 @@ class ConsoleLocation(unittest.TestCase):
 
     def test_play_again_from_results_is_a_fresh_setup(self):
         s = self.round()
-        self.pc.game_reported_end(s.id, 'abandoned')
+        self.pc.game_reported_end(s.id, 'completed')
         self.assertEqual(self.at(), ('results', 'bluff'))
         self.refused('not_host', self.pc.launch, 'device-b', 'bluff', self.v())
         again = self.pc.launch('device-a', 'bluff', self.v())
         self.assertEqual((self.at(), again.choices), (('setup', 'bluff'), {}))
+
+    def test_an_abandoned_round_has_no_results_to_hold_so_everyone_goes_home(self):
+        """AVR-223 (1): a game (or a managed runtime) that gives up leaves no surface worth
+        standing on; the party is home at once, and the outcome is still recorded."""
+        s = self.round()
+        self.pc.game_reported_end(s.id, 'abandoned')
+        self.assertEqual(self.at(), ('home', None))
+        v = self.pc.view('device-b')
+        self.assertEqual((v['session']['outcome'], v['nav']['to'], v['nav']['from']),
+                         ('abandoned', 'home', 'bluff'))
+        self.refused('not_results', self.pc.go_home, 'device-a', self.v())
 
     def test_host_end_goes_home_and_a_direct_game_has_no_setup(self):
         first = self.round()
