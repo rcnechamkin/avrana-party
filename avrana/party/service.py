@@ -373,7 +373,10 @@ def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None, in
 
 
 def load_games(entries):
-    """Game entries from config: {"bluff": {"max_players": 6, "late_join": "spectator_only"}}."""
+    """Games from explicit entries: {"bluff": {"max_players": 6, "late_join": "spectator_only"}}.
+    For tests and harnesses that state a game by hand. The service itself does not use it: main()
+    derives these facts from the Game Contracts (avrana.contracts.party_config, AVR-229), so the
+    deployed config never carries a second copy of them."""
     games = {}
     for game_id, e in entries.items():
         games[game_id] = {'id': game_id, 'max_players': int(e['max_players']),
@@ -396,7 +399,12 @@ def main(argv=None):
     endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']),
                                           e.get('timeout'))
                  for g, e in entries.items() if e.get('url') and e.get('key_file')}
-    service = PartyService(store, load_games(entries), sessions.HttpGameLink(endpoints))
+    from avrana.contracts import party_config      # per-game facts come from the contracts
+    try:
+        games = party_config.resolve(entries)
+    except party_config.ConfigError as e:
+        raise SystemExit('party-core config: ' + '; '.join(e.problems))
+    service = PartyService(store, games, sessions.HttpGameLink(endpoints))
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
     extra, internal = sessions.routes(service, endpoints)
     server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)

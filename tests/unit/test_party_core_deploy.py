@@ -15,6 +15,7 @@ import tempfile
 import unittest
 
 from avrana import REPO_ROOT
+from avrana.contracts import party_config
 from avrana.party import managed, protocol, service
 from test_nginx_site import SITE, location_body, server_blocks
 
@@ -36,7 +37,7 @@ def directives(text):
 
 class Templates(unittest.TestCase):
     def test_config_loads_and_matches_the_https_origin(self):
-        games = service.load_games(CONFIG['games'])
+        games = party_config.resolve(CONFIG['games'])
         self.assertEqual(set(CONFIG['hosts']), {'party.avrana.net'})            # nginx: Host $host
         self.assertEqual(set(CONFIG['origins']), {'https://party.avrana.net'})
         self.assertIs(CONFIG['secure_cookie'], True)
@@ -45,10 +46,12 @@ class Templates(unittest.TestCase):
         appliance = json.loads((REPO_ROOT / 'contracts/appliances/avrana-pi4.json').read_text(encoding='utf-8'))
         granted = {g['game']: g['entry'] for g in appliance['installed']}
         for gid, entry in CONFIG['games'].items():
+            # AVR-229: player counts, late join and pregame come from the contract at load time
+            # (tests/unit/test_party_config.py); the config carries only the appliance's side
             contract = json.loads((REPO_ROOT / f'contracts/games/{gid}.json').read_text(encoding='utf-8'))
             self.assertEqual(games[gid]['max_players'], contract['players']['max'], gid)
-            if 'min_players' in entry:                                   # AVR-129 pregame
-                self.assertEqual(games[gid]['min_players'], contract['players']['min'], gid)
+            self.assertEqual(games[gid]['min_players'], contract['players']['min'], gid)
+            self.assertLessEqual(set(entry), {'url', 'key_file', 'timeout'}, gid)
             if gid == ARCADE:     # AVR-134: the arcade's own loopback control port, never nginx
                 self.assertIn(gid, granted)
                 self.assertEqual(entry['url'], f'http://127.0.0.1:{ARCADE_CONTROL_PORT}', gid)
@@ -59,7 +62,7 @@ class Templates(unittest.TestCase):
 
     def test_bluff_runs_the_party_pregame(self):
         """AVR-129: BLUFF opens in the Party's setup (Play or Watch, host start)."""
-        games = service.load_games(CONFIG['games'])
+        games = party_config.resolve(CONFIG['games'])
         self.assertEqual((games['bluff']['pregame'], games['bluff']['min_players']), (True, 2))
         self.assertFalse(games[ARCADE]['pregame'])                       # seats come from its page
 

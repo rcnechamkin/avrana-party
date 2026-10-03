@@ -68,7 +68,16 @@ appliance, and the validator rejects them by name.
 | `fallback` | `explain` \| `spectate` (a player seat with no fitting presentation watches) | `explain` |
 | `package` | `{version, platforms, publisher?, license (SPDX)?, source?, revision?}`; `platforms` = `["any"]` or `linux/arm64` / `linux/amd64`. Display-only claims until signing exists | — |
 | `accessibility` | `color_independent`, `audio_required`, `text_scalable`, `reduced_motion_respected`, `timing_pressure`: `true`/`false`/`"unknown"` (display-only) | all `"unknown"` |
-| `extensions` | `{ "net.example.key": any }` (ignored by Avrana core) | `{}` |
+| `extensions` | `{ "net.example.key": any }` (unknown keys are ignored by Avrana core; the `net.avrana.*` keys below are read) | `{}` |
+
+**What Party Core reads (AVR-229).** Party Core takes its per-game facts from the contract, not
+from its own config: `players.min`/`players.max`, `late_join`, and
+`extensions["net.avrana.party"].pregame` (boolean, default `false`; ADR 0010). That extension
+allows no other key. `/etc/avrana-party/party-core.json` names only what the appliance owns (`url`,
+`key_file`, `timeout`); a config that still repeats a contract field must agree with it or the
+service refuses to start. `python3 -m avrana.contracts.party_config --check <config>` runs the
+same comparison; `--show` prints the result. `pregame` is an extension only because v0 is frozen
+("a new field needs a new schema version"); the next contract version should make it a field.
 
 **Presentation:**
 `{id, method, viewport?, roles, requires: {device?, runtime?}, optional: {device?, runtime?}}`.

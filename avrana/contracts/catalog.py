@@ -58,9 +58,11 @@ def load_contracts(directory, vocab):
             if cid in contracts:
                 if cid != 'bluff':
                     raise ValueError('duplicate donor/game contract ids')
-                # Keep BLUFF's explicit hand/spectator/capability contract; public
-                # display metadata and player counts come from its provider.
-                contracts[cid].update({k: c[k] for k in ('name', 'summary', 'players')})
+                # Keep BLUFF's explicit hand/spectator/capability contract, player counts
+                # included: the Game Contract is the one source Party Core and this catalog both
+                # read (AVR-229, ADR 0014 decision 7). The donor's count describes its standalone
+                # lobby (bots can fill seats), not a Party round. Only display text comes from it.
+                contracts[cid].update({k: c[k] for k in ('name', 'summary')})
                 contracts[cid].setdefault('extensions', {})['net.avrana.catalog'] = c['extensions']['net.avrana.catalog']
             else:
                 contracts[cid] = c

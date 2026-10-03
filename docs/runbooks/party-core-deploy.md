@@ -14,7 +14,7 @@ Home integration (AVR-20/AVR-127).
 | Piece | Where | Source |
 |---|---|---|
 | Party Core service `avrana-party-core`, loopback `127.0.0.1:8191`, user `cody` | `/etc/systemd/system/avrana-party-core.service` | `deploy/party-core/avrana-party-core.service` |
-| Its config (hosts, origins, games; paths only, no secrets) | `/etc/avrana-party/party-core.json` (root, 0644) | `deploy/party-core/party-core.example.json` |
+| Its config (hosts, origins, games; paths only, no secrets). Per game it names only `url`, `key_file` and `timeout`; player counts, late join and pregame come from `contracts/games/<id>.json` in the checkout the service runs from (AVR-229). Check an edited file with `python3 -m avrana.contracts.party_config --check /etc/avrana-party/party-core.json` before restarting: the service refuses to start on a disagreement | `/etc/avrana-party/party-core.json` (root, 0644) | `deploy/party-core/party-core.example.json` |
 | Device store (hashed tokens) | `/var/lib/avrana-party-core/devices.json` (systemd `StateDirectory`, 0700 `cody`) | created by the service |
 | Per-game session key (BLUFF) | `/etc/avrana-party/game-keys/bluff.key` (0600 `cody`, dir 0700) | `ops/provision-party-game-key.sh bluff` |
 | nginx `location /party/api/` on the 443 server only | both tracked site files and `/etc/nginx/sites-available/avrana-party` | `deploy/party-core/nginx-party-api.location` |
