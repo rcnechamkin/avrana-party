@@ -9,24 +9,14 @@
   "devices": "/var/lib/avrana-party-core/devices.json",
   "games": {
     "bluff": {
-      "min_players": 2,
-      "max_players": 6,
-      "pregame": true,
-      "late_join": "spectator_only",
       "url": "http://127.0.0.1:8096/games/bluff",
       "key_file": "/etc/avrana-party/game-keys/bluff.key"
     },
     "expo": {
-      "min_players": 2,
-      "max_players": 5,
-      "pregame": true,
-      "late_join": "spectator_only",
       "url": "http://127.0.0.1:8096/games/expo",
       "key_file": "/etc/avrana-party/game-keys/expo.key"
     },
     "arcade-gauntlet2": {
-      "max_players": 2,
-      "late_join": "supported",
       "url": "http://127.0.0.1:8098",
       "key_file": "/etc/avrana-party/game-keys/arcade-gauntlet2.key",
       "timeout": 25

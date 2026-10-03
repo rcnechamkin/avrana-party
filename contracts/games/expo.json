@@ -35,5 +35,8 @@
     "color_independent": true,
     "reduced_motion_respected": true,
     "text_scalable": true
+  },
+  "extensions": {
+    "net.avrana.party": {"pregame": true}
   }
 }

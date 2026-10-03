@@ -92,3 +92,14 @@ This is not a lobby framework (AVR-26). Party Core decides who plays; games keep
 - the briefing gate on a first-time phone;
 - a sleeping phone during setup;
 - a 4-person round with a spectator.
+
+
+## Amendments
+
+- **2026-10-03 (AVR-229).** `pregame`, `min_players`, `max_players` and `late_join` are no longer
+  typed into `party-core.json`. Party Core derives them from the Game Contract when it starts:
+  `pregame` from `extensions["net.avrana.party"].pregame`, the rest from `players` and
+  `late_join` (`avrana/contracts/party_config.py`). A config that still carries a copy must agree
+  with the contract or the service refuses to start. The rollout order above still holds, with one
+  change of lever: turning the pregame on is now a contract change that deploys with the Party
+  checkout, so the games side must already be deployed before that checkout is.
