@@ -1,7 +1,7 @@
 {
   "schema": "avrana.lan-catalog/v1",
   "source": {
-    "commit": "2ed398f1e6bbd34f7f8c0c9b9c38872540da5118",
+    "commit": "a232691ee4fb3d9cb7793a38e7dde69c1e5221c1",
     "registrySha256": "484c3592b736921cd5b642b27638c811e5ec6d32f04cb69e741353da9ee839a8",
     "integration": "avrana.lan-launch/v1"
   },
