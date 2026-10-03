@@ -19,6 +19,7 @@ import { hydrateIcons, icon } from './lib/icons.js';
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
+import { loadCatalog } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, filterGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
@@ -416,17 +417,19 @@ async function boot() {
   }
   setStatus('checking', 'Checking the connection…');
   party.stop();
-  const [reachable, catalog, report, partyView] = await Promise.all([
-    checkReach(), getJSON('catalog.json').catch(() => null), probeCapabilities(), party.probe(),
+  const [reachable, loaded, report, partyView] = await Promise.all([
+    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(),
   ]);
   state.reachable = reachable;
+  const catalog = loaded.catalog;       // empty, never null, when catalog.json is missing or corrupt (AVR-220)
   state.catalog = catalog;
+  $('catalog-error').hidden = loaded.ok || !reachable;
   catalog.games.forEach((game) => profile.keyFor(game));
   state.report = report;
   $('away').hidden = reachable;
   $('chat').hidden = !reachable;
   syncChat();
-  $('games-section').hidden = !reachable || !catalog;
+  $('games-section').hidden = !reachable;
   // Party mode only when the Pi answered, the catalog loaded and Party Core gave a real view.
   state.partyMode = Boolean(reachable && catalog && partyView);
   document.documentElement.dataset.party = state.partyMode ? 'on' : 'off';
@@ -541,6 +544,7 @@ $('game-views').onclick = (event) => {
 window.addEventListener('pagehide', () => { chat.close(); party.stop(); });
 
 $('retry').addEventListener('click', () => { boot(); });
+$('catalog-retry').addEventListener('click', () => { boot(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (state.partyMode) party.poke();          // a phone waking up asks Party Core at once
