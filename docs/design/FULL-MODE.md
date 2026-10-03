@@ -6,6 +6,14 @@ Party Core runs behind `/party/api/`. Current main adds ADR 0011 in PR #34 / Gam
 deployment and Tier 3 phone proof remain AVR-212. [SYSTEM](../SYSTEM.md) owns exact revisions.
 Decisions: ADRs 0004 and 0006–0011. Deployment procedure: `docs/runbooks/party-https.md`.
 
+**Two things are described here and must not be confused (2026-10-02):**
+
+- **Deployed/current behaviour** — everything from "What it is" through "Open" below. `/party/`
+  is HTTPS-only; without the trusted origin a phone sees "Can't reach the party" and a link to
+  the legacy HTTP hub. Nothing in this document claims otherwise.
+- **Accepted architectural target** — the [Full Mode / Limited Mode contract](#accepted-target-full-mode--limited-mode-contract-adr-0012-not-implemented)
+  at the end, decided in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md). It is not implemented or deployed; AVR-225 owns it.
+
 ## What it is
 
 This is the first Avrana-owned page on the secure origin. It is static files under `/party/`,
@@ -149,4 +157,34 @@ used as evidence.
   (`players`, `max_players`, `running`) first. Live `tests/multiplayer.spec.ts` depends on the
   "full" wording.
 
-Product ownership and donor compatibility: read [LAN Games assimilation](LAN-GAMES-ASSIMILATION.md).
+## Accepted target: Full Mode / Limited Mode contract (ADR 0012; not implemented)
+
+The deployed behaviour above treats trusted HTTPS as a precondition for Party Home. [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md)
+changes the target: **trusted HTTPS is the preferred Full Mode, and its loss must not disable the
+Party.** The deployed HTTPS-only behaviour will evolve toward this contract; until a verified
+deployment changes it, [SYSTEM](../SYSTEM.md) and the sections above remain the truth about
+production.
+
+| | **Full Mode** (deployed today) | **Limited Mode** (target) |
+|---|---|---|
+| Reached when | the browser trusts `https://party.avrana.net` | the certificate is expired or untrusted, Party DNS is bypassed, or the browser otherwise cannot establish trusted HTTPS |
+| Party membership, presence, host authority and succession | yes | **yes** |
+| Synchronized Party navigation (one location, ADR 0011) | yes | **yes** |
+| Game selection, launch and play | yes | **yes, for compatible games**; a game whose contract requires a secure context is explained as unavailable for that seat, not hidden |
+| Phone-only operation, no TV, no app, no Internet | yes | **yes** |
+| Offline copy (service worker), Screen Wake Lock, secure-context-only browser APIs | yes, each silently optional | **degrade individually**: absent, with the capability report saying why |
+| Device identity | `avrana_device` cookie, `Secure` | **an explicit Limited Mode identity/continuity model** (AVR-225); the `Secure` cookie is never weakened to work over HTTP |
+| What the player is told | "Connected to the party · Secure" | a visible, plain-language degraded state: not secure, which conveniences are missing, how Full Mode returns |
+
+Rules that carry over unchanged: capabilities are observed, never inferred from the user agent;
+`unknown` is never `no`; a weak seat never downgrades the Party (ADR 0004 D2); no HSTS, so an
+expired certificate stays escapable (ADR 0004 D1); the offline copy is a convenience, not the
+recovery mechanism (ADR 0004 D5) — Limited Mode is.
+
+Not decided here: the Limited Mode credential and how a phone keeps its member across a mode
+switch; the HTTP doorway page; which hidden-information games are offered without TLS; how the
+game origin ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)) is reached in Limited Mode. The port-80 nginx change this needs is
+an owner-approved deployment, not implied by this document.
+
+Product ownership and donor compatibility: read [LAN Games assimilation](LAN-GAMES-ASSIMILATION.md)
+(historical; LAN Games is retiring as a runtime, [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)).

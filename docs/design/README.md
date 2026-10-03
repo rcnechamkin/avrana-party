@@ -14,20 +14,39 @@ Read in this order:
    layer, security summary and open questions.
 2. `../adr/0002-party-platform.md` and `../adr/0003-ids-and-keys.md` — the decisions, including
    which identifier or credential may authorize what. Read ADRs 0006–0011 for implemented
-   session authority, navigation, arcade lifecycle, Play/Watch and the console model.
+   session authority, navigation, arcade lifecycle, Play/Watch and the console model. Then read
+   the 2026-10-02 forward architecture, accepted but not implemented:
+   [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md) (the Party stays usable in
+   Limited Mode without trusted HTTPS), [ADR 0013](../adr/0013-party-and-game-browser-origins.md)
+   (trusted Party origin vs game origin) and
+   [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) (native games as isolated
+   platform consumers; LAN Games retired to donor/reference). ADRs 0002, 0003, 0004, 0005, 0006
+   and 0011 carry dated 2026-10-02 amendments pointing at them.
 3. Then whichever focused document matches the work:
-   - `LAN-GAMES-ASSIMILATION.md` — canonical ownership, donor inventory, profile/chat compatibility and provider catalogs
+   - `FULL-MODE.md` — the deployed HTTPS shell (capability probe, offline copy, keep-awake) and
+     the accepted Full Mode / Limited Mode target contract, kept explicitly separate
+   - `LAN-GAMES-ASSIMILATION.md` — **historical**: the completed MVP assimilation, donor inventory,
+     profile/chat compatibility and provider catalogs; superseded going forward by ADR 0014
+   - `LAN-GAMES-PROVIDER.md` — **historical / currently deployed** provider boundary, being
+     superseded by ADR 0014; its operational facts hold until the runtime is removed
    - `PARTY-LIFECYCLE.md` — state machines and awkward-state rules (party, presence, host, seats)
-   - `GAME-INTEGRATION.md` — capability manifest v0, runtime vs grant, the party contract, and what
-     today's code duplicates
+   - `GAME-INTEGRATION.md` — the target architecture diagram (Party origin, game origin, registry,
+     independent game processes, results back to Party), the current state, capability manifest
+     v0, runtime vs grant, the party contract, and what today's code duplicates
    - `NATIVE-GAMES.md` — the phone as a private surface, hook strategy, reusable primitives
    - `PERSONAL-VIEWPORTS.md` — per-phone crops of one shared split-screen stream
    - `ONBOARDING.md` — tap/scan to join, the party address, party LAN vs upstream internet
-   - `GAME-INSTALLATION.md` — open installation without a store; trust tiers
+   - `GAME-INSTALLATION.md` — open installation without a store; trust tiers; canonical manifest
+     and per-game process direction; signing kept separate from isolation
    - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
      the hub/BLUFF audit
    - `COMMUNICATION.md` — chat as a platform capability: transport, policy, presentation and
      game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
+
+Implemented versus target: ADRs 0012–0014 describe accepted direction only. No Limited Mode,
+separate game origin, per-game process, game registry, result envelope, Profile store or Checkers
+exists yet, and the LAN Games fork is still the deployed game runtime. Design documents mark such
+passages "Target" or "accepted direction"; `../SYSTEM.md` is the only authority on what runs.
 
 Party Core, Party Home, Game Contracts/providers and Games integration are implemented on main.
 ADR 0011 is merged (Party #34 / Games #13); production/phone proof remains AVR-212. SYSTEM keeps

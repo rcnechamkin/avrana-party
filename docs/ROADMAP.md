@@ -1,6 +1,7 @@
 # Avrana Party — strategic roadmap
 
-Reconciled 2026-10-01 against GitHub main and dated repository findings. This document describes
+Reconciled 2026-10-01 against GitHub main and dated repository findings; strategic sequencing
+reconciled 2026-10-02 with ADRs 0012–0014. This document describes
 product direction and milestone outcomes. **Linear owns live priorities, sequencing, blockers,
 acceptance criteria, ownership and the next agent task.** Start with the current Linear issue;
 do not infer an assignment or deployment approval from this roadmap.
@@ -27,7 +28,8 @@ TV, captive portal and an app are optional. Physical seating is not a platform c
 V1.0 is for the owner: prove that an entire party night works and is fun. A later demonstrator or
 crowdfunded appliance must not distort that goal. The three useful demonstrations remain native
 no-TV social games, native action games designed around phones, and emulated multiplayer with
-[Personal Viewports](design/PERSONAL-VIEWPORTS.md). BLUFF is the first native testbed.
+[Personal Viewports](design/PERSONAL-VIEWPORTS.md). BLUFF is the first Avrana-native game and testbed.
+Standard Mode is one appliance, one Party, one active activity at a time.
 
 ## Foundation milestone: implemented, with distinct release evidence
 
@@ -37,7 +39,7 @@ retired as a queue. Its useful outcomes now map to these boundaries:
 | Foundation | Current baseline | Remaining boundary |
 |---|---|---|
 | IDs and keys (former F1) | ADR 0003 invariants; Party Core device credentials and session participant tickets | Rich persistent profiles, trust and pairing remain design work |
-| Single origin (F2) | Browser-trusted `https://party.avrana.net`, `/party/`, games and arcade through nginx; published Games fork cutover | HTTP stays a recovery/legacy origin; PS1 runtime promotion is still experimental |
+| Single origin (F2) | Browser-trusted `https://party.avrana.net`, `/party/`, games and arcade through nginx; published Games fork cutover | HTTP stays a recovery/legacy origin; PS1 runtime promotion is still experimental. Target changed 2026-10-02: one trusted *Party* origin plus a separate game origin (ADR 0013), and a Limited Mode without trusted HTTPS (ADR 0012) |
 | Device identity (F3) | Server-issued, hash-only Party cookie; games receive session credentials instead | Shared browser profile keys are compatibility storage, not cloud accounts or a completed profile database |
 | Party authority (F4/F6) | Party Core v0, host grace/succession, versioned actions and one session | Reboot persistence, kicks and broader admin/moderation remain future contracts |
 | Presence and sessions (F5) | Party membership, ticket admission, stable BLUFF participant identity/reconnect | AVR-130 arcade reservations merged during this reconciliation (PR #35); deployment/phone proof is pending; a universal seat/grace layer is not complete |
@@ -56,6 +58,33 @@ and [Games PR #13](https://github.com/rcnechamkin/avrana-party-games/pull/13), i
 Join or Leave button, one authoritative `home/setup/game/results` location, Party-owned
 full-screen setup, held results and host-owned navigation. Production deployment and Tier 3
 phone verification belong to AVR-212; no newer release evidence is recorded here.
+
+## Platform-boundary milestone (accepted 2026-10-02)
+
+The 2026-10-02 decisions ([ADR 0012](adr/0012-limited-mode-party-survives-https-loss.md),
+[ADR 0013](adr/0013-party-and-game-browser-origins.md),
+[ADR 0014](adr/0014-native-games-isolated-lan-games-retired.md) and the dated amendments to ADRs
+0002, 0003, 0006 and 0011) set the strategic order below. It is an order of outcomes, each
+depending on the ones before it; issue state, scope and acceptance live in Linear and are not
+duplicated here. None of it is deployed.
+
+1. **Decision-record reconciliation** — ADRs and design documents agree with the decisions.
+2. **Single-use tickets** — close the v0 replay gap; reconnect fetches a fresh ticket.
+3. **Party/game origin boundary** — game clients leave the trusted Party origin.
+4. **Service/process isolation** — per-game process, service identity, secrets and state.
+5. **Canonical manifest** — one per-game source for catalogue and runtime metadata.
+6. **Generic registry, routing and provisioning** — no per-title front-door configuration.
+7. **Result protocol** — versioned results from games; Party owns the durable record.
+8. **Retire the LAN Games operational dependency** — standalone flow, `wc-token` admission and
+   the monolith as runtime; the code stays as donor/reference.
+9. **Checkers platform proof** — the first deliberately simple game outside the LAN Games runtime.
+10. **Spades pressure test** — teams, private hands, reconnect, scoring, richer results.
+11. **Only then freeze and build SDK, package and provider abstractions.**
+12. **Community, package signing and productization** — later.
+
+Limited Mode (ADR 0012) is accepted direction alongside this sequence rather than a step in it;
+its place in the order is a Linear decision. The party-night milestone below continues in
+parallel: this sequence must not regress a real evening's play.
 
 ## Party-night milestone
 
@@ -105,13 +134,16 @@ stopping the production arcade require owner approval; experiment history is not
 - Social play: build on the existing shared Party Chat transport; consider queue/voting,
   playlists, team chat and whispers only where a party night demonstrates the need. The host
   remains the final authority; votes are advisory and belong to presences, not sockets.
-- Progression: participation with provenance, authoritative native-game results, party recaps,
+- Progression (Party-owned record; needs the optional server-side Profile before anything
+  persistent is stored about a person): participation with provenance, authoritative native-game results, party recaps,
   then teams, achievements and cosmetics where evidence supports them. Never equate launch
   history with completed play.
 - New native games: content-light no-TV reveals and action games using each phone as a private
-  dynamic surface. Extract a private-player-panel contract only when two games need it.
+  dynamic surface, each an isolated platform consumer (ADR 0014). Extract a private-player-panel
+  contract only when two games need it.
 - Open installation: appliance-owned grants and trust tiers; sandbox untrusted community code.
-  Packaging, public/demo admission and richer administration remain separate future work.
+  Packaging (`.avrgame`), package signing, public/demo admission and richer administration remain
+  separate future work, after the platform-boundary milestone.
 - Optional TV/public surfaces and companion conveniences: never show players' private hands,
   require a TV for the whole platform, or make an app the baseline.
 
@@ -133,9 +165,11 @@ and restarts are separate owner-approved steps ([AGENTS](../AGENTS.md)). No dire
 editing. Keep credentials, ROMs/BIOS/cores, runtime data and raw telemetry out of Git.
 
 There is no universal gameplay engine, cloud-account requirement, proprietary game store,
-multi-party appliance or distributed-phone-display commitment. Preserve captive probes and
-standalone game compatibility. The retired LAN Games upstream is maintained through the private
-Games fork; its original checkout remains a rollback copy.
+multi-party appliance, simultaneous-activity Standard Mode or distributed-phone-display
+commitment. Preserve captive probes. Standalone LAN Games compatibility is preserved only while
+the fork is still the deployed runtime; it is not a product mode and retires with it (ADR 0014).
+The retired LAN Games upstream is maintained through the private Games fork as donor/reference
+code; its original checkout remains a rollback copy.
 
 Classic map-based Diplomacy was abandoned on 2026-09-23 after a misunderstanding of the target.
 Its [engine finding](findings/2026-09-22-diplomacy-engine-on-pi.md) and local

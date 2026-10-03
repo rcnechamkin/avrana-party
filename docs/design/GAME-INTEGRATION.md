@@ -11,18 +11,76 @@ not a new SDK contract. Context: `PARTY-PLATFORM.md`, `docs/adr/0003-ids-and-key
 `~/avrana-lab/avrana-party-games`); `arcade/…` is in this repo; `ps1/…` is on branch
 `ps1-emulation` of this repo (title profiles and the `hello` token: `experiment/ps1-title-profiles`).
 
+**Architecture reconciliation 2026-10-02 (accepted direction, not implemented):** game clients move
+to a separate browser origin ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)); native games become isolated processes behind a
+game registry and LAN Games retires as a runtime ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)); tickets become single-use and
+results cross the boundary in a versioned envelope owned by AVR-237 (ADR 0006 amendment). The
+target diagram below shows that model. The implemented contracts in §3 are unchanged, and BLUFF
+still runs through LAN Games infrastructure until the retirement work lands.
+
 A game touches the platform through three **separate** things. Keeping them separate is the point:
 
 | | Written by | Answers | Example |
 |---|---|---|---|
 | **Capabilities** (the manifest) | the game | *What kind of game is this?* | 1–4 players, TV optional, late joiners spectate, 4 controller slots, viewport layouts |
-| **Runtime request** | the game package | *How does its code run?* | an emulator profile; a LAN Games module; its own process |
+| **Runtime request** | the game package | *How does its code run?* | its own process (native target); an emulator profile; a LAN Games module (legacy, retiring) |
 | **Grant** | the appliance (Admin), never the package | *What is it allowed to do here?* | trust tier, content hash, URL path assigned, permissions granted |
 
 Rule: **the package describes and requests; the appliance decides.** A manifest can never set its
 own trust tier, URL path or id namespace. Installation is covered in `GAME-INSTALLATION.md`.
 
-### Broader target shape (conceptual; seats/votes/event store and PS1 are not all built)
+### Target architecture (accepted 2026-10-02; conceptual, not deployed)
+
+```mermaid
+flowchart LR
+  subgraph Phone["Phone (normal browser)"]
+    PO["Trusted Party origin<br/>Party Home · setup · profile/system<br/>device identity · Party API"]
+    GO["Game origin<br/>game page + assets<br/>holds a session ticket only"]
+  end
+  subgraph Pi["Avrana appliance"]
+    NG["nginx / front door<br/>generic routing from the registry"]
+    PC["Party Core<br/>membership · presence · host · location<br/>sessions · tickets · results intake"]
+    REG["Game registry / supervisor<br/>manifest · grant · identity · lifecycle"]
+    subgraph Games["Independent game processes (own identity, key, state)"]
+      BL["BLUFF"]
+      CH["Checkers"]
+      FG["future games"]
+    end
+    ST["stream runtimes<br/>arcade / PS1 (one emulator at a time)"]
+    DB[("Party-owned durable record<br/>profiles · results · history")]
+  end
+  PO -- "Party API (device cookie)" --> NG --> PC
+  GO -- "first WS message: single-use ticket" --> NG
+  NG -- "local IPC (Unix socket preferred)" --> Games
+  NG --> ST
+  PC -- "avrana.party-session:<br/>launch / end" --> Games
+  Games -- "ended + versioned result (AVR-237)" --> PC
+  PC -- "launch / stop" --> ST
+  REG -- "registers, starts, stops" --> Games
+  REG -. "routes" .-> NG
+  PC --- REG
+  PC --- DB
+```
+
+Reading it: the **Party origin** owns device identity and every Party/host/admin surface; the
+**game origin** receives only a Party-issued ticket for one participant in one session and cannot
+call Party APIs as the member ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)). Each native game is an **independent process**
+with its own service identity, key and state, reached by **generic routing** from a
+runtime-readable **registry** rather than a per-title nginx block, and provisioned through one
+path ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)). Games report **structured, versioned results**; Party validates,
+attributes and is the only writer of the durable record. Checkers and "future games" do not
+exist yet; the registry/supervisor, the game origin, the result envelope and the durable store
+are targets, not deployed components.
+
+### Current state and earlier target shape (historical diagram, 2026-09-24)
+
+**BLUFF still traverses LAN Games infrastructure.** In deployed source every browser page — Party
+Home, the games and the arcade — is served from the one origin `https://party.avrana.net`, and
+BLUFF and the donor titles run as modules inside the LAN Games fork's single process (port 8096),
+bridged to Party Core by `avrana.party-session/v0`. The diagram below is the earlier conceptual
+shape that assumed that topology (one origin; LAN Games as the principal game runtime). It is
+kept as history and as a fair picture of what is running until the retirement work lands; it is
+no longer the target.
 
 ```mermaid
 flowchart LR
@@ -141,11 +199,19 @@ players, solo, tv, category and an `EXTERNAL` list), never hand-written per game
 
 | `type` | What runs | Who may use it (see `GAME-INSTALLATION.md`) |
 |---|---|---|
-| `lan_games_module` | Python module inside the LAN Games process | built-in and explicitly trusted games only |
+| `lan_games_module` | Python module inside the LAN Games process | **legacy / retiring** ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)): what BLUFF and the donor titles use today; not a long-term native runtime type and not available to new games |
 | `emulator_profile` | data only: content match, pinned core, allowlisted options, slot map, viewports | anyone (content is user-supplied; cores are platform-pinned) |
-| `process` | the game's own server, speaking HTTP/WebSocket over a unix socket | later, sandboxed |
+| `process` | the game's own server, speaking HTTP/WebSocket over local IPC (Unix socket preferred) | **the native-game target** for built-in and later third-party games alike: own service identity, key and state; routed generically from the registry. Not built yet; community code additionally needs the sandbox tier |
 | `static_web` | only browser files, multiplayer via a platform relay | later, sandboxed |
 | `external` | a platform-known service (today's arcade and PS1 stream servers) | built-in |
+
+**One canonical manifest (target).** Game Contract v0, the appliance grant, the LAN catalog export
+and the compiled browser catalog are today several artefacts with drift tests between them. The
+accepted direction is one canonical per-game manifest from which catalogue and runtime metadata
+are derived or mechanically validated (AVR-229), able over time to carry or derive: stable
+id/slug/version, player counts, Party behaviour, runtime and presentation requirements,
+permissions, resources, lifecycle bounds and supported protocol/result-schema versions. Do not
+add another metadata layer beside these.
 
 `resources` name platform-defined exclusive resources (e.g. the single `emulator_slot`: only one
 emulated game runs at a time on a Pi 4 — CPU, one hardware encoder budget, power). Party-managed
@@ -162,6 +228,13 @@ full-screen setup and held results. The earlier ticket/event/permission-hook ide
 drafts or PS1 experiment descriptions where labeled. Do not implement them as a second SDK.
 
 Without any of them a game keeps working exactly as today. With them it joins the party.
+(That sentence describes standalone LAN Games compatibility in deployed source. Standalone LAN
+Games is not a supported product mode going forward, [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md); a native game is a Party
+consumer by construction.)
+
+**Tickets, forward direction (ADR 0003/0006 amendments, 2026-10-02):** symmetric HMAC, single-use
+at admission (AVR-52), a fresh ticket per reconnect carrying the same participant id. v0 as
+deployed still accepts a replayed ticket within its 120 s lifetime.
 
 ### 3.1 Seat ticket handshake (v1)
 
@@ -201,6 +274,12 @@ Without any of them a game keeps working exactly as today. With them it joins th
 
 ### 3.2 Broader event sink (draft; signed session reports already exist)
 
+> **Ownership decided 2026-10-02; schema not designed.** Games determine game-specific outcomes
+> and report structured, versioned results to Party. Party is the only platform owner and writer
+> of persistent cross-session results, history, stats, person/profile attribution and provenance.
+> The actual result message/envelope is AVR-237 and will be recorded in ADR 0006's lineage once
+> designed. The draft envelope below is the 2026-09-24 sketch, not that schema.
+
 The game (or a thin observer beside it) reports lifecycle events. Draft envelope:
 `{v, party_id, game_id, instance, ts, kind, presence_id, seat_id, provenance, data}`; kinds:
 `session_started`, `session_ended{completed|abandoned|crashed|switched}`, `seat_joined`, `seat_left`, `result`,
@@ -220,9 +299,15 @@ A standalone title may stay open while the Party is home and follows when the ho
 
 The Games integration script loads the follower, hides global Party chrome during a Party
 round, and exposes `window.AvranaParty` for host controls in game chrome (ADR 0011). Standalone
-access remains supported without Party Core/profile or on plain HTTP. This is the implemented
+access still works in deployed source without Party Core/profile or on plain HTTP; it is a
+retiring compatibility surface, not a product mode ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)). This is the implemented
 built-in integration, not a proposed API for untrusted games; sandbox/frame isolation remains
 future design. Deployment/phone validation of these console changes is AVR-212.
+
+These calls work because the game page shares the Party origin and so carries the member cookie.
+[ADR 0013](../adr/0013-party-and-game-browser-origins.md) removes that: the follower, heartbeat and host controls need a designed
+cross-origin seam (AVR-226) before game clients move to the game origin. The product behaviour
+(one location, host controls in game chrome) does not change.
 
 ### 3.4 Earlier generic permission-hook proposal (not an implemented SDK)
 

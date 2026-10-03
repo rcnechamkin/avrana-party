@@ -130,3 +130,33 @@ presence 0..1──1 team           (per party)
 Exact id encoding (UUID vs base32 random) · storage (SQLite tables, JSON) · device-token
 migration from `wc-token` · whether presences and the party survive an appliance reboot ·
 exact host-succession policy · hot-seat attribution.
+
+## Amendment (2026-10-02): single-use tickets, profile principal, symmetric capabilities
+
+Dated clarification; the invariants and the historical token mapping in §5 are unchanged.
+
+- **Single-use remains the accepted invariant for seat/session tickets** (§3: "short … single
+  use"). ADR 0006's `avrana.party-session/v0` temporarily implemented *replayable* bearer tickets
+  within their 120 s lifetime and recorded that as a deferral. AVR-52 closes that implementation
+  gap; it is not a new decision.
+- **Reconnect obtains a fresh ticket.** A ticket is spent on admission; a reconnecting browser
+  fetches a new one for the same member and session, which carries the same participant id.
+- **Profile is an optional, durable, server-side person principal.** Before Avrana stores
+  persistent information about a person it must have an explicit Profile/People entity
+  (`profile_id`, §3). Party live identity (device, presence) and the durable Profile remain
+  separate concepts; invariant 8 (guests are presences without a profile) stands.
+- **Display name and avatar are never identity authority.** The browser-stored name/Gaze avatar
+  that ADR 0011 uses for automatic presence is a display value (§1), not a Profile and not a
+  durable human identity; nothing persistent may be keyed by it.
+- **HMAC remains correct for Party/game session capabilities.** Tickets and session messages
+  stay symmetric, per-game-keyed HMAC capabilities on one appliance (ADR 0006 D5). Asymmetric
+  cryptography is not being introduced for ordinary session tickets.
+- **Public-key cryptography is reserved for package and update provenance**, where a signature
+  that outlives the appliance's secrets has actual value (GAME-INSTALLATION, when built).
+- **§5 mapping, first row:** "Standalone (non-party) play keeps working as today until the fork
+  cutover" is historical. The cutover happened on 2026-09-27, and
+  [ADR 0014](0014-native-games-isolated-lan-games-retired.md) retires standalone LAN Games play and
+  `wc-token` player admission instead of preserving them.
+- **Consequences, second bullet:** per-game keys "add nothing" for built-in LAN modules only
+  while they share a process. Under ADR 0014 each native game is its own process with its own key,
+  so the per-game key becomes a real boundary for built-in games too.

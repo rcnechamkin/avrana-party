@@ -139,3 +139,20 @@ hardware validation.
     should own the dynamic `/party/` routes, while nginx keeps serving the static files.
   - Seat ticket v2 must bind the seat generation, not the slot.
   - The arcade `watch()` should exit on a fatal error so systemd restarts it (research B).
+
+## Amendments (2026-10-02)
+
+The text above is left as written. Two later decisions change parts of D1:
+
+- **[ADR 0012](0012-limited-mode-party-survives-https-loss.md)** supersedes "HTTP is not a recovery
+  path for the Party page, which is HTTPS-only; the shell links guests to `http://10.42.0.1/` (the
+  LAN Games hub) when HTTPS can't be reached". The accepted target is a Limited Mode in which the
+  Party itself stays usable without trusted HTTPS. The canonical origin, no HSTS, credentials on
+  the Pi and unchanged captive probes all stand. The `Secure` Party cookie stands and is not
+  weakened; Limited Mode gets an explicit identity model. Production remains HTTPS-only until a
+  verified deployment says otherwise ([SYSTEM](../SYSTEM.md)).
+- **[ADR 0013](0013-party-and-game-browser-origins.md)** keeps `https://party.avrana.net` as the
+  trusted Party origin and moves game clients to a separate browser origin; "one origin for
+  everything" is no longer the target.
+- D5's last line ("the HTTP recovery origin and, later, the app path remain the real recovery
+  routes") is read with ADR 0012: the recovery route is Limited Mode, not the LAN Games hub.
