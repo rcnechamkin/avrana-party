@@ -141,6 +141,27 @@ class Identity(ServiceCase):
         self.assertEqual(status, 200)
         self.assertNotEqual(p.cookie, 'A' * 43)               # a fresh server-issued token
 
+    def test_two_device_cookies_are_no_identity_and_mint_nothing(self):
+        """A second cookie of the same name, planted at a more specific path or from a sibling
+        host name, is listed first by the browser. It must never choose who this phone is."""
+        victim, attacker = self.phone(), self.phone()
+        victim.post('join', {'name': 'Ana'})
+        attacker.post('join', {'name': 'Mallory'})
+        real = victim.cookie
+        planted = {'Cookie': f'{identity.COOKIE}={attacker.cookie}; {identity.COOKIE}={real}'}
+        before = len(self.store.by_hash)
+        victim.cookie = None                                           # the header below is all
+        status, view, _ = victim.req('GET', '/party/api/state', headers=planted)
+        self.assertEqual((status, view['me']), (200, None))            # neither Ana nor Mallory
+        status, _, _ = victim.post('heartbeat', headers=planted)
+        self.assertEqual(status, 403)
+        status, body, r = victim.post('join', {'name': 'Ana'}, headers=planted)
+        self.assertEqual((status, body['error']), (409, 'ambiguous_identity'))
+        self.assertIsNone(r.getheader('Set-Cookie'))
+        self.assertEqual(len(self.store.by_hash), before)              # nothing minted
+        victim.cookie = real                                           # the real cookie alone
+        self.assertEqual(victim.state()[1]['me']['name'], 'Ana')
+
     def test_the_same_cookie_is_the_same_member(self):
         p = self.phone()
         _, v1, _ = p.post('join', {'name': 'Ana'})

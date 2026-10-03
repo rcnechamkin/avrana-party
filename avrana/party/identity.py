@@ -86,13 +86,26 @@ class DeviceStore:
             raise
 
 
+def _values(header, name):
+    return [v for k, _, v in (part.strip().partition('=') for part in (header or '').split(';'))
+            if k == name]
+
+
 def read_cookie(header, name=COOKIE):
-    """The value of cookie `name` in a Cookie header, or None. Other cookies are ignored."""
-    for part in (header or '').split(';'):
-        k, _, v = part.strip().partition('=')
-        if k == name:
-            return v
-    return None
+    """The value of cookie `name` in a Cookie header, or None. Other cookies are ignored.
+
+    Exactly one value, or none at all: a header that carries the name twice is ambiguous and is
+    treated as no identity. A browser sends two when a second cookie of the same name was planted
+    at a more specific path (`Path=/party/api/`) or from a parent or sibling host name
+    (`Domain=…`), and it lists the more specific one first. Taking "the first" would let whoever
+    planted it choose the identity this phone presents (session fixation); see ambiguous()."""
+    values = _values(header, name)
+    return values[0] if len(values) == 1 else None
+
+
+def ambiguous(header, name=COOKIE):
+    """True when the Cookie header carries `name` more than once (read_cookie then answers None)."""
+    return len(_values(header, name)) > 1
 
 
 def set_cookie(token, secure=True, name=COOKIE):
