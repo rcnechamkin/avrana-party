@@ -16,6 +16,23 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 **Never run heavy suites on the Pi during a power measurement** — each SSH session is a CPU burst
 (`docs/findings/2026-09-24-new-psu-power-baseline.md`).
 
+## Workflow, contract and operations checks (AVR-230)
+
+All Tier 1–2: no Pi, no phones. Linux CI is authoritative; rows note what Windows skips.
+
+| Check | Command | Runs in CI as | Notes |
+|---|---|---|---|
+| Deployment manifest, status document, smoke checks | `python3 -m unittest discover -s tests/unit -p "test_ops_*.py"` | offline lane (full unit run) | fake probes and a scripted HTTP client; the local smoke subset runs against the dev server with a real Party Core |
+| `ops/deploy.sh` | `python3 -m unittest discover -s tests/unit -p test_deploy_script.py` | offline lane | arguments and dry runs everywhere; the real path (exact-commit checkouts, selective restarts through a recording `systemctl`, manifest, rollback, failed smoke) is **Linux only** and skipped on Windows |
+| Party side of the contract declaration | `python3 tools/contract_check.py` and `-p test_contract.py` | offline lane | mutation tests name the drifted component |
+| Both declarations and the real services | `python3 tools/contract_check.py --games ../avrana-party-games`; Games: `AVRANA_PARTY_REPO=../avrana-party python -m pytest -q tests/test_party_session_cross_repo.py tests/test_avrana_contract.py` | `Cross-repo contract` (Party), `cross-repo` job (Games) | the other repository at the paired `avr-N` branch, else `main` ([CROSS-REPO](CROSS-REPO.md)); may not skip in CI |
+| Documentation metadata and the historical-edit gate | `-p test_repo_check.py`, `-p test_repo_check_metadata.py`; `python3 tools/repo-check.py --changed-since <base>` | offline lane (gate on PRs only) | see [REPOSITORY-GOVERNANCE](REPOSITORY-GOVERNANCE.md) |
+| Drift reconciliation logic | `-p test_reconcile.py`; `python3 tools/reconcile.py --no-network` | `Drift reconciliation` (weekly, manual) | the workflow never fails on drift; Linear checks need `LINEAR_API_KEY`, deployed-version checks need `--status-url` on the Party LAN, and both are reported as not run otherwise |
+| Agent tooling | `-p test_claude_gate.py`, `-p test_avr_context.py` | offline lane | convenience only; nothing is enforced by a hook |
+| Multi-client Party browser tests | `npm run test:party-browser` (Windows: `AVRANA_PYTHON=python`) | offline lane | three browser contexts as phones against `devserver --party` (a real Party Core, stub game pages): host and followers, start/end for everyone, switching, reload keeps identity and seat, stale and unauthorized actions, Play/Watch setup, host departure; plus the diagnostics build report. Chromium at phone size is not a phone: iPhone Safari and Android stay Tier 3 |
+
+`python3 -m avrana.web.devserver --party` is also the local way to try Party mode by hand.
+
 ## AVR-130 source coverage (PR #35 merged during AVR-213)
 
 AVR-130 offline coverage: `python -m unittest discover -s tests/unit -p test_arcade_stream.py`
@@ -71,6 +88,7 @@ npx playwright test tests/soak-metrics.spec.ts
 cmp avrana-party.nginx arcade/nginx-site
 AVRANA_REQUIRE_NGINX=1 AVRANA_REQUIRE_LOGROTATE=1 python3 -m unittest discover -s tests/unit -v
 node --test 'tests/offline/*.test.mjs'
+python3 tools/contract_check.py
 npx playwright install --with-deps chromium
 npx playwright test -c playwright.offline.config.ts
 ```

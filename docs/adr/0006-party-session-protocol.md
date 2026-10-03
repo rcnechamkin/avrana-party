@@ -192,6 +192,13 @@ navigation/results deferrals. This retained plan does not assign current work; c
   spent tickets until their `exp`, cleared on launch; a second presentation is `Invalid('replay')`.
   Browsers already fetch a fresh ticket per connect, so no client change. This narrows the
   "single-use tickets" deferral above; connection binding remains deferred.
+- Every ticket carries `jti`, 16 random hex characters (AVR-52, `df401aa`). `iat` has
+  whole-second resolution, so without it two tickets minted for one participant in the same second
+  were the same string and the second was refused as a replay. `jti` identifies nothing and
+  authorizes nothing; a verifier that predates it ignores the field, and the committed vectors
+  (minted without it) still verify. The ticket row of the table above therefore reads `sid`,
+  `pid`, `role`, `jti`. This is an additive field inside `avrana.party-session/v0`: the envelope,
+  the signature and every refusal rule are unchanged.
 - `clock` is a distinct refusal reason (AVR-221): `iat` beyond `CLOCK_SKEW` (5 s) ahead of now is
   `Invalid('clock')`, not `expired`. The wire format and tolerances are unchanged.
 - The clock policy itself (NTP steps, no RTC) is AVR-79.

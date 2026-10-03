@@ -10,7 +10,7 @@ import { hydrateIcons } from '../lib/icons.js';
 import { h } from '../lib/ui.js';
 
 const $ = (id) => document.getElementById(id);
-const data = { report: null, catalog: null, origin: null, version: null, shell: null, evaluations: [] };
+const data = { report: null, catalog: null, origin: null, version: null, shell: null, evaluations: [], status: null };
 let awake = null;
 
 async function json(url) {
@@ -101,6 +101,52 @@ function renderShell() {
   ]);
 }
 
+function short(sha) {
+  return sha ? String(sha).slice(0, 12) : '?';
+}
+
+/** The running build as the appliance reports it (avrana.status/v0), or why it is unknown. */
+function renderBuild() {
+  const s = data.status;
+  if (!s || s.error) {
+    dl($('build'), [['Status', `unavailable (${s ? s.error : 'no answer'})`],
+      ['Shell build', `${(data.version || {}).build || '?'}`]]);
+    return;
+  }
+  const dep = s.deployment || {};
+  dl($('build'), [
+    ['Summary', `${s.summary.state}${s.summary.reasons.length ? ': ' + s.summary.reasons.join('; ') : ''}`],
+    ['Party', `${short(s.party.deployed_sha || s.party.checkout_sha)}${s.party.mismatch ? ' (checkout differs!)' : ''}${s.party.dirty ? ' dirty' : ''}`],
+    ['Games', `${short(s.games.deployed_sha || s.games.checkout_sha)}${s.games.mismatch ? ' (checkout differs!)' : ''}`],
+    ['Deployed', dep.deployed_at || 'no deployment manifest'],
+    ['Smoke', dep.smoke ? dep.smoke.status : '—'],
+    ['Contract', `${s.contract.party_games} (${s.contract.party_session}; games advertise ${s.contract.games_advertises || 'nothing'})`],
+    ['Services', Object.entries(s.services).map(([u, st]) => `${u}: ${st}`).join(', ') || '—'],
+    ['Certificate', `${s.certificate.status}${s.certificate.days_left != null ? `, ${s.certificate.days_left} days left` : ''}`],
+    ['Shell build', `${(data.version || {}).build || '?'}`],
+  ]);
+}
+
+/** A compact, pasteable field report. A person decides whether and where it goes. */
+function fieldReport() {
+  const s = data.status && !data.status.error ? data.status : null;
+  const lines = [
+    `Avrana field report ${new Date().toISOString()}`,
+    `page: ${location.origin + location.pathname}`,
+    `party: ${s ? (s.party.deployed_sha || s.party.checkout_sha || '?') : 'unknown'}${s && s.party.mismatch ? ' (mismatch)' : ''}`,
+    `games: ${s ? (s.games.deployed_sha || s.games.checkout_sha || '?') : 'unknown'}${s && s.games.mismatch ? ' (mismatch)' : ''}`,
+    `shell build: ${(data.version || {}).build || '?'}`,
+    `contract: ${s ? s.contract.party_games : 'unknown'}`,
+    `deployed: ${s && s.deployment ? s.deployment.deployed_at : 'unknown'}`,
+    `status: ${s ? s.summary.state : 'unavailable'}${s && s.summary.reasons.length ? ' (' + s.summary.reasons.join('; ') + ')' : ''}`,
+    `services: ${s ? Object.entries(s.services).map(([u, st]) => `${u}=${st}`).join(' ') : 'unknown'}`,
+    `browser: ${navigator.userAgent}`,
+    `network: ${network(data.origin)}`,
+    'what happened: ',
+  ];
+  return lines.join('\n');
+}
+
 function fullReport() {
   return {
     schema: 'avrana.diagnostics/v0',
@@ -118,6 +164,8 @@ function fullReport() {
 
 function renderAll() {
   renderSummary();
+  renderBuild();
+  $('field-report').textContent = fieldReport();
   renderCaps();
   renderGames();
   renderProviders();
@@ -133,10 +181,10 @@ async function refreshShell(registration) {
 
 async function boot() {
   $('ua').textContent = navigator.userAgent;
-  const [report, catalog, origin, version] = await Promise.all([
-    probeCapabilities(), json('../catalog.json'), json('../api/origin.json'), readVersion(),
+  const [report, catalog, origin, version, status] = await Promise.all([
+    probeCapabilities(), json('../catalog.json'), json('../api/origin.json'), readVersion(), json('../api/status'),
   ]);
-  Object.assign(data, { report, catalog, origin, version });
+  Object.assign(data, { report, catalog, origin, version, status });
   renderAll();
   const registered = await registerShell({ version });
   await refreshShell(registered.error ? `${registered.state} (${registered.error})` : registered.state);
@@ -182,6 +230,22 @@ $('copy').addEventListener('click', async () => {
     sel.removeAllRanges();
     sel.addRange(range);
     $('copy').textContent = 'Selected: copy it now';
+  }
+});
+
+$('copy-field').addEventListener('click', async () => {
+  const text = fieldReport();
+  $('field-report').textContent = text;
+  try {
+    await navigator.clipboard.writeText(text);
+    $('copy-field').textContent = 'Copied';
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents($('field-report'));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    $('copy-field').textContent = 'Selected: copy it now';
   }
 });
 

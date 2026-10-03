@@ -21,7 +21,7 @@ test('shows every capability and a machine-readable report', async ({ page }) =>
   expect(r.appliance.id).toBe('avrana-pi4');
   expect(r.origin.serverAddr).toBe('127.0.0.1');
   expect(r.evaluations.map((e: { game: string }) => e.game).sort()).toEqual(catalog.games.map((g: { id: string }) => g.id).sort());
-  expect(r.evaluations).toHaveLength(33);
+  expect(r.evaluations).toHaveLength(34);
   expect(JSON.stringify(r)).not.toContain('Mozilla/');  // the user agent is shown to people, never reported
   await expect(page.locator('#summary')).toContainText('reached the Pi at 127.0.0.1');
   await expect(page.locator('#providers')).toContainText('uinput-gamepad');

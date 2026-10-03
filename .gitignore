@@ -76,3 +76,7 @@ node_modules/
 /context/graphify/*
 !/context/graphify/semantic-graph.json
 !/context/graphify/semantic-receipt.json
+
+# tools/reconcile.py output
+reconcile-report.md
+reconcile-report.json

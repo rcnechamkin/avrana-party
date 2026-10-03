@@ -69,6 +69,9 @@ const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
 const AT_HOME = /\/party\/$/;
 const partyState = (page: Page) => page.evaluate(async () => (await fetch('/party/api/state', { cache: 'no-store' })).json());
 const store = (page: Page, key: string) => page.evaluate((k) => sessionStorage.getItem(k), key);
+// For expect.poll: the page under watch may be mid-navigation (the move being waited for), which
+// destroys the evaluate context; that is "not yet", not a failure.
+const storeDuringMoves = (page: Page, key: string) => store(page, key).catch(() => null);
 const api = (page: Page, path: string, body: any) => page.evaluate(async ({ path, body }) => {
   const r = await fetch('/party/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { status: r.status, body: await r.json() };
@@ -224,7 +227,7 @@ test('a host switch ends BLUFF before the next game; the phones in BLUFF go wher
   const round = await api(ana.page, 'session/switch', { game: 'bluff', if_version: v.version });
   expect(round).toMatchObject({ status: 200, body: { state: 'active', session: { game: 'bluff' } } });
   expect(round.body.session.id).not.toBe(first);
-  await expect.poll(() => store(ben.page, 'avrana-party-session:bluff'), { timeout: 30_000 }).toBe(round.body.session.id);
+  await expect.poll(() => storeDuringMoves(ben.page, 'avrana-party-session:bluff'), { timeout: 30_000 }).toBe(round.body.session.id);
   await expect(ben.page).toHaveURL(IN_BLUFF);
   v = await partyState(ana.page);
   await api(ana.page, 'session/switch', { game: 'chess', if_version: v.version });   // cannot start here

@@ -199,6 +199,44 @@ def check_repository(root, files):
             fail(path, 'ADR requires an explicit status marker')
         if marker is not None and (not isinstance(marker, str) or not marker or marker not in text.splitlines()[:20]):
             fail(path, 'status marker missing/changed; review manifest classification')
+    historical_classes = {'historical', 'archived', 'evidence'}
+    for path, entry in documents.items():
+        supersedes = entry.get('supersedes')
+        if supersedes is not None:
+            if not isinstance(supersedes, list) or not supersedes or not all(isinstance(s, str) for s in supersedes):
+                fail(path, 'supersedes must be a non-empty list of manifest document paths')
+            else:
+                for old in supersedes:
+                    target = documents.get(old)
+                    if target is None:
+                        fail(path, f'supersedes unknown document {old}')
+                    elif old == path:
+                        fail(path, 'a document cannot supersede itself')
+                    elif not (isinstance(target.get('class'), str) and target['class'] in historical_classes) \
+                            and not (isinstance(target.get('status'), str) and target['status'] in {'historical', 'archived'}):
+                        fail(path, f'supersedes {old}, which is still classified current; archive it or drop the claim')
+        verified = entry.get('last_verified')
+        if verified is not None and (not valid_date(verified) or verified > date.today().isoformat()):
+            fail(path, 'last_verified must be a past ISO date')
+        # Current documents may cite archives as history, never as authority: the citing line must
+        # say so (archive/historical/superseded/preserved). Evidence (findings) is a legitimate source.
+        if isinstance(entry.get('class'), str) and isinstance(entry.get('status'), str) \
+                and entry['class'] in {'canonical', 'decision', 'design', 'strategy', 'runbook'} \
+                and entry['status'] not in {'historical', 'archived'}:
+            text = (root / path).read_text(encoding='utf-8')
+            lines = text.splitlines()
+            for number, target in markdown_links(text):
+                if target is None or urlsplit(target).scheme or urlsplit(target).netloc:
+                    continue
+                resolved = ((root / path).parent / unquote(urlsplit(target).path)).resolve()
+                try:
+                    rel = resolved.relative_to(root.resolve()).as_posix()
+                except ValueError:
+                    continue
+                if (rel.startswith('docs/archive/') or str(documents.get(rel, {}).get('class')) in {'historical', 'archived'}) \
+                        and not re.search(r'archiv|histor|supersed|preserved|old ',
+                                          re.sub(r'\]\([^)]*\)', ']', lines[number - 1]), re.I):
+                    fail(f'{path}:{number}', 'current document cites an archived document without labelling it as history')
     for path in sorted(p for p in files if p.endswith('.md')):
         if path not in documents:
             fail(path, 'Markdown document missing from manifest')
@@ -312,10 +350,69 @@ def check_repository(root, files):
     return errors
 
 
+HISTORICAL_PREFIXES = ('docs/archive/', 'docs/findings/')
+
+
+def staleness(root, days):
+    """Informational only: current documents whose last_verified is older than `days`, or absent.
+    Never an error; a verification date going stale is not evidence that a document is wrong."""
+    manifest = strict_json(root / 'docs/manifest.json')
+    today = date.today()
+    rows = []
+    for entry in manifest['documents']:
+        if entry.get('class') not in {'canonical', 'decision', 'design', 'runbook', 'strategy'}:
+            continue
+        if entry.get('status') in {'historical', 'archived'}:
+            continue
+        verified = entry.get('last_verified')
+        if verified is None:
+            rows.append((entry['path'], 'never recorded'))
+        elif (today - date.fromisoformat(verified)).days > days:
+            rows.append((entry['path'], f'{verified}, {(today - date.fromisoformat(verified)).days} days ago'))
+    return rows
+
+
+def historical_edits(root, base, head='HEAD'):
+    """Tracked files under the historical namespaces that `base...head` modifies, deletes or renames
+    (additions are new evidence and always allowed). CI uses it as a gate: editing history needs
+    explicit intent (the `historical-edit` PR label), never a silent drive-by."""
+    # base...head (changes since the merge base) is right for a branch; a shallow CI checkout of a
+    # pull request's merge commit has no merge base to find, and there base..head is the same set.
+    result = subprocess.run(['git', 'diff', '--name-status', '-M', f'{base}...{head}'], cwd=root, capture_output=True)
+    if result.returncode:
+        result = subprocess.run(['git', 'diff', '--name-status', '-M', base, head], cwd=root,
+                                check=True, capture_output=True)
+    touched = []
+    for line in result.stdout.decode('utf-8').splitlines():
+        parts = line.split('\t')
+        status, paths = parts[0][:1], parts[1:]
+        if status == 'A':
+            continue
+        for path in paths[:1]:
+            if path.startswith(HISTORICAL_PREFIXES) and path.endswith('.md'):
+                touched.append((status, path))
+    return touched
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--generated', action='store_true', help='also compose existing UI/catalog freshness checks')
+    parser.add_argument('--staleness-days', type=int, default=120,
+                        help='report (never fail) current documents not verified within this many days')
+    parser.add_argument('--changed-since', metavar='BASE', help='fail when BASE...HEAD edits historical documents')
+    parser.add_argument('--allow-historical', action='store_true', help='with --changed-since: the edit is intentional')
     args = parser.parse_args()
+    if args.changed_since:
+        touched = historical_edits(ROOT, args.changed_since)
+        if touched and not args.allow_historical:
+            for status, path in touched:
+                print(f'{path}: historical document {"deleted" if status == "D" else "modified"} '
+                      '(docs/archive and dated findings are history, not current architecture)', file=sys.stderr)
+            print('Historical documents changed. If this is intentional (a correction, a move with `git mv`, '
+                  'an explicit archive label), add the `historical-edit` label to the PR; otherwise revert and '
+                  'write a new dated finding or update the canonical document instead.', file=sys.stderr)
+            return 1
+        print('Historical documents: ' + ('intentional edits acknowledged' if touched else 'untouched'))
     errors = check_repository(ROOT, repo_files(ROOT))
     for error in errors:
         print(error, file=sys.stderr)
@@ -323,6 +420,14 @@ def main():
         print(f'Repository integrity: {len(errors)} error(s)', file=sys.stderr)
         return 1
     print('Repository integrity: OK')
+    stale = staleness(ROOT, args.staleness_days)
+    if stale:
+        print(f'Note: {len(stale)} current document(s) without a last_verified date in the past '
+              f'{args.staleness_days} days (informational, not a failure; set last_verified in the manifest after review):')
+        for path, why in stale[:15]:
+            print(f'  {path}: {why}')
+        if len(stale) > 15:
+            print(f'  ... and {len(stale) - 15} more')
     if args.generated:
         # Fixed, reviewed commands: manifest strings are documentation, never executable input.
         for command in [['node', 'tools/check-ui.mjs'],

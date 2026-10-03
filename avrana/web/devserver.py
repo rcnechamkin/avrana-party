@@ -7,8 +7,15 @@ It mirrors the nginx 443 site closely enough for the browser tests: the shell un
 the same headers (no-cache, CSP, nosniff), /party/api/origin.json, the arcade page at /arcade/
 with a fake /arcade/stats, and a stub games hub at /. With --test-controls, POST
 /__test__/arcade/<up|down|full|hang> switches the fake arcade. Binds 127.0.0.1 only.
+
+With --party, a REAL Party Core (avrana.party.service) runs beside it on an ephemeral loopback
+port and /party/api/ is forwarded to it, as nginx does on the appliance: Join, host, launch,
+switch, end and /party/api/status all work, with a game link that accepts every launch and stub
+game pages under /games/<slug>/. POST /__test__/party/reset starts a fresh party (test controls).
+Nothing here deploys; the party is memory-only and dies with the process.
 """
 import argparse
+import http.client
 import json
 import mimetypes
 import threading
@@ -17,6 +24,112 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from avrana import REPO_ROOT, WEB_DIR
+
+# The games the simulated party offers (deploy/party-core/party-core.example.json's shape).
+PARTY_GAMES = {'bluff': {'max_players': 6, 'min_players': 2, 'pregame': True, 'late_join': 'spectator_only'},
+               'arcade-gauntlet2': {'max_players': 2, 'late_join': 'supported'},
+               'lan-chess': {'max_players': 2, 'late_join': 'spectator_only'}}
+FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length')
+RETURN = ('content-type', 'cache-control', 'set-cookie', 'x-content-type-options')
+GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+             b'<title>%s (stub game)</title><h1 data-game="%s">%s stub</h1>'
+             b'<nav id="nav"><a href="/party/">Back to Party</a></nav>'
+             # The real in-game follower (what /shared/avrana-integration.js runs in Games): the
+             # Party moves this page like any game page. `here` is the Party Core game id.
+             b'<script type="module">import { startPartyFollow } from "/party/lib/party-follow.js";'
+             b'const slug = location.pathname.split("/")[2];'
+             b'startPartyFollow({ here: slug === "bluff" ? slug : "lan-" + slug, container: document.getElementById("nav") });'
+             b'</script>')
+
+
+class AcceptingLink:
+    """A game link for the simulated party: every launch and end succeeds, nothing runs."""
+
+    def __init__(self):
+        self.launched, self.ended = [], []
+
+    def launch(self, session, roster):
+        self.launched.append((session.game_id, [p['name'] for p in roster]))
+        return True, None
+
+    def end(self, session):
+        self.ended.append(session.id)
+        return True
+
+
+class SimulatedParty:
+    """A real Party Core on 127.0.0.1:<ephemeral>; the dev server forwards /party/api/ to it."""
+
+    def __init__(self, public_port):
+        from avrana.ops import status
+        from avrana.party import identity, service
+        self.service_module = service
+        hosts = {f'127.0.0.1:{public_port}'}
+        self.svc = service.PartyService(identity.DeviceStore(None), service.load_games(PARTY_GAMES),
+                                        AcceptingLink())
+        cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False)
+        probes = DevProbes()
+        routes = status.route(self.svc, {'manifest': str(REPO_ROOT / 'nonexistent-deployment.json'),
+                                         'party_checkout': str(REPO_ROOT), 'games_checkout': '',
+                                         'web_root': '', 'certificate': '', 'units': [],
+                                         'games_url': f'http://127.0.0.1:{public_port}',
+                                         'arcade_url': f'http://127.0.0.1:{public_port}/arcade'}, probes, ttl=0)
+        self.server = service.make_server(self.svc, cfg, port=0, extra_routes=routes)
+        self.port = self.server.server_address[1]
+        self.stop = threading.Event()
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        threading.Thread(target=self.svc.run_timer, args=(self.stop,), daemon=True).start()
+
+    def reset(self):
+        import time
+        from avrana.party import core
+        with self.svc.lock:
+            self.svc.core = core.PartyCore(time.monotonic, self.service_module.load_games(PARTY_GAMES))
+            self.svc._notify()
+
+    def forward(self, method, target, headers, body, client):
+        conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=35)
+        h = {k: v for k, v in headers.items() if k.lower() in FORWARD}
+        h['X-Forwarded-For'] = h['X-Real-IP'] = client
+        try:
+            conn.request(method, target, body=body or None, headers=h)
+            r = conn.getresponse()
+            return r.status, [(k, v) for k, v in r.getheaders() if k.lower() in RETURN], r.read()
+        finally:
+            conn.close()
+
+    def close(self):
+        self.stop.set()
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class DevProbes:
+    """Status probes for the simulated appliance: this checkout, no manifest, no systemd."""
+
+    def checkout(self, path):
+        from avrana.ops import manifest
+        try:
+            return manifest.observe_checkout(path) if path else None
+        except manifest.ManifestError:
+            return None
+
+    def web_release(self, root):
+        try:
+            v = json.loads((WEB_DIR / 'version.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return None
+        return {'path': str(WEB_DIR), 'build': v.get('build'), 'commit': v.get('commit')}
+
+    def unit_state(self, unit):
+        return 'unavailable'
+
+    def certificate_not_after(self, path):
+        return None
+
+    def get_json(self, url):
+        from avrana.ops import status
+        return status.Probes(timeout=2.0).get_json(url)
 
 # Keep in step with the /party/ location in avrana-party.nginx (tests/unit/test_nginx_site.py
 # compares them).
@@ -90,6 +203,13 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps({'schema': 'avrana.origin/v0', 'scheme': 'http', 'serverAddr': '127.0.0.1',
                                'tls': '', 'http': self.request_version}).encode()
             return self._send(200, body, 'application/json', {'Cache-Control': 'no-store'})
+        if path.startswith('/party/api/') and cfg['party'] is not None:
+            return self._party()
+        if path == '/hotspot-detect.html':
+            return self._send(200, b'Success', 'text/html')
+        if path.startswith('/games/') and cfg['party'] is not None:
+            slug = path.split('/')[2].encode('ascii', 'replace')
+            return self._send(200, GAME_STUB % (slug, slug, slug), 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
         if path.startswith('/party/'):
             return self._file(cfg['web'], path[len('/party/'):], SHELL_HEADERS)
         if path == '/api/games':
@@ -113,9 +233,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, HUB, 'text/html; charset=utf-8')
         return self._send(404, b'not found')
 
+    def _party(self):
+        """Forward one request to the simulated Party Core, the way nginx forwards /party/api/."""
+        party = self.server.cfg['party']
+        n = int(self.headers.get('Content-Length') or 0)
+        body = self.rfile.read(n) if n else b''
+        status, headers, data = party.forward(self.command, self.path, dict(self.headers.items()),
+                                              body, self.client_address[0])
+        try:
+            self.send_response(status)
+            for k, v in headers:
+                self.send_header(k, v)
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            if self.command != 'HEAD':
+                self.wfile.write(data)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass                                  # a page left mid long-poll: normal, not an error
+
     def do_POST(self):
         path = urlsplit(self.path).path
         cfg = self.server.cfg
+        if path.startswith('/party/api/') and cfg['party'] is not None:
+            return self._party()
+        if cfg['test_controls'] and path == '/__test__/party/reset' and cfg['party'] is not None:
+            cfg['party'].reset()
+            return self._send(204, b'')
         if cfg['test_controls'] and path.startswith('/__test__/arcade/'):
             mode = path.rsplit('/', 1)[1]
             if mode in ('up', 'down', 'full', 'hang'):
@@ -126,16 +269,24 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class _DevServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        # A phone that navigates away mid long-poll aborts its connection: expected, not an error.
+        import sys
+        if isinstance(sys.exc_info()[1], (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
     # A fresh page's service worker fetches every shell file at once (~90 with the avatars and
     # library art). The socketserver default backlog of 5 makes Windows refuse the overflow
     # (ECONNREFUSED); nginx on the Pi has no such limit.
     request_queue_size = 128
 
 
-def make_server(port=0, web=WEB_DIR, test_controls=False):
+def make_server(port=0, web=WEB_DIR, test_controls=False, party=False):
     server = _DevServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
-    server.cfg = {'web': Path(web), 'arcade': Arcade(), 'test_controls': test_controls}
+    server.cfg = {'web': Path(web), 'arcade': Arcade(), 'test_controls': test_controls,
+                  'party': SimulatedParty(server.server_address[1]) if party else None}
     return server
 
 
@@ -144,14 +295,17 @@ def main(argv=None):
     ap.add_argument('--port', type=int, default=8180)
     ap.add_argument('--web', default=str(WEB_DIR), help='shell directory (a built copy also works)')
     ap.add_argument('--test-controls', action='store_true')
+    ap.add_argument('--party', action='store_true', help='run a real Party Core behind /party/api/')
     args = ap.parse_args(argv)
-    server = make_server(args.port, args.web, args.test_controls)
+    server = make_server(args.port, args.web, args.test_controls, args.party)
     print(f'Avrana dev server: http://127.0.0.1:{server.server_address[1]}/party/', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        if server.cfg['party'] is not None:
+            server.cfg['party'].close()
         server.server_close()
 
 

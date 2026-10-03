@@ -256,6 +256,14 @@
       "permissions_granted": [
         "party_roster"
       ]
+    },
+    {
+      "game": "expo",
+      "entry": "/games/expo/",
+      "tier": "builtin",
+      "permissions_granted": [
+        "party_roster"
+      ]
     }
   ],
   "collections": []

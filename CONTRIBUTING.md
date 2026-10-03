@@ -2,7 +2,8 @@
 
 Start with [README](README.md) for the product and repository layout, then
 [AGENTS](AGENTS.md) for shared operational rules and [docs](docs/README.md) for the authority map.
-Those rules apply to humans and coding agents alike.
+Those rules apply to humans and coding agents alike. [WORKFLOW](docs/WORKFLOW.md) is the whole
+loop from a Linear issue to a deployed, playtested change, including where humans must act.
 
 ## Pick and scope work
 
@@ -68,6 +69,10 @@ evidence. Keep live work in Linear and strategy in ROADMAP; do not add root hand
 
 ## Submit a PR
 
+End with the [implementation report](docs/agents/IMPLEMENTATION-REPORT.md): issue, branches,
+commits, behavioral changes, exact test commands and results, docs changed, deployment (normally
+"no"), blockers and follow-ups. Work that spans both repositories uses paired `avr-N` branches
+([CROSS-REPO](docs/CROSS-REPO.md)); CI checks the Party ↔ Games contract against the pair.
 Include the problem, resulting behavior, issue link, scope, source/generated changes, test
 commands/results and any unverified hardware behavior. For docs, identify authority and moved
 paths. For new decisions, explain amendments without silently rewriting earlier ADR decisions.
