@@ -4,6 +4,7 @@ import http.client
 import http.server
 import json
 import threading
+import time
 import unittest
 
 from avrana.party import protocol, sessions
@@ -133,7 +134,14 @@ class Flow(ServiceCase):
         return v['session']['id']
 
     def ticket(self, phone):
-        return phone.post('session/ticket')
+        # iat has one-second resolution and tickets are single-use (AVR-52): a second ticket in the
+        # same second would be the identical string, so wait for the clock to tick like a real phone.
+        last = getattr(self, '_ticket_second', None)
+        while last is not None and int(time.time()) == last:
+            time.sleep(0.05)
+        out = phone.post('session/ticket')
+        self._ticket_second = int(time.time())          # after the mint, so the next call is later
+        return out
 
     def end_for_everyone(self):
         _, v, _ = self.ana.state()

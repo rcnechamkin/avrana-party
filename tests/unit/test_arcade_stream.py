@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest import mock
@@ -317,6 +318,10 @@ class PartySeatReservations(unittest.TestCase):
         self.seats = self.module.PartySeats(clock=lambda: self.now)
 
     def ticket(self, who=1, role='player', **kw):
+        # Tickets are single-use (AVR-52) and iat has one-second resolution: give each minted
+        # ticket a distinct (past) iat so repeated claims by one participant are distinct tickets.
+        self._minted = getattr(self, '_minted', 0) + 1
+        kw.setdefault('now', int(time.time()) - self._minted)
         return self.protocol.mint_ticket(self.side.key, kw.pop('game', self.side.game),
                                         kw.pop('sid', self.side.sid),
                                         'participant-' + str(who) * 32, role, **kw)
