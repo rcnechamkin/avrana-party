@@ -157,3 +157,14 @@ navigation/results deferrals. This retained plan does not assign current work; c
     stays;
   - PS1 and service runtimes;
   - `.avrgame` and the SDK.
+
+## Amendments 2026-10-02
+
+- Tickets are single-use at the game side (AVR-52): `GameSide.admit()` keeps a SHA-256 ledger of
+  spent tickets until their `exp`, cleared on launch; a second presentation is `Invalid('replay')`.
+  Browsers already fetch a fresh ticket per connect, so no client change. This narrows the
+  "single-use tickets" deferral above; connection binding remains deferred.
+- `clock` is a distinct refusal reason (AVR-221): `iat` beyond `CLOCK_SKEW` (5 s) ahead of now is
+  `Invalid('clock')`, not `expired`. The wire format and tolerances are unchanged.
+- The clock policy itself (NTP steps, no RTC) is AVR-79.
+

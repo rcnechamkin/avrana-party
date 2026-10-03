@@ -89,13 +89,17 @@ class Tickets(unittest.TestCase):
 
     def test_carries_no_identity_beyond_the_participant(self):
         payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
-        self.assertEqual(set(payload), {'v', 'typ', 'iss', 'aud', 'sid', 'iat', 'exp', 'pid', 'role'})
+        self.assertEqual(set(payload), {'v', 'typ', 'iss', 'aud', 'sid', 'iat', 'exp', 'pid', 'role', 'jti'})   # jti: random, no identity
 
     def test_expired(self):
         self.refused(self.ticket(), 'expired', now=NOW + P.TICKET_TTL)
 
     def test_issued_in_the_future(self):
-        self.refused(self.ticket(now=NOW + 60), 'expired', now=NOW)
+        self.refused(self.ticket(now=NOW + 60), 'clock', now=NOW)
+
+    def test_skew_boundary(self):
+        self.refused(self.ticket(now=NOW + P.CLOCK_SKEW + 1), 'clock', now=NOW)
+        P.verify_ticket(KEY, self.ticket(now=NOW + P.CLOCK_SKEW), 'bluff', SID, now=NOW)
 
     def test_wrong_audience(self):
         self.refused(self.ticket(game='spades'), 'audience')
@@ -203,6 +207,64 @@ class GameSideLifecycle(unittest.TestCase):
         old = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
         with self.assertRaises(Invalid):
             side.admit(old, now=NOW + 1)
+
+    def launched(self):
+        side = P.GameSide(KEY, 'bluff')
+        side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW), now=NOW)
+        return side
+
+    def test_ticket_is_single_use(self):
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 2)
+        self.assertEqual(str(e.exception), 'replay')
+
+    def test_fresh_tickets_for_one_participant_both_admit(self):
+        side = self.launched()
+        a = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        b = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 10)
+        self.assertEqual(side.admit(a, now=NOW + 11), side.admit(b, now=NOW + 11))
+
+    def test_two_tickets_in_the_same_second_are_distinct(self):
+        """iat is whole seconds; a reconnect right after a connect must not look like a replay."""
+        side = self.launched()
+        a = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        b = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        self.assertNotEqual(a, b)
+        self.assertEqual(side.admit(a, now=NOW + 1), side.admit(b, now=NOW + 1))
+
+    def test_refused_ticket_is_not_spent(self):
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        with self.assertRaises(Invalid):
+            side.admit(t, now=NOW + P.TICKET_TTL)
+        self.assertEqual(side.spent.spent, {})
+
+    def test_spent_set_is_pruned_after_exp(self):
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
+        self.assertEqual(len(side.spent.spent), 1)
+        t2 = P.mint_ticket(KEY, 'bluff', SID, PID2, 'player', now=NOW + 500)
+        side.admit(t2, now=NOW + 501)
+        self.assertEqual(len(side.spent.spent), 1)
+
+    def test_launch_resets_spent_set(self):
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
+        side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW + 2), now=NOW + 2)
+        self.assertEqual(side.spent.spent, {})
+        side.admit(t, now=NOW + 3)
+
+    def test_standalone_spent_tickets(self):
+        s = P.SpentTickets()
+        s.spend('x', NOW + 5, now=NOW)
+        with self.assertRaises(Invalid):
+            s.spend('x', NOW + 5, now=NOW + 1)
+        s.spend('x', NOW + 50, now=NOW + 5)
 
     def test_ended_report_closes_admission(self):
         side = P.GameSide(KEY, 'bluff')
