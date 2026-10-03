@@ -6,6 +6,15 @@ The latest verified production evidence is from 2026-09-29. Older local/experime
 below are explicitly dated snapshots, not claims of current branch checkout state.
 If you change where something lives, update this file with deployment evidence.
 
+**Accepted direction is not deployed state (note added 2026-10-02).** ADRs
+[0012](adr/0012-limited-mode-party-survives-https-loss.md),
+[0013](adr/0013-party-and-game-browser-origins.md) and
+[0014](adr/0014-native-games-isolated-lan-games-retired.md) accept Limited Mode, a separate game
+origin, isolated native-game processes and the retirement of LAN Games as an Avrana runtime. None
+of that is deployed. This file intentionally continues to describe the runtime that is actually
+on the Pi — one HTTPS origin, HTTPS-only `/party/`, the LAN Games fork on port 8096 — until each
+migration is performed and verified with dated evidence.
+
 ## Source versus verified production
 
 | Repository / release | Current source observed for AVR-213 (2026-10-01) | Latest verified production |

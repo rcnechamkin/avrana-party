@@ -38,11 +38,20 @@ snapshots, [research](docs/research/) and [archives](docs/archive/) never overri
   instruction. The Pi is a deployment/test target, never a development workspace. Operations
   commands in a document are not permission to run them. See [deployment index](deploy/README.md).
 - Keep `avrana-party.nginx` and `arcade/nginx-site` byte-identical. Live-site equality requires
-  separate authorized evidence. Preserve ADR 0004's HTTPS-only `/party/`, service-worker scope,
-  no HSTS / `Service-Worker-Allowed`, capability vocabulary and contract/grant boundary.
-- Preserve platform ownership of cross-game identity, presence, chat, library and navigation;
-  do not add parallel stores/tokens in Games. Device, Profile, Presence and Seat are distinct;
-  Admin is distinct from Party Host. See [platform design](docs/design/PARTY-PLATFORM.md).
+  separate authorized evidence. Preserve the deployed ADR 0004 behavior — HTTPS-only `/party/`,
+  service-worker scope, no HSTS / `Service-Worker-Allowed`, capability vocabulary and
+  contract/grant boundary — in unrelated work. HTTPS-only `/party/` is current behavior, not a
+  permanent invariant: [ADR 0012](docs/adr/0012-limited-mode-party-survives-https-loss.md)
+  accepts Limited Mode, and its scoped Linear issue (AVR-225) may change it deliberately. Never
+  weaken the `Secure` Party cookie or add HSTS to get there.
+- Preserve platform ownership of cross-game identity, presence, chat, library, navigation and
+  durable results/history; do not add parallel stores/tokens in Games. Device, Profile, Presence
+  and Seat are distinct; a browser-stored name/avatar is not a durable Profile. Admin is distinct
+  from Party Host. See [platform design](docs/design/PARTY-PLATFORM.md).
+- ADRs 0012–0014 are accepted direction, not deployed: Limited Mode, a separate game origin and
+  isolated native-game processes. The LAN Games fork is still the deployed runtime but is
+  retiring; do not build new native games as LAN Games modules or treat standalone LAN Games,
+  `wc-token` admission or a shared Party/game origin as requirements to preserve in new design.
 - Never commit or print credentials, private keys, Wi-Fi secrets, ROMs, BIOS, emulator cores,
   saves, runtime databases, personal telemetry or raw measurement logs. Inspect diffs and file
   lists for these before every push. Use synthetic test identities and temporary data.

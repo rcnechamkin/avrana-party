@@ -50,11 +50,21 @@ and text-only rendering. Not reusable: client-declared names, unauthenticated `c
   Server-Sent Events stream to receive. One change: chat must not ride the full-view resend (today
   every change re-serialises the whole view); add an **incremental `event: chat`** carrying only new
   messages. SSE through the same front door keeps one origin, one identity cookie, no new port.
+  *(2026-10-02: "one origin, one identity cookie" is the current implementation assumption only.
+  [ADR 0013](../adr/0013-party-and-game-browser-origins.md) supersedes it as architecture: Party
+  surfaces keep the Party origin and its cookie; game pages move to a game origin that does not
+  carry it. Chat rendered on Party surfaces is unaffected.)*
   A WebSocket (or anything heavier: Socket.IO, Matrix, XMPP, Centrifugo) is **not justified** until
   there is a need for typing indicators or reactions at game speed; revisit then, measured.
 - **Inside games:** the PS1 page already keeps a party event stream open (to follow navigation), so
   it can render party chat without the game server knowing chat exists. LAN Games modules get the same
   via the planned `party.js` follow client.
+  *(2026-10-02: this relies on the game page sharing the Party origin and cookie. Under ADR 0013
+  a game page cannot open the Party's stream as the member. How Party chat appears during a round
+  — and by which cross-origin mechanism — is not chosen here; it belongs to AVR-226. LAN Games
+  modules are the legacy runtime
+  ([ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md)), not the model for new
+  games.)*
 
 ## Layer 2 — authorization and policy
 

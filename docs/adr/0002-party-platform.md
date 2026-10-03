@@ -70,6 +70,34 @@ The owner closed several open questions; they refine, not reverse, the decision 
 Identifiers and what they authorize: `docs/adr/0003-ids-and-keys.md`. Lifecycle rules:
 `docs/design/PARTY-LIFECYCLE.md`.
 
+## Amendment (2026-10-02): Standard Mode, origins and LAN Games retirement
+
+Dated clarification after the 2026-10-02 architecture decisions. The decision and the 2026-09-24
+amendment above are unchanged as history; where this section differs, it governs going forward.
+
+- **One appliance, one Party, one active Standard Mode activity.** "One appliance = one party"
+  (above) is completed by "one active activity at a time" (ADR 0011, [ADR 0014](0014-native-games-isolated-lan-games-retired.md)).
+  Multi-table or simultaneous side games are outside Standard Mode. A future Developer Mode may
+  expose multi-activity experimentation deliberately; it must not shape Standard Mode.
+- **LAN Games is retiring as a runtime** ([ADR 0014](0014-native-games-isolated-lan-games-retired.md)).
+  The Context above describes it as one of several live runtimes; it is now donor/reference
+  material, and native games become isolated platform consumers. The consequence "LAN Games'
+  client-minted token must eventually be replaced" is resolved by retiring `wc-token` player
+  admission rather than migrating it.
+- **Party owns durable person, profile and history authority.** Decision 2 (layered identity) and
+  decision 6 (provenance) stand; in addition, Party is the only platform writer of persistent
+  cross-session results, history, stats and profile attribution. Games determine outcomes and
+  report them; they do not keep the platform's record.
+- **Games consume Party identity and session authority.** A game receives session-scoped
+  authority (tickets, a derived game token, a persona) and nothing durable (ADR 0003, ADR 0006).
+- **Separate browser trust origins supersede the one-origin implementation assumption.** The
+  "Original proposed mechanisms" paragraph placed the Party service "on the same origin as
+  everything else". [ADR 0013](0013-party-and-game-browser-origins.md) keeps the canonical Party
+  origin and moves game clients to a separate origin. The Consequences bullet about "a single
+  origin" is historical.
+- **Trusted HTTPS is preferred, not required** ([ADR 0012](0012-limited-mode-party-survives-https-loss.md)):
+  decision 3 ("nothing needs the internet") extends to certificate validity.
+
 ## Consequences
 
 - New games must not build their own login, profile store, chat, reconnect, team or spectator

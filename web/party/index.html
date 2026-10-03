@@ -90,6 +90,10 @@
 
   <section id="games-section" class="avrana-library mb-6" aria-labelledby="games-h">
     <h2 id="games-h" class="avrana-section-title" tabindex="-1">Games <span id="game-count" class="font-sans text-[0.9375rem] font-normal text-muted" role="status"></span></h2>
+    <div id="catalog-error" class="avrana-surface mb-4 flex flex-wrap items-center gap-3 p-4" role="status" hidden>
+      <p class="m-0 flex-1">Game list unavailable.</p>
+      <button type="button" id="catalog-retry" class="btn btn-primary">Retry</button>
+    </div>
     <div class="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
       <label for="game-search" class="sr-only">Search games</label>
       <div class="input w-full"><span data-icon="search" class="text-muted"></span><input id="game-search" type="search" class="text-base" placeholder="Search games"></div>

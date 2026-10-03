@@ -5,6 +5,33 @@ The third-party trust/sandbox model is a separate future design problem; this do
 sure today's choices don't create dead ends. Context: `GAME-INTEGRATION.md` (capabilities vs
 runtime vs grant), `PARTY-PLATFORM.md` §13 (security).
 
+**Reconciled 2026-10-02 with accepted direction (still nothing built):** [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) makes
+every native game an independent process with its own service identity, reached by generic
+routing from a registry and described by one canonical manifest; [ADR 0013](../adr/0013-party-and-game-browser-origins.md) puts game
+clients on a separate browser origin; the LAN Games in-process runtime is legacy and retiring.
+This document keeps its conceptual status. It deliberately does **not** freeze the final
+`.avrgame` archive format, the exact sandbox or container implementation, or a marketplace or
+community workflow; those wait until Checkers and Spades have proven the boundary.
+
+## Accepted direction (2026-10-02)
+
+- **One canonical per-game manifest.** Catalogue, grant validation and runtime registration derive
+  from it or are mechanically checked against it; no further competing metadata layer (AVR-229).
+- **Independent native-game process, per-game service identity.** A game owns its secrets and its
+  state directory and can read nobody else's. "Built-in" is a statement of trust, not permission
+  to share a process.
+- **Generic routing, local IPC.** The front door routes from a runtime-readable game registry;
+  Unix sockets are preferred where appropriate; one provisioning path creates identity, grants,
+  keys and registration (AVR-236).
+- **Platform-granted permissions.** The package requests; the appliance grants (unchanged).
+- **Provenance and signing come later, and are not isolation.** A signature says *who published
+  this and that it has not changed*. It never says the code is safe. A signed package still runs
+  inside the same process, identity and origin boundaries as an unsigned one. Public-key
+  cryptography belongs here, to package/update provenance, not to session tickets (ADR 0003
+  amendment).
+- **LAN Games runtime is legacy/retiring.** It is donor and reference code, not an installation
+  target.
+
 ## Philosophy
 
 Avrana does not need a proprietary game store. The intended feel is
@@ -16,6 +43,9 @@ community-made Avrana-compatible games. **No** commercial marketplace, payments,
 app-store backend.
 
 ## What exists today (and why it matters)
+
+(Inventory from 2026-09-24. The LAN Games facts are still true of the deployed fork and are the
+reason for ADR 0014; they describe the legacy runtime, not the model new games are built on.)
 
 - **LAN Games:** every game is a Python module imported at the top of the registry and run in
   **one process, one event loop, as the platform's user**. One import error stops every game; one
@@ -48,7 +78,7 @@ inbox → safe extract → staging → validate manifest → Admin confirms (tie
 | Folder drop-in (USB stick, scp from a laptop) | yes | the simplest; **v0** |
 | Archive (zip/tar with a manifest) | yes (USB, phone upload, laptop) | needs path-traversal/symlink/setuid/zip-bomb protection, a size cap and a free-space reserve |
 | Git URL + pinned commit | only with upstream internet; otherwise clone on the laptop and carry a `git bundle` | cloning runs no hooks, but build steps (npm, pip) would: **no builds on the Pi** |
-| Signed archive (later) | yes | an Ed25519 key pinned at first install; a signature proves *same publisher*, not *safe*. A "trusted repository" later = a signed index |
+| Signed archive (later) | yes | an Ed25519 key pinned at first install; a signature proves *same publisher*, not *safe*, and changes nothing about runtime isolation. A "trusted repository" later = a signed index |
 
 - **Update:** install beside the old version, snapshot state, switch the pointer, keep the
   previous version for rollback. An updated trusted game drops to untrusted until re-approved.
@@ -62,8 +92,8 @@ inbox → safe extract → staging → validate manifest → Admin confirms (tie
 
 | Tier | Where it comes from | May use |
 |---|---|---|
-| **Built-in** | ships with the image | any runtime, including in-process LAN Games modules |
-| **Trusted** | the owner vouched for one specific content hash | prefer a separate process; in-process only with a plain warning that it can see everything |
+| **Built-in** | ships with the image | the isolated `process` boundary like any other game (target, ADR 0014). In-process LAN Games modules are the legacy runtime of today's built-in titles only |
+| **Trusted** | the owner vouched for one specific content hash | a separate process; never in-process with the platform or another game |
 | **Community** | anything else (the default) | `emulator_profile`, and later sandboxed `process` / `static_web` only |
 
 An untrusted game must **never**: read other games' state, the platform database, token or PIN
@@ -75,6 +105,10 @@ cross-game achievements except under a `community` provenance label.
 
 ### Isolation that is cheap on a Pi (later; needs owner-approved systemd/nginx changes)
 
+The process and origin *boundaries* are now accepted direction for all games (ADRs 0013/0014).
+The specific directives and headers below remain an illustrative sketch of the stronger tier for
+untrusted code, not a frozen implementation.
+
 - **Server side:** one systemd template unit per game with `DynamicUser`, `PrivateNetwork=yes`
   (loopback only; nginx reaches it over a unix socket — this alone stops exfiltration, LAN scanning
   and mining pools), `ProtectSystem=strict`, `ProtectHome`, `StateDirectory`, `NoNewPrivileges`, a
@@ -85,8 +119,11 @@ cross-game achievements except under a `community` provenance label.
   by fetching an admin page on the same origin and reading its anti-CSRF token). A separate
   **port** is a separate origin for reads and Origin checks (which is why a future web admin should
   live on its own port — `PARTY-PLATFORM.md` §13), but cookies set on either port go to both, so it
-  is no cookie boundary; a separate **host name** needs DNS work. The cheapest fix for untrusted
-  game pages:
+  is no cookie boundary; a separate **host name** needs DNS work. **Decided 2026-10-02
+  ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)):** that DNS work is worth doing for *all* game pages — a separate game
+  hostname under the existing certificate/DNS model is the near-term preference, so no game page,
+  trusted or not, holds the member cookie. On top of that, the stronger and cheapest fix for
+  *untrusted* game pages:
   - **every** response under an untrusted game's path gets `Content-Security-Policy: sandbox
     allow-scripts` and `X-Content-Type-Options: nosniff` (a single file served without the header —
     a direct link to `/games/x/raw.html`, an uploaded SVG — would run unsandboxed on the party
@@ -99,7 +136,7 @@ cross-game achievements except under a `community` provenance label.
     entered there (so a game can't fake an "enter admin PIN" prompt);
   - avatars and other uploads are re-encoded (PNG/JPEG), never served as uploaded.
 
-  The single origin still holds identity; untrusted pages hold none. The cost: sandboxed games are
+  The trusted Party origin holds identity; game pages hold none (tickets only). The cost: sandboxed games are
   second-class (no localStorage, harder fullscreen and audio unlock — the same drawbacks ADR 0002
   lists for iframes).
 
@@ -127,9 +164,11 @@ read-only ROM view).
 ## v0: the smallest step that creates no dead ends
 
 - Games live in a directory; each has an `avrana.json` manifest; the owner copies them in. The game
-  list = built-in manifests (LAN Games derived from its registry) + that folder.
-- Runtimes accepted: built-in `lan_games_module`, `emulator_profile`, and `external` (today's
-  arcade and PS1 servers). **Moving the two hard-coded PS1 title lists into profiles pays off now** (done on
+  list = built-in manifests (LAN Games derived from its registry) + that folder. (The manifest
+  file name and layout here are illustrative; the canonical manifest is AVR-229.)
+- Runtimes accepted (as written 2026-09-24): built-in `lan_games_module`, `emulator_profile`, and `external` (today's
+  arcade and PS1 servers). *Superseded 2026-10-02:* `lan_games_module` is legacy/retiring; the
+  native path is an isolated `process` proven first by Checkers (ADR 0014). **Moving the two hard-coded PS1 title lists into profiles pays off now** (done on
   `experiment/ps1-title-profiles`),
   and it is the path community content will take later.
 - Build in from the start: a manifest version; the capabilities/runtime split; platform-assigned

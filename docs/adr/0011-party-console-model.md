@@ -74,6 +74,24 @@ each other, not one shared console:
    BLUFF's omniscient view; players and TVs never); tickets, seats, reconnects; standalone play
    (no Party Core, no profile, or plain HTTP: the pages are exactly what they were).
 
+## Amendment (2026-10-02): one Standard Mode activity
+
+The decision above is unchanged. This adds the product-level invariant it already implied:
+
+- **Standard Mode has exactly one authoritative Party activity/location.** One appliance, one
+  Party, one active activity at a time; `location` is singular by design, not by current
+  limitation.
+- **Simultaneous games or tables are not a Standard Mode product feature.** Standard Mode
+  architecture (Party Core, routing, the registry, results) is not shaped around side games.
+- **Any future Developer Mode relaxation is explicitly separate.** If multi-activity
+  experimentation is ever exposed to technical users, it is a distinct mode that must not add
+  states, UI or protocol surface to Standard Mode ([ADR 0014](0014-native-games-isolated-lan-games-retired.md) decision 10).
+- Decision 3's "a standalone title may stay open while the party is home (a personal game)" and
+  decision 7's "standalone play" describe LAN Games standalone compatibility, which ADR 0014
+  retires as a product mode; they remain true of current source until that retirement lands.
+- Decision 5's `window.AvranaParty` host controls keep their product meaning; their same-origin
+  transport is revisited by [ADR 0013](0013-party-and-game-browser-origins.md).
+
 ## Consequences
 
 - Party Core: `location()`, `go_home()`, member `avatar` (`avrana/party/core.py`), `POST
@@ -96,3 +114,15 @@ each other, not one shared console:
 - Old sessions' tabs, sessionStorage memories and offers are simply ignored: the location decides.
 - Not verified on real phones (Tier 3). A phone asleep through a move lands where the party is on
   wake; iOS/Android back-button behaviour after `location.replace` is untested.
+
+## Amendments
+
+- **2026-10-02 (AVR-223, lifecycle edge cases from the hostile audit).** `results` is held only
+  for a round the game reports as `completed`. An `abandoned` round (the game, or a managed
+  runtime, gave up) has no results screen worth standing on: the party goes home at once and the
+  session is ended at the game so nothing is held. A host switch moves `nav` to the next session as
+  soon as it exists (location `setup` while it launches) instead of passing through Party Home. An
+  end that the game does not confirm within `END_TIMEOUT` records a `detail` (and names the dropped
+  switch); the link's `end` gives up before that timer does. A launch that succeeds after the party
+  cancelled or timed it out is ended at the game. PARTY-LIFECYCLE.md already described the
+  abandoned → home behaviour; Core now matches it.
