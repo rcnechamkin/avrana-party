@@ -34,6 +34,20 @@ jobs:
       - name: Repository integrity and generated freshness
         run: npm run check:repo
 
+      # History is evidence, not architecture: a PR that edits docs/archive or an existing dated
+      # finding fails unless it carries the `historical-edit` label (docs/WORKFLOW.md).
+      - name: Historical documents are not edited without intent
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          ALLOW: ${{ contains(github.event.pull_request.labels.*.name, 'historical-edit') && '--allow-historical' || '' }}
+        run: |
+          git fetch --no-tags --depth=200 origin "$BASE" || git fetch --no-tags origin "$BASE"
+          python3 tools/repo-check.py --changed-since "$BASE" $ALLOW
+
+      - name: Party side of the Party <-> Games contract declaration
+        run: python3 tools/contract_check.py
+
       - name: Derived context fixture and configuration checks (no credentials)
         run: |
           python3 -m unittest discover -s tests/context -v
@@ -76,3 +90,7 @@ jobs:
 
       - name: Offline browser tests
         run: npx playwright test -c playwright.offline.config.ts
+
+      # Tier 2: several browser contexts (phones) against a real Party Core behind the dev server.
+      - name: Multi-client Party browser tests
+        run: npx playwright test -c playwright.party.config.ts
