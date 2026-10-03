@@ -1,8 +1,26 @@
 {
   "hooks": {
-    "PreToolUse": [{
-      "matcher": "Grep|Glob|Bash",
-      "hooks": [{"type": "command", "command": "python tools/graphify_context.py guard", "timeout": 10}]
-    }]
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python tools/graphify_context.py guard",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python tools/claude_gate.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

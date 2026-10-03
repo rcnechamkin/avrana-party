@@ -22,6 +22,7 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/session/start  {if_version}          host: start the round set up (AVR-129)
     POST /party/api/home           {if_version}          host: from a round's results back to
                                                          Party Home, for everyone (ADR 0011)
+    GET  /party/api/status                   what is running: avrana.ops.status (no secrets)
     join and rename also take {avatar}: a bundled Gaze avatar id, shown to the party
 
 Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
@@ -399,6 +400,8 @@ def main(argv=None):
     service = PartyService(store, load_games(entries), sessions.HttpGameLink(endpoints))
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
     extra, internal = sessions.routes(service, endpoints)
+    from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
+    extra.update(status.route(service, status.load_config(conf)))
     server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()

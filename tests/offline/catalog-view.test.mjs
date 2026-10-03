@@ -10,8 +10,12 @@ const profile = createProfile({ getItem: (k) => map.get(k) ?? null, setItem: (k,
 
 test('unified catalog includes individual browser titles, arcade and honest PS1 entries', () => {
   const games = visibleGames(catalog);
-  assert.equal(games.length, 33); // 29 donor + BLUFF + arcade + 2 PS1
-  assert.equal(games.filter((g) => g.provider === 'lan-games').length, 30);
+  assert.equal(games.length, 34); // 29 donor + BLUFF + EXPO + arcade + 2 PS1
+  assert.equal(games.filter((g) => g.provider === 'lan-games').length, 31);
+  const expo = games.find((g) => g.id === 'expo');
+  assert.ok(expo.installed);
+  assert.equal(expo.private_player_ui, true);
+  assert.equal(launchTarget(expo), '/games/expo/?avrana=1');
   const bluff = games.find((g) => g.id === 'bluff');
   assert.ok(bluff.installed);
   assert.equal(bluff.artwork, 'art/lan-bluff.svg');
@@ -47,7 +51,7 @@ test('a weak phone cannot downgrade another phone or the provider catalog', () =
 
 test('all granted browser titles launch directly with explicit context; invalid paths fail closed', () => {
   const games = catalog.games.filter((g) => g.provider === 'lan-games' && g.installed);
-  assert.equal(games.length, 30); // 29 donor titles + BLUFF
+  assert.equal(games.length, 31); // 29 donor titles + BLUFF + EXPO
   for (const game of games) {
     assert.equal(launchTarget(game), `/games/${game.legacySlug}/?avrana=1`);
     assert.equal(launchTarget({ ...game, entry: '/' }), null);

@@ -35,6 +35,11 @@
   <h2>This Party box</h2>
   <div class="avrana-table-wrap avrana-surface"><table id="providers" class="table"><thead><tr><th>Provider</th><th>Kind</th><th>Status</th><th>Offers</th></tr></thead><tbody></tbody></table></div>
 
+  <h2>Running build</h2>
+  <p class="mt-0 text-muted">What this appliance says it is running (from <code>/party/api/status</code>). Copy the field report into an issue when something looks wrong; nothing is sent anywhere by itself.</p>
+  <dl id="build" class="avrana-surface m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 p-4 [&_dd]:m-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-muted"><dt>Status</dt><dd>Checking…</dd></dl>
+  <div class="mt-3 mb-3"><button type="button" id="copy-field" class="btn btn-outline">Copy field report</button></div>
+  <pre id="field-report" class="avrana-surface max-h-88 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[0.8125rem] leading-relaxed">…</pre>
   <h2>Offline copy</h2>
   <dl id="shell" class="avrana-surface m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 p-4 empty:hidden [&_dd]:m-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-muted"></dl>
   <div class="mt-3"><button type="button" id="remove" class="btn btn-outline btn-error">Remove offline copy</button></div>

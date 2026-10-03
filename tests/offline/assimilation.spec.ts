@@ -21,7 +21,7 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
   await expect(page.locator('#player-chip')).toContainText('Robin');
   // The legacy 🐸 character reads as the Gaze avatar at its position (docs/UI-DESIGN-SYSTEM.md).
   await expect(page.locator('#player-chip img')).toHaveAttribute('src', /\/party\/avatars\/gaze-02\.svg$/);
-  await expect(page.locator('#game-count')).toHaveText('33 games'); // includes installed BLUFF (AVR-91)
+  await expect(page.locator('#game-count')).toHaveText('34 games'); // includes installed BLUFF (AVR-91) and EXPO
   await expect(page.locator('[data-id="bluff"]')).toContainText('BLUFF');
   await expect(page.locator('[data-id="lan-games"]')).toHaveCount(0);
   await expect(page.locator('[data-id="lan-chess"]')).toContainText('CHESS');

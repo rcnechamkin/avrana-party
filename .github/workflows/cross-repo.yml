@@ -1,0 +1,88 @@
+# Party <-> Games compatibility (AVR-219, AVR-233). Games is checked out at the branch whose name
+# carries the same AVR number as this branch (docs/CROSS-REPO.md), otherwise main. Then:
+#   1. both contract declarations are proven against their code and compared (tools/contract_check.py);
+#   2. the real Party service drives the real games server over loopback (Games' cross-repo pytest);
+#   3. the browser provider suite runs the shell against both (tests/provider, Chromium).
+# Nothing here deploys. Both repositories are public, so no token is needed.
+name: Cross-repo contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-repo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - name: Resolve the matching Games branch
+        id: peer
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          # A failure to list the other repository's branches must fail this job: falling back to
+          # main would report compatibility that was never checked against the paired branch.
+          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git \
+            | awk '{print $2}' | sed 's#refs/heads/##')
+          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
+          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
+          ref=main; why='no AVR id in this branch name'
+          if [ -n "$avr" ]; then
+            why="no Games branch carries $avr"
+            if echo "$heads" | grep -qxF "$BRANCH"; then
+              ref=$BRANCH; why='same branch name'
+            else
+              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
+              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: ${{ steps.peer.outputs.ref }}
+          path: games
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Contract declarations agree with both code bases and each other
+        run: python3 party/tools/contract_check.py --party party --games games
+      - name: Install the games server's dependencies
+        run: python3 -m pip install -r games/requirements-dev.txt
+      - name: Real Party service drives the real games server (may not skip)
+        working-directory: games
+        env:
+          AVRANA_PARTY_REPO: ${{ github.workspace }}/party
+          AVRANA_REQUIRE_PARTY: '1'
+        run: python3 -m pytest -q -rs tests/test_party_session_cross_repo.py tests/test_avrana_contract.py
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.2'
+          cache: npm
+          cache-dependency-path: party/package-lock.json
+      - name: Install the shell's test dependencies and Chromium
+        working-directory: party
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Browser provider suite against both repositories
+        working-directory: party
+        env:
+          AVRANA_GAMES_REPO: ${{ github.workspace }}/games
+        run: npx playwright test -c playwright.provider.config.ts

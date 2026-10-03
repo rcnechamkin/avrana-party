@@ -1,6 +1,10 @@
 {
-  "hosts": ["party.avrana.net"],
-  "origins": ["https://party.avrana.net"],
+  "hosts": [
+    "party.avrana.net"
+  ],
+  "origins": [
+    "https://party.avrana.net"
+  ],
   "secure_cookie": true,
   "devices": "/var/lib/avrana-party-core/devices.json",
   "games": {
@@ -12,6 +16,14 @@
       "url": "http://127.0.0.1:8096/games/bluff",
       "key_file": "/etc/avrana-party/game-keys/bluff.key"
     },
+    "expo": {
+      "min_players": 2,
+      "max_players": 5,
+      "pregame": true,
+      "late_join": "spectator_only",
+      "url": "http://127.0.0.1:8096/games/expo",
+      "key_file": "/etc/avrana-party/game-keys/expo.key"
+    },
     "arcade-gauntlet2": {
       "max_players": 2,
       "late_join": "supported",
@@ -19,5 +31,22 @@
       "key_file": "/etc/avrana-party/game-keys/arcade-gauntlet2.key",
       "timeout": 25
     }
+  },
+  "status": {
+    "manifest": "/var/lib/avrana-party/deployment.json",
+    "party_checkout": "/home/cody/avrana-party",
+    "games_checkout": "/home/cody/avrana-party-games",
+    "web_root": "/var/www/avrana-party/web",
+    "certificate": "/etc/avrana-party/tls/current/fullchain.pem",
+    "games_url": "http://127.0.0.1:8096",
+    "arcade_url": "http://127.0.0.1:8098",
+    "units": [
+      "avrana-party-core",
+      "avranaparty-games",
+      "avranaparty-arcade",
+      "nginx",
+      "NetworkManager",
+      "avrana-party-certificate.timer"
+    ]
   }
 }
