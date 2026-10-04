@@ -38,6 +38,11 @@ at once, a short poll), and the listen backlog is REQUEST_QUEUE_SIZE so phone wa
 import argparse
 import http.server
 import json
+import os
+import signal
+import socket
+import socketserver
+import stat
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -345,7 +350,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.close_connection = True
             return _send(self, 413, {'error': 'body_size'})
         raw = self.rfile.read(n)             # read before refusing so the reply is not reset
-        if route is None or proxied or self.client_address[0] not in ('127.0.0.1', '::1'):
+        if route is None or proxied or not self._local_peer():
             return _send(self, 404, {'error': 'not_found'})
         try:
             body = json.loads(raw or b'{}')
@@ -354,6 +359,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not isinstance(body, dict):
             return _send(self, 400, {'error': 'bad_json'})
         return route(self, body)
+
+    def _local_peer(self):
+        return self.client_address[0] in ('127.0.0.1', '::1')
 
     def _join(self, device, body):
         cookie = None
@@ -380,6 +388,72 @@ def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None, in
     return server_cls((host, port), handler)
 
 
+class InternalHandler(Handler):
+    """The party's internal Unix socket (ADR 0016 §4): game -> party messages only. Who may
+    connect is decided by the socket's ownership and mode, not by an address; what is said is
+    still verified by signature, issuer and session exactly as on loopback. Nothing else is
+    served here: no API, no cookie, no GET."""
+
+    def address_string(self):
+        return 'unix'
+
+    def _local_peer(self):
+        return True
+
+    def do_GET(self):
+        return _send(self, 404, {'error': 'not_found'})
+
+    def do_POST(self):
+        path = urlsplit(self.path).path
+        if not path.startswith('/internal/'):
+            return _send(self, 404, {'error': 'not_found'})
+        return self._internal(path)
+
+
+def listen_fds(environ=os.environ, pid=None):
+    """The sockets systemd passed to this process (sd_listen_fds): file descriptors 3, 4, … when
+    LISTEN_PID is this process and LISTEN_FDS says how many. [] otherwise."""
+    try:
+        if int(environ.get('LISTEN_PID', '-1')) != (os.getpid() if pid is None else pid):
+            return []
+        return list(range(3, 3 + int(environ.get('LISTEN_FDS', '0'))))
+    except ValueError:
+        return []
+
+
+def make_internal_server(service, internal_routes, path=None, fd=None):
+    """The internal Unix-socket listener. With `fd`, an already listening socket inherited from
+    the service's systemd socket unit, which is how production gets a socket owned
+    avrana-party:avrana-games 0660. With `path`, a socket this process creates (tests and the dev
+    server): mode 0660, owned by the caller, replacing a stale socket file of the same name."""
+    if not hasattr(socketserver, 'UnixStreamServer'):
+        raise OSError('this system has no Unix sockets')
+    server_cls = type('PartyInternalServer', (socketserver.ThreadingMixIn, socketserver.UnixStreamServer),
+                      {'daemon_threads': True, 'request_queue_size': REQUEST_QUEUE_SIZE})
+    handler = type('BoundInternalHandler', (InternalHandler,),
+                   {'service': service, 'cfg': Config(set(), set()), 'extra_routes': {},
+                    'internal_routes': dict(internal_routes or {})})
+    if fd is not None:
+        server = server_cls(None, handler, bind_and_activate=False)
+        server.socket.close()
+        server.socket = socket.socket(fileno=fd)
+        if server.socket.family != socket.AF_UNIX:
+            raise OSError('the inherited socket is not a Unix socket')
+        server.server_address = server.socket.getsockname()
+        return server
+    if os.path.exists(path):
+        if not stat.S_ISSOCK(os.stat(path).st_mode):
+            raise OSError(f'{path} exists and is not a socket')
+        os.unlink(path)
+    old = os.umask(0o117)                            # created 0660: never open to others
+    try:
+        server = server_cls(path, handler)
+    finally:
+        os.umask(old)
+    os.chmod(path, 0o660)
+    return server
+
+
 def load_games(entries):
     """Games from explicit entries: {"bluff": {"max_players": 6, "late_join": "spectator_only"}}.
     For tests and harnesses that state a game by hand. The service itself does not use it: main()
@@ -401,18 +475,16 @@ def main(argv=None):
     args = ap.parse_args(argv)
     with open(args.config, encoding='utf-8') as f:
         conf = json.load(f)
-    from avrana.party import protocol, sessions         # the session protocol (ADR 0006)
+    from avrana.party import registry, sessions         # the session protocol (ADR 0006)
     store = identity.DeviceStore(conf.get('devices'))
-    entries = conf.get('games', {})
-    endpoints = {g: sessions.GameEndpoint(g, e['url'], protocol.read_key(e['key_file']),
-                                          e.get('timeout'))
-                 for g, e in entries.items() if e.get('url') and e.get('key_file')}
-    from avrana.contracts import party_config      # per-game facts come from the contracts
+    # Per-game facts come from the contracts; where each game is comes from this config and the
+    # registry directory (avrana.party.registry). One dict of endpoints is shared by the game
+    # link and the session routes, so a reload changes both at once.
     try:
-        games = party_config.resolve(entries)
-    except party_config.ConfigError as e:
+        games, endpoints = registry.build(conf.get('games', {}), conf.get('registry'))
+    except registry.RegistryError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
-    service = PartyService(store, games, sessions.HttpGameLink(endpoints))
+    service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True))
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
     extra, internal = sessions.routes(service, endpoints)
     from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
@@ -420,10 +492,26 @@ def main(argv=None):
     server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()
+    # Native games report on a Unix socket: inherited from the systemd socket unit in production,
+    # created here when the config names a path (ADR 0016 §4, AVR-258). The loopback route above
+    # stays for the arcade and the LAN Games fork.
+    inherited = listen_fds()
+    internal_server = None
+    if inherited or conf.get('internal_socket'):
+        internal_server = make_internal_server(service, internal, conf.get('internal_socket'),
+                                               inherited[0] if inherited else None)
+        threading.Thread(target=internal_server.serve_forever, daemon=True).start()
+    if hasattr(signal, 'SIGHUP'):                # `systemctl reload`: pick up new games, no restart
+        def on_hup(signum, frame):
+            threading.Thread(target=registry.reload, args=(service, endpoints, args.config),
+                             daemon=True).start()
+        signal.signal(signal.SIGHUP, on_hup)
     try:
         server.serve_forever()
     finally:
         stop.set()
+        if internal_server is not None:
+            internal_server.shutdown()
 
 
 if __name__ == '__main__':

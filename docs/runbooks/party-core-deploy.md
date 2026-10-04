@@ -27,6 +27,18 @@ service can call every port. That is the prototype. The intended identities, key
 sockets are [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md) (accepted, not implemented);
 do not copy `User=cody` or a `cody`-owned key into anything new.
 
+**Native games (AVR-258; in source, not deployed).** `party-core.json` may name a `registry`
+directory: one `<id>.json` per native game, `{"id", "socket", "key_file"[, "timeout"]}`, root-owned,
+world-readable, no secret in it. Party Core reaches such a game over its Unix socket and reads the
+directory at start and on `SIGHUP` (`systemctl reload avrana-party-core`): a new game becomes
+launchable without a restart and the party (members, host, devices) is untouched. A reload that
+finds a game registered twice, an entry with no Game Contract, or an unusable key is refused whole,
+logged with the game's id, and the previous registry stays in force. Native games report `ended` on
+Party Core's internal Unix socket, which in production is inherited from a systemd socket unit
+(`avrana-party:avrana-games 0660`, ADR 0016 §4); `internal_socket` in the config makes Party Core
+create one itself, for tests and development only. The unit, the socket unit and the registry path
+are AVR-236's; none exists on the Pi.
+
 Not in scope: party persistence across reboot (the party is memory-only; a restart starts a new
 party, device identities survive), BLUFF rules changes, `.avrgame`.
 
