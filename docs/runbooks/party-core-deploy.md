@@ -35,6 +35,14 @@ do not copy `User=cody` or a `cody`-owned key into anything new.
 > `ops/provision-party-game-key.sh` needs `AVRANA_PARTY_KEY_OWNER=cody`. The steps below remain
 > the record of how the deployed state was reached.
 
+**Limited Mode (AVR-225; in source, not deployed).** `party-core.json` may carry
+`"limited": {"hosts": ["10.42.0.1"], "origins": ["http://10.42.0.1"], "port": 8192}`. With it,
+Party Core also listens on `127.0.0.1:8192` and serves the same party over plain HTTP with its
+own short-lived credential (ADR 0012 amendment). **Production does not set it**, and nginx's
+port-80 server has no `/party/` location, so nothing reaches that listener. Adding the object and
+the nginx locations is rollout step 3 of [LIMITED-MODE](../design/LIMITED-MODE.md), an
+owner-approved live change.
+
 Not in scope: party persistence across reboot (the party is memory-only; a restart starts a new
 party, device identities survive), BLUFF rules changes, `.avrgame`.
 

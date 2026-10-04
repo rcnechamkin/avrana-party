@@ -1,10 +1,9 @@
-# Limited Mode mechanisms (proposal for AVR-225)
+# Limited Mode mechanisms (AVR-225)
 
-Status: **PROPOSED (2026-10-03). Design only; nothing here is built or deployed.** The direction is
-accepted in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md); this document
-proposes the mechanisms that ADR leaves "deliberately open" and lists the decisions the owner must
-make before any of it is implemented. Until those are recorded in ADR 0012, nothing below is
-authoritative. Linear: AVR-225. Related: [ADR 0013](../adr/0013-party-and-game-browser-origins.md)
+Status: **ACCEPTED mechanisms (owner, 2026-10-03). Steps 1 and 2 of §5 are in source; nothing is deployed.** The direction is
+accepted in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md), whose amendment of
+2026-10-03 records the owner's decisions D1 to D6 (§4). The text below is the design as proposed
+and accepted; "As built" notes say where steps 1 and 2 differ. Linear: AVR-225. Related: [ADR 0013](../adr/0013-party-and-game-browser-origins.md)
 and [BROWSER-ORIGINS](BROWSER-ORIGINS.md) (two origins), [FULL-MODE](FULL-MODE.md) (the deployed
 shell), [OFFLINE-TRUST-AND-RECOVERY](../OFFLINE-TRUST-AND-RECOVERY.md).
 
@@ -55,6 +54,14 @@ QR code on the box and the captive landing both point at the doorway.
 This answers two of ADR 0012's open items: the QR code carries the doorway, and `/` stops being
 the LAN Games hub (already implied by ADR 0014).
 
+**As built (step 2).** The page is `web/party/doorway/index.html` with `lib/doorway.js`. Its two
+destinations are attributes of the page itself (`https://party.avrana.net/party/` and
+`http://10.42.0.1/party/`); it takes nothing from its address or query. The test request is
+`no-cors`, without credentials, and gives up after 3.5 seconds. Step 3 must serve the page with
+its own `Content-Security-Policy`: the shell's `connect-src 'self'` would block the one request it
+makes, so that location needs `connect-src 'self' https://party.avrana.net`. It is not in the
+offline copy. The Limited Mode banner links back to it ("Check for the full version").
+
 ### 3.2 One canonical Limited Mode origin
 
 Every distinct host name is a distinct origin with its own cookies, so three HTTP names would make
@@ -85,6 +92,11 @@ shared-password Wi-Fi can be read by another guest, so the credential should be 
 day. Each store only ever resolves its own cookie, so a Limited token presented as `avrana_device`
 is unknown, and the reverse.
 
+**As built (step 1).** As the table says, except that since ADR 0013 the Full Mode cookie is
+`__Host-avrana_device; Path=/`. `avrana_limited` keeps `Path=/party/`, so it is sent to the Party
+API and never to a game server on the same origin. `identity.LimitedStore` holds a hash of each
+token with its expiry; a restart or 12 hours ends it.
+
 ### 3.4 How Party Core knows the mode
 
 Two options:
@@ -97,6 +109,12 @@ Two options:
   deliberately refuse proxy headers.
 
 Recommendation: the second listener. **Decision D2.**
+
+**As built (step 1).** `party-core.json` may carry
+`"limited": {"hosts": ["10.42.0.1"], "origins": ["http://10.42.0.1"], "port": 8192}`. Absent (as in
+production), there is no second listener. An origin that is not `http://`, or one shared with
+Full Mode, is refused at start. The Limited listener serves no game-to-party route and no bridge
+origin (D5). Every view says `"mode": "full"` or `"mode": "limited"`.
 
 ### 3.5 Identity and continuity
 
@@ -140,6 +158,13 @@ which takes seconds.
 | A game whose contract requires `secure_context` | that seat watches or is told why |
 | Padlock and "connection is secure" | absent; the shell says the connection is not private |
 
+**As built (step 2).** The Capability Engine already decides this per seat: on a plain-HTTP
+origin `secure_context`, `wake_lock` and `service_worker` are "no". The banner lists what is
+missing on this phone and names the installed games it cannot play. In a round's setup, a phone
+that cannot play the game has Play disabled and the reason shown, and may still choose Watch.
+Not yet: a game page in Limited Mode does not follow the party, because game pages and the arcade
+page load the follower only in a secure context (a paired change with Games).
+
 ### 3.8 The second origin in Limited Mode
 
 ADR 0013 wants game pages on their own origin. Over HTTP with an IP literal there are no
@@ -153,9 +178,9 @@ One banner, plain words: the connection is not private, what is missing on this 
 the owner restores it by renewing the certificate. It never imitates a padlock and never hides a
 browser warning.
 
-## 4. Decisions required
+## 4. Decisions (accepted by the owner, 2026-10-03)
 
-| # | Decision | Recommendation |
+| # | Decision | Accepted |
 |---|---|---|
 | D1 | Canonical Limited Mode origin | `http://10.42.0.1`; other HTTP names redirect to it |
 | D2 | How Party Core learns the mode | a second loopback listener |
@@ -164,12 +189,17 @@ browser warning.
 | D5 | Game origin in Limited Mode | same origin for first-party games; no untrusted tier |
 | D6 | Does `/` become the doorway now, or only when LAN Games retires (AVR-222, AVR-228)? | with the Limited Mode rollout |
 
-## 5. Rollout once decided
+## 5. Rollout
+
+Steps 1 and 2 are in source (AVR-225). Steps 3 and 4 are the owner's and have not happened.
 
 1. Party Core: the Limited store, cookie and listener, behind config that production does not set.
-   Unit and service tests. No deployment effect.
+   Unit and service tests. No deployment effect. **Done in source**
+   (`tests/unit/test_party_limited_mode.py`).
 2. Shell: mode in the view, the banner, per-seat degradation, the doorway page. Tier 1 and 2 tests
-   with a simulated second scheme.
+   with a simulated second scheme. **Done in source** (`tests/offline/limited-mode.test.mjs`;
+   `tests/offline/limited.spec.ts`, Chromium, where `limited.avrana.test` is a real non-secure
+   origin served by the dev server's Limited listener).
 3. nginx port-80 `/party/` and `/party/api/` blocks plus the doorway. Owner-approved live change;
    both tracked site files stay byte-identical.
 4. Tier 3 on real phones: an expired certificate, a wrong clock, Private DNS on Android, iCloud
