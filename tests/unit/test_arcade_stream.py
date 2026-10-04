@@ -137,6 +137,7 @@ class ArcadeStream(unittest.TestCase):
             path, headers = routes['/' + name](None)
             self.assertEqual(path, source)
             self.assertEqual(headers['Content-Type'], 'text/javascript; charset=utf-8')
+            self.assertEqual(headers['Cache-Control'], 'no-cache')
         self.assertEqual(routes['/'](None)[0], REPO_ROOT / 'arcade' / 'index.html')
 
     def test_stats_tell_the_page_the_configured_party_origin(self):
@@ -154,6 +155,8 @@ class ArcadeStream(unittest.TestCase):
         page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
         self.assertIn('if(!r.ok)return undefined', page)        # no answer is not "same origin"
         self.assertIn('if(o!==undefined)return o', page)
+        self.assertEqual(page.count('sameOrigin()'), 2)         # its definition and the answered "no origin"
+        self.assertIn("+(i?'?retry='+i:'')", page)              # a failed shim import is tried again
         self.assertIn('if(BRIDGE_TRANSIENT.includes(answer.error))failed();else disconnect(WORDS.ticket)', page)
 
     def test_the_page_takes_the_party_origin_from_the_arcade_only(self):

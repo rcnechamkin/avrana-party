@@ -244,6 +244,30 @@ test('an arcade that does not answer at first decides nothing: the page asks aga
   expect(refused).toBeGreaterThanOrEqual(2);
 });
 
+test('a shim the arcade page could not load at first is fetched again, and the page still gets the bridge', async ({ page: host, context }) => {
+  await hostWithGameOn(host);
+  const page = await context.newPage();
+  let failed = 0;
+  await page.route('**/arcade/party-bridge.js*', (route) => (failed++ < 1 ? route.abort() : route.continue()));
+  await page.goto(`${GAMES}/arcade/`);
+  await expect(page.locator('iframe[title="Avrana Party"]')).toHaveAttribute('src', `${PARTY}/party/bridge.html`);
+  await expect(page.locator('#avrana-party-end')).toBeVisible();
+  expect(failed).toBeGreaterThanOrEqual(2);
+});
+
+test('a ticket request that never reaches the Party is a failed connection, not a refusal to join', async ({ page: host, context }) => {
+  test.setTimeout(40_000);
+  await hostWithGameOn(host);
+  const page = await context.newPage();
+  await recordSockets(page);
+  await page.route(`${PARTY}/party/bridge.html`, (route) => route.abort());     // the frame never loads
+  await page.goto(`${GAMES}/arcade/`);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toContainText('connect right now', { timeout: 25_000 });
+  await expect(page.locator('#status')).not.toContainText('Could not join this Party session');
+  expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(0);
+});
+
 test('the arcade page on the Party origin keeps the same-origin path: no bridge frame', async ({ page }) => {
   await page.goto(`http://127.0.0.1:${PORT}/arcade/`);
   await expect(page.locator('#connect')).toBeVisible();
