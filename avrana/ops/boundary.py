@@ -225,17 +225,46 @@ def _show(unit):
     return props
 
 
+CREDENTIAL_DIRECTIVES = ('LoadCredential', 'LoadCredentialEncrypted', 'SetCredential',
+                         'SetCredentialEncrypted', 'ImportCredential')
+
+
+def _specifiers(unit, text):
+    """Expand the unit-name specifiers of a template's text (`systemctl cat` prints it as written).
+    Any other specifier is left alone, so a value that depends on one cannot match an expected path."""
+    name = unit.rsplit('.', 1)[0]
+    prefix, _, instance = name.partition('@')
+    plain = re.sub(r'\\x([0-9a-fA-F]{2})', lambda m: chr(int(m[1], 16)), instance.replace('-', '/'))
+    known = {'n': unit, 'N': name, 'p': prefix, 'i': instance, 'I': plain, '%': '%'}
+    return re.sub(r'%(.)', lambda m: known.get(m[1], m[0]), text)
+
+
 def _credentials(unit, props):
-    """The source paths this unit loads as credentials. `systemctl show` does not print the
-    LoadCredential list on every systemd version, so fall back to the unit's own text (`systemctl
-    cat`: the unit file, its drop-ins, or a transient unit), where an empty assignment resets it."""
-    paths = [c.split(':', 1)[1] for c in props.get('LoadCredential', '').split() if ':' in c]
-    if not paths:
-        for line in _run('systemctl', 'cat', unit, '--no-pager').splitlines():
-            key, sep, value = line.strip().partition('=')
-            if key == 'LoadCredential' and sep:
-                paths = [] if not value else paths + [value.split(':', 1)[1]] if ':' in value else paths
-    return sorted(paths)
+    """Everything this unit is handed as a credential: the source path of each `LoadCredential=
+    name:path`, and `Directive=name` for every other way systemd can deliver one (a credential
+    looked up by name, an encrypted, literal or imported one), so that none goes unreported. Never
+    a credential's content. `systemctl show` does not print the LoadCredential list on every
+    systemd version, so the unit's own text is read (`systemctl cat`: the unit file, its drop-ins,
+    or a transient unit), where an empty assignment resets that directive's list."""
+    found = {d: [] for d in CREDENTIAL_DIRECTIVES}
+    for line in _run('systemctl', 'cat', unit, '--no-pager').splitlines():
+        key, sep, value = line.partition('=')
+        key, value = key.strip(), _specifiers(unit, value.strip())
+        if not sep or key not in found:
+            continue
+        name, colon, rest = value.partition(':')
+        if not value:
+            found[key] = []
+        elif key == 'LoadCredential' and colon:
+            found[key].append(rest)
+        elif key == 'LoadCredentialEncrypted' and colon:
+            found[key].append(f'{key}={rest}')
+        else:
+            found[key].append(f'{key}={name}')
+    shown = [c.split(':', 1)[1] for c in props.get('LoadCredential', '').split() if ':' in c]
+    if shown:
+        found['LoadCredential'] = shown + [c for c in found['LoadCredential'] if '=' in c]
+    return sorted(c for d in CREDENTIAL_DIRECTIVES for c in found[d])
 
 
 def collect():
