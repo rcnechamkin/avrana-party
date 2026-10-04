@@ -120,8 +120,10 @@ def check_games(games):
     expect(constant(vendored_result, 'SCHEMA'), res['schema'], 'vendored result schema', where)
     expect(sha256_normalized(vendored_result), res['vendored_sha256'], 'vendored result file digest', where)
     expect(sha256_normalized(games / res['vectors']), res['vectors_sha256'], 'vendored result vectors digest', where)
-    if 'bridge' in d:     # a games repository that serves pages on the game origin vendors the shim
-        check_bridge(games, d['bridge'], 'vendored', where)
+    if 'bridge' not in d:
+        raise Drift(f'{where} declares no bridge: a games repository vendors the bridge shim (ADR 0013) '
+                    'and declares it with its vectors')
+    check_bridge(games, d['bridge'], 'vendored', where)
     for slug in res['reported_by']:
         if slug not in d['party_side_games']:
             raise Drift(f'result reporters drifted: {where} lists {slug!r} under result.reported_by '
@@ -169,15 +171,14 @@ def check_cross(party, games, p, g):
                     'avrana/party/result.py (Party); re-vendor the file and update both declarations')
     if gr['vectors_sha256'] != pr['vectors_sha256']:
         raise Drift('result vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
-    if 'bridge' in g:
-        pb, gb = p['bridge'], g['bridge']
-        if gb['protocol'] != pb['protocol']:
-            raise Drift(f'bridge protocol drifted: Games {gb["protocol"]!r} vs Party {pb["protocol"]!r}')
-        if gb['vendored_sha256'] != pb['reference_sha256']:
-            raise Drift(f'bridge shim drifted: {gb["vendored"]} (Games) is not byte-identical to '
-                        f'{pb["reference"]} (Party); re-vendor the file and update both declarations')
-        if gb['vectors_sha256'] != pb['vectors_sha256']:
-            raise Drift('bridge vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
+    pb, gb = p['bridge'], g['bridge']
+    if gb['protocol'] != pb['protocol']:
+        raise Drift(f'bridge protocol drifted: Games {gb["protocol"]!r} vs Party {pb["protocol"]!r}')
+    if gb['vendored_sha256'] != pb['reference_sha256']:
+        raise Drift(f'bridge shim drifted: {gb["vendored"]} (Games) is not byte-identical to '
+                    f'{pb["reference"]} (Party); re-vendor the file and update both declarations')
+    if gb['vectors_sha256'] != pb['vectors_sha256']:
+        raise Drift('bridge vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
     for key in ('party_ticket', 'party_ended', 'game_launch', 'game_end'):
         if p['routes'][key] != g['routes'][key]:
             raise Drift(f'route {key} drifted: Party {p["routes"][key]!r} vs Games {g["routes"][key]!r}')
@@ -203,8 +204,6 @@ def run(party, games=None):
     g = check_games(games)
     print(f'Games requires {g["requires"]}: OK against its code')
     check_cross(party, games, p, g)
-    if 'bridge' not in g:
-        print('Games does not vendor the bridge shim: its pages share the Party origin; bridge NOT compared')
     print('Party <-> Games contract: compatible')
 
 

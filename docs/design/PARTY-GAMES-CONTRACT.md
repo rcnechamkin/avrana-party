@@ -36,9 +36,8 @@ Both name the same components:
 - **bridge** ([ADR 0013](../adr/0013-party-and-game-browser-origins.md),
   [BROWSER-ORIGINS](BROWSER-ORIGINS.md)): protocol `avrana.party-bridge/v1`; the SHA-256 of the
   shim a game page loads from its own origin (`web/party/bridge/shim.js`, vendored unchanged as
-  `web/avrana-party-bridge.js` in Games) and of its vectors. Party always declares it. A games
-  repository declares it once its pages can be served on the game origin; until then the checker
-  says the bridge was not compared;
+  `web/avrana-party-bridge.js` in Games) and of its vectors. Both repositories declare it; a
+  games declaration without it is refused;
 - **routes**: the party's ticket route, the party's loopback `ended` route, the game's launch
   and end routes under `/games/<slug>/`;
 - **launch integration**: `avrana.lan-launch/v1`, the `avrana=1` marker, the fixed `/party/`
@@ -55,8 +54,8 @@ from either repository):
 1. proves Party's declaration against Party's constants and file digests;
 2. proves Games' declaration against Games' constants, mounted routes, exporter and drop-in;
 3. compares the two: same contract version, identical protocol file and vectors, same result
-   schema with an identical reference file and vectors, an identical bridge shim and vectors
-   (when Games vendors it), same routes, launch and environment names, identical catalog snapshot.
+   schema with an identical reference file and vectors, an identical bridge shim and vectors,
+   same routes, launch and environment names, identical catalog snapshot.
 
 Every failure names the drifted component and the file to change. It runs in Party's
 `Cross-repo contract` workflow and Games' `cross-repo` job, each against the other repository's

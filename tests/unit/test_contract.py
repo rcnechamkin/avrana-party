@@ -168,11 +168,13 @@ class Mutations(unittest.TestCase):
             self.run_all()
         self.assertIn('bridge protocol drifted', str(cm.exception))
 
-    def test_a_games_repository_that_does_not_vendor_the_shim_is_compatible(self):
-        # A games server whose pages share the Party origin (Games main before AVR-226's pair).
+    def test_a_games_repository_that_does_not_declare_the_bridge_is_named(self):
+        # Never "not compared": a declaration without the shim would pass with nothing checked.
         del self.games_decl['bridge']
         self.write_games()
-        self.run_all()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('declares no bridge', str(cm.exception))
 
     def test_a_declared_bridge_frame_must_exist(self):
         (self.party / 'web/party/bridge.html').unlink()

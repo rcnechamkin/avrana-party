@@ -233,6 +233,17 @@ test('the host ends the round from the arcade page with two taps and goes to Par
   expect(await state()).toBe('lobby');
 });
 
+test('an arcade that does not answer at first decides nothing: the page asks again and then uses the bridge', async ({ page: host, context }) => {
+  await hostWithGameOn(host);
+  const page = await context.newPage();
+  let refused = 0;
+  await page.route('**/arcade/stats', (route) => (refused++ < 2 ? route.fulfill({ status: 502, body: '' }) : route.continue()));
+  await page.goto(`${GAMES}/arcade/`);
+  await expect(page.locator('iframe[title="Avrana Party"]')).toHaveAttribute('src', `${PARTY}/party/bridge.html`);
+  await expect(page.locator('#avrana-party-end')).toBeVisible();
+  expect(refused).toBeGreaterThanOrEqual(2);
+});
+
 test('the arcade page on the Party origin keeps the same-origin path: no bridge frame', async ({ page }) => {
   await page.goto(`http://127.0.0.1:${PORT}/arcade/`);
   await expect(page.locator('#connect')).toBeVisible();

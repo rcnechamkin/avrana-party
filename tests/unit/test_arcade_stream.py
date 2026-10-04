@@ -48,6 +48,7 @@ def stub_modules():
             super().__init__(text)
             self.text = text
     web = types.SimpleNamespace(json_response=lambda data, status=200: data,
+                                FileResponse=lambda path, headers=None: (path, headers),
                                 HTTPForbidden=type('HTTPForbidden', (HTTPError,), {}),
                                 HTTPServiceUnavailable=type('HTTPServiceUnavailable', (HTTPError,), {}),
                                 HTTPConflict=type('HTTPConflict', (HTTPError,), {}))
@@ -127,6 +128,33 @@ class ArcadeStream(unittest.TestCase):
             self.assertIn(f"new URL('{name}',location.href)", page)
         self.assertEqual(re.findall(r'^import .*$', (REPO_ROOT / 'web/party/bridge/shim.js').read_text(encoding='utf-8'), re.M), [])
         self.assertEqual(re.findall(r'^import .*$', (REPO_ROOT / 'web/party/lib/keep-awake.js').read_text(encoding='utf-8'), re.M), [])
+
+    def test_the_process_serves_the_page_modules_as_javascript(self):
+        # The routes the page's imports reach, as this process answers them (not the dev server's copy).
+        routes = dict(self.stream.page_routes(self.stream.Stream()))
+        self.assertEqual(set(routes), {'/', '/ws', '/stats', '/party-bridge.js', '/keep-awake.js'})
+        for name, source in self.stream.PAGE_MODULES.items():
+            path, headers = routes['/' + name](None)
+            self.assertEqual(path, source)
+            self.assertEqual(headers['Content-Type'], 'text/javascript; charset=utf-8')
+        self.assertEqual(routes['/'](None)[0], REPO_ROOT / 'arcade' / 'index.html')
+
+    def test_stats_tell_the_page_the_configured_party_origin(self):
+        s = self.stream.Stream()
+        env = self.stream.PARTY_ORIGIN_ENV
+        for value, told in (('https://party.avrana.net', 'https://party.avrana.net'),
+                            ('https://party.avrana.net/party/', None)):
+            with mock.patch.dict(os.environ, {env: value}):
+                self.assertEqual(asyncio.run(s.stats(None))['party_origin'], told)
+        with mock.patch.dict(os.environ):
+            os.environ.pop(env, None)
+            self.assertIsNone(asyncio.run(s.stats(None))['party_origin'])
+
+    def test_the_page_asks_until_the_arcade_answers_and_retries_a_ticket_the_party_never_heard(self):
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('if(!r.ok)return undefined', page)        # no answer is not "same origin"
+        self.assertIn('if(o!==undefined)return o', page)
+        self.assertIn('if(BRIDGE_TRANSIENT.includes(answer.error))failed();else disconnect(WORDS.ticket)', page)
 
     def test_the_page_takes_the_party_origin_from_the_arcade_only(self):
         page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')

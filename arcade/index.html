@@ -68,23 +68,30 @@ let wasConnected=false,reconnecting=false,leaving=false,retries=0,retryTimer=nul
 //                End come from there.
 // `bridge` resolves to the shim's connection on the game origin, and to null otherwise.
 const PARTY_GAME='arcade-gauntlet2';
-// A stuck arcade must not hold the page back: no answer in time means the same-origin path.
-const partyOrigin=(async()=>{const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),1500);
- try{const r=await fetch(new URL('stats',location.href),{cache:'no-store',signal:ctl.signal});const o=r.ok?(await r.json()).party_origin:null;
-  return typeof o==='string'&&/^https?:\/\/[^/]+$/.test(o)&&o!==location.origin?o:null}catch(_){return null}finally{clearTimeout(t)}})();
+const BRIDGE_TRANSIENT=['timeout','offline','unavailable','stopped'];
+// Only an answer from the arcade decides: no answer (a timeout, an error, a 5xx) is not "same
+// origin", so the page asks again until it is told. The same-origin modules start meanwhile (on
+// the game origin they are not served, and nothing happens), so a slow arcade holds nothing back.
+const CONFIG_RETRY=[500,1000,2000,4000];
+async function askPartyOrigin(){const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),1500);
+ try{const r=await fetch(new URL('stats',location.href),{cache:'no-store',signal:ctl.signal});if(!r.ok)return undefined;const o=(await r.json()).party_origin;
+  return typeof o==='string'&&/^https?:\/\/[^/]+$/.test(o)&&o!==location.origin?o:null}catch(_){return undefined}finally{clearTimeout(t)}}
+const partyOrigin=(async()=>{for(let i=0;;i++){const o=await askPartyOrigin();if(o!==undefined)return o;
+ if(i===0)sameOrigin();await new Promise(r=>setTimeout(r,CONFIG_RETRY[Math.min(i,CONFIG_RETRY.length-1)]))}})();
 // Keep the screen on while playing (secure contexts; the module is the Avrana web shell's). Never fatal.
-let awake=null;
+let awake=null,followed=false;
+const wake=m=>{awake=awake||m.createKeepAwake()};
+function sameOrigin(){
+ if(followed||!window.isSecureContext)return;followed=true;
+ if('wakeLock' in navigator)import('/party/lib/keep-awake.js').then(wake).catch(()=>{});
+ // Follow the party (AVR-128): when the Party Host starts or switches to a party game, this phone
+ // goes there too, like Party Home. Full Mode only; with no Party Core it does nothing. Never fatal.
+ // Gauntlet II is itself a Party game (AVR-134). In a Party (ADR 0011) the page stays where the party
+ // is, "Other games" is hidden (only the Party Host moves the party) and the host gets End here.
+ import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:PARTY_GAME,container:document.querySelector('header')})).catch(()=>{});
+}
 const bridge=partyOrigin.then(async origin=>{
- const wake=m=>{awake=m.createKeepAwake()};
- if(!origin){
-  if(window.isSecureContext&&'wakeLock' in navigator)import('/party/lib/keep-awake.js').then(wake).catch(()=>{});
-  // Follow the party (AVR-128): when the Party Host starts or switches to a party game, this phone
-  // goes there too, like Party Home. Full Mode only; with no Party Core it does nothing. Never fatal.
-  // Gauntlet II is itself a Party game (AVR-134). In a Party (ADR 0011) the page stays where the party
-  // is, "Other games" is hidden (only the Party Host moves the party) and the host gets End here.
-  if(window.isSecureContext)import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:PARTY_GAME,container:document.querySelector('header')})).catch(()=>{});
-  return null;
- }
+ if(!origin){sameOrigin();return null}
  document.querySelector('#home').setAttribute('href',origin+'/party/');
  if(window.isSecureContext&&'wakeLock' in navigator)import(new URL('keep-awake.js',location.href).href).then(wake).catch(()=>{});
  const {connectParty}=await import(new URL('party-bridge.js',location.href).href);
@@ -220,7 +227,8 @@ async function start(){
    const party=await bridge;
    if(party){ // the game origin: a single-use ticket from the Party's bridge frame, before every socket
     const answer=await party.ticket();
-    if(!answer.ok){if(mine===attempt)disconnect(WORDS.ticket);return}
+    // nothing reached the Party (as a failed fetch on the same origin): a failed attempt, retried
+    if(!answer.ok){if(mine===attempt){if(BRIDGE_TRANSIENT.includes(answer.error))failed();else disconnect(WORDS.ticket)}return}
     ticket=answer.ticket;
    }else{
    const response=await fetch('/party/api/session/ticket',{method:'POST',credentials:'same-origin',signal:admissionAbort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({game:PARTY_GAME})});

@@ -171,7 +171,10 @@ from its own server's configuration, and that configuration is unset.
   documented and unset in both drop-ins). Unset, or equal to the page's own origin, the page keeps
   the same-origin path it has today (the Party's module in the page, the ticket fetched with the
   cookie). Set to another origin, the page uses the bridge and never calls the Party API. The
-  origin is never read from the address, a link or a message.
+  origin is never read from the address, a link or a message. Only an answer decides: a server
+  that says nothing (a timeout, an error, a 5xx) has not said "same origin", so the page asks
+  again, each request bounded, until it is told. A games server from before the route (404) is an
+  answer: same origin.
 - *Games.* `web/avrana-party-bridge.js` is the shim, vendored unchanged and pinned by digest in
   both contract declarations (`bridge`), with the vectors. `avrana-integration.js` publishes the
   same `window.AvranaParty` a same-origin page has (BLUFF's host chrome and every other game's

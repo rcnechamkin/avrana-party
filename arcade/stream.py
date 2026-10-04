@@ -711,15 +711,21 @@ class Stream:
             pad.device.close()
 
 
+def page_routes(stream):
+    """Every GET this process answers: the page, its socket, its stats and the page's modules."""
+    def module(source):
+        return lambda request: web.FileResponse(
+            source, headers={'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache'})
+    return [('/', lambda request: web.FileResponse(ROOT / 'index.html')),
+            ('/ws', stream.websocket), ('/stats', stream.stats),
+            *(('/' + name, module(source)) for name, source in PAGE_MODULES.items())]
+
+
 if __name__ == '__main__':
     stream = Stream()
     app = web.Application(client_max_size=65536)
-    app.router.add_get('/', lambda request: web.FileResponse(ROOT / 'index.html'))
-    app.router.add_get('/ws', stream.websocket)
-    app.router.add_get('/stats', stream.stats)
-    for name, source in PAGE_MODULES.items():
-        app.router.add_get('/' + name, lambda request, source=source: web.FileResponse(
-            source, headers={'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache'}))
+    for path, handler in page_routes(stream):
+        app.router.add_get(path, handler)
     app.on_startup.append(stream.startup)
     app.on_cleanup.append(stream.cleanup)
     web.run_app(app, host='127.0.0.1', port=8097)
