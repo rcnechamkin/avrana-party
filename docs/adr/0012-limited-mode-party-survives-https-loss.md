@@ -139,7 +139,7 @@ deploy of Party Core and the web build; it is not a change that stays out of pro
 it changes there is small and stated here rather than claimed to be nothing: every view gains
 `"mode": "full"` and every member a `mode`; host succession applies D4 (with every member in
 Full Mode, the same result as before); the doorway page is published under `/party/doorway/`,
-linked from nowhere. What stays off until the owner's step 3: production's `party-core.json`
+linked only from the Limited Mode banner, which stays hidden. What stays off until the owner's step 3: production's `party-core.json`
 has no `limited` object, so no second listener exists and no `avrana_limited` cookie is ever
 issued; nginx's port-80 server is unchanged; the shell shows no banner and gates no seat,
 because both depend on Party Core saying `limited`.

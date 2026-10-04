@@ -312,8 +312,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # In Limited Mode that fall-through is the rule, not the exception: browsers send
         # Sec-Fetch-Site only to trustworthy (HTTPS or localhost) origins, so over plain HTTP
         # this check never fires. There a POST is stopped by the Origin allow-list, which
-        # browsers do send over HTTP, and a GET from another origin changes nothing and cannot
-        # be read, because no response carries a CORS header.
+        # browsers do send over HTTP. A GET from another origin cannot be read, because no
+        # response carries a CORS header, and changes no party state; a state GET that carries
+        # the member's cookie does count as that phone being here, which it is.
         site = self.headers.get('Sec-Fetch-Site')
         if site is not None and site not in SAME_ORIGIN_FETCH:
             _send(self, 403, {'error': 'cross_origin'})
@@ -471,8 +472,13 @@ def limited_config(conf, full):
     the appliance has none (production today). {"hosts": [...], "origins": ["http://..."],
     "port": 8192}. An origin shared with Full Mode is refused: the two modes are two origins
     with two credentials. A host name may be shared (`party.avrana.net` over both schemes is two
-    origins with one Host header), and that is safe: the mode is the listener a request arrived
-    on, each listener checks only its own allow-list, and a Host header selects nothing."""
+    origins with one Host header), and the server is safe with it: the mode is the listener a
+    request arrived on, each listener checks only its own allow-list, and a Host header selects
+    nothing. The browser is another matter: cookies are not separated by scheme, so whatever
+    answers a name over plain HTTP can set a non-Secure cookie that the HTTPS page then presents
+    (the earlier `avrana_device` name, while ADR 0013 D3's dual read lasts). That is true of any
+    HTTP answer for the name, configured here or not, and is why D1 makes the IP literal the
+    canonical Limited origin."""
     if conf is None:
         return None
     if not isinstance(conf, dict) or not conf.get('hosts') or not conf.get('origins'):
@@ -480,6 +486,10 @@ def limited_config(conf, full):
     cfg = Config(conf['hosts'], conf['origins'], mode=core.LIMITED)
     if cfg.origins & full.origins:
         raise ValueError('limited: an origin may not serve both modes')
+    port = conf.get('port', LIMITED_PORT)
+    if isinstance(port, bool) or not isinstance(port, int) or not 0 <= port <= 65535:
+        raise ValueError('limited: "port" must be a port number')
+    cfg.port = port
     return cfg
 
 
@@ -586,14 +596,18 @@ def main(argv=None):
     extra.update(status.route(service, status.load_config(conf)))
     try:                                       # refuse a bad config before binding anything
         limited = limited_config(conf.get('limited'), cfg)
-        limited_port = int(conf['limited'].get('port', LIMITED_PORT)) if limited else None
-    except (ValueError, TypeError) as e:
+    except ValueError as e:
         raise SystemExit(f'party-core config: {e}')
-    server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
     limited_server = None
     if limited is not None:                    # the same party over plain HTTP (ADR 0012)
+        # Bound first, so a port that is taken stops the service before it serves anything.
         # No internal routes: a game reports to the party on the Full listener or the socket.
-        limited_server = make_server(service, limited, port=limited_port, extra_routes=extra)
+        try:
+            limited_server = make_server(service, limited, port=limited.port, extra_routes=extra)
+        except OSError as e:
+            raise SystemExit(f'party-core config: limited: port {limited.port}: {e}')
+    server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
+    if limited_server is not None:
         threading.Thread(target=limited_server.serve_forever, daemon=True).start()
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()

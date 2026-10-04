@@ -263,19 +263,25 @@ class LimitedConfig(unittest.TestCase):
             service.Config({LIMITED_HOST}, {LIMITED_ORIGIN}, mode='half')
 
 
-def free_port():
-    with socket.socket() as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
+def free_ports(n):
+    """n distinct ports that were free a moment ago, picked while all are held."""
+    held = [socket.socket() for _ in range(n)]
+    try:
+        for s in held:
+            s.bind(('127.0.0.1', 0))
+        return [s.getsockname()[1] for s in held]
+    finally:
+        for s in held:
+            s.close()
 
 
 class MainWiring(unittest.TestCase):
     """service.main() itself, as a process: which listeners a config starts."""
 
-    def run_main(self, limited):
+    def run_main(self, limited, port=None):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        port = free_port()
+        port = port or free_ports(1)[0]
         conf = {'hosts': [f'127.0.0.1:{port}'], 'origins': [f'http://127.0.0.1:{port}'], 'secure_cookie': False,
                 'devices': os.path.join(tmp.name, 'devices.json'), 'games': {}}
         if limited is not None:
@@ -315,17 +321,10 @@ class MainWiring(unittest.TestCase):
                     raise
                 time.sleep(0.1)
 
-    def refused(self, port):
-        try:
-            socket.create_connection(('127.0.0.1', port), timeout=2).close()
-        except OSError:
-            return True
-        return False
-
     def test_a_limited_object_starts_a_second_listener_that_is_limited_mode_and_only_that(self):
-        lport = free_port()
+        port, lport = free_ports(2)
         host, origin = f'127.0.0.1:{lport}', f'http://127.0.0.1:{lport}'
-        proc, port = self.run_main({'hosts': [host], 'origins': [origin], 'port': lport})
+        proc, port = self.run_main({'hosts': [host], 'origins': [origin], 'port': lport}, port)
         full_host = f'127.0.0.1:{port}'
         self.assertEqual(self.answer(proc, port, full_host)[1]['mode'], 'full')
         status, view, _ = self.answer(proc, lport, host)
@@ -363,30 +362,59 @@ class MainWiring(unittest.TestCase):
     def test_without_a_limited_object_main_starts_no_second_listener(self):
         proc, port = self.run_main(None)
         self.assertEqual(self.answer(proc, port, f'127.0.0.1:{port}')[1]['mode'], 'full')
-        self.assertTrue(self.refused(service.LIMITED_PORT) or self.not_ours(service.LIMITED_PORT))
         self.assertIsNone(proc.poll())
+        # No listener anywhere answers for this party but the one asked for. The default
+        # Limited port may be held by something else on this machine; if it is, it is not this
+        # process, which has exactly one listening socket.
+        self.assertEqual(self.listening(proc.pid), {port})
 
-    def not_ours(self, port):
-        """Something else on this machine holds the default port: it is not this Party Core if it
-        does not answer as one."""
-        try:
-            conn = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
-            conn.request('GET', '/party/api/state', headers={'Host': '10.42.0.1'})
-            res = conn.getresponse()
-            raw = res.read()
-            conn.close()
-            return not (res.status == 200 and json.loads(raw).get('mode') == 'limited')
-        except (OSError, ValueError, http.client.HTTPException):
-            return True
+    def listening(self, pid):
+        """The loopback TCP ports process `pid` listens on, as the OS reports them."""
+        if sys.platform.startswith('linux'):
+            inodes = set()
+            for fd in os.listdir(f'/proc/{pid}/fd'):
+                try:
+                    link = os.readlink(f'/proc/{pid}/fd/{fd}')
+                except OSError:
+                    continue
+                if link.startswith('socket:['):
+                    inodes.add(link[8:-1])
+            ports = set()
+            with open(f'/proc/{pid}/net/tcp', encoding='ascii') as f:
+                next(f)
+                for line in f:
+                    cols = line.split()
+                    if cols[3] == '0A' and cols[9] in inodes:           # 0A: listening
+                        ports.add(int(cols[1].rsplit(':', 1)[1], 16))
+            return ports
+        if sys.platform == 'win32':
+            out = subprocess.run(['netstat', '-ano', '-p', 'TCP'], capture_output=True, text=True, check=True).stdout
+            return {int(cols[1].rsplit(':', 1)[1]) for cols in (line.split() for line in out.splitlines())
+                    if len(cols) == 5 and cols[3] == 'LISTENING' and cols[4] == str(pid)}
+        self.skipTest('no way to list a process\'s listening sockets here')
 
     def test_a_bad_limited_object_stops_main_before_it_listens_anywhere(self):
         for bad in ({'hosts': ['10.42.0.1'], 'origins': ['https://10.42.0.1']},
                     {'hosts': ['10.42.0.1'], 'origins': ['http://10.42.0.1'], 'port': 'eighty'},
+                    {'hosts': ['10.42.0.1'], 'origins': ['http://10.42.0.1'], 'port': 70000},
+                    {'hosts': ['10.42.0.1'], 'origins': ['http://10.42.0.1'], 'port': True},
                     {'hosts': ['10.42.0.1']}, 'yes'):
             proc, port = self.run_main(bad)
             self.assertNotEqual(proc.wait(20), 0, bad)
-            self.assertIn('party-core config:', proc.stderr.read().decode(), bad)
-            self.assertTrue(self.refused(port), bad)
+            err = proc.stderr.read().decode()
+            self.assertIn('party-core config:', err, bad)
+            self.assertNotIn('Traceback', err, bad)
+
+    def test_a_limited_port_that_is_taken_stops_main_with_a_config_message(self):
+        with socket.socket() as taken:
+            taken.bind(('127.0.0.1', 0))
+            taken.listen()
+            proc, port = self.run_main({'hosts': ['10.42.0.1'], 'origins': ['http://10.42.0.1'],
+                                        'port': taken.getsockname()[1]})
+            self.assertNotEqual(proc.wait(20), 0)
+            err = proc.stderr.read().decode()
+            self.assertIn('party-core config: limited: port', err)
+            self.assertNotIn('Traceback', err)
 
     def test_an_origin_shared_with_full_mode_is_refused_and_a_shared_host_name_is_not(self):
         full = service.Config({'party.avrana.net'}, {'https://party.avrana.net'})
