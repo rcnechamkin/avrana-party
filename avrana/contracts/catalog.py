@@ -53,7 +53,9 @@ def load_contracts(directory, vocab):
     for path in sorted(Path(directory).glob('*.json')):
         contract = game_mod.load(path, vocab)
         contracts[contract['id']] = contract
-    # The default appliance catalog includes the audited legacy donor library.
+    # The LAN Games donor library is retired from the catalog (ADR 0014, AVR-259): its titles
+    # have no route through the front door any more, so none is offered. The snapshot still
+    # supplies display text and the launch target of the first-party games that runtime hosts.
     # Custom --games directories remain self-contained.
     if Path(directory).resolve() == (CONTRACTS_DIR / 'games').resolve():
         donor = lan_catalog.load(CONTRACTS_DIR / 'catalogs' / 'lan-games.json', vocab)
@@ -67,8 +69,6 @@ def load_contracts(directory, vocab):
                 # lobby (bots can fill seats), not a Party round. Only display text comes from it.
                 contracts[cid].update({k: c[k] for k in ('name', 'summary')})
                 contracts[cid].setdefault('extensions', {})['net.avrana.catalog'] = c['extensions']['net.avrana.catalog']
-            else:
-                contracts[cid] = c
     return contracts
 
 

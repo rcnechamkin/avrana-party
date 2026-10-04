@@ -30,13 +30,15 @@ test('only a real Party Core view turns Party mode on; anything else keeps the c
 
 test('a Party Core game maps to its catalog title and launch path, never a hard-coded one', () => {
   assert.equal(partyGame(catalog, 'bluff').id, 'bluff');
-  assert.equal(partyGame(catalog, 'chess').id, 'lan-chess');            // by the provider's slug
+  const donor = { ...catalog, games: [...catalog.games, { ...byId('bluff'), id: 'lan-chess', legacySlug: 'chess', entry: '/games/chess/', launchTarget: '/games/chess/' }] };
+  assert.equal(partyGame(donor, 'chess').id, 'lan-chess');              // by the provider's slug
+  assert.equal(partyGame(catalog, 'chess'), null);                      // a retired donor title is not offered
   assert.equal(partyGame(catalog, 'nope'), null);
   assert.equal(partyGame(catalog, 'ps1-worms'), null);                  // not installed: not offered
 });
 
 test('home: the host starts a party game, members wait, a phone without a profile is asked for a name', () => {
-  const bluff = byId('bluff'), chess = byId('lan-chess');
+  const bluff = byId('bluff'), chess = { ...bluff, id: 'lan-chess', legacySlug: 'chess' };
   assert.equal(tileMode(bluff, view()).kind, 'start');
   assert.equal(tileMode(bluff, view({ me: ben })).kind, 'wait');
   assert.equal(tileMode(bluff, view({ me: null })).kind, 'profile');     // no Join: a profile is presence

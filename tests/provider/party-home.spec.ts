@@ -117,7 +117,7 @@ test('the host starts BLUFF once and every phone is in the same game, with no Jo
   for (const p of [ana, ben, cleo]) await expect(p.page.getByRole('button', { name: /Join the party|Leave the party/ })).toHaveCount(0);
   await expect(ana.page.locator('#party-host')).toContainText('You’re the host');
   await expect(ben.page.locator('#party-host')).toContainText('Ana is the host');
-  for (const id of ['bluff', 'lan-chess']) {
+  for (const id of ['bluff', 'expo']) {
     await expect(tile(ben.page, id).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
   }
   const v = await partyState(ben.page);
@@ -139,7 +139,7 @@ test('the host starts BLUFF once and every phone is in the same game, with no Jo
 test('during a round Party Home and other games are not places a follower can be: they lead back into it', async ({ browser, request }) => {
   const { phones: [ana, ben], pids: [, pb] } = await startTogether(browser, request, ['Ana', 'Ben'], true);
   await expect(ben.page.locator('#avrana-navigation')).toBeHidden();           // no Back to Party
-  for (const url of ['/party/', '/games/backgammon/?avrana=1', '/games/chess/?avrana=1']) {
+  for (const url of ['/party/', '/games/expo/?avrana=1']) {
     await ben.page.goto(url);
     await expect(ben.page).toHaveURL(IN_BLUFF);
   }
@@ -192,14 +192,14 @@ test('a failed start says why and stays home; a second party game cannot start o
   const ana = await phone(browser, 0), ben = await phone(browser, 1);
   await joinParty(ana.page, 'Ana');
   await joinParty(ben.page, 'Ben');
-  await tile(ana.page, 'lan-chess').getByRole('button', { name: 'Start for everyone' }).click();
-  await expect(ana.page.locator('#party-note')).toContainText('CHESS didn’t start');
+  await tile(ana.page, 'expo').getByRole('button', { name: 'Start for everyone' }).click();
+  await expect(ana.page.locator('#party-note')).toContainText('EXPO didn’t start');
   await ben.page.waitForTimeout(1_500);
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(AT_HOME);
   await tile(ana.page, 'bluff').getByRole('button', { name: 'Start for everyone' }).click();
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(IN_BLUFF);
   const v = await partyState(ana.page);
-  expect(await api(ana.page, 'session/launch', { game: 'chess', if_version: v.version })).toMatchObject({ status: 409, body: { error: 'busy' } });
+  expect(await api(ana.page, 'session/launch', { game: 'expo', if_version: v.version })).toMatchObject({ status: 409, body: { error: 'busy' } });
   expect((await partyState(ana.page)).session.game).toBe('bluff');
   await ana.context.close(); await ben.context.close();
 });
@@ -230,9 +230,9 @@ test('a host switch ends BLUFF before the next game; the phones in BLUFF go wher
   await expect.poll(() => storeDuringMoves(ben.page, 'avrana-party-session:bluff'), { timeout: 30_000 }).toBe(round.body.session.id);
   await expect(ben.page).toHaveURL(IN_BLUFF);
   v = await partyState(ana.page);
-  await api(ana.page, 'session/switch', { game: 'chess', if_version: v.version });   // cannot start here
+  await api(ana.page, 'session/switch', { game: 'expo', if_version: v.version });   // cannot start here
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(AT_HOME);
-  expect(await partyState(ben.page)).toMatchObject({ state: 'lobby', location: { at: 'home' }, session: { game: 'chess', outcome: 'launch_failed' } });
+  expect(await partyState(ben.page)).toMatchObject({ state: 'lobby', location: { at: 'home' }, session: { game: 'expo', outcome: 'launch_failed' } });
   await ana.context.close(); await ben.context.close();
 });
 

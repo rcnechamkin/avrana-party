@@ -37,7 +37,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from avrana.party import core, identity, protocol, service, sessions
 
 GAME = 'bluff'
-SECOND = 'chess'
+SECOND = 'expo'
 MAX_PLAYERS = 6
 LOOPBACK = ('127.0.0.1', '::1')
 FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length')

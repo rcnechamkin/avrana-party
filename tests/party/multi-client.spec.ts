@@ -70,30 +70,30 @@ test.describe('three phones at one party', () => {
     await expect(host.page.locator('#party-host')).toContainText('You’re the host');
     await expect(bob.page.locator('#party-host')).toContainText('Ada is the host');
     await expect(cleo.page.locator('#party-members li')).toHaveCount(3);
-    const tile = (p: Phone) => p.page.locator('[data-id="lan-chess"]');
+    const tile = (p: Phone) => p.page.locator('[data-id="expo"]');
     await expect(tile(host).getByRole('button', { name: 'Start for everyone' })).toBeEnabled();
     await expect(tile(bob).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
     // The API refuses a follower who tries anyway, and a stale host tab too.
-    const refused = await post(bob, 'session/launch', { game: 'lan-chess', if_version: await version(bob) });
+    const refused = await post(bob, 'session/launch', { game: 'expo', if_version: await version(bob) });
     expect(refused.status()).toBe(403);
     expect((await refused.json()).error).toBe('not_host');
-    const stale = await post(host, 'session/launch', { game: 'lan-chess', if_version: 0 });
+    const stale = await post(host, 'session/launch', { game: 'expo', if_version: 0 });
     expect(stale.status()).toBe(409);
     expect((await stale.json()).error).toBe('stale');
     const stranger = await host.page.request.post('/party/api/session/launch', {
-      data: { game: 'lan-chess' }, headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' } });
+      data: { game: 'expo' }, headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' } });
     expect(stranger.status()).toBe(403);                      // a page from elsewhere cannot act
   });
 
   test('the host starts a game and everyone goes there; ending it brings everyone home', async () => {
-    await host.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' }).click();
+    await host.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' }).click();
     for (const p of [host, bob, cleo]) {
-      await expect(p.page).toHaveURL(/\/games\/chess\/\?avrana=1/);
-      await expect(p.page.locator('h1[data-game="chess"]')).toBeVisible();
+      await expect(p.page).toHaveURL(/\/games\/expo\/\?avrana=1/);
+      await expect(p.page.locator('h1[data-game="expo"]')).toBeVisible();
     }
     // Two seats: the third phone watches, but is at the same place as everyone else.
     const s = (await view(cleo)).session;
-    expect(s.game).toBe('lan-chess');
+    expect(s.game).toBe('expo');
     expect(s.my_role).toBe('spectator');
     expect((await view(bob)).session.my_role).toBe('player');
     // Only the host gets the fallback "end" control on a page that draws none of its own.
@@ -110,8 +110,8 @@ test.describe('three phones at one party', () => {
   });
 
   test('switching games: the next start moves the whole party, and the old page follows', async () => {
-    await host.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' }).click();
-    await expect(bob.page).toHaveURL(/\/games\/chess\//);
+    await host.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' }).click();
+    await expect(bob.page).toHaveURL(/\/games\/expo\//);
     // The host switches from inside the game (the party API, as a game's shell would call it).
     const sw = await post(host, 'session/switch', { game: 'arcade-gauntlet2', if_version: await version(host) });
     expect(sw.status()).toBe(200);
@@ -122,11 +122,11 @@ test.describe('three phones at one party', () => {
   });
 
   test('a phone that reloads mid-game keeps its identity and its seat', async () => {
-    await host.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' }).click();
-    await expect(bob.page).toHaveURL(/\/games\/chess\//);
+    await host.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' }).click();
+    await expect(bob.page).toHaveURL(/\/games\/expo\//);
     const before = await view(bob);
     await bob.page.reload();
-    await expect(bob.page.locator('h1[data-game="chess"]')).toBeVisible();
+    await expect(bob.page.locator('h1[data-game="expo"]')).toBeVisible();
     const after = await view(bob);
     expect(after.me.id).toBe(before.me.id);
     expect(after.session.id).toBe(before.session.id);
@@ -134,20 +134,20 @@ test.describe('three phones at one party', () => {
     expect(after.members).toHaveLength(3);                 // no duplicate member from the reload
     // A phone that wanders back to Party Home during the round is sent to the game again.
     await bob.page.goto('/party/');
-    await expect(bob.page).toHaveURL(/\/games\/chess\//);
+    await expect(bob.page).toHaveURL(/\/games\/expo\//);
     await endForEveryone(host);
   });
 
   test('a ticket for a session that ended is refused, and the next round is a new session', async () => {
-    await host.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' }).click();
-    await expect(bob.page).toHaveURL(/\/games\/chess\//);
+    await host.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' }).click();
+    await expect(bob.page).toHaveURL(/\/games\/expo\//);
     const first = (await view(bob)).session.id;
     await endForEveryone(host);
     await expect(bob.page).toHaveURL(/\/party\/$/);
-    const stale = await post(bob, 'session/ticket', { game: 'lan-chess' });
+    const stale = await post(bob, 'session/ticket', { game: 'expo' });
     expect([404, 409]).toContain(stale.status());
-    await host.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' }).click();
-    await expect(bob.page).toHaveURL(/\/games\/chess\//);
+    await host.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' }).click();
+    await expect(bob.page).toHaveURL(/\/games\/expo\//);
     expect((await view(bob)).session.id).not.toBe(first);
     await endForEveryone(host);
   });
@@ -180,9 +180,9 @@ test.describe('three phones at one party', () => {
     expect(leave.status()).toBe(200);
     await expect(bob.page.locator('#party-host')).toContainText('You’re the host');
     await expect(cleo.page.locator('#party-host')).toContainText('Bob is the host');
-    await expect(bob.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' })).toBeEnabled();
-    await bob.page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Start for everyone' }).click();
-    await expect(cleo.page).toHaveURL(/\/games\/chess\//);
+    await expect(bob.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' })).toBeEnabled();
+    await bob.page.locator('[data-id="expo"]').getByRole('button', { name: 'Start for everyone' }).click();
+    await expect(cleo.page).toHaveURL(/\/games\/expo\//);
     await endForEveryone(bob);
   });
 });

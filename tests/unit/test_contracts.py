@@ -264,7 +264,7 @@ class ApplianceAndCatalog(unittest.TestCase):
         built = catalog.build(VOCAB, self.appliance, self.contracts)
         self.assertEqual(built['schema'], 'avrana.catalog/v0')
         installed = [g for g in built['games'] if g['installed']]
-        self.assertEqual(len(installed), 32)
+        self.assertEqual(sorted(g['id'] for g in installed), ['arcade-gauntlet2', 'bluff', 'expo'])
         self.assertEqual([g['id'] for g in installed if g['provider'] != 'lan-games'], ['arcade-gauntlet2'])
         self.assertEqual(next(g for g in installed if g['id'] == 'arcade-gauntlet2')['entry'], '/arcade/')
         bomber = next(g for g in built['games'] if g['id'] == 'ps1-bomberman')
@@ -278,7 +278,7 @@ class ApplianceAndCatalog(unittest.TestCase):
         art = catalog.load_artwork()
         built = catalog.build(VOCAB, self.appliance, self.contracts, artwork=art)
         by_id = {g['id']: g for g in built['games']}
-        self.assertEqual(by_id['lan-chess']['artwork'], 'art/lan-chess.svg')          # the title's own scene
+        self.assertEqual(by_id['bluff']['artwork'], 'art/lan-bluff.svg')              # the title's own scene
         self.assertEqual(by_id['arcade-gauntlet2']['artwork'], 'art/kenney-sword.svg')
         self.assertNotIn('artwork', by_id['ps1-worms'])                                # generic icon instead
         for g in built['games']:
@@ -292,9 +292,9 @@ class ApplianceAndCatalog(unittest.TestCase):
             catalog.build(VOCAB, self.appliance, self.contracts, artwork={'ghost': 'art/kenney-sword.svg'})
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'artwork.json'
-            for games, pattern in (({'lan-chess': 'lan:../x'}, 'bad artwork reference'),
-                                   ({'lan-chess': 'http:x'}, 'bad artwork reference'),
-                                   ({'lan-chess': 'lan:not_exported'}, 'missing')):
+            for games, pattern in (({'bluff': 'lan:../x'}, 'bad artwork reference'),
+                                   ({'bluff': 'http:x'}, 'bad artwork reference'),
+                                   ({'bluff': 'lan:not_exported'}, 'missing')):
                 path.write_text(json.dumps({'schema': 'avrana.artwork/v0', 'games': games}), encoding='utf-8')
                 with self.assertRaisesRegex(ValueError, pattern):
                     catalog.load_artwork(path)
