@@ -118,7 +118,7 @@ shell is the precedent.
 
 | Object | Path | Owner : group, mode | Who may read | Who may write |
 |---|---|---|---|---|
-| Per-game session key (source of truth) | `/etc/avrana-party/game-keys/<slug>.key`, directory `0700` | `avrana-party`, `0600` | Party Core | provisioning (`root`) only |
+| Per-game session key (source of truth) | `/etc/avrana-party/game-keys/<slug>.key`, directory `0700` | `avrana-party`, `0600` | Party Core | provisioning (`root`). Party Core's own identity *could* rewrite or replace a key, and must not: see below |
 | A game's copy of **its own** key | `$CREDENTIALS_DIRECTORY/<slug>.key` (`LoadCredential=`), exists only while the unit runs | systemd | that unit only | nobody |
 | Party device store | `/var/lib/avrana-party-core/` (`StateDirectory`, `0700`) | `avrana-party` | Party Core | Party Core |
 | A native game's persistent state | `$STATE_DIRECTORY` = `/var/lib/avrana-games/<slug>` (`StateDirectory=avrana-games/%i`, `0700`) | that instance's uid | that game | that game |
@@ -133,7 +133,11 @@ shell is the precedent.
 store and reads it directly (which also lets a registry reload pick up a new game without a
 restart). Every *other* holder of a key receives exactly its own through `LoadCredential=`:
 systemd reads the source as root at unit start and exposes a private, memory-backed copy to that
-unit alone. A game never has filesystem access to the key directory. The existing interface is
+unit alone. A game never has filesystem access to the key directory. The cost of a Party-owned
+store is that the file permissions do not stop Party Core's identity from rewriting or replacing a
+key; nothing in Party Core writes there, and it is already the trust root for every key (§1). A
+`root`-owned file readable through a group is not an alternative: `read_key` refuses plain group
+access, before and after AVR-253. The existing interface is
 kept: a unit sets `AVRANA_PARTY_KEYS=%d` and names the credential `<slug>.key`, so
 `avrana.party.managed.configure` and the fork's `party_session.load_sides` find "a directory of
 `<slug>.key` files" exactly as today.

@@ -4,9 +4,10 @@
 #
 #   sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
 #
-# It runs a few transient units (systemd-run) as DynamicUser, creates and deletes two throwaway
-# groups and files under /run/avrana-trust-proof and /var/lib/private/avrana-trust-proof-a, and
-# installs nothing. Run it in CI or on a disposable Linux machine. NEVER on the Pi: that would be
+# It runs a few transient units (systemd-run) as DynamicUser, one of them named
+# avrana-game@proofgame.service for the boundary checker to collect, creates and deletes two
+# throwaway groups and files under /run/avrana-trust-proof and /var/lib/private, and installs
+# nothing. Run it in CI or on a disposable Linux machine. NEVER on the Pi: that would be
 # an unauthorized change to the appliance (AGENTS.md), and a real-Pi check is a separate,
 # owner-run step listed in the ADR.
 #
@@ -28,7 +29,8 @@ pids=()
 
 cleanup() {
     for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null || true; done
-    rm -rf "$work" /var/lib/private/avrana-trust-proof-a /var/lib/avrana-trust-proof-a
+    systemctl stop 'avrana-game@proofgame.service' 2>/dev/null || true
+    rm -rf "$work" /var/lib/private/avrana-trust-proof-a /var/lib/avrana-trust-proof-a \n        /var/lib/private/avrana-games/proofgame /var/lib/avrana-games/proofgame
     groupdel "$front" 2>/dev/null || true
     groupdel "$games" 2>/dev/null || true
 }
@@ -114,6 +116,33 @@ s=$(status run RestrictAddressFamilies=AF_UNIX -- "
 import socket
 socket.socket(socket.AF_INET)" 2>/dev/null)
 check 'RestrictAddressFamilies=AF_UNIX leaves a game no IP socket (loopback included)' nonzero "$s"
+
+# 5. The boundary checker's collector (avrana/ops/boundary.py) against a real dynamic-user unit
+#    named like a native game. It only reads; this is the one place it meets real systemd output.
+slug=proofgame
+systemd-run --quiet --collect --unit="avrana-game@$slug.service" -p DynamicUser=yes     -p "SupplementaryGroups=$games" -p "StateDirectory=avrana-games/$slug" -p StateDirectoryMode=0700     -p RestrictAddressFamilies=AF_UNIX -p PrivateDevices=yes -p ProtectHome=yes     -p "LoadCredential=$slug.key:$work/keys/demo.key" /usr/bin/sleep 120
+for _ in 1 2 3 4 5 6 7 8 9 10; do systemctl is-active --quiet "avrana-game@$slug.service" && break; sleep 0.3; done
+(cd "$repo" && python3 -m avrana.ops.boundary --collect) > "$work/facts.json"
+s=$(status python3 - "$work/facts.json" "$slug" "$games" "$work/keys/demo.key" <<'PY'
+import json, sys
+facts, slug, games, key = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3], sys.argv[4]
+found = [s for s in facts['services'] if s['unit'] == f'avrana-game@{slug}.service']
+print('collected:', json.dumps(found, sort_keys=True))
+assert len(found) == 1, 'the unit was not collected'
+s = found[0]
+want = {'role': 'native-game', 'slug': slug, 'dynamic_user': True, 'supplementary_groups': [games],
+        'address_families': ['AF_UNIX'], 'private_devices': True, 'private_tmp': True,
+        'protect_home': 'yes', 'protect_system': 'strict', 'no_new_privileges': True,
+        'credentials': [key], 'tcp': []}
+wrong = {k: (s.get(k), v) for k, v in want.items() if s.get(k) != v}
+assert not wrong, f'collected value, expected value: {wrong}'
+state = [p for p in s['state'] if p['path'] == f'/var/lib/private/avrana-games/{slug}']
+assert state and state[0]['mode'] == '0700', s['state']
+assert s['user'] not in facts['users'], 'a dynamic identity must not be recorded as a static user'
+PY
+)
+check "the boundary checker collects a dynamic-user game unit as the ADR describes it" 0 "$s"
+systemctl stop "avrana-game@$slug.service" 2>/dev/null || true
 
 echo "failed checks: $fails"
 [[ $fails == 0 ]]
