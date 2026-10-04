@@ -68,8 +68,11 @@ class ContextTests(unittest.TestCase):
         self.assertEqual([c for c in started if 'maintenance' in c or ' gc' in c], [], started)
         # the same commit without the fixture's setting does start it: the check above can fail
         self.write('source.py', 'def sample():\n    return 3\n')
-        started = children('-c', 'maintenance.auto=true', 'commit', '-qam', 'Third')
+        # Kept in the foreground (autoDetach=false), so this control leaves nothing behind either.
+        started = children('-c', 'maintenance.auto=true', '-c', 'maintenance.autoDetach=false',
+                           'commit', '-qam', 'Third')
         self.assertTrue([c for c in started if 'maintenance run --auto' in c], started)
+        self.assertEqual([c for c in started if 'maintenance' in c and '--no-detach' not in c], [], started)
 
     def write(self, name, value):
         path = self.root / name
