@@ -15,6 +15,9 @@ recommendation.
 - [E] The port-80 nginx server answers captive probes, proxies `/arcade/` to the arcade and
   proxies everything else to the LAN Games hub. It has no `/party/` and no `/party/api/`
   (`avrana-party.nginx`). Only the 443 server for `party.avrana.net` serves them.
+  *(Since AVR-259, in the repository: the hub page is no longer served; port-80 `/` is a link
+  to the Party, `/games/` there reaches only BLUFF and EXPO and no native game. The rest of
+  this line still holds.)*
 - [E] Party Core issues one credential: `avrana_device; Path=/party/; HttpOnly; Secure;
   SameSite=Lax`, about 400 days, stored as a SHA-256 in `devices.json` (`identity.py`).
 - [E] Party Core accepts a request only for a configured `Host`, and a POST only from a
@@ -52,7 +55,8 @@ navigates to Full Mode. On failure, or after a short timeout, it navigates to Li
 QR code on the box and the captive landing both point at the doorway.
 
 This answers two of ADR 0012's open items: the QR code carries the doorway, and `/` stops being
-the LAN Games hub (already implied by ADR 0014).
+the LAN Games hub (already implied by ADR 0014; done in the site file by AVR-259, where `/` is an
+interim link page that this doorway replaces).
 
 **As built (step 2).** The page is `web/party/doorway/index.html` with `lib/doorway.js`. Its two
 destinations are attributes of the page itself (`https://party.avrana.net/party/` and

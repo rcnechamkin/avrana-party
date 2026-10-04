@@ -11,8 +11,8 @@ Decisions: ADRs 0004 and 0006–0011. Deployment procedure: `docs/runbooks/party
 - **Deployed/current behaviour** — everything from "What it is" through "Open" below. `/party/`
   is HTTPS-only; without the trusted origin a phone sees "Can't reach the party" and a link to
   the legacy HTTP hub. Nothing in this document claims otherwise.
-- **Accepted architectural target** — the [Full Mode / Limited Mode contract](#accepted-target-full-mode--limited-mode-contract-adr-0012-not-implemented)
-  at the end, decided in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md). It is not implemented or deployed; AVR-225 owns it.
+- **Accepted architectural target** — the [Full Mode / Limited Mode contract](#accepted-target-full-mode--limited-mode-contract-adr-0012-not-deployed)
+  at the end, decided in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md). Rollout steps 1 and 2 are in source (ADR 0012 amendment); it is not deployed; AVR-225 owns it.
 
 ## What it is
 
@@ -157,7 +157,7 @@ used as evidence.
   (`players`, `max_players`, `running`) first. Live `tests/multiplayer.spec.ts` depends on the
   "full" wording.
 
-## Accepted target: Full Mode / Limited Mode contract (ADR 0012; not implemented)
+## Accepted target: Full Mode / Limited Mode contract (ADR 0012; not deployed)
 
 The deployed behaviour above treats trusted HTTPS as a precondition for Party Home. [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md)
 changes the target: **trusted HTTPS is the preferred Full Mode, and its loss must not disable the

@@ -139,10 +139,21 @@ deploy of Party Core and the web build; it is not a change that stays out of pro
 it changes there is small and stated here rather than claimed to be nothing: every view gains
 `"mode": "full"` and every member a `mode`; host succession applies D4 (with every member in
 Full Mode, the same result as before); the doorway page is published under `/party/doorway/`,
-linked only from the Limited Mode banner, which stays hidden. What stays off until the owner's step 3: production's `party-core.json`
-has no `limited` object, so no second listener exists and no `avrana_limited` cookie is ever
-issued; nginx's port-80 server has no Limited Mode location (its `/` is a link to the Party since AVR-259, not yet the doorway); the shell shows no banner and gates no seat,
-because both depend on Party Core saying `limited`.
+linked only from the Limited Mode banner, which stays hidden. What stays off until the owner's
+step 3: production's `party-core.json` has no `limited` object, so no second listener exists and
+no `avrana_limited` cookie is ever issued; the site file's port-80 server has no Limited Mode
+location (in the repository its `/` is a link to the Party since AVR-259, not yet the doorway;
+what the Pi serves is whatever was last installed there); the shell shows no banner and gates no
+seat, because both depend on Party Core saying `limited`.
+
+The parts, by component:
+
+- Party Core: `identity.LimitedStore` and the `avrana_limited` cookie; `limited` in the config
+  starting the second listener; `mode` on each member and in every view; succession per D4.
+- Shell: the Limited Mode banner, driven only by Party Core's `mode`; each member's mode in the
+  roster; per-seat limits in a round's setup, in Limited Mode only (a phone that cannot play a
+  game here is told why and may always choose Watch, so it can never hold up a round); the
+  doorway page `web/party/doorway/`.
 
 Two things about the Limited listener that follow from plain HTTP and are stated rather than
 left to be discovered:
@@ -155,13 +166,6 @@ left to be discovered:
   still at the party when its credential expires joins again as a new member, and its earlier
   member stays in the roster as "away" until the party ends. Nothing new is built for this;
   host-approved reclaim (D3) is where it would be solved.
-
-- Party Core: `identity.LimitedStore` and the `avrana_limited` cookie; `limited` in the config
-  starting the second listener; `mode` on each member and in every view; succession per D4.
-- Shell: the Limited Mode banner, driven only by Party Core's `mode`; each member's mode in the
-  roster; per-seat limits in a round's setup, in Limited Mode only (a phone that cannot play a
-  game here is told why and may always choose Watch, so it can never hold up a round); the
-  doorway page `web/party/doorway/`.
 
 Still to do, owner-only: the nginx port-80 `/party/`, `/party/api/` and doorway locations and
 the `limited` object in the deployed config (step 3), then the real-phone tests (step 4: an
