@@ -115,22 +115,33 @@ server {
     # no port. A native game listens on its own Unix socket, /run/avrana-games/<slug>.sock, which
     # only nginx and Party Core may connect to (group avrana-front). The slug pattern is the Game
     # Contract's id pattern (avrana/contracts/game.py ID): 1 to 40 characters, no "/" and no ".",
-    # so no request can name a socket outside that directory. nginx matches locations against the
-    # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
-    # path really names; the game is sent the request line as the client wrote it.
-    # Source copy: deploy/games/nginx-native-games.location.
+    # so no request can name a socket, or a registry entry, outside its directory. nginx matches
+    # locations against the normalised path ("//", "/./", "/../" and %-escapes resolved), so the
+    # slug is whatever the path really names; the game is sent the request line as the client
+    # wrote it. Source copy: deploy/games/nginx-native-games.location.
     #
     # Control paths are never proxied: Party Core sends launch and end to a game directly, so a
-    # request for them through the front door is refused here, for every slug.
+    # request for them through the front door is refused here, for every slug. The match is on
+    # the normalised path and is case-sensitive; a spelling this rule does not match is not a
+    # control path to the game either, and a game refuses any control request that carries the
+    # proxy headers set below.
     location ~ ^/games/[^/]+/avrana/ {
         return 404;
     }
 
-    # While the LAN Games runtime still serves /games/<slug>/ for its own titles, a slug with no
-    # native socket (nginx's own 502 on connect) is answered by it, exactly as before this rule.
-    # A 502 a native game returns itself is not intercepted. When that runtime retires
-    # (ADR 0014), the error_page line and @lan_games go and nginx answers such a slug itself.
+    # A slug is a native game when it has an entry in the game registry, one file per game that
+    # provisioning writes (root-owned, world-readable, no secret). Every other slug belongs to the
+    # LAN Games runtime, which serves its own titles at the same path shape, and goes there
+    # without nginx trying a socket first. A registered game is never answered by that runtime:
+    # if its socket refuses, or it closes without answering, the phone gets nginx's own 502 and
+    # the request is not sent anywhere else. 418 is only the internal hand-over; a 418 a game
+    # answers itself is passed through. When the LAN Games runtime retires (ADR 0014), the `if`,
+    # the error_page line and @lan_games go.
     location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
+        error_page 418 = @lan_games;
+        if (!-f /etc/avrana-party/games.d/$native_game.json) {
+            return 418;
+        }
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -140,7 +151,6 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 3600;
-        error_page 502 = @lan_games;
     }
 
     location @lan_games {

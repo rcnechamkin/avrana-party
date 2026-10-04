@@ -78,6 +78,15 @@ class StaticRules(unittest.TestCase):
         # one rule for every title: no location names a game
         self.assertNotRegex(SITE, r'location\s+[^{]*/games/[a-z]')
         self.assertEqual(SITE.count('/run/avrana-games/'), 2)                    # the comment and the rule
+        # a slug is native only by its registry entry, and only that rule hands over to LAN Games
+        self.assertEqual(SITE.count('/etc/avrana-party/games.d/$native_game.json'), 1)
+        rule = location_body(https, '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"')
+        self.assertIn('if (!-f /etc/avrana-party/games.d/$native_game.json) {\n            return 418;', rule)
+        self.assertEqual(len(re.findall(r'error_page\s+\d+\s*=\s*@lan_games', SITE)), 1)    # the only hand-over
+        # no upstream failure is ever replayed to another server
+        self.assertNotRegex(SITE, r'error_page\s+50\d')
+        self.assertNotIn('proxy_intercept_errors', SITE)
+        self.assertNotIn('proxy_next_upstream', SITE)
         # the control-path refusal comes before the rule that proxies
         self.assertLess(https.index('/avrana/ {'), https.index('proxy_pass http://unix:/run/avrana-games/'))
 
@@ -113,8 +122,13 @@ def free_port():
 
 
 def upstream(label):
+    seen = []
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
+            seen.append(self.path)
+            if self.headers.get('Content-Length'):
+                self.rfile.read(int(self.headers['Content-Length']))
             body = json.dumps({'upstream': label, 'path': self.path,
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'upgrade': self.headers.get('Upgrade')}).encode()
@@ -124,9 +138,12 @@ def upstream(label):
             self.end_headers()
             self.wfile.write(body)
 
+        do_POST = do_GET
+
         def log_message(self, *args):
             pass
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    server.seen = seen
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -144,7 +161,9 @@ def native_game(path):
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
                                'upgrade': self.headers.get('Upgrade')}).encode()
-            self.send_response(502 if 'own502' in self.path else 200)
+            if self.headers.get('Content-Length'):
+                self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(502 if 'own502' in self.path else 418 if 'own418' in self.path else 200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
@@ -161,6 +180,69 @@ def native_game(path):
         daemon_threads = True
     server = Server(str(path), Handler)
     server.seen = seen
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def silent_game(path):
+    """A stand-in native game that accepts a connection, reads the request and closes without
+    answering: a game that crashes mid-request."""
+    import socketserver
+    seen = []
+
+    class Handler(socketserver.BaseRequestHandler):
+        def handle(self):
+            self.request.settimeout(2)
+            try:
+                seen.append(self.request.recv(65536))
+            except OSError:
+                pass
+
+    class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+        daemon_threads = True
+    server = Server(str(path), Handler)
+    server.seen = seen
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def websocket_game(path):
+    """A stand-in native game that completes a WebSocket handshake (101) and echoes every byte
+    back, so a test can prove frames travel both ways through the rule."""
+    import base64
+    import hashlib
+    import socketserver
+
+    class Handler(socketserver.BaseRequestHandler):
+        def handle(self):
+            self.request.settimeout(5)
+            head = b''
+            while b'\r\n\r\n' not in head:
+                chunk = self.request.recv(4096)
+                if not chunk:
+                    return
+                head += chunk
+            headers = {k.strip().lower(): v.strip() for k, v in
+                       (line.split(':', 1) for line in head.decode('latin-1').split('\r\n')[1:] if ':' in line)}
+            if headers.get('upgrade', '').lower() != 'websocket' or 'sec-websocket-key' not in headers:
+                self.request.sendall(b'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n')
+                return
+            accept = base64.b64encode(hashlib.sha1(
+                (headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+            self.request.sendall(('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
+                                  f'Sec-WebSocket-Accept: {accept}\r\n\r\n').encode())
+            try:
+                while True:
+                    data = self.request.recv(4096)
+                    if not data:
+                        return
+                    self.request.sendall(data)
+            except OSError:
+                return
+
+    class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+        daemon_threads = True
+    server = Server(str(path), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -190,7 +272,17 @@ class RealNginx(unittest.TestCase):
         build.build(tmp / 'web' / 'current', 'nginxtest')
         cls.lan, cls.arcade = upstream('lan'), upstream('arcade')
         (tmp / 'games').mkdir()                      # stands in for /run/avrana-games
+        (tmp / 'registry').mkdir()                   # stands in for /etc/avrana-party/games.d
         cls.native = native_game(tmp / 'games' / 'demo.sock')
+        cls.silent = silent_game(tmp / 'games' / 'silent.sock')
+        cls.echo = websocket_game(tmp / 'games' / 'echo.sock')
+        # registered: demo, silent, echo; dead (a socket nobody listens on) and gone (no socket at
+        # all). `stray` has a listening socket and no entry. Everything else is not a native game.
+        for slug in ('demo', 'silent', 'echo', 'dead', 'gone'):
+            (tmp / 'registry' / f'{slug}.json').write_text(json.dumps({'id': slug}))
+        cls.stray = native_game(tmp / 'games' / 'stray.sock')
+        cls.dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        cls.dead.bind(str(tmp / 'games' / 'dead.sock'))          # bound, never listening
         cls.p80, cls.p443 = free_port(), free_port()
         site = (cls.site
                 .replace('listen 80 default_server;', f'listen 127.0.0.1:{cls.p80} default_server;')
@@ -201,6 +293,7 @@ class RealNginx(unittest.TestCase):
                 .replace('/etc/avrana-party/tls/current/privkey.pem', str(tmp / 'key.pem'))
                 .replace('http://127.0.0.1:8096', f'http://127.0.0.1:{cls.lan.server_port}')
                 .replace('/run/avrana-games/', f'{tmp}/games/')
+                .replace('/etc/avrana-party/games.d/', f'{tmp}/registry/')
                 .replace('http://127.0.0.1:8097/', f'http://127.0.0.1:{cls.arcade.server_port}/')
                 .replace('http://127.0.0.1:8191', f'http://127.0.0.1:{cls.party.server_port}')
                 .replace('/var/www/avrana-party/web/current/', f'{tmp}/web/current/'))
@@ -247,6 +340,10 @@ http {{
         cls.proc.stderr.close()
         cls.lan.shutdown()
         cls.native.shutdown()
+        cls.silent.shutdown()
+        cls.echo.shutdown()
+        cls.stray.shutdown()
+        cls.dead.close()
         cls.arcade.shutdown()
         cls.party.shutdown()
         shutil.rmtree(cls.tmp, ignore_errors=True)
@@ -419,20 +516,107 @@ http {{
         res, body = self.get('/games/demo/own502', https=True)
         self.assertEqual((res.status, json.loads(body)['upstream']), (502, 'native'))
 
-    def test_a_native_socket_nobody_listens_on_falls_through_to_the_lan_games_runtime(self):
-        """The transitional rule (removed with the fork, ADR 0014): nginx's own connect failure,
-        for a slug with no socket or a socket whose game is down, is answered by the LAN Games
-        runtime, which does not know a native slug and says so. The request never reaches another
-        native game."""
-        dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        dead.bind(str(self.tmp / 'games' / 'dead.sock'))          # bound, never listening
+    def lan_paths(self):
+        return list(self.lan.seen)
+
+    def test_a_registered_game_that_is_down_is_a_502_and_is_never_answered_by_lan_games(self):
+        """A native slug is never handed to the LAN Games runtime: not when its socket refuses
+        the connection, and not when it has no socket at all."""
+        before = self.lan_paths()
+        for path in ('/games/dead/play', '/games/gone/play'):
+            res, body = self.get(path, https=True)
+            self.assertEqual(res.status, 502, path)
+            self.assertNotIn(b'upstream', body, path)             # nginx's own page, no process's
+            res, body = self.request('POST', path, body={'ticket': 'aps0.secret.sig'})
+            self.assertEqual(res.status, 502, path)
+        self.assertEqual(self.lan_paths(), before)                # nothing was replayed anywhere
+
+    def test_a_game_that_takes_a_request_and_dies_is_a_502_and_the_request_goes_nowhere_else(self):
+        """The body of a request a native game accepted (it may carry a Party ticket) is never
+        sent to another server."""
+        before, seen = self.lan_paths(), len(self.silent.seen)
+        res, body = self.request('POST', '/games/silent/join', body={'ticket': 'aps0.secret.sig'},
+                                 extra={'Cookie': '__Host-avrana_device=device-secret'})
+        self.assertEqual(res.status, 502)
+        self.assertNotIn(b'upstream', body)
+        self.assertGreater(len(self.silent.seen), seen)           # the game did receive it
+        self.assertIn(b'aps0.secret.sig', b''.join(self.silent.seen[seen:]))
+        self.assertEqual(self.lan_paths(), before)
+        for other in (self.native, self.stray):
+            self.assertFalse([p for p in other.seen if 'silent' in p])
+
+    def test_a_slug_with_no_registry_entry_is_lan_games_even_if_a_socket_of_that_name_listens(self):
+        """The registry decides, not the socket directory: a socket with no entry is not served."""
+        before = len(self.stray.seen)
+        got = json.loads(self.get('/games/stray/play', https=True)[1])
+        self.assertEqual((got['upstream'], got['path']), ('lan', '/games/stray/play'))
+        self.assertEqual(len(self.stray.seen), before)
+
+    def test_lan_games_traffic_never_tries_a_socket_and_logs_no_error(self):
+        """Every request for one of the LAN Games runtime's own titles (all game traffic today)
+        goes straight there: nginx attempts no connection and writes nothing to its error log."""
+        log = self.tmp / 'error.log'
+        size = log.stat().st_size
+        for path in ('/games/bluff/?avrana=1', '/games/expo/ws', '/games/nosuchgame/', '/games/bluff/shared.js'):
+            got = json.loads(self.get(path, https=True)[1])
+            self.assertEqual((got['upstream'], got['path']), ('lan', path))
+            res, body = self.request('POST', path, body={'x': 1})
+            self.assertEqual(json.loads(body)['upstream'], 'lan', path)       # the method and body go with it
+        self.assertEqual(log.read_text()[size:], '')
+
+    def test_a_418_from_a_game_is_the_games_answer_not_the_hand_over(self):
+        before = self.lan_paths()
+        res, body = self.get('/games/demo/own418', https=True)
+        self.assertEqual((res.status, json.loads(body)['upstream']), (418, 'native'))
+        self.assertEqual(self.lan_paths(), before)
+
+    def test_spellings_the_refusal_does_not_match_reach_the_game_as_ordinary_proxied_requests(self):
+        """Documented pass-throughs. The refusal matches the normalised path, case-sensitively;
+        the game is sent the request line as written. Neither spelling below is a control path
+        to a game (a game routes the exact path /games/<slug>/avrana/...), and both arrive with
+        the proxy headers, which a game's control routes refuse (tests/unit/test_party_managed.py
+        test_only_local_unproxied_json_reaches_the_runtime; Games tests/test_party_session.py
+        test_launch_route_refuses_anything_not_local_and_unproxied)."""
+        for path in ('/games/demo/AVRANA/session/v0/launch', '/games/demo/Avrana/session/v0/end'):
+            res, body = self.request('POST', path, body={})
+            got = json.loads(body)
+            self.assertEqual((res.status, got['upstream'], got['path']), (200, 'native', path), path)
+            self.assertTrue(got['forwarded_for'], path)
+            self.assertNotIn('/avrana/', got['path'])
+        # A fragment mark in the request line: whatever nginx makes of it, the exact control path
+        # never reaches the game.
+        before = len(self.native.seen)
+        self.request('POST', '/games/demo/x#/../avrana/session/v0/launch', body={})
+        for path in self.native.seen[before:]:
+            self.assertFalse(path.startswith('/games/demo/avrana/'), path)
+
+    def test_a_websocket_through_the_rule_carries_frames_both_ways(self):
+        """A real upgrade: the game answers 101 and bytes sent after it come back."""
+        import base64
+        raw = self.tls.wrap_socket(socket.create_connection(('127.0.0.1', self.p443), timeout=10),
+                                   server_hostname='party.avrana.net')
         try:
-            before = len(self.native.seen)
-            got = json.loads(self.get('/games/dead/play', https=True)[1])
-            self.assertEqual((got['upstream'], got['path']), ('lan', '/games/dead/play'))
-            self.assertEqual(len(self.native.seen), before)
+            key = base64.b64encode(os.urandom(16)).decode()
+            raw.sendall(('GET /games/echo/ws HTTP/1.1\r\nHost: party.avrana.net\r\nUpgrade: websocket\r\n'
+                         f'Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n').encode())
+            head = b''
+            while b'\r\n\r\n' not in head:
+                chunk = raw.recv(4096)
+                self.assertTrue(chunk, head)
+                head += chunk
+            self.assertTrue(head.startswith(b'HTTP/1.1 101'), head)
+            self.assertIn(b'sec-websocket-accept', head.lower())
+            rest = head.split(b'\r\n\r\n', 1)[1]
+            for frame in (b'\x81\x85\x00\x00\x00\x00hello', b'\x82\x83\x00\x00\x00\x00\x01\x02\x03'):
+                raw.sendall(frame)
+                while len(rest) < len(frame):
+                    chunk = raw.recv(4096)
+                    self.assertTrue(chunk)
+                    rest += chunk
+                self.assertEqual(rest[:len(frame)], frame)
+                rest = rest[len(frame):]
         finally:
-            dead.close()
+            raw.close()
 
     def test_https_apps_still_proxied(self):
         lan = json.loads(self.get('/', https=True)[1])
