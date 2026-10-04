@@ -36,6 +36,13 @@ anyway" question is settled. Still record:
   keyed by player id (tokens never logged). **Already delivered (2026-09-24):** the branch is in the
   Pi dev clone and checked out as the worktree `~/avrana-lab/wt/playtest` (392 BLUFF + lifecycle
   tests pass there).
+- **2026-10-04 (AVR-272): a port on the games runtime is not a guest address.** This runbook was
+  prepared on 2026-09-24 for a lab instance on `:8196` that phones open directly. On the
+  appliance the runtime (`:8096`) is an upstream of nginx only and listens on loopback, and a
+  Games checkout at or after `11811ff` does the same on any port unless it is started with
+  `LANGAMES_HOST=0.0.0.0`. Guests of the deployed product open `http://10.42.0.1/` and nothing
+  else. The `:8196` steps below are kept as the record of the lab procedure; whether this
+  playtest moves behind a front door is open (AVR-272, question for the owner).
 - **Everything happens on ONE origin for the whole playtest** — either `http://10.42.0.1:8196/`
   (the fork directly) or `http://10.42.0.1:8190/` (the dev front door with the party service,
   `experiments/party-service`). Identity lives in per-origin browser storage, so a phone that opens

@@ -55,6 +55,22 @@ for h in captive.apple.com captive.g.aaplimg.com connectivitycheck.gstatic.com c
 c=$(curl -s -m3 -H 'Host: captive.apple.com' http://$ADDR/hotspot-detect.html)
 grep -q Success <<<"$c" && pass "HTTP Apple probe -> Success" || fail "HTTP Apple probe"
 [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' http://$ADDR/)" = 200 ] && pass "HTTP root at http://$ADDR/ -> 200" || fail "HTTP root not 200"
+# -- games runtime listener (AVR-272) --
+# The LAN Games runtime on :8096 is an upstream of nginx and nothing else (ADR 0016 section 4):
+# it must listen on loopback only, and must not answer on the party Wi-Fi or the management LAN.
+# These probes run on the appliance itself, so they prove the bind, not what a firewall would do.
+GP=8096
+g=$(ss -Hlnt "sport = :$GP" 2>/dev/null | awk 'NF{print $4}' | sed "s/%[^:]*//; s/:$GP\$//" | sort -u | tr '\n' ' ')
+if [ -z "$g" ]; then warn "nothing listens on :$GP (games runtime not running?)"
+else
+  bad=$(tr ' ' '\n' <<<"$g" | grep -v -e '^127\.' -e '^\[::1\]$' -e '^$' | tr '\n' ' ')   # no word splitting: "*" is a listener
+  [ -z "$bad" ] && pass "games runtime (:$GP) listens on loopback only" || fail "games runtime (:$GP) listens on $bad(must be loopback only)"
+fi
+for a in $ADDR $(ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do
+  if curl -s -m2 -o /dev/null "http://$a:$GP/"; then fail "games runtime answers on $a:$GP (reachable from the LAN)"
+  else pass "games runtime does not answer on $a:$GP"; fi
+done
+# -- end games runtime listener --
 [ "$(systemctl is-enabled nftables 2>/dev/null)" != enabled ] && pass "nftables.service not enabled (offline table cannot persist)" || warn "nftables.service enabled"
 info "offline mode: $([ -e /run/avrana-offline ] && echo ON || echo off); ip_forward=$(cat /proc/sys/net/ipv4/ip_forward); stations=$(iw dev $AP station dump 2>/dev/null | grep -c '^Station')"
 exit $(( F > 99 ? 99 : F ))

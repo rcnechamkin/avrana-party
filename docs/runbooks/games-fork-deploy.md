@@ -52,7 +52,9 @@ cd /home/cody && git clone ~/avrana-party-games.bundle avrana-party-games && rm 
 cd /home/cody/avrana-party-games && git switch --detach <GAMES_SHA> && git status --short   # empty
 ```
 
-Smoke-test it on a spare port with the live venv (it binds all interfaces, so stop it right after):
+Smoke-test it on a spare port with the live venv. From Games `11811ff` (2026-10-02, AVR-222) the
+server listens on loopback unless `LANGAMES_HOST` says otherwise; an older commit binds every
+interface, so stop it right after either way:
 
 ```bash
 cd /home/cody/avrana-party-games && LANGAMES_PORT=8296 /home/cody/LAN-Games/.venv/bin/python server.py &
@@ -84,10 +86,24 @@ curl -s http://127.0.0.1:8096/api/games | grep -o '"slug":"[^"]*"' | wc -l      
 for s in $(curl -s http://127.0.0.1:8096/api/games | grep -o '"slug":"[^"]*"' | cut -d'"' -f4); do
   c=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8096/games/$s/); [ "$c" = 200 ] || echo "$s $c"; done
 journalctl -u avranaparty-games --since '-5 min' --no-pager | grep -iE 'error|traceback' || echo 'no errors'
+ss -Hlnt 'sport = :8096'                                                            # 127.0.0.1:8096 only (AVR-272)
+systemctl show -p Environment avranaparty-games | grep -o 'LANGAMES_HOST=[^ ]*'      # nothing, or 127.0.0.1
 ```
 
+**The runtime must not be reachable from the LAN (AVR-272).** Port 8096 is an upstream of nginx
+only. Until 2026-10-04 the appliance ran Games `c6d7b52`, which predates the loopback default
+and bound `0.0.0.0:8096`: any device on the party Wi-Fi or the management LAN could reach the
+runtime without going through nginx. Deploying a Games commit at or after `11811ff` closes that,
+provided no unit or drop-in on the appliance sets `LANGAMES_HOST=0.0.0.0`. The topology check
+below asserts the listener from the appliance; the owner confirms it from outside:
+
+- from a phone on the party Wi-Fi, `http://10.42.0.1:8096/` does not load;
+- from a machine on the management LAN, `curl -m 3 http://<eth0 address>:8096/` fails to connect;
+- BLUFF and EXPO still open from `/party/` on port 80 and on 443.
+
 Then run `tools/avrana-topology-check` (read-only). "HTTP root at http://10.42.0.1/ -> 200" must
-still pass. On one phone, open BLUFF from `/party/` (the old hub page is no longer served, AVR-259). Only after that, update
+still pass, and so must "games runtime (:8096) listens on loopback only" and the two "does not
+answer on" lines. On one phone, open BLUFF from `/party/` (the old hub page is no longer served, AVR-259). Only after that, update
 `docs/SYSTEM.md` (port 8096 row) in a commit.
 
 ## Rollback (owner, sudo; about 10 s)
