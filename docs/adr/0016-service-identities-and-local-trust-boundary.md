@@ -125,12 +125,13 @@ kept: a unit sets `AVRANA_PARTY_KEYS=%d` and names the credential `<slug>.key`, 
 - Arcade: `LoadCredential=arcade-gauntlet2.key:…`.
 - Legacy LAN Games: one `LoadCredential=` per Party game it still hosts (`bluff`, `expo`).
 
-One code prerequisite, to be confirmed by the proof below: systemd grants the service read access
-to a credential file with a POSIX ACL where the filesystem supports it, which makes the file's
-mode read as `0440`; `protocol.read_key` refuses any key readable by group or other. If the proof
-shows that, the loader must treat a file inside `$CREDENTIALS_DIRECTORY` as already protected by
-the directory (the at-rest check stays for the key store). That is a small paired change to the
-vendored `protocol.py` in both repositories, owned by AVR-236. It changes no wire format.
+**One code prerequisite, confirmed by the proof below.** systemd grants the service read access to
+a credential file with a POSIX ACL, so the file is owned by root and its mode reads as `0440`;
+`protocol.read_key` refuses any key readable by group or other, and refused it in the proof run.
+The loader must therefore treat a file inside `$CREDENTIALS_DIRECTORY` as protected by that
+directory, while the at-rest check stays for the key store. That is a small paired change to
+`protocol.py` and its vendored copy in the Games repository, owned by AVR-236 and required before
+migration stage 1. It changes no wire format.
 
 Rejected for key delivery: a second on-disk copy per game (two files drift on rotation); a shared
 group on the key file (`read_key` rightly refuses it, and a group is not "exactly two readers");
@@ -272,7 +273,7 @@ runbook and reverse; each leaves a working appliance.
 1. **Keys and Party Core leave the operator account.** Create `avrana-party`, `avrana-front`,
    `avrana-games`; re-own the key store and device store; `User=avrana-party`. The Games and
    arcade drop-ins switch from the shared directory to `LoadCredential=` + `AVRANA_PARTY_KEYS=%d`.
-   Prerequisites: the credential-loader change in §3 if the proof requires it, and code that
+   Prerequisites: the credential-loader change in §3, and code that
    `avrana-party` can read (the checkout under `/home/cody` is the obstacle). After this stage a
    game key has exactly two readers even though Games and the arcade still run as `cody`.
 2. **The arcade and the legacy fork leave the operator account** (`avrana-arcade`,
@@ -326,12 +327,13 @@ changes, and only for native games.
 
 - Source reading of both repositories at `main` on 2026-10-03 (Party `5b63b07`, Games `42ee69b`).
 - [`experiments/service-trust/proof.sh`](../../experiments/service-trust/proof.sh), run by the
-  `Service trust proof` workflow on an Ubuntu runner: a dynamic identity cannot read the key
-  store but reads its own key through `LoadCredential=`; one game's state directory is closed to
-  another; socket group ownership admits the intended peers and refuses the others; a game with
+  `Service trust proof` workflow on 2026-10-04 (GitHub run 37165312400; Ubuntu 24.04, systemd 255,
+  x86_64), 8 of 8 checks passed: a dynamic identity cannot read the key store but reads its own
+  key through `LoadCredential=`; one game's state directory is closed to another; socket group
+  ownership admits the intended peers and refuses the others; a game with
   `RestrictAddressFamilies=AF_UNIX` and a private network namespace still reaches Party's internal
-  socket and has no IP socket. It also *observes* how a credential file's mode appears and
-  whether `read_key` accepts it. See the pull request for the recorded run.
+  socket and has no IP socket. Observed: the credential file is `0440 root` and `read_key`
+  refuses it (§3).
 - That is Tier 2 evidence about systemd on Ubuntu. **Not proven, and requiring the Pi** (owner,
   Tier 3): the same checks on Debian 13 / arm64; the permissions of `/home/cody` and where service
   code will live; nginx workers picking up `avrana-front`; the arcade under a new user (uinput,
