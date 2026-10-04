@@ -98,6 +98,10 @@ Production progression is historical evidence, not an instruction to synchronize
   for AVR-129 ([finding](findings/2026-09-29-avr129-deploy.md)).
 
 Party Core `avrana-party-core` runs at 127.0.0.1:8191 behind nginx `/party/api/`.
+Party Core, the games fork and the arcade all run as the operator account `cody` and read one
+shared key directory (unit files and drop-ins in source; 2026-09-29 deployment). Separate service
+identities are proposed in [ADR 0016](adr/0016-service-identities-and-local-trust-boundary.md)
+and are not deployed.
 BLUFF is granted and listed in Party Home. Experiment rows below retain the 2026-09-27 branch
 inventory; the source revision table above governs current main observations.
 

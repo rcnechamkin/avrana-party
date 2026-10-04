@@ -1,0 +1,27 @@
+# Non-production proof for ADR 0016 (AVR-227): the systemd primitives the service trust boundary
+# relies on (DynamicUser, LoadCredential, state directories, Unix-socket permissions) behave as the
+# ADR says, on a disposable runner. Runs only when the proof or the key reader changes, or on
+# demand. It is evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md tiers).
+name: Service trust proof
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/service-trust/**'
+      - 'avrana/party/protocol.py'
+      - '.github/workflows/service-trust-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: systemd identity, credential and socket-permission checks
+        run: sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
