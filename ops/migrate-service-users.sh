@@ -44,6 +44,7 @@ venv_target=${AVRANA_GAMES_VENV_TARGET:-/opt/avrana-party-games/venv}
 key_dir=${AVRANA_PARTY_KEY_DIR:-/etc/avrana-party/game-keys}
 device_store=${AVRANA_DEVICE_STORE:-/var/lib/avrana-party-core}
 games_state=${AVRANA_GAMES_STATE:-/var/lib/avrana-lan-games}
+arcade_state=${AVRANA_ARCADE_STATE:-/var/lib/avrana-arcade}
 unit_dir=${AVRANA_UNIT_DIR:-/etc/systemd/system}
 backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
 party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
@@ -215,6 +216,19 @@ if [[ -d $games_checkout/data && ! -d $games_state ]]; then
         echo "$games_checkout/data" > "$backup/games-data"
         stat -c '%U %G %n' "$games_checkout/data" >> "$backup/ownership"   # for --reverse
     fi
+fi
+
+# The arcade's saves and system files (MAME nvram, high scores, per-game cfg) lived in the
+# checkout's arcade/runtime; its unit now writes under its own state directory. Copied, not moved:
+# the previous unit, if --reverse brings it back, finds its own untouched.
+if [[ ! -d $arcade_state ]]; then
+    run install -d -m 0700 -o avrana-arcade -g avrana-arcade "$arcade_state"
+    for name in saves system; do
+        if [[ -d $party_checkout/arcade/runtime/$name ]]; then
+            run cp -a "$party_checkout/arcade/runtime/$name" "$arcade_state/"
+        fi
+    done
+    run chown -R avrana-arcade:avrana-arcade "$arcade_state"
 fi
 
 for entry in "${files[@]}"; do

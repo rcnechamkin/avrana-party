@@ -181,5 +181,52 @@ class Info(unittest.TestCase):
         self.assertIsInstance(Fake(), PresentationProvider)
 
 
+class RetroArchConfig(unittest.TestCase):
+    '''The arcade runs from a read-only release as a user with no home (ADR 0016): the config
+    RetroArch gets must send everything it writes to the service's runtime directory.'''
+
+    def test_the_committed_config_names_no_path_and_the_written_one_only_the_runtime_directory(self):
+        import tempfile
+        from pathlib import Path
+        from avrana import REPO_ROOT
+        from avrana.providers import retroarch
+        committed = (REPO_ROOT / 'arcade/retroarch.cfg').read_text(encoding='utf-8')
+        self.assertNotRegex(committed, r'/home/|_directory\s*=|core_options_path')
+        with tempfile.TemporaryDirectory() as d:
+            runtime = Path(d) / 'state'
+            out = retroarch.write_config(REPO_ROOT / 'arcade/retroarch.cfg', REPO_ROOT / 'arcade/core-options.cfg', runtime)
+            text = out.read_text(encoding='utf-8')
+            self.assertEqual(out, runtime / 'retroarch.cfg')
+            self.assertTrue(text.startswith(committed))
+            values = dict(line.split(' = ', 1) for line in text[len(committed):].splitlines() if line)
+            self.assertEqual(sorted(values), ['core_options_path', 'savefile_directory', 'savestate_directory',
+                                              'screenshot_directory', 'system_directory'])
+            for value in values.values():
+                self.assertTrue(Path(value.strip('"')).is_relative_to(runtime), value)
+            for name in ('system', 'saves', 'screenshots'):
+                self.assertTrue((runtime / name).is_dir())
+            self.assertEqual((runtime / 'core-options.cfg').read_bytes(),
+                             (REPO_ROOT / 'arcade/core-options.cfg').read_bytes())
+            # a second start keeps saves and takes the committed core options again
+            (runtime / 'saves/nvram').write_text('kept')
+            (runtime / 'core-options.cfg').write_text('rewritten by RetroArch')
+            retroarch.write_config(REPO_ROOT / 'arcade/retroarch.cfg', REPO_ROOT / 'arcade/core-options.cfg', runtime)
+            self.assertEqual((runtime / 'saves/nvram').read_text(), 'kept')
+            self.assertEqual(out.read_text(encoding='utf-8'), text)
+            self.assertNotEqual((runtime / 'core-options.cfg').read_text(), 'rewritten by RetroArch')
+
+    def test_prepare_runs_before_each_start_and_supplies_the_config(self):
+        from avrana.providers.retroarch import RetroArchRuntime
+        seen = []
+
+        class Proc:
+            def poll(self):
+                return 0
+        r = RetroArchRuntime(config='unused', core='k', content='x', prepare=lambda: 'written.cfg',
+                             popen=lambda cmd, **kw: seen.append(cmd) or Proc())
+        r.start()
+        self.assertEqual(seen[0][seen[0].index('-c') + 1], 'written.cfg')
+
+
 if __name__ == '__main__':
     unittest.main()
