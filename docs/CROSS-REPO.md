@@ -33,6 +33,9 @@ Consequences:
 - a Games change that needs a Party change passes only once the paired Party branch exists with
   the same `avr-N`; both PRs link each other and merge Party first (Games CI then passes against
   `main`), unless the change is Games-only backwards-compatible;
+- the other way round: when Party's own checks need the Games change (a Party test that drives
+  the real games server, or a checker that now requires something of the Games declaration) and
+  the Games change passes against Party `main`, Games merges first. Both PR bodies say so;
 - after both merge, `main` against `main` is checked again on the push.
 
 ## Paired PRs

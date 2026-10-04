@@ -1,6 +1,6 @@
 # Party and game browser origins: mechanisms (AVR-226)
 
-Status: **ACCEPTED mechanisms (owner, 2026-10-03). Step 1 of §4 is in source; nothing is deployed.** The direction is
+Status: **ACCEPTED mechanisms (owner, 2026-10-03). Steps 1 to 3 of §4 are in source; nothing is deployed.** The direction is
 accepted in [ADR 0013](../adr/0013-party-and-game-browser-origins.md), whose amendment of
 2026-10-03 records the owner's decisions D1 to D5 (§5). The text below is the design as proposed
 and accepted; "As built" notes say where step 1 differs. Linear: AVR-226. Related:
@@ -161,6 +161,40 @@ tier is unavailable.
 
 Step 1 is done in source (AVR-226): Tier 1 tests for the bridge, the shim and Party Core, and a
 Tier 2 run in Chromium with two host names of one site (`tests/offline/bridge.spec.ts`).
+
+**As built (steps 2 and 3).** Nothing changes on the appliance until step 4: every page decides
+from its own server's configuration, and that configuration is unset.
+
+- *How a page knows where the Party is.* Its own server tells it, and nothing else can: the games
+  server answers `GET /api/avrana` with `partyOrigin`, and the arcade's `stats` carries
+  `party_origin`, both from `AVRANA_PARTY_ORIGIN` (an origin and nothing else, or it is ignored;
+  documented and unset in both drop-ins). Unset, or equal to the page's own origin, the page keeps
+  the same-origin path it has today (the Party's module in the page, the ticket fetched with the
+  cookie). Set to another origin, the page uses the bridge and never calls the Party API. The
+  origin is never read from the address, a link or a message. Only an answer decides: a server
+  that says nothing (a timeout, an error, a 5xx) has not said "same origin", so the page asks
+  again, each request bounded, until it is told. A games server from before the route (404) is an
+  answer: same origin.
+- *Games.* `web/avrana-party-bridge.js` is the shim, vendored unchanged and pinned by digest in
+  both contract declarations (`bridge`), with the vectors. `avrana-integration.js` publishes the
+  same `window.AvranaParty` a same-origin page has (BLUFF's host chrome and every other game's
+  fallback End are unchanged code) and `AvranaIntegration.party`; `hubnet.js` takes its ticket
+  from the bridge before every connect and reads the session id from the ticket it was handed,
+  since a view carries no id.
+- *Arcade.* `arcade/index.html` does the same with the shim served by the arcade itself
+  (`/arcade/party-bridge.js`, and `keep-awake.js`, since a page cannot import across origins).
+- *The shim* now holds a request made before the frame has loaded and sends it after `hello`
+  (a game client connects as soon as it runs).
+- *Proof.* Tier 1 in both repositories; Tier 2 in Chromium with two host names of one site: the
+  real BLUFF page and games server against the real Party Core (`tests/provider/game-origin.spec.ts`:
+  seats by ticket, reload and reconnect keep the seat, only the host ends, a stranger gets no
+  seat, the page holds no cookie and sends the Party API nothing), and the real arcade page
+  (`tests/offline/bridge.spec.ts`). Not shown: Safari, HTTPS, the `__Host-` cookie, nginx.
+
+What step 4 must set together, or not at all: the certificate name, the dnsmasq record, the
+`games.avrana.net` server block (with `frame-ancestors https://games.avrana.net` on
+`/party/bridge.html` only), `game_origins` in Party Core's configuration, and
+`AVRANA_PARTY_ORIGIN=https://party.avrana.net` in the games and arcade drop-ins.
 
 ### What step 5 must validate on a real iPhone (owner)
 

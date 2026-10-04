@@ -48,6 +48,7 @@ def stub_modules():
             super().__init__(text)
             self.text = text
     web = types.SimpleNamespace(json_response=lambda data, status=200: data,
+                                FileResponse=lambda path, headers=None: (path, headers),
                                 HTTPForbidden=type('HTTPForbidden', (HTTPError,), {}),
                                 HTTPServiceUnavailable=type('HTTPServiceUnavailable', (HTTPError,), {}),
                                 HTTPConflict=type('HTTPConflict', (HTTPError,), {}))
@@ -104,6 +105,69 @@ class ArcadeStream(unittest.TestCase):
         self.assertEqual(self.stream.MAX_PLAYERS, inp['slots'])
         page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
         self.assertEqual(set(re.findall(r'data-key="([a-z]+)"', page)), set(self.stream.LAYOUT.names))
+
+    def test_party_origin_is_an_origin_or_nothing(self):
+        # ADR 0013: the page is told the Party's origin only by this configuration.
+        env = self.stream.PARTY_ORIGIN_ENV
+        self.assertEqual(env, 'AVRANA_PARTY_ORIGIN')
+        for good in ('https://party.avrana.net', 'http://party.avrana.test:8182'):
+            self.assertEqual(self.stream.party_origin({env: good}), good)
+        for bad in ('', 'party.avrana.net', 'https://party.avrana.net/', 'https://party.avrana.net/party/',
+                    'https://u@party.avrana.net', 'javascript:alert(1)', 'https://a.example https://b.example',
+                    'https://party.avrana.net\n', '*'):
+            self.assertIsNone(self.stream.party_origin({env: bad}), bad)
+        self.assertIsNone(self.stream.party_origin({}))
+
+    def test_page_modules_are_the_partys_own_files(self):
+        # On the game origin the page imports these from the arcade's own origin.
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertEqual(set(self.stream.PAGE_MODULES), {'party-bridge.js', 'keep-awake.js'})
+        self.assertEqual(self.stream.PAGE_MODULES['party-bridge.js'], REPO_ROOT / 'web/party/bridge/shim.js')
+        for name, source in self.stream.PAGE_MODULES.items():
+            self.assertTrue(source.is_file(), source)
+            self.assertIn(f"new URL('{name}',location.href)", page)
+        self.assertEqual(re.findall(r'^import .*$', (REPO_ROOT / 'web/party/bridge/shim.js').read_text(encoding='utf-8'), re.M), [])
+        self.assertEqual(re.findall(r'^import .*$', (REPO_ROOT / 'web/party/lib/keep-awake.js').read_text(encoding='utf-8'), re.M), [])
+
+    def test_the_process_serves_the_page_modules_as_javascript(self):
+        # The routes the page's imports reach, as this process answers them (not the dev server's copy).
+        routes = dict(self.stream.page_routes(self.stream.Stream()))
+        self.assertEqual(set(routes), {'/', '/ws', '/stats', '/party-bridge.js', '/keep-awake.js'})
+        for name, source in self.stream.PAGE_MODULES.items():
+            path, headers = routes['/' + name](None)
+            self.assertEqual(path, source)
+            self.assertEqual(headers['Content-Type'], 'text/javascript; charset=utf-8')
+            self.assertEqual(headers['Cache-Control'], 'no-cache')
+        self.assertEqual(routes['/'](None)[0], REPO_ROOT / 'arcade' / 'index.html')
+
+    def test_stats_tell_the_page_the_configured_party_origin(self):
+        s = self.stream.Stream()
+        env = self.stream.PARTY_ORIGIN_ENV
+        for value, told in (('https://party.avrana.net', 'https://party.avrana.net'),
+                            ('https://party.avrana.net/party/', None)):
+            with mock.patch.dict(os.environ, {env: value}):
+                self.assertEqual(asyncio.run(s.stats(None))['party_origin'], told)
+        with mock.patch.dict(os.environ):
+            os.environ.pop(env, None)
+            self.assertIsNone(asyncio.run(s.stats(None))['party_origin'])
+
+    def test_the_page_asks_until_the_arcade_answers_and_retries_a_ticket_the_party_never_heard(self):
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('if(!r.ok)return undefined', page)        # no answer is not "same origin"
+        self.assertIn('if(o!==undefined)return o', page)
+        self.assertEqual(page.count('sameOrigin()'), 2)         # its definition and the answered "no origin"
+        self.assertIn("+(i?'?retry='+i:'')", page)              # a failed shim import is tried again
+        self.assertIn('if(BRIDGE_TRANSIENT.includes(answer.error))failed();else disconnect(WORDS.ticket)', page)
+
+    def test_the_page_takes_the_party_origin_from_the_arcade_only(self):
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('.party_origin', page)
+        self.assertNotIn("get('party", page)                    # never from the address
+        # the drop-in documents the setting and does not set it: no deployment effect until the owner does
+        conf = (REPO_ROOT / 'deploy/arcade/avrana-party-session.conf').read_text(encoding='utf-8')
+        self.assertIn('AVRANA_PARTY_ORIGIN', conf)
+        self.assertEqual([line for line in conf.splitlines()
+                          if 'AVRANA_PARTY_ORIGIN' in line and not line.lstrip().startswith('#')], [])
 
     def test_presentation_provider_shape(self):
         s = self.stream.Stream()
