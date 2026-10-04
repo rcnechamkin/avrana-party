@@ -42,7 +42,8 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(card).toContainText('Works on this phone');
   await expect(card).toContainText('1 of 2 playing');
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/arcade/');
-  await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/chess/?avrana=1');
+  await expect(page.locator('[data-id="expo"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/expo/?avrana=1');
+  await expect(page.locator('[data-id^="lan-"]')).toHaveCount(0);                // no retired LAN Games title is offered
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Not installed');
   // BLUFF is installed: listed with its own art and launched through the Avrana-integrated path.
   const bluff = page.locator('[data-id="bluff"]');

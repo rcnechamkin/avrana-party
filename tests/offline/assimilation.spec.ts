@@ -10,8 +10,8 @@ async function legacyProfile(page: Page) {
       localStorage.setItem('wc-token', 'existing-player-01');
       localStorage.setItem('wc-name', 'Robin');
       localStorage.setItem('wc-avatar', '🐸');
-      localStorage.setItem('lg-favorites', '["chess"]');
-      localStorage.setItem('lg-recent', '["chess"]');
+      localStorage.setItem('lg-favorites', '["expo"]');
+      localStorage.setItem('lg-recent', '["expo"]');
       localStorage.setItem('lg-play-total', '3');
     }
   });
@@ -21,18 +21,18 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
   await expect(page.locator('#player-chip')).toContainText('Robin');
   // The legacy 🐸 character reads as the Gaze avatar at its position (docs/UI-DESIGN-SYSTEM.md).
   await expect(page.locator('#player-chip img')).toHaveAttribute('src', /\/party\/avatars\/gaze-02\.svg$/);
-  await expect(page.locator('#game-count')).toHaveText('34 games'); // includes installed BLUFF (AVR-91) and EXPO
+  await expect(page.locator('#game-count')).toHaveText('5 games'); // BLUFF, EXPO, the arcade and two PS1 titles; no retired LAN Games title
   await expect(page.locator('[data-id="bluff"]')).toContainText('BLUFF');
   await expect(page.locator('[data-id="lan-games"]')).toHaveCount(0);
-  await expect(page.locator('[data-id="lan-chess"]')).toContainText('CHESS');
+  await expect(page.locator('[data-id="expo"]')).toContainText('EXPO');
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Worms Armageddon');
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Experimental');
   await expect(page.locator('[data-id="ps1-bomberman"] button', { hasText: 'Not installed' })).toBeDisabled();
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(page.locator('#games > li')).toHaveCount(1);
-  await expect(page.locator('#games')).toContainText('CHESS');
+  await expect(page.locator('#games')).toContainText('EXPO');
   await page.getByRole('button', { name: 'Recently opened', exact: true }).click();
-  await expect(page.locator('#games')).toContainText('CHESS');
+  await expect(page.locator('#games')).toContainText('EXPO');
   await expect(page.locator('#games > li')).toHaveCount(1);
 });
 test('profile edits and a direct legacy game visit share the same backing identity', async ({ page }) => {
@@ -47,14 +47,14 @@ test('profile edits and a direct legacy game visit share the same backing identi
   const snapshot = await page.evaluate(() => ({ token: localStorage.getItem('wc-token'),
     name: localStorage.getItem('wc-name'), avatar: localStorage.getItem('wc-avatar') }));
   expect(snapshot).toEqual({ token: 'existing-player-01', name: 'Robin Two', avatar: 'gaze-17' });
-  await page.route('**/games/chess/?avrana=1', (route) => route.fulfill({
-    contentType: 'text/html', body: '<!doctype html><title>Legacy game stub</title><h1>Chess</h1>' }));
-  await page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play', exact: true }).click();
-  await expect(page).toHaveURL(/\/games\/chess\/\?avrana=1$/);
+  await page.route('**/games/expo/?avrana=1', (route) => route.fulfill({
+    contentType: 'text/html', body: '<!doctype html><title>Legacy game stub</title><h1>Expo</h1>' }));
+  await page.locator('[data-id="expo"]').getByRole('link', { name: 'Play', exact: true }).click();
+  await expect(page).toHaveURL(/\/games\/expo\/\?avrana=1$/);
   // These are the exact getters in the inspected legacy Hub.identity implementation.
   expect(await page.evaluate(() => [localStorage.getItem('wc-token'), localStorage.getItem('wc-name'),
     localStorage.getItem('wc-avatar'), JSON.parse(localStorage.getItem('lg-recent') || '[]')[0],
-    localStorage.getItem('lg-play-total')])).toEqual(['existing-player-01','Robin Two','gaze-17','avrana:lan-chess','4']);
+    localStorage.getItem('lg-play-total')])).toEqual(['existing-player-01','Robin Two','gaze-17','avrana:expo','4']);
 });
 test('search, group size and cross-provider favorites work together', async ({ page }) => {
   await open(page);
@@ -65,11 +65,11 @@ test('search, group size and cross-provider favorites work together', async ({ p
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(page.locator('#games')).toContainText('Worms Armageddon');
   await page.getByRole('button', { name: 'All games', exact: true }).click();
-  await page.locator('#game-search').fill('chess');
+  await page.locator('#game-search').fill('gauntlet');
   await page.locator('#game-players').selectOption('4');
   await expect(page.locator('#games')).toContainText('No games match');
   await page.locator('#game-players').selectOption('2');
-  await expect(page.locator('#games')).toContainText('CHESS');
+  await expect(page.locator('#games')).toContainText('Gauntlet II');
 });
 test('Party Chat uses the same hello and server echo, then reconnects after a profile edit', async ({ page }) => {
   await legacyProfile(page);
@@ -110,8 +110,8 @@ test('missing donor service disables its titles without disabling the arcade or 
   await legacyProfile(page);
   await page.route('**/api/games', (route) => route.fulfill({ status: 502, body: 'down' }));
   await open(page);
-  await expect(page.locator('[data-id="lan-chess"]')).toContainText('Not running right now');
-  await expect(page.locator('[data-id="lan-chess"]').getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
+  await expect(page.locator('[data-id="expo"]')).toContainText('Not running right now');
+  await expect(page.locator('[data-id="expo"]').getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
   await expect(page.locator('[data-id="arcade-gauntlet2"]').getByRole('link')).toBeVisible();
   await expect(page.locator('#player-chip')).toContainText('Robin');
 });
@@ -149,8 +149,8 @@ test('photo framing uses the shared avatar endpoint and removal handles failures
 });
 
 test('old donor fails honestly instead of entering a second global shell', async ({ page }) => {
-  await page.route('**/api/games', (route) => route.fulfill({ json: { games: [{ slug: 'chess' }], external: [] } }));
+  await page.route('**/api/games', (route) => route.fulfill({ json: { games: [{ slug: 'expo' }], external: [] } }));
   await open(page);
-  await expect(page.locator('[data-id="lan-chess"]')).toContainText('Games update needed');
-  await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveCount(0);
+  await expect(page.locator('[data-id="expo"]')).toContainText('Games update needed');
+  await expect(page.locator('[data-id="expo"]').getByRole('link', { name: 'Play' })).toHaveCount(0);
 });

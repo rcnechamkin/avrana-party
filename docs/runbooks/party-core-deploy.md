@@ -62,6 +62,11 @@ party, device identities survive), BLUFF rules changes, `.avrgame`.
    `tests/unit/test_nginx_site.py` runs CI's real nginx with the real party service behind that
    block. From that merge until step 6 below, `main`'s site differs from the live site. That is
    expected: the live site is installed only in step 6.
+   The site also carries the `/games/` rules (`deploy/games/`, AVR-259): BLUFF and EXPO by name
+   to the LAN Games runtime, every other slug to a native game's socket or an nginx error, on
+   both server blocks. Install it only together with the web build of the same commit, whose
+   catalog no longer offers the LAN Games titles those rules stop serving; installing either
+   alone leaves tiles that lead to an error, or routes with no tile.
 3. **CI green** on both repos.
 
 ## Deploy (owner, on the Pi, in this order)
