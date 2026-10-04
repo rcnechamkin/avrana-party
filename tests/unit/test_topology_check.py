@@ -73,13 +73,15 @@ class Block(unittest.TestCase):
                                'FAILS 3'])
 
     def test_an_accepted_connection_without_an_http_answer_is_still_reachable(self):
-        """curl 52 (empty reply) and 56 (reset) mean the port accepted; only 7 and 28 do not."""
+        """curl 52 (empty reply) and 56 (reset) mean the port accepted; only 7 proves it did not."""
         for rc in ('52', '56', '22'):
             out = self.run_block(listener('127.0.0.1'), 'http://10.42.0.1:8096/', CURL_RC=rc)
             self.assertEqual(out[1], f'FAIL games runtime answers on 10.42.0.1:8096 (reachable from the LAN; curl exit {rc})')
             self.assertEqual(out[-1], 'FAILS 1')
-        out = self.run_block(listener('127.0.0.1'), REFUSED_RC='28')            # filtered: timed out
-        self.assertEqual(out[-1], 'FAILS 0')
+        out = self.run_block(listener('127.0.0.1'), REFUSED_RC='28')            # a timeout proves nothing
+        self.assertEqual(out[1:], ['WARN games runtime probe on 10.42.0.1:8096 timed out (not proven unreachable; run again)',
+                                   'WARN games runtime probe on 10.0.0.142:8096 timed out (not proven unreachable; run again)',
+                                   'FAILS 0'])
 
     def test_any_other_address_fails(self):
         for address in ('*', '[::]', '10.42.0.1', '10.0.0.142'):
