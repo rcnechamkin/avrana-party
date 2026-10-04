@@ -44,6 +44,7 @@ venv_target=${AVRANA_GAMES_VENV_TARGET:-/opt/avrana-party-games/venv}
 key_dir=${AVRANA_PARTY_KEY_DIR:-/etc/avrana-party/game-keys}
 device_store=${AVRANA_DEVICE_STORE:-/var/lib/avrana-party-core}
 games_state=${AVRANA_GAMES_STATE:-/var/lib/avrana-lan-games}
+arcade_state=${AVRANA_ARCADE_STATE:-/var/lib/avrana-arcade}
 unit_dir=${AVRANA_UNIT_DIR:-/etc/systemd/system}
 backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
 party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
@@ -94,6 +95,11 @@ if [[ -n $reverse ]]; then
         if [[ -f $reverse/units/$name ]]; then run install -D -m 0644 "$reverse/units/$name" "$unit_dir/$name"
         else run rm -f "$unit_dir/$name"; fi                 # it did not exist before the migration
     done
+    # Drop-ins the migration removed because it does not install them (see "strays" below).
+    while read -r path; do
+        name=${path#"$reverse/units/"}
+        [[ -f $unit_dir/$name ]] || run install -D -m 0644 "$path" "$unit_dir/$name"
+    done < <(find "$reverse/units" -type f -path '*.service.d/*.conf' | sort)
     if [[ -f $reverse/games-data ]]; then
         # Put the fork's data/ back where the previous unit expects it. The copy keeps the state
         # directory's owner, which the previous unit's account cannot read, so this comes before
@@ -144,6 +150,26 @@ for entry in "${files[@]}"; do
     name=${entry%%=*}
     if [[ -f $unit_dir/$name ]]; then run install -D -m 0644 "$unit_dir/$name" "$backup/units/$name"; fi
 done
+# Strays: drop-ins installed on the host for these units that this script does not install. A
+# drop-in overrides the unit it sits beside, so one written for the previous unit (the Pi's
+# avrana-fork.conf sets the games unit's ExecStart and WorkingDirectory to the operator's
+# checkout) would undo the new one. They are recorded here, removed in step 4 and put back by
+# --reverse.
+strays=()
+for unit in "${units[@]}"; do
+    for path in "$unit_dir/$unit.service.d"/*.conf; do
+        [[ -f $path ]] || continue
+        name=${path#"$unit_dir/"}
+        known=0
+        for entry in "${files[@]}"; do
+            if [[ ${entry%%=*} == "$name" ]]; then known=1; fi
+        done
+        if [[ $known -eq 0 ]]; then
+            strays+=("$name")
+            run install -D -m 0644 "$path" "$backup/units/$name"
+        fi
+    done
+done
 if [[ $dry_run -eq 1 ]]; then echo "would record: owners of $key_dir and $device_store in $backup/ownership"
 else
     for path in "$key_dir" "$device_store"; do
@@ -192,8 +218,25 @@ if [[ -d $games_checkout/data && ! -d $games_state ]]; then
     fi
 fi
 
+# The arcade's saves and system files (MAME nvram, high scores, per-game cfg) lived in the
+# checkout's arcade/runtime; its unit now writes under its own state directory. Copied, not moved:
+# the previous unit, if --reverse brings it back, finds its own untouched.
+if [[ ! -d $arcade_state ]]; then
+    run install -d -m 0700 -o avrana-arcade -g avrana-arcade "$arcade_state"
+    for name in saves system; do
+        if [[ -d $party_checkout/arcade/runtime/$name ]]; then
+            run cp -a "$party_checkout/arcade/runtime/$name" "$arcade_state/"
+        fi
+    done
+    run chown -R avrana-arcade:avrana-arcade "$arcade_state"
+fi
+
 for entry in "${files[@]}"; do
     run install -D -o root -g root -m 0644 "${entry#*=}" "$unit_dir/${entry%%=*}"
+done
+for name in ${strays[@]+"${strays[@]}"}; do
+    log "removing $unit_dir/$name: a drop-in of the previous unit (kept in $backup/units/$name)"
+    run rm -f "$unit_dir/$name"
 done
 run systemctl daemon-reload
 # Providers first, then the party that launches into them (as ops/deploy.sh).

@@ -219,6 +219,34 @@ class MigrationScript(unittest.TestCase):
         (self.tmp / 'opt-party/current/deploy/README.md').chmod(0o666)
         self.assertIn('writable by root only', self.run_script('--dry-run').stderr)
 
+    def test_a_drop_in_of_the_previous_unit_is_recorded_removed_and_put_back_by_reverse(self):
+        '''The Pi has avranaparty-games.service.d/avrana-fork.conf (ExecStart and WorkingDirectory
+        in the operator's checkout). Left in place it overrides the new unit, which may not read
+        /home: the games service would not start.'''
+        dropins = self.tmp / 'units/avranaparty-games.service.d'
+        dropins.mkdir(parents=True)
+        (dropins / 'avrana-fork.conf').write_text('[Service]\nExecStart=\nExecStart=/home/cody/x\n')
+        (dropins / 'avrana-party-session.conf').write_text('[Service]\n')
+        r = self.run_script('--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        saved = r.stdout.index(f'install -D -m 0644 {dropins}/avrana-fork.conf {self.tmp}/backups/')
+        removed = r.stdout.index(f'would run: rm -f {dropins}/avrana-fork.conf')
+        self.assertLess(saved, r.stdout.index('systemctl stop avrana-party-core'))
+        self.assertLess(removed, r.stdout.index('systemctl daemon-reload'))
+        self.assertNotIn(f'rm -f {dropins}/avrana-party-session.conf', r.stdout)      # that one is replaced
+        self.assertTrue((dropins / 'avrana-fork.conf').exists())                        # dry run
+        # --reverse puts back a stray the backup holds and the host no longer has
+        backup = self.tmp / 'backups/service-users-test'
+        kept = backup / 'units/avranaparty-games.service.d/avrana-fork.conf'
+        kept.parent.mkdir(parents=True)
+        kept.write_text('[Service]\n')
+        (backup / 'ownership').write_text(f'cody cody {self.tmp}/keys\n')
+        (dropins / 'avrana-fork.conf').unlink()
+        r = self.run_script('--dry-run', '--reverse', str(backup))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        restored = r.stdout.index(f'install -D -m 0644 {kept} {dropins}/avrana-fork.conf')
+        self.assertLess(restored, r.stdout.index('systemctl daemon-reload'))
+
     def test_reverse_gives_the_copied_data_back_to_its_recorded_owner(self):
         # The state directory's files belong to avrana-lan-games; copied back as they are, the
         # previous unit's account could not read them. So: copy first, then restore ownerships,
