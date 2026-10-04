@@ -67,6 +67,43 @@ results) — ADR 0014.
 Standardize **the frame around a player moment**: who may act, until when, who sees what, how it
 is revealed, what is recorded. Leave the moment itself to the game.
 
+### 3.1 The LAN Games fork: what is a donor, what is legacy (AVR-228, 2026-10-04)
+
+[ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) retires the fork as a runtime
+and keeps it as donor and reference code. This table says which parts are which, read from Games
+`main` (`5cd0bac`). It **identifies candidates; it freezes nothing**: no SDK exists, and none is
+declared until Checkers (AVR-238) and Spades show what two independent games actually share
+(ADR 0014 decision 12). "Candidate" means "read this before writing your own", not "import this".
+
+| In the fork | Classification | What carries forward, and what does not |
+|---|---|---|
+| `core/party_protocol.py`, `core/party_result.py` | **Already the public boundary**, not LAN Games code | Vendored byte-identical from Party (`avrana/party/protocol.py`, `result.py`; ADRs 0006, 0015). Every native game vendors the same two files |
+| `core/party_session.py` | **Extraction candidate** (game-side runtime) | Key loading, the local-and-unproxied guard, and the `ended` delivery policy (one report, bounded retries, at-most-once at Party). Its `GAMES` list and its coupling to `server.py` routes stay behind |
+| `core/session.py` (`GameSession`) | **Pattern donor** | The phase envelope; one `(deadline, gen)` timer on the monotonic clock; `fx`; per-viewer `state_for` with a separate spectator view; `party_start`, `take_outcome`, `game_result`. **Not carried:** token-keyed `Player` identity, the game's own ready/countdown lobby, bot seating as a base-class concern |
+| `core/net.py` (`GameBinding`) | **Pattern donor** | One lock per room; a personalized push after every mutation; ticket admission at `hello`; a fresh room per launch; `ended` exactly once. **Not carried:** the browser-minted-token watch path, standalone admission, and anything that knows a particular game (ADR 0014 Context) |
+| `core/duel.py` (`DuelSession`) | **Pattern donor**, narrow | Two-seat turn plumbing, resign/draw/takeback courtesy. Checkers decides whether any of it is worth sharing; one consumer is not evidence |
+| `core/ws_limit.py`, `core/events.py` | **Extraction candidates**, small | Outbound backlog bound for a socket that stops reading; one structured log line per lifecycle event with no tokens. Useful to any game server on the same stack |
+| `web/hubnet.js` | **Pattern donor** (client) | Reconnect with a fresh Party ticket; server-clock offset. **Not carried:** `wc-*` localStorage identity, manifest/icon injection, the hub's toasts and chrome |
+| `web/avrana-integration.js`, `avrana-integration.css` | **Legacy compatibility** | Same-origin Party calls from game pages (with Party's `party-follow.js`). Replaced by the designed seam of [ADR 0013](../adr/0013-party-and-game-browser-origins.md), not ported |
+| `games/<slug>/` rules and clients (BLUFF, EXPO, the ~28 donor titles) | **Game logic donor**, per title | A title moves only by being re-homed behind the native boundary as its own process (BLUFF, then Classics adaptations chosen one at a time). Nothing moves in bulk |
+| `server.py`, `games/registry.py`, `provider/`, `ops/export_avrana_catalog.py` | **Legacy runtime** | The monolith host, its registry and the `avrana.lan-catalog/v1` export. Superseded by the game registry and canonical manifest (AVR-229, AVR-236); they stop with the runtime |
+| `web/hub.html`, `hub.js`, `sw.js`, `offline.html`, `app.webmanifest`, `brand.js`, `brag.js` | **Legacy runtime** | The standalone hub and its service worker: not a supported product mode (AVR-222) |
+| `core/chat.py`, `core/chatmedia.py`, `core/avatars.py`, `core/looks.py` | **Legacy compatibility, pending a Party-owned replacement** | Chat, photo avatars and the Gaze mapping still run here. Each needs a Party-owned home or an explicit decision to drop it before the monolith can stop (ADR 0014 Consequences); none becomes game SDK |
+| `core/venue.py`, `data/venue.json` | **Legacy runtime** | Per-venue branding and the Wi-Fi join details. Onboarding is Party's ([ONBOARDING](ONBOARDING.md)); a game never holds network credentials |
+| `games/wordclash` (mounted sub-app) | **Legacy runtime** | Shows that a separately written app can sit behind the hub; not a model for the native boundary |
+
+Three rules follow, and they are the reason the split is drawn this way:
+
+- **Authority that Party now owns is never donor material.** Identity, admission, lobby, seating
+  of the roster, navigation, chat and durable results are Party's (§3, ADR 0006 D1). Fork code
+  that does those things is legacy even when it is well written.
+- **A pattern is promoted only on repeated evidence.** A row above becomes shared code when a
+  second independent game needs the same thing, not before (AVR-41's "promoted only with repeated
+  evidence").
+- **Community or untrusted game code never runs in a shared process**, the monolith included; it
+  is out of process by definition ([GAME-INSTALLATION](GAME-INSTALLATION.md) trust tiers,
+  ADR 0014 decision 3, AVR-69).
+
 ## 4. Primitives, in the order worth standardizing
 
 The LAN Games fork already contains at least six hand-written copies of "collect sealed answers,
