@@ -51,7 +51,7 @@ DEFAULT_CONFIG = {
     'web_root': '/var/www/avrana-party/web',
     'certificate': '/etc/avrana-party/tls/current/fullchain.pem',
     'games_url': 'http://127.0.0.1:8096',
-    'arcade_url': 'http://127.0.0.1:8098',
+    'arcade_url': 'http://127.0.0.1:8097',      # the arcade's web port serves /stats; :8098 is its Party link
     'units': ['avrana-party-core', 'avranaparty-games', 'avranaparty-arcade', 'nginx',
               'NetworkManager', 'avrana-party-certificate.timer'],
     # Units an appliance may legitimately not have. Automatic certificate renewal is enabled only
@@ -87,24 +87,28 @@ class Probes:
         self.timeout = timeout
 
     def checkout(self, path):
-        if not Path(path).exists():
-            return None
         try:
+            if not Path(path).exists():
+                return None
             return manifest.observe_checkout(path)
-        except manifest.ManifestError:
+        except (manifest.ManifestError, OSError):     # OSError: a service user that may not look there
             return None
 
     def web_release(self, web_root):
-        return manifest.observe_web_release(web_root)
+        try:
+            return manifest.observe_web_release(web_root)
+        except OSError:
+            return None
 
     def unit_state(self, unit):
         return unit_state(unit, timeout=self.timeout)
 
     def certificate_not_after(self, path):
-        """The notAfter instant as an aware datetime, or None when unreadable."""
-        if not Path(path).exists():
-            return None
+        """The notAfter instant as an aware datetime, or None when unreadable. On the appliance
+        the certificate directory is root-only, so inside the service this is None by design."""
         try:
+            if not Path(path).exists():
+                return None
             out = subprocess.run(['openssl', 'x509', '-noout', '-enddate', '-in', str(path)],
                                  capture_output=True, timeout=self.timeout)
         except (OSError, subprocess.TimeoutExpired):

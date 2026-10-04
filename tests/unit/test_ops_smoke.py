@@ -45,7 +45,7 @@ def healthy_table():
         (443, '/party/api/status'): ok_json(status_doc),
         (8096, '/health'): ok_json({'ok': True}),
         (8096, '/api/games'): ok_json({'avranaIntegration': 'avrana.lan-launch/v1', 'games': []}),
-        (8098, '/stats'): ok_json({'players': 0, 'state': 'idle', 'error': None, 'emulator_running': False}),
+        (8097, '/stats'): ok_json({'players': 0, 'state': 'idle', 'error': None, 'emulator_running': False}),
     }
 
 
@@ -72,7 +72,7 @@ class Checks(unittest.TestCase):
         table[(443, '/party/')] = (200, {}, b'<!doctype html><html>')    # no CSP
         table[(443, '/party/api/state')] = (502, {}, b'bad gateway')
         table[(8096, '/api/games')] = ok_json({'avranaIntegration': 'avrana.lan-launch/v2'})
-        table[(8098, '/stats')] = ok_json({'players': 0, 'error': 'encoder died', 'emulator_running': True,
+        table[(8097, '/stats')] = ok_json({'players': 0, 'error': 'encoder died', 'emulator_running': True,
                                            'sample_age_s': {'video': 42.0}})
         del table[(443, '/party/api/status')]
         results = smoke.run_pi(ScriptedHttp(table), type('P', (), {'certificate_not_after': lambda s, p: NOW})(), units=[],
@@ -151,6 +151,56 @@ class Checks(unittest.TestCase):
             self.assertEqual(smoke.check_units([timer], failed, optional=[timer])[0].status, smoke.FAIL)
             running = systemd({timer: 'active'}, {timer: 'loaded'})
             self.assertEqual(smoke.check_units([timer], running, optional=[timer])[0].status, smoke.PASS)
+
+    def test_the_probe_page_nginx_really_serves_is_success(self):
+        '''avrana-party.nginx answers Apple's probe with the full page, not the bare word.'''
+        page = b'<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>\n'
+        from avrana import REPO_ROOT
+        self.assertIn(page.decode().strip(), (REPO_ROOT / 'avrana-party.nginx').read_text(encoding='utf-8'))
+        for body, want in ((page, smoke.PASS), (b'Success', smoke.PASS), (b'<html>Success? log in</html>', smoke.FAIL)):
+            http = ScriptedHttp({(80, '/hotspot-detect.html'): (200, {}, body)})
+            self.assertEqual(smoke.check_captive_probe(http).status, want, body)
+
+    def test_https_checks_verify_the_party_name_while_connecting_to_loopback(self):
+        '''The Pi set connects to 127.0.0.1 and must verify the certificate for party.avrana.net.
+        A real TLS server here presents a certificate for that name only.'''
+        import ssl, tempfile, http.server
+        from pathlib import Path
+        import shutil
+        if not shutil.which('openssl'):
+            self.skipTest('openssl not available')
+        with tempfile.TemporaryDirectory() as d:
+            crt, key = Path(d) / 'crt.pem', Path(d) / 'key.pem'
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+                            '-nodes', '-days', '1', '-subj', f'/CN={smoke.HOST}', '-addext',
+                            f'subjectAltName=DNS:{smoke.HOST}', '-keyout', str(key), '-out', str(crt)],
+                           check=True, capture_output=True)
+
+            class Handler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self):
+                    body = json.dumps({'party': {}, 'host': self.headers.get('Host')}).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, *a):
+                    pass
+
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            sctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            sctx.load_cert_chain(crt, key)
+            server.socket = sctx.wrap_socket(server.socket, server_side=True)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+            port = server.server_address[1]
+            trusted = ssl.create_default_context(cafile=str(crt))
+            with mock.patch('ssl.create_default_context', return_value=trusted):
+                code, _, body = smoke.Http().get('https', '127.0.0.1', port, '/party/api/state', host=smoke.HOST)
+                self.assertEqual((code, json.loads(body)['host']), (200, smoke.HOST))
+                with self.assertRaises(ssl.SSLCertVerificationError):      # the wrong name is still refused
+                    smoke.Http().get('https', '127.0.0.1', port, '/party/api/state', host='other.example')
 
     def test_summary_counts_skips_separately(self):
         s = smoke.summarize([smoke.Result('a', smoke.PASS), smoke.Result('b', smoke.SKIP)])

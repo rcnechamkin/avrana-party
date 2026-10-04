@@ -30,7 +30,7 @@ is cached for 5 seconds so phones cannot turn it into a `systemctl` storm.
 | `certificate` | `{not_after, days_left, status}` with `ok`, `expiring` (< 21 days), `expired` or `unavailable` |
 | `party_core` | `{ok, uptime_s, members, session: {game, state} or null}` from inside the service |
 | `games_provider` | `{ok, integration, compatible}` from loopback `:8096/api/games` |
-| `arcade` | `{ok, state, players, max_players, party_managed, emulator_running, error, video_frames, sample_age_s}` from loopback `:8098/stats` |
+| `arcade` | `{ok, state, players, max_players, party_managed, emulator_running, error, video_frames, sample_age_s}` from loopback `:8097/stats` |
 | `summary` | `{state: ok, degraded or unknown; reasons; notes}` |
 
 `unknown` means something could not be observed (no manifest yet, `systemctl` unavailable);

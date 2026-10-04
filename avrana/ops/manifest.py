@@ -179,9 +179,9 @@ def write(path, doc):
 def read(path):
     """The manifest, None when the file does not exist, ManifestError when it is malformed."""
     path = Path(path)
-    if not path.exists():
-        return None
     try:
+        if not path.exists():
+            return None
         doc = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError) as e:
         raise ManifestError(f'{path}: unreadable ({type(e).__name__})')
