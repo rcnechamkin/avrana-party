@@ -24,6 +24,8 @@ Letting Party Core stop the systemd unit was rejected, for three reasons:
    - This is the unchanged session protocol v0 (ADR 0006), so it needs no new privileges, systemd change or nginx change.
    - Rules and tests: `avrana/party/managed.py`.
 2. **The control routes are loopback-only, on a port nginx never forwards.**
+   (Loopback keeps browsers out; it does not identify the caller among local services, which
+   all run as one user today. See [ADR 0016](0016-service-identities-and-local-trust.md).)
    - Party Core reaches the arcade at `http://127.0.0.1:8098/avrana/session/v0/{launch,end}`.
    - nginx's `/arcade/` proxy sets no `X-Forwarded-For`, so on port 8097 a phone's request would look local. The control routes therefore get their own `127.0.0.1:8098` listener.
    - They also refuse proxy headers, bodies over 8 KiB, and unsigned, expired, replayed or misaddressed messages.

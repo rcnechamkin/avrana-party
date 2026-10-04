@@ -153,6 +153,11 @@ game derives `game_token(key, sid, pid)`, a stable secret it may use where LAN G
 ## Threat assumptions and residual risk
 
 - **Trusted:** the appliance, its local services, and whoever holds `sudo`.
+  **Read this literally (2026-10-03):** as deployed, every local service runs as one Unix user,
+  so the "0600" key file and the loopback-only `ended` route separate nothing between services:
+  any of them can read every game's key and reach every loopback port. The keys and signatures
+  protect against browsers and the network only. The boundary between local services is
+  [ADR 0016](0016-service-identities-and-local-trust.md) (proposed, not implemented).
 - **Not trusted:** every browser, including a phone's own page. Guests share the Party Wi-Fi.
 - **Symmetric keys.** A game server can mint tickets for its own sessions, and can say "ended"
   for its own session only. Built-in LAN modules share one process, so their keys are per process

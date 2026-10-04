@@ -21,7 +21,9 @@ Status: **RUN 2026-09-29** (production `0e97c2e`, games `03df5ae`): the owner ra
 - nginx: port 8098 is never proxied.
 - Party Core's unit.
 
-**New:** the arcade listens on `127.0.0.1:8098`, loopback only.
+**New:** the arcade listens on `127.0.0.1:8098`, loopback only. (Loopback keeps phones out. It
+does not tell the arcade which local service is calling, and the key is `0600` for a user every
+service shares: see [ADR 0016](../adr/0016-service-identities-and-local-trust.md).)
 
 ## Deploy, in order
 

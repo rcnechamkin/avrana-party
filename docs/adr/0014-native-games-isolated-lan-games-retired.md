@@ -63,6 +63,11 @@ permanent runtime by default.
 4. **Local IPC prefers Unix sockets** between nginx, Party Core and game processes where that is
    practical; loopback TCP remains acceptable where it is not. Nothing a game serves is reachable
    except through the front door.
+   *2026-10-03:* decisions 3, 4 and 6 are made concrete in
+   [ADR 0016](0016-service-identities-and-local-trust.md): the identities, who reads
+   which key, the four sockets and their ownership, and what provisioning must create. It also
+   narrows "loopback TCP remains acceptable": acceptable as a transport for legacy services,
+   never as evidence of which service is calling.
 5. **Routing is generic.** nginx (or whichever front door) routes to games from a runtime-readable
    **game registry**, not from a hand-written location block per title. Adding a game adds a
    registry entry and a grant, not nginx edits.

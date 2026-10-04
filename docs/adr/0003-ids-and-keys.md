@@ -131,6 +131,14 @@ Exact id encoding (UUID vs base32 random) · storage (SQLite tables, JSON) · de
 migration from `wc-token` · whether presences and the party survive an appliance reboot ·
 exact host-succession policy · hot-seat attribution.
 
+## Note (2026-10-03): a per-game key needs a per-game identity
+
+A per-game key is a boundary only between processes that cannot read each other's files. On the
+appliance as deployed they all can: Party Core, LAN Games and the arcade run as one Unix user.
+[ADR 0016](0016-service-identities-and-local-trust.md) defines the identities, key delivery and
+sockets that make "per-game key" true; until it is implemented, treat every local service as
+holding every game's key.
+
 ## Amendment (2026-10-02): single-use tickets, profile principal, symmetric capabilities
 
 Dated clarification; the invariants and the historical token mapping in §5 are unchanged.

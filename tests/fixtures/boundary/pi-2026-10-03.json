@@ -1,0 +1,181 @@
+{
+ "keys": {
+  "dir": {
+   "group": "cody",
+   "mode": "0700",
+   "owner": "cody",
+   "path": "/etc/avrana-party/game-keys"
+  },
+  "files": [
+   {
+    "group": "cody",
+    "mode": "0600",
+    "owner": "cody",
+    "path": "/etc/avrana-party/game-keys/arcade-gauntlet2.key"
+   },
+   {
+    "group": "cody",
+    "mode": "0600",
+    "owner": "cody",
+    "path": "/etc/avrana-party/game-keys/bluff.key"
+   }
+  ]
+ },
+ "services": [
+  {
+   "address_families": [
+    "AF_INET",
+    "AF_INET6",
+    "AF_UNIX"
+   ],
+   "code": [
+    {
+     "group": "root",
+     "mode": "0644",
+     "owner": "root",
+     "path": "/etc/avrana-party/party-core.json"
+    },
+    {
+     "group": "cody",
+     "mode": "0775",
+     "owner": "cody",
+     "path": "/home/cody/avrana-party"
+    },
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/usr/bin/python3"
+    }
+   ],
+   "credentials": [],
+   "no_new_privileges": true,
+   "private_devices": false,
+   "private_tmp": true,
+   "protect_home": "read-only",
+   "protect_system": "strict",
+   "role": "party",
+   "state": [
+    {
+     "group": "cody",
+     "mode": "0700",
+     "owner": "cody",
+     "path": "/var/lib/avrana-party-core"
+    }
+   ],
+   "tcp": [
+    "127.0.0.1:8191"
+   ],
+   "unit": "avrana-party-core.service",
+   "user": "cody"
+  },
+  {
+   "address_families": [],
+   "code": [
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/bin/sh"
+    },
+    {
+     "group": "cody",
+     "mode": "0775",
+     "owner": "cody",
+     "path": "/home/cody/avrana-party/arcade"
+    },
+    {
+     "group": "cody",
+     "mode": "0664",
+     "owner": "cody",
+     "path": "/home/cody/avrana-party/arcade/run-stream.sh"
+    }
+   ],
+   "credentials": [],
+   "keys_env": "/etc/avrana-party/game-keys",
+   "no_new_privileges": false,
+   "private_devices": false,
+   "private_tmp": false,
+   "protect_home": "no",
+   "protect_system": "no",
+   "role": "arcade",
+   "state": [],
+   "tcp": [
+    "127.0.0.1:8097",
+    "127.0.0.1:8098"
+   ],
+   "unit": "avranaparty-arcade.service",
+   "user": "cody"
+  },
+  {
+   "address_families": [],
+   "code": [
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/home/cody/LAN-Games/.venv/bin/python"
+    },
+    {
+     "group": "cody",
+     "mode": "0775",
+     "owner": "cody",
+     "path": "/home/cody/avrana-party-games"
+    },
+    {
+     "group": "cody",
+     "mode": "0664",
+     "owner": "cody",
+     "path": "/home/cody/avrana-party-games/server.py"
+    }
+   ],
+   "credentials": [],
+   "keys_env": "/etc/avrana-party/game-keys",
+   "no_new_privileges": false,
+   "private_devices": false,
+   "private_tmp": false,
+   "protect_home": "no",
+   "protect_system": "no",
+   "role": "legacy-games",
+   "state": [
+    {
+     "group": "cody",
+     "mode": "0775",
+     "owner": "cody",
+     "path": "/home/cody/avrana-party-games/data"
+    }
+   ],
+   "tcp": [
+    "0.0.0.0:8096"
+   ],
+   "unit": "avranaparty-games.service",
+   "user": "cody"
+  }
+ ],
+ "sockets": [],
+ "users": {
+  "cody": {
+   "groups": [
+    "adm",
+    "audio",
+    "cdrom",
+    "cody",
+    "dialout",
+    "games",
+    "gpio",
+    "i2c",
+    "input",
+    "lpadmin",
+    "netdev",
+    "plugdev",
+    "render",
+    "spi",
+    "sudo",
+    "users",
+    "video"
+   ],
+   "shell": "/bin/bash",
+   "uid": 1000
+  }
+ }
+}

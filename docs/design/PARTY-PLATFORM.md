@@ -571,7 +571,9 @@ advisory; that is accepted for Friends parties. Only the Wi-Fi password — or h
 Public/Demo mode (§7) — keeps someone out. **Built-in games are not isolated from each other
 today:** the LAN Games fork is one process, so any module could read any game's keys; this is
 acceptable only because built-in code is trusted. It is the deployed state, not the target:
-ADR 0014 gives each native game its own process, identity and key.
+ADR 0014 gives each native game its own process, identity and key. Beyond the shared process,
+every appliance service also shares one Unix user today, so key file modes and loopback-only
+routes do not separate services at all; ADR 0016 defines the boundary that will.
 
 **For untrusted games (later; a stronger tier on top of ADR 0013's origin split):** no untrusted in-process code; every response under an untrusted
 game's path gets `Content-Security-Policy: sandbox allow-scripts` and `nosniff`, inside a platform

@@ -13,6 +13,7 @@ foundation merged in PR #3; deployment is a separate action.
 | `vectors/party-session.v0.json` | session protocol vectors (ADR 0006) | `tests/unit/test_party_protocol.py`; vendored by Games |
 | `vectors/game-result.v1.json` | `avrana.game-result/v1` cases (ADR 0015) | `tests/unit/test_party_result.py`; vendored by Games |
 | `party-games.v0.json` | Party ↔ Games contract declaration | `tools/contract_check.py` |
+| `service-boundary.v1.json` | `avrana.service-boundary/v1`: service identities, key and socket ownership (ADR 0016) | `python3 -m avrana.ops.boundary`, `tests/unit/test_ops_boundary.py` |
 | → `web/party/catalog.json` | `avrana.catalog/v0` (generated) | `python3 -m avrana.contracts.catalog [--check]` |
 
 ```sh
