@@ -4,8 +4,12 @@ import http.client
 import io
 import json
 import os
+import socket
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -191,6 +195,35 @@ class TwoListeners(unittest.TestCase):
                               headers={'Cookie': 'avrana_limited=a; avrana_limited=b'})
         self.assertEqual((status, body['error']), (409, 'ambiguous_identity'))
 
+    def test_over_plain_http_no_browser_sends_sec_fetch_site_and_the_origin_check_is_what_refuses(self):
+        """Browsers send Sec-Fetch-Site only to trustworthy origins, so the Limited listener never
+        sees it. These are the requests another page on the Wi-Fi can really make there."""
+        host = self.limited()
+        host.post('join', {'name': 'Lena'})
+        # a POST from another origin, cookie attached (same site), no Sec-Fetch-Site: refused
+        for origin in ('http://10.42.0.1:8096', 'http://evil.test', 'https://10.42.0.1', 'null'):
+            status, body = host.req('POST', '/party/api/leave', {}, headers={'Origin': origin})
+            self.assertEqual((status, body), (403, {'error': 'bad_origin'}), origin)
+        # and one with no Origin at all
+        conn = http.client.HTTPConnection('127.0.0.1', host.port, timeout=10)
+        conn.request('POST', '/party/api/leave', body=b'{}', headers={
+            'Host': LIMITED_HOST, 'Content-Type': 'application/json',
+            'Cookie': '; '.join(f'{k}={v}' for k, v in host.jar.items())})
+        self.assertEqual(conn.getresponse().status, 403)
+        conn.close()
+        self.assertEqual([m['name'] for m in host.state()[1]['members']], ['Lena'])   # still a member
+        # a GET from another origin is answered, changes nothing, and is unreadable there: no
+        # response from this listener carries a CORS header
+        for path in ('/party/api/state', service.BRIDGE_ROUTE, '/party/api/nope'):
+            conn = http.client.HTTPConnection('127.0.0.1', host.port, timeout=10)
+            conn.request('GET', path, headers={'Host': LIMITED_HOST, 'Origin': 'http://evil.test'})
+            res = conn.getresponse()
+            res.read()
+            self.assertEqual([k for k, _ in res.getheaders() if k.lower().startswith('access-control-')], [], path)
+            conn.close()
+        # the header still refuses when it is present (a tool, or localhost in development)
+        self.assertEqual(host.req('GET', '/party/api/state', headers={'Sec-Fetch-Site': 'same-site'})[0], 403)
+
     def test_the_limited_listener_serves_no_game_report_and_no_bridge_origin(self):
         p = self.limited()
         conn = http.client.HTTPConnection('127.0.0.1', p.port, timeout=10)
@@ -228,6 +261,141 @@ class LimitedConfig(unittest.TestCase):
                            game_origins={'http://games.test': '*'})
         with self.assertRaises(ValueError):
             service.Config({LIMITED_HOST}, {LIMITED_ORIGIN}, mode='half')
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+class MainWiring(unittest.TestCase):
+    """service.main() itself, as a process: which listeners a config starts."""
+
+    def run_main(self, limited):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        port = free_port()
+        conf = {'hosts': [f'127.0.0.1:{port}'], 'origins': [f'http://127.0.0.1:{port}'], 'secure_cookie': False,
+                'devices': os.path.join(tmp.name, 'devices.json'), 'games': {}}
+        if limited is not None:
+            conf['limited'] = limited
+        path = os.path.join(tmp.name, 'party-core.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(conf, f)
+        env = {k: v for k, v in os.environ.items() if not k.startswith('LISTEN_')}
+        proc = subprocess.Popen([sys.executable, '-m', 'avrana.party.service', '--config', path, '--port', str(port)],
+                                cwd=str(Path(__file__).resolve().parents[2]), env=env,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+        def stop():
+            proc.kill()
+            proc.wait(10)
+            proc.stderr.close()
+        self.addCleanup(stop)
+        return proc, port
+
+    def answer(self, proc, port, host, path='/party/api/state', method='GET', origin=None):
+        deadline = time.monotonic() + 20
+        while True:
+            try:
+                conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+                headers = {'Host': host}
+                body = None
+                if method == 'POST':
+                    body = b'{}'
+                    headers.update({'Origin': origin, 'Content-Type': 'application/json'})
+                conn.request(method, path, body=body, headers=headers)
+                res = conn.getresponse()
+                raw = res.read()
+                conn.close()
+                return res.status, (json.loads(raw) if raw else None), res.getheader('Set-Cookie')
+            except OSError:
+                if proc.poll() is not None or time.monotonic() > deadline:
+                    raise
+                time.sleep(0.1)
+
+    def refused(self, port):
+        try:
+            socket.create_connection(('127.0.0.1', port), timeout=2).close()
+        except OSError:
+            return True
+        return False
+
+    def test_a_limited_object_starts_a_second_listener_that_is_limited_mode_and_only_that(self):
+        lport = free_port()
+        host, origin = f'127.0.0.1:{lport}', f'http://127.0.0.1:{lport}'
+        proc, port = self.run_main({'hosts': [host], 'origins': [origin], 'port': lport})
+        full_host = f'127.0.0.1:{port}'
+        self.assertEqual(self.answer(proc, port, full_host)[1]['mode'], 'full')
+        status, view, _ = self.answer(proc, lport, host)
+        self.assertEqual((status, view['mode']), (200, 'limited'))
+        # each listener answers only for its own name
+        self.assertEqual(self.answer(proc, lport, full_host)[0], 421)
+        self.assertEqual(self.answer(proc, port, host)[0], 421)
+        # the Limited listener issues the Limited credential, and it is one party
+        status, view, cookie = self.answer(proc, lport, host, '/party/api/join', 'POST', origin)
+        self.assertEqual(status, 400, view)                              # no name: refused before minting
+        self.assertIsNone(cookie)
+        conn = http.client.HTTPConnection('127.0.0.1', lport, timeout=5)
+        conn.request('POST', '/party/api/join', body=json.dumps({'name': 'Lena'}).encode(),
+                     headers={'Host': host, 'Origin': origin, 'Content-Type': 'application/json'})
+        res = conn.getresponse()
+        joined = json.loads(res.read())
+        cookie = res.getheader('Set-Cookie')
+        conn.close()
+        self.assertTrue(cookie.startswith(identity.LIMITED_COOKIE + '='), cookie)
+        self.assertNotIn('Secure', cookie)
+        self.assertEqual([(m['name'], m['mode']) for m in joined['members']], [('Lena', 'limited')])
+        self.assertEqual([(m['name'], m['mode']) for m in self.answer(proc, port, full_host)[1]['members']],
+                         [('Lena', 'limited')])
+        # the routes main() attaches to both: the status route answers here too; the game -> party
+        # report is not served on the Limited listener
+        self.assertEqual(self.answer(proc, lport, host, '/party/api/status')[0],
+                         self.answer(proc, port, full_host, '/party/api/status')[0])
+        conn = http.client.HTTPConnection('127.0.0.1', lport, timeout=5)
+        conn.request('POST', '/internal/party-session/v0/ended', body=b'{}',
+                     headers={'Host': host, 'Content-Type': 'application/json'})
+        self.assertEqual(conn.getresponse().status, 404)
+        conn.close()
+        self.assertIsNone(proc.poll())
+
+    def test_without_a_limited_object_main_starts_no_second_listener(self):
+        proc, port = self.run_main(None)
+        self.assertEqual(self.answer(proc, port, f'127.0.0.1:{port}')[1]['mode'], 'full')
+        self.assertTrue(self.refused(service.LIMITED_PORT) or self.not_ours(service.LIMITED_PORT))
+        self.assertIsNone(proc.poll())
+
+    def not_ours(self, port):
+        """Something else on this machine holds the default port: it is not this Party Core if it
+        does not answer as one."""
+        try:
+            conn = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+            conn.request('GET', '/party/api/state', headers={'Host': '10.42.0.1'})
+            res = conn.getresponse()
+            raw = res.read()
+            conn.close()
+            return not (res.status == 200 and json.loads(raw).get('mode') == 'limited')
+        except (OSError, ValueError, http.client.HTTPException):
+            return True
+
+    def test_a_bad_limited_object_stops_main_before_it_listens_anywhere(self):
+        for bad in ({'hosts': ['10.42.0.1'], 'origins': ['https://10.42.0.1']},
+                    {'hosts': ['10.42.0.1'], 'origins': ['http://10.42.0.1'], 'port': 'eighty'},
+                    {'hosts': ['10.42.0.1']}, 'yes'):
+            proc, port = self.run_main(bad)
+            self.assertNotEqual(proc.wait(20), 0, bad)
+            self.assertIn('party-core config:', proc.stderr.read().decode(), bad)
+            self.assertTrue(self.refused(port), bad)
+
+    def test_an_origin_shared_with_full_mode_is_refused_and_a_shared_host_name_is_not(self):
+        full = service.Config({'party.avrana.net'}, {'https://party.avrana.net'})
+        cfg = service.limited_config({'hosts': ['party.avrana.net', '10.42.0.1'],
+                                      'origins': ['http://party.avrana.net', 'http://10.42.0.1']}, full)
+        self.assertEqual((cfg.mode, 'party.avrana.net' in cfg.hosts), ('limited', True))
+        plain = service.Config({'party.test'}, {'http://party.test'}, secure_cookie=False)
+        with self.assertRaises(ValueError):
+            service.limited_config({'hosts': ['other.test'], 'origins': ['http://party.test']}, plain)
 
 
 class Store(unittest.TestCase):

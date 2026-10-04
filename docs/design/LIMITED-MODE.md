@@ -194,7 +194,8 @@ browser warning.
 Steps 1 and 2 are in source (AVR-225). Steps 3 and 4 are the owner's and have not happened.
 
 1. Party Core: the Limited store, cookie and listener, behind config that production does not set.
-   Unit and service tests. No deployment effect. **Done in source**
+   Unit and service tests. Ships with the next Party Core deploy and is inert there: no
+   listener and no Limited cookie without the config; views gain `mode: "full"`. **Done in source**
    (`tests/unit/test_party_limited_mode.py`).
 2. Shell: mode in the view, the banner, per-seat degradation, the doorway page. Tier 1 and 2 tests
    with a simulated second scheme. **Done in source** (`tests/offline/limited-mode.test.mjs`;

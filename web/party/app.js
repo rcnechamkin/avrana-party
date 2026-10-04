@@ -23,7 +23,7 @@ import { loadCatalog } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, filterGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
-import { LIMITED, blockedGames, limitedNotice, modeOf, seatLimits } from './lib/limited.js';
+import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -302,7 +302,7 @@ async function choose(choice) {
   const view = party.view();
   const game = view && partyGame(state.catalog, view.session && view.session.game);
   const ob = game ? await onboardingFor(game) : null;
-  if (choice === 'player' && game && !seatLimits(game, statuses(state.report)).play) return;
+  if (choice === 'player' && game && !seatChoice(state.mode, game, statuses(state.report)).play) return;
   if (choice === 'player' && game && !acknowledged(ob)) return openRules(game, ob, () => choose('player'));
   const res = await party.choose(choice);
   if (!res.ok) $('scene-status').textContent = res.message || 'Please try again.';
@@ -333,8 +333,9 @@ async function renderScene(view) {
   }));
   $('choose-play').setAttribute('aria-pressed', String(panel.mine === 'player'));
   $('choose-watch').setAttribute('aria-pressed', String(panel.mine === 'spectator'));
-  // One seat, one decision (ADR 0012): a phone that cannot play this game here may still watch.
-  const limits = seatLimits(game, statuses(state.report), state.catalog.labels || {});
+  // One seat, one decision (ADR 0012): in Limited Mode, a phone that cannot play this game here
+  // may still watch. Full Mode is not gated.
+  const limits = seatChoice(state.mode, game, statuses(state.report), state.catalog.labels || {});
   $('choose-play').disabled = panel.starting || !limits.play;
   $('choose-watch').disabled = panel.starting || !limits.watch;
   $('scene-seat').textContent = limits.play ? '' : limits.why || 'This phone can only watch this one.';

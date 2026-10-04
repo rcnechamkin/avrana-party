@@ -309,6 +309,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # name included, gets nothing from the Party API even though the browser would attach
         # the cookie to its request (same site). Requests without the header (older browsers,
         # tools) fall through to the Origin allow-list and the absence of CORS.
+        # In Limited Mode that fall-through is the rule, not the exception: browsers send
+        # Sec-Fetch-Site only to trustworthy (HTTPS or localhost) origins, so over plain HTTP
+        # this check never fires. There a POST is stopped by the Origin allow-list, which
+        # browsers do send over HTTP, and a GET from another origin changes nothing and cannot
+        # be read, because no response carries a CORS header.
         site = self.headers.get('Sec-Fetch-Site')
         if site is not None and site not in SAME_ORIGIN_FETCH:
             _send(self, 403, {'error': 'cross_origin'})
@@ -464,8 +469,10 @@ LIMITED_PORT = 8192
 def limited_config(conf, full):
     """The Limited Mode listener's Config from party-core.json's `limited` object, or None when
     the appliance has none (production today). {"hosts": [...], "origins": ["http://..."],
-    "port": 8192}. A name or origin shared with Full Mode is refused: the two modes are two
-    origins with two credentials, and one listener must never answer for the other."""
+    "port": 8192}. An origin shared with Full Mode is refused: the two modes are two origins
+    with two credentials. A host name may be shared (`party.avrana.net` over both schemes is two
+    origins with one Host header), and that is safe: the mode is the listener a request arrived
+    on, each listener checks only its own allow-list, and a Host header selects nothing."""
     if conf is None:
         return None
     if not isinstance(conf, dict) or not conf.get('hosts') or not conf.get('origins'):
@@ -577,14 +584,16 @@ def main(argv=None):
     extra, internal = sessions.routes(service, endpoints)
     from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
     extra.update(status.route(service, status.load_config(conf)))
-    server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
-    try:
+    try:                                       # refuse a bad config before binding anything
         limited = limited_config(conf.get('limited'), cfg)
-    except ValueError as e:
+        limited_port = int(conf['limited'].get('port', LIMITED_PORT)) if limited else None
+    except (ValueError, TypeError) as e:
         raise SystemExit(f'party-core config: {e}')
+    server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
+    limited_server = None
     if limited is not None:                    # the same party over plain HTTP (ADR 0012)
-        limited_server = make_server(service, limited, extra_routes=extra,
-                                     port=int(conf['limited'].get('port', LIMITED_PORT)))
+        # No internal routes: a game reports to the party on the Full listener or the socket.
+        limited_server = make_server(service, limited, port=limited_port, extra_routes=extra)
         threading.Thread(target=limited_server.serve_forever, daemon=True).start()
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()
@@ -608,6 +617,8 @@ def main(argv=None):
         stop.set()
         if internal_server is not None:
             internal_server.shutdown()
+        if limited_server is not None:
+            limited_server.shutdown()
 
 
 if __name__ == '__main__':

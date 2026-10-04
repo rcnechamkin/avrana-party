@@ -134,9 +134,15 @@ shared-password Wi-Fi another guest can read a Limited credential off the air an
 member; that is the accepted cost of plain HTTP among friends (PARTY-PLATFORM §13) and the reason
 the credential is short-lived and the banner says the connection is not private.
 
-What is in source after rollout steps 1 and 2 (no deployment effect: production's
-`party-core.json` has no `limited` object, so no second listener exists, and nginx's port-80
-server is unchanged):
+What is in source after rollout steps 1 and 2. This code is deployed by the next ordinary
+deploy of Party Core and the web build; it is not a change that stays out of production. What
+it changes there is small and stated here rather than claimed to be nothing: every view gains
+`"mode": "full"` and every member a `mode`; host succession applies D4 (with every member in
+Full Mode, the same result as before); the doorway page is published under `/party/doorway/`,
+linked from nowhere. What stays off until the owner's step 3: production's `party-core.json`
+has no `limited` object, so no second listener exists and no `avrana_limited` cookie is ever
+issued; nginx's port-80 server is unchanged; the shell shows no banner and gates no seat,
+because both depend on Party Core saying `limited`.
 
 - Party Core: `identity.LimitedStore` and the `avrana_limited` cookie; `limited` in the config
   starting the second listener; `mode` on each member and in every view; succession per D4.

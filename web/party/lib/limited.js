@@ -50,6 +50,15 @@ export function seatLimits(game, caps, labels = {}) {
   return { play: true, watch: true, why: '' };
 }
 
+const UNLIMITED = Object.freeze({ play: true, watch: true, why: '' });
+
+/** The seat choice the setup panel offers. The mode comes first: only a phone that Party Core
+ * says is in Limited Mode is limited. In Full Mode every seat stays open, exactly as before
+ * Limited Mode existed, whatever this phone's capability report says. */
+export function seatChoice(mode, game, caps, labels = {}) {
+  return mode === LIMITED ? seatLimits(game, caps, labels) : UNLIMITED;
+}
+
 /** Names of the installed games this phone cannot play. */
 export function blockedGames(games, caps) {
   return games.filter((g) => g.installed && g.entry && !seatLimits(g, caps).play).map((g) => g.name);

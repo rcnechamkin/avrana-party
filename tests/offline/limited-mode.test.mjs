@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { FULL, LIMITED, blockedGames, limitedNotice, modeOf, seatLimits } from '../../web/party/lib/limited.js';
+import { FULL, LIMITED, blockedGames, limitedNotice, modeOf, seatChoice, seatLimits } from '../../web/party/lib/limited.js';
 import { PROBE_MS, chooseMode, targets } from '../../web/party/lib/doorway.js';
 
 const read = (path) => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
@@ -157,4 +157,20 @@ test('the shell shows the banner only from Party Core’s word and never claims 
   const sw = read('web/party/sw.js');
   assert.match(sw, /'lib\/limited\.js'/);
   assert.doesNotMatch(sw, /doorway/);
+});
+
+test('seat gating asks the mode first: Full Mode is never gated, whatever the phone reports', () => {
+  const needs = game(['secure_context']);
+  const open = { play: true, watch: true, why: '' };
+  // the same phone, the same game, the same missing capability: only the mode differs
+  assert.equal(seatLimits(needs, HTTP_PHONE).play, false);
+  assert.equal(seatChoice(LIMITED, needs, HTTP_PHONE).play, false);
+  assert.deepEqual(seatChoice(LIMITED, needs, HTTP_PHONE), seatLimits(needs, HTTP_PHONE));
+  assert.deepEqual(seatChoice(FULL, needs, HTTP_PHONE), open);
+  // anything that is not Party Core saying "limited" is Full Mode
+  for (const mode of [undefined, null, '', 'Limited', 'http', modeOf({}), modeOf({ mode: 'half' })]) {
+    assert.deepEqual(seatChoice(mode, needs, HTTP_PHONE), open, String(mode));
+  }
+  assert.deepEqual(seatChoice(FULL, needs, {}), open);            // no capability report yet
+  assert.deepEqual(seatChoice(modeOf({ mode: 'limited' }), needs, HTTP_PHONE), seatLimits(needs, HTTP_PHONE));
 });
