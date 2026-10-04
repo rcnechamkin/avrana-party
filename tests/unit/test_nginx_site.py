@@ -144,7 +144,7 @@ def native_game(path):
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
                                'upgrade': self.headers.get('Upgrade')}).encode()
-            self.send_response(200)
+            self.send_response(502 if 'own502' in self.path else 200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
@@ -412,6 +412,25 @@ http {{
             self.assertEqual(res.status, 404, path)
             self.assertNotIn(b'upstream', body, path)
         self.assertEqual(len(self.native.seen), before)
+
+    def test_a_502_from_the_game_itself_is_the_games_answer(self):
+        res, body = self.get('/games/demo/own502', https=True)
+        self.assertEqual((res.status, json.loads(body)['upstream']), (502, 'native'))
+
+    def test_a_native_socket_nobody_listens_on_falls_through_to_the_lan_games_runtime(self):
+        """The transitional rule (removed with the fork, ADR 0014): nginx's own connect failure,
+        for a slug with no socket or a socket whose game is down, is answered by the LAN Games
+        runtime, which does not know a native slug and says so. The request never reaches another
+        native game."""
+        dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        dead.bind(str(self.tmp / 'games' / 'dead.sock'))          # bound, never listening
+        try:
+            before = len(self.native.seen)
+            got = json.loads(self.get('/games/dead/play', https=True)[1])
+            self.assertEqual((got['upstream'], got['path']), ('lan', '/games/dead/play'))
+            self.assertEqual(len(self.native.seen), before)
+        finally:
+            dead.close()
 
     def test_https_apps_still_proxied(self):
         lan = json.loads(self.get('/', https=True)[1])
