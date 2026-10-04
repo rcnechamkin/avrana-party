@@ -394,7 +394,7 @@ http {{
         # nginx never built a socket path from anything but a slug: every path it tried to connect
         # to is directly inside the games directory
         for tried in re.findall(r'unix:(\S+?\.sock)', log):
-            self.assertRegex(tried, r'/avrana-games/[a-z][a-z0-9_-]{0,39}\.sock$', tried)
+            self.assertRegex(tried, re.escape(str(self.tmp / 'games')) + r'/[a-z][a-z0-9_-]{0,39}\.sock$', tried)
 
     def test_a_path_that_normalises_to_a_slug_reaches_that_game_and_only_that_game(self):
         """nginx matches the normalised path, so these name `demo` and nothing else. That is the
