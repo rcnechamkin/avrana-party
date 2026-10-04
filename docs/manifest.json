@@ -20,6 +20,8 @@
     {"path": "CODEX-HANDOFF.md", "class": "canonical", "status": "current", "authority": "entry-point-only"},
     {"path": "CONTRIBUTING.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "contribution-workflow"},
     {"path": "REVIEW.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "review-policy"},
+    {"path": ".claude/agents/verifier.md", "class": "canonical", "status": "current", "authority": "entry-point-only"},
+    {"path": ".claude/agents/reviewer.md", "class": "canonical", "status": "current", "authority": "entry-point-only"},
     {"path": "README.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "project-overview"},
     {"path": "arcade/README.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "assets/vendor/README.md", "class": "canonical", "status": "current", "authority": "reference"},
