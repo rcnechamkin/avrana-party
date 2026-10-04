@@ -31,7 +31,7 @@ Read in this order:
      the accepted Full Mode / Limited Mode target contract, kept explicitly separate
    - `LIMITED-MODE.md` — **proposed** mechanisms for ADR 0012 (doorway, canonical HTTP origin,
      separate credential, continuity options) and the decisions the owner must make (AVR-225)
-   - `BROWSER-ORIGINS.md` — **proposed** mechanisms for ADR 0013 (game host name, the Party
+   - `BROWSER-ORIGINS.md` — the **accepted** mechanisms for ADR 0013 (game host name, the Party
      bridge frame and its closed verb set, the `__Host-` cookie) and the decisions required
      (AVR-226)
    - `LAN-GAMES-ASSIMILATION.md` — **historical**: the completed MVP assimilation, donor inventory,

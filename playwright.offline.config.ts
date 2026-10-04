@@ -14,6 +14,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const executablePath = process.env.PW_CHROMIUM_EXECUTABLE || undefined;
 const PORT = Number(process.env.AVRANA_DEV_PORT || 8181);
+const PARTY_PORT = PORT + 1;      // a second dev server with a real Party Core (bridge.spec.ts)
+const python = process.env.AVRANA_PYTHON || 'python3';
 
 export default defineConfig({
   testDir: './tests/offline',
@@ -30,17 +32,33 @@ export default defineConfig({
     trace: 'retain-on-failure',
     serviceWorkers: 'allow',
   },
-  webServer: {
-    command: `${process.env.AVRANA_PYTHON || 'python3'} -m avrana.web.devserver --port ${PORT} --test-controls`,
-    url: `http://127.0.0.1:${PORT}/party/`,
-    reuseExistingServer: false,
-    timeout: 15_000,
-  },
+  webServer: [
+    {
+      command: `${python} -m avrana.web.devserver --port ${PORT} --test-controls`,
+      url: `http://127.0.0.1:${PORT}/party/`,
+      reuseExistingServer: false,
+      timeout: 15_000,
+    },
+    {
+      command: `${python} -m avrana.web.devserver --port ${PARTY_PORT} --test-controls --party`,
+      url: `http://127.0.0.1:${PARTY_PORT}/party/`,
+      reuseExistingServer: false,
+      timeout: 15_000,
+    },
+  ],
   projects: [
-    { name: 'android-chromium', use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    { name: 'android-chromium', testIgnore: /bridge\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
     {
       name: 'iphone-size-chromium',
+      testIgnore: /bridge\.spec\.ts$/,
       use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: { executablePath } },
+    },
+    {
+      // ADR 0013: a game page on another origin of the same site. Chromium resolves the two test
+      // host names to the dev server; nothing here proves real Safari (Tier 3, the owner).
+      name: 'two-origins-chromium',
+      testMatch: /bridge\.spec\.ts$/,
+      use: { ...devices['Pixel 7'], launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] } },
     },
   ],
 });
