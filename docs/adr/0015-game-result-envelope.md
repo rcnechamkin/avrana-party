@@ -1,9 +1,8 @@
 # ADR 0015 — Game result envelope v1
 
-Status: **accepted (direction) · proposed (mechanism, with a reference implementation)** · not deployed · Date: 2026-10-03
-The direction (results cross the boundary in a versioned envelope; the party is the only
-writer of the durable record) was accepted on 2026-10-02 in the ADRs below. The mechanism in
-this ADR is the AVR-237 proposal; merging its pull requests is the acceptance.
+Status: **accepted** · Date: 2026-10-03
+Accepted by the owner on 2026-10-03 (AVR-237). What is deployed is recorded in
+[SYSTEM](../SYSTEM.md), not here.
 Takes up the deferral recorded in [ADR 0006](0006-party-session-protocol.md) ("no results in
 v0"; amendment of 2026-10-02) and [ADR 0014](0014-native-games-isolated-lan-games-retired.md)
 decision 9. History, stats, retention and privacy are **not** decided here: they are
@@ -57,7 +56,7 @@ protection are those of `ended`; the envelope adds none of its own.
 |---|---|---|
 | `schema` | platform | exactly `avrana.game-result/v1`; anything else is refused |
 | `game.id` | platform | the game; must be the session's game and the message's issuer |
-| `game.build` | platform | which implementation produced the result (a version or a source digest) |
+| `game.build` | platform | which implementation produced the result: everything on the game server that can change it, not the rules alone (see §6) |
 | `game.content` | platform, optional | which ruleset or content pack, when the game has one |
 | `mode` | platform | `competitive` or `cooperative`: how to read the standings |
 | `standings` | platform | one entry for **every player** of the session and nobody else: `participant`, `standing` (`won`, `lost`, `draw`), optional `rank` |
@@ -134,6 +133,19 @@ party will, so a game cannot send what would be turned away. In the LAN Games fo
 returns its result in its own seat tokens from `GameSession.game_result()`, and `core/net.py`
 translates tokens to participant ids from the launch roster and builds the envelope. A game
 without `game_result()` reports exactly as before.
+
+**`game.build`.** A result is produced by a game's rules and by the server around them, so the
+identifier must cover both. In the LAN Games fork it is a SHA-256 digest (`sha256:` plus 16 hex
+digits) over the shared runtime (`server.py`, `core/`, including the vendored protocol and
+result code, `games/registry.py`, `requirements.txt`) and the game's own sources and
+server-side content; browser assets, art and documents are excluded
+(`core.party_session.build_id`). A change to shared code therefore changes the build id of
+every game. The repository commit would be the natural identifier, but the running server
+cannot know it reliably: a deployed tree is a copy without trustworthy Git metadata. The digest
+is derived from the files actually loaded, is identical for every checkout of one commit, and
+can be recomputed at any commit to trace a stored result back. A game with its own repository
+and release process may use its release version instead; the envelope only requires that the
+value identify the producing implementation.
 
 ## The two examples
 

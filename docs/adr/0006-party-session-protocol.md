@@ -35,8 +35,7 @@ table is not altered. The accepted direction beyond v0:
 - **The exact result schema is not defined here.** It is
   [AVR-237](https://linear.app/avranakern/issue/AVR-237/define-partygame-result-envelope-v1-before-the-second-native-game)
   work and will be recorded after the protocol is designed.
-  **2026-10-03:** designed in [ADR 0015](0015-game-result-envelope.md) (proposed, with a
-  reference implementation). `ended` gains one optional `result` field carrying a separately
+  **2026-10-03:** decided in [ADR 0015](0015-game-result-envelope.md) (accepted). `ended` gains one optional `result` field carrying a separately
   versioned envelope, `avrana.game-result/v1`; the protocol version stays v0 and a receiver
   that does not know the field ignores it. The message table below still describes v0 as
   first deployed.
