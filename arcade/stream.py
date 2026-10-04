@@ -57,11 +57,15 @@ EXIT_BACKSTOP_S = 20  # a fatal exit that has not finished cleanup by then is fo
 PARTY_GAME = 'arcade-gauntlet2'  # the Party Core game id (contracts/games/arcade-gauntlet2.json)
 CONTROL_PORT = int(os.environ.get('AVRANA_ARCADE_CONTROL_PORT', '8098'))  # loopback only
 IDLE_TEXT = 'Gauntlet II is not running. The Party Host starts it from Party Home.'
-EMULATOR_LOG = ROOT / 'runtime/emulator.log'
+# Everything the arcade writes: the unit's runtime directory, or ./runtime for a hand-run prototype.
+RUNTIME = Path(os.environ.get('AVRANA_ARCADE_RUNTIME') or ROOT / 'runtime')
+# The libretro core is built on the host, not kept in Git; the unit points at its installed copy.
+CORE = Path(os.environ.get('AVRANA_ARCADE_CORE') or ROOT / 'cores/mame2010_libretro.so')
+EMULATOR_LOG = RUNTIME / 'emulator.log'
 EMULATOR_LOG_MAX = 20 * 1024 * 1024  # emulator.log.1 keeps the previous 20 MB; total stays under ~45 MB.
 # Per-second phone stats (analyze-latency.py). Past the cap it rotates to .1, so the newest
 # records are kept and the pair stays under ~2x the cap (AVR-30).
-CLIENT_LOG = ROOT / 'runtime/client-stats.jsonl'
+CLIENT_LOG = RUNTIME / 'client-stats.jsonl'
 CLIENT_LOG_MAX = 20 * 1024 * 1024
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('avrana-arcade')
@@ -185,7 +189,7 @@ class Stream:
         self.pipeline = None
         self.input = UInputGamepadProvider()
         self.runtime = RetroArchRuntime(config=ROOT / 'retroarch.cfg',
-                                        core=ROOT / 'cores/mame2010_libretro.so', content=ROM)
+                                        core=CORE, content=ROM)
         self.pads = []
         self.peers = {}
         self.reserved = set()
@@ -622,7 +626,7 @@ class Stream:
                 if reply is None:
                     continue
                 if ticks in (1, 8):
-                    (ROOT / f'runtime/webrtc-stats-sample{ticks}.txt').write_text(reply.to_string())
+                    (RUNTIME / f'webrtc-stats-sample{ticks}.txt').write_text(reply.to_string())
                 peer['server'] = self.summarize(flatten_stats(reply), peer)
                 if 'path' in peer['server'] and not peer.get('path_sent') and not ws.closed:
                     peer['path_sent'] = True

@@ -1,6 +1,6 @@
 # ADR 0013 — Party shell and game clients have separate browser trust origins
 
-Status: **accepted (direction) · proposed (mechanisms) · not implemented** · Date: 2026-10-02
+Status: **accepted (direction, and mechanisms D1–D5 on 2026-10-03) · step 1 in source · not deployed** · Date: 2026-10-02
 Amends the one-origin implementation assumption of [ADR 0002](0002-party-platform.md) and
 [ADR 0004](0004-full-mode-contracts-and-providers.md) D1 (see §Affected prior assumptions).
 Design and rollout belong to
@@ -105,3 +105,28 @@ A mechanism proposal for every item below, with the decisions it needs, is in
 The game hostname(s) and whether each game gets its own; the exact host-control and heartbeat
 transport; how Limited Mode (ADR 0012) names and reaches the two origins over plain HTTP; the
 community sandbox tier.
+
+## Amendment (2026-10-03): mechanisms decided (AVR-226)
+
+The owner accepted the five recommendations of [BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) §5.
+They settle what "Deliberately open" above left open; nothing above is otherwise changed.
+
+| # | Decision |
+|---|---|
+| D1 | One shared game origin now. The bridge is keyed by origin, so one origin per game later is configuration, not redesign. |
+| D2 | A Party-owned, invisible bridge frame is the only seam between a game page and the Party, with the closed verb set `ticket`, `view`, `navigate`, `end`, `home`, `playAgain` (`avrana.party-bridge/v1`). |
+| D3 | The device cookie becomes `__Host-avrana_device` with `Path=/`. For one release the earlier `avrana_device` cookie is still read, and a phone that presents only it is handed the new one. |
+| D4 | The game host name is `games.avrana.net`. |
+| D5 | This work precedes Checkers (AVR-238). |
+
+What is in source after step 1 (Party only; no deployment effect while nginx serves one origin):
+`web/party/bridge.html` and `lib/bridge.js`; the reference shim `web/party/bridge/shim.js` for
+game repositories to vendor; the contract's vectors (`contracts/vectors/party-bridge.v1.json`);
+Party Core's `game_origins` configuration, `GET /party/api/bridge`, the origin-checked ticket
+route, the `__Host-` cookie with dual read, and a refusal of any Party API request a browser
+marks as coming from another origin (`Sec-Fetch-Site`).
+
+Still to do, in order: the paired Games change (vendor the shim); the arcade page; then the
+owner-only live changes (certificate name, dnsmasq record, nginx server block and the
+`frame-ancestors` header for `bridge.html`) and the real-phone validation in BROWSER-ORIGINS §4.
+The bridge is not relied on for field testing until that validation has passed.

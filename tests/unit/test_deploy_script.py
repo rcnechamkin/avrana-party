@@ -142,7 +142,9 @@ class RealRun(unittest.TestCase):
         self.env = dict(self.genv, AVRANA_PARTY_CHECKOUT=str(self.party), AVRANA_GAMES_CHECKOUT=str(self.games),
                         AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_WEB_ROOT=str(self.web),
                         AVRANA_DEPLOYMENT_MANIFEST=str(self.manifest_path), AVRANA_BACKUP_ROOT=str(root / 'backups'),
-                        AVRANA_DEPLOY_UNPRIVILEGED='1', AVRANA_SYSTEMCTL=str(shim), SHIM_LOG=str(self.log))
+                        AVRANA_DEPLOY_UNPRIVILEGED='1', AVRANA_SYSTEMCTL=str(shim), SHIM_LOG=str(self.log),
+                        AVRANA_PARTY_RELEASES=str(root / 'opt-party'), AVRANA_GAMES_RELEASES=str(root / 'opt-games'))
+        self.party_release, self.games_release = root / 'opt-party' / 'current', root / 'opt-games' / 'current'
 
     def run_git(self, repo, *args):
         return subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True, env=self.genv).stdout.decode().strip()
@@ -175,6 +177,29 @@ class RealRun(unittest.TestCase):
         backups = list((Path(self.temp.name) / 'backups').iterdir())
         self.assertEqual(len(backups), 1)
         self.assertEqual(manifest.read(backups[0] / 'before.json')['party']['sha'], self.before_party)
+
+    def test_builds_a_code_release_of_exactly_the_commit_that_no_service_user_can_write(self):
+        """ADR 0016 / AVR-256: services run <root>/current, not the operator's checkout."""
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.party_release.resolve().name, self.target_party)
+        self.assertEqual(self.games_release.resolve().name, self.target_games)
+        self.assertEqual((self.party_release / 'deploy-test-marker').read_text(), 'next\n')
+        self.assertTrue((self.party_release / 'avrana/party/service.py').is_file())
+        self.assertFalse((self.party_release / '.git').exists())                  # tracked files only
+        for path in [self.party_release.resolve(), *self.party_release.resolve().rglob('*')]:
+            self.assertFalse(path.stat().st_mode & 0o022, path)                    # not group/world writable
+        # going back reuses the release that is already there: only the link moves
+        r = self.deploy(self.target_party, self.before_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.games_release.resolve().name, self.before_games)
+        self.assertTrue((self.games_release.parent / 'releases' / self.target_games).is_dir())
+
+    def test_a_failed_deployment_puts_the_code_release_link_back(self):
+        self.assertEqual(self.deploy(self.before_party, self.target_games, '--skip-smoke').returncode, 0)
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke', FAIL_UNIT='avranaparty-games')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.games_release.resolve().name, self.target_games)
 
     def test_only_the_changed_repository_restarts_and_going_back_is_the_same_operation(self):
         from avrana.ops import manifest
@@ -214,6 +239,7 @@ class RealRun(unittest.TestCase):
         self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.before_games)
         self.assertEqual(self.calls(), [])
         self.assertFalse(self.manifest_path.exists() or self.web.exists() or (Path(self.temp.name) / 'backups').exists())
+        self.assertFalse(self.party_release.parent.exists() or self.games_release.parent.exists())
 
 
 if __name__ == '__main__':

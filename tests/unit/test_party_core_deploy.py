@@ -70,6 +70,12 @@ class Templates(unittest.TestCase):
         """deploy/arcade/avrana-party-session.conf (AVR-134) agrees with Party Core's unit and
         config, carries no secret, and nginx never forwards the arcade's control port."""
         env = dict(re.findall(r'(?m)^Environment=([A-Z_]+)=(\S+)$', ARCADE_DROP_IN))
+        # the arcade is handed exactly its own key as a credential, named as managed.configure
+        # looks for it, and never the key directory by path (ADR 0016)
+        self.assertEqual(re.findall(r'(?m)^LoadCredential=(\S+)$', ARCADE_DROP_IN),
+                         [f'{ARCADE}.key:{CONFIG["games"][ARCADE]["key_file"]}'])
+        self.assertEqual(env.pop('AVRANA_PARTY_KEYS'), '%d')
+        env['AVRANA_PARTY_KEYS'] = os.path.dirname(CONFIG['games'][ARCADE]['key_file'])
         self.assertEqual(set(env), {'AVRANA_PARTY_KEYS', 'AVRANA_PARTY_URL'})
         port = re.search(r'--port (\d+)', UNIT).group(1)
         self.assertEqual(env['AVRANA_PARTY_URL'], f'http://127.0.0.1:{port}')
@@ -81,8 +87,8 @@ class Templates(unittest.TestCase):
     def test_unit_runs_the_service_on_loopback_port_8191_without_secrets(self):
         self.assertRegex(UNIT, r'(?m)^ExecStart=/usr/bin/python3 -m avrana\.party\.service '
                                r'--config /etc/avrana-party/party-core\.json --port 8191$')
-        self.assertRegex(UNIT, r'(?m)^User=cody$')
-        self.assertRegex(UNIT, r'(?m)^WorkingDirectory=/home/cody/avrana-party$')
+        self.assertRegex(UNIT, r'(?m)^User=avrana-party$')                     # ADR 0016 phase 1
+        self.assertRegex(UNIT, r'(?m)^WorkingDirectory=/opt/avrana-party/current$')
         self.assertRegex(UNIT, r'(?m)^NoNewPrivileges=yes$')
         self.assertNotRegex(UNIT, r'(?im)^Environment=.*(key|token|secret)')
         self.assertEqual(service.make_server.__defaults__[0], '127.0.0.1')      # loopback bind

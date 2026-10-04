@@ -5,7 +5,9 @@
 #   sudo bash ops/provision-party-game-key.sh bluff
 #
 # Writes $dir/<slug>.key: 32 random bytes as 64 hex characters and a newline (the format
-# avrana.party.protocol.read_key accepts), owner $owner, mode 0600, in a 0700 directory. Refuses
+# avrana.party.protocol.read_key accepts), owner $owner, mode 0600, in a 0700 directory. The owner
+# is Party Core's user, avrana-party (ADR 0016): every other holder gets its key from systemd as
+# a credential. On a host not yet migrated (AVR-256) pass AVRANA_PARTY_KEY_OWNER explicitly. Refuses
 # to overwrite: rotating a key is deliberate (remove the file, re-run, restart both services).
 # Never prints, logs or echoes the key.
 set -euo pipefail
@@ -14,7 +16,8 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 slug=${1:-}
 [[ $slug =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]] || { echo 'usage: provision-party-game-key.sh <game-slug>' >&2; exit 2; }
 dir=${AVRANA_PARTY_KEY_DIR:-/etc/avrana-party/game-keys}
-owner=${AVRANA_PARTY_KEY_OWNER:-cody}
+owner=${AVRANA_PARTY_KEY_OWNER:-avrana-party}
+id -u "$owner" >/dev/null 2>&1 || { echo "user $owner does not exist: run ops/migrate-service-users.sh first, or set AVRANA_PARTY_KEY_OWNER" >&2; exit 1; }
 key=$dir/$slug.key
 
 install -d -m 0700 -o "$owner" -g "$(id -gn "$owner")" "$dir"

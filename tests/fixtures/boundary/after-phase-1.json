@@ -1,0 +1,223 @@
+{
+ "_note": "SYNTHETIC. What avrana.ops.boundary --collect would report on a host after ops/migrate-service-users.sh (ADR 0016 phase 1, AVR-256). Never recorded on a machine; tests/unit/test_service_users.py ties it to the unit files.",
+ "groups": {
+  "avrana-front": [
+   "avrana-party",
+   "www-data"
+  ],
+  "avrana-games": []
+ },
+ "keys": {
+  "dir": {
+   "group": "avrana-party",
+   "mode": "0700",
+   "owner": "avrana-party",
+   "path": "/etc/avrana-party/game-keys"
+  },
+  "files": [
+   {
+    "group": "avrana-party",
+    "mode": "0600",
+    "owner": "avrana-party",
+    "path": "/etc/avrana-party/game-keys/arcade-gauntlet2.key"
+   },
+   {
+    "group": "avrana-party",
+    "mode": "0600",
+    "owner": "avrana-party",
+    "path": "/etc/avrana-party/game-keys/bluff.key"
+   },
+   {
+    "group": "avrana-party",
+    "mode": "0600",
+    "owner": "avrana-party",
+    "path": "/etc/avrana-party/game-keys/expo.key"
+   }
+  ]
+ },
+ "services": [
+  {
+   "address_families": [
+    "AF_INET",
+    "AF_INET6",
+    "AF_UNIX"
+   ],
+   "code": [
+    {
+     "group": "root",
+     "mode": "0644",
+     "owner": "root",
+     "path": "/etc/avrana-party/party-core.json"
+    },
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/opt/avrana-party/current"
+    },
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/usr/bin/python3"
+    }
+   ],
+   "credentials": [],
+   "dynamic_user": false,
+   "no_new_privileges": true,
+   "private_devices": false,
+   "private_tmp": true,
+   "protect_home": "yes",
+   "protect_system": "strict",
+   "role": "party",
+   "state": [
+    {
+     "group": "avrana-party",
+     "mode": "0700",
+     "owner": "avrana-party",
+     "path": "/var/lib/avrana-party-core"
+    }
+   ],
+   "supplementary_groups": [],
+   "tcp": [
+    "127.0.0.1:8191"
+   ],
+   "unit": "avrana-party-core.service",
+   "user": "avrana-party"
+  },
+  {
+   "address_families": [],
+   "code": [
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/bin/sh"
+    },
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/opt/avrana-party/current/arcade"
+    },
+    {
+     "group": "root",
+     "mode": "0644",
+     "owner": "root",
+     "path": "/opt/avrana-party/current/arcade/run-stream.sh"
+    }
+   ],
+   "credentials": [
+    "/etc/avrana-party/game-keys/arcade-gauntlet2.key"
+   ],
+   "dynamic_user": false,
+   "no_new_privileges": true,
+   "private_devices": false,
+   "private_tmp": true,
+   "protect_home": "yes",
+   "protect_system": "strict",
+   "role": "arcade",
+   "state": [
+    {
+     "group": "avrana-arcade",
+     "mode": "0700",
+     "owner": "avrana-arcade",
+     "path": "/var/lib/avrana-arcade"
+    }
+   ],
+   "supplementary_groups": [
+    "input",
+    "render",
+    "video"
+   ],
+   "tcp": [
+    "127.0.0.1:8097",
+    "127.0.0.1:8098"
+   ],
+   "unit": "avranaparty-arcade.service",
+   "user": "avrana-arcade",
+   "user_groups": [
+    "avrana-arcade",
+    "input",
+    "render",
+    "video"
+   ]
+  },
+  {
+   "address_families": [],
+   "code": [
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/opt/avrana-party-games/current"
+    },
+    {
+     "group": "root",
+     "mode": "0644",
+     "owner": "root",
+     "path": "/opt/avrana-party-games/current/server.py"
+    },
+    {
+     "group": "root",
+     "mode": "0755",
+     "owner": "root",
+     "path": "/opt/avrana-party-games/venv/bin/python"
+    }
+   ],
+   "credentials": [
+    "/etc/avrana-party/game-keys/bluff.key",
+    "/etc/avrana-party/game-keys/expo.key"
+   ],
+   "dynamic_user": false,
+   "no_new_privileges": true,
+   "private_devices": false,
+   "private_tmp": true,
+   "protect_home": "yes",
+   "protect_system": "strict",
+   "role": "legacy-games",
+   "state": [
+    {
+     "group": "avrana-lan-games",
+     "mode": "0700",
+     "owner": "avrana-lan-games",
+     "path": "/var/lib/avrana-lan-games"
+    }
+   ],
+   "supplementary_groups": [],
+   "tcp": [
+    "127.0.0.1:8096"
+   ],
+   "unit": "avranaparty-games.service",
+   "user": "avrana-lan-games"
+  }
+ ],
+ "sockets": [],
+ "users": {
+  "avrana-arcade": {
+   "groups": [
+    "avrana-arcade",
+    "input",
+    "render",
+    "video"
+   ],
+   "shell": "/usr/sbin/nologin",
+   "uid": 994
+  },
+  "avrana-lan-games": {
+   "groups": [
+    "avrana-lan-games"
+   ],
+   "shell": "/usr/sbin/nologin",
+   "uid": 993
+  },
+  "avrana-party": {
+   "groups": [
+    "avrana-front",
+    "avrana-party"
+   ],
+   "shell": "/usr/sbin/nologin",
+   "uid": 995
+  }
+ }
+}

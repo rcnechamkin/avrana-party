@@ -276,8 +276,10 @@ http {{
         res, body = self.request('POST', '/party/api/join', {'name': 'Robin'})
         self.assertEqual(res.status, 200, body)
         cookie = res.getheader('Set-Cookie')
-        for part in ('HttpOnly', 'Secure', 'Path=/party/', 'SameSite=Lax'):
+        self.assertTrue(cookie.startswith('__Host-avrana_device='), cookie)   # ADR 0013 D3
+        for part in ('HttpOnly', 'Secure', 'Path=/;', 'SameSite=Lax'):
             self.assertIn(part, cookie)
+        self.assertNotIn('Domain', cookie)
         self.assertEqual(json.loads(body)['me']['name'], 'Robin')
         res, _ = self.request('POST', '/party/api/join', {'name': 'Mallory'}, origin='https://evil.test')
         self.assertEqual(res.status, 403)

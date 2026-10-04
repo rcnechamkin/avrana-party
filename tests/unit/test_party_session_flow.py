@@ -9,7 +9,7 @@ import unittest
 from avrana.party import core, protocol, result, sessions
 from avrana.party.protocol import Invalid
 
-from test_party_service import HOST, ORIGIN, BLUFF, Phone, ServiceCase
+from test_party_service import GAME_ORIGINS, GAMES_ORIGIN, HOST, ORIGIN, BLUFF, Phone, ServiceCase
 
 KEY = protocol.new_key()
 
@@ -116,7 +116,7 @@ class Flow(ServiceCase):
         endpoints = {'bluff': sessions.GameEndpoint('bluff', self.game.url, KEY)}
         self.svc.link = sessions.HttpGameLink(endpoints, timeout=5)
         extra, internal = sessions.routes(self.svc, endpoints)
-        cfg = service.Config({HOST}, {ORIGIN}, secure_cookie=True)
+        cfg = service.Config({HOST}, {ORIGIN}, secure_cookie=True, game_origins=GAME_ORIGINS)
         self.server = service.make_server(self.svc, cfg, port=0, extra_routes=extra,
                                           internal_routes=internal)
         self.port = self.server.server_address[1]
@@ -204,6 +204,44 @@ class Flow(ServiceCase):
         stranger = self.phone()
         self.assertEqual(self.ticket(stranger)[0], 403)
         self.assertEqual(self.ticket(self.phone(origin='https://evil.example'))[0], 403)
+
+    # ---- tickets asked for through the bridge frame (ADR 0013, AVR-226) ---------------------------
+    def test_the_bridge_gets_a_ticket_for_a_game_page_on_a_registered_origin(self):
+        sid = self.launch()
+        status, t, _ = self.ana.post('session/ticket', {'game': 'bluff', 'origin': GAMES_ORIGIN})
+        self.assertEqual((status, t['game'], t['session']), (200, 'bluff', sid))
+        self.assertEqual(self.game.hello(t['ticket'])[1], 'player')
+
+    def test_a_ticket_is_refused_for_an_origin_not_registered_for_that_game(self):
+        self.launch()
+        for body in ({'game': 'bluff', 'origin': 'https://evil.example'},
+                     {'game': 'bluff', 'origin': 'https://arcade-only.avrana.net'},   # another game's origin
+                     {'origin': GAMES_ORIGIN},                                        # must name the game
+                     {'game': 'bluff', 'origin': None}, {'game': 'bluff', 'origin': ['x']},
+                     {'game': 'bluff', 'origin': ORIGIN}):                            # the Party is not a game origin
+            status, out, _ = self.ana.post('session/ticket', body)
+            self.assertEqual((status, out['error']), (403, 'bad_game_origin'), body)
+
+    def test_a_registered_origin_still_gets_no_ticket_for_a_game_that_is_not_on(self):
+        self.launch()                                                    # BLUFF is on
+        status, out, _ = self.ana.post('session/ticket', {'game': 'arcade-gauntlet2',
+                                                          'origin': 'https://arcade-only.avrana.net'})
+        self.assertEqual((status, out['error']), (409, 'no_game'))
+
+    def test_a_game_page_cannot_ask_for_a_ticket_itself(self):
+        self.launch()
+        status, out, _ = self.ana.post('session/ticket', {'game': 'bluff', 'origin': GAMES_ORIGIN},
+                                       headers={'Origin': GAMES_ORIGIN})
+        self.assertEqual((status, out['error']), (403, 'bad_origin'))
+        status, out, _ = self.ana.post('session/ticket', {'game': 'bluff'},
+                                       headers={'Sec-Fetch-Site': 'same-site'})
+        self.assertEqual((status, out['error']), (403, 'cross_origin'))
+
+    def test_a_same_origin_page_keeps_working_until_games_move(self):
+        """The transition: today's game pages share the Party origin and send no `origin`."""
+        sid = self.launch()
+        status, t, _ = self.ana.post('session/ticket', {'game': 'bluff'})
+        self.assertEqual((status, t['session']), (200, sid))
 
     def test_tickets_ride_in_the_hello_never_the_url(self):
         self.launch()

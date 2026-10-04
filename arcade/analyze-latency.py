@@ -7,10 +7,11 @@ we talk about distributions, not lifetime counters. Not an input-to-photon
 number: name what each metric is.
 """
 import json
+import os
 import sys
 from pathlib import Path
 
-LOG = Path(__file__).resolve().parent / 'runtime/client-stats.jsonl'
+LOG = Path(os.environ.get('AVRANA_ARCADE_RUNTIME') or Path(__file__).resolve().parent / 'runtime') / 'client-stats.jsonl'
 
 
 def pct(values, q):

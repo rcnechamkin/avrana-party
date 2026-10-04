@@ -17,6 +17,10 @@ BLUFF = {'bluff': {'id': 'bluff', 'max_players': 6, 'late_join': 'spectator_only
 TWO_GAMES = dict(BLUFF, bomber={'id': 'bomber', 'max_players': 4, 'late_join': 'spectator_only'})
 
 
+GAMES_ORIGIN = 'https://games.avrana.net'
+GAME_ORIGINS = {GAMES_ORIGIN: '*', 'https://arcade-only.avrana.net': ['arcade-gauntlet2']}
+
+
 class FakeLink:
     def __init__(self, ok=True):
         self.ok = ok
@@ -38,13 +42,14 @@ class Phone:
     def __init__(self, port, origin=ORIGIN, host=HOST):
         self.port, self.origin, self.host = port, origin, host
         self.cookie = None
+        self.cookie_name = identity.HOST_COOKIE      # what a browser stores is name and value
         self.last_set_cookie = None
 
     def req(self, method, path, body=None, headers=None):
         conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=40)
         h = {'Host': self.host}
         if self.cookie:
-            h['Cookie'] = f'{identity.COOKIE}={self.cookie}'
+            h['Cookie'] = f'{self.cookie_name}={self.cookie}'
         data = None
         if method == 'POST':
             data = json.dumps(body or {}).encode()
@@ -56,7 +61,7 @@ class Phone:
         sc = r.getheader('Set-Cookie')
         self.last_set_cookie = sc
         if sc:
-            self.cookie = sc.split(';')[0].split('=', 1)[1]
+            self.cookie_name, self.cookie = sc.split(';')[0].split('=', 1)
         conn.close()
         return r.status, (json.loads(raw) if raw else None), r
 
@@ -80,7 +85,7 @@ class ServiceCase(unittest.TestCase):
         self.store = identity.DeviceStore(os.path.join(self.tmp.name, 'devices.json'))
         self.link = self.make_link()
         self.svc = service.PartyService(self.store, self.games, self.link)
-        cfg = service.Config({HOST}, {ORIGIN}, secure_cookie=True)
+        cfg = service.Config({HOST}, {ORIGIN}, secure_cookie=True, game_origins=GAME_ORIGINS)
         self.log = io.StringIO()
         self.server = service.make_server(self.svc, cfg, port=0)
         self.port = self.server.server_address[1]
@@ -113,9 +118,10 @@ class Identity(ServiceCase):
         status, view, _ = p.post('join', {'name': 'Ana'})
         self.assertEqual(status, 200)
         attrs = [a.strip() for a in p.last_set_cookie.split(';')]
-        self.assertEqual(attrs[0].split('=')[0], 'avrana_device')
-        for want in ('Path=/party/', 'HttpOnly', 'Secure', 'SameSite=Lax'):
+        self.assertEqual(attrs[0].split('=')[0], '__Host-avrana_device')
+        for want in ('Path=/', 'HttpOnly', 'Secure', 'SameSite=Lax'):
             self.assertIn(want, attrs)
+        self.assertFalse([a for a in attrs if a.lower().startswith('domain')])   # __Host- forbids it
         self.assertRegex(p.cookie, identity.TOKEN_RE)
         self.assertEqual(view['me']['name'], 'Ana')
         self.assertTrue(view['me']['host'])
@@ -149,6 +155,7 @@ class Identity(ServiceCase):
         attacker.post('join', {'name': 'Mallory'})
         real = victim.cookie
         planted = {'Cookie': f'{identity.COOKIE}={attacker.cookie}; {identity.COOKIE}={real}'}
+        self.assertEqual(victim.cookie_name, identity.HOST_COOKIE)
         before = len(self.store.by_hash)
         victim.cookie = None                                           # the header below is all
         status, view, _ = victim.req('GET', '/party/api/state', headers=planted)
@@ -161,6 +168,61 @@ class Identity(ServiceCase):
         self.assertEqual(len(self.store.by_hash), before)              # nothing minted
         victim.cookie = real                                           # the real cookie alone
         self.assertEqual(victim.state()[1]['me']['name'], 'Ana')
+
+    # ---- the __Host- cookie and one release of dual read (ADR 0013 D3, AVR-226) ----------------
+    def legacy(self, token):
+        return {'Cookie': f'{identity.COOKIE}={token}'}
+
+    def test_a_phone_with_only_the_old_cookie_keeps_its_member_and_is_given_the_new_one(self):
+        p = self.phone()
+        _, v, _ = p.post('join', {'name': 'Ana'})
+        token, member = p.cookie, v['me']['id']
+        p.cookie = None                                    # as a phone that joined before the rename
+        status, view, r = p.req('GET', '/party/api/state', headers=self.legacy(token))
+        self.assertEqual((status, view['me']['id']), (200, member))
+        upgrade = r.getheader('Set-Cookie')
+        self.assertTrue(upgrade.startswith(f'{identity.HOST_COOKIE}={token}; Path=/;'))
+        self.assertIn('Secure', upgrade)
+        self.assertEqual(len(self.store.by_hash), 1)       # the same device: nothing minted
+        # a POST is upgraded the same way
+        _, _, r = p.post('heartbeat', headers=self.legacy(token))
+        self.assertTrue(r.getheader('Set-Cookie').startswith(identity.HOST_COOKIE + '='))
+        # and the new cookie alone is then the same member, with nothing further to set
+        p.cookie_name, p.cookie = identity.HOST_COOKIE, token
+        status, view, r = p.state()
+        self.assertEqual((view['me']['id'], r.getheader('Set-Cookie')), (member, None))
+
+    def test_an_unknown_old_cookie_is_not_upgraded(self):
+        p = self.phone()
+        status, view, r = p.req('GET', '/party/api/state', headers=self.legacy('A' * 43))
+        self.assertEqual((status, view['me'], r.getheader('Set-Cookie')), (200, None, None))
+
+    def test_the_host_cookie_wins_over_an_old_cookie_planted_beside_it(self):
+        victim, attacker = self.phone(), self.phone()
+        _, v, _ = victim.post('join', {'name': 'Ana'})
+        attacker.post('join', {'name': 'Mallory'})
+        both = {'Cookie': f'{identity.COOKIE}={attacker.cookie}; {identity.HOST_COOKIE}={victim.cookie}'}
+        real = victim.cookie
+        victim.cookie = None
+        status, view, r = victim.req('GET', '/party/api/state', headers=both)
+        self.assertEqual((view['me']['id'], r.getheader('Set-Cookie')), (v['me']['id'], None))
+        twice = {'Cookie': f'{identity.HOST_COOKIE}={attacker.cookie}; {identity.HOST_COOKIE}={real}'}
+        self.assertIsNone(victim.req('GET', '/party/api/state', headers=twice)[1]['me'])
+        status, body, _ = victim.post('join', {'name': 'Ana'}, headers=twice)
+        self.assertEqual((status, body['error']), (409, 'ambiguous_identity'))
+
+    def test_identity_parsing(self):
+        t, u = 'a' * 43, 'b' * 43
+        H, L = identity.HOST_COOKIE, identity.COOKIE
+        for header, want in ((f'{H}={t}', (t, 'host')), (f'{L}={t}', (t, 'legacy')),
+                             (f'{L}={u}; {H}={t}', (t, 'host')), (f'x=1; {H}={t}; y=2', (t, 'host')),
+                             (f'{H}={t}; {H}={u}', (None, None)), (f'{L}={t}; {L}={u}', (None, None)),
+                             (f'{H}={t}; {L}={u}; {L}={t}', (None, None)), ('', (None, None)),
+                             (None, (None, None)), (f'not{H}={t}', (None, None))):
+            self.assertEqual(identity.presented(header), want, header)
+        self.assertIn('Path=/party/', identity.set_cookie(t, secure=False))      # plain HTTP: old shape
+        self.assertTrue(identity.set_cookie(t, secure=False).startswith(L + '='))
+        self.assertNotIn('Secure', identity.set_cookie(t, secure=False))
 
     def test_the_same_cookie_is_the_same_member(self):
         p = self.phone()
@@ -175,6 +237,70 @@ class Identity(ServiceCase):
         p.post('join', {'name': 'Ana'})
         again = identity.DeviceStore(self.store.path)
         self.assertIsNotNone(again.resolve(p.cookie))
+
+
+class OriginBoundary(ServiceCase):
+    """ADR 0013: a game page lives on another origin of the same site. The browser still attaches
+    the device cookie to what such a page sends here, so these refusals are the boundary."""
+
+    def member(self):
+        p = self.phone()
+        p.post('join', {'name': 'Ana'})
+        return p
+
+    def test_a_post_from_the_game_origin_is_refused_with_the_members_own_cookie(self):
+        p = self.member()
+        for path, body in (('session/launch', {'game': 'bluff', 'if_version': 1}), ('rename', {'name': 'X'}),
+                           ('leave', {}), ('session/end', {'if_version': 1}), ('join', {'name': 'Eve'})):
+            status, out, r = p.post(path, body, headers={'Origin': GAMES_ORIGIN})
+            self.assertEqual((status, out['error']), (403, 'bad_origin'), path)
+        self.assertEqual(p.state()[1]['me']['name'], 'Ana')            # nothing happened
+
+    def test_no_response_ever_carries_a_cors_header(self):
+        """Without Access-Control-Allow-*, a page on another origin cannot read any answer."""
+        p = self.member()
+        for method, path, headers in (('GET', '/party/api/state', {'Origin': GAMES_ORIGIN}),
+                                      ('GET', '/party/api/bridge', {'Origin': GAMES_ORIGIN}),
+                                      ('POST', '/party/api/heartbeat', {'Origin': GAMES_ORIGIN}),
+                                      ('POST', '/party/api/heartbeat', {}),
+                                      ('OPTIONS', '/party/api/state', {'Origin': GAMES_ORIGIN,
+                                                                       'Access-Control-Request-Method': 'POST'})):
+            _, _, r = p.req(method, path, headers=headers) if method != 'OPTIONS' else self.raw(p, method, path, headers)
+            names = [k.lower() for k, _ in r.getheaders()]
+            self.assertFalse([n for n in names if n.startswith('access-control-')], (method, path))
+
+    def raw(self, phone, method, path, headers):
+        conn = http.client.HTTPConnection('127.0.0.1', phone.port, timeout=10)
+        conn.request(method, path, headers={'Host': phone.host, **headers})
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        return r.status, None, r
+
+    def test_a_browser_request_from_another_origin_gets_nothing_even_a_get(self):
+        p = self.member()
+        for site in ('same-site', 'cross-site'):
+            status, out, _ = p.req('GET', '/party/api/state', headers={'Sec-Fetch-Site': site})
+            self.assertEqual((status, out), (403, {'error': 'cross_origin'}), site)
+            status, out, _ = p.post('heartbeat', headers={'Sec-Fetch-Site': site})
+            self.assertEqual((status, out['error']), (403, 'cross_origin'), site)
+        for site in ('same-origin', 'none'):                            # the Party's own pages; a typed URL
+            self.assertEqual(p.req('GET', '/party/api/state', headers={'Sec-Fetch-Site': site})[0], 200)
+        self.assertEqual(p.state()[0], 200)                             # a client that sends no such header
+
+    def test_the_bridge_is_told_which_game_origins_exist_and_nothing_else(self):
+        status, out, _ = self.phone().req('GET', '/party/api/bridge')
+        self.assertEqual((status, out), (200, {'schema': 'avrana.party-bridge/v1', 'origins': GAME_ORIGINS}))
+
+    def test_a_game_origin_can_never_be_configured_as_a_party_origin(self):
+        with self.assertRaises(ValueError):
+            service.Config({HOST}, {ORIGIN, GAMES_ORIGIN}, game_origins=GAME_ORIGINS)
+        cfg = service.Config({HOST}, {ORIGIN}, game_origins=GAME_ORIGINS)
+        self.assertTrue(cfg.game_allowed(GAMES_ORIGIN, 'bluff'))
+        self.assertTrue(cfg.game_allowed('https://arcade-only.avrana.net', 'arcade-gauntlet2'))
+        self.assertFalse(cfg.game_allowed('https://arcade-only.avrana.net', 'bluff'))
+        self.assertFalse(cfg.game_allowed('https://evil.example', 'bluff'))
+        self.assertFalse(service.Config({HOST}, {ORIGIN}).game_allowed(GAMES_ORIGIN, 'bluff'))
 
 
 class Guards(ServiceCase):
