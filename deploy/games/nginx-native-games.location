@@ -34,7 +34,10 @@
     }
 
     # Anything else under /games/ names no game (a slug outside the pattern): refused here, never
-    # passed to a catch-all.
+    # passed to a catch-all. The bare /games is refused the same way.
     location /games/ {
+        return 404;
+    }
+    location = /games {
         return 404;
     }

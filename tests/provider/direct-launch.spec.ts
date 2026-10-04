@@ -86,3 +86,41 @@ test('one real Party Chat history survives a game visit; game opens no global ch
   await page.locator('#chat summary').click();
   await expect(page.locator('#chat-messages')).toContainText(message);
 });
+
+// The LAN Games hub at / and a standalone game page still ship while that runtime retires.
+test('a standalone game page registers the root worker, which leaves the Avrana cache and scope alone', async ({ page }) => {
+  await seed(page); await home(page);
+  await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).map((r) => new URL(r.scope).pathname))).toContain('/party/');
+  await expect.poll(() => page.evaluate(async () => (await caches.keys()).some((k) => k.startsWith('avrana-party-shell-')))).toBe(true);
+  const cachesBefore = await page.evaluate(() => caches.keys());
+  await page.goto('/games/bluff/');
+  await expect(page.locator('#avrana-navigation')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).map((r) => new URL(r.scope).pathname))).toContain('/');
+  await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration('/'); if (!r?.active) await navigator.serviceWorker.ready; });
+  const after = await page.evaluate(() => caches.keys());
+  expect(cachesBefore.filter((k) => k.startsWith('avrana-party-shell-')).length).toBeGreaterThan(0);
+  for (const key of cachesBefore.filter((k) => k.startsWith('avrana-party-shell-'))) expect(after).toContain(key);
+  expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).map((r) => new URL(r.scope).pathname))).toContain('/party/');
+  await page.goto('/games/expo/?avrana=1');
+  await expect(page.locator('#avrana-navigation a')).toBeVisible();
+  await expect(page.locator('.suite-home[href="/"]')).toHaveCount(0);
+  await page.locator('#avrana-navigation a').click();
+  await expect(page.locator('#player-chip')).toContainText('Robin');
+});
+
+test('the standalone hub reads canonical favorites without creating duplicate IDs', async ({ page }) => {
+  await seed(page); await home(page);
+  await page.locator('[data-id="bluff"]').getByRole('button', { name: /from favorites/ }).click();
+  await page.locator('[data-id="bluff"]').getByRole('button', { name: /to favorites/ }).click();
+  await page.evaluate(() => localStorage.setItem('lg-favorites', '["avrana:bluff","avrana:lan-future-title","unknown-old-title"]'));
+  await page.goto('/');
+  const favorite = page.locator('#rails .tile[data-slug="bluff"] .tile-fav');
+  await expect(favorite).toHaveAttribute('aria-label', 'remove from favorites');
+  await favorite.click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-future-title','unknown-old-title']);
+  await favorite.click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-future-title','unknown-old-title','avrana:bluff']);
+  await home(page);
+  await page.getByRole('button', { name: 'Favorites', exact: true }).click();
+  await expect(page.locator('#games > li')).toHaveCount(1);
+});

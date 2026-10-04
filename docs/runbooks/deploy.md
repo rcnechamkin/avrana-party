@@ -64,6 +64,13 @@ manifest and does not need root. The real run then:
 | 5 | run `python3 -m avrana.ops.smoke`, record `passed`/`failed` in the manifest | exit 2 on failure, with the rollback command printed |
 
 Keys, certificates, nginx, NetworkManager, systemd unit files and drop-ins are never touched.
+
+Since AVR-259 the nginx site file and the web build are one deployment unit: the catalog of a
+commit offers exactly the games its site file routes. `ops/deploy.sh` installs the web build and
+never the site file, so a deploy that crosses AVR-259 is followed at once by the site file of
+the same commit (the nginx step in [party-core-deploy](party-core-deploy.md)). Web build alone:
+the retired LAN Games tiles disappear and their old routes still answer. Site file alone: the
+old Party Home shows tiles that lead to nginx's 502. Neither is checked by a script.
 Those remain the first-time runbooks' owner steps.
 
 ## After

@@ -82,9 +82,13 @@ class StaticRules(unittest.TestCase):
         self.assertNotIn('avrana-games', legacy)
         self.assertNotRegex(SITE.replace(legacy, ''), r'location\s+[^{]*/games/[^{]*(bluff|expo)')
         self.assertNotRegex(SITE, r'location\s+[^{(]*/games/[a-z]')
-        # nginx reads no game registry (its location is AVR-236's to decide) and tests no file
-        self.assertNotIn('games.d', SITE)
-        self.assertNotIn('if (', native)
+        # nginx reads no game registry (its location is AVR-236's to decide) and tests no file:
+        # the only filesystem path in the game rules is the socket directory, and only in proxy_pass
+        rules = '\n'.join(line for line in (native + legacy).splitlines() if not line.lstrip().startswith('#'))
+        self.assertEqual(re.findall(r'/(?:etc|run|var|srv|home|usr|opt|tmp)/[^\s;:]*', rules),
+                         ['/run/avrana-games/$native_game.sock'])
+        self.assertNotIn('if (', native + legacy)
+        self.assertNotIn('try_files', native + legacy)
         # nothing hands a request over to another server: no named location, no error_page
         self.assertNotIn('location @', SITE)
         self.assertNotIn('error_page', SITE)
@@ -94,7 +98,7 @@ class StaticRules(unittest.TestCase):
             self.assertEqual(location_body(block, '/games/').split(), ['return', '404;'])
 
     GAMES = ['~ "^/games/(bluff|expo)(/(?!avrana/)|$)"', '~ ^/games/[^/]+/avrana/',
-             '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"', '/games/']
+             '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"', '/games/', '= /games']
 
     def test_port_80_keeps_the_captive_probe_and_has_the_same_game_rules(self):
         self.assertIn('listen 80 default_server;', self.http)
@@ -536,7 +540,7 @@ http {{
 
     def test_a_path_under_games_that_names_no_slug_is_a_404_from_nginx(self):
         before, seen = self.lan_paths(), len(self.native.seen)
-        for path in ('/games/', '/games/Demo/', '/games/1demo/', '/games/demo.sock/', '/games/' + 'a' * 41 + '/',
+        for path in ('/games', '/games/', '/games/Demo/', '/games/1demo/', '/games/demo.sock/', '/games/' + 'a' * 41 + '/',
                      '/games/demo', '/games/BLUFF/'):
             res, body = self.get(path, https=True)
             self.assertEqual(res.status, 404, path)
@@ -635,6 +639,24 @@ http {{
             got = json.loads(body)
             self.assertEqual((res.status, got['upstream'], got['path']), (200, 'native', path), path)
             self.assertTrue(got['forwarded_for'], path)
+
+    def test_near_miss_control_spellings_for_the_legacy_games_reach_that_runtime_as_proxied_requests(self):
+        """Documented pass-throughs, as above: none is the control path the runtime routes (the
+        exact lower-case /games/<slug>/avrana/...), and each arrives with the proxy headers, which
+        its control routes refuse (Games tests/test_party_session.py
+        test_launch_route_refuses_anything_not_local_and_unproxied)."""
+        for path in ('/games/bluff/Avrana/session/v0/launch', '/games/expo/AVRANA/session/v0/end', '/games/bluff/avrana'):
+            res, body = self.request('POST', path, body={})
+            got = json.loads(body)
+            self.assertEqual((got['upstream'], got['path']), ('lan', path), path)
+            self.assertTrue(got['forwarded_for'], path)
+        # the exact control path, in every spelling nginx normalises, never does
+        before = self.lan_paths()
+        for path in ('/games/bluff/avrana/', '/games/bluff//avrana/session/v0/launch', '/games/expo/%61vrana/session/v0/end',
+                     '/games/bluff/x/../avrana/session/v0/launch'):
+            res, body = self.request('POST', path, body={})
+            self.assertEqual(res.status, 404, path)
+        self.assertEqual(self.lan_paths(), before)
 
     def test_a_websocket_through_the_rule_carries_frames_both_ways(self):
         """A real upgrade: the game answers 101 and bytes sent after it come back."""
