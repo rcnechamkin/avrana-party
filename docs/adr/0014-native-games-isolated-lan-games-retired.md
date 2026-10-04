@@ -141,7 +141,9 @@ permanent runtime by default.
 
 A mechanism proposal for the service identities, secrets, state directories and local IPC of
 decisions 3, 4 and 6 is in [ADR 0016](0016-service-identities-and-local-trust-boundary.md)
-(2026-10-03, AVR-227; proposed, not implemented).
+(2026-10-03, AVR-227; proposed, not implemented). It also narrows decision 4's "loopback TCP
+remains acceptable": acceptable as a transport for the legacy services, never as evidence of which
+service is calling.
 
 Service manager details; container or sandbox mechanics; the registry file format and where it
 lives; whether Classics adaptations share a small runtime; the exact result envelope (AVR-237);

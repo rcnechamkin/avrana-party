@@ -21,6 +21,12 @@ Home integration (AVR-20/AVR-127).
 | Games server party-session drop-in (`AVRANA_PARTY_KEYS`, `AVRANA_PARTY_URL=http://127.0.0.1:8191`) | `/etc/systemd/system/avranaparty-games.service.d/avrana-party-session.conf` | games repo `deploy/avrana-party-session.conf` |
 | Party Home with the Party API client | `/var/www/avrana-party/web/current` | `ops/install-party-web.sh` |
 
+**The file modes above are not isolation.** Party Core, the games server and the arcade all run
+as `cody`, so "0600 `cody`" means every service can read every key and "loopback" means every
+service can call every port. That is the prototype. The intended identities, key delivery and
+sockets are [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md) (proposed);
+do not copy `User=cody` or a `cody`-owned key into anything new.
+
 Not in scope: party persistence across reboot (the party is memory-only; a restart starts a new
 party, device identities survive), BLUFF rules changes, `.avrgame`.
 

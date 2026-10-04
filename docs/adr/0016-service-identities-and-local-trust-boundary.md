@@ -21,7 +21,8 @@ the [2026-10-02 review](../findings/2026-10-02-architecture-review.md) §2.3, §
 
 ## Context: what is true today
 
-Verified in source on `main` (2026-10-03); the Pi was not contacted.
+Verified in source on `main` (2026-10-03) and against facts recorded read-only on the Pi the
+same day (`tests/fixtures/boundary/pi-2026-10-03.json`; nothing on the Pi was changed).
 
 - **One uid.** `avrana-party-core`, `avranaparty-games` and `avranaparty-arcade` all run as
   `User=cody`, the owner's login account, from git checkouts in `/home/cody` that `cody` owns.
@@ -40,6 +41,22 @@ Verified in source on `main` (2026-10-03); the Pi was not contacted.
 
 That was a reasonable prototype. It is not a boundary to hand to a field tester, and it cannot be
 what the second native game is built on.
+
+## Owner decisions (2026-10-03)
+
+Recorded on AVR-227 after two proposals for this ADR were reconciled. They settle the questions
+this mechanism left to the owner; the status line above changes only after review of the
+reconciled text.
+
+1. The reconciled design in this document is the one to carry forward.
+2. For the field test, Party Core tells native games apart **by signature alone**. A per-game
+   channel enforced by the OS is deferred to the untrusted tier (AVR-69); §4 states what that
+   costs.
+3. The key-loader change in §3 is approved as a paired Party and Games change ahead of
+   everything else ([AVR-253](https://linear.app/avranakern/issue/AVR-253/let-protocolread-key-accept-a-systemd-loadcredential-key-file-without)).
+4. Party Core, the LAN Games fork and the arcade **leave the `cody` account before the field
+   test**. This does not wait for LAN Games to retire (§9 phase 1).
+5. Party Core's public API **stays on loopback TCP** for the field test.
 
 ## Decision
 
@@ -128,10 +145,11 @@ kept: a unit sets `AVRANA_PARTY_KEYS=%d` and names the credential `<slug>.key`, 
 **One code prerequisite, confirmed by the proof below.** systemd grants the service read access to
 a credential file with a POSIX ACL, so the file is owned by root and its mode reads as `0440`;
 `protocol.read_key` refuses any key readable by group or other, and refused it in the proof run.
-The loader must therefore treat a file inside `$CREDENTIALS_DIRECTORY` as protected by that
-directory, while the at-rest check stays for the key store. That is a small paired change to
-`protocol.py` and its vendored copy in the Games repository, owned by AVR-236 and required before
-migration stage 1. It changes no wire format.
+The loader must accept exactly that case and keep refusing a key with real group or other access.
+That is a paired change to `protocol.py` and its vendored copy in the Games repository, with both
+contract digests updated: [AVR-253](https://linear.app/avranakern/issue/AVR-253/let-protocolread-key-accept-a-systemd-loadcredential-key-file-without),
+approved by the owner and required before any unit uses `LoadCredential=`. It changes no wire
+format.
 
 Rejected for key delivery: a second on-disk copy per game (two files drift on rotation); a shared
 group on the key file (`read_key` rightly refuses it, and a group is not "exactly two readers");
@@ -142,7 +160,7 @@ environment variables (visible in unit files and `/proc`).
 | Path | Transport | Created by; owner : group, mode | Who can connect | Authenticated by |
 |---|---|---|---|---|
 | nginx → native game (pages, WebSocket) | **Unix socket** `/run/avrana-games/<slug>.sock` | the socket unit; `root : avrana-front`, `0660` | nginx, Party Core | nothing local; the browser presents a Party ticket (ADR 0006) |
-| Party Core → native game (`launch`, `end`) | the same socket | — | — | HMAC with that game's key; the game refuses these routes when a proxy header is present, and the generic nginx route does not forward them |
+| Party Core → native game (`launch`, `end`) | the same socket | — | — | HMAC with that game's key; the game refuses these routes when a proxy header is present, and the generic nginx route refuses `/games/<slug>/avrana/` outright |
 | native game → Party Core (`ended`, result) | **Unix socket** `/run/avrana-party/internal.sock` | Party Core's socket unit; `avrana-party : avrana-games`, `0660` | game instances | HMAC with the reporting game's key; Party matches it to the current session |
 | nginx → Party Core (`/party/api/`) | TCP loopback `127.0.0.1:8191` (unchanged) | — | any local process | the member's cookie and Origin, as for any phone |
 | Party Core ↔ arcade control, legacy LAN Games | TCP loopback `:8098`, `:8096` (unchanged) | — | any local process | HMAC with a key that is now readable by two identities only |
@@ -156,7 +174,8 @@ Where TCP loopback **stays**: `/party/api/` behind nginx (it is the public API; 
 gains nothing a phone lacks), the arcade (it needs IP for WebRTC and is not being rebuilt here)
 and the legacy fork (no investment in a retiring runtime). Each may move to a socket when its unit
 is next changed; none has to for the field test, because the key each depends on is no longer
-shared.
+shared. Until the arcade and the fork leave TCP, Party Core's `/internal/` route also remains on
+`:8191`, where it is protected by the signature only.
 
 How the two layers divide the work, which is why both stay:
 
@@ -167,7 +186,17 @@ How the two layers divide the work, which is why both stay:
 - **The signature answers "which game is this"**. Dynamic uids are not stable, so Party does not
   map a peer uid to a game; the per-game key, now private to that game, does it. It also covers
   what an OS identity cannot: tickets travel through a browser, and nginx and Party share a game's
-  socket.
+  socket. Party checks the message's issuer (`iss`) against the key that verified it.
+
+What signature-only identification costs, accepted for the field test: every native game can
+connect to Party's internal socket, so **a game whose key leaks can be impersonated to Party by
+any other local game**. With first-party games that hold only their own key this needs a key
+disclosure first. The upgrade path, when untrusted games arrive (AVR-69), is the transport
+contract a sandbox must provide: *per game, one channel only that game can use to reach Party,
+and one only Party can use to reach it*. Nothing in the wire protocol changes when that is added.
+Because nginx and Party share a game's socket, the game tells control traffic from public traffic
+itself; one generic nginx rule that refuses `/games/<slug>/avrana/` keeps control paths from ever
+being proxied.
 
 Rejected: `SO_PEERCRED` as the authentication of a game (needs stable uids and peer-credential
 plumbing in three web stacks for no gain over a private key); a second, Party-only control socket
@@ -267,23 +296,31 @@ Keys are never in Git, an image, a backup, a log or a unit file.
 
 ### 9. Migration from the shared-user prototype
 
-Nothing below is performed by AVR-227. Each stage is an owner-approved deployment with its own
-runbook and reverse; each leaves a working appliance.
+Nothing below is performed by AVR-227. Each phase is an owner-approved deployment with its own
+runbook and reverse; each leaves a working appliance. The phases are the ones
+`contracts/service-boundary.v1.json` names and `python3 -m avrana.ops.boundary --phase N` checks.
 
-1. **Keys and Party Core leave the operator account.** Create `avrana-party`, `avrana-front`,
-   `avrana-games`; re-own the key store and device store; `User=avrana-party`. The Games and
-   arcade drop-ins switch from the shared directory to `LoadCredential=` + `AVRANA_PARTY_KEYS=%d`.
-   Prerequisites: the credential-loader change in §3, and code that
-   `avrana-party` can read (the checkout under `/home/cody` is the obstacle). After this stage a
-   game key has exactly two readers even though Games and the arcade still run as `cody`.
-2. **The arcade and the legacy fork leave the operator account** (`avrana-arcade`,
-   `avrana-lan-games`), executing root-owned code. After this stage §1 item 3 holds.
-3. **Native games arrive through AVR-236**: template units, sockets, Party's internal socket,
-   `provision-game`. Checkers (AVR-238) is the first consumer.
-4. **The legacy identity is deleted** with the runtime (AVR-228).
+**Phase 1, before the field test (owner decision 4): the three existing services leave the
+operator account.** It does not wait for LAN Games to retire.
 
-Reverse of stages 1–2: restore the previous unit files and drop-ins and re-own the two
-directories to `cody`. No data format changes, so the reverse loses nothing.
+- Prerequisites: the key-loader change (AVR-253) merged in both repositories and deployed; code
+  each service can read without belonging to `cody` (the checkouts under `/home/cody` are the
+  obstacle; layout is AVR-32).
+- Create `avrana-party`, `avrana-arcade`, `avrana-lan-games` and the groups `avrana-front`,
+  `avrana-games`. Re-own the key store and the device store to `avrana-party`. Set each unit's
+  `User=`. The Games and arcade drop-ins switch from the shared key directory to `LoadCredential=`
+  + `AVRANA_PARTY_KEYS=%d`. Bind the fork's `data/` from its own state directory. Deploy the
+  loopback listener already on Games `main`.
+- After it: a game key has exactly two readers, no service can write code or reach `sudo`, and
+  §1 item 3 holds. On 2026-10-03 the Pi met 6 of the 25 phase-1 rules.
+
+**Phase 2: native games arrive through AVR-236**: template units, sockets, Party's internal
+socket, the generic nginx route, `provision-game`. Checkers (AVR-238) is the first consumer.
+
+**Phase 3: the legacy identity is deleted** with the runtime (AVR-228).
+
+Reverse of phase 1: restore the previous unit files and drop-ins and re-own the two directories to
+`cody`. No data format changes, so the reverse loses nothing.
 
 ## What AVR-236 consumes
 
@@ -296,8 +333,9 @@ directories to `cody`. No data format changes, so the reverse loses nothing.
 | What must cleanup and reprovision remove or keep? | §8 |
 | What must Party Core gain? | an HTTP client for a Unix socket; an `/internal/` listener on `/run/avrana-party/internal.sock` (the loopback one stays for the arcade and the fork); a registry reload that reads a new key |
 | What must the game side gain? | serve an inherited socket; treat "arrived on the Unix socket without proxy headers" as the local check that `client is loopback` is today; post `ended` to a Unix socket |
-| What must nginx gain? | one generic route by slug to `/run/avrana-games/<slug>.sock` that sets the proxy headers and does not forward `…/avrana/session/…`; `www-data` in `avrana-front` |
+| What must nginx gain? | one generic route by slug to `/run/avrana-games/<slug>.sock` that sets the proxy headers, and one generic rule that refuses `/games/<slug>/avrana/`; `www-data` in `avrana-front` |
 | What must it prove? | Tier 2: real nginx routing by slug to a Unix socket; a Unix-socket variant of the cross-repo session test; `provision-game` reconcile, rotate and remove leave the state in §8 |
+| When is it done with this boundary? | when the phase-2 rules of `python3 -m avrana.ops.boundary` pass on a host with a provisioned game |
 
 The wire contract is untouched: `avrana.party-session/v0`, its messages, tickets, replay rules and
 the result envelope are exactly as ADRs 0006 and 0015 state. Only the address a message is sent to
@@ -318,7 +356,7 @@ changes, and only for native games.
   **LIMITED-MODE**'s proposed second loopback listener for nginx → Party Core is unaffected
   (`/party/api/` stays on TCP loopback).
 - **ADR 0009** and `deploy/arcade/avrana-party-session.conf` ("the arcade keeps its unit, user and
-  groups"): accurate for what is deployed; stage 2 changes the user.
+  groups"): accurate for what is deployed; phase 1 changes the user.
 - **GAME-INSTALLATION** "Isolation that is cheap on a Pi": its `DynamicUser` + Unix-socket sketch
   is adopted as the baseline for all native games; `PrivateNetwork`, system-call filters and
   resource ceilings remain its stronger tier.
@@ -334,6 +372,12 @@ changes, and only for native games.
   `RestrictAddressFamilies=AF_UNIX` and a private network namespace still reaches Party's internal
   socket and has no IP socket. Observed: the credential file is `0440 root` and `read_key`
   refuses it (§3).
+- [`contracts/service-boundary.v1.json`](../../contracts/service-boundary.v1.json) states the
+  identities, key ownership and sockets above as data; `avrana/ops/boundary.py` judges a host
+  against it, read-only, and `tests/unit/test_ops_boundary.py` shows a host built to this ADR
+  passes and each single departure is caught. The Pi's facts, collected read-only on 2026-10-03,
+  meet 6 of 25 phase-1 rules: every service is `cody`, the keys are `cody`'s, and the games
+  server listens on `0.0.0.0:8096` (the loopback default on Games `main` is not deployed).
 - That is Tier 2 evidence about systemd on Ubuntu. **Not proven, and requiring the Pi** (owner,
   Tier 3): the same checks on Debian 13 / arm64; the permissions of `/home/cody` and where service
   code will live; nginx workers picking up `avrana-front`; the arcade under a new user (uinput,
@@ -343,6 +387,6 @@ changes, and only for native games.
 
 Community and untrusted game execution, its sandbox tier and resource policy (AVR-69); encrypted
 credentials and storage encryption; moving `/party/api/`, the arcade or the fork to Unix sockets;
-a Party-only control socket per game; peer-credential checks; a web admin's identity; the registry
+a Party-only control socket and a per-game report channel (the sandbox transport contract in §4); peer-credential checks; a web admin's identity; the registry
 format and path, CLI syntax and unit `ExecStart` (AVR-236); the install layout (AVR-32); the SDK
 and `.avrgame`.

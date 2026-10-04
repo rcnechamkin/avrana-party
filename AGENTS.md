@@ -64,6 +64,10 @@ Never, unless the task explicitly authorizes it in writing:
   personal telemetry or raw logs; hand-edit generated files ([GENERATED](docs/GENERATED.md)),
   Graphify outputs or the two byte-identical nginx files (`avrana-party.nginx`, `arcade/nginx-site`).
 
+Do not infer isolation between appliance services from a `0600` key file or a loopback-only
+route: today every service runs as one Unix user
+([ADR 0016](docs/adr/0016-service-identities-and-local-trust-boundary.md), [SYSTEM](docs/SYSTEM.md)).
+
 Platform ownership stays with Party (cross-game identity, presence, chat, library, navigation
 and durable results/history; no parallel stores or tokens in Games). Device, Profile, Presence
 and Seat are distinct; a browser-stored name/avatar is not a durable Profile; Admin is not Host:
