@@ -94,7 +94,12 @@ systemctl show -p Environment avranaparty-games | grep -o 'LANGAMES_HOST=[^ ]*' 
 only. As of 2026-10-04 the appliance runs Games `c6d7b52`, which predates the loopback default
 and binds `0.0.0.0:8096` (`docs/SYSTEM.md`): any device on the party Wi-Fi or the management LAN
 can reach the runtime without going through nginx. Deploying a Games commit at or after `11811ff` closes that,
-provided no unit or drop-in on the appliance sets `LANGAMES_HOST=0.0.0.0`. The topology check
+provided no unit or drop-in on the appliance sets `LANGAMES_HOST=0.0.0.0`. Owner decision
+2026-10-04: the appliance changes by an ordinary deployment of current Games `main`, performed by
+the owner, not by waiting for the service-users migration. The phase-1 unit in the Games
+repository additionally states `LANGAMES_HOST=127.0.0.1` and an `IPAddressDeny=any` /
+`IPAddressAllow=localhost` filter; those apply only once that unit is installed by the migration
+([service-users-migration](service-users-migration.md)). The topology check
 below asserts the listener from the appliance; the owner confirms it from outside:
 
 - from a phone on the party Wi-Fi, `http://10.42.0.1:8096/` does not load;

@@ -96,6 +96,11 @@ running as a user without a home (the config RetroArch reads is written into the
 the likely causes are those three. A hardening line that has to be relaxed is a finding to
 record and a rule (`hardening.base`) that will then fail, not something to hide.
 
+Also never run: the games unit's `IPAddressDeny=any` / `IPAddressAllow=localhost` (AVR-272, owner
+decision 2026-10-04). After the migration check `systemctl show -p IPAddressDeny -p IPAddressAllow
+avranaparty-games` and the journal for a warning that the filter is unsupported; BLUFF and EXPO
+must still open from `/party/`, and a game must still reach Party Core (start and end a session).
+
 ## Reverse
 
 ```bash
