@@ -209,7 +209,7 @@ navigation/results deferrals. This retained plan does not assign current work; c
 
 ## Amendment 2026-10-03: whose key, and which local endpoint
 
-[ADR 0016](0016-service-identities-and-local-trust-boundary.md) (AVR-227; proposed, not implemented
+[ADR 0016](0016-service-identities-and-local-trust-boundary.md) (AVR-227; accepted, not implemented
 or deployed) leaves this protocol's messages, tickets and refusal rules unchanged and narrows two
 statements above for the field-test appliance:
 

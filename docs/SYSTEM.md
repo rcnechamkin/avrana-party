@@ -142,7 +142,7 @@ Consequences, so nothing here is read as isolation: every service can read every
 every other service's state, can rewrite the code the others run, and can reach every loopback
 port. A `0600` key and a loopback-only route protect against phones and the network, not against
 another local service. The intended boundary is
-[ADR 0016](adr/0016-service-identities-and-local-trust-boundary.md) (proposed, not implemented).
+[ADR 0016](adr/0016-service-identities-and-local-trust-boundary.md) (accepted, not implemented).
 `python3 -m avrana.ops.boundary` reports each of its rules on a host, read-only; on this date the
 Pi met 6 of the 25 phase-1 rules (`tests/fixtures/boundary/pi-2026-10-03.json`).
 

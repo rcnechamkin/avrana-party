@@ -109,7 +109,7 @@ The process and origin *boundaries* are now accepted direction for all games (AD
 The specific directives and headers below remain an illustrative sketch of the stronger tier for
 untrusted code, not a frozen implementation. The field-test baseline for first-party native games
 (`DynamicUser`, a Unix socket, a per-game credential and state directory, no IP sockets) is
-proposed in [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md); `PrivateNetwork`,
+set by [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md); `PrivateNetwork`,
 system-call filters and resource ceilings stay in this stronger tier.
 
 - **Server side:** one systemd template unit per game with `DynamicUser`, `PrivateNetwork=yes`
