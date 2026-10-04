@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 from avrana.contracts import party_games
 from avrana.ops import manifest, status
@@ -92,6 +93,35 @@ class Document(unittest.TestCase):
         for reason in ('party checkout differs from the deployment manifest', 'party checkout is dirty',
                        'nginx is failed', 'certificate expiring'):
             self.assertIn(reason, doc['summary']['reasons'])
+
+    def test_an_optional_unit_that_is_not_installed_is_a_note_not_a_fault(self):
+        manifest.write(self.manifest, sample())
+        timer = 'avrana-party-certificate.timer'
+        cfg = dict(self.cfg, units=['nginx', timer])
+        both = {'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}
+        doc = status.build_status(cfg, FakeProbes(both, units={timer: 'not-installed'}), now=NOW)
+        self.assertEqual(doc['services'][timer], 'not-installed')
+        self.assertEqual(doc['summary']['state'], 'ok', doc['summary'])
+        self.assertIn(f'{timer} is not installed (optional)', doc['summary']['notes'])
+        # installed and stopped, or a required unit that is missing, degrades as before
+        doc = status.build_status(cfg, FakeProbes(both, units={timer: 'inactive'}), now=NOW)
+        self.assertEqual(doc['summary']['reasons'], [f'{timer} is inactive'])
+        doc = status.build_status(cfg, FakeProbes(both, units={'nginx': 'not-installed'}), now=NOW)
+        self.assertEqual((doc['summary']['state'], doc['summary']['reasons']), ('degraded', ['nginx is not installed']))
+
+    def test_paths_the_service_user_may_not_look_at_are_unavailable_not_a_crash(self):
+        '''On the appliance the certificate directory is root-only: stat raises PermissionError
+        (found on the Pi 2026-10-04, where it took /party/api/status down with a 502).'''
+        probes = status.Probes()
+        with mock.patch.object(Path, 'exists', side_effect=PermissionError(13, 'Permission denied')):
+            self.assertIsNone(probes.certificate_not_after('/etc/avrana-party/tls/current/fullchain.pem'))
+            self.assertIsNone(probes.checkout('/home/cody/avrana-party'))
+            self.assertIsNone(probes.web_release('/var/www/avrana-party/web'))
+            with self.assertRaises(manifest.ManifestError):
+                manifest.read(self.manifest)
+            doc = status.build_status(dict(self.cfg, certificate='/x/fullchain.pem', web_root='/w'), probes, now=NOW)
+        self.assertEqual(doc['certificate']['status'], 'unavailable')
+        self.assertEqual(doc['manifest_error'], 'deployment manifest: unreadable (PermissionError)')
 
     def test_malformed_manifest_is_reported_not_hidden(self):
         self.manifest.write_text('{"schema": "avrana.deployment/v0"}')

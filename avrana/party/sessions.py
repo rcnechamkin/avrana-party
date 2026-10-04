@@ -8,6 +8,9 @@ Browser -> party (cookie-authenticated, Origin-checked, never in a URL):
     POST /party/api/session/ticket   {[game]} -> {"protocol", "game", "session", "role", "ticket",
                                                   "expires_in"}
     A page that names its game gets 409 no_game while the party plays another one (AVR-128).
+    The bridge frame (ADR 0013) adds "origin": the origin of the game page it is serving, as the
+    browser reported it. It must then name the game, and that origin must be registered for that
+    game (service.Config.game_origins), or the answer is 403 bad_game_origin.
     The game page sends the ticket as its first WebSocket message: {"t": "hello", "ticket": …}.
 
 Game -> party (server to server, loopback and unproxied only, signed):
@@ -16,11 +19,19 @@ Game -> party (server to server, loopback and unproxied only, signed):
     "result": "accepted", or "result": "refused" with a "reason". Either way the session ended.
 
 The game URL and key come from the appliance's grant for that game (config), never from the game.
+
+A native game is reached over its own Unix socket instead of loopback TCP (ADR 0016 §4,
+AVR-258): the same two POSTs, the same paths under /games/<id>, the same signed messages. Only
+the address changes. A game reports `ended` to the party's internal Unix socket
+(service.make_internal_server), which serves the same route.
 """
+import http.client
 import json
 import logging
+import socket
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 from avrana.party import core, protocol
 
@@ -32,13 +43,34 @@ ENDED_ROUTE = '/internal/party-session/v0/ended'
 TICKET_ROUTE = '/party/api/session/ticket'
 
 
+def unix_base(game_id):
+    """The URL a game on a Unix socket is addressed by: only its path matters, and it is the path
+    the front door will route to the same socket (/games/<id>/…), so a game sees one layout."""
+    return f'http://localhost/games/{game_id}'
+
+
+class UnixHTTPConnection(http.client.HTTPConnection):
+    """HTTP over a Unix stream socket: the same requests as loopback TCP, a different address."""
+
+    def __init__(self, path, timeout):
+        super().__init__('localhost', timeout=timeout)
+        self.unix_path = path
+
+    def connect(self):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.unix_path)
+        self.sock = sock
+
+
 class GameEndpoint:
-    def __init__(self, game_id, url, key, timeout=None):
+    def __init__(self, game_id, url, key, timeout=None, socket_path=None):
         self.game_id = game_id
         self.url = url.rstrip('/')
         self.key = key
         self.timeout = timeout          # s per request; None = the link's default. A game that
                                         # starts a heavy runtime on launch (the arcade) needs more
+        self.socket_path = socket_path  # a native game's Unix socket; None = loopback TCP at `url`
 
 
 # The link waits for an `end` less long than Party Core does (core.END_TIMEOUT): a game that does
@@ -50,13 +82,18 @@ END_LINK_TIMEOUT = core.END_TIMEOUT - 3.0
 class HttpGameLink:
     """Implements service.PartyService's GameLink with protocol messages."""
 
-    def __init__(self, endpoints, timeout=5.0):
-        self.endpoints = dict(endpoints)          # game_id -> GameEndpoint
+    def __init__(self, endpoints, timeout=5.0, share=False):
+        # game_id -> GameEndpoint. With share=True the caller's own dict is used, so a registry
+        # reload (avrana.party.registry.apply) changes the link and the session routes together.
+        self.endpoints = endpoints if share else dict(endpoints)
         self.timeout = timeout
 
-    def _post(self, url, message, timeout=None):
-        req = urllib.request.Request(url, data=json.dumps({'message': message}).encode(),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+    def _post(self, url, message, timeout=None, socket_path=None):
+        data = json.dumps({'message': message}).encode()
+        headers = {'Content-Type': 'application/json'}
+        if socket_path:
+            return self._post_unix(socket_path, urlsplit(url).path, data, headers, timeout or self.timeout)
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
         try:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
                 body = json.loads(r.read() or b'{}')
@@ -64,12 +101,27 @@ class HttpGameLink:
         except (urllib.error.URLError, OSError, ValueError) as e:
             return False, f'The game server did not answer ({type(e).__name__}).'
 
+    def _post_unix(self, socket_path, path, data, headers, timeout):
+        if not hasattr(socket, 'AF_UNIX'):
+            return False, 'This system has no Unix sockets.'
+        conn = UnixHTTPConnection(socket_path, timeout)
+        try:
+            conn.request('POST', path, body=data, headers=dict(headers, Host='localhost'))
+            r = conn.getresponse()
+            body = json.loads(r.read() or b'{}')
+            return r.status == 200 and isinstance(body, dict) and body.get('ok') is True, \
+                body.get('message') if isinstance(body, dict) else None
+        except (http.client.HTTPException, OSError, ValueError) as e:
+            return False, f'The game server did not answer ({type(e).__name__}).'
+        finally:
+            conn.close()
+
     def launch(self, session, roster):
         ep = self.endpoints.get(session.game_id)
         if ep is None:
             return False, 'That game has no server here.'
         msg = protocol.launch_message(ep.key, ep.game_id, session.id, roster)
-        ok, detail = self._post(ep.url + LAUNCH_PATH, msg, ep.timeout)
+        ok, detail = self._post(ep.url + LAUNCH_PATH, msg, ep.timeout, ep.socket_path)
         return ok, (None if ok else detail or 'The game refused to start.')
 
     def end(self, session):
@@ -77,7 +129,8 @@ class HttpGameLink:
         if ep is None:
             return False
         msg = protocol.end_message(ep.key, ep.game_id, session.id)
-        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT))[0]
+        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
+                          ep.socket_path)[0]
 
 
 def routes(service, endpoints):
@@ -88,9 +141,13 @@ def routes(service, endpoints):
     def ticket(h, device, body):
         if device is None:
             return _send(h, 403, {'error': 'not_member', 'message': 'Join the party first.'})
+        game = body.get('game') if isinstance(body.get('game'), str) else None
+        if 'origin' in body and not (game and isinstance(body['origin'], str)
+                                     and h.cfg.game_allowed(body['origin'], game)):
+            return _send(h, 403, {'error': 'bad_game_origin',
+                                  'message': 'That page may not ask for a ticket to this game.'})
         try:
             with service.lock:
-                game = body.get('game') if isinstance(body.get('game'), str) else None
                 s, p = service.core.participant_for(device, game)
                 service._notify()
         except core.Refused as e:

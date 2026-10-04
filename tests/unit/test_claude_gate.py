@@ -18,8 +18,8 @@ def bash(command):
     return gate.evaluate({'tool_name': 'Bash', 'tool_input': {'command': command}})
 
 
-def edit(path):
-    return gate.evaluate({'tool_name': 'Edit', 'tool_input': {'file_path': path}})
+def edit(path, branch='feat/avr-1-x'):
+    return gate.evaluate({'tool_name': 'Edit', 'tool_input': {'file_path': path}}, branch=branch)
 
 
 class Gate(unittest.TestCase):
@@ -71,6 +71,34 @@ class Gate(unittest.TestCase):
         self.assertEqual(decision, 'warn')
         self.assertIn('historical-edit', message)
         self.assertEqual(edit(str(REPO_ROOT / 'docs' / 'findings' / '2099-01-01-new-finding.md'))[0], 'ok')
+
+    def test_decision_records_and_deployment_files_warn_that_the_owner_merges_them(self):
+        existing = next((REPO_ROOT / 'docs' / 'adr').glob('0*.md'))
+        decision, message = edit(str(existing))
+        self.assertEqual(decision, 'warn')
+        self.assertIn('amendment', message)
+        # a new decision record is how a decision is proposed and is never questioned
+        self.assertEqual(edit(str(REPO_ROOT / 'docs' / 'adr' / '9999-a-new-decision.md'))[0], 'ok')
+        for path in ['ops/deploy.sh', 'deploy/README.md', 'avrana-party.nginx', 'arcade/nginx-site']:
+            decision, message = edit(str(REPO_ROOT / path))
+            self.assertEqual(decision, 'warn', path)
+            self.assertIn('not a deployment', message)
+        # the contract reminder wins for a file that is both
+        self.assertIn('paired change', edit(str(REPO_ROOT / 'deploy' / 'avrana-party-session.conf'))[1])
+
+    def test_an_existing_test_edited_on_a_fix_branch_warns_and_other_cases_do_not(self):
+        existing = str(REPO_ROOT / 'tests' / 'unit' / 'test_claude_gate.py')
+        decision, message = edit(existing, branch='fix/avr-9-something')
+        self.assertEqual(decision, 'warn')
+        self.assertIn('failing test first', message)
+        self.assertEqual(edit(existing, branch='feat/avr-9-something')[0], 'ok')
+        self.assertEqual(edit(existing, branch='')[0], 'ok')                      # unknown branch never blocks
+        # adding the test that reproduces the bug is the point of a fix branch
+        self.assertEqual(edit(str(REPO_ROOT / 'tests' / 'unit' / 'test_brand_new.py'), branch='fix/avr-9-x')[0], 'ok')
+
+    def test_the_branch_is_read_from_the_checkout_that_holds_the_file(self):
+        self.assertIsInstance(gate.current_branch(str(REPO_ROOT / 'tools' / 'claude_gate.py')), str)
+        self.assertEqual(gate.current_branch('/nowhere/at/all/file.py'), '')
 
     def test_hook_protocol_exit_codes(self):
         python = sys.executable

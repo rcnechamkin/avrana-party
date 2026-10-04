@@ -10,8 +10,9 @@
 # It, in order:
 #   1. refuses unless: both code releases exist and are not writable by anyone but root; both carry
 #      the key loader that accepts a systemd credential (AVR-253); the Games release carries its
-#      phase-1 unit; the arcade's libretro core and the fork's virtualenv are where they are today;
-#      no game session is live;
+#      phase-1 unit; every key a unit is to be handed as a credential exists (a unit whose
+#      LoadCredential= source is missing does not start); the arcade's libretro core and the
+#      fork's virtualenv are where they are today; no game session is live;
 #   2. records the before-state (installed unit files and drop-ins, owners and modes of the key
 #      store and the device store) under /var/backups/avrana-party/service-users-<UTC>/;
 #   3. creates the groups avrana-front and avrana-games and the users avrana-party, avrana-arcade
@@ -43,6 +44,7 @@ venv_target=${AVRANA_GAMES_VENV_TARGET:-/opt/avrana-party-games/venv}
 key_dir=${AVRANA_PARTY_KEY_DIR:-/etc/avrana-party/game-keys}
 device_store=${AVRANA_DEVICE_STORE:-/var/lib/avrana-party-core}
 games_state=${AVRANA_GAMES_STATE:-/var/lib/avrana-lan-games}
+arcade_state=${AVRANA_ARCADE_STATE:-/var/lib/avrana-arcade}
 unit_dir=${AVRANA_UNIT_DIR:-/etc/systemd/system}
 backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
 party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
@@ -93,13 +95,22 @@ if [[ -n $reverse ]]; then
         if [[ -f $reverse/units/$name ]]; then run install -D -m 0644 "$reverse/units/$name" "$unit_dir/$name"
         else run rm -f "$unit_dir/$name"; fi                 # it did not exist before the migration
     done
-    while read -r owner group path; do run chown -R "$owner:$group" "$path"; done < "$reverse/ownership"
+    # Drop-ins the migration removed because it does not install them (see "strays" below).
+    while read -r path; do
+        name=${path#"$reverse/units/"}
+        [[ -f $unit_dir/$name ]] || run install -D -m 0644 "$path" "$unit_dir/$name"
+    done < <(find "$reverse/units" -type f -path '*.service.d/*.conf' | sort)
     if [[ -f $reverse/games-data ]]; then
-        # put the fork's data/ back where the previous unit expects it
+        # Put the fork's data/ back where the previous unit expects it. The copy keeps the state
+        # directory's owner, which the previous unit's account cannot read, so this comes before
+        # the recorded ownerships (which include that data directory) are restored.
         run cp -a "$games_state/." "$(cat "$reverse/games-data")/"
     fi
+    while read -r owner group path; do run chown -R "$owner:$group" "$path"; done < "$reverse/ownership"
     run systemctl daemon-reload
-    for unit in avranaparty-games avranaparty-arcade avrana-party-core; do run systemctl start "$unit"; done
+    for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
+        run systemctl start "$unit" || log "$unit did NOT start: journalctl -u $unit -n 50"
+    done
     log 'reversed: previous unit files and ownerships restored; users, groups and /opt copies left in place'
     exit 0
 fi
@@ -121,6 +132,13 @@ grep -rqs 'posix_acl_access' "$games_release/provider" "$games_release/core" \
 for entry in "${files[@]}"; do
     [[ -f ${entry#*=} ]] || die "${entry#*=} is missing from the release (the Games half of AVR-256 must be deployed too)"
 done
+# A unit with a LoadCredential= whose source file is missing fails to start: check every one now.
+for entry in "${files[@]}"; do
+    while read -r source; do
+        source=${key_dir}/${source##*/}                # the drop-ins name the production key store
+        [[ -f $source ]] || die "$source does not exist but ${entry%%=*} loads it as a credential; create it first: ops/provision-party-game-key.sh $(basename "$source" .key)"
+    done < <(sed -n 's/^[[:space:]]*LoadCredential[[:space:]]*=[[:space:]]*[^:]*:\(.*\)$/\1/p' "${entry#*=}")
+done
 [[ -f $core_source ]] || die "the arcade core is not at $core_source; nothing is downloaded, set AVRANA_ARCADE_CORE_SOURCE"
 [[ -x $venv_source/bin/python ]] || die "the fork's virtualenv is not at $venv_source; set AVRANA_GAMES_VENV_SOURCE"
 [[ -d $key_dir ]] || die "$key_dir does not exist"
@@ -131,6 +149,26 @@ run install -d -m 0750 "$backup" "$backup/units"
 for entry in "${files[@]}"; do
     name=${entry%%=*}
     if [[ -f $unit_dir/$name ]]; then run install -D -m 0644 "$unit_dir/$name" "$backup/units/$name"; fi
+done
+# Strays: drop-ins installed on the host for these units that this script does not install. A
+# drop-in overrides the unit it sits beside, so one written for the previous unit (the Pi's
+# avrana-fork.conf sets the games unit's ExecStart and WorkingDirectory to the operator's
+# checkout) would undo the new one. They are recorded here, removed in step 4 and put back by
+# --reverse.
+strays=()
+for unit in "${units[@]}"; do
+    for path in "$unit_dir/$unit.service.d"/*.conf; do
+        [[ -f $path ]] || continue
+        name=${path#"$unit_dir/"}
+        known=0
+        for entry in "${files[@]}"; do
+            if [[ ${entry%%=*} == "$name" ]]; then known=1; fi
+        done
+        if [[ $known -eq 0 ]]; then
+            strays+=("$name")
+            run install -D -m 0644 "$path" "$backup/units/$name"
+        fi
+    done
 done
 if [[ $dry_run -eq 1 ]]; then echo "would record: owners of $key_dir and $device_store in $backup/ownership"
 else
@@ -174,15 +212,39 @@ if [[ -d $games_checkout/data && ! -d $games_state ]]; then
     run install -d -m 0700 -o avrana-lan-games -g avrana-lan-games "$games_state"
     run cp -a "$games_checkout/data/." "$games_state/"
     run chown -R avrana-lan-games:avrana-lan-games "$games_state"
-    if [[ $dry_run -eq 0 ]]; then echo "$games_checkout/data" > "$backup/games-data"; fi
+    if [[ $dry_run -eq 0 ]]; then
+        echo "$games_checkout/data" > "$backup/games-data"
+        stat -c '%U %G %n' "$games_checkout/data" >> "$backup/ownership"   # for --reverse
+    fi
+fi
+
+# The arcade's saves and system files (MAME nvram, high scores, per-game cfg) lived in the
+# checkout's arcade/runtime; its unit now writes under its own state directory. Copied, not moved:
+# the previous unit, if --reverse brings it back, finds its own untouched.
+if [[ ! -d $arcade_state ]]; then
+    run install -d -m 0700 -o avrana-arcade -g avrana-arcade "$arcade_state"
+    for name in saves system; do
+        if [[ -d $party_checkout/arcade/runtime/$name ]]; then
+            run cp -a "$party_checkout/arcade/runtime/$name" "$arcade_state/"
+        fi
+    done
+    run chown -R avrana-arcade:avrana-arcade "$arcade_state"
 fi
 
 for entry in "${files[@]}"; do
     run install -D -o root -g root -m 0644 "${entry#*=}" "$unit_dir/${entry%%=*}"
 done
+for name in ${strays[@]+"${strays[@]}"}; do
+    log "removing $unit_dir/$name: a drop-in of the previous unit (kept in $backup/units/$name)"
+    run rm -f "$unit_dir/$name"
+done
 run systemctl daemon-reload
 # Providers first, then the party that launches into them (as ops/deploy.sh).
-for unit in avranaparty-games avranaparty-arcade avrana-party-core; do run systemctl start "$unit"; done
+# A unit that does not start must not stop the others from starting, nor this script from
+# reaching the verdict and the reverse command below.
+for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
+    run systemctl start "$unit" || log "$unit did not start"
+done
 if [[ $dry_run -eq 1 ]]; then log 'dry run: nothing changed'; exit 0; fi
 sleep 2
 failed=0

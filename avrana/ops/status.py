@@ -20,7 +20,7 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     party, games  {deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}
     web_release   {build, commit} or null
     contract      versions Party implements (+ games_advertises from /api/games)
-    services      {unit: active|inactive|failed|unknown|unavailable}
+    services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
     party_core    {ok, uptime_s, members, session}
     games_provider, arcade   health summaries
@@ -51,10 +51,33 @@ DEFAULT_CONFIG = {
     'web_root': '/var/www/avrana-party/web',
     'certificate': '/etc/avrana-party/tls/current/fullchain.pem',
     'games_url': 'http://127.0.0.1:8096',
-    'arcade_url': 'http://127.0.0.1:8098',
+    'arcade_url': 'http://127.0.0.1:8097',      # the arcade's web port serves /stats; :8098 is its Party link
     'units': ['avrana-party-core', 'avranaparty-games', 'avranaparty-arcade', 'nginx',
               'NetworkManager', 'avrana-party-certificate.timer'],
+    # Units an appliance may legitimately not have. Automatic certificate renewal is enabled only
+    # once its Cloudflare token exists on the Pi (docs/runbooks/party-https.md); until then renewal
+    # is manual and the certificate's own expiry check is what guards it. Not installed is reported
+    # and is not a fault; installed and not running is a fault like any other unit.
+    'optional_units': ['avrana-party-certificate.timer'],
 }
+
+
+def unit_state(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
+    """active|inactive|failed|... as `systemctl is-active` prints it, `not-installed` when systemd
+    has no such unit (is-active calls that `inactive` too), `unavailable` without systemctl."""
+    if platform.system() != 'Linux':
+        return 'unavailable'
+    try:
+        out = runner(['systemctl', 'is-active', unit], capture_output=True, timeout=timeout)
+        state = out.stdout.decode('utf-8', 'replace').strip() or 'unknown'
+        if state in ('inactive', 'unknown'):
+            load = runner(['systemctl', 'show', '--property=LoadState', '--value', unit],
+                          capture_output=True, timeout=timeout)
+            if load.stdout.decode('utf-8', 'replace').strip() == 'not-found':
+                return 'not-installed'
+    except (OSError, subprocess.TimeoutExpired):
+        return 'unavailable'
+    return state
 
 
 class Probes:
@@ -64,32 +87,28 @@ class Probes:
         self.timeout = timeout
 
     def checkout(self, path):
-        if not Path(path).exists():
-            return None
         try:
+            if not Path(path).exists():
+                return None
             return manifest.observe_checkout(path)
-        except manifest.ManifestError:
+        except (manifest.ManifestError, OSError):     # OSError: a service user that may not look there
             return None
 
     def web_release(self, web_root):
-        return manifest.observe_web_release(web_root)
+        try:
+            return manifest.observe_web_release(web_root)
+        except OSError:
+            return None
 
     def unit_state(self, unit):
-        if platform.system() != 'Linux':
-            return 'unavailable'
-        try:
-            out = subprocess.run(['systemctl', 'is-active', unit], capture_output=True,
-                                 timeout=self.timeout)
-        except (OSError, subprocess.TimeoutExpired):
-            return 'unavailable'
-        state = out.stdout.decode('utf-8', 'replace').strip()
-        return state or 'unknown'
+        return unit_state(unit, timeout=self.timeout)
 
     def certificate_not_after(self, path):
-        """The notAfter instant as an aware datetime, or None when unreadable."""
-        if not Path(path).exists():
-            return None
+        """The notAfter instant as an aware datetime, or None when unreadable. On the appliance
+        the certificate directory is root-only, so inside the service this is None by design."""
         try:
+            if not Path(path).exists():
+                return None
             out = subprocess.run(['openssl', 'x509', '-noout', '-enddate', '-in', str(path)],
                                  capture_output=True, timeout=self.timeout)
         except (OSError, subprocess.TimeoutExpired):
@@ -199,8 +218,10 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     contract = party_games.versions()
     services = {unit: probes.unit_state(unit) for unit in cfg['units']}
     for unit, state in services.items():
-        if state in ('failed', 'inactive'):
-            reasons.append(f'{unit} is {state}')
+        if state == 'not-installed' and unit in cfg['optional_units']:
+            notes.append(f'{unit} is not installed (optional)')
+        elif state in ('failed', 'inactive', 'not-installed'):
+            reasons.append(f'{unit} is {state.replace("-", " ")}')
     certificate = _certificate(probes.certificate_not_after(cfg['certificate']), now)
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')

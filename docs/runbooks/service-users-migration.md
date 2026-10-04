@@ -19,8 +19,35 @@ key store belongs to Party Core alone. Why: [ADR 0016](../adr/0016-service-ident
 2. Deploy those commits with [`ops/deploy.sh`](deploy.md). That builds
    `/opt/avrana-party/current` and `/opt/avrana-party-games/current`; the services still run from
    the checkouts as `cody`, so this step changes nothing a phone can see.
-3. No party in progress.
-4. Read the reverse section below against the Pi as it is.
+3. Every key a unit will be handed exists in `/etc/avrana-party/game-keys/`: `arcade-gauntlet2.key`,
+   `bluff.key` and `expo.key`. On 2026-10-03 the Pi had the first two and **no `expo.key`**. A
+   unit whose `LoadCredential=` source is missing does not start, so the script refuses until
+   each exists. Before the migration the key store still belongs to the operator account, so:
+   `sudo AVRANA_PARTY_KEY_OWNER=cody bash ops/provision-party-game-key.sh expo` (the migration
+   re-owns it with the others).
+4. No party in progress.
+5. Read the reverse section below against the Pi as it is.
+
+### To verify against the Pi before migration
+
+The games service's unit exists only on the appliance and is in no repository. The Games
+repository's `deploy/avranaparty-games.service` was reconstructed from
+[games-fork-deploy](games-fork-deploy.md) ("Before-state", read 2026-09-27) and from
+`tests/fixtures/boundary/pi-2026-10-03.json`. Those records do not show the following, so
+compare with `systemctl cat avranaparty-games avranaparty-arcade avrana-party-core` first and
+carry over anything the installed units have that the new ones lack:
+
+| Not shown by the records | What the new unit says |
+|---|---|
+| The games unit's `[Unit]` section (`After=`, `Wants=`) | `After=network.target` |
+| Its `RestartSec=` | `3` |
+| Any `Environment=` in the unit itself (for example `LANGAMES_HOST`, `LANGAMES_PORT`) | none besides Python's two; the listener defaults to `127.0.0.1:8096`. On 2026-10-03 the Pi's listener was `0.0.0.0:8096`, so the migration **changes it to loopback**, which ADR 0016 phase 1 requires; nginx already reaches it on loopback |
+| Its `WantedBy=` | `multi-user.target` |
+| Whether the installed drop-ins differ from the ones in source | the drop-ins in source replace them |
+| Drop-ins the source does not have (the Pi has `avranaparty-games.service.d/avrana-fork.conf`, which sets `ExecStart` and `WorkingDirectory` to the operator's checkout and would override the new unit) | the script records every such drop-in of the three units in the backup, removes it, and `--reverse` puts it back |
+| Whether `data/` holds anything (`venue.json`, avatars, chat media) | copied to `/var/lib/avrana-lan-games` as found |
+| That systemd on the Pi mounts `BindPaths=` onto the release's `data/` under `ProtectSystem=strict` | relies on `data/.gitkeep` being in the release |
+| The arcade unit's installed form (it was installed by `arcade/install-service.py` from an earlier revision of the file) | see "Never validated anywhere" below |
 
 ## Run
 
@@ -38,7 +65,7 @@ needs it.
 | 1 | Refuses unless both releases exist and only root can write them, both carry AVR-253, the Games release has its phase-1 unit, the arcade core and the fork's virtualenv are present, and no session is live |
 | 2 | Copies the installed unit files and drop-ins, and the owners of the key store and the device store, to the backup directory |
 | 3 | Creates groups `avrana-front`, `avrana-games`; users `avrana-party`, `avrana-arcade`, `avrana-lan-games` (system, no login shell, no home); adds `www-data` and `avrana-party` to `avrana-front`; adds `avrana-arcade` to `input`, `video`, `render` |
-| 4 | Stops the three services. Re-owns `/etc/avrana-party/game-keys` (0700, keys 0600) and `/var/lib/avrana-party-core` to `avrana-party`. Copies the arcade's libretro core from the checkout to `/opt/avrana-arcade/cores/` and the fork's virtualenv to `/opt/avrana-party-games/venv`, both root-owned; **nothing is downloaded**. Copies the fork's `data/` to `/var/lib/avrana-lan-games`. Installs the units and drop-ins from the releases. Starts the services |
+| 4 | Stops the three services. Re-owns `/etc/avrana-party/game-keys` (0700, keys 0600) and `/var/lib/avrana-party-core` to `avrana-party`. Copies the arcade's libretro core from the checkout to `/opt/avrana-arcade/cores/` and the fork's virtualenv to `/opt/avrana-party-games/venv`, both root-owned; **nothing is downloaded**. Copies the fork's `data/` to `/var/lib/avrana-lan-games`, and the arcade's `runtime/saves` and `runtime/system` (MAME nvram, high scores) from the checkout to `/var/lib/avrana-arcade`. Removes drop-ins of the previous units that the releases do not carry (kept in the backup). Installs the units and drop-ins from the releases. Starts the services |
 | 5 | Runs `python3 -m avrana.ops.boundary --phase 1` and prints the verdict; exits 2 if a service is not active or a rule is not met |
 
 **Record the arcade core's checksum.** Step 4 prints `arcade core sha256: <hash>`. The core is
@@ -64,7 +91,7 @@ The script fails, before changing anything, if the core is not at
 
 **Never validated anywhere:** the arcade unit's hardening (`ProtectSystem=strict`,
 `ProtectHome=yes`, `PrivateTmp`, `NoNewPrivileges`) with RetroArch, Xvfb, PulseAudio and uinput
-running as a user without a home; `/srv/avrana/roms/arcade/gaunt2.zip` being readable by
+running as a user without a home (the config RetroArch reads is written into the state directory at each start, with every writable path under it, so nothing points at the operator's home); `/srv/avrana/roms/arcade/gaunt2.zip` being readable by
 `avrana-arcade`; the copied virtualenv. If Gauntlet II does not start, read its journal first;
 the likely causes are those three. A hardening line that has to be relaxed is a finding to
 record and a rule (`hardening.base`) that will then fail, not something to hide.
@@ -76,8 +103,9 @@ ssh -t party "sudo bash /opt/avrana-party/current/ops/migrate-service-users.sh -
 ```
 
 Stops the services, puts the recorded unit files and drop-ins back (removes the ones that did not
-exist before), re-owns the key store and the device store to their recorded owner, copies the
-fork's `data/` back to its checkout, reloads systemd and starts the services. The arcade then
+exist before), copies the fork's `data/` back to its checkout, re-owns the key store, the device
+store and that `data/` to their recorded owners, reloads systemd and starts the services. A
+service that does not start is reported and the others are still started. The arcade then
 runs its core from the checkout again, where the original was never moved. The users, the two
 groups, `/opt/avrana-arcade` and `/opt/avrana-party-games/venv` stay: they grant nothing and a
 second migration reuses them. No data format changes in either direction.

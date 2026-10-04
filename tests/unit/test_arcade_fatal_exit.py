@@ -248,7 +248,8 @@ class ProcessLifecycle(unittest.TestCase):
         (self.tmp / 'stubs' / 'bin' / 'retroarch').chmod(0o755)
         # A private copy, so runtime/ logs never land in the repository checkout.
         (self.tmp / 'arcade' / 'runtime').mkdir(parents=True)
-        shutil.copy(REPO_ROOT / 'arcade' / 'stream.py', self.tmp / 'arcade' / 'stream.py')
+        for name in ('stream.py', 'retroarch.cfg', 'core-options.cfg'):     # what a start reads from its own directory
+            shutil.copy(REPO_ROOT / 'arcade' / name, self.tmp / 'arcade' / name)
         self.log = self.tmp / 'events.log'
         self.log.touch()
 

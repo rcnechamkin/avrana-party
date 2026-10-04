@@ -73,6 +73,12 @@ validates and reloads nginx. If DNS, Cloudflare or ACME is unavailable, renewal
 fails without removing the currently installed certificate. Monitor timer
 failures and remaining validity; an expired certificate ends trusted Full Mode.
 
+The timer is therefore optional on an appliance: it is installed only after the
+token exists. `python3 -m avrana.ops.smoke` and `/party/api/status` report it as
+not installed without failing, and fail it when it is installed but not active.
+Remaining validity is checked either way (failing below 21 days), which is the
+only guard while renewal is manual.
+
 ## Pre-deployment and backup
 
 Do not use the old `install-captive-dns.py`: it can reactivate the AP and uses

@@ -1,9 +1,9 @@
-# Party and game browser origins: mechanisms (proposal for AVR-226)
+# Party and game browser origins: mechanisms (AVR-226)
 
-Status: **PROPOSED (2026-10-03). Design only; nothing here is built or deployed.** The direction is
-accepted in [ADR 0013](../adr/0013-party-and-game-browser-origins.md); this document proposes the
-mechanisms that ADR leaves "deliberately open" and lists the decisions the owner must make. Until
-those are recorded in ADR 0013, nothing below is authoritative. Linear: AVR-226. Related:
+Status: **ACCEPTED mechanisms (owner, 2026-10-03). Step 1 of §4 is in source; nothing is deployed.** The direction is
+accepted in [ADR 0013](../adr/0013-party-and-game-browser-origins.md), whose amendment of
+2026-10-03 records the owner's decisions D1 to D5 (§5). The text below is the design as proposed
+and accepted; "As built" notes say where step 1 differs. Linear: AVR-226. Related:
 [ADR 0006](../adr/0006-party-session-protocol.md), [ADR 0011](../adr/0011-party-console-model.md),
 [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md), [LIMITED-MODE](LIMITED-MODE.md),
 [GAME-INSTALLATION](GAME-INSTALLATION.md).
@@ -105,6 +105,17 @@ Party Core changes: the ticket route requires the `game` the bridge passes, deri
 parent's origin, instead of trusting a page to name its own game. `frame-ancestors` on
 `bridge.html` lists the game origins instead of `'none'`. Nothing in the session protocol changes.
 
+**As built (step 1).** The contract is `avrana.party-bridge/v1`
+(`contracts/vectors/party-bridge.v1.json`). A game page says `hello {game}` once; the frame binds
+to that origin and game if Party Core's `game_origins` registers the origin for the game
+(`GET /party/api/bridge`), and is silent otherwise. The bridge sends the ticket route
+`{game, origin}`, where `origin` is what the browser reported for the page; Party Core refuses an
+origin not registered for that game (`bad_game_origin`). `view` carries no id of any kind.
+`navigate` carries the word `party`, never a URL; the shim goes to the Party origin it was
+configured with. One control was added beyond the proposal: Party Core refuses every API
+request that a browser marks `Sec-Fetch-Site: same-site` or `cross-site`, so a game page's own
+requests are refused even for `GET`, which the `Origin` allow-list does not cover.
+
 Alternatives considered:
 
 - **A visible Party-owned overlay for host controls.** Keeps host verbs out of game script
@@ -148,13 +159,43 @@ tier is unavailable.
 5. Tier 3 on real phones: the cookie is not attached to game-origin requests; the bridge frame is
    not blocked by Safari; reconnect fetches a fresh ticket; the host's End works from BLUFF.
 
-Step 5 has one known risk to prove early. [I] Safari's tracking prevention treats frames by
-registrable domain, so a `party.avrana.net` frame inside a `games.avrana.net` page should count
-as first-party. That is unverified on a real iPhone, and the whole seam depends on it.
+Step 1 is done in source (AVR-226): Tier 1 tests for the bridge, the shim and Party Core, and a
+Tier 2 run in Chromium with two host names of one site (`tests/offline/bridge.spec.ts`).
 
-## 5. Decisions required
+### What step 5 must validate on a real iPhone (owner)
 
-| # | Decision | Recommendation |
+The question is not whether a `party.avrana.net` frame inside a `games.avrana.net` page is
+first-party or same-site: WebKit documents host names under one registrable domain as the same
+site. The real-phone test validates this implementation. It is the owner's, it needs step 4
+first, and **the bridge is not relied on for field testing until it has passed**. Nothing below
+has been run on a phone.
+
+On an iPhone (Safari) and an Android phone (Chrome), joined to the Party Wi-Fi, with a round on:
+
+1. **The frame loads.** The game page shows no error; Web Inspector shows `bridge.html` loaded
+   from `party.avrana.net` with status 200 and no `frame-ancestors` refusal.
+2. **The Party cookie reaches the frame.** The game page's host controls appear for the host and
+   not for a guest; a guest's phone shows as present in Party Home on another phone.
+3. **`postMessage` works both ways.** The game connects (it got a ticket); after a reload it
+   connects again (a fresh ticket).
+4. **The game origin holds nothing.** In Web Inspector, `games.avrana.net` has no cookie and no
+   Party entries in local storage.
+5. **The sandbox does not break the frame.** With `sandbox="allow-scripts allow-same-origin"` the
+   frame still polls (presence stays "here" for several minutes with the game open).
+6. **Navigation.** The host's End takes every phone to Party Home; a host switch to another game
+   takes every phone there by way of Party Home, with no stuck page.
+7. **Sleep and wake.** Lock the phone for a minute during a round and unlock: the page is where
+   the party is, and the game reconnects.
+8. **Private browsing, and "Prevent Cross-Site Tracking" on (the default).** Repeat 1 to 3.
+9. **The old cookie.** A phone that joined before the change keeps its member after it (one
+   release of dual read), and afterwards holds `__Host-avrana_device`.
+10. **Direct calls fail.** From the game page's console, `fetch('https://party.avrana.net/party/api/state', {credentials: 'include'})` is refused.
+
+Record the phone models, OS versions and the result of each line in a dated finding.
+
+## 5. Decisions (accepted by the owner, 2026-10-03)
+
+| # | Decision | Accepted |
 |---|---|---|
 | D1 | One shared game origin, or one per game | one shared now; bridge keyed by origin so per-game is a config change |
 | D2 | Transport for tickets, presence and host controls | the bridge frame with the closed verb set in §3.2 |

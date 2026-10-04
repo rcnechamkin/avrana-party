@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))  # the repository root: avrana/ platform package
 from avrana.providers.base import ProviderInfo  # noqa: E402
 from avrana.providers.controller import ControllerLayout  # noqa: E402
-from avrana.providers.retroarch import RetroArchRuntime  # noqa: E402
+from avrana.providers.retroarch import RetroArchRuntime, write_config  # noqa: E402
 from avrana.providers.uinput_gamepad import UInputGamepadProvider  # noqa: E402
 from avrana.party import managed as party_managed  # noqa: E402
 from avrana.party import protocol  # noqa: E402
@@ -188,8 +188,11 @@ class Stream:
     def __init__(self):
         self.pipeline = None
         self.input = UInputGamepadProvider()
-        self.runtime = RetroArchRuntime(config=ROOT / 'retroarch.cfg',
-                                        core=CORE, content=ROM)
+        # The config RetroArch reads is written into RUNTIME at each start: the committed one
+        # plus the directories this service may write (never the release, never a home).
+        self.runtime = RetroArchRuntime(
+            config=RUNTIME / 'retroarch.cfg', core=CORE, content=ROM,
+            prepare=lambda: write_config(ROOT / 'retroarch.cfg', ROOT / 'core-options.cfg', RUNTIME))
         self.pads = []
         self.peers = {}
         self.reserved = set()

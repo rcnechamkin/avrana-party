@@ -29,7 +29,7 @@ from avrana import CONTRACTS_DIR
 EXTENSION = 'net.avrana.party'
 EXTENSION_KEYS = {'pregame'}
 DERIVED = ('min_players', 'max_players', 'late_join', 'pregame')
-APPLIANCE_KEYS = {'url', 'key_file', 'timeout'}
+APPLIANCE_KEYS = {'url', 'socket', 'key_file', 'timeout'}     # where the game is; never facts about it
 
 
 class ConfigError(ValueError):
