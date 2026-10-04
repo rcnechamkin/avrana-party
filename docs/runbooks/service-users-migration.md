@@ -44,6 +44,7 @@ carry over anything the installed units have that the new ones lack:
 | Any `Environment=` in the unit itself (for example `LANGAMES_HOST`, `LANGAMES_PORT`) | none besides Python's two; the listener defaults to `127.0.0.1:8096`. On 2026-10-03 the Pi's listener was `0.0.0.0:8096`, so the migration **changes it to loopback**, which ADR 0016 phase 1 requires; nginx already reaches it on loopback |
 | Its `WantedBy=` | `multi-user.target` |
 | Whether the installed drop-ins differ from the ones in source | the drop-ins in source replace them |
+| Drop-ins the source does not have (the Pi has `avranaparty-games.service.d/avrana-fork.conf`, which sets `ExecStart` and `WorkingDirectory` to the operator's checkout and would override the new unit) | the script records every such drop-in of the three units in the backup, removes it, and `--reverse` puts it back |
 | Whether `data/` holds anything (`venue.json`, avatars, chat media) | copied to `/var/lib/avrana-lan-games` as found |
 | That systemd on the Pi mounts `BindPaths=` onto the release's `data/` under `ProtectSystem=strict` | relies on `data/.gitkeep` being in the release |
 | The arcade unit's installed form (it was installed by `arcade/install-service.py` from an earlier revision of the file) | see "Never validated anywhere" below |

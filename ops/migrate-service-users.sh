@@ -94,6 +94,11 @@ if [[ -n $reverse ]]; then
         if [[ -f $reverse/units/$name ]]; then run install -D -m 0644 "$reverse/units/$name" "$unit_dir/$name"
         else run rm -f "$unit_dir/$name"; fi                 # it did not exist before the migration
     done
+    # Drop-ins the migration removed because it does not install them (see "strays" below).
+    while read -r path; do
+        name=${path#"$reverse/units/"}
+        [[ -f $unit_dir/$name ]] || run install -D -m 0644 "$path" "$unit_dir/$name"
+    done < <(find "$reverse/units" -type f -path '*.service.d/*.conf' | sort)
     if [[ -f $reverse/games-data ]]; then
         # Put the fork's data/ back where the previous unit expects it. The copy keeps the state
         # directory's owner, which the previous unit's account cannot read, so this comes before
@@ -143,6 +148,26 @@ run install -d -m 0750 "$backup" "$backup/units"
 for entry in "${files[@]}"; do
     name=${entry%%=*}
     if [[ -f $unit_dir/$name ]]; then run install -D -m 0644 "$unit_dir/$name" "$backup/units/$name"; fi
+done
+# Strays: drop-ins installed on the host for these units that this script does not install. A
+# drop-in overrides the unit it sits beside, so one written for the previous unit (the Pi's
+# avrana-fork.conf sets the games unit's ExecStart and WorkingDirectory to the operator's
+# checkout) would undo the new one. They are recorded here, removed in step 4 and put back by
+# --reverse.
+strays=()
+for unit in "${units[@]}"; do
+    for path in "$unit_dir/$unit.service.d"/*.conf; do
+        [[ -f $path ]] || continue
+        name=${path#"$unit_dir/"}
+        known=0
+        for entry in "${files[@]}"; do
+            if [[ ${entry%%=*} == "$name" ]]; then known=1; fi
+        done
+        if [[ $known -eq 0 ]]; then
+            strays+=("$name")
+            run install -D -m 0644 "$path" "$backup/units/$name"
+        fi
+    done
 done
 if [[ $dry_run -eq 1 ]]; then echo "would record: owners of $key_dir and $device_store in $backup/ownership"
 else
@@ -194,6 +219,10 @@ fi
 
 for entry in "${files[@]}"; do
     run install -D -o root -g root -m 0644 "${entry#*=}" "$unit_dir/${entry%%=*}"
+done
+for name in ${strays[@]+"${strays[@]}"}; do
+    log "removing $unit_dir/$name: a drop-in of the previous unit (kept in $backup/units/$name)"
+    run rm -f "$unit_dir/$name"
 done
 run systemctl daemon-reload
 # Providers first, then the party that launches into them (as ops/deploy.sh).
