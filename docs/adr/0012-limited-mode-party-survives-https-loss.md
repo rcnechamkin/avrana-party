@@ -141,7 +141,7 @@ it changes there is small and stated here rather than claimed to be nothing: eve
 Full Mode, the same result as before); the doorway page is published under `/party/doorway/`,
 linked only from the Limited Mode banner, which stays hidden. What stays off until the owner's step 3: production's `party-core.json`
 has no `limited` object, so no second listener exists and no `avrana_limited` cookie is ever
-issued; nginx's port-80 server is unchanged; the shell shows no banner and gates no seat,
+issued; nginx's port-80 server has no Limited Mode location (its `/` is a link to the Party since AVR-259, not yet the doorway); the shell shows no banner and gates no seat,
 because both depend on Party Core saying `limited`.
 
 - Party Core: `identity.LimitedStore` and the `avrana_limited` cookie; `limited` in the config
