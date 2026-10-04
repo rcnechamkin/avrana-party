@@ -38,7 +38,8 @@ Read in this order:
    - `GAME-INTEGRATION.md` — the target architecture diagram (Party origin, game origin, registry,
      independent game processes, results back to Party), the current state, capability manifest
      v0, runtime vs grant, the party contract, and what today's code duplicates
-   - `NATIVE-GAMES.md` — the phone as a private surface, hook strategy, reusable primitives
+   - `NATIVE-GAMES.md` — the phone as a private surface, hook strategy, reusable primitives;
+     §3.1 classifies the LAN Games fork's code as donor, extraction candidate or legacy (AVR-228)
    - `PERSONAL-VIEWPORTS.md` — per-phone crops of one shared split-screen stream
    - `ONBOARDING.md` — tap/scan to join, the party address, party LAN vs upstream internet
    - `GAME-INSTALLATION.md` — open installation without a store; trust tiers; canonical manifest
