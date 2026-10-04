@@ -106,7 +106,7 @@ class StaticRules(unittest.TestCase):
     GAMES = ['~ "^/games/(bluff|expo)(/(?!avrana/)|$)"', '~ ^/games/[^/]+/avrana/',
              '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"', '/games/', '= /games']
 
-    HUB = ['= /', '= /shared/hub.html']
+    HUB = ['= /', '^~ /shared/hub.html']
 
     def test_port_80_keeps_the_captive_probe_and_serves_no_native_game(self):
         self.assertIn('listen 80 default_server;', self.http)
@@ -116,6 +116,14 @@ class StaticRules(unittest.TestCase):
         self.assertIn('return 200 "' + APPLE_SUCCESS.replace('\n', '\\n') + '";', probe)
         self.assertIn('add_header Cache-Control "no-store" always;', probe)
         self.assertNotIn('return 30', self.http.replace('return 200', ''))  # no redirects on HTTP
+        # the root of each origin is nginx's own answer, not the hub: a link on HTTP, Party Home on HTTPS
+        root = location_body(self.http, '= /')
+        self.assertIn('default_type text/html;', root)
+        self.assertRegex(root, r"return 200 '[^']*<a href=\"https://party\.avrana\.net/party/\">[^']*';")
+        self.assertEqual(location_body(self.https, '= /').split(), ['return', '302', '/party/;'])
+        for block in server_blocks(SITE):
+            self.assertEqual(location_body(block, '^~ /shared/hub.html').split(), ['return', '404;'])
+            self.assertNotIn('proxy_pass', location_body(block, '= /'))
 
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
@@ -533,13 +541,19 @@ http {{
 
     def test_the_lan_games_hub_page_is_not_served_on_either_port(self):
         before = self.lan_paths()
-        res, body = self.get('/', host='party.local')
-        self.assertEqual((res.status, res.getheader('Location'), res.getheader('Cache-Control')), (200, None, 'no-store'))
-        self.assertIn(b'<a href="https://party.avrana.net/party/">', body)
-        res, body = self.get('/', https=True)
-        self.assertEqual((res.status, res.getheader('Location')), (302, '/party/'))
+        for path in ('/', '/?from=qr', '//', '/x/..'):
+            res, body = self.get(path, host='party.local')
+            self.assertEqual((res.status, res.getheader('Location'), res.getheader('Cache-Control'),
+                              res.getheader('Content-Type')), (200, None, 'no-store', 'text/html'), path)
+            self.assertIn(b'<a href="https://party.avrana.net/party/">', body)
+            res, body = self.get(path, https=True)
+            self.assertEqual(res.status, 302, path)
+            self.assertTrue(res.getheader('Location').endswith('/party/'), path)
+        res, body = self.request('POST', '/', body={})
+        self.assertEqual(res.status, 302)
         for https in (False, True):
-            for path in ('/shared/hub.html', '/shared/./hub.html', '/shared/%68ub.html'):
+            for path in ('/shared/hub.html', '/shared/./hub.html', '/shared/%68ub.html', '/shared/hub.html/',
+                         '/shared/hub.html/.', '/shared/hub.html%2f', '/shared//hub.html?x=1'):
                 res, body = self.get(path, https=https)
                 self.assertEqual(res.status, 404, path)
                 self.assertNotIn(b'upstream', body, path)
@@ -652,7 +666,7 @@ http {{
         no socket and writes nothing to its error log."""
         log = self.tmp / 'error.log'
         size = log.stat().st_size
-        for path in ('/games/bluff/?avrana=1', '/games/expo/ws', '/games/bluff/shared.js', '/'):
+        for path in ('/games/bluff/?avrana=1', '/games/expo/ws', '/games/bluff/shared.js', '/api/venue'):
             self.assertEqual(json.loads(self.get(path, https=True)[1])['upstream'], 'lan', path)
         self.assertEqual(log.read_text()[size:], '')
 

@@ -46,7 +46,7 @@ button:active,button.held{background:#fff}button:disabled{opacity:.45}.controls{
 const status=document.querySelector('#status'), video=document.querySelector('video'), connect=document.querySelector('#connect'), sound=document.querySelector('#sound'), leave=document.querySelector('#leave');
 const overlay=document.querySelector('#start-overlay');
 // Other games goes back to Party Home (/party/, HTTPS Full Mode only). Plain HTTP (the captive and
-// legacy path, e.g. http://party.local/arcade/) has no /party/, so it keeps the games hub at /.
+// legacy path, e.g. http://party.local/arcade/) has no /party/, so it goes to / (a link to the Party).
 if(!window.isSecureContext)document.querySelector('#home').setAttribute('href','/');
 // Tapping Play shows progress until the picture arrives, and a failure names its likely cause.
 const CONNECT_MS=20000,PICTURE_MS=10000;let connectTimer=null,pictureTimer=null,serverReason=null;

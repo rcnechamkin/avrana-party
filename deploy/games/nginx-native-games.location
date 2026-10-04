@@ -5,7 +5,7 @@
     # so no request can name a socket outside that directory. nginx matches locations against the
     # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
     # path really names; the game is sent the request line as the client wrote it. These rules
-    # name no title and are the same in every server block that serves games. Source copy:
+    # name no title and are the same in every server block that serves native games. Source copy:
     # deploy/games/nginx-native-games.location.
     #
     # Control paths are never proxied: Party Core sends launch and end to a game directly, so a

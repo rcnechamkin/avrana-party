@@ -7,8 +7,8 @@ server {
     location = /hotspot-detect.html {
         # iOS/macOS captive probe: return Apple's literal Success so the phone
         # marks Avrana Party usable and stays connected (no captive popup).
-        # Owner chose "no popup, just connect" (2026-09-18); landing page still
-        # reachable at http://party.local/. Reverses the earlier "never serve
+        # Owner chose "no popup, just connect" (2026-09-18); a link to the Party
+        # is at http://party.local/. Reverses the earlier "never serve
         # Success" note deliberately. Works offline (served locally, DNS still
         # intercepts captive.apple.com -> 10.42.0.1).
         default_type text/html;
@@ -67,7 +67,7 @@ server {
         add_header Cache-Control "no-store" always;
         return 200 '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Avrana Party</title><p><a href="https://party.avrana.net/party/">Open Avrana Party</a></p>\n';
     }
-    location = /shared/hub.html {
+    location ^~ /shared/hub.html {
         return 404;
     }
 
@@ -182,7 +182,7 @@ server {
     # so no request can name a socket outside that directory. nginx matches locations against the
     # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
     # path really names; the game is sent the request line as the client wrote it. These rules
-    # name no title and are the same in every server block that serves games. Source copy:
+    # name no title and are the same in every server block that serves native games. Source copy:
     # deploy/games/nginx-native-games.location.
     #
     # Control paths are never proxied: Party Core sends launch and end to a game directly, so a
@@ -224,7 +224,7 @@ server {
     location = / {
         return 302 /party/;
     }
-    location = /shared/hub.html {
+    location ^~ /shared/hub.html {
         return 404;
     }
 
