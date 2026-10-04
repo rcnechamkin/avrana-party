@@ -91,9 +91,9 @@ systemctl show -p Environment avranaparty-games | grep -o 'LANGAMES_HOST=[^ ]*' 
 ```
 
 **The runtime must not be reachable from the LAN (AVR-272).** Port 8096 is an upstream of nginx
-only. Until 2026-10-04 the appliance ran Games `c6d7b52`, which predates the loopback default
-and bound `0.0.0.0:8096`: any device on the party Wi-Fi or the management LAN could reach the
-runtime without going through nginx. Deploying a Games commit at or after `11811ff` closes that,
+only. As of 2026-10-04 the appliance runs Games `c6d7b52`, which predates the loopback default
+and binds `0.0.0.0:8096` (`docs/SYSTEM.md`): any device on the party Wi-Fi or the management LAN
+can reach the runtime without going through nginx. Deploying a Games commit at or after `11811ff` closes that,
 provided no unit or drop-in on the appliance sets `LANGAMES_HOST=0.0.0.0`. The topology check
 below asserts the listener from the appliance; the owner confirms it from outside:
 

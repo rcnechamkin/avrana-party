@@ -64,11 +64,14 @@ g=$(ss -Hlnt "sport = :$GP" 2>/dev/null | awk 'NF{print $4}' | sed "s/%[^:]*//; 
 if [ -z "$g" ]; then warn "nothing listens on :$GP (games runtime not running?)"
 else
   bad=$(tr ' ' '\n' <<<"$g" | grep -v -e '^127\.' -e '^\[::1\]$' -e '^$' | tr '\n' ' ')   # no word splitting: "*" is a listener
-  [ -z "$bad" ] && pass "games runtime (:$GP) listens on loopback only" || fail "games runtime (:$GP) listens on $bad(must be loopback only)"
+  [ -z "$bad" ] && pass "games runtime (:$GP) listens on loopback only" || fail "games runtime (:$GP) listens on ${bad% } (must be loopback only)"
 fi
 for a in $ADDR $(ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do
-  if curl -s -m2 -o /dev/null "http://$a:$GP/"; then fail "games runtime answers on $a:$GP (reachable from the LAN)"
-  else pass "games runtime does not answer on $a:$GP"; fi
+  # curl: 7 = could not connect, 28 = timed out. Anything else (an HTTP answer of any status, an
+  # empty reply, a reset) means something accepted the connection.
+  curl -s -m2 -o /dev/null "http://$a:$GP/"; rc=$?
+  case $rc in 7|28) pass "games runtime does not answer on $a:$GP";;
+    *) fail "games runtime answers on $a:$GP (reachable from the LAN; curl exit $rc)";; esac
 done
 # -- end games runtime listener --
 [ "$(systemctl is-enabled nftables 2>/dev/null)" != enabled ] && pass "nftables.service not enabled (offline table cannot persist)" || warn "nftables.service enabled"
