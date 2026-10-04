@@ -1,0 +1,38 @@
+{
+  "schema": "avrana.service-boundary/v1",
+  "decision": "docs/adr/0016-service-identities-and-local-trust.md",
+  "description": "Which Unix identity runs each appliance service, who may read keys and state, and which local sockets carry Party <-> game traffic. avrana/ops/boundary.py evaluates a host against it; nothing here is applied to a host by this repository.",
+  "roles": {
+    "party": {"user": "avrana-party"},
+    "native-game": {"user": "avrana-game-{slug}"},
+    "legacy-games": {"user": "avrana-lan-games"},
+    "arcade": {"user": "avrana-arcade"}
+  },
+  "units": {
+    "avrana-party-core.service": {"role": "party"},
+    "avranaparty-games.service": {"role": "legacy-games", "keys": ["bluff", "expo"]},
+    "avranaparty-arcade.service": {"role": "arcade", "keys": ["arcade-gauntlet2"]},
+    "avrana-game@{slug}.service": {"role": "native-game"}
+  },
+  "front_door_group": "www-data",
+  "forbidden_groups": ["root", "sudo", "adm", "wheel", "docker"],
+  "no_login_shells": ["/usr/sbin/nologin", "/sbin/nologin", "/bin/false", "/usr/bin/false"],
+  "keys": {
+    "dir": "/etc/avrana-party/game-keys",
+    "owner": "root",
+    "group": "root",
+    "dir_mode": "0700",
+    "file_mode": "0600"
+  },
+  "sockets": {
+    "party_api": {"path": "/run/avrana/party/api.sock", "owner": "{party}", "group": "{front}", "mode": "0660"},
+    "party_report": {"path": "/run/avrana/party/game/{slug}.sock", "owner": "{party}", "group": "{game}", "mode": "0660"},
+    "game_control": {"path": "/run/avrana/game/{slug}/control.sock", "owner": "{game}", "group": "{party}", "mode": "0660"},
+    "game_public": {"path": "/run/avrana/game/{slug}/public.sock", "owner": "{game}", "group": "{front}", "mode": "0660"}
+  },
+  "phases": {
+    "1": "separate identities, root-only keys delivered as credentials, read-only code, owned state, loopback-only TCP",
+    "2": "native games on Unix sockets with no IP networking",
+    "3": "no Party listener on TCP; no legacy shared process"
+  }
+}

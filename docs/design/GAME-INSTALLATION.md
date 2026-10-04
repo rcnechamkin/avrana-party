@@ -107,7 +107,10 @@ cross-game achievements except under a `community` provenance label.
 
 The process and origin *boundaries* are now accepted direction for all games (ADRs 0013/0014).
 The specific directives and headers below remain an illustrative sketch of the stronger tier for
-untrusted code, not a frozen implementation.
+untrusted code, not a frozen implementation. For first-party native games the identities, key
+delivery and sockets are specified in [ADR 0016](../adr/0016-service-identities-and-local-trust.md)
+(static per-game users rather than `DynamicUser`; `RestrictAddressFamilies=AF_UNIX` rather than
+`PrivateNetwork`); the untrusted tier remains AVR-69.
 
 - **Server side:** one systemd template unit per game with `DynamicUser`, `PrivateNetwork=yes`
   (loopback only; nginx reaches it over a unix socket — this alone stops exfiltration, LAN scanning
