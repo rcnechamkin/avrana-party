@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 from avrana.contracts import party_games
 from avrana.ops import manifest, status
@@ -107,6 +108,20 @@ class Document(unittest.TestCase):
         self.assertEqual(doc['summary']['reasons'], [f'{timer} is inactive'])
         doc = status.build_status(cfg, FakeProbes(both, units={'nginx': 'not-installed'}), now=NOW)
         self.assertEqual((doc['summary']['state'], doc['summary']['reasons']), ('degraded', ['nginx is not installed']))
+
+    def test_paths_the_service_user_may_not_look_at_are_unavailable_not_a_crash(self):
+        '''On the appliance the certificate directory is root-only: stat raises PermissionError
+        (found on the Pi 2026-10-04, where it took /party/api/status down with a 502).'''
+        probes = status.Probes()
+        with mock.patch.object(Path, 'exists', side_effect=PermissionError(13, 'Permission denied')):
+            self.assertIsNone(probes.certificate_not_after('/etc/avrana-party/tls/current/fullchain.pem'))
+            self.assertIsNone(probes.checkout('/home/cody/avrana-party'))
+            self.assertIsNone(probes.web_release('/var/www/avrana-party/web'))
+            with self.assertRaises(manifest.ManifestError):
+                manifest.read(self.manifest)
+            doc = status.build_status(dict(self.cfg, certificate='/x/fullchain.pem', web_root='/w'), probes, now=NOW)
+        self.assertEqual(doc['certificate']['status'], 'unavailable')
+        self.assertEqual(doc['manifest_error'], 'deployment manifest: unreadable (PermissionError)')
 
     def test_malformed_manifest_is_reported_not_hidden(self):
         self.manifest.write_text('{"schema": "avrana.deployment/v0"}')

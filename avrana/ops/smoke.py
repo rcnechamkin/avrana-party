@@ -27,6 +27,8 @@ from avrana.ops import status as status_module
 PASS, FAIL, SKIP = 'pass', 'fail', 'skip'
 HOST = 'party.avrana.net'
 TIMEOUT_S = 5.0
+# Apple's probe page as avrana-party.nginx returns it, or the bare word the dev server sends.
+CAPTIVE_SUCCESS = re.compile(rb'(?:<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>)?Success(?:</BODY></HTML>)?\Z')
 CAPTIVE_HOSTS = ('captive.apple.com', 'connectivitycheck.gstatic.com', 'www.msftconnecttest.com',
                  'detectportal.firefox.com')
 
@@ -54,8 +56,14 @@ class Http:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
             conn = http.client.HTTPSConnection(address, port, timeout=self.timeout, context=ctx)
-            if host:
-                conn._server_hostname = host  # SNI; validated against the certificate when verify
+            # Connect to `address` but present and verify `host` (SNI), like curl --resolve.
+            # http.client always verifies the name it connected to, so the socket is made here.
+            raw = socket.create_connection((address, port), self.timeout)
+            try:
+                conn.sock = ctx.wrap_socket(raw, server_hostname=host or address)
+            except BaseException:
+                raw.close()
+                raise
         else:
             conn = http.client.HTTPConnection(address, port, timeout=self.timeout)
         try:
@@ -77,7 +85,7 @@ def check_captive_probe(http, address='127.0.0.1', port=80):
     try:
         for probe_host in CAPTIVE_HOSTS[:1]:
             code, _, body = http.get('http', address, port, '/hotspot-detect.html', host=probe_host)
-            if code != 200 or body.strip() != b'Success':
+            if code != 200 or not CAPTIVE_SUCCESS.match(body.strip()):
                 return Result('captive_probe', FAIL, f'{probe_host} -> {code} {body[:40]!r}; expected 200 "Success"')
         return Result('captive_probe', PASS, 'Apple probe answered "Success" on :80')
     except OSError as e:
@@ -144,7 +152,7 @@ def check_games_provider(http, address='127.0.0.1', port=8096):
     return Result('games_provider', PASS, f'health ok; advertises {want}')
 
 
-def check_arcade(http, address='127.0.0.1', port=8098):
+def check_arcade(http, address='127.0.0.1', port=8097):
     try:
         code, _, body = http.get('http', address, port, '/stats')
     except OSError as e:
@@ -157,7 +165,7 @@ def check_arcade(http, address='127.0.0.1', port=8098):
     return Result('arcade', PASS, f'state {doc.get("state", "?")}, {doc.get("players")} playing')
 
 
-def check_encoder(http, address='127.0.0.1', port=8098):
+def check_encoder(http, address='127.0.0.1', port=8097):
     """Only meaningful while the emulator runs: a still screen is fine, a dead encoder is not."""
     try:
         code, _, body = http.get('http', address, port, '/stats')
