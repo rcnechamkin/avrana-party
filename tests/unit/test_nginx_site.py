@@ -139,6 +139,7 @@ def upstream(label):
                 self.rfile.read(int(self.headers['Content-Length']))
             body = json.dumps({'upstream': label, 'path': self.path,
                                'proto': self.headers.get('X-Forwarded-Proto'),
+                               'forwarded_for': self.headers.get('X-Forwarded-For'),
                                'upgrade': self.headers.get('Upgrade')}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
