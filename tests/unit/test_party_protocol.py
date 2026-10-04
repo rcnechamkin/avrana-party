@@ -1,6 +1,7 @@
 """Party session protocol v0 (avrana.party.protocol): envelope, tickets, messages, GameSide."""
 import json
 import os
+import struct
 import tempfile
 import unittest
 
@@ -289,6 +290,129 @@ class Keys(unittest.TestCase):
                 os.chmod(path, 0o644)
                 with self.assertRaises(ValueError):
                     P.read_key(path)
+
+
+def acl(*entries):
+    """A raw `system.posix_acl_access` value: version 2, then (tag, perm, id) entries."""
+    return struct.pack('<I', 2) + b''.join(struct.pack('<HHI', *e) for e in entries)
+
+
+OWNER, USER, GROUP_OBJ, GROUP, MASK, OTHER_TAG = 0x01, 0x02, 0x04, 0x08, 0x10, 0x20
+NO_ID = 0xFFFFFFFF
+ME, ROOT, SOMEONE = 993, 0, 1000
+R, RW = 4, 6
+
+
+def credential_acl(reader=ME, owner=R, group=0, mask=R, other=0, extra=()):
+    """What systemd writes for a LoadCredential file it could not chown: owner root may read, one
+    named user may read, the owning group and everyone else get nothing."""
+    return acl((OWNER, owner, NO_ID), (USER, R, reader), *extra, (GROUP_OBJ, group, NO_ID),
+               (MASK, mask, NO_ID), (OTHER_TAG, other, NO_ID))
+
+
+class KeyFilePermissions(unittest.TestCase):
+    """Which key files read_key accepts (AVR-253). The rule: nobody but the file's owner and this
+    process may be able to read the key, and nobody may be able to change it but its owner.
+
+    A file with no group or other permission bits satisfies that by its mode. A systemd
+    LoadCredential file does too, but its mode says 0440: the "group" bits of a file with a POSIX
+    ACL are the ACL mask, not the group's rights. So such a file is accepted only when the ACL
+    itself proves the rule."""
+
+    def ok(self, mode, owner, acl_bytes=None, uid=ME):
+        return P.key_file_problem(mode, owner, uid, acl_bytes) is None
+
+    # ---- accepted ----------------------------------------------------------------------------
+    def test_a_private_file_is_accepted_as_before(self):
+        for mode in (0o600, 0o400):
+            for owner in (ME, ROOT, SOMEONE):                 # ownership was never part of this check
+                self.assertTrue(self.ok(mode, owner), (oct(mode), owner))
+
+    def test_a_systemd_credential_with_an_acl_for_this_user_is_accepted(self):
+        self.assertTrue(self.ok(0o440, ROOT, credential_acl()))
+        self.assertTrue(self.ok(0o440, ME, credential_acl()))       # the same shape, self-owned
+
+    # ---- still refused -----------------------------------------------------------------------
+    def test_a_plainly_group_readable_key_is_still_refused(self):
+        """0440 or 0640 with no ACL is real group access, whoever owns the file."""
+        for mode in (0o440, 0o640, 0o460, 0o450):
+            for owner in (ROOT, ME):
+                self.assertFalse(self.ok(mode, owner), (oct(mode), owner))
+
+    def test_anything_readable_or_writable_by_others_is_refused_even_with_a_good_acl(self):
+        for mode in (0o444, 0o644, 0o604, 0o442, 0o441, 0o666):
+            self.assertFalse(self.ok(mode, ROOT, credential_acl()), oct(mode))
+
+    def test_group_bits_other_than_read_are_refused(self):
+        for mode in (0o460, 0o450, 0o470, 0o420, 0o410):
+            self.assertFalse(self.ok(mode, ROOT, credential_acl()), oct(mode))
+
+    def test_an_acl_that_lets_the_owning_group_read_is_refused(self):
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(group=R)))
+
+    def test_an_acl_naming_another_user_is_refused(self):
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(reader=SOMEONE)))
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(extra=((USER, R, SOMEONE),))))
+
+    def test_an_acl_naming_any_group_is_refused(self):
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(extra=((GROUP, R, 33),))))
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(extra=((GROUP, 0, 33),))))
+
+    def test_an_acl_that_lets_anyone_write_is_refused(self):
+        self.assertFalse(self.ok(0o440, ROOT, acl((OWNER, R, NO_ID), (USER, RW, ME), (GROUP_OBJ, 0, NO_ID),
+                                                  (MASK, RW, NO_ID), (OTHER_TAG, 0, NO_ID))))
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(owner=RW)))
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(mask=RW)))
+        self.assertFalse(self.ok(0o440, ROOT, credential_acl(other=R)))
+
+    def test_an_acl_with_no_named_user_explains_nothing_and_is_refused(self):
+        self.assertFalse(self.ok(0o440, ROOT, acl((OWNER, R, NO_ID), (GROUP_OBJ, 0, NO_ID),
+                                                  (MASK, R, NO_ID), (OTHER_TAG, 0, NO_ID))))
+
+    def test_a_credential_owned_by_a_third_user_is_refused(self):
+        self.assertFalse(self.ok(0o440, SOMEONE, credential_acl()))
+
+    def test_a_malformed_unknown_or_missing_acl_is_refused(self):
+        good = credential_acl()
+        for bad in (None, b'', good[:-3], struct.pack('<I', 1) + good[4:], good + b'\0' * 8,
+                    acl((0x40, R, NO_ID)), b'not an acl at all!!!'):
+            self.assertFalse(self.ok(0o440, ROOT, bad), bad)
+
+    def test_the_refusal_names_the_file_and_not_the_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'bluff.key')
+            P.write_key(path, KEY)
+            if os.name != 'posix':
+                self.skipTest('file modes are not enforced here')
+            os.chmod(path, 0o640)
+            with self.assertRaises(ValueError) as e:
+                P.read_key(path)
+            self.assertIn(path, str(e.exception))
+            self.assertNotIn(KEY.hex(), str(e.exception))
+
+    @unittest.skipUnless(hasattr(os, 'setxattr'), 'POSIX ACLs need Linux')
+    def test_read_key_on_a_real_file_with_a_real_acl(self):
+        """The same decisions made by read_key itself, on a file whose ACL the kernel holds."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'bluff.key')
+            P.write_key(path, KEY)
+            me = os.geteuid()
+            try:
+                os.setxattr(path, P.ACL_XATTR, credential_acl(reader=me))
+            except OSError:
+                self.skipTest('this filesystem does not store POSIX ACLs')
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o440)      # the mask shows as group
+            self.assertEqual(P.read_key(path), KEY)
+            os.setxattr(path, P.ACL_XATTR, credential_acl(reader=me, group=R))
+            with self.assertRaises(ValueError):
+                P.read_key(path)                                          # the group really can read
+            os.setxattr(path, P.ACL_XATTR, credential_acl(reader=me, extra=((USER, R, me + 1),)))
+            with self.assertRaises(ValueError):
+                P.read_key(path)                                          # so can somebody else
+            os.removexattr(path, P.ACL_XATTR)
+            os.chmod(path, 0o440)
+            with self.assertRaises(ValueError):
+                P.read_key(path)                                          # plain 0440: no ACL
 
 
 if __name__ == '__main__':
