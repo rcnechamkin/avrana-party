@@ -105,6 +105,39 @@ class ArcadeStream(unittest.TestCase):
         page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
         self.assertEqual(set(re.findall(r'data-key="([a-z]+)"', page)), set(self.stream.LAYOUT.names))
 
+    def test_party_origin_is_an_origin_or_nothing(self):
+        # ADR 0013: the page is told the Party's origin only by this configuration.
+        env = self.stream.PARTY_ORIGIN_ENV
+        self.assertEqual(env, 'AVRANA_PARTY_ORIGIN')
+        for good in ('https://party.avrana.net', 'http://party.avrana.test:8182'):
+            self.assertEqual(self.stream.party_origin({env: good}), good)
+        for bad in ('', 'party.avrana.net', 'https://party.avrana.net/', 'https://party.avrana.net/party/',
+                    'https://u@party.avrana.net', 'javascript:alert(1)', 'https://a.example https://b.example',
+                    'https://party.avrana.net\n', '*'):
+            self.assertIsNone(self.stream.party_origin({env: bad}), bad)
+        self.assertIsNone(self.stream.party_origin({}))
+
+    def test_page_modules_are_the_partys_own_files(self):
+        # On the game origin the page imports these from the arcade's own origin.
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertEqual(set(self.stream.PAGE_MODULES), {'party-bridge.js', 'keep-awake.js'})
+        self.assertEqual(self.stream.PAGE_MODULES['party-bridge.js'], REPO_ROOT / 'web/party/bridge/shim.js')
+        for name, source in self.stream.PAGE_MODULES.items():
+            self.assertTrue(source.is_file(), source)
+            self.assertIn(f"new URL('{name}',location.href)", page)
+        self.assertEqual(re.findall(r'^import .*$', (REPO_ROOT / 'web/party/bridge/shim.js').read_text(encoding='utf-8'), re.M), [])
+        self.assertEqual(re.findall(r'^import .*$', (REPO_ROOT / 'web/party/lib/keep-awake.js').read_text(encoding='utf-8'), re.M), [])
+
+    def test_the_page_takes_the_party_origin_from_the_arcade_only(self):
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('.party_origin', page)
+        self.assertNotIn("get('party", page)                    # never from the address
+        # the drop-in documents the setting and does not set it: no deployment effect until the owner does
+        conf = (REPO_ROOT / 'deploy/arcade/avrana-party-session.conf').read_text(encoding='utf-8')
+        self.assertIn('AVRANA_PARTY_ORIGIN', conf)
+        self.assertEqual([line for line in conf.splitlines()
+                          if 'AVRANA_PARTY_ORIGIN' in line and not line.lstrip().startswith('#')], [])
+
     def test_presentation_provider_shape(self):
         s = self.stream.Stream()
         self.assertEqual(s.info.offers, ('presentation.shared_stream',))

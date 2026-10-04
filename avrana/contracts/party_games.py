@@ -10,7 +10,7 @@ import json
 from avrana import CONTRACTS_DIR
 
 PATH = CONTRACTS_DIR / 'party-games.v0.json'
-REQUIRED = ('contract', 'session_protocol', 'result', 'routes', 'launch', 'environment', 'catalog')
+REQUIRED = ('contract', 'session_protocol', 'result', 'bridge', 'routes', 'launch', 'environment', 'catalog')
 
 
 class ContractError(ValueError):

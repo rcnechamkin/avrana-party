@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 const games = process.env.AVRANA_GAMES_REPO;
 if (!games) throw new Error('Set AVRANA_GAMES_REPO to an explicit local games checkout. Never a Pi path.');
 const python = process.env.AVRANA_PROVIDER_PYTHON || 'python3';
+const RESOLVE = ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'];
 export default defineConfig({
   testDir: './tests/provider', testMatch: /.*\.spec\.ts$/, workers: 1,
   fullyParallel: false, retries: 0, timeout: 30000,
@@ -16,9 +17,14 @@ export default defineConfig({
     // AVR-23: the same harness plus a real Party service behind /party/api/ (party-session.spec.ts)
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8183 --party-session`,
     url: 'http://127.0.0.1:8183/party/', reuseExistingServer: false, timeout: 60000,
+  }, {
+    // AVR-226: the same again under two host names of one site, the Party and the game origin
+    // (game-origin.spec.ts); the browsers below map *.avrana.test to loopback
+    command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8184 --party-session --game-origin`,
+    url: 'http://127.0.0.1:8184/party/', reuseExistingServer: false, timeout: 60000,
   }],
   projects: [
-    { name: 'android-size', use: { ...devices['Pixel 7'], launchOptions: { executablePath: process.env.PW_CHROMIUM_EXECUTABLE } } },
-    { name: 'iphone-size', use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: { executablePath: process.env.PW_CHROMIUM_EXECUTABLE } } },
+    { name: 'android-size', use: { ...devices['Pixel 7'], launchOptions: { executablePath: process.env.PW_CHROMIUM_EXECUTABLE, args: RESOLVE } } },
+    { name: 'iphone-size', use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: { executablePath: process.env.PW_CHROMIUM_EXECUTABLE, args: RESOLVE } } },
   ],
 });
