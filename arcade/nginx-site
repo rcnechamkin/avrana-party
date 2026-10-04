@@ -7,8 +7,8 @@ server {
     location = /hotspot-detect.html {
         # iOS/macOS captive probe: return Apple's literal Success so the phone
         # marks Avrana Party usable and stays connected (no captive popup).
-        # Owner chose "no popup, just connect" (2026-09-18); landing page still
-        # reachable at http://party.local/. Reverses the earlier "never serve
+        # Owner chose "no popup, just connect" (2026-09-18); a link to the Party
+        # is at http://party.local/. Reverses the earlier "never serve
         # Success" note deliberately. Works offline (served locally, DNS still
         # intercepts captive.apple.com -> 10.42.0.1).
         default_type text/html;
@@ -16,7 +16,7 @@ server {
         return 200 "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>\n";
     }
 
-    # Isolated Gauntlet II prototype; LAN Games remains at /.
+    # Isolated Gauntlet II prototype.
     location /arcade/ {
         proxy_pass http://127.0.0.1:8097/;
         proxy_http_version 1.1;
@@ -28,6 +28,51 @@ server {
         add_header Cache-Control "no-store" always;
     }
 
+    # The two Party games the retiring LAN Games runtime still hosts (ADR 0016 sections 3 and 7),
+    # by name and nothing else: a route, not a fallback. No other slug under /games/ is sent to
+    # that runtime, and its other titles are no longer offered by Party Home. Control paths are
+    # left to the refusal below. This block is not part of the shared native-game rules and goes
+    # with that runtime (ADR 0014, AVR-228). Source copy:
+    # deploy/games/nginx-legacy-lan-games.location.
+    location ~ "^/games/(bluff|expo)(/(?!avrana/)|$)" {
+        proxy_pass http://127.0.0.1:8096;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
+
+    # Plain HTTP serves no native game (owner decision 2026-10-04): native game pages, their
+    # tickets and their sockets are HTTPS-only, so this server block has no rule that reaches
+    # /run/avrana-games/. After the legacy exception above, every other path under /games/ is
+    # refused here, control paths included. Source copy:
+    # deploy/games/nginx-games-plain-http.location.
+    location /games/ {
+        return 404;
+    }
+    location = /games {
+        return 404;
+    }
+
+    # The LAN Games hub is retired as a product surface (ADR 0014; owner decision 2026-10-04): its
+    # page is not served. Until the Limited Mode doorway (LIMITED-MODE 3.1) takes this path it is
+    # a plain link to the Party, never a redirect: a phone with broken HTTPS must not be sent
+    # into a certificate warning.
+    location = / {
+        default_type text/html;
+        add_header Cache-Control "no-store" always;
+        return 200 '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Avrana Party</title><p><a href="https://party.avrana.net/party/">Open Avrana Party</a></p>\n';
+    }
+    location ^~ /shared/hub.html {
+        return 404;
+    }
+
+    # What is left of the LAN Games runtime: the shared assets, avatars, chat and APIs that BLUFF
+    # and EXPO load from the root of this origin.
     location / {
         proxy_pass http://127.0.0.1:8096;
 
@@ -45,8 +90,9 @@ server {
     }
 }
 
-# Full Mode uses a publicly trusted certificate for a real hostname. Keep the
-# port 80 default server above unchanged for captive probes and legacy clients.
+# Full Mode uses a publicly trusted certificate for a real hostname. The port 80
+# default server above stays for captive probes and plain-HTTP clients. It serves
+# BLUFF and EXPO and no native game: those are reached only through this block.
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -111,6 +157,79 @@ server {
         add_header Cache-Control "no-store" always;
     }
 
+    # The two Party games the retiring LAN Games runtime still hosts (ADR 0016 sections 3 and 7),
+    # by name and nothing else: a route, not a fallback. No other slug under /games/ is sent to
+    # that runtime, and its other titles are no longer offered by Party Home. Control paths are
+    # left to the refusal below. This block is not part of the shared native-game rules and goes
+    # with that runtime (ADR 0014, AVR-228). Source copy:
+    # deploy/games/nginx-legacy-lan-games.location.
+    location ~ "^/games/(bluff|expo)(/(?!avrana/)|$)" {
+        proxy_pass http://127.0.0.1:8096;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
+
+    # Native games (ADR 0016 section 4, AVR-259): one rule for every title, no per-game block and
+    # no port. A native game listens on its own Unix socket, /run/avrana-games/<slug>.sock, which
+    # only nginx and Party Core may connect to (group avrana-front). The slug pattern is the Game
+    # Contract's id pattern (avrana/contracts/game.py ID): 1 to 40 characters, no "/" and no ".",
+    # so no request can name a socket outside that directory. nginx matches locations against the
+    # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
+    # path really names; the game is sent the request line as the client wrote it. These rules
+    # name no title and are the same in every server block that serves native games. Source copy:
+    # deploy/games/nginx-native-games.location.
+    #
+    # Control paths are never proxied: Party Core sends launch and end to a game directly, so a
+    # request for them through the front door is refused here, for every slug. The match is on
+    # the normalised path and is case-sensitive; a spelling this rule does not match is not a
+    # control path to the game either, and a game refuses any control request that carries the
+    # proxy headers set below.
+    location ~ ^/games/[^/]+/avrana/ {
+        return 404;
+    }
+
+    # A slug is a native game or nothing. A game that is not provisioned has no socket, and one
+    # that is down refuses or closes: either way the phone gets nginx's own 502 and the request
+    # is sent nowhere else. nginx reads no registry here; telling "not provisioned" from "down"
+    # is left to the game registry (AVR-236).
+    location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
+        proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
+
+    # Anything else under /games/ names no game (a slug outside the pattern): refused here, never
+    # passed to a catch-all. The bare /games is refused the same way.
+    location /games/ {
+        return 404;
+    }
+    location = /games {
+        return 404;
+    }
+
+    # The LAN Games hub is retired as a product surface (ADR 0014; owner decision 2026-10-04): its
+    # page is not served, and the root of this origin is Party Home.
+    location = / {
+        return 302 /party/;
+    }
+    location ^~ /shared/hub.html {
+        return 404;
+    }
+
+    # What is left of the LAN Games runtime: the shared assets, avatars, chat and APIs that BLUFF
+    # and EXPO load from the root of this origin.
     location / {
         proxy_pass http://127.0.0.1:8096;
         proxy_http_version 1.1;

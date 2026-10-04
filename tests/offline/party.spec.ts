@@ -42,7 +42,8 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(card).toContainText('Works on this phone');
   await expect(card).toContainText('1 of 2 playing');
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/arcade/');
-  await expect(page.locator('[data-id="lan-chess"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/chess/?avrana=1');
+  await expect(page.locator('[data-id="expo"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/expo/?avrana=1');
+  await expect(page.locator('[data-id^="lan-"]')).toHaveCount(0);                // no retired LAN Games title is offered
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Not installed');
   // BLUFF is installed: listed with its own art and launched through the Avrana-integrated path.
   const bluff = page.locator('[data-id="bluff"]');
@@ -106,7 +107,7 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
   await expect(page.locator('#away')).toBeVisible();
   await expect(page.locator('#status')).toContainText('Not connected to the party');
   await expect(page.locator('#games-section')).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Open the basic version' })).toHaveAttribute('href', 'http://10.42.0.1/');
+  await expect(page.locator('#away a')).toHaveCount(0);   // the retired LAN Games hub is not offered as a way out
 
   // Try again while still away: stays honest.
   await page.getByRole('button', { name: 'Try again' }).click();

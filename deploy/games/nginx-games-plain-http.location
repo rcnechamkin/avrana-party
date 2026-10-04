@@ -1,0 +1,11 @@
+    # Plain HTTP serves no native game (owner decision 2026-10-04): native game pages, their
+    # tickets and their sockets are HTTPS-only, so this server block has no rule that reaches
+    # /run/avrana-games/. After the legacy exception above, every other path under /games/ is
+    # refused here, control paths included. Source copy:
+    # deploy/games/nginx-games-plain-http.location.
+    location /games/ {
+        return 404;
+    }
+    location = /games {
+        return 404;
+    }

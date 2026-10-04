@@ -48,8 +48,12 @@ class DonorCatalog(unittest.TestCase):
                          {'lan-games', 'arcade', 'retroarch-ps1'})
         self.assertEqual(result['collections'], [])
         installed = [g for g in result['games'] if g['installed']]
-        self.assertEqual(len(installed), 32)
-        self.assertEqual(next(g for g in installed if g['id'] == 'lan-chess')['entry'], '/games/chess/')
+        self.assertEqual(sorted(g['id'] for g in installed), ['arcade-gauntlet2', 'bluff', 'expo'])
+        # The donor library is retired from the catalog (ADR 0014, AVR-259): the snapshot still
+        # describes its titles, and none of them is offered, installed or not.
+        self.assertFalse([g['id'] for g in result['games'] if g['id'].startswith('lan-')])
+        self.assertEqual(sorted(g['id'] for g in result['games'] if g['provider'] == 'lan-games'), ['bluff', 'expo'])
+        self.assertFalse([g['game'] for g in ap['installed'] if g['game'].startswith('lan-')])
         # BLUFF is live in the Games fork; the appliance grants it under its own ID.
         bluff = next(g for g in installed if g['id'] == 'bluff')
         self.assertEqual((bluff['entry'], bluff['launchTarget'], bluff['status']),

@@ -35,7 +35,8 @@ from avrana import REPO_ROOT, WEB_DIR
 # The games the simulated party offers (deploy/party-core/party-core.example.json's shape).
 PARTY_GAMES = {'bluff': {'max_players': 6, 'min_players': 2, 'pregame': True, 'late_join': 'spectator_only'},
                'arcade-gauntlet2': {'max_players': 2, 'late_join': 'supported'},
-               'lan-chess': {'max_players': 2, 'late_join': 'spectator_only'}}
+               # two seats in this simulation, so a third phone shows the spectator path
+               'expo': {'max_players': 2, 'late_join': 'spectator_only'}}
 FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length', 'sec-fetch-site')
 # A second pair of host names for the same server, so a browser test can put a game page on
 # another origin of the same site (ADR 0013). Chromium is told to resolve them to 127.0.0.1.
@@ -56,7 +57,7 @@ GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" conten
              # Party moves this page like any game page. `here` is the Party Core game id.
              b'<script type="module">import { startPartyFollow } from "/party/lib/party-follow.js";'
              b'const slug = location.pathname.split("/")[2];'
-             b'startPartyFollow({ here: slug === "bluff" ? slug : "lan-" + slug, container: document.getElementById("nav") });'
+             b'startPartyFollow({ here: slug, container: document.getElementById("nav") });'
              b'</script>')
 
 

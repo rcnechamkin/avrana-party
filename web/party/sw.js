@@ -30,15 +30,7 @@ const SHELL = [
   'bridge.html', 'lib/bridge.js', 'lib/bridge-frame.js', 'bridge/shim.js',
   'diag/', 'diag/index.html', 'diag/diag.js',
   // Library artwork (tools/build-art.mjs from contracts/artwork.json).
-  'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-backgammon.svg',
-  'art/lan-battleship.svg', 'art/lan-bingo.svg', 'art/lan-blitz.svg', 'art/lan-bluff.svg',
-  'art/lan-brickade.svg', 'art/lan-buzzboard.svg', 'art/lan-charades.svg', 'art/lan-checkers.svg',
-  'art/lan-chess.svg', 'art/lan-connect4.svg', 'art/lan-dodgeball.svg', 'art/lan-euchre.svg',
-  'art/lan-famfeud.svg', 'art/lan-fifthsignal.svg', 'art/lan-fortfling.svg', 'art/lan-gridiron.svg',
-  'art/lan-hearts.svg', 'art/lan-orbitriot.svg', 'art/lan-poker.svg', 'art/lan-pricecheck.svg',
-  'art/lan-rummikub.svg', 'art/lan-smelterskelter.svg', 'art/lan-snake.svg', 'art/lan-spades.svg',
-  'art/lan-tanks.svg', 'art/lan-trivia.svg', 'art/lan-werewolf.svg', 'art/lan-wordclash.svg',
-  'art/lan-wordrush.svg',
+  'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-bluff.svg',
   // Player avatars (tools/build-avatars.mjs): generated, committed, tiny.
   'avatars/gaze-01.svg', 'avatars/gaze-02.svg', 'avatars/gaze-03.svg', 'avatars/gaze-04.svg',
   'avatars/gaze-05.svg', 'avatars/gaze-06.svg', 'avatars/gaze-07.svg', 'avatars/gaze-08.svg',

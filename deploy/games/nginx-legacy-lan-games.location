@@ -1,0 +1,17 @@
+    # The two Party games the retiring LAN Games runtime still hosts (ADR 0016 sections 3 and 7),
+    # by name and nothing else: a route, not a fallback. No other slug under /games/ is sent to
+    # that runtime, and its other titles are no longer offered by Party Home. Control paths are
+    # left to the refusal below. This block is not part of the shared native-game rules and goes
+    # with that runtime (ADR 0014, AVR-228). Source copy:
+    # deploy/games/nginx-legacy-lan-games.location.
+    location ~ "^/games/(bluff|expo)(/(?!avrana/)|$)" {
+        proxy_pass http://127.0.0.1:8096;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
