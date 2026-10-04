@@ -270,22 +270,15 @@ class Collection(unittest.TestCase):
             boundary._run = real
 
     def test_credentials_come_from_the_unit_text_when_show_cannot_print_them(self):
-        cat = ('# /etc/systemd/system/x.service
-[Service]
-LoadCredential=b.key:/k/b.key
-'
-               '# /etc/systemd/system/x.service.d/y.conf
-[Service]
-LoadCredential=a.key:/k/a.key
-')
+        cat = '\n'.join(('# /etc/systemd/system/x.service', '[Service]', 'LoadCredential=b.key:/k/b.key',
+                         '# /etc/systemd/system/x.service.d/y.conf', '[Service]',
+                         'LoadCredential=a.key:/k/a.key', ''))
         self.assertEqual(self.credentials('[unprintable]', cat), ['/k/a.key', '/k/b.key'])
         self.assertEqual(self.credentials('', ''), [])
 
     def test_an_empty_assignment_resets_the_list(self):
-        cat = 'LoadCredential=old.key:/k/old.key
-LoadCredential=
-LoadCredential=new.key:/k/new.key
-'
+        cat = '\n'.join(('LoadCredential=old.key:/k/old.key', 'LoadCredential=',
+                         'LoadCredential=new.key:/k/new.key', ''))
         self.assertEqual(self.credentials('[unprintable]', cat), ['/k/new.key'])
 
     def test_a_printable_value_is_used_as_is(self):
