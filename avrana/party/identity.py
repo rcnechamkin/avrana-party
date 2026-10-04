@@ -3,10 +3,16 @@
 * A device token is `secrets.token_urlsafe(32)` (256 bits), minted only here. A browser that
   presents an unknown, malformed or revoked value is issued a fresh token: a client can never
   choose its identity (unlike the games' `wc-token`, which the browser mints).
-* It travels only in the `avrana_device` cookie: `Path=/party/; HttpOnly; Secure; SameSite=Lax`.
-  Full Mode lives on the HTTPS server only (ADR 0004), so `Secure` holds in production; tests may
-  turn it off for a plain-HTTP loopback server. `Path=/party/` means game pages' own requests
-  (`/games/…`) never carry it, while a game page can still ask `/party/api/…` for a ticket.
+* It travels only in a cookie. In production (HTTPS) that is `__Host-avrana_device`:
+  `Path=/; Secure; HttpOnly; SameSite=Lax` (ADR 0013, AVR-226). The `__Host-` prefix makes the
+  browser refuse the name from any other host, with a `Domain` attribute, or over plain HTTP, so
+  a sibling origin (a game page on `games.avrana.net`) cannot plant one. It needs `Path=/`,
+  which is safe because game servers do not share the Party's host name.
+* For one release the earlier `avrana_device; Path=/party/` cookie is still read, so phones in
+  the room keep their member: a request that presents only the old cookie is answered with the
+  new one carrying the same token. When both are present the `__Host-` one wins.
+* A plain-HTTP loopback server (tests, the dev server: `secure=False`) cannot use the prefix and
+  keeps the old name and path.
 * It never appears in a URL, a response body or a log line. At rest only its SHA-256 is kept
   (hash -> device_id). `device_id` is opaque and authorizes nothing by itself.
 
@@ -20,8 +26,9 @@ import secrets
 import tempfile
 import threading
 
-COOKIE = 'avrana_device'
+COOKIE = 'avrana_device'                  # the earlier name; also the only one over plain HTTP
 COOKIE_PATH = '/party/'
+HOST_COOKIE = '__Host-avrana_device'      # production: host-only by the browser's own rule
 MAX_AGE = 400 * 24 * 3600            # browsers cap cookie lifetimes near 400 days anyway
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{43}$')
 
@@ -103,11 +110,30 @@ def read_cookie(header, name=COOKIE):
     return values[0] if len(values) == 1 else None
 
 
-def ambiguous(header, name=COOKIE):
-    """True when the Cookie header carries `name` more than once (read_cookie then answers None)."""
-    return len(_values(header, name)) > 1
+def presented(header):
+    """(token, source) from a Cookie header: source is 'host' (`__Host-avrana_device`), 'legacy'
+    (`avrana_device`) or None. Either name carried twice is ambiguous and yields no identity. The
+    `__Host-` cookie wins over the old one: a page elsewhere cannot have planted it."""
+    host, legacy = _values(header, HOST_COOKIE), _values(header, COOKIE)
+    if len(host) > 1 or len(legacy) > 1:
+        return None, None
+    if host:
+        return host[0], 'host'
+    if legacy:
+        return legacy[0], 'legacy'
+    return None, None
 
 
-def set_cookie(token, secure=True, name=COOKIE):
+def ambiguous(header, name=None):
+    """True when the Cookie header carries a device cookie name more than once."""
+    names = (name,) if name else (HOST_COOKIE, COOKIE)
+    return any(len(_values(header, n)) > 1 for n in names)
+
+
+def set_cookie(token, secure=True, name=None):
+    """The Set-Cookie value for a device token: the `__Host-` cookie when `secure`, else the old
+    name and path (a plain-HTTP loopback server cannot set a `__Host-` cookie)."""
+    if secure and name is None:
+        return f'{HOST_COOKIE}={token}; Path=/; Max-Age={MAX_AGE}; HttpOnly; Secure; SameSite=Lax'
     flags = '; Secure' if secure else ''
-    return f'{name}={token}; Path={COOKIE_PATH}; Max-Age={MAX_AGE}; HttpOnly{flags}; SameSite=Lax'
+    return f'{name or COOKIE}={token}; Path={COOKIE_PATH}; Max-Age={MAX_AGE}; HttpOnly{flags}; SameSite=Lax'

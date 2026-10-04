@@ -8,6 +8,9 @@ Browser -> party (cookie-authenticated, Origin-checked, never in a URL):
     POST /party/api/session/ticket   {[game]} -> {"protocol", "game", "session", "role", "ticket",
                                                   "expires_in"}
     A page that names its game gets 409 no_game while the party plays another one (AVR-128).
+    The bridge frame (ADR 0013) adds "origin": the origin of the game page it is serving, as the
+    browser reported it. It must then name the game, and that origin must be registered for that
+    game (service.Config.game_origins), or the answer is 403 bad_game_origin.
     The game page sends the ticket as its first WebSocket message: {"t": "hello", "ticket": …}.
 
 Game -> party (server to server, loopback and unproxied only, signed):
@@ -88,9 +91,13 @@ def routes(service, endpoints):
     def ticket(h, device, body):
         if device is None:
             return _send(h, 403, {'error': 'not_member', 'message': 'Join the party first.'})
+        game = body.get('game') if isinstance(body.get('game'), str) else None
+        if 'origin' in body and not (game and isinstance(body['origin'], str)
+                                     and h.cfg.game_allowed(body['origin'], game)):
+            return _send(h, 403, {'error': 'bad_game_origin',
+                                  'message': 'That page may not ask for a ticket to this game.'})
         try:
             with service.lock:
-                game = body.get('game') if isinstance(body.get('game'), str) else None
                 s, p = service.core.participant_for(device, game)
                 service._notify()
         except core.Refused as e:

@@ -29,7 +29,17 @@ from avrana import REPO_ROOT, WEB_DIR
 PARTY_GAMES = {'bluff': {'max_players': 6, 'min_players': 2, 'pregame': True, 'late_join': 'spectator_only'},
                'arcade-gauntlet2': {'max_players': 2, 'late_join': 'supported'},
                'lan-chess': {'max_players': 2, 'late_join': 'spectator_only'}}
-FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length')
+FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length', 'sec-fetch-site')
+# A second pair of host names for the same server, so a browser test can put a game page on
+# another origin of the same site (ADR 0013). Chromium is told to resolve them to 127.0.0.1.
+PARTY_HOST, GAMES_HOST = 'party.avrana.test', 'games.avrana.test'
+BRIDGE_GAME = (b'<!doctype html><meta charset="utf-8"><title>bridge test game</title><h1>stub game on the game origin</h1>'
+               b'<script type="module">import { connectParty } from "/party/bridge/shim.js";'
+               b'const q = new URLSearchParams(location.search);'
+               b'window.partyViews = [];'
+               b'window.party = connectParty({ partyOrigin: q.get("party"), game: q.get("game") });'
+               b'window.party.onChange((v) => window.partyViews.push(v));'
+               b'</script>')
 RETURN = ('content-type', 'cache-control', 'set-cookie', 'x-content-type-options')
 GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
              b'<title>%s (stub game)</title><h1 data-game="%s">%s stub</h1>'
@@ -64,16 +74,24 @@ class SimulatedParty:
         from avrana.ops import status
         from avrana.party import identity, service
         self.service_module = service
-        hosts = {f'127.0.0.1:{public_port}'}
+        from avrana.party import protocol, sessions
+        hosts = {f'127.0.0.1:{public_port}', f'{PARTY_HOST}:{public_port}'}
         self.svc = service.PartyService(identity.DeviceStore(None), service.load_games(PARTY_GAMES),
                                         AcceptingLink())
-        cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False)
+        self.game_origin = f'http://{GAMES_HOST}:{public_port}'
+        cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False,
+                             game_origins={self.game_origin: '*'})
+        # The ticket route, so a page can be handed a real ticket; the link still accepts all.
+        endpoints = {g: sessions.GameEndpoint(g, f'http://127.0.0.1:{public_port}/games/{g}', protocol.new_key())
+                     for g in PARTY_GAMES}
+        ticket_routes, _ = sessions.routes(self.svc, endpoints)
         probes = DevProbes()
         routes = status.route(self.svc, {'manifest': str(REPO_ROOT / 'nonexistent-deployment.json'),
                                          'party_checkout': str(REPO_ROOT), 'games_checkout': '',
                                          'web_root': '', 'certificate': '', 'units': [],
                                          'games_url': f'http://127.0.0.1:{public_port}',
                                          'arcade_url': f'http://127.0.0.1:{public_port}/arcade'}, probes, ttl=0)
+        routes.update(ticket_routes)
         self.server = service.make_server(self.svc, cfg, port=0, extra_routes=routes)
         self.port = self.server.server_address[1]
         self.stop = threading.Event()
@@ -210,6 +228,13 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/games/') and cfg['party'] is not None:
             slug = path.split('/')[2].encode('ascii', 'replace')
             return self._send(200, GAME_STUB % (slug, slug, slug), 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
+        if path == '/party/bridge.html' and cfg['party'] is not None:
+            # The one Party page a game origin may frame (ADR 0013); everything else stays 'none'.
+            csp = SHELL_HEADERS['Content-Security-Policy'].replace(
+                "frame-ancestors 'none'", 'frame-ancestors ' + cfg['party'].game_origin)
+            return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
+        if cfg['test_controls'] and path == '/__test__/bridge-game.html':
+            return self._send(200, BRIDGE_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
         if path.startswith('/party/'):
             return self._file(cfg['web'], path[len('/party/'):], SHELL_HEADERS)
         if path == '/api/games':

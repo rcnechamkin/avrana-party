@@ -205,11 +205,27 @@ class PartyService:
                     self._notify()
 
 
+BRIDGE_ROUTE = '/party/api/bridge'
+BRIDGE_SCHEMA = 'avrana.party-bridge/v1'
+SAME_ORIGIN_FETCH = ('same-origin', 'none')      # Sec-Fetch-Site values the Party API answers
+
+
 class Config:
-    def __init__(self, hosts, origins, secure_cookie=True):
+    def __init__(self, hosts, origins, secure_cookie=True, game_origins=None):
         self.hosts = set(hosts)
         self.origins = set(origins)
         self.secure_cookie = secure_cookie
+        # ADR 0013: the browser origins game pages are served from, each with the games it may
+        # host ('*' or a list of ids). They are never POST origins: a game page reaches the
+        # Party only through the bridge frame, which runs on a Party origin.
+        self.game_origins = dict(game_origins or {})
+        clash = self.origins & set(self.game_origins)
+        if clash:
+            raise ValueError(f'a game origin may not also be a Party origin: {sorted(clash)}')
+
+    def game_allowed(self, origin, game):
+        games = self.game_origins.get(origin)
+        return games == '*' or (isinstance(games, (list, tuple)) and game in games)
 
 
 def _send(h, status, obj, cookie=None):
@@ -218,6 +234,7 @@ def _send(h, status, obj, cookie=None):
     h.send_header('Content-Type', 'application/json; charset=utf-8')
     h.send_header('Cache-Control', 'no-store')
     h.send_header('X-Content-Type-Options', 'nosniff')
+    cookie = cookie or getattr(h, 'upgrade_cookie', None)
     if cookie:
         h.send_header('Set-Cookie', cookie)
     h.send_header('Content-Length', str(len(data)))
@@ -245,11 +262,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.log_message('%s %s %s', self.command, urlsplit(self.path).path, code)
 
     def _device(self):
-        return self.service.store.resolve(identity.read_cookie(self.headers.get('Cookie')))
+        token, source = identity.presented(self.headers.get('Cookie'))
+        device = self.service.store.resolve(token)
+        # One release of dual read (ADR 0013 D3): a phone that still presents only the earlier
+        # cookie keeps its member and is handed the `__Host-` cookie with the same token.
+        self.upgrade_cookie = (identity.set_cookie(token, True)
+                               if device and source == 'legacy' and self.cfg.secure_cookie else None)
+        return device
 
     def _guard(self):
+        self.upgrade_cookie = None
         if self.headers.get('Host', '') not in self.cfg.hosts:
             _send(self, 421, {'error': 'unknown_host'})
+            return False
+        # A browser says where a request comes from. A page on another origin, a sibling host
+        # name included, gets nothing from the Party API even though the browser would attach
+        # the cookie to its request (same site). Requests without the header (older browsers,
+        # tools) fall through to the Origin allow-list and the absence of CORS.
+        site = self.headers.get('Sec-Fetch-Site')
+        if site is not None and site not in SAME_ORIGIN_FETCH:
+            _send(self, 403, {'error': 'cross_origin'})
             return False
         return True
 
@@ -260,6 +292,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         route = self.extra_routes.get(('GET', url.path))
         if route:
             return route(self, self._device(), None)
+        if url.path == BRIDGE_ROUTE:           # which game origins the bridge frame may serve
+            return _send(self, 200, {'schema': BRIDGE_SCHEMA, 'origins': self.cfg.game_origins})
         if url.path != '/party/api/state':
             return _send(self, 404, {'error': 'not_found'})
         q = parse_qs(url.query)
@@ -413,7 +447,8 @@ def main(argv=None):
     except party_config.ConfigError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
     service = PartyService(store, games, sessions.HttpGameLink(endpoints))
-    cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True))
+    cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True),
+                 conf.get('game_origins'))
     extra, internal = sessions.routes(service, endpoints)
     from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
     extra.update(status.route(service, status.load_config(conf)))
