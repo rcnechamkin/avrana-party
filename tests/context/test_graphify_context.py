@@ -28,6 +28,13 @@ class ContextTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        # `git commit` (and merge, fetch, rebase) ends by starting `git maintenance run --auto
+        # --detach`. On Linux that process detaches and outlives the command; it holds
+        # .git/objects/maintenance.lock while it runs, so a fixture deleted a few milliseconds
+        # later can find `objects` not empty (AVR-269). Nothing here needs maintenance, so the
+        # fixture repository turns it off for every git command run in it, the tool's included.
+        for key, value in (('maintenance.auto', 'false'), ('gc.auto', '0')):
+            subprocess.run(['git', '-C', str(self.root), 'config', key, value], check=True)
         self.cfg = {
             'schema_version': 1, 'repository': 'rcnechamkin/avrana-party',
             'graphify_version': c.GRAPHIFY_VERSION, 'extraction': 'local-ast',
@@ -42,6 +49,27 @@ class ContextTests(unittest.TestCase):
         self.write('source.py', 'def sample():\n    return 1\n')
         subprocess.run(['git', '-C', str(self.root), 'add', '.'], check=True)
         subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'Fixture'], check=True)
+
+    def test_fixture_git_commands_leave_no_process_behind(self):
+        """A git command in the fixture starts no maintenance process, so nothing can still be
+        writing under .git when the temporary directory is removed."""
+        def children(*args):
+            trace = Path(self.directory.name).with_name(Path(self.directory.name).name + '.trace')
+            self.addCleanup(lambda: trace.unlink(missing_ok=True))
+            env = dict(os.environ, GIT_TRACE2_EVENT=str(trace))
+            subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Fixture',
+                            '-c', 'user.email=fixture@example.test', *args], check=True, env=env)
+            events = [json.loads(line) for line in trace.read_text(encoding='utf-8').splitlines()]
+            trace.unlink()
+            return [' '.join(e.get('argv', [])) for e in events if e.get('event') == 'child_start']
+
+        self.write('source.py', 'def sample():\n    return 2\n')
+        started = children('commit', '-qam', 'Second')
+        self.assertEqual([c for c in started if 'maintenance' in c or ' gc' in c], [], started)
+        # the same commit without the fixture's setting does start it: the check above can fail
+        self.write('source.py', 'def sample():\n    return 3\n')
+        started = children('-c', 'maintenance.auto=true', 'commit', '-qam', 'Third')
+        self.assertTrue([c for c in started if 'maintenance run --auto' in c], started)
 
     def write(self, name, value):
         path = self.root / name
