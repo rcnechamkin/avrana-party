@@ -40,6 +40,8 @@ branches, PRs and the deployed build in one read-only pass):
 4. Decide whether [Games](https://github.com/rcnechamkin/avrana-party-games) must change
    ([CROSS-REPO](docs/CROSS-REPO.md)); if so, pair branches with the same `avr-N`.
 5. Name the tests that will prove the change before editing; add or extend them with the code.
+   For a change the owner merges ([REVIEW](REVIEW.md), "Change class"), first post a short plan
+   on the issue (files that change, order of work, risks, proof) and wait for it to be accepted.
 6. Branch from fetched `origin/main` as `type/avr-N-short-description`
    (`feat|fix|chore|docs|experiment`). Keep unrelated changes out; preserve others' work.
 
@@ -119,6 +121,8 @@ Done means all of:
 - Linux CI, including `Cross-repo contract`, is expected to pass;
 - cross-repo compatibility is handled (paired PR, or an explicit "Games unaffected because ...");
 - canonical docs and the manifest are updated when behavior or architecture changed;
+- a session that did not write the change has checked it (`.claude/agents/verifier.md`) and
+  reviewed it against [REVIEW](REVIEW.md) (`.claude/agents/reviewer.md`), and the PR says so;
 - the [implementation report](docs/agents/IMPLEMENTATION-REPORT.md) is in the PR and the final
   message, and the issue is In Review (not Done) while review, CI or phones remain.
 

@@ -1,4 +1,43 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git switch:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git merge --no-edit origin/main)",
+      "Bash(git merge --ff-only origin/main)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)",
+      "Bash(npm run check:repo)",
+      "Bash(npm run check:ui)",
+      "Bash(npm run check:contract)",
+      "Bash(npm run test:unit)",
+      "Bash(npm run test:modules)",
+      "Bash(npm run test:offline-browser)",
+      "Bash(npm run test:party-browser)",
+      "Bash(npm run test:offline)",
+      "Bash(python -m unittest:*)",
+      "Bash(python tools/contract_check.py:*)",
+      "Bash(python tools/avr_context.py:*)",
+      "Bash(python tools/graphify_context.py:*)",
+      "Bash(node --test:*)",
+      "Bash(bash ops/deploy.sh --dry-run:*)",
+      "Bash(bash ops/deploy.sh --help)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
