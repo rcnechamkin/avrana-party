@@ -438,10 +438,9 @@ class InternalHandler(Handler):
         return _send(self, 404, {'error': 'not_found'})
 
     def do_POST(self):
-        path = urlsplit(self.path).path
-        if not path.startswith('/internal/'):
-            return _send(self, 404, {'error': 'not_found'})
-        return self._internal(path)
+        # Always through _internal: it reads the body before it refuses, so a caller still
+        # sending one gets the 404 and not a reset. A path it has no route for is not found.
+        return self._internal(urlsplit(self.path).path)
 
 
 def listen_fds(environ=os.environ, pid=None):
