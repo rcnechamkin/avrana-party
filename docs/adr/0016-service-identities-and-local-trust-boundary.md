@@ -1,13 +1,12 @@
 # ADR 0016 — Field-test service identities and the local trust boundary
 
-Status: **accepted (direction) · proposed (mechanism) · not implemented · not deployed** · Date: 2026-10-03
+Status: **accepted · not implemented · not deployed** · Date: 2026-10-03
 The direction (each native game is its own process with its own service identity, secrets and
 state; local IPC prefers Unix sockets) was accepted on 2026-10-02 in
 [ADR 0014](0014-native-games-isolated-lan-games-retired.md) decisions 3, 4 and 6, which left
 "service manager details" open. This ADR is the
 [AVR-227](https://linear.app/avranakern/issue/AVR-227/define-field-test-service-identities-and-inter-service-trust-boundary)
-proposal for that mechanism. It stays a proposal until the owner accepts it and this status line
-says so; merging the pull request records the proposal, not the acceptance. Nothing here is built or
+mechanism, accepted by the owner on 2026-10-03 (the decisions below). Nothing here is built or
 deployed: every Avrana service on the Pi still runs as the operator account `cody`
 ([SYSTEM](../SYSTEM.md)). Consumers:
 [AVR-236](https://linear.app/avranakern/issue/AVR-236/build-generic-native-game-registry-routing-and-provision-game-path)
@@ -45,8 +44,7 @@ what the second native game is built on.
 ## Owner decisions (2026-10-03)
 
 Recorded on AVR-227 after two proposals for this ADR were reconciled. They settle the questions
-this mechanism left to the owner; the status line above changes only after review of the
-reconciled text.
+this mechanism left to the owner.
 
 1. The reconciled design in this document is the one to carry forward.
 2. For the field test, Party Core tells native games apart **by signature alone**. A per-game
@@ -347,7 +345,7 @@ changes, and only for native games.
 
 ## Amendments to earlier documents
 
-- **ADR 0014** "Deliberately open: service manager details": proposed here.
+- **ADR 0014** "Deliberately open: service manager details": decided here.
 - **ADR 0006 D5** "one random 32-byte key per game, provisioned by the appliance as a 0600 file":
   stands; this ADR says whose file it is and how the game obtains its copy. **"`ended` is only
   accepted from the loopback address, with no proxy headers"** describes the deployed v0
