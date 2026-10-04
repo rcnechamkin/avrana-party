@@ -87,7 +87,7 @@ test('one real Party Chat history survives a game visit; game opens no global ch
   await expect(page.locator('#chat-messages')).toContainText(message);
 });
 
-// The LAN Games hub at / and a standalone game page still ship while that runtime retires.
+// A standalone game page still ships while that runtime retires; the hub page at / does not.
 test('a standalone game page registers the root worker, which leaves the Avrana cache and scope alone', async ({ page }) => {
   await seed(page); await home(page);
   await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).map((r) => new URL(r.scope).pathname))).toContain('/party/');
@@ -106,21 +106,4 @@ test('a standalone game page registers the root worker, which leaves the Avrana 
   await expect(page.locator('.suite-home[href="/"]')).toHaveCount(0);
   await page.locator('#avrana-navigation a').click();
   await expect(page.locator('#player-chip')).toContainText('Robin');
-});
-
-test('the standalone hub reads canonical favorites without creating duplicate IDs', async ({ page }) => {
-  await seed(page); await home(page);
-  await page.locator('[data-id="bluff"]').getByRole('button', { name: /from favorites/ }).click();
-  await page.locator('[data-id="bluff"]').getByRole('button', { name: /to favorites/ }).click();
-  await page.evaluate(() => localStorage.setItem('lg-favorites', '["avrana:bluff","avrana:lan-future-title","unknown-old-title"]'));
-  await page.goto('/');
-  const favorite = page.locator('#rails .tile[data-slug="bluff"] .tile-fav');
-  await expect(favorite).toHaveAttribute('aria-label', 'remove from favorites');
-  await favorite.click();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-future-title','unknown-old-title']);
-  await favorite.click();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-favorites') || '[]'))).toEqual(['avrana:lan-future-title','unknown-old-title','avrana:bluff']);
-  await home(page);
-  await page.getByRole('button', { name: 'Favorites', exact: true }).click();
-  await expect(page.locator('#games > li')).toHaveCount(1);
 });

@@ -95,8 +95,11 @@ declared until Checkers (AVR-238) and Spades show what two independent games act
 **In source since AVR-259, not deployed:** the fork's other titles are no longer part of the
 product. The appliance grants only BLUFF and EXPO from that runtime, Party Home's catalog offers
 no other LAN Games title, and nginx sends only `/games/bluff/` and `/games/expo/` there, by name,
-on both server blocks. Every other slug under `/games/` is a native game's socket or an error
-from nginx; nothing falls back to the fork. The catalog snapshot
+on both server blocks. Over HTTPS every other slug under `/games/` is a native game's socket or
+an error from nginx; nothing falls back to the fork. Over plain HTTP no native game is served at
+all: every other path under `/games/` is a 404. The fork's hub page is not served: `/` is a
+redirect to `/party/` over HTTPS and a plain link to the Party on port 80, until the Limited
+Mode doorway takes that path. The catalog snapshot
 (`contracts/catalogs/lan-games.json`) still describes all of the fork's titles: it is the
 Party-Games contract and supplies BLUFF's and EXPO's display text and launch target. The site
 file and the web build of one commit are deployed together, never one without the other.

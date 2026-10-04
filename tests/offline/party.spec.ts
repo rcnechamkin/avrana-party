@@ -107,7 +107,7 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
   await expect(page.locator('#away')).toBeVisible();
   await expect(page.locator('#status')).toContainText('Not connected to the party');
   await expect(page.locator('#games-section')).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Open the basic version' })).toHaveAttribute('href', 'http://10.42.0.1/');
+  await expect(page.locator('#away a')).toHaveCount(0);   // the retired LAN Games hub is not offered as a way out
 
   // Try again while still away: stays honest.
   await page.getByRole('button', { name: 'Try again' }).click();

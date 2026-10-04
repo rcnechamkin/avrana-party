@@ -86,8 +86,8 @@ for s in $(curl -s http://127.0.0.1:8096/api/games | grep -o '"slug":"[^"]*"' | 
 journalctl -u avranaparty-games --since '-5 min' --no-pager | grep -iE 'error|traceback' || echo 'no errors'
 ```
 
-Then run `tools/avrana-topology-check` (read-only). "HTTP hub at http://10.42.0.1/ -> 200" must
-still pass. On one phone, open a game from the old hub and from `/party/`. Only after that, update
+Then run `tools/avrana-topology-check` (read-only). "HTTP root at http://10.42.0.1/ -> 200" must
+still pass. On one phone, open BLUFF from `/party/` (the old hub page is no longer served, AVR-259). Only after that, update
 `docs/SYSTEM.md` (port 8096 row) in a commit.
 
 ## Rollback (owner, sudo; about 10 s)
