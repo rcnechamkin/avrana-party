@@ -219,6 +219,29 @@ class MigrationScript(unittest.TestCase):
         (self.tmp / 'opt-party/current/deploy/README.md').chmod(0o666)
         self.assertIn('writable by root only', self.run_script('--dry-run').stderr)
 
+    def test_reverse_gives_the_copied_data_back_to_its_recorded_owner(self):
+        # The state directory's files belong to avrana-lan-games; copied back as they are, the
+        # previous unit's account could not read them. So: copy first, then restore ownerships,
+        # which include the checkout's data directory.
+        backup = self.tmp / 'backups/service-users-test'
+        backup.mkdir(parents=True)
+        data = self.tmp / 'games-checkout/data'
+        (backup / 'ownership').write_text(f'cody cody {self.tmp}/keys\ncody cody {data}\n')
+        (backup / 'games-data').write_text(f'{data}\n')
+        r = self.run_script('--dry-run', '--reverse', str(backup))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        copy = r.stdout.index(f'cp -a {self.tmp}/games-state/. {data}/')
+        own = r.stdout.index(f'chown -R cody:cody {data}')
+        self.assertLess(copy, own)
+        self.assertLess(own, r.stdout.index('systemctl start avranaparty-games'))
+        text = SCRIPT.read_text(encoding='utf-8')
+        self.assertIn("stat -c '%U %G %n' \"$games_checkout/data\" >> \"$backup/ownership\"", text)
+
+    def test_a_unit_that_does_not_start_does_not_stop_the_others_or_the_verdict(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        self.assertEqual(text.count('run systemctl start "$unit" || log'), 2)
+        self.assertNotIn('run systemctl start "$unit"; done', text)
+
     def test_refuses_to_run_for_real_without_root(self):
         if os.geteuid() == 0:
             self.skipTest('running as root')

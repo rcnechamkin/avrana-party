@@ -41,7 +41,7 @@ carry over anything the installed units have that the new ones lack:
 |---|---|
 | The games unit's `[Unit]` section (`After=`, `Wants=`) | `After=network.target` |
 | Its `RestartSec=` | `3` |
-| Any `Environment=` in the unit itself (for example `LANGAMES_HOST`, `LANGAMES_PORT`) | none besides Python's two; the listener defaults to `127.0.0.1:8096` |
+| Any `Environment=` in the unit itself (for example `LANGAMES_HOST`, `LANGAMES_PORT`) | none besides Python's two; the listener defaults to `127.0.0.1:8096`. On 2026-10-03 the Pi's listener was `0.0.0.0:8096`, so the migration **changes it to loopback**, which ADR 0016 phase 1 requires; nginx already reaches it on loopback |
 | Its `WantedBy=` | `multi-user.target` |
 | Whether the installed drop-ins differ from the ones in source | the drop-ins in source replace them |
 | Whether `data/` holds anything (`venue.json`, avatars, chat media) | copied to `/var/lib/avrana-lan-games` as found |
@@ -102,8 +102,9 @@ ssh -t party "sudo bash /opt/avrana-party/current/ops/migrate-service-users.sh -
 ```
 
 Stops the services, puts the recorded unit files and drop-ins back (removes the ones that did not
-exist before), re-owns the key store and the device store to their recorded owner, copies the
-fork's `data/` back to its checkout, reloads systemd and starts the services. The arcade then
+exist before), copies the fork's `data/` back to its checkout, re-owns the key store, the device
+store and that `data/` to their recorded owners, reloads systemd and starts the services. A
+service that does not start is reported and the others are still started. The arcade then
 runs its core from the checkout again, where the original was never moved. The users, the two
 groups, `/opt/avrana-arcade` and `/opt/avrana-party-games/venv` stay: they grant nothing and a
 second migration reuses them. No data format changes in either direction.

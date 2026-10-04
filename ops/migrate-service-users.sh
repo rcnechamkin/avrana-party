@@ -94,13 +94,17 @@ if [[ -n $reverse ]]; then
         if [[ -f $reverse/units/$name ]]; then run install -D -m 0644 "$reverse/units/$name" "$unit_dir/$name"
         else run rm -f "$unit_dir/$name"; fi                 # it did not exist before the migration
     done
-    while read -r owner group path; do run chown -R "$owner:$group" "$path"; done < "$reverse/ownership"
     if [[ -f $reverse/games-data ]]; then
-        # put the fork's data/ back where the previous unit expects it
+        # Put the fork's data/ back where the previous unit expects it. The copy keeps the state
+        # directory's owner, which the previous unit's account cannot read, so this comes before
+        # the recorded ownerships (which include that data directory) are restored.
         run cp -a "$games_state/." "$(cat "$reverse/games-data")/"
     fi
+    while read -r owner group path; do run chown -R "$owner:$group" "$path"; done < "$reverse/ownership"
     run systemctl daemon-reload
-    for unit in avranaparty-games avranaparty-arcade avrana-party-core; do run systemctl start "$unit"; done
+    for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
+        run systemctl start "$unit" || log "$unit did NOT start: journalctl -u $unit -n 50"
+    done
     log 'reversed: previous unit files and ownerships restored; users, groups and /opt copies left in place'
     exit 0
 fi
@@ -182,7 +186,10 @@ if [[ -d $games_checkout/data && ! -d $games_state ]]; then
     run install -d -m 0700 -o avrana-lan-games -g avrana-lan-games "$games_state"
     run cp -a "$games_checkout/data/." "$games_state/"
     run chown -R avrana-lan-games:avrana-lan-games "$games_state"
-    if [[ $dry_run -eq 0 ]]; then echo "$games_checkout/data" > "$backup/games-data"; fi
+    if [[ $dry_run -eq 0 ]]; then
+        echo "$games_checkout/data" > "$backup/games-data"
+        stat -c '%U %G %n' "$games_checkout/data" >> "$backup/ownership"   # for --reverse
+    fi
 fi
 
 for entry in "${files[@]}"; do
@@ -190,7 +197,11 @@ for entry in "${files[@]}"; do
 done
 run systemctl daemon-reload
 # Providers first, then the party that launches into them (as ops/deploy.sh).
-for unit in avranaparty-games avranaparty-arcade avrana-party-core; do run systemctl start "$unit"; done
+# A unit that does not start must not stop the others from starting, nor this script from
+# reaching the verdict and the reverse command below.
+for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
+    run systemctl start "$unit" || log "$unit did not start"
+done
 if [[ $dry_run -eq 1 ]]; then log 'dry run: nothing changed'; exit 0; fi
 sleep 2
 failed=0
