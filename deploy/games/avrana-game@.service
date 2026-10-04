@@ -1,0 +1,35 @@
+# A native game process (ADR 0016 section 5, AVR-236). One template for every title: the
+# instance name is the game's slug, and DynamicUser= is its identity, so provisioning creates no
+# Unix user. Started by socket activation on the first connection (Party Core's launch, or a
+# page request through nginx); never enabled on its own.
+#
+# What the process is handed (a field-test runtime convention, not an SDK): its listening socket
+# as file descriptor 3 (LISTEN_FDS), its own key and no other in $CREDENTIALS_DIRECTORY
+# (AVRANA_PARTY_KEYS points there), its state in $STATE_DIRECTORY.
+#
+# This file carries no ExecStart: what a given game runs, and from where, is written per
+# instance by provision-game (pending the owner's decision recorded on AVR-236). Without that
+# the unit does not start, which is the intended failure for a slug nobody provisioned.
+# Resource ceilings (MemoryMax, TasksMax, CPUQuota) come from measuring a real game (AVR-238).
+[Unit]
+Description=Avrana native game (%i)
+Requires=avrana-game@%i.socket
+After=avrana-game@%i.socket
+
+[Service]
+DynamicUser=yes
+SupplementaryGroups=avrana-games
+StateDirectory=avrana-games/%i
+StateDirectoryMode=0700
+LoadCredential=%i.key:/etc/avrana-party/game-keys/%i.key
+Environment=AVRANA_PARTY_KEYS=%d
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+RestrictAddressFamilies=AF_UNIX
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+UMask=0077
+Restart=on-failure
