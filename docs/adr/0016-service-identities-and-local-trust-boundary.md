@@ -6,7 +6,8 @@ state; local IPC prefers Unix sockets) was accepted on 2026-10-02 in
 [ADR 0014](0014-native-games-isolated-lan-games-retired.md) decisions 3, 4 and 6, which left
 "service manager details" open. This ADR is the
 [AVR-227](https://linear.app/avranakern/issue/AVR-227/define-field-test-service-identities-and-inter-service-trust-boundary)
-proposal for that mechanism; merging its pull request is the acceptance. Nothing here is built or
+proposal for that mechanism. It stays a proposal until the owner accepts it and this status line
+says so; merging the pull request records the proposal, not the acceptance. Nothing here is built or
 deployed: every Avrana service on the Pi still runs as the operator account `cody`
 ([SYSTEM](../SYSTEM.md)). Consumers:
 [AVR-236](https://linear.app/avranakern/issue/AVR-236/build-generic-native-game-registry-routing-and-provision-game-path)
