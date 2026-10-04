@@ -107,7 +107,7 @@ exit 0
 
 
 @unittest.skipUnless(sys.platform == 'linux' and BASH, 'the real deployment path needs Linux (symlinks, install, flock)')
-class RealRun(unittest.TestCase):
+class Harness(unittest.TestCase):
     """The non-dry path end to end against clones of this repository: checkout at exact commits,
     web release, selective restarts through a recording systemctl, manifest, rollback."""
 
@@ -156,6 +156,8 @@ class RealRun(unittest.TestCase):
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
 
+
+class RealRun(Harness):
     def test_deploys_exact_commits_restarts_what_changed_and_writes_the_manifest(self):
         from avrana.ops import manifest
         r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
@@ -266,7 +268,7 @@ class RealRun(unittest.TestCase):
         self.assertIn('left as it is', r.stdout)
 
 
-class FirstRunFromACheckoutWithoutTheTooling(RealRun):
+class FirstRunFromACheckoutWithoutTheTooling(Harness):
     '''AVR-262: the appliance ran a commit from before avrana.ops and ops/deploy.sh existed. The
     script (from the target commit) must take it forward, roll it back and take it back again
     without ever running Python tooling out of that older checkout.'''
