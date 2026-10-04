@@ -8,6 +8,14 @@ Status: **RUN 2026-09-29** (production `0e97c2e`, games `03df5ae`): the owner ra
   - a Party Home release built from them.
 - Every step below that uses `sudo` is the owner's.
 
+> **2026-10-03 (AVR-256):** the unit files and drop-ins in source now describe the host *after*
+> [the service-users migration](service-users-migration.md): dedicated users, code under `/opt`,
+> keys as systemd credentials. They are installed by `ops/migrate-service-users.sh`, not by hand.
+> **Do not run the `install` lines below on a host that has not been migrated**: the unit would
+> name a user that does not exist. On such a host the installed units stay as they are, and
+> `ops/provision-party-game-key.sh` needs `AVRANA_PARTY_KEY_OWNER=cody`. The steps below remain
+> the record of how the deployed state was reached.
+
 ## What changes on the Pi
 
 | Piece | Where | Source |

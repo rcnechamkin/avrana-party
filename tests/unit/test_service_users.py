@@ -166,6 +166,7 @@ class MigrationScript(unittest.TestCase):
         (self.tmp / 'venv/bin/python').write_text('#!/bin/sh\n')
         (self.tmp / 'venv/bin/python').chmod(0o755)
         (self.tmp / 'keys').mkdir(mode=0o700)
+        (self.tmp / 'keys/arcade-gauntlet2.key').write_text('0' * 64 + '\n')
         self.env = dict(
             os.environ, AVRANA_PARTY_RELEASES=str(self.tmp / 'opt-party'), AVRANA_GAMES_RELEASES=str(self.tmp / 'opt-games'),
             AVRANA_ARCADE_CORE_SOURCE=str(self.core), AVRANA_ARCADE_CORE_TARGET=str(self.tmp / 'arcade-core/core.so'),
@@ -199,6 +200,12 @@ class MigrationScript(unittest.TestCase):
         self.assertEqual(sorted(str(p) for p in self.tmp.rglob('*')), before)
 
     def test_refuses_without_what_it_needs(self):
+        key = self.tmp / 'keys/arcade-gauntlet2.key'
+        key.unlink()                       # a unit whose credential source is missing never starts
+        r = self.run_script('--dry-run')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('provision-party-game-key.sh arcade-gauntlet2', r.stderr)
+        key.write_text('0' * 64 + '\n')
         self.core.unlink()
         r = self.run_script('--dry-run')
         self.assertEqual(r.returncode, 1)
