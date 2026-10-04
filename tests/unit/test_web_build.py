@@ -20,7 +20,11 @@ class ShellFiles(unittest.TestCase):
     def test_every_shell_file_is_precached(self):
         precached = set(build.shell_list((WEB_DIR / 'sw.js').read_text(encoding='utf-8')))
         files = {p.relative_to(WEB_DIR).as_posix() for p in WEB_DIR.rglob('*') if p.is_file()}
-        self.assertEqual(files - precached - {'sw.js'}, set(), 'add new shell files to SHELL in sw.js')
+        # The HTTP doorway (ADR 0012) is never in the offline copy: it exists for plain HTTP, where
+        # there is no service worker, and its one job is to ask the network.
+        doorway = {'doorway/index.html', 'doorway/doorway.js', 'lib/doorway.js'}
+        self.assertEqual(files - precached - {'sw.js'} - doorway, set(), 'add new shell files to SHELL in sw.js')
+        self.assertEqual(precached & doorway, set())
         self.assertNotIn('sw.js', precached)
         self.assertFalse(any(p.startswith('api/') for p in precached))
 

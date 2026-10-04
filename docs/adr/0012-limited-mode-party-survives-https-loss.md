@@ -1,6 +1,6 @@
 # ADR 0012 — Party remains usable when trusted HTTPS is unavailable
 
-Status: **accepted (direction) · proposed (mechanisms) · not implemented** · Date: 2026-10-02
+Status: **accepted (direction, and mechanisms D1–D6 on 2026-10-03) · steps 1–2 in source · not deployed** · Date: 2026-10-02
 Supersedes: the "HTTPS-only Party page" consequence of ADR 0004 D1 (see §Supersession).
 Implementation and the detailed identity/continuity design belong to
 [AVR-225](https://linear.app/avranakern/issue/AVR-225/define-and-implement-limited-mode-when-trusted-https-is-unavailable);
@@ -108,3 +108,71 @@ A mechanism proposal for every item below, with the decisions it needs, is in
 The exact Limited Mode credential, its mapping to `device_id`, how a phone moves between modes
 without losing its member, what the HTTP doorway page shows, whether `/` becomes Party Home, and
 what the QR code carries (ADR 0004's open items remain open).
+
+## Amendment (2026-10-03): mechanisms decided (AVR-225)
+
+The owner accepted the six recommendations of [LIMITED-MODE](../design/LIMITED-MODE.md) §4. They
+settle what "Deliberately open" above left open, and supersede its statement that LIMITED-MODE
+is "proposed, not accepted"; nothing above is otherwise changed.
+
+| # | Decision |
+|---|---|
+| D1 | `http://10.42.0.1` is the canonical Limited Mode origin. Every other HTTP name of the appliance leads there. It is the only name that survives a phone's Private DNS, VPN or Private Relay. |
+| D2 | Party Core learns the mode from a second loopback listener (`127.0.0.1:8192`), not from a header. The mode is a property of the socket a request arrived on. |
+| D3 | A phone that changes mode joins again as a new device. A separate credential, `avrana_limited` (not `Secure`, 12 hours, memory only), is issued and accepted only on the Limited listener; the device cookie is never weakened and no twin cookie is ever issued. A host-approved "That's me" reclaim may come later. |
+| D4 | Mixed parties are allowed. Each member's mode is visible to the party. When the host role moves by succession, a Full Mode member who is here is preferred; a host who is here is never displaced, whatever their mode. |
+| D5 | In Limited Mode, first-party games stay on the same origin as the Party. There is no game origin and no untrusted or community tier there. |
+| D6 | `/` on port 80 becomes the HTTP doorway as part of the Limited Mode rollout: it opens Full Mode when the secure origin answers on that phone, and Limited Mode when it does not. |
+
+This is the identity and continuity model that decision 5 required. Against its constraints: the
+`Secure` cookie is untouched; the Limited credential is distinct, server-issued, with its own
+scope and lifetime; it is never mapped to an existing `device_id`, because the server cannot
+establish that safely, so the phone is a new member and the shell says it is in Limited Mode;
+Limited Mode grants no admin authority (none exists) and offers no PIN entry or profile claiming.
+A Limited member has the ordinary party rights, the host role included (decision 2). On a
+shared-password Wi-Fi another guest can read a Limited credential off the air and act as that
+member; that is the accepted cost of plain HTTP among friends (PARTY-PLATFORM §13) and the reason
+the credential is short-lived and the banner says the connection is not private.
+
+What is in source after rollout steps 1 and 2. This code is deployed by the next ordinary
+deploy of Party Core and the web build; it is not a change that stays out of production. What
+it changes there is small and stated here rather than claimed to be nothing: every view gains
+`"mode": "full"` and every member a `mode`; host succession applies D4 (with every member in
+Full Mode, the same result as before); the doorway page is published under `/party/doorway/`,
+linked only from the Limited Mode banner, which stays hidden. What stays off until the owner's
+step 3: production's `party-core.json` has no `limited` object, so no second listener exists and
+no `avrana_limited` cookie is ever issued; the site file's port-80 server has no Limited Mode
+location (in the repository its `/` is a link to the Party since AVR-259, not yet the doorway;
+what the Pi serves is whatever was last installed there); the shell shows no banner and gates no
+seat, because both depend on Party Core saying `limited`.
+
+The parts, by component:
+
+- Party Core: `identity.LimitedStore` and the `avrana_limited` cookie; `limited` in the config
+  starting the second listener; `mode` on each member and in every view; succession per D4.
+- Shell: the Limited Mode banner, driven only by Party Core's `mode`; each member's mode in the
+  roster; per-seat limits in a round's setup, in Limited Mode only (a phone that cannot play a
+  game here is told why and may always choose Watch, so it can never hold up a round); the
+  doorway page `web/party/doorway/`.
+
+Two things about the Limited listener that follow from plain HTTP and are stated rather than
+left to be discovered:
+
+- Browsers send `Sec-Fetch-Site` only to trustworthy origins, so Party Core's cross-origin
+  refusal by that header never fires in Limited Mode. A POST from another page is stopped there
+  by the `Origin` allow-list alone (browsers do send `Origin` over HTTP), and a GET from another
+  origin cannot be read because no response carries a CORS header.
+- Known limitation: the Limited credential's 12 hours are absolute, not renewed by use. A phone
+  still at the party when its credential expires joins again as a new member, and its earlier
+  member stays in the roster as "away" until the party ends. Nothing new is built for this;
+  host-approved reclaim (D3) is where it would be solved.
+
+Still to do, owner-only: the nginx port-80 `/party/`, `/party/api/` and doorway locations and
+the `limited` object in the deployed config (step 3), then the real-phone tests (step 4: an
+expired certificate, a wrong clock, Private DNS on Android, iCloud Private Relay on iOS). Until
+step 4 has passed, Limited Mode is not a recovery path anyone should rely on.
+
+Still open from the list above: what the QR code carries (the doorway's address, once step 3
+exists), and host-approved reclaim. Known gap, not part of steps 1 and 2: game pages and the
+arcade page load the party follower only in a secure context, so in Limited Mode a game page does
+not yet follow the party; that is a paired change with the Games repository.

@@ -58,6 +58,16 @@
   </details>
   <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
 
+  <!-- Limited Mode (ADR 0012): shown only when Party Core says this phone reached the party over
+       the plain-HTTP fallback. It says so plainly and never imitates a padlock. -->
+  <section id="limited" class="avrana-limited" hidden aria-labelledby="limited-h">
+    <h2 id="limited-h">Limited Mode</h2>
+    <p id="limited-intro"></p>
+    <ul id="limited-list" aria-label="What is different on this phone"></ul>
+    <p id="limited-restore" class="text-[0.9375rem] text-muted"></p>
+    <p class="text-[0.9375rem]"><a href="doorway/">Check for the full version</a></p>
+  </section>
+
   <!-- Party mode (ADR 0011, the console model): shown only when Party Core answers. Presence is
        automatic once this phone has a profile; there is no Join and no Leave. -->
   <section id="party" class="avrana-surface mb-4 grid gap-3 p-4" hidden aria-labelledby="party-h">
@@ -144,6 +154,7 @@
     <ul id="scene-roster" class="avrana-lineup" aria-label="Who plays and who watches"></ul>
   </section>
   <div class="avrana-scene-actions">
+    <p id="scene-seat" class="m-0 text-center text-[0.9375rem] text-warning empty:hidden" role="status"></p>
     <div class="grid grid-cols-2 gap-3" role="group" aria-label="Your choice for this round">
       <button id="choose-play" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="play" data-icon-class="size-7"></span><span>Play this round</span></button>
       <button id="choose-watch" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="eye" data-icon-class="size-7"></span><span>Watch this round</span></button>

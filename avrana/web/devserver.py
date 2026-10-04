@@ -13,11 +13,18 @@ port and /party/api/ is forwarded to it, as nginx does on the appliance: Join, h
 switch, end and /party/api/status all work, with a game link that accepts every launch and stub
 game pages under /games/<slug>/. POST /__test__/party/reset starts a fresh party (test controls).
 Nothing here deploys; the party is memory-only and dies with the process.
+
+Limited Mode (ADR 0012) is simulated as a second scheme: requests whose Host is
+`limited.avrana.test` are forwarded to the same Party Core's Limited listener, so a browser test
+has a real non-secure origin beside the secure 127.0.0.1 one. /party/doorway/ is the HTTP doorway
+with its two destinations pointed at those. POST /__test__/full/<up|down> makes the Full Mode
+origin stop answering the doorway's test, as an expired certificate would.
 """
 import argparse
 import http.client
 import json
 import mimetypes
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -34,6 +41,7 @@ FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length', 'sec-fe
 # A second pair of host names for the same server, so a browser test can put a game page on
 # another origin of the same site (ADR 0013). Chromium is told to resolve them to 127.0.0.1.
 PARTY_HOST, GAMES_HOST = 'party.avrana.test', 'games.avrana.test'
+LIMITED_HOST = 'limited.avrana.test'      # the simulated Limited Mode origin (plain HTTP, not secure)
 BRIDGE_GAME = (b'<!doctype html><meta charset="utf-8"><title>bridge test game</title><h1>stub game on the game origin</h1>'
                b'<script type="module">import { connectParty } from "/party/bridge/shim.js";'
                b'const q = new URLSearchParams(location.search);'
@@ -98,6 +106,13 @@ class SimulatedParty:
         self.port = self.server.server_address[1]
         self.stop = threading.Event()
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        # The same party on its Limited listener, as main() builds it from `limited` in the config.
+        self.limited_origin = f'http://{LIMITED_HOST}:{public_port}'
+        limited = service.limited_config({'hosts': [f'{LIMITED_HOST}:{public_port}'],
+                                          'origins': [self.limited_origin]}, cfg)
+        self.limited_server = service.make_server(self.svc, limited, port=0, extra_routes=routes)
+        self.limited_port = self.limited_server.server_address[1]
+        threading.Thread(target=self.limited_server.serve_forever, daemon=True).start()
         threading.Thread(target=self.svc.run_timer, args=(self.stop,), daemon=True).start()
 
     def reset(self):
@@ -108,8 +123,10 @@ class SimulatedParty:
             self.svc._notify()
 
     def forward(self, method, target, headers, body, client):
-        conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=35)
         h = {k: v for k, v in headers.items() if k.lower() in FORWARD}
+        # nginx picks the listener by the server block a request arrived on; here, by its Host
+        limited = next((v for k, v in h.items() if k.lower() == 'host'), '').split(':')[0] == LIMITED_HOST
+        conn = http.client.HTTPConnection('127.0.0.1', self.limited_port if limited else self.port, timeout=35)
         h['X-Forwarded-For'] = h['X-Real-IP'] = client
         try:
             conn.request(method, target, body=body or None, headers=h)
@@ -120,8 +137,9 @@ class SimulatedParty:
 
     def close(self):
         self.stop.set()
-        self.server.shutdown()
-        self.server.server_close()
+        for server in (self.server, self.limited_server):
+            server.shutdown()
+            server.server_close()
 
 
 class DevProbes:
@@ -220,6 +238,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/party':
             return self._send(301, b'', headers={'Location': '/party/'})
         if path == '/party/api/origin.json':
+            if cfg['full_down'] and self.headers.get('Host', '').split(':')[0] != LIMITED_HOST:
+                # Full Mode is unreachable (an expired certificate, an overridden DNS): no answer
+                # at all, which is what the doorway's test sees. Limited Mode still answers.
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                self.close_connection = True
+                return None
             body = json.dumps({'schema': 'avrana.origin/v0', 'scheme': 'http', 'serverAddr': '127.0.0.1',
                                'tls': '', 'http': self.request_version}).encode()
             return self._send(200, body, 'application/json', {'Cache-Control': 'no-store'})
@@ -235,6 +262,17 @@ class Handler(BaseHTTPRequestHandler):
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
                 "frame-ancestors 'none'", 'frame-ancestors ' + cfg['party'].game_origin)
             return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
+        if path in ('/party/doorway/', '/party/doorway/index.html') and cfg['party'] is not None:
+            # The doorway as step 3's nginx will serve it: its own connect-src (the one request
+            # it makes is to the Full Mode origin), and here its two destinations simulated.
+            port = self.server.server_address[1]
+            full = f'http://127.0.0.1:{port}'
+            page = (Path(cfg['web']) / 'doorway/index.html').read_text(encoding='utf-8')
+            page = page.replace('https://party.avrana.net/party/', full + '/party/')
+            page = page.replace('http://10.42.0.1/party/', cfg['party'].limited_origin + '/party/')
+            csp = SHELL_HEADERS['Content-Security-Policy'].replace("connect-src 'self'", f"connect-src 'self' {full}")
+            return self._send(200, page.encode(), TYPES['.html'],
+                              dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
         if cfg['test_controls'] and path == '/__test__/bridge-game.html':
             return self._send(200, BRIDGE_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
         if path.startswith('/party/'):
@@ -293,6 +331,9 @@ class Handler(BaseHTTPRequestHandler):
         if cfg['test_controls'] and path == '/__test__/party/reset' and cfg['party'] is not None:
             cfg['party'].reset()
             return self._send(204, b'')
+        if cfg['test_controls'] and path in ('/__test__/full/up', '/__test__/full/down'):
+            cfg['full_down'] = path.endswith('down')
+            return self._send(204, b'')
         if cfg['test_controls'] and path.startswith('/__test__/arcade/'):
             mode = path.rsplit('/', 1)[1]
             if mode in ('up', 'down', 'full', 'hang'):
@@ -319,7 +360,7 @@ class _DevServer(ThreadingHTTPServer):
 def make_server(port=0, web=WEB_DIR, test_controls=False, party=False):
     server = _DevServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
-    server.cfg = {'web': Path(web), 'arcade': Arcade(), 'test_controls': test_controls,
+    server.cfg = {'web': Path(web), 'arcade': Arcade(), 'test_controls': test_controls, 'full_down': False,
                   'party': SimulatedParty(server.server_address[1]) if party else None}
     return server
 

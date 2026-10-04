@@ -23,6 +23,7 @@ import { loadCatalog } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, filterGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
+import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -31,7 +32,8 @@ const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
-  partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null };
+  partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
+  mode: 'full' };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -215,11 +217,27 @@ async function ensurePresent(view) {
 }
 
 function personChip(m, extra = []) {
-  return h('li', { 'data-presence': m.presence, 'data-choice': m.choice || null, 'data-away': m.away ? '' : null },
+  return h('li', { 'data-presence': m.presence, 'data-choice': m.choice || null, 'data-away': m.away ? '' : null,
+    'data-mode': m.limited ? LIMITED : null },
     avatarNode({ avatar: m.avatar || '' }, 'sm'),
     h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
     m.host ? h('span', { class: 'what', 'aria-label': 'host' }, icon('crown', { cls: 'text-secondary' })) : null,
+    // ADR 0012 D4: how each member reaches the party is visible to everyone
+    m.limited ? h('span', { class: 'mode', text: 'Limited' }) : null,
     ...extra);
+}
+
+/** The Limited Mode banner (ADR 0012): shown only when Party Core says this phone reached it
+ * over the plain-HTTP fallback. Plain words, what is missing on this phone, how it is restored. */
+function renderLimited() {
+  const on = state.mode === LIMITED && Boolean(state.report);
+  $('limited').hidden = !on;
+  if (!on) return;
+  const caps = statuses(state.report);
+  const notice = limitedNotice({ caps, blocked: state.catalog ? blockedGames(visibleGames(state.catalog), caps) : [] });
+  $('limited-intro').textContent = notice.intro;
+  $('limited-list').replaceChildren(...notice.missing.map((text) => h('li', { text })));
+  $('limited-restore').textContent = notice.restore;
 }
 
 function renderParty(view) {
@@ -231,7 +249,8 @@ function renderParty(view) {
   $('party-host').textContent = !me ? (partyIdentity() ? 'Joining the party…' : 'Choose your name above to join the party.')
     : me.host ? 'You’re the host: start a game below and everyone goes there together.'
       : host ? `${host.name} is the host and picks the games.` : 'Nobody is hosting right now.';
-  $('party-members').replaceChildren(...roster(view).map((m) => personChip(m)));
+  const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
+  $('party-members').replaceChildren(...roster(view).map((m) => personChip({ ...m, limited: limited.has(m.id) })));
   const s = view.session;
   const failed = s && s.outcome === 'launch_failed' && me && me.host && s.id !== state.failShown;
   if (failed) {
@@ -283,6 +302,7 @@ async function choose(choice) {
   const view = party.view();
   const game = view && partyGame(state.catalog, view.session && view.session.game);
   const ob = game ? await onboardingFor(game) : null;
+  if (choice === 'player' && game && !seatChoice(state.mode, game, statuses(state.report)).play) return;
   if (choice === 'player' && game && !acknowledged(ob)) return openRules(game, ob, () => choose('player'));
   const res = await party.choose(choice);
   if (!res.ok) $('scene-status').textContent = res.message || 'Please try again.';
@@ -313,7 +333,12 @@ async function renderScene(view) {
   }));
   $('choose-play').setAttribute('aria-pressed', String(panel.mine === 'player'));
   $('choose-watch').setAttribute('aria-pressed', String(panel.mine === 'spectator'));
-  $('choose-play').disabled = $('choose-watch').disabled = panel.starting;
+  // One seat, one decision (ADR 0012): in Limited Mode, a phone that cannot play this game here
+  // may still watch. Full Mode is not gated.
+  const limits = seatChoice(state.mode, game, statuses(state.report), state.catalog.labels || {});
+  $('choose-play').disabled = panel.starting || !limits.play;
+  $('choose-watch').disabled = panel.starting || !limits.watch;
+  $('scene-seat').textContent = limits.play ? '' : limits.why || 'This phone can only watch this one.';
   $('scene-start').hidden = !panel.host;
   $('scene-cancel').hidden = !panel.host || panel.starting;
   $('scene-start').disabled = !panel.canStart || state.partyBusy;
@@ -432,16 +457,20 @@ async function boot() {
   $('games-section').hidden = !reachable;
   // Party mode only when the Pi answered, the catalog loaded and Party Core gave a real view.
   state.partyMode = Boolean(reachable && catalog && partyView);
+  state.mode = modeOf(partyView);
+  document.documentElement.dataset.mode = state.mode;
   document.documentElement.dataset.party = state.partyMode ? 'on' : 'off';
   $('party').hidden = !state.partyMode;
   if (state.partyMode) party.start(partyView);
   if (!reachable) {
     setStatus('away', 'Not connected to the party');
   } else {
-    setStatus('ok', window.isSecureContext ? 'Connected to the party'
-      : 'Connected. Open party.avrana.net for the full experience');
+    setStatus('ok', state.mode === LIMITED ? 'Connected in Limited Mode'
+      : window.isSecureContext ? 'Connected to the party'
+        : 'Connected. Open party.avrana.net for the full experience');
   }
   if (catalog) renderPhone();
+  renderLimited();
   if (reachable && catalog) await renderGames();
   document.documentElement.dataset.ready = 'true';
   // The offline copy is never on the critical path.

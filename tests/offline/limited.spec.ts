@@ -1,0 +1,133 @@
+import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+
+/**
+ * ADR 0012 / AVR-225 (Tier 2): Limited Mode with a simulated second scheme. Real Chromium, the
+ * real Party Core behind the dev server with its Limited listener. `limited.avrana.test` is a
+ * plain-HTTP origin that is NOT a secure context (as http://10.42.0.1 is on the appliance), and
+ * 127.0.0.1 stands for the Full Mode origin (a secure context, as https://party.avrana.net is).
+ *
+ * What this cannot show: a real expired certificate or a wrong clock, a phone's Private DNS or
+ * Private Relay, Safari, the `Secure` flag (the dev server's Full Mode is plain HTTP on loopback)
+ * and nginx's port-80 server. Those are Tier 3 and the owner's.
+ */
+const PORT = Number(process.env.AVRANA_DEV_PORT || 8181) + 1;      // the dev server with a real Party Core
+const FULL = `http://127.0.0.1:${PORT}`;
+const LIMITED = `http://limited.avrana.test:${PORT}`;
+const OTHER = `http://party.avrana.test:${PORT}`;                  // another HTTP name for the same box
+
+async function control(page: Page, path: string) {
+  // Playwright's own client does not use the browser's resolver, so it talks to 127.0.0.1.
+  expect((await page.request.post(`${FULL}/__test__/${path}`)).status()).toBe(204);
+}
+
+async function named(context: BrowserContext, name: string) {
+  await context.addInitScript((n) => { try { localStorage.setItem('wc-name', n); } catch { /* no storage */ } }, name);
+}
+
+async function home(page: Page, origin: string) {
+  await page.goto(`${origin}/party/`);
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+}
+
+const person = (page: Page, name: string) => page.locator('#party-members li', { hasText: name });
+
+test.beforeEach(async ({ page }) => {
+  await control(page, 'party/reset');
+  await control(page, 'full/up');
+});
+test.afterEach(async ({ page }) => { await control(page, 'full/up'); });
+
+test('a phone on the plain-HTTP origin is in the party, in Limited Mode, and is told so', async ({ page, context }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
+  await expect(page.locator('html')).toHaveAttribute('data-mode', 'limited');
+  await expect(page.locator('#status-text')).toHaveText('Connected in Limited Mode');
+  await expect(page.locator('#secure')).toBeHidden();                       // never a padlock here
+  const banner = page.locator('#limited');
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('Limited Mode');
+  await expect(banner).toContainText('not private');
+  await expect(banner).toContainText('screen may dim');
+  await expect(banner).toContainText('not saved on this phone');
+  await expect(banner).toContainText('renews its certificate');
+  await expect(banner.getByRole('link', { name: 'Check for the full version' })).toHaveAttribute('href', 'doorway/');
+  // The same party model: present on its own, and the first one in is the host.
+  await expect(person(page, 'Lena (you)')).toBeVisible();
+  await expect(person(page, 'Lena (you)').locator('.mode')).toHaveText('Limited');
+  await expect(page.locator('#party-host')).toContainText('You’re the host');
+  // Its identity is the Limited credential only: HttpOnly, not Secure, and never the device cookie.
+  const cookies = await context.cookies(`${LIMITED}/party/`);
+  expect(cookies.map((c) => c.name)).toEqual(['avrana_limited']);
+  expect(cookies[0]).toMatchObject({ httpOnly: true, secure: false, sameSite: 'Lax', path: '/party/' });
+  expect(await page.evaluate(() => document.cookie)).toBe('');
+  // No offline copy on a plain-HTTP origin.
+  expect(await page.evaluate(() => 'serviceWorker' in navigator)).toBe(false);
+});
+
+async function secondPhone(browser: Browser, name: string) {
+  const context = await browser.newContext();
+  await named(context, name);
+  return { context, page: await context.newPage() };
+}
+
+test('one party in two modes: each phone sees who is in Limited Mode, and only the Limited phone gets the banner', async ({ page, context, browser }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  await expect(person(page, 'Lena (you)')).toBeVisible();
+  const fay = await secondPhone(browser, 'Fay');
+  try {
+    await home(fay.page, FULL);
+    await expect(fay.page.locator('html')).toHaveAttribute('data-mode', 'full');
+    await expect(fay.page.locator('#limited')).toBeHidden();
+    await expect(fay.page.locator('#status-text')).toHaveText('Connected to the party');
+    await expect(person(fay.page, 'Fay (you)')).toBeVisible();
+    await expect(person(fay.page, 'Fay (you)').locator('.mode')).toHaveCount(0);
+    await expect(person(fay.page, 'Lena').locator('.mode')).toHaveText('Limited');
+    await expect(fay.page.locator('#party-host')).toContainText('Lena is the host');   // a Limited host who is here stays host
+    // and the Limited phone sees the Full Mode member arrive
+    await expect(person(page, 'Fay')).toBeVisible();
+    await expect(person(page, 'Fay').locator('.mode')).toHaveCount(0);
+    // the two credentials never cross: the Full phone holds no Limited cookie and the reverse
+    expect((await fay.context.cookies(`${FULL}/party/`)).map((c) => c.name)).toEqual(['avrana_device']);
+    expect((await context.cookies(`${LIMITED}/party/`)).map((c) => c.name)).toEqual(['avrana_limited']);
+  } finally {
+    await fay.context.close();
+  }
+});
+
+test('the same phone on the other origin is a new member: nothing carries across a mode switch', async ({ page, context }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  await expect(person(page, 'Lena (you)')).toBeVisible();
+  await home(page, FULL);
+  await expect(page.locator('#limited')).toBeHidden();
+  // Joined again as a new device: the earlier member still holds the name, so this one is "Lena 2".
+  await expect(person(page, 'Lena 2 (you)')).toBeVisible();
+  await expect(page.locator('#party-members li')).toHaveCount(2);           // the Limited member is still listed
+  await expect(page.locator('#party-members li .mode')).toHaveCount(1);
+});
+
+test('the doorway opens the full version when it works', async ({ page }) => {
+  await page.goto(`${LIMITED}/party/doorway/`);
+  await page.waitForURL(`${FULL}/party/`);
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('#limited')).toBeHidden();
+});
+
+test('the doorway opens Limited Mode on the canonical origin when the full version does not answer', async ({ page }) => {
+  await control(page, 'full/down');
+  // from any HTTP name of the box, a phone lands on the one canonical Limited origin (ADR 0012 D1)
+  for (const start of [LIMITED, OTHER]) {
+    await page.goto(`${start}/party/doorway/`);
+    await page.waitForURL(`${LIMITED}/party/`);
+    await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('#limited')).toBeVisible();
+  }
+});
+
+test('the doorway takes no destination from its address', async ({ page }) => {
+  await control(page, 'full/down');
+  await page.goto(`${LIMITED}/party/doorway/?limited=http://evil.test/&full=http://evil.test/#http://evil.test/`);
+  await page.waitForURL(`${LIMITED}/party/`);
+});
