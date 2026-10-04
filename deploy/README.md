@@ -10,7 +10,7 @@ owner deployment instruction; do not run installers as development or CI checks.
 | [Root captive DNS configuration](../avrana-captive.conf) | NetworkManager dnsmasq drop-in; [network runbook](../docs/runbooks/network.md) |
 | [Portal installer](../install-portal.py), [DNS installer](../install-captive-dns.py) | Legacy owner-run installers; DNS installer can bounce the AP; use the relevant runbook |
 | [party-core/](party-core/) | Service/config templates and nginx location snippet |
-| [games/](games/) | Source copy of the one nginx rule that routes every native game by slug to its Unix socket and refuses control paths (ADR 0016 §4, AVR-259); committed verbatim in both site files, not deployed |
+| [games/](games/) | Source copy of the nginx rules for `/games/`: one rule routes every native game by slug to its Unix socket, control paths are refused, BLUFF and EXPO are routed by name to the retiring LAN Games runtime, and any other slug is refused, never passed to that runtime (ADR 0016 §4, AVR-259); committed verbatim in both site files, not deployed |
 | [arcade/](arcade/), [journald/](journald/) | Party-session drop-in and log bounds |
 | [ops/](../ops/) | HTTPS/certificate provisioning, config checks and web release/rollback tools |
 | [telemetry/](../telemetry/), [arcade/](../arcade/) | Component-specific units/installers |

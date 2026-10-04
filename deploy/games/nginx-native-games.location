@@ -2,10 +2,10 @@
     # no port. A native game listens on its own Unix socket, /run/avrana-games/<slug>.sock, which
     # only nginx and Party Core may connect to (group avrana-front). The slug pattern is the Game
     # Contract's id pattern (avrana/contracts/game.py ID): 1 to 40 characters, no "/" and no ".",
-    # so no request can name a socket, or a registry entry, outside its directory. nginx matches
-    # locations against the normalised path ("//", "/./", "/../" and %-escapes resolved), so the
-    # slug is whatever the path really names; the game is sent the request line as the client
-    # wrote it. Source copy: deploy/games/nginx-native-games.location.
+    # so no request can name a socket outside that directory. nginx matches locations against the
+    # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
+    # path really names; the game is sent the request line as the client wrote it. Source copy:
+    # deploy/games/nginx-native-games.location.
     #
     # Control paths are never proxied: Party Core sends launch and end to a game directly, so a
     # request for them through the front door is refused here, for every slug. The match is on
@@ -16,31 +16,10 @@
         return 404;
     }
 
-    # A slug is a native game when it has an entry in the game registry, one file per game that
-    # provisioning writes (root-owned, world-readable, no secret). Every other slug belongs to the
-    # LAN Games runtime, which serves its own titles at the same path shape, and goes there
-    # without nginx trying a socket first. A registered game is never answered by that runtime:
-    # if its socket refuses, or it closes without answering, the phone gets nginx's own 502 and
-    # the request is not sent anywhere else. 418 is only the internal hand-over; a 418 a game
-    # answers itself is passed through. When the LAN Games runtime retires (ADR 0014), the `if`,
-    # the error_page line and @lan_games go.
-    location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
-        error_page 418 = @lan_games;
-        if (!-f /etc/avrana-party/games.d/$native_game.json) {
-            return 418;
-        }
-        proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600;
-    }
-
-    location @lan_games {
+    # The Party games the retiring LAN Games runtime still hosts (ADR 0016 sections 5 and 7), by
+    # name and nothing else: this is a route, not a fallback. It goes with that runtime (ADR 0014,
+    # AVR-228). No other slug is ever sent there from under /games/.
+    location ~ ^/games/(bluff|expo)/ {
         proxy_pass http://127.0.0.1:8096;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -52,3 +31,24 @@
         proxy_read_timeout 3600;
     }
 
+    # Every other slug is a native game or nothing. A game that is not provisioned has no socket,
+    # and one that is down refuses or closes: either way the phone gets nginx's own 502 and the
+    # request is sent nowhere else. nginx reads no registry here; the socket directory is all it
+    # knows (where the game registry lives is AVR-236's to decide).
+    location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
+        proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
+
+    # Anything else under /games/ names no game (a slug outside the pattern): refused here, never
+    # passed to the catch-all below.
+    location /games/ {
+        return 404;
+    }
