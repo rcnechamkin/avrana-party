@@ -113,8 +113,11 @@ server {
 
     # Native games (ADR 0016 section 4, AVR-259): one rule for every title, no per-game block and
     # no port. A native game listens on its own Unix socket, /run/avrana-games/<slug>.sock, which
-    # only nginx and Party Core may connect to (group avrana-front). The slug pattern admits no
-    # "/" or ".", so no request can name a socket outside that directory.
+    # only nginx and Party Core may connect to (group avrana-front). The slug pattern is the Game
+    # Contract's id pattern (avrana/contracts/game.py ID): 1 to 40 characters, no "/" and no ".",
+    # so no request can name a socket outside that directory. nginx matches locations against the
+    # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
+    # path really names; the game is sent the request line as the client wrote it.
     # Source copy: deploy/games/nginx-native-games.location.
     #
     # Control paths are never proxied: Party Core sends launch and end to a game directly, so a
@@ -127,7 +130,7 @@ server {
     # native socket (nginx's own 502 on connect) is answered by it, exactly as before this rule.
     # A 502 a native game returns itself is not intercepted. When that runtime retires
     # (ADR 0014), the error_page line and @lan_games go and nginx answers such a slug itself.
-    location ~ ^/games/(?<native_game>[a-z][a-z0-9-]*)/ {
+    location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

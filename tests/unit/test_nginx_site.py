@@ -49,7 +49,8 @@ def server_blocks(text):
 
 
 def locations(block):
-    return re.findall(r'^\s*location\s+([^{]+?)\s*\{', block, re.M)
+    # a quoted regular expression may hold braces of its own
+    return re.findall(r'^\s*location\s+((?:"[^"]*"|[^{"])+?)\s*\{', block, re.M)
 
 
 def location_body(block, name):
@@ -91,7 +92,10 @@ class StaticRules(unittest.TestCase):
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
                                                  '/party/', '/arcade/', '~ ^/games/[^/]+/avrana/',
-                                                 '~ ^/games/(?<native_game>[a-z][a-z0-9-]*)/', '@lan_games', '/'])
+                                                 '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"',
+                                                 '@lan_games', '/'])
+        from avrana.contracts import game             # the slug nginx accepts is a Game Contract id
+        self.assertIn(game.ID.pattern.strip('^$'), locations(self.https)[6])
         self.assertFalse(any('/party' in loc for loc in locations(self.http)))
 
     def test_shell_headers_match_the_dev_server(self):
@@ -380,11 +384,34 @@ http {{
         (self.tmp / 'outside.sock').touch()
         before = len(self.native.seen)
         for path in ('/games/../outside/', '/games/..%2Foutside/', '/games/demo%2F..%2F..%2Foutside/', '/games/Demo/',
-                     '/games/demo.sock/', '/games/' + 'a' * 41 + '/', '/games/1demo/', '/games//demo/'):
+                     '/games/demo.sock/', '/games/' + 'a' * 41 + '/', '/games/1demo/', '/games/demo/../../outside/',
+                     '/games/demo%2e%2e/', '/games/%2e%2e/outside/'):
             res, body = self.get(path, https=True)
             self.assertNotIn(b'"native"', body, path)
         self.assertEqual(len(self.native.seen), before)
-        self.assertNotIn('outside.sock', (self.tmp / 'error.log').read_text())
+        log = (self.tmp / 'error.log').read_text()
+        self.assertNotIn('outside.sock', log)
+        # nginx never built a socket path from anything but a slug: every path it tried to connect
+        # to is directly inside the games directory
+        for tried in re.findall(r'unix:(\S+?\.sock)', log):
+            self.assertRegex(tried, r'/avrana-games/[a-z][a-z0-9_-]{0,39}\.sock$', tried)
+
+    def test_a_path_that_normalises_to_a_slug_reaches_that_game_and_only_that_game(self):
+        """nginx matches the normalised path, so these name `demo` and nothing else. That is the
+        game's own socket inside the directory: not a traversal."""
+        for path in ('/games//demo/', '/games/./demo/', '/games/x/../demo/', '/games/%64emo/'):
+            res, body = self.get(path, https=True)
+            got = json.loads(body)
+            self.assertEqual((got['upstream'], got['path']), ('native', path), path)
+        # and a control path spelled any of those ways is still refused by nginx itself
+        before = len(self.native.seen)
+        for path in ('/games//demo/avrana/session/v0/launch', '/games/demo//avrana/session/v0/launch',
+                     '/games/demo/%61vrana/session/v0/end', '/games/demo/x/../avrana/session/v0/launch',
+                     '/games/demo/./avrana/'):
+            res, body = self.request('POST', path, body={})
+            self.assertEqual(res.status, 404, path)
+            self.assertNotIn(b'upstream', body, path)
+        self.assertEqual(len(self.native.seen), before)
 
     def test_https_apps_still_proxied(self):
         lan = json.loads(self.get('/', https=True)[1])
