@@ -1,6 +1,6 @@
 # ADR 0013 — Party shell and game clients have separate browser trust origins
 
-Status: **accepted (direction, and mechanisms D1–D5 on 2026-10-03) · step 1 in source · not deployed** · Date: 2026-10-02
+Status: **accepted (direction, and mechanisms D1–D5 on 2026-10-03) · steps 1 to 3 in source · not deployed** · Date: 2026-10-02
 Amends the one-origin implementation assumption of [ADR 0002](0002-party-platform.md) and
 [ADR 0004](0004-full-mode-contracts-and-providers.md) D1 (see §Affected prior assumptions).
 Design and rollout belong to
@@ -119,7 +119,8 @@ They settle what "Deliberately open" above left open; nothing above is otherwise
 | D4 | The game host name is `games.avrana.net`. |
 | D5 | This work precedes Checkers (AVR-238). |
 
-What is in source after step 1 (Party only; no deployment effect while nginx serves one origin):
+Steps 2 and 3 (game pages and the arcade on the shim) are recorded as built in
+[BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) §4. What is in source after step 1 (Party only; no deployment effect while nginx serves one origin):
 `web/party/bridge.html` and `lib/bridge.js`; the reference shim `web/party/bridge/shim.js` for
 game repositories to vendor; the contract's vectors (`contracts/vectors/party-bridge.v1.json`);
 Party Core's `game_origins` configuration, `GET /party/api/bridge`, the origin-checked ticket

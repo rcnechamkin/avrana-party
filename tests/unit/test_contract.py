@@ -18,7 +18,8 @@ PARTY_FILES = ['contracts/party-games.v0.json', 'avrana/party/protocol.py', 'avr
                'avrana/party/result.py', 'contracts/vectors/game-result.v1.json',
                'avrana/contracts/lan_catalog.py', 'contracts/vectors/party-session.v0.json',
                'contracts/catalogs/lan-games.json', 'deploy/arcade/avrana-party-session.conf',
-               'docs/runbooks/party-core-deploy.md']
+               'docs/runbooks/party-core-deploy.md', 'web/party/bridge/shim.js', 'web/party/bridge.html',
+               'contracts/vectors/party-bridge.v1.json']
 
 
 def fake_games(root, party_decl):
@@ -34,6 +35,9 @@ def fake_games(root, party_decl):
     shutil.copyfile(REPO_ROOT / 'contracts/catalogs/lan-games.json', root / 'provider/catalog.json')
     shutil.copyfile(REPO_ROOT / 'avrana/party/result.py', root / 'core/party_result.py')
     shutil.copyfile(REPO_ROOT / 'contracts/vectors/game-result.v1.json', root / 'tests/vectors/game-result.v1.json')
+    (root / 'web').mkdir()
+    shutil.copyfile(REPO_ROOT / 'web/party/bridge/shim.js', root / 'web/avrana-party-bridge.js')
+    shutil.copyfile(REPO_ROOT / 'contracts/vectors/party-bridge.v1.json', root / 'tests/vectors/party-bridge.v1.json')
     (root / 'games/bluff').mkdir(parents=True)
     (root / 'games/bluff/game.py').write_text('class S:\n    def game_result(self, ref):\n        return None\n',
                                               encoding='utf-8')
@@ -53,6 +57,10 @@ def fake_games(root, party_decl):
                        'vendored': 'core/party_result.py', 'vendored_sha256': p['result']['reference_sha256'],
                        'vectors': 'tests/vectors/game-result.v1.json',
                        'vectors_sha256': p['result']['vectors_sha256'], 'reported_by': ['bluff']},
+            'bridge': {'protocol': p['bridge']['protocol'], 'vendored': 'web/avrana-party-bridge.js',
+                       'vendored_sha256': p['bridge']['reference_sha256'],
+                       'vectors': 'tests/vectors/party-bridge.v1.json',
+                       'vectors_sha256': p['bridge']['vectors_sha256']},
             'party_side_games': ['bluff', 'expo'],
             'routes': dict(p['routes']), 'launch': dict(p['launch']), 'environment': dict(p['environment'])}
     (root / 'provider/avrana-contract.json').write_text(json.dumps(decl), encoding='utf-8')
@@ -118,6 +126,61 @@ class Mutations(unittest.TestCase):
         with self.assertRaises(checker.Drift) as cm:
             self.run_all()
         self.assertIn('re-vendor', str(cm.exception))
+
+    def test_bridge_shim_edit_without_redeclaring_is_named(self):
+        with open(self.party / 'web/party/bridge/shim.js', 'a', encoding='utf-8') as f:
+            f.write('\n// a change\n')
+        with self.assertRaises(checker.Drift) as cm:
+            checker.check_party(self.party)
+        self.assertIn('bridge shim file digest', str(cm.exception))
+
+    def test_bridge_shim_change_redeclared_but_not_revendored_is_cross_drift(self):
+        with open(self.party / 'web/party/bridge/shim.js', 'a', encoding='utf-8') as f:
+            f.write('\n// a change\n')
+        self.decl['bridge']['reference_sha256'] = checker.sha256_normalized(self.party / 'web/party/bridge/shim.js')
+        self.write_party()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('bridge shim drifted', str(cm.exception))
+        self.assertIn('re-vendor', str(cm.exception))
+
+    def test_a_vendored_shim_edited_in_games_is_named(self):
+        with open(self.games / 'web/avrana-party-bridge.js', 'a', encoding='utf-8') as f:
+            f.write('\n// a local edit\n')
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('bridge shim file digest', str(cm.exception))
+
+    def test_bridge_vectors_divergence_is_named(self):
+        with open(self.games / 'tests/vectors/party-bridge.v1.json', 'a', encoding='utf-8') as f:
+            f.write('\n')
+        self.games_decl['bridge']['vectors_sha256'] = checker.sha256_normalized(
+            self.games / 'tests/vectors/party-bridge.v1.json')
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('bridge vectors drifted', str(cm.exception))
+
+    def test_games_on_another_bridge_protocol_is_named(self):
+        self.games_decl['bridge']['protocol'] = 'avrana.party-bridge/v2'
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('bridge protocol drifted', str(cm.exception))
+
+    def test_a_games_repository_that_does_not_declare_the_bridge_is_named(self):
+        # Never "not compared": a declaration without the shim would pass with nothing checked.
+        del self.games_decl['bridge']
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('declares no bridge', str(cm.exception))
+
+    def test_a_declared_bridge_frame_must_exist(self):
+        (self.party / 'web/party/bridge.html').unlink()
+        with self.assertRaises(checker.Drift) as cm:
+            checker.check_party(self.party)
+        self.assertIn('bridge frame drifted', str(cm.exception))
 
     def test_result_module_edit_without_redeclaring_is_named(self):
         with open(self.party / 'avrana/party/result.py', 'a', encoding='utf-8') as f:

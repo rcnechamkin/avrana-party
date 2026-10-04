@@ -49,6 +49,18 @@ def expect(actual, declared, component, where):
         raise Drift(f'{component} drifted: {where} declares {declared!r} but code has {actual!r}')
 
 
+def check_bridge(root, b, key, where):
+    """The bridge shim (ADR 0013): the file a game page loads from its own origin, and the vectors
+    that pin its messages. `key` is 'reference' in Party and 'vendored' in a games repository."""
+    shim = root / b[key]
+    if f"PROTOCOL = '{b['protocol']}'" not in shim.read_text(encoding='utf-8'):
+        raise Drift(f'bridge protocol drifted: {where} declares {b["protocol"]!r} but {b[key]} does not')
+    expect(sha256_normalized(shim), b[key + '_sha256'], 'bridge shim file digest', where)
+    expect(sha256_normalized(root / b['vectors']), b['vectors_sha256'], 'bridge vectors digest', where)
+    expect(load(root / b['vectors'], 'bridge vectors').get('protocol'), b['protocol'],
+           'bridge vectors protocol', b['vectors'])
+
+
 # ---- Party ------------------------------------------------------------------------------------
 def check_party(party):
     decl_path = party / 'contracts/party-games.v0.json'
@@ -70,6 +82,9 @@ def check_party(party):
     if "payload['result']" not in protocol.read_text(encoding='utf-8'):
         raise Drift(f'result carriage drifted: {where} declares {res["carried_by"]!r} but '
                     f'{sp["reference"]} does not carry a result in `ended`')
+    check_bridge(party, d['bridge'], 'reference', where)
+    if not (party / 'web/party' / d['bridge']['frame'].removeprefix('/party/')).is_file():
+        raise Drift(f'bridge frame drifted: {where} declares {d["bridge"]["frame"]!r} but web/party has no such page')
     sessions = party / 'avrana/party/sessions.py'
     r = d['routes']
     expect(constant(sessions, 'TICKET_ROUTE'), r['party_ticket'], 'party ticket route', where)
@@ -105,6 +120,10 @@ def check_games(games):
     expect(constant(vendored_result, 'SCHEMA'), res['schema'], 'vendored result schema', where)
     expect(sha256_normalized(vendored_result), res['vendored_sha256'], 'vendored result file digest', where)
     expect(sha256_normalized(games / res['vectors']), res['vectors_sha256'], 'vendored result vectors digest', where)
+    if 'bridge' not in d:
+        raise Drift(f'{where} declares no bridge: a games repository vendors the bridge shim (ADR 0013) '
+                    'and declares it with its vectors')
+    check_bridge(games, d['bridge'], 'vendored', where)
     for slug in res['reported_by']:
         if slug not in d['party_side_games']:
             raise Drift(f'result reporters drifted: {where} lists {slug!r} under result.reported_by '
@@ -152,6 +171,14 @@ def check_cross(party, games, p, g):
                     'avrana/party/result.py (Party); re-vendor the file and update both declarations')
     if gr['vectors_sha256'] != pr['vectors_sha256']:
         raise Drift('result vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
+    pb, gb = p['bridge'], g['bridge']
+    if gb['protocol'] != pb['protocol']:
+        raise Drift(f'bridge protocol drifted: Games {gb["protocol"]!r} vs Party {pb["protocol"]!r}')
+    if gb['vendored_sha256'] != pb['reference_sha256']:
+        raise Drift(f'bridge shim drifted: {gb["vendored"]} (Games) is not byte-identical to '
+                    f'{pb["reference"]} (Party); re-vendor the file and update both declarations')
+    if gb['vectors_sha256'] != pb['vectors_sha256']:
+        raise Drift('bridge vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
     for key in ('party_ticket', 'party_ended', 'game_launch', 'game_end'):
         if p['routes'][key] != g['routes'][key]:
             raise Drift(f'route {key} drifted: Party {p["routes"][key]!r} vs Games {g["routes"][key]!r}')
@@ -170,7 +197,7 @@ def check_cross(party, games, p, g):
 def run(party, games=None):
     p = check_party(party)
     print(f'Party implements {p["contract"]} ({p["session_protocol"]["version"]}, '
-          f'{p["result"]["schema"]}, {p["launch"]["integration"]}): OK')
+          f'{p["result"]["schema"]}, {p["bridge"]["protocol"]}, {p["launch"]["integration"]}): OK')
     if games is None:
         print('Games checkout not given: cross-repository checks NOT run (pass --games)')
         return
