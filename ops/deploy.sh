@@ -11,8 +11,10 @@
 #   2. records the before-state (JSON) under /var/backups/avrana-party/deploy-<UTC>/;
 #   3. stops only the services whose code changes, checks both repositories out at exactly the
 #      named commits (detached, so forward, backward and rollback deployments are the same
-#      operation and no local branch is ever moved or reset), installs a fresh atomic web release
-#      when Party changed, and starts those services again; a failure after a stop puts both
+#      operation and no local branch is ever moved or reset), builds a root-owned code release
+#      of each changed repository under /opt (what the services run once they have their own
+#      users, ADR 0016; unused until then), installs a fresh atomic web release when Party
+#      changed, and starts those services again; a failure after a stop puts both
 #      checkouts back where they were (same branch or commit, never --force/--hard) and restarts;
 #   4. writes the deployment manifest (/var/lib/avrana-party/deployment.json, avrana.deployment/v0);
 #   5. runs the post-deploy smoke checks (python3 -m avrana.ops.smoke) and records the result.
@@ -29,6 +31,10 @@ main() {
 party_checkout=${AVRANA_PARTY_CHECKOUT:-/home/cody/avrana-party}
 games_checkout=${AVRANA_GAMES_CHECKOUT:-/home/cody/avrana-party-games}
 web_root=${AVRANA_WEB_ROOT:-/var/www/avrana-party/web}
+# Root-owned code releases: <root>/releases/<sha> and a `current` link (ADR 0016, AVR-256). The
+# checkouts stay the operator's and are only the source these are built from.
+party_releases=${AVRANA_PARTY_RELEASES:-/opt/avrana-party}
+games_releases=${AVRANA_GAMES_RELEASES:-/opt/avrana-party-games}
 manifest=${AVRANA_DEPLOYMENT_MANIFEST:-/var/lib/avrana-party/deployment.json}
 backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
 party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
@@ -72,6 +78,21 @@ g() {
     else git -C "$repo" "$@"; fi
 }
 py() { (cd "$party_checkout" && PYTHONDONTWRITEBYTECODE=1 python3 "$@"); }
+# build_release <checkout> <sha> <root>: exactly the tracked files of that commit, owned by whoever
+# runs this script (root in production), never group- or world-writable, then `current` switched
+# atomically. An existing release of the same commit is reused, so a rollback is only the link.
+build_release() {
+    local repo=$1 sha=$2 root=$3 tmp
+    install -d -m 0755 "$root" "$root/releases"
+    if [[ ! -d $root/releases/$sha ]]; then
+        tmp=$(mktemp -d "$root/releases/.new.XXXXXX")
+        g "$repo" archive --format=tar "$sha" | tar -x -C "$tmp" --no-same-owner
+        chmod -R u+rwX,go+rX,go-w "$tmp"
+        mv -T "$tmp" "$root/releases/$sha"
+    fi
+    ln -sfn "$root/releases/$sha" "$root/current.new" && mv -Tf "$root/current.new" "$root/current"
+    log "code release $root/current -> releases/$sha"
+}
 
 # ---- 1. refuse unsafe states -----------------------------------------------------------------
 if command -v flock >/dev/null; then
@@ -142,6 +163,8 @@ install -d -m 0750 "$backup"
 py -m avrana.ops.manifest write --out "$backup/before.json" --party "$party_checkout" \
     --games "$games_checkout" --web-root "$web_root" --allow-dirty --tool-sha "$party_sha" >/dev/null
 [[ -L $web_root/current ]] && readlink -f "$web_root/current" > "$backup/web-release-before" || true
+[[ -L $party_releases/current ]] && readlink -f "$party_releases/current" > "$backup/party-release-before" || true
+[[ -L $games_releases/current ]] && readlink -f "$games_releases/current" > "$backup/games-release-before" || true
 log "before-state recorded in $backup"
 
 # ---- 3. stop, update, start (with rollback) ---------------------------------------------------
@@ -157,6 +180,13 @@ rollback() {
     if [[ -f $backup/web-release-before ]] && [[ -d $(cat "$backup/web-release-before") ]]; then
         ln -sfn "$(cat "$backup/web-release-before")" "$web_root/current.new" && mv -Tf "$web_root/current.new" "$web_root/current"
     fi
+    local pair root before
+    for pair in "party:$party_releases" "games:$games_releases"; do
+        root=${pair#*:}; before=$backup/${pair%%:*}-release-before
+        if [[ -f $before ]] && [[ -d $(cat "$before") ]]; then
+            ln -sfn "$(cat "$before")" "$root/current.new" && mv -Tf "$root/current.new" "$root/current"
+        fi
+    done
     for unit in ${stopped[@]+"${stopped[@]}"}; do systemctl start "$unit" || true; done
     log "after rollback: party $(g "$party_checkout" rev-parse HEAD), games $(g "$games_checkout" rev-parse HEAD)"
     log "expected:       party $before_party, games $before_games; services restarted. No manifest was written."
@@ -171,13 +201,18 @@ if [[ $party_changed -eq 1 ]]; then
     g "$party_checkout" checkout --quiet --detach "$party_sha"
     [[ $(g "$party_checkout" rev-parse HEAD) == "$party_sha" ]] || { log 'party checkout is not at the requested commit'; false; }
     log "party at $party_sha"
+    build_release "$party_checkout" "$party_sha" "$party_releases"
     AVRANA_ALLOW_DIRTY=$allow_dirty bash "$party_checkout/ops/install-party-web.sh" "$party_checkout"
 fi
 if [[ $games_changed -eq 1 ]]; then
     g "$games_checkout" checkout --quiet --detach "$games_sha"
     [[ $(g "$games_checkout" rev-parse HEAD) == "$games_sha" ]] || { log 'games checkout is not at the requested commit'; false; }
     log "games at $games_sha"
+    build_release "$games_checkout" "$games_sha" "$games_releases"
 fi
+# The first run after this script learned to build code releases: nothing changed, none exists yet.
+[[ -e $party_releases/current ]] || build_release "$party_checkout" "$party_sha" "$party_releases"
+[[ -e $games_releases/current ]] || build_release "$games_checkout" "$games_sha" "$games_releases"
 # Start order matters: providers first, then the party that launches into them.
 for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
     for s in ${stopped[@]+"${stopped[@]}"}; do

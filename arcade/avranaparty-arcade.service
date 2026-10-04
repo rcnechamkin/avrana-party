@@ -1,18 +1,44 @@
+# Gauntlet II streaming prototype (ADR 0009). Identity per ADR 0016 phase 1 (AVR-256): its own
+# system user, created by ops/migrate-service-users.sh, with the device groups it needs and no
+# others; code from the root-owned release tree; everything it writes under its state directory;
+# the libretro core (built on the host, not in Git) installed root-owned under /opt/avrana-arcade.
+# Until that migration has been run on a host, the unit installed there is the earlier one
+# (User=cody, the checkout): docs/SYSTEM.md says which is deployed.
+# NOT YET RUN ON THE PI: the hardening lines below have never met RetroArch, Xvfb, PulseAudio and
+# uinput together. docs/runbooks/service-users-migration.md lists what to check and how to reverse.
 [Unit]
 Description=Avrana Party Gauntlet II streaming prototype
 After=network.target
 
 [Service]
 Type=simple
-User=cody
-WorkingDirectory=/home/cody/avrana-party/arcade
+User=avrana-arcade
+Group=avrana-arcade
 SupplementaryGroups=input video render
-ExecStart=/bin/sh /home/cody/avrana-party/arcade/run-stream.sh
+WorkingDirectory=/opt/avrana-party/current/arcade
+ExecStart=/bin/sh /opt/avrana-party/current/arcade/run-stream.sh
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=10
 KillMode=control-group
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# /var/lib/avrana-arcade (0700, on disk: the logs reach tens of MB): the PulseAudio socket,
+# emulator and client logs, and HOME for the tools that insist on one. Nothing is written into
+# the code tree.
+StateDirectory=avrana-arcade
+StateDirectoryMode=0700
+Environment=AVRANA_ARCADE_RUNTIME=%S/avrana-arcade
+Environment=HOME=%S/avrana-arcade
+Environment=AVRANA_ARCADE_CORE=/opt/avrana-arcade/cores/mame2010_libretro.so
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
 
 [Install]
 WantedBy=multi-user.target

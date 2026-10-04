@@ -5,30 +5,36 @@
 #   sudo systemctl daemon-reload && sudo systemctl enable --now avrana-party-core
 #
 # Loopback only (avrana.party.service binds 127.0.0.1): nginx forwards /party/api/ and never
-# /internal/. Runs from the production checkout, like the arcade. Memory-only party: a restart
-# starts a new party (device identities survive in the state directory; ADR 0006).
+# /internal/. Memory-only party: a restart starts a new party (device identities survive in the
+# state directory; ADR 0006).
+#
+# Identity (ADR 0016 phase 1, AVR-256): its own system user, created by
+# ops/migrate-service-users.sh, running the root-owned release tree ops/deploy.sh builds. It owns
+# the key store (/etc/avrana-party/game-keys, 0700) and reads it directly; no other service can.
+# Until that migration has been run on a host, the unit installed there is the earlier one
+# (User=cody, the checkout): docs/SYSTEM.md says which is deployed.
 [Unit]
 Description=Avrana Party Core (/party/api/)
 After=network.target
 
 [Service]
-User=cody
-Group=cody
-WorkingDirectory=/home/cody/avrana-party
+User=avrana-party
+Group=avrana-party
+WorkingDirectory=/opt/avrana-party/current
 ExecStart=/usr/bin/python3 -m avrana.party.service --config /etc/avrana-party/party-core.json --port 8191
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
-# The checkout is read-only here (ProtectHome); never leave bytecode in production.
+# The release tree is root-owned and read-only to this user; never leave bytecode in production.
 Environment=PYTHONDONTWRITEBYTECODE=1
-# /var/lib/avrana-party-core (0700, owned by cody): the hashed device store only.
+# /var/lib/avrana-party-core (0700, owned by avrana-party): the hashed device store only.
 StateDirectory=avrana-party-core
 StateDirectoryMode=0700
 UMask=0077
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ProtectHome=read-only
+ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
