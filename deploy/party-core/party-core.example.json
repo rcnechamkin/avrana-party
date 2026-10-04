@@ -29,13 +29,16 @@
     "web_root": "/var/www/avrana-party/web",
     "certificate": "/etc/avrana-party/tls/current/fullchain.pem",
     "games_url": "http://127.0.0.1:8096",
-    "arcade_url": "http://127.0.0.1:8098",
+    "arcade_url": "http://127.0.0.1:8097",
     "units": [
       "avrana-party-core",
       "avranaparty-games",
       "avranaparty-arcade",
       "nginx",
       "NetworkManager",
+      "avrana-party-certificate.timer"
+    ],
+    "optional_units": [
       "avrana-party-certificate.timer"
     ]
   }

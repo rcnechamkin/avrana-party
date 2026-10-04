@@ -28,6 +28,7 @@ arcade/evidence/*
 # Local agent/editor state; only the reviewed project search reminder is shared
 .claude/*
 !.claude/settings.json
+!.claude/agents/
 
 # Safety net
 .env*

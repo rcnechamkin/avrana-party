@@ -61,7 +61,8 @@ export function connectParty({ partyOrigin, game, window: win = globalThis, docu
   schedule = (fn, ms) => win.setTimeout(fn, ms), cancel = (t) => win.clearTimeout(t) } = {}) {
   if (!/^https?:\/\/[^/]+$/.test(partyOrigin || '')) throw new Error('connectParty: partyOrigin must be an origin');
   const listeners = new Set(), waiting = new Map();
-  let view = null, seq = 0, stopped = false;
+  const early = [];
+  let view = null, seq = 0, stopped = false, loaded = false;
 
   const frame = doc.createElement('iframe');
   frame.hidden = true;
@@ -103,12 +104,18 @@ export function connectParty({ partyOrigin, game, window: win = globalThis, docu
     return new Promise((resolve) => {
       const timer = schedule(() => { waiting.delete(id); resolve({ ok: false, error: 'timeout' }); }, timeoutMs);
       waiting.set(id, { type: answerType, resolve, timer });
-      send({ type, id });
+      // Before the frame has loaded there is nobody to hear a request: it waits for the hello.
+      if (loaded) send({ type, id }); else early.push({ type, id });
     });
   }
 
   win.addEventListener('message', onMessage);
-  frame.addEventListener('load', () => { if (!stopped) send({ type: 'hello', game }); });
+  frame.addEventListener('load', () => {
+    if (stopped) return;
+    loaded = true;
+    send({ type: 'hello', game });
+    for (const msg of early.splice(0)) if (waiting.has(msg.id)) send(msg);
+  });
   (doc.body || doc.documentElement).append(frame);
 
   return {

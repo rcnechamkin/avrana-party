@@ -14,6 +14,7 @@ import collections
 import json
 import logging
 import os
+import re
 import signal
 from pathlib import Path
 import subprocess
@@ -34,7 +35,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))  # the repository root: avrana/ platform package
 from avrana.providers.base import ProviderInfo  # noqa: E402
 from avrana.providers.controller import ControllerLayout  # noqa: E402
-from avrana.providers.retroarch import RetroArchRuntime  # noqa: E402
+from avrana.providers.retroarch import RetroArchRuntime, write_config  # noqa: E402
 from avrana.providers.uinput_gamepad import UInputGamepadProvider  # noqa: E402
 from avrana.party import managed as party_managed  # noqa: E402
 from avrana.party import protocol  # noqa: E402
@@ -59,6 +60,20 @@ CONTROL_PORT = int(os.environ.get('AVRANA_ARCADE_CONTROL_PORT', '8098'))  # loop
 IDLE_TEXT = 'Gauntlet II is not running. The Party Host starts it from Party Home.'
 # Everything the arcade writes: the unit's runtime directory, or ./runtime for a hand-run prototype.
 RUNTIME = Path(os.environ.get('AVRANA_ARCADE_RUNTIME') or ROOT / 'runtime')
+# The Party's browser origin when the arcade page is served from another one (ADR 0013, AVR-226):
+# e.g. AVRANA_PARTY_ORIGIN=https://party.avrana.net with the page at games.avrana.net/arcade/. The
+# page then reaches the Party only through its bridge frame. Unset (today's deployment), the page
+# shares the Party's origin and nothing changes. An origin and nothing else, or it is ignored.
+PARTY_ORIGIN_ENV = 'AVRANA_PARTY_ORIGIN'
+# Party modules the page loads from the arcade's OWN origin when the Party is another origin:
+# the bridge shim (a game page may not import across origins) and the screen wake lock.
+PAGE_MODULES = {'party-bridge.js': ROOT.parent / 'web/party/bridge/shim.js',
+                'keep-awake.js': ROOT.parent / 'web/party/lib/keep-awake.js'}
+
+
+def party_origin(environ):
+    value = environ.get(PARTY_ORIGIN_ENV, '')
+    return value if re.fullmatch(r'https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?', value) else None
 # The libretro core is built on the host, not kept in Git; the unit points at its installed copy.
 CORE = Path(os.environ.get('AVRANA_ARCADE_CORE') or ROOT / 'cores/mame2010_libretro.so')
 EMULATOR_LOG = RUNTIME / 'emulator.log'
@@ -188,8 +203,11 @@ class Stream:
     def __init__(self):
         self.pipeline = None
         self.input = UInputGamepadProvider()
-        self.runtime = RetroArchRuntime(config=ROOT / 'retroarch.cfg',
-                                        core=CORE, content=ROM)
+        # The config RetroArch reads is written into RUNTIME at each start: the committed one
+        # plus the directories this service may write (never the release, never a home).
+        self.runtime = RetroArchRuntime(
+            config=RUNTIME / 'retroarch.cfg', core=CORE, content=ROM,
+            prepare=lambda: write_config(ROOT / 'retroarch.cfg', ROOT / 'core-options.cfg', RUNTIME))
         self.pads = []
         self.peers = {}
         self.reserved = set()
@@ -676,6 +694,7 @@ class Stream:
             emulator_running=self.runtime.running(),
             # 'idle' | 'starting' | 'running' | 'stopping'; party_managed: the Party starts it.
             state=self.runtime_state(), party_managed=self.managed is not None,
+            party_origin=party_origin(os.environ),
             capture_age_ms={m: w.summary() for m, w in self.age.items()},
             video_frame_kb=self.frame_kb.summary(), keyframes_forced=self.keyframes_forced,
             providers=dict(runtime=self.runtime.status(),
@@ -692,12 +711,21 @@ class Stream:
             pad.device.close()
 
 
+def page_routes(stream):
+    """Every GET this process answers: the page, its socket, its stats and the page's modules."""
+    def module(source):
+        return lambda request: web.FileResponse(
+            source, headers={'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache'})
+    return [('/', lambda request: web.FileResponse(ROOT / 'index.html')),
+            ('/ws', stream.websocket), ('/stats', stream.stats),
+            *(('/' + name, module(source)) for name, source in PAGE_MODULES.items())]
+
+
 if __name__ == '__main__':
     stream = Stream()
     app = web.Application(client_max_size=65536)
-    app.router.add_get('/', lambda request: web.FileResponse(ROOT / 'index.html'))
-    app.router.add_get('/ws', stream.websocket)
-    app.router.add_get('/stats', stream.stats)
+    for path, handler in page_routes(stream):
+        app.router.add_get(path, handler)
     app.on_startup.append(stream.startup)
     app.on_cleanup.append(stream.cleanup)
     web.run_app(app, host='127.0.0.1', port=8097)

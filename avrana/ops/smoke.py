@@ -27,6 +27,8 @@ from avrana.ops import status as status_module
 PASS, FAIL, SKIP = 'pass', 'fail', 'skip'
 HOST = 'party.avrana.net'
 TIMEOUT_S = 5.0
+# Apple's probe page as avrana-party.nginx returns it, or the bare word the dev server sends.
+CAPTIVE_SUCCESS = re.compile(rb'(?:<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>)?Success(?:</BODY></HTML>)?\Z')
 CAPTIVE_HOSTS = ('captive.apple.com', 'connectivitycheck.gstatic.com', 'www.msftconnecttest.com',
                  'detectportal.firefox.com')
 
@@ -54,8 +56,14 @@ class Http:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
             conn = http.client.HTTPSConnection(address, port, timeout=self.timeout, context=ctx)
-            if host:
-                conn._server_hostname = host  # SNI; validated against the certificate when verify
+            # Connect to `address` but present and verify `host` (SNI), like curl --resolve.
+            # http.client always verifies the name it connected to, so the socket is made here.
+            raw = socket.create_connection((address, port), self.timeout)
+            try:
+                conn.sock = ctx.wrap_socket(raw, server_hostname=host or address)
+            except BaseException:
+                raw.close()
+                raise
         else:
             conn = http.client.HTTPConnection(address, port, timeout=self.timeout)
         try:
@@ -77,7 +85,7 @@ def check_captive_probe(http, address='127.0.0.1', port=80):
     try:
         for probe_host in CAPTIVE_HOSTS[:1]:
             code, _, body = http.get('http', address, port, '/hotspot-detect.html', host=probe_host)
-            if code != 200 or body.strip() != b'Success':
+            if code != 200 or not CAPTIVE_SUCCESS.match(body.strip()):
                 return Result('captive_probe', FAIL, f'{probe_host} -> {code} {body[:40]!r}; expected 200 "Success"')
         return Result('captive_probe', PASS, 'Apple probe answered "Success" on :80')
     except OSError as e:
@@ -144,7 +152,7 @@ def check_games_provider(http, address='127.0.0.1', port=8096):
     return Result('games_provider', PASS, f'health ok; advertises {want}')
 
 
-def check_arcade(http, address='127.0.0.1', port=8098):
+def check_arcade(http, address='127.0.0.1', port=8097):
     try:
         code, _, body = http.get('http', address, port, '/stats')
     except OSError as e:
@@ -157,7 +165,7 @@ def check_arcade(http, address='127.0.0.1', port=8098):
     return Result('arcade', PASS, f'state {doc.get("state", "?")}, {doc.get("players")} playing')
 
 
-def check_encoder(http, address='127.0.0.1', port=8098):
+def check_encoder(http, address='127.0.0.1', port=8097):
     """Only meaningful while the emulator runs: a still screen is fine, a dead encoder is not."""
     try:
         code, _, body = http.get('http', address, port, '/stats')
@@ -175,18 +183,20 @@ def check_encoder(http, address='127.0.0.1', port=8098):
     return Result('encoder', PASS if video < 10 else FAIL, f'last video sample {video}s ago')
 
 
-def check_units(units, runner=subprocess.run):
+def check_units(units, runner=subprocess.run, optional=()):
+    """Every unit must be active. One named in `optional` may be absent from the appliance: that
+    is a skip which says so, never a pass; installed and not running fails like any other."""
     if platform.system() != 'Linux':
         return [Result(f'unit:{u}', SKIP, 'systemd not available here') for u in units]
     out = []
     for unit in units:
-        try:
-            r = runner(['systemctl', 'is-active', unit], capture_output=True, timeout=TIMEOUT_S)
-            state = r.stdout.decode('utf-8', 'replace').strip() or 'unknown'
-        except (OSError, subprocess.TimeoutExpired):
+        state = status_module.unit_state(unit, runner, TIMEOUT_S)
+        if state == 'unavailable':
             out.append(Result(f'unit:{unit}', SKIP, 'systemctl unavailable'))
-            continue
-        out.append(Result(f'unit:{unit}', PASS if state == 'active' else FAIL, state))
+        elif state == 'not-installed' and unit in optional:
+            out.append(Result(f'unit:{unit}', SKIP, 'not installed (optional on this appliance)'))
+        else:
+            out.append(Result(f'unit:{unit}', PASS if state == 'active' else FAIL, state))
     return out
 
 
@@ -231,7 +241,7 @@ def run_pi(http=None, probes=None, units=None, resolver=None):
                check_party_core(http, 'https', '127.0.0.1', 443, HOST),
                check_status(http, 'https', '127.0.0.1', 443, HOST),
                check_games_provider(http), check_arcade(http), check_encoder(http)]
-    results += check_units(units)
+    results += check_units(units, optional=status_module.DEFAULT_CONFIG['optional_units'])
     results.append(check_certificate(probes.certificate_not_after(status_module.DEFAULT_CONFIG['certificate'])))
     results.append(check_dns(resolver=resolver))
     return results

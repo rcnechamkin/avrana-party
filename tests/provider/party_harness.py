@@ -60,9 +60,10 @@ def prepare_keys():
     return key, party_port
 
 
-def attach(app, key, port, public_hosts, party_port):
+def attach(app, key, port, public_hosts, party_port, game_origins=None):
     """Run the party service beside `app` and route /party/api/ to it. `public_hosts` are the
-    host names phones use for this origin (127.0.0.1 always included)."""
+    host names phones use for this origin (127.0.0.1 always included). `game_origins` registers
+    the origins game pages are served from when they are not this one (ADR 0013)."""
     hosts = {f'{h}:{port}' for h in {'127.0.0.1', *public_hosts}}
     # A second party game with no game side attached here: it proves Party Home takes its party
     # games from Party Core (nothing is BLUFF-specific), and its start fails readably.
@@ -72,7 +73,7 @@ def attach(app, key, port, public_hosts, party_port):
                                   SECOND: {'max_players': 2}})
     endpoints = {GAME: sessions.GameEndpoint(GAME, f'http://127.0.0.1:{port}/games/{GAME}', key)}
     svc = service.PartyService(identity.DeviceStore(None), games, sessions.HttpGameLink(endpoints))
-    cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False)
+    cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False, game_origins=game_origins)
     extra, internal = sessions.routes(svc, endpoints)
     party = service.make_server(svc, cfg, host='127.0.0.1', port=party_port, extra_routes=extra,
                                 internal_routes=internal)

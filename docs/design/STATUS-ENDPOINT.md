@@ -26,16 +26,22 @@ is cached for 5 seconds so phones cannot turn it into a `systemctl` storm.
 | `party`, `games` | `{deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}`: what the manifest says was deployed versus what is on disk now. `dirty` = tracked files modified now; `untracked` = count of untracked, non-ignored files; `deployed_dirty` = the deployment itself was made with `--allow-dirty` |
 | `web_release` | `{build, commit}` of the installed `/party/` shell |
 | `contract` | `{party_games, party_session, lan_launch, games_advertises}`: what Party implements and what the games server advertises at `/api/games` |
-| `services` | each configured systemd unit: `active`, `inactive`, `failed`, `unknown` or `unavailable` |
+| `services` | each configured systemd unit: `active`, `inactive`, `failed`, `not-installed`, `unknown` or `unavailable` |
 | `certificate` | `{not_after, days_left, status}` with `ok`, `expiring` (< 21 days), `expired` or `unavailable` |
 | `party_core` | `{ok, uptime_s, members, session: {game, state} or null}` from inside the service |
 | `games_provider` | `{ok, integration, compatible}` from loopback `:8096/api/games` |
-| `arcade` | `{ok, state, players, max_players, party_managed, emulator_running, error, video_frames, sample_age_s}` from loopback `:8098/stats` |
+| `arcade` | `{ok, state, players, max_players, party_managed, emulator_running, error, video_frames, sample_age_s}` from loopback `:8097/stats` |
 | `summary` | `{state: ok, degraded or unknown; reasons; notes}` |
 
 `unknown` means something could not be observed (no manifest yet, `systemctl` unavailable);
 it is never reported as `ok`. `degraded` lists its reasons. `notes` carries facts that are not
 problems on an undeployed checkout (a dirty development tree).
+
+A unit that systemd does not know is `not-installed`. That degrades the summary, except for the
+units named in the config's `optional_units` (default: `avrana-party-certificate.timer`, which
+exists only once automatic renewal has been set up; see [party-https](../runbooks/party-https.md)):
+those are listed in `notes`. An optional unit that is installed and `inactive` or `failed`
+degrades like any other.
 
 ## Never included
 

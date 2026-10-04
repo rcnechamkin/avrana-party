@@ -319,6 +319,27 @@ test('a game page gets its ticket through the shim and never sees an id or a coo
   g.party.stop(); g.stop();
 });
 
+test('a ticket asked for before the frame has loaded is sent after the hello, not lost', async () => {
+  const g = gamePage();
+  const asked = g.party.ticket();                       // a game client connects as soon as it runs
+  await Promise.resolve();
+  assert.deepEqual(g.frame.received, []);               // nothing reaches a frame that is not there
+  g.frame0.load();
+  assert.deepEqual(await asked, { ok: true, ticket: 'aps0.e30.AAAA', role: 'player', expiresIn: 120 });
+  assert.deepEqual(g.frame.received.map((m) => m.data.type), ['hello', 'ticket']);
+  await settle();                                       // let the bridge finish starting before it is stopped
+  g.party.stop(); g.stop();
+});
+
+test('an early request that timed out before the frame loaded is not sent late', async () => {
+  const g = gamePage();
+  assert.deepEqual(await g.party.ticket(), { ok: false, error: 'timeout' });
+  g.frame0.load();
+  await settle();
+  assert.deepEqual(g.frame.received.map((m) => m.data.type), ['hello']);
+  g.party.stop(); g.stop();
+});
+
 test('host verbs through the shim resolve with the Party\'s answer', async () => {
   const api = partyApi({ first: coreView({ me: ana }) });
   const g = gamePage({ api });

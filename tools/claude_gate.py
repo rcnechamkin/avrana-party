@@ -5,8 +5,10 @@ the owner.
 CI and repository policy are the real enforcement (docs/WORKFLOW.md); nothing depends on this
 hook. It only turns a merge, force-push, history rewrite or production command into an explicit
 question to the person at the keyboard ("ask": they may approve it, and an unattended session
-cannot), and adds a reminder when a contract file, a generated file or a historical document is
-about to be edited. Codex and humans follow AGENTS.md directly.
+cannot), and adds a reminder when a contract file, a generated file, a historical document, an
+existing decision record, a deployment file or (on a fix branch) an existing test is about to be
+edited. Reminders never stop the edit: the owner's gate for those is the plan and the PR
+(REVIEW.md), not a prompt in the middle of the work. Codex and humans follow AGENTS.md directly.
 
     echo '{"tool_name": "Bash", "tool_input": {"command": "git push --force"}}' | python tools/claude_gate.py
 
@@ -16,6 +18,7 @@ reason, or additionalContext for a reminder. Reads are never touched.
 import json
 import os
 import re
+import subprocess
 import sys
 
 BLOCK = [
@@ -37,6 +40,9 @@ CONTRACT_FILES = ('avrana/party/protocol.py', 'avrana/party/sessions.py', 'contr
                   'avrana/contracts/lan_catalog.py', 'core/party_protocol.py', 'provider/avrana-contract.json',
                   'provider/catalog.json', 'tests/vectors/party-session.v0.json', 'deploy/avrana-party-session.conf')
 HISTORICAL = ('docs/archive/', 'docs/findings/')
+DECISIONS = ('docs/adr/',)
+DEPLOYMENT = ('deploy/', 'ops/', 'avrana-party.nginx', 'arcade/nginx-site')
+TESTS = ('tests/',)
 GENERATED = ('web/party/styles.css', 'web/party/lib/icons.js', 'web/party/lib/avatars.js', 'web/party/catalog.json',
              'graphify-public/', 'context/graphify/')
 
@@ -59,8 +65,28 @@ def repo_relative(path):
     return path
 
 
-def evaluate(payload):
-    """(decision, message): decision is 'ask', 'warn' or 'ok'."""
+def current_branch(path):
+    """The branch checked out where `path` lives, or '' when it cannot be told (never an error:
+    this hook must not stop work because git is missing or the path is outside a checkout)."""
+    directory = os.path.dirname(path)
+    while directory and not os.path.isdir(directory):
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return ''
+        directory = parent
+    if not directory:
+        return ''
+    try:
+        out = subprocess.run(['git', '-C', directory, 'branch', '--show-current'],
+                             capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return out.stdout.strip() if out.returncode == 0 else ''
+
+
+def evaluate(payload, branch=None):
+    """(decision, message): decision is 'ask', 'warn' or 'ok'. `branch` is for tests; the hook
+    reads it from the checkout."""
     tool = payload.get('tool_name', '')
     inp = payload.get('tool_input', {}) or {}
     if tool == 'Bash':
@@ -85,6 +111,21 @@ def evaluate(payload):
                             'tools/contract_check.py passing (docs/design/PARTY-GAMES-CONTRACT.md).')
         if any(rel.startswith(g) or rel == g for g in GENERATED):
             return 'warn', f'{rel} is generated (docs/GENERATED.md): edit the source and regenerate instead.'
+        if any(rel.startswith(d) for d in DECISIONS) and os.path.exists(path):
+            return 'warn', (f'{rel} is a decision record. An accepted decision changes only by a dated amendment '
+                            'that says what the owner decided and where that is recorded; never reword one '
+                            'silently. The PR is an architecture change: say so in it, and the owner merges it.')
+        if any(rel.startswith(d) or rel == d for d in DEPLOYMENT):
+            return 'warn', (f'{rel} is a deployment file. A merge is not a deployment: nothing here reaches the Pi '
+                            'until the owner runs it. Say in the PR what the owner must run or verify, keep '
+                            'docs/SYSTEM.md describing deployed reality only, and the owner merges it.')
+        if any(rel.startswith(t) for t in TESTS) and os.path.exists(path):
+            if branch is None:
+                branch = current_branch(path)
+            if branch.startswith('fix/'):
+                return 'warn', (f'{rel} is an existing test and this is a fix branch. Fix the code, not the test: '
+                                'add the failing test first, and change an existing test only when the test '
+                                'itself was wrong, saying so in the PR.')
     return 'ok', ''
 
 

@@ -15,7 +15,11 @@ state; documentation is updated *from* it.
 
 ## Where
 
-`/var/lib/avrana-party/deployment.json`, mode 0644, root-owned, written atomically. Every
+`/var/lib/avrana-party/deployment.json`, mode 0644, root-owned, written atomically. The
+directory also holds the root-only ACME state (`lego/`, 0700) and was created 0700, so
+`ops/deploy.sh` grants search without listing on it (0711) for the service user that serves
+`/party/api/status`; it leaves the directory closed, with a warning, when a subdirectory there
+is open to group or other. Every
 deployment also keeps `before.json`, `after.json` and `smoke.txt` under
 `/var/backups/avrana-party/deploy-<UTC stamp>/`.
 
@@ -26,7 +30,7 @@ deployment also keeps `before.json`, `after.json` and `smoke.txt` under
 | `schema` | string | always `avrana.deployment/v0` |
 | `deployed_at` | ISO 8601 UTC (`...Z`) | when the manifest was written (after services restarted) |
 | `deployed_by` | string | the operator's login (`$SUDO_USER`); never a secret |
-| `tool` | `{name, party_sha}` | `ops/deploy.sh` and the Party commit it ran from |
+| `tool` | `{name, party_sha}` | `ops/deploy.sh` and the Party commit whose release supplied the manifest and smoke tooling: the deployed commit, or the previously running one when the deployed commit predates `avrana.ops` |
 | `party`, `games` | `{sha, short, dirty, untracked, ref, checkout}` | the observed production checkouts: `dirty` means tracked files were modified, `untracked` counts untracked non-ignored files, `ref` is `null` for a detached checkout (the normal state after `ops/deploy.sh`) |
 | `web_release` | `{path, build, commit}` or `null` | the installed `/party/` release's `version.json` |
 | `contract` | `{party_games, party_session, lan_launch}` | the identifiers from [the contract declaration](PARTY-GAMES-CONTRACT.md) |

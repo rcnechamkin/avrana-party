@@ -44,6 +44,7 @@ carry over anything the installed units have that the new ones lack:
 | Any `Environment=` in the unit itself (for example `LANGAMES_HOST`, `LANGAMES_PORT`) | none besides Python's two; the listener defaults to `127.0.0.1:8096`. On 2026-10-03 the Pi's listener was `0.0.0.0:8096`, so the migration **changes it to loopback**, which ADR 0016 phase 1 requires; nginx already reaches it on loopback |
 | Its `WantedBy=` | `multi-user.target` |
 | Whether the installed drop-ins differ from the ones in source | the drop-ins in source replace them |
+| Drop-ins the source does not have (the Pi has `avranaparty-games.service.d/avrana-fork.conf`, which sets `ExecStart` and `WorkingDirectory` to the operator's checkout and would override the new unit) | the script records every such drop-in of the three units in the backup, removes it, and `--reverse` puts it back |
 | Whether `data/` holds anything (`venue.json`, avatars, chat media) | copied to `/var/lib/avrana-lan-games` as found |
 | That systemd on the Pi mounts `BindPaths=` onto the release's `data/` under `ProtectSystem=strict` | relies on `data/.gitkeep` being in the release |
 | The arcade unit's installed form (it was installed by `arcade/install-service.py` from an earlier revision of the file) | see "Never validated anywhere" below |
@@ -64,7 +65,7 @@ needs it.
 | 1 | Refuses unless both releases exist and only root can write them, both carry AVR-253, the Games release has its phase-1 unit, the arcade core and the fork's virtualenv are present, and no session is live |
 | 2 | Copies the installed unit files and drop-ins, and the owners of the key store and the device store, to the backup directory |
 | 3 | Creates groups `avrana-front`, `avrana-games`; users `avrana-party`, `avrana-arcade`, `avrana-lan-games` (system, no login shell, no home); adds `www-data` and `avrana-party` to `avrana-front`; adds `avrana-arcade` to `input`, `video`, `render` |
-| 4 | Stops the three services. Re-owns `/etc/avrana-party/game-keys` (0700, keys 0600) and `/var/lib/avrana-party-core` to `avrana-party`. Copies the arcade's libretro core from the checkout to `/opt/avrana-arcade/cores/` and the fork's virtualenv to `/opt/avrana-party-games/venv`, both root-owned; **nothing is downloaded**. Copies the fork's `data/` to `/var/lib/avrana-lan-games`. Installs the units and drop-ins from the releases. Starts the services |
+| 4 | Stops the three services. Re-owns `/etc/avrana-party/game-keys` (0700, keys 0600) and `/var/lib/avrana-party-core` to `avrana-party`. Copies the arcade's libretro core from the checkout to `/opt/avrana-arcade/cores/` and the fork's virtualenv to `/opt/avrana-party-games/venv`, both root-owned; **nothing is downloaded**. Copies the fork's `data/` to `/var/lib/avrana-lan-games`, and the arcade's `runtime/saves` and `runtime/system` (MAME nvram, high scores) from the checkout to `/var/lib/avrana-arcade`. Removes drop-ins of the previous units that the releases do not carry (kept in the backup). Installs the units and drop-ins from the releases. Starts the services |
 | 5 | Runs `python3 -m avrana.ops.boundary --phase 1` and prints the verdict; exits 2 if a service is not active or a rule is not met |
 
 **Record the arcade core's checksum.** Step 4 prints `arcade core sha256: <hash>`. The core is
@@ -90,7 +91,7 @@ The script fails, before changing anything, if the core is not at
 
 **Never validated anywhere:** the arcade unit's hardening (`ProtectSystem=strict`,
 `ProtectHome=yes`, `PrivateTmp`, `NoNewPrivileges`) with RetroArch, Xvfb, PulseAudio and uinput
-running as a user without a home; `/srv/avrana/roms/arcade/gaunt2.zip` being readable by
+running as a user without a home (the config RetroArch reads is written into the state directory at each start, with every writable path under it, so nothing points at the operator's home); `/srv/avrana/roms/arcade/gaunt2.zip` being readable by
 `avrana-arcade`; the copied virtualenv. If Gauntlet II does not start, read its journal first;
 the likely causes are those three. A hardening line that has to be relaxed is a finding to
 record and a rule (`hardening.base`) that will then fail, not something to hide.

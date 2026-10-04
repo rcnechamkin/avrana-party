@@ -87,6 +87,7 @@ class SimulatedParty:
         self.svc = service.PartyService(identity.DeviceStore(None), service.load_games(PARTY_GAMES),
                                         AcceptingLink())
         self.game_origin = f'http://{GAMES_HOST}:{public_port}'
+        self.party_origin = f'http://{PARTY_HOST}:{public_port}'
         cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False,
                              game_origins={self.game_origin: '*'})
         # The ticket route, so a page can be handed a real ticket; the link still accepts all.
@@ -289,7 +290,14 @@ class Handler(BaseHTTPRequestHandler):
                 stats = None
             if stats is None:
                 return self._send(502, b'<html><body>502 Bad Gateway</body></html>', 'text/html')
+            if cfg['party'] is not None and self.headers.get('Host', '').startswith(GAMES_HOST + ':'):
+                # On the game origin the arcade names the Party's origin (arcade/stream.py
+                # AVRANA_PARTY_ORIGIN) and the Party starts and admits: the page asks for a ticket.
+                stats = dict(stats, party_origin=cfg['party'].party_origin, party_managed=True, state='running')
             return self._send(200, json.dumps(stats).encode(), 'application/json', {'Cache-Control': 'no-store'})
+        if path in ('/arcade/party-bridge.js', '/arcade/keep-awake.js'):   # as arcade/stream.py PAGE_MODULES
+            source = 'bridge/shim.js' if path.endswith('party-bridge.js') else 'lib/keep-awake.js'
+            return self._file(cfg['web'], source, {'Cache-Control': 'no-cache'})
         if path == '/arcade/':
             return self._file(REPO_ROOT / 'arcade', 'index.html', {'Cache-Control': 'no-store'})
         if path == '/':
