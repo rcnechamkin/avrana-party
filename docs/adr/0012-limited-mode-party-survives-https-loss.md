@@ -103,8 +103,7 @@ microphone, and the `Secure` cookie itself. Those cannot be wished into existenc
 ## Deliberately open
 
 A mechanism proposal for every item below, with the decisions it needs, is in
-[LIMITED-MODE](../design/LIMITED-MODE.md). Its six decisions were accepted on 2026-10-03 and are
-recorded in the amendment below, which settles this section except where it says otherwise.
+[LIMITED-MODE](../design/LIMITED-MODE.md) (2026-10-03, proposed, not accepted).
 
 The exact Limited Mode credential, its mapping to `device_id`, how a phone moves between modes
 without losing its member, what the HTTP doorway page shows, whether `/` becomes Party Home, and
@@ -113,7 +112,8 @@ what the QR code carries (ADR 0004's open items remain open).
 ## Amendment (2026-10-03): mechanisms decided (AVR-225)
 
 The owner accepted the six recommendations of [LIMITED-MODE](../design/LIMITED-MODE.md) §4. They
-settle what "Deliberately open" above left open; nothing above is otherwise changed.
+settle what "Deliberately open" above left open, and supersede its statement that LIMITED-MODE
+is "proposed, not accepted"; nothing above is otherwise changed.
 
 | # | Decision |
 |---|---|
@@ -144,11 +144,24 @@ has no `limited` object, so no second listener exists and no `avrana_limited` co
 issued; nginx's port-80 server has no Limited Mode location (its `/` is a link to the Party since AVR-259, not yet the doorway); the shell shows no banner and gates no seat,
 because both depend on Party Core saying `limited`.
 
+Two things about the Limited listener that follow from plain HTTP and are stated rather than
+left to be discovered:
+
+- Browsers send `Sec-Fetch-Site` only to trustworthy origins, so Party Core's cross-origin
+  refusal by that header never fires in Limited Mode. A POST from another page is stopped there
+  by the `Origin` allow-list alone (browsers do send `Origin` over HTTP), and a GET from another
+  origin cannot be read because no response carries a CORS header.
+- Known limitation: the Limited credential's 12 hours are absolute, not renewed by use. A phone
+  still at the party when its credential expires joins again as a new member, and its earlier
+  member stays in the roster as "away" until the party ends. Nothing new is built for this;
+  host-approved reclaim (D3) is where it would be solved.
+
 - Party Core: `identity.LimitedStore` and the `avrana_limited` cookie; `limited` in the config
   starting the second listener; `mode` on each member and in every view; succession per D4.
 - Shell: the Limited Mode banner, driven only by Party Core's `mode`; each member's mode in the
-  roster; per-seat limits in a round's setup (a phone that cannot play a game here may watch, or
-  is told why); the doorway page `web/party/doorway/`.
+  roster; per-seat limits in a round's setup, in Limited Mode only (a phone that cannot play a
+  game here is told why and may always choose Watch, so it can never hold up a round); the
+  doorway page `web/party/doorway/`.
 
 Still to do, owner-only: the nginx port-80 `/party/`, `/party/api/` and doorway locations and
 the `limited` object in the deployed config (step 3), then the real-phone tests (step 4: an

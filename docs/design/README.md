@@ -58,8 +58,11 @@ Read in this order:
    - `COMMUNICATION.md` — chat as a platform capability: transport, policy, presentation and
      game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
 
-Implemented versus target: ADRs 0012–0014 describe accepted direction only. Limited Mode is in
-source behind unset configuration and not deployed (ADR 0012 amendment). No
+Implemented versus target: ADRs 0012–0014 describe accepted direction only. Limited Mode
+(rollout steps 1 and 2) is in source and not deployed. Only Party Core's Limited listener and
+credential are behind unset configuration; the shell changes and `mode` in every view ship with
+the next ordinary deploy and are inert in Full Mode (ADR 0012 amendment says exactly what
+changes). No
 separate game origin, per-game process, per-service identity, game registry, result envelope, Profile store or Checkers
 exists yet, and the LAN Games fork is still the deployed game runtime. Design documents mark such
 passages "Target" or "accepted direction"; `../SYSTEM.md` is the only authority on what runs.

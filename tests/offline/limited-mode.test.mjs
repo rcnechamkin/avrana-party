@@ -60,10 +60,22 @@ test('one seat, one decision: a game that needs a secure connection is watched f
   assert.deepEqual(seatLimits(game(['websocket']), HTTP_PHONE), { play: true, watch: true, why: '' });
 });
 
-test('a game that needs a secure connection even to watch is refused for that seat, with the reason', () => {
+test('a game this phone cannot even watch still leaves Watch to choose, with the reason: no phone can stall a round', () => {
+  // Party Core waits for every member who is here to choose Play or Watch (core.setup_status)
+  // and accepts Watch from anyone. A phone left with neither button would block the host.
   const strict = game(['secure_context'], ['secure_context'], 'none');
   const limits = seatLimits(strict, HTTP_PHONE, { secure_context: { missing: 'Needs the secure Party address.' } });
-  assert.deepEqual(limits, { play: false, watch: false, why: 'Needs the secure Party address.' });
+  assert.deepEqual(limits, { play: false, watch: true, why: 'Needs the secure Party address.' });
+  // whatever the game needs and whatever the phone reports, in either mode, a choice remains
+  const games = [strict, game(['secure_context']), game(['websocket']), game(['webrtc', 'video.h264'], ['webrtc'], 'none'),
+    game([], [], 'none'), ...catalog.games.filter((g) => g.entry)];
+  const phones = [HTTP_PHONE, HTTPS_PHONE, {}, undefined, null, { websocket: { status: 'no' } },
+    Object.fromEntries(Object.keys(HTTPS_PHONE).map((k) => [k, { status: 'no' }]))];
+  for (const g of games) for (const phone of phones) for (const mode of [LIMITED, FULL]) {
+    const choice = seatChoice(mode, g, phone, catalog.labels);
+    assert.equal(choice.watch, true, `${g.name || g.id} ${mode}`);
+    if (!choice.play) assert.notEqual(choice.why, '', `${g.name || g.id}: a refused seat says why`);
+  }
 });
 
 test('blocked games are the installed ones this phone cannot play, by name', () => {

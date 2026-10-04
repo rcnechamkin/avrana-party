@@ -38,14 +38,15 @@ export function limitedNotice({ caps = {}, blocked = [] } = {}) {
 }
 
 /** What this phone may choose for a round of `game`: { play, watch, why }. One seat, one
- * decision (ADR 0012 decision 3): a phone that cannot play a game here watches it or is told
- * why, and nobody else's choice changes. */
+ * decision (ADR 0012 decision 3): a phone that cannot play a game here watches it and is told
+ * why, and nobody else's choice changes. Watch is never taken away: Party Core accepts it from
+ * any member, and a round waits for everyone who is here to choose, so a phone with no choice
+ * left would hold up the whole party. A phone that cannot show the game either still answers
+ * the question; what it then sees is the game page's own business. */
 export function seatLimits(game, caps, labels = {}) {
   const result = evaluateSeat(game, caps, 'player');
-  if (result.outcome === 'watch') return { play: false, watch: true, why: explain(result, labels) };
-  if (result.outcome === 'unavailable') {
-    const watch = evaluateSeat(game, caps, 'spectator').outcome !== 'unavailable';
-    return { play: false, watch, why: explain(result, labels) };
+  if (result.outcome === 'watch' || result.outcome === 'unavailable') {
+    return { play: false, watch: true, why: explain(result, labels) };
   }
   return { play: true, watch: true, why: '' };
 }
