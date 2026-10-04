@@ -166,6 +166,7 @@ class MigrationScript(unittest.TestCase):
         (self.tmp / 'venv/bin/python').write_text('#!/bin/sh\n')
         (self.tmp / 'venv/bin/python').chmod(0o755)
         (self.tmp / 'keys').mkdir(mode=0o700)
+        (self.tmp / 'keys/arcade-gauntlet2.key').write_text('0' * 64 + '\n')
         self.env = dict(
             os.environ, AVRANA_PARTY_RELEASES=str(self.tmp / 'opt-party'), AVRANA_GAMES_RELEASES=str(self.tmp / 'opt-games'),
             AVRANA_ARCADE_CORE_SOURCE=str(self.core), AVRANA_ARCADE_CORE_TARGET=str(self.tmp / 'arcade-core/core.so'),
@@ -199,6 +200,12 @@ class MigrationScript(unittest.TestCase):
         self.assertEqual(sorted(str(p) for p in self.tmp.rglob('*')), before)
 
     def test_refuses_without_what_it_needs(self):
+        key = self.tmp / 'keys/arcade-gauntlet2.key'
+        key.unlink()                       # a unit whose credential source is missing never starts
+        r = self.run_script('--dry-run')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('provision-party-game-key.sh arcade-gauntlet2', r.stderr)
+        key.write_text('0' * 64 + '\n')
         self.core.unlink()
         r = self.run_script('--dry-run')
         self.assertEqual(r.returncode, 1)
@@ -211,6 +218,29 @@ class MigrationScript(unittest.TestCase):
         self.assertIn('AVR-253', self.run_script('--dry-run').stderr)
         (self.tmp / 'opt-party/current/deploy/README.md').chmod(0o666)
         self.assertIn('writable by root only', self.run_script('--dry-run').stderr)
+
+    def test_reverse_gives_the_copied_data_back_to_its_recorded_owner(self):
+        # The state directory's files belong to avrana-lan-games; copied back as they are, the
+        # previous unit's account could not read them. So: copy first, then restore ownerships,
+        # which include the checkout's data directory.
+        backup = self.tmp / 'backups/service-users-test'
+        backup.mkdir(parents=True)
+        data = self.tmp / 'games-checkout/data'
+        (backup / 'ownership').write_text(f'cody cody {self.tmp}/keys\ncody cody {data}\n')
+        (backup / 'games-data').write_text(f'{data}\n')
+        r = self.run_script('--dry-run', '--reverse', str(backup))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        copy = r.stdout.index(f'cp -a {self.tmp}/games-state/. {data}/')
+        own = r.stdout.index(f'chown -R cody:cody {data}')
+        self.assertLess(copy, own)
+        self.assertLess(own, r.stdout.index('systemctl start avranaparty-games'))
+        text = SCRIPT.read_text(encoding='utf-8')
+        self.assertIn("stat -c '%U %G %n' \"$games_checkout/data\" >> \"$backup/ownership\"", text)
+
+    def test_a_unit_that_does_not_start_does_not_stop_the_others_or_the_verdict(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        self.assertEqual(text.count('run systemctl start "$unit" || log'), 2)
+        self.assertNotIn('run systemctl start "$unit"; done', text)
 
     def test_refuses_to_run_for_real_without_root(self):
         if os.geteuid() == 0:
