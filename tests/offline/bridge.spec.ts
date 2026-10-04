@@ -28,7 +28,9 @@ async function api(page: Page, path: string, body?: unknown) {
 async function hostWithGameOn(page: Page) {
   // Playwright's own client does not use the browser's resolver, so it talks to 127.0.0.1.
   await page.request.post(`http://127.0.0.1:${PORT}/__test__/party/reset`);
-  await page.goto(`${PARTY}/party/`);
+  // A Party-origin document with no script of its own. Party Home would follow the party to the
+  // game the moment it starts, and that navigation can destroy this page under the calls below.
+  await page.goto(`${PARTY}/party/api/state`);
   const joined = await api(page, 'join', { name: 'Ana' });
   expect(joined.status).toBe(200);
   const launched = await api(page, 'session/launch', { game: GAME, if_version: joined.body.version });
@@ -36,8 +38,7 @@ async function hostWithGameOn(page: Page) {
   expect(launched.body.state).toBe('active');
 }
 
-/** The game page in its own tab. The host's Party Home tab is left alone: it follows the party
- * to the game by itself, and a second navigation of that tab would race with it. */
+/** The game page in its own tab; the host's first tab stays on the Party origin. */
 async function openGame(context: BrowserContext, url = gameUrl()) {
   const game = await context.newPage();
   await game.goto(url);
@@ -122,7 +123,6 @@ test('the host ends the round from the game page and is taken to Party Home', as
 test('a page on an origin that is not a game origin gets nothing from the bridge', async ({ page, context }) => {
   await hostWithGameOn(page);
   const blocked: string[] = [];
-  // A fresh tab: the host's own Party Home tab is busy following the party to the game.
   const other = await context.newPage();
   other.on('console', (m) => { if (/frame-ancestors|Refused to (frame|display)/i.test(m.text())) blocked.push(m.text()); });
   // The Party's own other host name is not a game origin: the browser refuses to frame the
