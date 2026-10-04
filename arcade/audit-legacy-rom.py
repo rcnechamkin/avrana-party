@@ -2,6 +2,7 @@
 """Audit supplied gaunt2 archive against the inspected MAME 2010 driver."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 from zipfile import ZipFile
@@ -30,6 +31,8 @@ with ZipFile(rom) as archive:
 report = dict(core='MAME 2010 / MAME 0.139', rom=str(rom),
               rom_sha256=hashlib.sha256(rom.read_bytes()).hexdigest(),
               driver_sha256=hashlib.sha256(source.read_bytes()).hexdigest(), entries=entries)
-(root / 'evidence/gaunt2-mame2010-audit.json').write_text(json.dumps(report, indent=2) + '\n')
+# As a service the code tree is read-only: the report goes to the unit's runtime directory.
+out = Path(os.environ.get('AVRANA_ARCADE_RUNTIME') or root / 'evidence')
+(out / 'gaunt2-mame2010-audit.json').write_text(json.dumps(report, indent=2) + '\n')
 print(f"{sum(e['ok'] for e in entries)}/26 files match name, size, CRC and SHA-1")
 raise SystemExit(0 if all(e['ok'] for e in entries) else 1)

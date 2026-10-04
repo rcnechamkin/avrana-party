@@ -261,13 +261,50 @@ class Collection(unittest.TestCase):
     """`systemctl show` prints LoadCredential as "[unprintable]" (seen on systemd 255 in the proof
     run), so the collector reads the unit's own text."""
 
-    def credentials(self, show, cat):
+    def credentials(self, show, cat, unit='x.service'):
         real = boundary._run
         boundary._run = lambda *argv: cat if argv[:2] == ('systemctl', 'cat') else ''
         try:
-            return boundary._credentials('x.service', {'LoadCredential': show})
+            return boundary._credentials(unit, {'LoadCredential': show})
         finally:
             boundary._run = real
+
+    def test_template_specifiers_are_expanded_from_the_unit_name(self):
+        # ADR 0016 section 5's own line: `systemctl cat` prints the template's text, unexpanded
+        cat = 'LoadCredential=%i.key:/etc/avrana-party/game-keys/%i.key\n'
+        self.assertEqual(self.credentials('[unprintable]', cat, 'avrana-game@checkers.service'),
+                         ['/etc/avrana-party/game-keys/checkers.key'])
+        for spec, value in (('%I', 'a/b'), ('%i', 'a-b'), ('%p', 'avrana-game'), ('%n', 'avrana-game@a-b.service'),
+                            ('%N', 'avrana-game@a-b'), ('%%', '%'), ('%H', '%H')):
+            self.assertEqual(self.credentials('[unprintable]', f'LoadCredential=k:/k/{spec}.key\n',
+                                              'avrana-game@a-b.service'), [f'/k/{value}.key'], spec)
+
+    def test_whitespace_around_the_equals_sign_is_an_assignment_too(self):
+        cat = 'LoadCredential = a.key:/k/a.key\n  LoadCredential\t=\tb.key:/k/b.key  \n'
+        self.assertEqual(self.credentials('[unprintable]', cat), ['/k/a.key', '/k/b.key'])
+
+    def test_every_other_way_to_hand_a_unit_a_credential_is_reported(self):
+        cat = '\n'.join(('LoadCredential=a.key:/k/a.key', 'LoadCredential=stored',
+                         'LoadCredentialEncrypted=e.key:/k/e.cred', 'SetCredential=s.key:c2VjcmV0',
+                         'SetCredentialEncrypted=t.key:Zm9v', 'ImportCredential=avrana.*', ''))
+        found = self.credentials('[unprintable]', cat)
+        self.assertEqual(found, ['/k/a.key', 'ImportCredential=avrana.*', 'LoadCredential=stored',
+                                 'LoadCredentialEncrypted=/k/e.cred', 'SetCredential=s.key',
+                                 'SetCredentialEncrypted=t.key'])
+        self.assertFalse(any('c2VjcmV0' in c or 'Zm9v' in c for c in found))   # never the content
+        # also when `systemctl show` could print the paths itself
+        self.assertEqual(self.credentials('a.key:/k/a.key', 'LoadCredential=a.key:/k/a.key\nSetCredential=s:x\n'),
+                         ['/k/a.key', 'SetCredential=s'])
+
+    def test_each_directive_is_reset_by_its_own_empty_assignment(self):
+        cat = '\n'.join(('SetCredential=s:x', 'LoadCredential=a.key:/k/a.key', 'SetCredential=',
+                         'ImportCredential=one', 'ImportCredential =', ''))
+        self.assertEqual(self.credentials('[unprintable]', cat), ['/k/a.key'])
+
+    def test_an_unexpected_credential_fails_the_rule(self):
+        facts = target()
+        game(facts)['credentials'].append('SetCredential=other.key')
+        self.assertEqual(failed(facts), [('keys.credentials', GAME)])
 
     def test_credentials_come_from_the_unit_text_when_show_cannot_print_them(self):
         cat = '\n'.join(('# /etc/systemd/system/x.service', '[Service]', 'LoadCredential=b.key:/k/b.key',

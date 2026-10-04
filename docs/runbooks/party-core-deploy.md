@@ -24,7 +24,7 @@ Home integration (AVR-20/AVR-127).
 **The file modes above are not isolation.** Party Core, the games server and the arcade all run
 as `cody`, so "0600 `cody`" means every service can read every key and "loopback" means every
 service can call every port. That is the prototype. The intended identities, key delivery and
-sockets are [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md) (proposed);
+sockets are [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md) (accepted, not implemented);
 do not copy `User=cody` or a `cody`-owned key into anything new.
 
 Not in scope: party persistence across reboot (the party is memory-only; a restart starts a new
