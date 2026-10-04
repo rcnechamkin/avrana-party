@@ -5,13 +5,19 @@ import { donorAvailability, visibleGames, filterGames, launchTarget } from '../.
 import { createProfile } from '../../web/party/lib/profile.js';
 import { evaluateSeat } from '../../web/party/lib/evaluate.js';
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
+// The donor library is retired from the catalog (ADR 0014, AVR-259). The shell still handles a
+// title whose id differs from its provider slug, so these tests add one: EXPO's entry as "chess".
+const chess = { ...catalog.games.find((g) => g.id === 'expo'), id: 'lan-chess', legacySlug: 'chess', name: 'Chess',
+  summary: 'Chess', entry: '/games/chess/', launchTarget: '/games/chess/', players: { min: 1, max: 2 } };
+const withChess = { ...catalog, games: [chess, ...catalog.games] };
 const map = new Map([['lg-favorites', '["chess","avrana:ps1-worms"]'], ['lg-recent', '["avrana:arcade-gauntlet2","chess"]']]);
 const profile = createProfile({ getItem: (k) => map.get(k) ?? null, setItem: (k,v) => map.set(k,v) });
 
 test('unified catalog includes individual browser titles, arcade and honest PS1 entries', () => {
   const games = visibleGames(catalog);
-  assert.equal(games.length, 34); // 29 donor + BLUFF + EXPO + arcade + 2 PS1
-  assert.equal(games.filter((g) => g.provider === 'lan-games').length, 31);
+  assert.deepEqual(games.map((g) => g.id).sort(), ['arcade-gauntlet2', 'bluff', 'expo', 'ps1-bomberman', 'ps1-worms']);
+  assert.deepEqual(games.filter((g) => g.provider === 'lan-games').map((g) => g.id).sort(), ['bluff', 'expo']);
+  assert.equal(catalog.games.some((g) => g.id.startsWith('lan-')), false);   // no retired donor title is offered
   const expo = games.find((g) => g.id === 'expo');
   assert.ok(expo.installed);
   assert.equal(expo.private_player_ui, true);
@@ -25,7 +31,7 @@ test('unified catalog includes individual browser titles, arcade and honest PS1 
   assert.ok(ps1.every((g) => !g.installed && !g.entry && g.hardwareValidationRequired));
 });
 test('favorites/history match donor slugs and cross-game IDs; filtering preserves order', () => {
-  const games = visibleGames(catalog);
+  const games = visibleGames(withChess);
   assert.deepEqual(filterGames(games, { view: 'favorites' }, profile).map((g) => g.id), ['lan-chess','ps1-worms']);
   assert.deepEqual(filterGames(games, { view: 'recent' }, profile).map((g) => g.id), ['arcade-gauntlet2','lan-chess']);
   assert.deepEqual(filterGames(games, { query: 'chess', players: 2 }, profile).map((g) => g.id), ['lan-chess']);
@@ -38,7 +44,6 @@ test('donor API only confirms known visible slugs and never supplies launch auth
     { slug: 'template', hidden: true }, { title: 'Bad' }], external: [{ slug: 'wordclash' }] });
   assert.deepEqual(availability.get('chess'), { running: false, integration: false, players: 1, max: null });
   assert.ok(!availability.has('template'));
-  assert.equal(catalog.games.find((g) => g.id === 'lan-chess').entry, '/games/chess/');
 });
 test('a weak phone cannot downgrade another phone or the provider catalog', () => {
   const game = catalog.games.find((g) => g.id === 'arcade-gauntlet2');
@@ -46,12 +51,12 @@ test('a weak phone cannot downgrade another phone or the provider catalog', () =
   const before = evaluateSeat(game, strong);
   assert.equal(evaluateSeat(game, { ...strong, 'video.h264': 'no' }).outcome, 'unavailable');
   assert.deepEqual(evaluateSeat(game, strong), before);
-  assert.equal(evaluateSeat(catalog.games.find((g) => g.id === 'lan-chess'), { websocket: 'yes', 'storage.local': 'yes' }).outcome, 'ready');
+  assert.equal(evaluateSeat(catalog.games.find((g) => g.id === 'expo'), { websocket: 'yes', 'storage.local': 'yes' }).outcome, 'ready');
 });
 
 test('all granted browser titles launch directly with explicit context; invalid paths fail closed', () => {
   const games = catalog.games.filter((g) => g.provider === 'lan-games' && g.installed);
-  assert.equal(games.length, 31); // 29 donor titles + BLUFF + EXPO
+  assert.deepEqual(games.map((g) => g.id).sort(), ['bluff', 'expo']);
   for (const game of games) {
     assert.equal(launchTarget(game), `/games/${game.legacySlug}/?avrana=1`);
     assert.equal(launchTarget({ ...game, entry: '/' }), null);

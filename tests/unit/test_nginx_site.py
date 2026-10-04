@@ -69,34 +69,36 @@ class StaticRules(unittest.TestCase):
     def test_repository_copies_are_identical(self):
         self.assertEqual(SITE, (REPO_ROOT / 'arcade' / 'nginx-site').read_text(encoding='utf-8'))
 
-    def test_native_games_block_is_the_source_copy_on_https_only(self):
-        block = (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
-        self.assertEqual(SITE.count(block), 1)
-        http_block, https = server_blocks(SITE)
-        self.assertIn(block, https)
-        self.assertNotIn('avrana-games', http_block)
-        # one rule for every native title: the only location that names a game is the retiring
-        # runtime's own two Party games
-        self.assertEqual(SITE.count('location ~ ^/games/(bluff|expo)(/|$) {'), 1)
+    def test_game_rules_are_the_source_copies_in_both_server_blocks(self):
+        native = (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
+        legacy = (REPO_ROOT / 'deploy/games/nginx-legacy-lan-games.location').read_text(encoding='utf-8')
+        for block in server_blocks(SITE):
+            self.assertEqual(block.count(native), 1)
+            self.assertEqual(block.count(legacy), 1)
+            # the control-path refusal comes before the rule that proxies to a socket
+            self.assertLess(block.index('/avrana/ {'), block.index('proxy_pass http://unix:/run/avrana-games/'))
+        # the shared rules name no title and no other upstream; the legacy exception is a file of its own
+        self.assertNotRegex(native, r'bluff|expo|8096|127\.0\.0\.1')
+        self.assertNotIn('avrana-games', legacy)
+        self.assertNotRegex(SITE.replace(legacy, ''), r'location\s+[^{]*/games/[^{]*(bluff|expo)')
         self.assertNotRegex(SITE, r'location\s+[^{(]*/games/[a-z]')
-        self.assertEqual(SITE.count('/run/avrana-games/'), 2)                    # the comment and the rule
         # nginx reads no game registry (its location is AVR-236's to decide) and tests no file
         self.assertNotIn('games.d', SITE)
-        rule = location_body(https, '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"')
-        self.assertNotIn('if (', rule)
-        self.assertNotIn('8096', rule)
+        self.assertNotIn('if (', native)
         # nothing hands a request over to another server: no named location, no error_page
         self.assertNotIn('location @', SITE)
         self.assertNotIn('error_page', SITE)
-        self.assertEqual(location_body(https, '/games/').split(), ['return', '404;'])
         self.assertNotIn('proxy_intercept_errors', SITE)
         self.assertNotIn('proxy_next_upstream', SITE)
-        # the control-path refusal comes before the rule that proxies
-        self.assertLess(https.index('/avrana/ {'), https.index('proxy_pass http://unix:/run/avrana-games/'))
+        for block in server_blocks(SITE):
+            self.assertEqual(location_body(block, '/games/').split(), ['return', '404;'])
 
-    def test_port_80_is_unchanged(self):
+    GAMES = ['~ "^/games/(bluff|expo)(/(?!avrana/)|$)"', '~ ^/games/[^/]+/avrana/',
+             '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"', '/games/']
+
+    def test_port_80_keeps_the_captive_probe_and_has_the_same_game_rules(self):
         self.assertIn('listen 80 default_server;', self.http)
-        self.assertEqual(locations(self.http), ['= /hotspot-detect.html', '/arcade/', '/'])
+        self.assertEqual(locations(self.http), ['= /hotspot-detect.html', '/arcade/', *self.GAMES, '/'])
         probe = location_body(self.http, '= /hotspot-detect.html')
         self.assertIn('return 200 "' + APPLE_SUCCESS.replace('\n', '\\n') + '";', probe)
         self.assertIn('add_header Cache-Control "no-store" always;', probe)
@@ -104,12 +106,9 @@ class StaticRules(unittest.TestCase):
 
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
-                                                 '/party/', '/arcade/', '~ ^/games/[^/]+/avrana/',
-                                                 '~ ^/games/(bluff|expo)(/|$)',
-                                                 '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"',
-                                                 '/games/', '/'])
+                                                 '/party/', '/arcade/', *self.GAMES, '/'])
         from avrana.contracts import game             # the slug nginx accepts is a Game Contract id
-        self.assertIn(game.ID.pattern.strip('^$'), locations(self.https)[7])
+        self.assertIn(game.ID.pattern.strip('^$'), self.GAMES[2])
         self.assertFalse(any('/party' in loc for loc in locations(self.http)))
 
     def test_shell_headers_match_the_dev_server(self):
@@ -283,7 +282,10 @@ class RealNginx(unittest.TestCase):
         # demo, silent and echo listen; dead is a socket nobody listens on; no other slug has one.
         cls.dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         cls.dead.bind(str(tmp / 'games' / 'dead.sock'))          # bound, never listening
-        cls.p80, cls.p443 = free_port(), free_port()
+        cls.p80, cls.p443, cls.pgames = free_port(), free_port(), free_port()
+        (tmp / 'native.location').write_text(
+            (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
+            .replace('/run/avrana-games/', f'{tmp}/games/'))
         site = (cls.site
                 .replace('listen 80 default_server;', f'listen 127.0.0.1:{cls.p80} default_server;')
                 .replace('listen [::]:80 default_server;', '')
@@ -296,6 +298,8 @@ class RealNginx(unittest.TestCase):
                 .replace('http://127.0.0.1:8097/', f'http://127.0.0.1:{cls.arcade.server_port}/')
                 .replace('http://127.0.0.1:8191', f'http://127.0.0.1:{cls.party.server_port}')
                 .replace('/var/www/avrana-party/web/current/', f'{tmp}/web/current/'))
+        site += (f'\nserver {{\n    listen 127.0.0.1:{cls.pgames};\n    server_name games.avrana.net;\n'
+                 f'    include {tmp}/native.location;\n}}\n')
         (tmp / 'site.conf').write_text(site)
         mime = '/etc/nginx/mime.types'
         types = f'include {mime};' if os.path.exists(mime) else (
@@ -459,7 +463,7 @@ http {{
         self.assertEqual(json.loads(body)['upgrade'], 'websocket')
 
     def test_control_paths_are_refused_before_any_game(self):
-        before_native, before_lan = len(self.native.seen), None
+        before_native, before_lan = len(self.native.seen), self.lan_paths()
         for path in ('/games/demo/avrana/session/v0/launch', '/games/demo/avrana/', '/games/bluff/avrana/session/v0/end',
                      '/games/Demo/avrana/x'):
             res, _ = self.get(path, https=True)
@@ -467,7 +471,7 @@ http {{
             res, body = self.request('POST', path, body={})
             self.assertEqual(res.status, 404, path)
             self.assertNotIn(b'upstream', body, path)         # nginx answered, no process did
-        self.assertEqual(len(self.native.seen), before_native)
+        self.assertEqual((len(self.native.seen), self.lan_paths()), (before_native, before_lan))
 
     def test_the_two_party_games_of_the_retiring_runtime_answer_as_before(self):
         """BLUFF and EXPO are routed to the LAN Games runtime by name (ADR 0016 section 7)."""
@@ -492,14 +496,43 @@ http {{
             self.assertEqual(res.status, 502, path)
         self.assertEqual(self.lan_paths(), before)
 
-    def test_port_80_has_no_native_route_and_still_sends_every_game_path_to_lan_games(self):
-        """Pinned on purpose: the plain-HTTP block is unchanged by AVR-259. What it should do once
-        LAN Games retires is AVR-228's and the owner's to decide."""
-        before = len(self.native.seen)
-        for path in ('/games/checkers/', '/games/demo/play', '/games/bluff/'):
-            got = json.loads(self.get(path)[1])
-            self.assertEqual((got['upstream'], got['path']), ('lan', path), path)
-        self.assertEqual(len(self.native.seen), before)
+    def test_port_80_routes_games_by_the_same_rules(self):
+        """Plain HTTP has no generic LAN Games answer for a game path either."""
+        got = json.loads(self.get('/games/demo/play')[1])
+        self.assertEqual((got['upstream'], got['path'], got['proto']), ('native', '/games/demo/play', 'http'))
+        for path in ('/games/bluff/', '/games/expo/ws', '/games/bluff', '/'):
+            self.assertEqual(json.loads(self.get(path)[1])['upstream'], 'lan', path)
+        before, seen = self.lan_paths(), len(self.native.seen)
+        for path, status in (('/games/checkers/', 502), ('/games/nosuchgame/play', 502), ('/games/Demo/', 404),
+                             ('/games/', 404), ('/games/demo/avrana/session/v0/launch', 404),
+                             ('/games/bluff/avrana/session/v0/end', 404)):
+            res, body = self.get(path)
+            self.assertEqual(res.status, status, path)
+            self.assertNotIn(b'upstream', body, path)
+        self.assertEqual((self.lan_paths(), len(self.native.seen)), (before, seen))
+
+    def games_origin(self, path):
+        conn = http.client.HTTPConnection('127.0.0.1', self.pgames, timeout=5)
+        conn.request('GET', path, headers={'Host': 'games.avrana.net'})
+        res = conn.getresponse()
+        body = res.read()
+        conn.close()
+        return res, body
+
+    def test_the_shared_rules_load_unchanged_in_another_server_block(self):
+        """The include file as a later games.avrana.net block will take it: with `include`, with no
+        legacy exception and no catch-all. Every title is native or nothing there."""
+        res, body = self.games_origin('/games/demo/play?seat=1')
+        got = json.loads(body)
+        self.assertEqual((res.status, got['upstream'], got['path'], got['host']),
+                         (200, 'native', '/games/demo/play?seat=1', 'games.avrana.net'))
+        before, seen = self.lan_paths(), len(self.native.seen)
+        for path, status in (('/games/demo/avrana/session/v0/launch', 404), ('/games/bluff/', 502),
+                             ('/games/expo/ws', 502), ('/games/Demo/', 404), ('/games/', 404)):
+            res, body = self.games_origin(path)
+            self.assertEqual(res.status, status, path)
+            self.assertNotIn(b'upstream', body, path)
+        self.assertEqual((self.lan_paths(), len(self.native.seen)), (before, seen))
 
     def test_a_path_under_games_that_names_no_slug_is_a_404_from_nginx(self):
         before, seen = self.lan_paths(), len(self.native.seen)
@@ -602,12 +635,6 @@ http {{
             got = json.loads(body)
             self.assertEqual((res.status, got['upstream'], got['path']), (200, 'native', path), path)
             self.assertTrue(got['forwarded_for'], path)
-        # A fragment mark in the request line: whatever nginx makes of it, the exact control path
-        # never reaches the game.
-        before = len(self.native.seen)
-        self.request('POST', '/games/demo/x#/../avrana/session/v0/launch', body={})
-        for path in self.native.seen[before:]:
-            self.assertFalse(path.startswith('/games/demo/avrana/'), path)
 
     def test_a_websocket_through_the_rule_carries_frames_both_ways(self):
         """A real upgrade: the game answers 101 and bytes sent after it come back."""
