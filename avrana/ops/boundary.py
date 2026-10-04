@@ -225,6 +225,19 @@ def _show(unit):
     return props
 
 
+def _credentials(unit, props):
+    """The source paths this unit loads as credentials. `systemctl show` does not print the
+    LoadCredential list on every systemd version, so fall back to the unit's own text (`systemctl
+    cat`: the unit file, its drop-ins, or a transient unit), where an empty assignment resets it."""
+    paths = [c.split(':', 1)[1] for c in props.get('LoadCredential', '').split() if ':' in c]
+    if not paths:
+        for line in _run('systemctl', 'cat', unit, '--no-pager').splitlines():
+            key, sep, value = line.strip().partition('=')
+            if key == 'LoadCredential' and sep:
+                paths = [] if not value else paths + [value.split(':', 1)[1]] if ':' in value else paths
+    return sorted(paths)
+
+
 def collect():
     import grp
     import pwd
@@ -269,7 +282,7 @@ def collect():
             'protect_system': p.get('ProtectSystem') or 'no', 'protect_home': p.get('ProtectHome') or 'no',
             'private_tmp': p.get('PrivateTmp') == 'yes', 'private_devices': p.get('PrivateDevices') == 'yes',
             'address_families': sorted(p.get('RestrictAddressFamilies', '').split()),
-            'credentials': sorted(c.split(':', 1)[1] for c in p.get('LoadCredential', '').split() if ':' in c),
+            'credentials': _credentials(unit, p),
             'code': [_stat(c) for c in sorted(code) if c and os.path.exists(c)],
             'state': [_stat(s) for s in state if os.path.exists(s)],
             'tcp': sorted({a for pid in pids for a in listening.get(pid, [])}),

@@ -122,6 +122,7 @@ check 'RestrictAddressFamilies=AF_UNIX leaves a game no IP socket (loopback incl
 slug=proofgame
 systemd-run --quiet --collect --unit="avrana-game@$slug.service" -p DynamicUser=yes     -p "SupplementaryGroups=$games" -p "StateDirectory=avrana-games/$slug" -p StateDirectoryMode=0700     -p RestrictAddressFamilies=AF_UNIX -p PrivateDevices=yes -p ProtectHome=yes     -p "LoadCredential=$slug.key:$work/keys/demo.key" /usr/bin/sleep 120
 for _ in 1 2 3 4 5 6 7 8 9 10; do systemctl is-active --quiet "avrana-game@$slug.service" && break; sleep 0.3; done
+echo "OBSERVE     systemctl show LoadCredential: [$(systemctl show "avrana-game@$slug.service" -p LoadCredential --value)]"
 (cd "$repo" && python3 -m avrana.ops.boundary --collect) > "$work/facts.json"
 s=$(status python3 - "$work/facts.json" "$slug" "$games" "$work/keys/demo.key" <<'PY'
 import json, sys
