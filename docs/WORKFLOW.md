@@ -127,8 +127,12 @@ into the issue.
 both repositories and the deployed build, read-only, and says plainly what it could not reach.
 For Claude Code, `.claude/settings.json` runs `tools/claude_gate.py` before Bash and edit tools:
 a merge, force-push, history rewrite or production command becomes a question to the person at
-the keyboard, and editing a contract file, a generated file or an existing historical document
-adds a reminder. Every rule it mentions is enforced elsewhere (branch protection and review for
+the keyboard, and editing a contract file, a generated file, an existing historical document, an
+existing decision record, a deployment file or (on a fix branch) an existing test adds a
+reminder. The same file pre-approves the safe inner loop (status, diff, commit, push, the
+repository's own checks) so a session does not wait on a prompt for them. Two subagents ship in
+`.claude/agents/`: `verifier` runs the checks on a finished branch, and `reviewer` reviews a
+change against [REVIEW](../REVIEW.md); neither wrote the change and neither fixes it. Every rule it mentions is enforced elsewhere (branch protection and review for
 merges, the owner's sudo for the Pi, CI for contracts, generated files and history).
 
 ## Derived context
