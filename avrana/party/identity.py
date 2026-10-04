@@ -16,6 +16,11 @@
 * It never appears in a URL, a response body or a log line. At rest only its SHA-256 is kept
   (hash -> device_id). `device_id` is opaque and authorizes nothing by itself.
 
+Limited Mode (ADR 0012, AVR-225) has a credential of its own, never this one with a flag
+removed: `avrana_limited`, without `Secure`, good for 12 hours, kept in memory only
+(LimitedStore) and issued and accepted only on Party Core's Limited listener. The two stores
+never resolve each other's tokens, so a phone that changes mode is a new device.
+
 Reference: experiment/party-service identity.py (tested there); this is its production shape.
 """
 import hashlib
@@ -25,11 +30,14 @@ import re
 import secrets
 import tempfile
 import threading
+import time
 
 COOKIE = 'avrana_device'                  # the earlier name; also the only one over plain HTTP
 COOKIE_PATH = '/party/'
 HOST_COOKIE = '__Host-avrana_device'      # production: host-only by the browser's own rule
 MAX_AGE = 400 * 24 * 3600            # browsers cap cookie lifetimes near 400 days anyway
+LIMITED_COOKIE = 'avrana_limited'         # Limited Mode: plain HTTP, readable on the Wi-Fi
+LIMITED_MAX_AGE = 12 * 3600               # so it lasts a party, not a phone's lifetime
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{43}$')
 
 
@@ -93,6 +101,40 @@ class DeviceStore:
             raise
 
 
+class LimitedStore:
+    """Limited Mode credentials: hash(token) -> (device_id, expires). Memory only, by design: a
+    token sent over plain HTTP on a shared-password Wi-Fi can be read by another guest, so it is
+    worth nothing after LIMITED_MAX_AGE or a Party Core restart. Its device ids are its own; the
+    persistent DeviceStore never learns them."""
+
+    def __init__(self, clock=time.monotonic, lifetime=LIMITED_MAX_AGE):
+        self.clock = clock
+        self.lifetime = lifetime
+        self.lock = threading.Lock()
+        self.by_hash = {}
+
+    def issue(self):
+        token = secrets.token_urlsafe(32)
+        device_id = f'device-{secrets.token_hex(16)}'
+        now = self.clock()
+        with self.lock:
+            self.by_hash = {h: v for h, v in self.by_hash.items() if v[1] > now}
+            self.by_hash[token_hash(token)] = (device_id, now + self.lifetime)
+        return token, device_id
+
+    def resolve(self, token):
+        if not isinstance(token, str) or not TOKEN_RE.match(token):
+            return None
+        with self.lock:
+            found = self.by_hash.get(token_hash(token))
+            if found is None:
+                return None
+            if found[1] <= self.clock():
+                del self.by_hash[token_hash(token)]
+                return None
+            return found[0]
+
+
 def _values(header, name):
     return [v for k, _, v in (part.strip().partition('=') for part in (header or '').split(';'))
             if k == name]
@@ -137,3 +179,9 @@ def set_cookie(token, secure=True, name=None):
         return f'{HOST_COOKIE}={token}; Path=/; Max-Age={MAX_AGE}; HttpOnly; Secure; SameSite=Lax'
     flags = '; Secure' if secure else ''
     return f'{name or COOKIE}={token}; Path={COOKIE_PATH}; Max-Age={MAX_AGE}; HttpOnly{flags}; SameSite=Lax'
+
+
+def set_limited_cookie(token):
+    """The Set-Cookie value for a Limited Mode token. Never `Secure` (it must travel over plain
+    HTTP), never the device cookie's name, and short-lived."""
+    return f'{LIMITED_COOKIE}={token}; Path={COOKIE_PATH}; Max-Age={LIMITED_MAX_AGE}; HttpOnly; SameSite=Lax'

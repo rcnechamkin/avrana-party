@@ -28,6 +28,12 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
 Session protocol routes (ticket, the game's `ended` report) are attached by avrana.party.sessions
 (ADR 0006).
 
+Limited Mode (ADR 0012, AVR-225): the same party, reached over plain HTTP when trusted HTTPS is
+unavailable. It is a second loopback listener (`limited` in the config; production does not set
+it), so the mode is a property of the socket a request arrived on and no header can claim it.
+That listener issues and accepts only the `avrana_limited` credential (identity.LimitedStore),
+serves no game -> party route and no bridge origin, and says `"mode": "limited"` in every view.
+
 Guards: an allowed Host header on every request (DNS rebinding); POSTs need an allowed Origin
 (CSRF) and a JSON body of at most 8 KiB; every response is `Cache-Control: no-store`. The device
 token lives only in the cookie; it is never logged and never in a body or URL. Game servers are
@@ -64,8 +70,9 @@ class PartyService:
     """Thread-safe wrapper: one lock around the core, a condition for long polls, and game-link
     calls made outside the lock (a slow game must not freeze the party)."""
 
-    def __init__(self, store, games, link=None, clock=time.monotonic):
+    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None):
         self.store = store
+        self.limited = limited or identity.LimitedStore()     # Limited Mode credentials (memory)
         self.core = core.PartyCore(clock, games)
         self.link = link or NoGameLink()
         self.lock = threading.Lock()
@@ -211,10 +218,22 @@ SAME_ORIGIN_FETCH = ('same-origin', 'none')      # Sec-Fetch-Site values the Par
 
 
 class Config:
-    def __init__(self, hosts, origins, secure_cookie=True, game_origins=None):
+    def __init__(self, hosts, origins, secure_cookie=True, game_origins=None, mode=core.FULL):
         self.hosts = set(hosts)
         self.origins = set(origins)
         self.secure_cookie = secure_cookie
+        if mode not in core.MODES:
+            raise ValueError(f'unknown mode {mode!r}')
+        self.mode = mode
+        if mode == core.LIMITED:
+            # Limited Mode is the plain-HTTP fallback and nothing else: an https origin here
+            # would hand a trusted origin the weak credential. First-party games stay
+            # same-origin in Limited Mode (ADR 0012 D5), so there is no game origin either.
+            if not all(isinstance(o, str) and o.startswith('http://') for o in self.origins):
+                raise ValueError('a Limited Mode origin must be http://')
+            if game_origins:
+                raise ValueError('Limited Mode has no game origins')
+            self.secure_cookie = False
         # ADR 0013: the browser origins game pages are served from, each with the games it may
         # host ('*' or a list of ids). They are never POST origins: a game page reaches the
         # Party only through the bridge frame, which runs on a Party origin.
@@ -262,6 +281,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.log_message('%s %s %s', self.command, urlsplit(self.path).path, code)
 
     def _device(self):
+        if self.cfg.mode == core.LIMITED:
+            # Only the Limited credential, only from the Limited store: a device cookie that
+            # reached this listener (it cannot, being Secure) would mean nothing here.
+            self.upgrade_cookie = None
+            return self.service.limited.resolve(
+                identity.read_cookie(self.headers.get('Cookie'), identity.LIMITED_COOKIE))
         token, source = identity.presented(self.headers.get('Cookie'))
         device = self.service.store.resolve(token)
         # One release of dual read (ADR 0013 D3): a phone that still presents only the earlier
@@ -302,7 +327,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             wait = float(q['wait'][0]) if 'wait' in q else 0.0
         except ValueError:
             return _send(self, 400, {'error': 'bad_query'})
-        return _send(self, 200, self.service.view(self._device(), since, wait))
+        return _send(self, 200, self._view(self._device(), since, wait))
+
+    def _view(self, device, since=None, wait=0.0):
+        """The caller's view, with the mode of the connection it came in on: a phone learns that
+        it is in Limited Mode from the party, even before it is a member."""
+        return dict(self.service.view(device, since, wait), mode=self.cfg.mode)
 
     def do_POST(self):
         path = urlsplit(self.path).path
@@ -361,7 +391,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.start_round(device, body.get('if_version'))
             else:
                 return _send(self, 404, {'error': 'not_found'})
-            return _send(self, 200, svc.view(device))
+            return _send(self, 200, self._view(device))
         except core.Refused as e:
             return _refused(self, e)
 
@@ -391,7 +421,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _join(self, device, body):
         cookie = None
-        if device is None and identity.ambiguous(self.headers.get('Cookie')):
+        limited = self.cfg.mode == core.LIMITED
+        if device is None and identity.ambiguous(self.headers.get('Cookie'),
+                                                 identity.LIMITED_COOKIE if limited else None):
             # Two device cookies: one of them was planted (identity.read_cookie). Minting a third
             # would not help, since the planted one would still shadow it, so say so instead.
             return _send(self, 409, {'error': 'ambiguous_identity', 'message':
@@ -399,10 +431,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                      'data in the browser, then open Party again.'})
         if device is None:
             core.clean_name(body.get('name'))              # refuse a bad name before minting
-            token, device = self.service.store.issue()
-            cookie = identity.set_cookie(token, self.cfg.secure_cookie)
-        self.service.call('join', device, body.get('name'), body.get('avatar'))
-        return _send(self, 200, self.service.view(device), cookie)
+            if limited:
+                token, device = self.service.limited.issue()
+                cookie = identity.set_limited_cookie(token)
+            else:
+                token, device = self.service.store.issue()
+                cookie = identity.set_cookie(token, self.cfg.secure_cookie)
+        self.service.call('join', device, body.get('name'), body.get('avatar'), self.cfg.mode)
+        return _send(self, 200, self._view(device), cookie)
 
 
 def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None, internal_routes=None):
@@ -412,6 +448,24 @@ def make_server(service, cfg, host='127.0.0.1', port=8190, extra_routes=None, in
                                                 'extra_routes': dict(extra_routes or {}),
                                                 'internal_routes': dict(internal_routes or {})})
     return server_cls((host, port), handler)
+
+
+LIMITED_PORT = 8192
+
+
+def limited_config(conf, full):
+    """The Limited Mode listener's Config from party-core.json's `limited` object, or None when
+    the appliance has none (production today). {"hosts": [...], "origins": ["http://..."],
+    "port": 8192}. A name or origin shared with Full Mode is refused: the two modes are two
+    origins with two credentials, and one listener must never answer for the other."""
+    if conf is None:
+        return None
+    if not isinstance(conf, dict) or not conf.get('hosts') or not conf.get('origins'):
+        raise ValueError('limited: needs "hosts" and "origins"')
+    cfg = Config(conf['hosts'], conf['origins'], mode=core.LIMITED)
+    if cfg.origins & full.origins:
+        raise ValueError('limited: an origin may not serve both modes')
+    return cfg
 
 
 def load_games(entries):
@@ -453,6 +507,14 @@ def main(argv=None):
     from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
     extra.update(status.route(service, status.load_config(conf)))
     server = make_server(service, cfg, port=args.port, extra_routes=extra, internal_routes=internal)
+    try:
+        limited = limited_config(conf.get('limited'), cfg)
+    except ValueError as e:
+        raise SystemExit(f'party-core config: {e}')
+    if limited is not None:                    # the same party over plain HTTP (ADR 0012)
+        limited_server = make_server(service, limited, extra_routes=extra,
+                                     port=int(conf['limited'].get('port', LIMITED_PORT)))
+        threading.Thread(target=limited_server.serve_forever, daemon=True).start()
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()
     try:
