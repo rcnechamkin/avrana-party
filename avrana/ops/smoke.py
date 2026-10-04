@@ -175,18 +175,20 @@ def check_encoder(http, address='127.0.0.1', port=8098):
     return Result('encoder', PASS if video < 10 else FAIL, f'last video sample {video}s ago')
 
 
-def check_units(units, runner=subprocess.run):
+def check_units(units, runner=subprocess.run, optional=()):
+    """Every unit must be active. One named in `optional` may be absent from the appliance: that
+    is a skip which says so, never a pass; installed and not running fails like any other."""
     if platform.system() != 'Linux':
         return [Result(f'unit:{u}', SKIP, 'systemd not available here') for u in units]
     out = []
     for unit in units:
-        try:
-            r = runner(['systemctl', 'is-active', unit], capture_output=True, timeout=TIMEOUT_S)
-            state = r.stdout.decode('utf-8', 'replace').strip() or 'unknown'
-        except (OSError, subprocess.TimeoutExpired):
+        state = status_module.unit_state(unit, runner, TIMEOUT_S)
+        if state == 'unavailable':
             out.append(Result(f'unit:{unit}', SKIP, 'systemctl unavailable'))
-            continue
-        out.append(Result(f'unit:{unit}', PASS if state == 'active' else FAIL, state))
+        elif state == 'not-installed' and unit in optional:
+            out.append(Result(f'unit:{unit}', SKIP, 'not installed (optional on this appliance)'))
+        else:
+            out.append(Result(f'unit:{unit}', PASS if state == 'active' else FAIL, state))
     return out
 
 
@@ -231,7 +233,7 @@ def run_pi(http=None, probes=None, units=None, resolver=None):
                check_party_core(http, 'https', '127.0.0.1', 443, HOST),
                check_status(http, 'https', '127.0.0.1', 443, HOST),
                check_games_provider(http), check_arcade(http), check_encoder(http)]
-    results += check_units(units)
+    results += check_units(units, optional=status_module.DEFAULT_CONFIG['optional_units'])
     results.append(check_certificate(probes.certificate_not_after(status_module.DEFAULT_CONFIG['certificate'])))
     results.append(check_dns(resolver=resolver))
     return results

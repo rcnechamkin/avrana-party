@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import unittest
+from unittest import mock
 
 from avrana.ops import smoke, status
 from avrana.web import devserver
@@ -126,6 +127,30 @@ class Checks(unittest.TestCase):
         self.assertEqual(smoke.check_dns(resolver=lambda s, n: '10.42.0.1').status, smoke.PASS)
         self.assertEqual(smoke.check_dns(resolver=lambda s, n: '93.184.216.34').status, smoke.FAIL)
         self.assertEqual(smoke.check_dns(resolver=lambda s, n: None).status, smoke.SKIP)
+
+    def test_an_optional_unit_may_be_absent_but_not_stopped(self):
+        '''The certificate timer exists only once renewal is set up (party-https runbook).'''
+        timer = 'avrana-party-certificate.timer'
+        self.assertIn(timer, status.DEFAULT_CONFIG['optional_units'])
+
+        def systemd(active, load):
+            def runner(cmd, **kw):
+                out = load[cmd[-1]] if cmd[1] == 'show' else active[cmd[-1]]
+                return subprocess.CompletedProcess(cmd, 0, stdout=out.encode() + b'\n')
+            return runner
+
+        with mock.patch('platform.system', return_value='Linux'):
+            absent = systemd({timer: 'inactive', 'nginx': 'inactive'}, {timer: 'not-found', 'nginx': 'not-found'})
+            optional, required = smoke.check_units([timer, 'nginx'], absent, optional=[timer])
+            self.assertEqual((optional.status, required.status), (smoke.SKIP, smoke.FAIL))
+            self.assertIn('not installed', optional.detail)
+            self.assertEqual(required.detail, 'not-installed')
+            stopped = systemd({timer: 'inactive'}, {timer: 'loaded'})
+            self.assertEqual(smoke.check_units([timer], stopped, optional=[timer])[0].status, smoke.FAIL)
+            failed = systemd({timer: 'failed'}, {timer: 'loaded'})
+            self.assertEqual(smoke.check_units([timer], failed, optional=[timer])[0].status, smoke.FAIL)
+            running = systemd({timer: 'active'}, {timer: 'loaded'})
+            self.assertEqual(smoke.check_units([timer], running, optional=[timer])[0].status, smoke.PASS)
 
     def test_summary_counts_skips_separately(self):
         s = smoke.summarize([smoke.Result('a', smoke.PASS), smoke.Result('b', smoke.SKIP)])
