@@ -257,6 +257,41 @@ class Permissions(unittest.TestCase):
         self.assertFalse(boundary.can_write(None, {'avrana-games'}, e))          # a dynamic identity
 
 
+class Collection(unittest.TestCase):
+    """`systemctl show` prints LoadCredential as "[unprintable]" (seen on systemd 255 in the proof
+    run), so the collector reads the unit's own text."""
+
+    def credentials(self, show, cat):
+        real = boundary._run
+        boundary._run = lambda *argv: cat if argv[:2] == ('systemctl', 'cat') else ''
+        try:
+            return boundary._credentials('x.service', {'LoadCredential': show})
+        finally:
+            boundary._run = real
+
+    def test_credentials_come_from_the_unit_text_when_show_cannot_print_them(self):
+        cat = ('# /etc/systemd/system/x.service
+[Service]
+LoadCredential=b.key:/k/b.key
+'
+               '# /etc/systemd/system/x.service.d/y.conf
+[Service]
+LoadCredential=a.key:/k/a.key
+')
+        self.assertEqual(self.credentials('[unprintable]', cat), ['/k/a.key', '/k/b.key'])
+        self.assertEqual(self.credentials('', ''), [])
+
+    def test_an_empty_assignment_resets_the_list(self):
+        cat = 'LoadCredential=old.key:/k/old.key
+LoadCredential=
+LoadCredential=new.key:/k/new.key
+'
+        self.assertEqual(self.credentials('[unprintable]', cat), ['/k/new.key'])
+
+    def test_a_printable_value_is_used_as_is(self):
+        self.assertEqual(self.credentials('a.key:/k/a.key', 'LoadCredential=z.key:/k/z.key'), ['/k/a.key'])
+
+
 class CommandLine(unittest.TestCase):
     def run_cli(self, facts, *args):
         with tempfile.TemporaryDirectory() as d:

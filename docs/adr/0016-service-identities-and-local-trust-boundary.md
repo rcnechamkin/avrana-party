@@ -369,13 +369,15 @@ changes, and only for native games.
 
 - Source reading of both repositories at `main` on 2026-10-03 (Party `5b63b07`, Games `42ee69b`).
 - [`experiments/service-trust/proof.sh`](../../experiments/service-trust/proof.sh), run by the
-  `Service trust proof` workflow on 2026-10-04 (GitHub run 37165312400; Ubuntu 24.04, systemd 255,
-  x86_64), 8 of 8 checks passed: a dynamic identity cannot read the key store but reads its own
+  `Service trust proof` workflow on 2026-10-04 (GitHub run 37167416763; Ubuntu 24.04, systemd 255,
+  x86_64), 9 of 9 checks passed: a dynamic identity cannot read the key store but reads its own
   key through `LoadCredential=`; one game's state directory is closed to another; socket group
   ownership admits the intended peers and refuses the others; a game with
   `RestrictAddressFamilies=AF_UNIX` and a private network namespace still reaches Party's internal
-  socket and has no IP socket. Observed: the credential file is `0440 root` and `read_key`
-  refuses it (§3).
+  socket and has no IP socket; and the boundary checker's collector reads a dynamic-user unit
+  named like a native game as this ADR describes it. Observed: the credential file is `0440 root`
+  and `read_key` refuses it (§3); `systemctl show` cannot print `LoadCredential`, so the collector
+  reads the unit text.
 - [`contracts/service-boundary.v1.json`](../../contracts/service-boundary.v1.json) states the
   identities, key ownership and sockets above as data; `avrana/ops/boundary.py` judges a host
   against it, read-only, and `tests/unit/test_ops_boundary.py` shows a host built to this ADR
