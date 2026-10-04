@@ -19,8 +19,34 @@ key store belongs to Party Core alone. Why: [ADR 0016](../adr/0016-service-ident
 2. Deploy those commits with [`ops/deploy.sh`](deploy.md). That builds
    `/opt/avrana-party/current` and `/opt/avrana-party-games/current`; the services still run from
    the checkouts as `cody`, so this step changes nothing a phone can see.
-3. No party in progress.
-4. Read the reverse section below against the Pi as it is.
+3. Every key a unit will be handed exists in `/etc/avrana-party/game-keys/`: `arcade-gauntlet2.key`,
+   `bluff.key` and `expo.key`. On 2026-10-03 the Pi had the first two and **no `expo.key`**. A
+   unit whose `LoadCredential=` source is missing does not start, so the script refuses until
+   each exists. Before the migration the key store still belongs to the operator account, so:
+   `sudo AVRANA_PARTY_KEY_OWNER=cody bash ops/provision-party-game-key.sh expo` (the migration
+   re-owns it with the others).
+4. No party in progress.
+5. Read the reverse section below against the Pi as it is.
+
+### To verify against the Pi before migration
+
+The games service's unit exists only on the appliance and is in no repository. The Games
+repository's `deploy/avranaparty-games.service` was reconstructed from
+[games-fork-deploy](games-fork-deploy.md) ("Before-state", read 2026-09-27) and from
+`tests/fixtures/boundary/pi-2026-10-03.json`. Those records do not show the following, so
+compare with `systemctl cat avranaparty-games avranaparty-arcade avrana-party-core` first and
+carry over anything the installed units have that the new ones lack:
+
+| Not shown by the records | What the new unit says |
+|---|---|
+| The games unit's `[Unit]` section (`After=`, `Wants=`) | `After=network.target` |
+| Its `RestartSec=` | `3` |
+| Any `Environment=` in the unit itself (for example `LANGAMES_HOST`, `LANGAMES_PORT`) | none besides Python's two; the listener defaults to `127.0.0.1:8096`. On 2026-10-03 the Pi's listener was `0.0.0.0:8096`, so the migration **changes it to loopback**, which ADR 0016 phase 1 requires; nginx already reaches it on loopback |
+| Its `WantedBy=` | `multi-user.target` |
+| Whether the installed drop-ins differ from the ones in source | the drop-ins in source replace them |
+| Whether `data/` holds anything (`venue.json`, avatars, chat media) | copied to `/var/lib/avrana-lan-games` as found |
+| That systemd on the Pi mounts `BindPaths=` onto the release's `data/` under `ProtectSystem=strict` | relies on `data/.gitkeep` being in the release |
+| The arcade unit's installed form (it was installed by `arcade/install-service.py` from an earlier revision of the file) | see "Never validated anywhere" below |
 
 ## Run
 
@@ -76,8 +102,9 @@ ssh -t party "sudo bash /opt/avrana-party/current/ops/migrate-service-users.sh -
 ```
 
 Stops the services, puts the recorded unit files and drop-ins back (removes the ones that did not
-exist before), re-owns the key store and the device store to their recorded owner, copies the
-fork's `data/` back to its checkout, reloads systemd and starts the services. The arcade then
+exist before), copies the fork's `data/` back to its checkout, re-owns the key store, the device
+store and that `data/` to their recorded owners, reloads systemd and starts the services. A
+service that does not start is reported and the others are still started. The arcade then
 runs its core from the checkout again, where the original was never moved. The users, the two
 groups, `/opt/avrana-arcade` and `/opt/avrana-party-games/venv` stay: they grant nothing and a
 second migration reuses them. No data format changes in either direction.
