@@ -207,3 +207,17 @@ navigation/results deferrals. This retained plan does not assign current work; c
   `Invalid('clock')`, not `expired`. The wire format and tolerances are unchanged.
 - The clock policy itself (NTP steps, no RTC) is AVR-79.
 
+## Amendment 2026-10-03: whose key, and which local endpoint
+
+[ADR 0016](0016-service-identities-and-local-trust-boundary.md) (AVR-227; proposed, not implemented
+or deployed) leaves this protocol's messages, tickets and refusal rules unchanged and narrows two
+statements above for the field-test appliance:
+
+- **D5 "Keys"**: the 0600 key file belongs to Party Core's own service identity; a game receives
+  only its own key, as a systemd credential. Until that is deployed every service runs as one
+  user and can read every key, so "per game" is nominal ([SYSTEM](../SYSTEM.md)).
+- **D5 "The ended report" and "Threat assumptions"**: "only accepted from the loopback address"
+  is the deployed v0 transport and stays for the arcade and the LAN Games fork. A native game
+  reports on Party Core's internal Unix socket instead, admitted by socket permission and
+  identified by its signature. "The appliance, its local services" are then separate identities,
+  each trusted with its own key only.

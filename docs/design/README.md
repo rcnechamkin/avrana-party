@@ -22,6 +22,10 @@ Read in this order:
    [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) (native games as isolated
    platform consumers; LAN Games retired to donor/reference). ADRs 0002, 0003, 0004, 0005, 0006
    and 0011 carry dated 2026-10-02 amendments pointing at them.
+   [ADR 0016](../adr/0016-service-identities-and-local-trust-boundary.md) (2026-10-03, proposed)
+   is the service-identity, secret-ownership and local-IPC mechanism for ADR 0014: what each
+   service may read, where a native game's socket, key and state live, and what the first
+   field-test appliance does and does not promise.
 3. Then whichever focused document matches the work:
    - `FULL-MODE.md` — the deployed HTTPS shell (capability probe, offline copy, keep-awake) and
      the accepted Full Mode / Limited Mode target contract, kept explicitly separate
@@ -55,7 +59,7 @@ Read in this order:
      game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
 
 Implemented versus target: ADRs 0012–0014 describe accepted direction only. No Limited Mode,
-separate game origin, per-game process, game registry, result envelope, Profile store or Checkers
+separate game origin, per-game process, per-service identity, game registry, result envelope, Profile store or Checkers
 exists yet, and the LAN Games fork is still the deployed game runtime. Design documents mark such
 passages "Target" or "accepted direction"; `../SYSTEM.md` is the only authority on what runs.
 

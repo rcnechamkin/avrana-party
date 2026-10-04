@@ -1,0 +1,40 @@
+{
+  "schema": "avrana.service-boundary/v1",
+  "decision": "docs/adr/0016-service-identities-and-local-trust-boundary.md",
+  "description": "Which identity runs each appliance service, who may read keys and state, and which local sockets carry Party <-> game traffic. avrana/ops/boundary.py evaluates a host against it; nothing here is applied to a host by this repository.",
+  "roles": {
+    "party": {"user": "avrana-party"},
+    "native-game": {"dynamic_user": true},
+    "legacy-games": {"user": "avrana-lan-games"},
+    "arcade": {"user": "avrana-arcade"}
+  },
+  "units": {
+    "avrana-party-core.service": {"role": "party"},
+    "avranaparty-games.service": {"role": "legacy-games", "keys": ["bluff", "expo"]},
+    "avranaparty-arcade.service": {"role": "arcade", "keys": ["arcade-gauntlet2"]},
+    "avrana-game@{slug}.service": {"role": "native-game"}
+  },
+  "groups": {
+    "front": {"name": "avrana-front", "members": ["avrana-party", "www-data"], "means": "may connect to a native game's socket"},
+    "games": {"name": "avrana-games", "means": "may connect to Party Core's internal socket; a supplementary group of every native-game unit"}
+  },
+  "forbidden_groups": ["root", "sudo", "adm", "wheel", "docker"],
+  "no_login_shells": ["/usr/sbin/nologin", "/sbin/nologin", "/bin/false", "/usr/bin/false"],
+  "keys": {
+    "dir": "/etc/avrana-party/game-keys",
+    "owner": "{party}",
+    "group": "{party}",
+    "dir_mode": "0700",
+    "file_mode": "0600",
+    "delivery": "Party Core reads its own store; every other holder receives exactly its own keys through LoadCredential"
+  },
+  "sockets": {
+    "game": {"path": "/run/avrana-games/{slug}.sock", "owner": "root", "group": "{front}", "mode": "0660"},
+    "party_internal": {"path": "/run/avrana-party/internal.sock", "owner": "{party}", "group": "{games}", "mode": "0660"}
+  },
+  "phases": {
+    "1": "before the field test: the three existing services leave the operator account; Party-owned key store, credentials for every other holder, read-only code, owned state, loopback-only TCP",
+    "2": "native games: a dynamic identity each, one group-gated Unix socket each, Party Core's internal socket, no IP networking",
+    "3": "the legacy shared LAN Games process is gone"
+  }
+}

@@ -129,6 +129,23 @@ inventory; the source revision table above governs current main observations.
 | 8198 (when started) | PS1 stream: standalone (`ps1/tools/supervised-run.sh`, binds 10.42.0.1) or started by the front door (binds 127.0.0.1 only) | `ps1/` on the dev/test checkout |
 | 8190 (when started) | dev front door + party service; proxies `/ps1/<title>/` to the running PS1 | `experiments/party-service` (Pi worktree `~/avrana-lab/party-svc`) |
 
+### Who the services run as (observed 2026-10-03, read-only)
+
+`avrana-party-core`, `avranaparty-games` and `avranaparty-arcade` all run as **`cody`**, the
+owner's SSH account, which is in `sudo` and owns both source checkouts. The session keys in
+`/etc/avrana-party/game-keys/` are `0600 cody` in a `0700 cody` directory (`bluff.key`,
+`arcade-gauntlet2.key`; there is no `expo.key` on the Pi). Only Party Core's unit has systemd
+hardening. The games server listens on `0.0.0.0:8096`: the loopback default merged in Games PR
+#18 is not deployed.
+
+Consequences, so nothing here is read as isolation: every service can read every game's key and
+every other service's state, can rewrite the code the others run, and can reach every loopback
+port. A `0600` key and a loopback-only route protect against phones and the network, not against
+another local service. The intended boundary is
+[ADR 0016](adr/0016-service-identities-and-local-trust-boundary.md) (proposed, not implemented).
+`python3 -m avrana.ops.boundary` reports each of its rules on a host, read-only; on this date the
+Pi met 6 of the 25 phase-1 rules (`tests/fixtures/boundary/pi-2026-10-03.json`).
+
 ## Runtime-only paths (never in Git)
 
 | Path (Pi) | What |
