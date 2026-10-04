@@ -93,6 +93,21 @@ class Document(unittest.TestCase):
                        'nginx is failed', 'certificate expiring'):
             self.assertIn(reason, doc['summary']['reasons'])
 
+    def test_an_optional_unit_that_is_not_installed_is_a_note_not_a_fault(self):
+        manifest.write(self.manifest, sample())
+        timer = 'avrana-party-certificate.timer'
+        cfg = dict(self.cfg, units=['nginx', timer])
+        both = {'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}
+        doc = status.build_status(cfg, FakeProbes(both, units={timer: 'not-installed'}), now=NOW)
+        self.assertEqual(doc['services'][timer], 'not-installed')
+        self.assertEqual(doc['summary']['state'], 'ok', doc['summary'])
+        self.assertIn(f'{timer} is not installed (optional)', doc['summary']['notes'])
+        # installed and stopped, or a required unit that is missing, degrades as before
+        doc = status.build_status(cfg, FakeProbes(both, units={timer: 'inactive'}), now=NOW)
+        self.assertEqual(doc['summary']['reasons'], [f'{timer} is inactive'])
+        doc = status.build_status(cfg, FakeProbes(both, units={'nginx': 'not-installed'}), now=NOW)
+        self.assertEqual((doc['summary']['state'], doc['summary']['reasons']), ('degraded', ['nginx is not installed']))
+
     def test_malformed_manifest_is_reported_not_hidden(self):
         self.manifest.write_text('{"schema": "avrana.deployment/v0"}')
         doc = self.build(FakeProbes())

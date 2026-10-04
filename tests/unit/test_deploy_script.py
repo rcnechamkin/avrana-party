@@ -241,6 +241,103 @@ class RealRun(unittest.TestCase):
         self.assertFalse(self.manifest_path.exists() or self.web.exists() or (Path(self.temp.name) / 'backups').exists())
         self.assertFalse(self.party_release.parent.exists() or self.games_release.parent.exists())
 
+    def test_the_manifest_is_reachable_by_a_service_user_without_opening_the_acme_state(self):
+        '''On the appliance the manifest's directory was created 0700 for the lego state beside it.'''
+        state = self.manifest_path.parent
+        state.mkdir()
+        (state / 'lego').mkdir()
+        state.chmod(0o700)
+        (state / 'lego').chmod(0o700)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o711)                   # search, not listing
+        self.assertEqual((state / 'lego').stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.manifest_path.stat().st_mode & 0o777, 0o644)
+
+    def test_the_manifest_directory_stays_closed_while_something_in_it_is_open(self):
+        state = self.manifest_path.parent
+        state.mkdir()
+        (state / 'lego').mkdir()
+        state.chmod(0o700)
+        (state / 'lego').chmod(0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+
+class FirstRunFromACheckoutWithoutTheTooling(RealRun):
+    '''AVR-262: the appliance ran a commit from before avrana.ops and ops/deploy.sh existed. The
+    script (from the target commit) must take it forward, roll it back and take it back again
+    without ever running Python tooling out of that older checkout.'''
+
+    def setUp(self):
+        super().setUp()
+        # origin: ... -> target_party -> old (no tooling) -> new (tooling restored); production sits on old.
+        self.run_git(self.origin, 'rm', '-r', '-q', 'avrana/ops', 'ops/deploy.sh')
+        self.run_git(self.origin, 'commit', '-q', '-m', 'as it was before the deploy tooling')
+        self.old = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        self.run_git(self.origin, 'revert', '--no-edit', 'HEAD')
+        self.new = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        self.run_git(self.party, 'fetch', '-q', 'origin')
+        self.run_git(self.party, 'checkout', '-q', '-B', 'main', self.old)
+        self.assertFalse((self.party / 'avrana/ops').exists() or (self.party / 'ops/deploy.sh').exists())
+        self.assertTrue((self.origin / 'avrana/ops/manifest.py').is_file())
+
+    def test_deploys_forward_with_the_target_commits_tooling(self):
+        from avrana.ops import manifest
+        r = self.deploy(self.new, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.new)
+        self.assertEqual(self.party_release.resolve().name, self.new)
+        doc = manifest.read(self.manifest_path)
+        self.assertEqual((doc['party']['sha'], doc['games']['sha']), (self.new, self.target_games))
+        self.assertEqual(doc['tool']['party_sha'], self.new)
+        self.assertEqual(doc['web_release']['commit'], self.new)
+        backups = list((Path(self.temp.name) / 'backups').iterdir())
+        self.assertEqual(manifest.read(backups[0] / 'before.json')['party']['sha'], self.old)
+        self.assertEqual(len([c for c in self.calls() if c.startswith('start ')]), 3)
+
+    def test_smoke_runs_from_the_target_commit_too(self):
+        from avrana.ops import manifest
+        r = self.deploy(self.new, self.target_games)                 # nothing listens: smoke must fail
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('smoke FAILED', r.stdout)
+        self.assertIn(f'--party {self.old} --games {self.before_games}', r.stdout)
+        self.assertEqual(manifest.read(self.manifest_path)['smoke']['status'], 'failed')
+
+    def test_a_unit_that_does_not_come_back_still_rolls_back(self):
+        r = self.deploy(self.new, self.target_games, '--skip-smoke', FAIL_UNIT='avrana-party-core')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('rolling back', r.stdout)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.old)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main')
+        self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.before_games)
+        self.assertFalse(self.manifest_path.exists())
+        # no release ran before this deployment, so none is left looking current
+        self.assertFalse(self.party_release.is_symlink() or self.games_release.is_symlink())
+        self.assertEqual(len([c for c in self.calls() if c.startswith('start ')]), 6)
+
+    def test_going_back_to_that_commit_uses_the_tooling_of_the_release_that_was_running(self):
+        from avrana.ops import manifest
+        self.assertEqual(self.deploy(self.new, self.target_games, '--skip-smoke').returncode, 0)
+        r = self.deploy(self.old, self.before_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('predates the deploy tooling', r.stdout)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.old)
+        self.assertEqual(self.party_release.resolve().name, self.old)
+        doc = manifest.read(self.manifest_path)
+        self.assertEqual((doc['party']['sha'], doc['games']['sha']), (self.old, self.before_games))
+        self.assertEqual(doc['tool']['party_sha'], self.new)
+
+    def test_refuses_before_stopping_anything_when_no_release_has_the_tooling(self):
+        r = self.deploy(self.old, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('nothing was stopped', r.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.before_games)
+        self.assertFalse(self.manifest_path.exists() or (Path(self.temp.name) / 'backups').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

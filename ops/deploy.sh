@@ -18,6 +18,10 @@
 #      checkouts back where they were (same branch or commit, never --force/--hard) and restarts;
 #   4. writes the deployment manifest (/var/lib/avrana-party/deployment.json, avrana.deployment/v0);
 #   5. runs the post-deploy smoke checks (python3 -m avrana.ops.smoke) and records the result.
+# The manifest and smoke tooling (avrana.ops) always runs from a code release under /opt, never
+# from the checkout: the target commit's when it has the tooling, otherwise the release that is
+# running. So this script, taken from the target commit, also deploys an appliance whose checkout
+# predates the tooling, and can deploy back to such a commit.
 # docs/runbooks/deploy.md explains the arguments, the paths and what to do when a step fails.
 # Keys, certificates, nginx, NetworkManager and systemd unit files are never touched here.
 set -Eeuo pipefail
@@ -77,11 +81,16 @@ g() {
     if [[ $EUID -eq 0 && $checkout_user != root ]]; then sudo -u "$checkout_user" git -C "$repo" "$@"
     else git -C "$repo" "$@"; fi
 }
-py() { (cd "$party_checkout" && PYTHONDONTWRITEBYTECODE=1 python3 "$@"); }
-# build_release <checkout> <sha> <root>: exactly the tracked files of that commit, owned by whoever
-# runs this script (root in production), never group- or world-writable, then `current` switched
-# atomically. An existing release of the same commit is reused, so a rollback is only the link.
-build_release() {
+# The deploy tooling runs from $tools, a code release chosen before anything is stopped (below).
+# The checkout cannot be that place: before the deployment it holds the commit being replaced,
+# which may predate avrana.ops altogether.
+tools=''
+py() { (cd "$tools" && PYTHONDONTWRITEBYTECODE=1 python3 "$@"); }
+has_tooling() { [[ -f $1/avrana/ops/manifest.py && -f $1/avrana/ops/smoke.py ]]; }
+# stage_release <checkout> <sha> <root>: exactly the tracked files of that commit, owned by whoever
+# runs this script (root in production), never group- or world-writable. An existing release of the
+# same commit is reused. Nothing runs from a staged release until link_release points at it.
+stage_release() {
     local repo=$1 sha=$2 root=$3 tmp
     install -d -m 0755 "$root" "$root/releases"
     if [[ ! -d $root/releases/$sha ]]; then
@@ -90,9 +99,14 @@ build_release() {
         chmod -R u+rwX,go+rX,go-w "$tmp"
         mv -T "$tmp" "$root/releases/$sha"
     fi
+}
+# link_release <sha> <root>: switch `current` atomically, so a rollback is only the link.
+link_release() {
+    local sha=$1 root=$2
     ln -sfn "$root/releases/$sha" "$root/current.new" && mv -Tf "$root/current.new" "$root/current"
     log "code release $root/current -> releases/$sha"
 }
+build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 
 # ---- 1. refuse unsafe states -----------------------------------------------------------------
 if command -v flock >/dev/null; then
@@ -156,12 +170,24 @@ if [[ $dry_run -eq 1 ]]; then
     exit 0
 fi
 
+# ---- tooling: from the target commit, else from the release that is running --------------------
+# Staging the target release changes nothing that runs: `current` moves only in step 3.
+stage_release "$party_checkout" "$party_sha" "$party_releases"
+for candidate in "$party_releases/releases/$party_sha" \
+        "$(readlink -f "$party_releases/current" 2>/dev/null || true)" "$party_releases/releases/$before_party"; do
+    if [[ -n $candidate ]] && has_tooling "$candidate"; then tools=$candidate; break; fi
+done
+[[ -n $tools ]] || die "neither $party_sha nor the running release carries the deploy tooling (avrana.ops); nothing was stopped"
+tool_sha=$(basename "$tools")
+[[ $tool_sha == "$party_sha" ]] \
+    || log "WARNING: $party_sha predates the deploy tooling; manifest and smoke run from release $tool_sha"
+
 # ---- 2. before-state --------------------------------------------------------------------------
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup=$backup_root/deploy-$stamp
 install -d -m 0750 "$backup"
 py -m avrana.ops.manifest write --out "$backup/before.json" --party "$party_checkout" \
-    --games "$games_checkout" --web-root "$web_root" --allow-dirty --tool-sha "$party_sha" >/dev/null
+    --games "$games_checkout" --web-root "$web_root" --allow-dirty --tool-sha "$tool_sha" >/dev/null
 [[ -L $web_root/current ]] && readlink -f "$web_root/current" > "$backup/web-release-before" || true
 [[ -L $party_releases/current ]] && readlink -f "$party_releases/current" > "$backup/party-release-before" || true
 [[ -L $games_releases/current ]] && readlink -f "$games_releases/current" > "$backup/games-release-before" || true
@@ -183,7 +209,9 @@ rollback() {
     local pair root before
     for pair in "party:$party_releases" "games:$games_releases"; do
         root=${pair#*:}; before=$backup/${pair%%:*}-release-before
-        if [[ -f $before ]] && [[ -d $(cat "$before") ]]; then
+        if [[ ! -f $before ]]; then
+            rm -f "$root/current"          # there was no release before this run: leave none behind
+        elif [[ -d $(cat "$before") ]]; then
             ln -sfn "$(cat "$before")" "$root/current.new" && mv -Tf "$root/current.new" "$root/current"
         fi
     done
@@ -227,9 +255,19 @@ trap - ERR
 
 # ---- 4. manifest -----------------------------------------------------------------------------
 py -m avrana.ops.manifest write --out "$manifest" --party "$party_checkout" --games "$games_checkout" \
-    --web-root "$web_root" --tool-sha "$party_sha" $([[ $allow_dirty -eq 1 ]] && echo --allow-dirty) \
+    --web-root "$web_root" --tool-sha "$tool_sha" $([[ $allow_dirty -eq 1 ]] && echo --allow-dirty) \
     --restarted ${restart[@]+"${restart[@]}"}
 cp "$manifest" "$backup/after.json"
+# The manifest is public (0644; /party/api/status serves it), but on the appliance its directory
+# was created 0700 for the ACME state beside it, so no service user could reach the file. Grant
+# search (not listing) on the directory, and only while every subdirectory is closed to others.
+manifest_dir=$(dirname "$manifest")
+if [[ -n $(find "$manifest_dir" -mindepth 1 -maxdepth 1 -type d -perm /077 -print -quit) ]]; then
+    log "WARNING: a directory in $manifest_dir is open to group or other; $manifest_dir left as it is."
+    log "         /party/api/status cannot name this deployment until its service user can read the manifest."
+else
+    chmod go+x "$manifest_dir"
+fi
 log "deployment manifest written: $manifest"
 
 # ---- 5. smoke ---------------------------------------------------------------------------------

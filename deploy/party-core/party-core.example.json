@@ -37,6 +37,9 @@
       "nginx",
       "NetworkManager",
       "avrana-party-certificate.timer"
+    ],
+    "optional_units": [
+      "avrana-party-certificate.timer"
     ]
   }
 }
