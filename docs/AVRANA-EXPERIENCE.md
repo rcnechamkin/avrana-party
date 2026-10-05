@@ -709,6 +709,8 @@ Consistency reduces learning cost.
 
 ## 28. Platform Identity vs Game Identity
 
+The concrete contract for this section is [GAME-UX-CONTRACT](design/GAME-UX-CONTRACT.md).
+
 Games may have their own visual personality.
 
 Avrana still needs recognizable platform behavior.
