@@ -7,10 +7,11 @@ Every rule below carries one of three labels. They are not interchangeable.
 | Label | Meaning | Authority |
 |---|---|---|
 | **[Implemented]** | In source on `main` of the named repository on 2026-10-04; a file is cited. Not a claim of deployment or phone proof | the cited code and its tests |
-| **[Accepted]** | Decided: an accepted ADR, or the owner's direction recorded in [AVR-56](https://linear.app/avranakern/issue/AVR-56) | that ADR or issue |
+| **[Accepted]** | Decided elsewhere: an accepted ADR, a current repository document with scoped authority (ACCESSIBILITY, UI-DESIGN-SYSTEM, AGENTS), or the owner's direction recorded in [AVR-56](https://linear.app/avranakern/issue/AVR-56). Only what the source itself says is accepted; any elaboration in the same rule is marked **[Proposed]** | that source |
 | **[Proposed]** | Drafted by this document. Direction for review, not contract, until the owner accepts it | none yet |
 
-Nothing here is deployed or validated on real phones by this document.
+Where AVR-56's direction and an accepted ADR disagree (Rule 4.4), the rule says so and is not
+contract until the ADR is amended. Nothing here is deployed or validated on real phones by this document.
 [SYSTEM](../SYSTEM.md) says what runs. AVR-56 is formally blocked by AVR-27 (four-human offline
 BLUFF acceptance), which has not happened; the owner authorized writing the contract first.
 [§19](#19-evidence-still-outstanding) lists what that acceptance may change.
@@ -39,9 +40,18 @@ This document changes no machine contract. Where it believes one must change, it
 
 ## 2. The boundary
 
-**Rule 2.1 [Accepted, AVR-56].** Avrana is recognizable by *behaviour*; a game is recognizable by
-*look and sound*. Titles MUST NOT be made visually identical, and a game MAY have an art
-direction, palette, typeface, motion language and sound design unrelated to the Party page.
+**Rule 2.1 [Accepted, AVR-56].** The common interaction layer "should feel coherent across Party
+and games without making every game look identical"; "games retain intentional visual identity";
+system feedback primitives are "not a requirement that every game share the same art direction
+or sound design".
+
+**[Proposed]** reading of it: Avrana is recognizable by *behaviour*; a game is recognizable by
+*look and sound*. A game MAY have an art direction, palette, typeface, motion language and sound
+design unrelated to the Party page. [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md) ("Platform UX and
+game identity") names "dark calm surfaces" among the shared ground; this document reads that as
+describing platform-shaped surfaces (the Party page, the briefing shell), not a constraint on a
+game's play viewport. If the owner means it for play too, this paragraph is wrong and Rule 4.2
+narrows.
 
 **Rule 2.2 [Accepted, ADR 0011 decision 5; AVR-56].** Once play begins, platform chrome recedes
 and the game owns the viewport.
@@ -93,19 +103,20 @@ page in the wrong place is moved back (`web/party/lib/party-follow.js`).
 
 **Rule 3.4 [Accepted, ADR 0011, AVR-56].** The Host owns Party lifecycle transitions: select,
 Start, End, Play again, Party Home. Leaving a game or returning to Party Home is a Party-level
-host transition; there is no personal "leave game" that changes anyone's location. A game's own
-forfeit or sit-out is a game rule and MUST NOT move the player's page.
+host transition; a follower's own actions never change the location (ADR 0011 decision 1).
+**[Proposed]** generalization of ADR 0011 decision 6, which says it of BLUFF's forfeit: a game's
+own forfeit or sit-out is a game rule and MUST NOT move the player's page.
 
 **Rule 3.5 [Accepted, AVR-56; Implemented].** Reconnect is recovery into the current Party
 state. A phone that reloads, wakes or regains Wi-Fi lands where the Party is now, in its
 existing role, with no offer, banner or Rejoin button (`party-follow.js` `onView`; a move that
-arrives offline waits for `online`). It MUST NOT pass through onboarding or the briefing again
-if the round has started.
+arrives offline waits for `online`). **[Proposed]**: it MUST NOT pass through onboarding or the
+briefing again if the round has started.
 
 | Phase | `location.at` | Who draws | Platform chrome | Host can | Non-host can |
 |---|---|---|---|---|---|
-| Home | `home` | platform | all of it | select a game | browse, chat, edit profile |
-| Briefing | `setup` | platform shell, game content | the shell is the screen | Start; choose another game; set declared settings | Ready or Watch; read rules |
+| Home | `home` | platform | all of it | select a game | browse, edit profile; chat where Party Chat is shown (the section is hidden until it is available) |
+| Briefing | `setup` | platform shell, game content | the shell is the screen | Start; choose another game; set declared settings (**not built**, §4.4) | Ready or Watch; read rules |
 | Play | `game` | game | none persistent; reconnect state only | End for everyone (confirmed); host actions the game defines | play or watch; open rules |
 | Results | `results` | game | none persistent | Play again; Party Home | look; wait for the Host |
 
@@ -130,18 +141,18 @@ for, by name, in the same place the Host's control sits ("Waiting for Dana to st
 
 ### 4.1 Composition
 
-**Rule 4.1 [Accepted, AVR-56; ADR 0011 decision 4].** The briefing shows, in this order of
-visual weight: the game's title and art; a one-line premise; one rules entry; the round's roster
-with each person's state; the player's own Ready control; the Host's Start or everyone else's
-waiting line.
+**Rule 4.1 [Accepted, AVR-56; ADR 0011 decision 4].** The briefing shows the game's title and
+art, a short readable explanation, rules access, the roster with each person's state, the
+player's own round choice, and the Host's Start or everyone else's waiting line. **[Proposed]**:
+that is also their order of visual weight.
 
 | Slot | Supplied by | Today |
 |---|---|---|
 | Title, art, accent | game (catalog: `name`, `artwork`, `accent`) | **[Implemented]** `scene-title`, `scene-art`, `--game-accent` on the cover only |
 | Premise | game (`onboarding.json` `premise`, else catalog `summary`) | **[Implemented]** |
 | Rules entry "How to play" | shell; content from the game | **[Implemented]** `#rules` dialog, `openRules` |
-| Roster with state | platform | **[Implemented]** `avrana-lineup`: Gaze avatar, host crown, Playing / Watching / Choosing badge with a text label |
-| Ready / Watch | platform | **[Implemented]** as two equal buttons "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`) |
+| Roster with state | platform | **[Implemented]** `avrana-lineup`: Gaze avatar, host crown, Playing / Watching / Choosing as differently shaped icon badges with an accessible name (no visible word); the host crown likewise; away is opacity only (P-10) |
+| Ready / Watch | platform | **[Implemented]**, as ADR 0011 decision 4 specifies: two large choices "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`) |
 | Host Start, or the waiting line | platform | **[Implemented]** `scene-start`, disabled with Party Core's `blocker` sentence as text |
 | Host: choose another game | platform | **[Implemented]** `scene-cancel` |
 | Host settings | game declares; shell draws | **not built** ([§4.4](#44-settings)) |
@@ -160,15 +171,32 @@ play or watch. They may change their answer until the Start. Only the Host start
 player count is within the game's limits (`avrana/party/core.py` `setup_status`). Away members
 do not block. Roles change only at this boundary; a late arrival watches.
 
-**Rule 4.4 [Accepted, AVR-56].** Ready is the primary answer. Watch is a *secondary* round-role
-choice and is offered only when the game supports spectators. Today the shell draws both at
-equal weight and does not read the Game Contract's `spectators` field
-([§16](#16-current-deviations-observations-not-tasks) P-1, P-2).
+**Rule 4.4 [AVR-56 owner direction; conflicts with accepted ADRs; not contract until an ADR is
+amended].** AVR-56 says the briefing shows "roster/Ready state, and Host Start" and that
+"Watch/Spectate may exist as a secondary round-role choice when the game supports it".
 
-**Rule 4.5 [Proposed].** A phone that cannot play here (Limited Mode capability, a full table)
-MUST see Ready disabled with the reason in words beside it and Watch still available.
-**[Implemented for Limited Mode]**: `seatChoice()` in `web/party/lib/limited.js`, shown in
-`scene-seat`.
+What is accepted and built today says something different, and the code conforms to it:
+
+- ADR 0011 decision 4 specifies "two large **Play this round / Watch this round** choices", and
+  UI-DESIGN-SYSTEM lists Play and Watch both as primary buttons.
+- ADR 0010 decision 1 refuses the Start until every member who is here has chosen.
+- ADR 0012's shell consequence relies on Watch never being taken away: a phone that cannot play
+  here "may always choose Watch, so it can never hold up a round" (`seatChoice()` in
+  `web/party/lib/limited.js`).
+- The shell does not read the Game Contract's `spectators` field, and one contract already says
+  `"spectators": "none"` (`contracts/games/arcade-gauntlet2.json`).
+
+Making Watch visually secondary, or absent for a game without spectators, is therefore a change
+to ADR 0011 decision 4 that interacts with ADR 0010 decision 1 and ADR 0012. This document does
+not make it. The decisions are Q1, Q2 and Q12 in
+[§18](#18-open-questions-for-the-owner); the differences are recorded as P-1 to P-3 in
+[§16](#16-current-deviations-observations-not-tasks).
+
+**Rule 4.5 [Accepted for Limited Mode, ADR 0012; Implemented].** A phone that cannot play this
+game here sees Play disabled with the reason in words beside it, and Watch stays available
+(`seatChoice()`, shown in `scene-seat`). **[Proposed]**: the same for any other reason a phone
+cannot take a seat. What such a phone may answer when the game supports no spectators is
+undecided (Q12).
 
 **Rule 4.6 [Accepted, ADR 0010].** A game in a Party round MUST NOT run a second lobby: its own
 ready, start and settings verbs are refused and the launch roster is seated at once
@@ -181,8 +209,8 @@ the familiar shell. The briefing covers: the objective, the basic flow, the cont
 and a clear Ready.
 
 **Rule 4.8 [Accepted, AVR-56].** A static or lightly animated *fake-turn example* is preferred
-over a second interactive tutorial engine. A game MUST NOT be required to ship a playable
-tutorial. **[Proposed]** form: an ordered list of one to four frames, each an image from the
+over maintaining a second interactive tutorial engine. **[Proposed]**: a game MUST NOT be
+required to ship a playable tutorial. **[Proposed]** form: an ordered list of one to four frames, each an image from the
 game's own art plus one caption, shown by the shell as a strip the player steps through; with
 reduced motion it is the same frames without transitions. **Not built.**
 
@@ -193,15 +221,17 @@ per browser (`localStorage`, key and version from the game's `ack`); it is a con
 identity or a record. A returning player goes straight to Ready.
 
 **Rule 4.10 [Proposed].** The briefing MUST be readable in under about twenty seconds for a
-simple game: a premise of at most two sentences and at most five rule sections of at most four
-short points each. BLUFF's `onboarding.json` (five sections, two to four points each) is the
+simple game: a premise of at most two sentences and at most five rule sections of at most five
+short points each. BLUFF's `onboarding.json` (five sections of 2, 4, 5, 3 and 3 points) is the
 reference size.
 
 ### 4.4 Settings
 
-**Rule 4.11 [Accepted, AVR-56].** Host settings appear only when the game genuinely needs
-pre-start configuration. A game with sensible defaults shows none. Settings are the Host's;
-everyone else sees the chosen values as plain text, not disabled controls.
+**Rule 4.11 [Accepted, AVR-56].** "Host settings are optional and should not appear unless the
+game genuinely needs pre-start configuration."
+
+**[Proposed]**: a game with sensible defaults shows none; settings are the Host's; everyone else
+sees the chosen values as plain text, not disabled controls.
 
 **[Proposed]** shape: the game declares a short list of settings from a closed vocabulary
 (`choice`, `toggle`, `count`), the shell draws them in the briefing between the premise and the
@@ -215,14 +245,16 @@ question ([§18](#18-open-questions-for-the-owner) Q3).
 
 **Rule 4.12 [Accepted, AVR-56].** A heavier game provides two things:
 
-- a **Quick Start** that gets a player to their first meaningful turn, shown in the briefing in
-  place of the simple pattern, the same size limit as Rule 4.10;
-- a structured **Rules Guide** holding the full rule set and edge cases, in sections that can be
-  linked and searched, never one prose blob.
+- a concise **Quick Start** that gets players into the first meaningful turn;
+- a structured **Rules Guide** for the full rule set and edge cases, with sections that can be
+  linked, searched and consumed by future tooling, rather than one large prose blob.
 
-**Rule 4.13 [Accepted, AVR-56].** Contextual help MAY link directly to a Rules Guide section: a
-game control, a refusal message or an unavailable-action explanation MAY carry a section id and
-open the guide at that section.
+**[Proposed]**: the Quick Start is shown in the briefing in place of the simple pattern, under
+the same size limit as Rule 4.10.
+
+**Rule 4.13 [Accepted, AVR-56].** Contextual help may link directly to the relevant rule
+section. **[Proposed]** mechanism: a game control, a refusal message or an unavailable-action
+explanation MAY carry a section id and open the guide at that section.
 
 **Rule 4.14 [Proposed].** A game is "heavy" when its author says so by shipping a guide; the
 platform does not classify games. Search is a plain substring match over section titles,
@@ -231,8 +263,11 @@ and optional (AVR-56).
 
 ### 4.6 Rules stay reachable during play
 
-**Rule 4.15 [Accepted, AVR-56].** Rules MUST be reachable at every moment of play and results,
-by player and spectator, in one tap from a control that is always on screen.
+**Rule 4.15 [Accepted, AVR-56].** Rules and how-to-play "remain reachable after launch"; "rules
+remain reachable during play".
+
+**[Proposed]** floor: at every moment of play and results, for player and spectator, in one tap
+from a control that is always on screen.
 
 **Rule 4.16 [Proposed].** Opening rules in play MUST NOT pause, forfeit or desynchronize the
 game, MUST NOT cover a prompt without saying one is waiting, and MUST return focus to where it
@@ -338,10 +373,11 @@ Rules for the draft:
 
 ## 6. Player identity and avatars
 
-**Rule 6.1 [Accepted, [PARTY-PLATFORM](PARTY-PLATFORM.md) §5; Implemented].** A player's name and
-avatar are the Party's. A game receives a display name and an avatar id per participant and
-MUST NOT ask for a name, offer its own avatar picker or keep its own profile in a Party round.
-Avatars are the 32 bundled Gaze avatars (`web/party/avatars/`, `avatarNode` in
+**Rule 6.1 [Accepted, ADR 0011 decision 2, [AGENTS](../../AGENTS.md) "Safety"; Implemented].**
+Cross-game identity is the Party's, with "no parallel stores or tokens in Games". A phone with an
+Avrana profile (name, Gaze avatar) is in the Party, and members carry their Gaze avatar id.
+**[Proposed]**: in a Party round a game MUST NOT ask for a name, offer its own avatar picker or
+keep its own profile. Avatars are the 32 bundled Gaze avatars (`web/party/avatars/`, `avatarNode` in
 `web/party/lib/profile-ui.js`), vendored into games at `/shared/avatars/`.
 
 **Rule 6.2 [Proposed].** Wherever a game shows a person, it MUST show the Party name and SHOULD
@@ -353,12 +389,16 @@ need to know who acted.
 **Rule 6.3 [Accepted, ACCESSIBILITY rule 11].** A name is text (`textContent`, inside `<bdi>`),
 never markup. System text is never rendered as if a player said it.
 
-**Rule 6.4 [Proposed].** "You" is marked with the word "You", the Host with a crown icon that
-has the text label "host", away with a word. None of these is colour alone.
-**[Implemented]** in `avrana-lineup` and `avrana-roster`.
+**Rule 6.4 [Proposed].** "You", the Host and away are each marked with a visible word or a
+distinct icon, never by colour or opacity alone. **Today, partly:** "You" is a visible word
+(`You` in `avrana-lineup`, `(you)` in `avrana-roster`); the Host is a crown icon whose only text
+is an accessible name (`aria-label="host"`), with no visible word; away is `data-away` drawn as
+`opacity: 0.6` and nothing else in both lists (`web/src/party.css`, `personChip` and
+`renderScene` in `web/party/app.js`), which is observation P-10.
 
-**Rule 6.5 [Accepted, ADR 0006].** A game never receives device identity, and Party Host is not a
-game role: a game MUST label "Party Host" distinctly from any in-game leader role.
+**Rule 6.5 [Accepted, ADR 0006 and its 2026-10-04 amendment].** A game never receives device
+identity, and a game keeps no host: the Party is the only place that answer exists.
+**[Proposed]**: a game MUST label "Party Host" distinctly from any in-game leader role.
 **[Implemented]** in EXPO (`crewSheet`: "Captain" and "Party Host" are separate labels).
 
 ## 7. Actions, legality and unavailable explanations
@@ -369,12 +409,19 @@ current state regardless of what the client showed. The rules guide explains why
 decides what is legal. There is no universal Avrana rules engine: games own rules, state,
 rendering and turn logic.
 
-**Rule 7.2 [Accepted, owner direction].** Games are referees, not oracles. A legal move that is
-bad for the player MUST NOT be warned about, marked, ranked or confirmed for its consequences.
-**[Implemented]** in EXPO: `games/expo/docs/ACTIONS.md` ("A legal card is never marked, warned
-about or confirmed for what it may do to the mission").
+**Rule 7.2 [Accepted for EXPO only; Proposed as a platform rule].** For EXPO the owner-approved
+Linear document "EXPO — Gameplay Engine & Mission Board Contract" (§1) says: "illegal actions are
+prevented; legal mistakes are allowed. The game is a referee, not an oracle", and that the UI
+must not disable, tint, warn about or ask confirmation for a legal play that fails the mission.
+EXPO's action contract repeats it (`games/expo/docs/ACTIONS.md`: "A legal card is never marked,
+warned about or confirmed for what it may do to the mission"). Neither AVR-56 nor a Party ADR
+states it for every game.
 
-**Rule 7.3 [Proposed].** A confirmation is for *irreversibility and slips*, never for strategy:
+**[Proposed]** as the platform-wide rule: games are referees, not oracles. A legal move that is
+bad for the player MUST NOT be warned about, marked, ranked or confirmed for its consequences.
+
+**Rule 7.3 [Proposed].** A confirmation is for *irreversibility and slips*, applied to every
+choice alike, never for strategy:
 "Play 7 of blue?" as a two-step tap on a small card is allowed (it prevents a mis-tap); "Are
 you sure? This loses the mission" is forbidden.
 
@@ -427,11 +474,15 @@ These are floors a game meets in its own style. The Party page's concrete classe
   on the server shows that it is waiting and does not accept a second tap.
 - Icon-only buttons carry an accessible name.
 
-**Touch targets [Accepted, ACCESSIBILITY rule 3].** Every tappable thing is at least 44×44 CSS
-px, including cards, seats and board cells, or has a two-step select-then-confirm so a small
-target cannot commit an action by a slip. **[Implemented]**: 48 px Party controls (tested in
-`tests/offline/party.spec.ts`); 44 px minimums throughout `games/expo/web/expo.css`; EXPO's
-select-then-"Play" dock.
+**Touch targets [Accepted, ACCESSIBILITY rule 3].** Touch targets are at least 44×44 CSS px. The
+rule has no exception. **[Proposed]** reading: that includes cards, seats and board cells.
+**[Proposed]**, and it would need an ACCESSIBILITY amendment before it is allowed: a dense board
+whose cells cannot reach 44 px MAY instead use a two-step select-then-confirm, so a small target
+cannot commit an action by a slip. **Today**: the Party theme sizes buttons and inputs at 48 px
+(UI-DESIGN-SYSTEM); `tests/offline/party.spec.ts` asserts that no visible `main a.btn`,
+`main button` or `summary` on the Party page is under 44 px *high* (height only; width and the
+briefing scene are not covered by that assertion); `games/expo/web/expo.css` sets 44 px minimum
+heights on its controls; EXPO's select-then-"Play" dock exists in addition to those sizes.
 
 **Forms [Proposed].** A game in a Party round asks for nothing the Party already knows. Inputs
 are at least 16 px so iOS does not zoom, have a visible label, use the right `inputmode`, and
@@ -503,19 +554,22 @@ only a glow, a colour or a sound.
 **Rule 9.4 [Accepted, ACCESSIBILITY rule 7].** A state push MUST NOT drop focus. **[Implemented]**
 in EXPO (`data-key` focus restore in `draw`).
 
-**Rule 9.5 [Accepted, ACCESSIBILITY rules 4, 9].** Text scales with the phone's setting; guest
-text is never below 0.94 rem on platform surfaces. A game SHOULD size text in `rem`; a game that
-fixes text in `px` declares `text_scalable: false`.
+**Rule 9.5 [Accepted, ACCESSIBILITY rule 4].** Text scales: never `user-scalable=no` or
+`maximum-scale=1`; `rem` for text; the layout scrolls rather than clips at 200 % text. The
+0.94 rem floor for guest text is the Party theme's own scale (UI-DESIGN-SYSTEM, prototype), not
+an accessibility rule. **[Proposed]**: a game that fixes text in `px` declares
+`text_scalable: false`.
 
 **Rule 9.6 [Proposed].** Timers show remaining time as text; a deadline that can cost a turn is
 declared (`timing_pressure`). A game SHOULD give the Host a way to relax or disable a turn timer
 before the round as a declared setting.
 
-**Reduced motion [Accepted, ACCESSIBILITY rule 8].** `prefers-reduced-motion: reduce` removes
-all non-essential motion on platform and game surfaces: no confetti, pulsing, bobbing, parallax
-or animated transitions. Motion that carries meaning (a card moving to a trick) is replaced by
-an instant state change plus the same information in words. Reduced motion never removes
-information and never changes timing rules. **[Implemented]**: `web/src/party.css`,
+**Reduced motion [Accepted, ACCESSIBILITY rule 8].** Honour `prefers-reduced-motion` (no
+confetti, no pulsing) and `prefers-contrast`. **[Proposed]** elaboration: reduced motion removes
+all non-essential motion on platform and game surfaces (also bobbing, parallax and animated
+transitions); motion that carries meaning (a card moving to a trick) is replaced by an instant
+state change plus the same information in words; it never removes information and never changes
+timing rules. **[Implemented]**: `web/src/party.css`,
 `games/bluff/web/table.css`, `games/expo/web/expo.css`, `web/shared.css`.
 
 **Per-device preferences [Proposed; ACCESSIBILITY "Per-player preferences" is the design].**
@@ -551,7 +605,8 @@ retries by itself, and offers one manual retry. **[Implemented]**: `#away` on th
 ("Can't reach the party", Try again), `avrana-status`, the games' reconnect banner.
 
 **Rule 10.5 [Proposed].** A game that cannot run on this phone at all sends the player to Watch
-when the game supports it, with the reason; it never shows a blank or broken board.
+when the game supports it, with the reason; it never shows a blank or broken board. What that
+phone gets when the game supports no spectators is undecided (Q12).
 
 ## 11. System feedback: sound, haptics, motion
 
@@ -612,14 +667,15 @@ waiting line (Rule 3.8). **[Implemented]** in BLUFF's bar, EXPO's result takeove
 ([§8](#8-controls-layout-and-surfaces)), reachable in at most two taps, and never placed beside
 the turn's primary action.
 
-**Rule 12.4 [Accepted, ADR 0011 decision 6].** A game MUST NOT end a Party round or return
-phones by itself; its own end-game and takeover verbs are refused in a Party round.
+**Rule 12.4 [Accepted for BLUFF, ADR 0011 decision 6; Proposed for every game].** "Rounds are
+the host's to end": in a Party round BLUFF refuses its own `end_game` and empty-table takeover.
+**[Proposed]** generalization: no game ends a Party round or returns phones by itself.
 
 ## 13. Art and asset slots
 
-**Rule 13.1 [Accepted, AVR-56].** No emoji is required, explicitly or implicitly, as production
-game art. No platform slot, contract field or shared component may assume an emoji glyph. Emoji
-render differently on every phone and are not an art direction.
+**Rule 13.1 [Accepted, AVR-56].** "No emoji is implicitly required as production game art."
+**[Proposed]** consequence: no platform slot, contract field or shared component may assume an
+emoji glyph; emoji render differently on every phone and are not an art direction.
 
 **Rule 13.2 [Proposed].** A game MAY use emoji or typographic marks as a deliberate choice where
 they are notation (card suits, ✓, ×) or a prototype placeholder; a placeholder is declared as
@@ -639,10 +695,11 @@ Slots:
 | System cue assets | platform | none | platform-owned, bundled, never per game |
 | In-game art, fonts, sound | the game's own page | game-owned (BLUFF: Kenney family, `docs/ASSETS.md`, games) | unchanged; never routed through the platform |
 
-Rules for every asset **[Accepted, UI-DESIGN-SYSTEM "Offline rule"; Proposed for the metadata]**:
-served from the appliance, never a remote URL; SVG self-contained with no scripts or external
-references; licence and source recorded where the asset is vendored; every image a person needs
-has text (`alt`, or a label on its control); decorative art is `aria-hidden`.
+Rules for every asset. **[Accepted, UI-DESIGN-SYSTEM "Offline rule" and "Architecture"]**:
+everything a page needs comes from the appliance, never a remote URL; artwork SVGs carry no
+styles or scripts. **[Proposed]**: licence and source recorded where the asset is vendored (the
+practice of `assets/vendor/README.md` today); every image a person needs has text (`alt`, or a
+label on its control); decorative art is `aria-hidden`.
 
 ## 14. Shared primitives: what exists and what is only specified
 
@@ -677,7 +734,7 @@ needs it.
 
 | Primitive | Section |
 |---|---|
-| Watch as a secondary choice gated on the game's `spectators` | §4.2 |
+| Watch as a secondary choice gated on the game's `spectators` (needs an ADR 0011 amendment first; Q1, Q12) | §4.2 |
 | Game accent beyond the cover | §4.1 |
 | Fake-turn example strip | §4.3 |
 | Declared host settings drawn by the shell | §4.4 |
@@ -710,7 +767,8 @@ focus restore) are the same unbuilt set; this document does not duplicate that l
 ### EXPO (current)
 
 - **Fits.** One-viewport play, sheets for everything that is not this turn, result takeover,
-  server-owned legality and reasons shown as text, referee-not-oracle stated and tested, Party
+  server-owned legality and reasons shown as text, referee-not-oracle stated in its
+  owner-approved contract and its action document, Party
   Host distinct from Captain, host authority confirmed at the action, no route to the old hub.
 - **Strains.** It is a heavy game: 96 tasks, mission modifiers, a two-player variant. Its help
   is seven paragraphs in the client and it ships no onboarding file, so the Party briefing shows
@@ -760,21 +818,24 @@ focus restore) are the same unbuilt set; this document does not duplicate that l
 
 ## 16. Current deviations (observations, not tasks)
 
-Each is a fact about source on the commits named at the top, measured against this contract.
-None is a work order; Linear decides what becomes work.
+Each is a fact about source on the commits named at the top. Most are measured against rules
+this document only *proposes*, and P-1 to P-3 against AVR-56 direction that accepted ADRs do not
+yet reflect: a row is a deviation from accepted contract only where it says so. None is a work
+order; Linear decides what becomes work.
 
 **Party (`avrana-party`)**
 
 | # | Observation | Where |
 |---|---|---|
-| P-1 | Play and Watch are two equal-weight buttons; Watch is not secondary (Rule 4.4) | `web/party/index.html` `#choose-play`, `#choose-watch` |
-| P-2 | Watch is offered for every game; the shell does not read the Game Contract's `spectators` | `web/party/app.js` `renderScene`; `web/party/lib/limited.js` `seatChoice` |
-| P-3 | The control is labelled "Play this round", not "Ready"; AVR-56 says Ready | `web/party/index.html` |
+| P-1 | Conforms to ADR 0011 decision 4 (two large choices). Differs from AVR-56's newer "secondary round-role choice" wording (Rule 4.4, Q1) | `web/party/index.html` `#choose-play`, `#choose-watch` |
+| P-2 | Conforms to ADR 0011 decision 4 and ADR 0012 (Watch is always offered). Differs from AVR-56's "when the game supports it": the shell does not read the Game Contract's `spectators` (Q12) | `web/party/app.js` `renderScene`; `web/party/lib/limited.js` `seatChoice` |
+| P-3 | The label "Play this round" is ADR 0011 decision 4's wording. AVR-56 speaks of a "Ready state"; whether the control's word changes is Q1, not a deviation | `web/party/index.html` |
 | P-4 | The accent reaches only the cover; briefings for two games differ by icon and text only (Rule 4.2) | `app.js` `renderScene` (`--game-accent` on `#scene-cover`) |
 | P-5 | No settings slot, no example slot, no Quick Start / guide rendering, no section links or search | `app.js` `openRules` renders `rules[].title/points` only |
 | P-6 | A game without `onboarding.json` gets its catalog summary as the entire How to play | `app.js` `openRules` fallback |
 | P-7 | No system sound or haptic cue; no Party-owned per-device preferences | `web/party/` (no audio or vibrate call) |
 | P-8 | The fallback host End uses tap-again; BLUFF uses a dialog: two confirmation patterns | `web/party/lib/party-follow.js` `onEnd` |
+| P-10 | An away member is shown by `opacity: 0.6` alone in both rosters, with no word, icon or shape. ACCESSIBILITY rule 5 names "disconnected" among states that must not be conveyed by colour alone and gives an "Away" badge as its example, so this looks like a deviation from an accepted rule; the Host is an icon with an accessible name and no visible word | `web/src/party.css` `.avrana-roster li[data-away]`, `.avrana-lineup li[data-away]`; `web/party/app.js` `personChip`, `renderScene` |
 | P-9 | The briefing is not declared in the Party ↔ Games contract; `onboarding.json` is fetched by convention beside the entry page | `app.js` `onboardingFor`; `contracts/party-games.v0.json` |
 
 **BLUFF (`avrana-party-games`)**
@@ -821,21 +882,23 @@ The second and tenth rows are honest partials: the contract is written, the shar
 
 ## 18. Open questions for the owner
 
-Each needs a decision this document does not make.
+Each needs a decision this document does not make. Several reopen something an ADR already
+answers; the last column says which, so that a change is made as an amendment and not by drift.
 
-| # | Decision needed |
-|---|---|
-| Q1 | **Ready wording.** Is the briefing's primary control "Ready" (AVR-56's word) or "Play this round" (today's)? If Ready, is Watch a small secondary link, or absent until tapped? |
-| Q2 | **Does every member have to answer?** Today the Host cannot start until every member who is here chose Play or Watch (ADR 0010). The Mario Party reference starts when the Host starts. Keep the all-answer gate, or let the Host start once the minimum is Ready and treat the rest as watching? |
-| Q3 | **Settings ownership.** Are host settings always drawn by the platform shell from a declared closed vocabulary (§4.4), or may a game draw its own settings panel inside the briefing? The first is consistent and limited; the second fits EXPO's mission picker today |
-| Q4 | **More Ready players than seats.** When more people choose to play than the game allows, who plays: first to choose, Host picks, or rotation across rounds? Today Start is refused with a sentence until someone changes their answer |
-| Q5 | **Rematch.** Does Play again always return to the briefing, or may a game with no settings go straight to a new round with the same roles? |
-| Q6 | **One destructive confirmation.** Dialog (BLUFF) or tap-again (fallback End, EXPO) as the standard for End for everyone? Or dialog for turn-based and tap-again for real-time? |
-| Q7 | **Briefing identity.** How far may a game's art and accent take over the briefing (Rule 4.2): cover only (today), tint and hero art (proposed), or a game-drawn briefing inside a fixed platform frame? |
-| Q8 | **System sound.** Is any platform sound wanted at all, given phones in a shared room, and if so is it on or off by default? |
-| Q9 | **In-play platform presence.** May the platform ever draw over a game during play beyond connection state and the attention cue, for example the proposed chat HUD (COMMUNICATION) or a Control Center (AVR-83)? This contract assumes no until decided |
-| Q10 | **Direct titles.** May a native game still launch with no briefing (`pregame` false), or must every Party-integrated native game have one? Emulated titles have no briefing content today |
-| Q11 | **Rules in play.** Should the platform provide the in-play rules sheet for games that do not draw their own, which requires platform UI over the game on the game's page (and, under ADR 0013, across origins)? |
+| # | Decision needed | Accepted answer today; what a change would amend |
+|---|---|---|
+| Q1 | **Ready wording and Watch's weight.** Is the primary control "Ready" (AVR-56 speaks of a "Ready state") or "Play this round"? Is Watch an equal choice or a secondary one? | ADR 0011 decision 4: two large "Play this round / Watch this round" choices. A change would amend ADR 0011 decision 4 and UI-DESIGN-SYSTEM "Buttons" |
+| Q2 | **Does every member have to answer?** The Mario Party reference starts when the Host starts. Keep the all-answer gate, or let the Host start once the minimum is in and treat the rest as watching? | ADR 0010 decision 1: Start is refused until every member who is here has chosen. A change would amend ADR 0010 decision 1 |
+| Q3 | **Settings ownership.** Are host settings always drawn by the platform shell from a declared closed vocabulary (§4.4), or may a game draw its own settings panel inside the briefing? | No accepted answer for settings in the briefing. ADR 0010 decision 5 refuses a game's own lobby `settings` verb in a Party round; a game-drawn panel would amend it, and either path needs the launch to carry values (§20) |
+| Q4 | **More players than seats.** When more people choose to play than the game allows, who plays: first to choose, Host picks, or rotation across rounds? | ADR 0010 decision 1: Start is refused with a sentence until someone changes their answer. Any allocation rule would amend ADR 0010 decision 1 |
+| Q5 | **Rematch.** May a game with no settings go straight to a new round with the same roles? | ADR 0011 decision 1: Play again goes to a new setup; ADR 0010 decision 2: no choices carry over. A shortcut would amend both |
+| Q6 | **One destructive confirmation.** Dialog (BLUFF) or tap-again (fallback End, EXPO) as the standard for End for everyone? Or dialog for turn-based and tap-again for real-time? | No accepted answer; ADR 0011 decision 5 only says BLUFF's End is "confirmed in its own dialog" |
+| Q7 | **Briefing identity.** How far may a game's art and accent take over the briefing (Rule 4.2): cover only (today), tint and hero art (proposed), or a game-drawn briefing inside a fixed platform frame? | ADR 0011 decision 4: the setup is the Party's own scene in the Party Home design system, with the game's art and title. A tint fits inside it; a game-drawn briefing would amend it |
+| Q8 | **System sound.** Is any platform sound wanted at all, given phones in a shared room, and if so is it on or off by default? | No accepted answer; AVR-56 lists "subtle platform sounds where useful" under "Consider" |
+| Q9 | **In-play platform presence.** May the platform ever draw over a game during play beyond connection state and the attention cue, for example the proposed chat HUD (COMMUNICATION) or a Control Center (AVR-83)? | ADR 0011 decision 5: the game owns the viewport and the page shows no Party prose. An overlay would amend it |
+| Q10 | **Direct titles.** Must every Party-integrated native game have a briefing? | ADR 0011 decision 1 allows a game without a pregame to go straight to `game`. Requiring a briefing would amend it; emulated titles have no briefing content today |
+| Q11 | **Rules in play.** Should the platform provide the in-play rules sheet for games that do not draw their own, which requires platform UI over the game on the game's page (and, under ADR 0013, across origins)? | ADR 0011 decision 5 as in Q9; no accepted answer for a platform rules sheet in play |
+| Q12 | **A game with no spectators.** If Watch is hidden when the Game Contract says `"spectators": "none"`, a member who cannot or does not want to play has no answer to give, and under the all-answer gate the Host can never start. In Limited Mode a phone that cannot play would have neither choice. What does such a member answer: a third "sitting out" state, an automatic non-answer that does not block, or Watch always offered regardless of the game? | ADR 0010 decision 1 (everyone here must choose) and ADR 0012 (a phone that cannot play "may always choose Watch, so it can never hold up a round"). Today Watch is always offered, so the case cannot arise; hiding Watch without answering this would break Start |
 
 ## 19. Evidence still outstanding
 
@@ -861,7 +924,7 @@ Each needs a decision this document does not make.
 | Adopt `avrana.onboarding/v1` | Quick Start, guide, example, reasons, settings | a schema and validator; AVR-37 for packaging |
 | Carry declared settings in the launch | the shell cannot hand settings to a game today | ADR 0006 session protocol (additive), paired PRs |
 | Per-action `available` / `reason` / `code` convention in a game's view | shared explanation primitive | games-side convention first; not a Party wire change |
-| Read Game Contract `spectators` in the briefing | Watch only when supported | shell only; no contract change |
+| Read Game Contract `spectators` in the briefing | Watch only when supported | not shell-only: hiding Watch interacts with ADR 0010's all-answer Start gate and ADR 0012's "may always choose Watch" (a member who can neither play nor watch has no answer and Start blocks). Needs Q12 answered and ADR 0011 decision 4 amended first; no wire change by itself |
 
 ## References
 
