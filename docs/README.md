@@ -27,6 +27,7 @@ second description of product state. [Linear](https://linear.app/avranakern) alo
 | [Agent environments](agents/) | Vendor/environment setup differences | Current tooling guidance only | AGENTS for all shared operational invariants |
 | [Branch inventory](branches.json) | Retention roles for divergent branches | Dated snapshot, canonical: false | GitHub refs for current source, Linear for active work |
 | [Deployment index](../deploy/README.md) | Configuration and operations file map | Source assets; no deployment claim | SYSTEM and relevant runbook |
+| [Rebuild runbook](runbooks/rebuild.md) and [appliance inventory](../deploy/appliance-inventory.json) (AVR-32) | What a clean target needs and the order to install it: automated steps, secret handoffs, owner-only actions, phone checks, rollback, and what the repository cannot say | Proposed procedure, **not run on any device**; the simulated rehearsal in the tests is not hardware evidence | SYSTEM for what is deployed; [deploy](runbooks/deploy.md) for a routine release |
 
 ## Maintaining the map
 
