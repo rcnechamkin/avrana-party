@@ -395,13 +395,24 @@ class Runbook(unittest.TestCase):
 
     def test_it_says_what_the_tool_does_to_a_running_machine(self):
         for sentence in ('does **not** install the `network-manager` package', 'starts nginx at once, on port 80',
-                         'install `git`, `sudo` and Python 3.11 or newer', '--target-hostname "$(hostname)"',
+                         'install `git`, `sudo` and Python 3.11 or newer',
                          '**No repository records the lego command', 'is not known (U5)',
                          'PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.rebuild apply --target-hostname',
                          'it is refused, like any other run, whenever one of the Avrana units',
+                         '## Real-host code that has never executed anywhere', 'may share a hostname (U6)',
+                         'restarts `systemd-journald` and reloads nginx even when nothing changed',
+                         '--target-hostname <the name you read on the card>',
                          'prints the `sudo systemctl stop'):
             self.assertIn(sentence, RUNBOOK)
         self.assertNotIn('sudo python3 -m avrana.ops.rebuild apply\n```', RUNBOOK)     # never without the name, never bytecode
+        self.assertNotIn('--target-hostname "$(hostname)"', RUNBOOK)                   # a check that cannot fail is no check
+        never_run = RUNBOOK.split('## Real-host code that has never executed anywhere')[1].split('\n## ')[0]
+        for name in ('Host.exists', 'link_target', 'has_package', 'has_group', 'user_groups', 'unit_sign', 'systemctl_show',
+                     '_own', 'symlink', 'remove', 'run', 'hostname', 'identity', 'live_checks', '/dev/uinput',
+                     'seal', 'restore', 'entries', '_parents'):
+            self.assertIn(name, never_run)
+            if name not in ('/dev/uinput', 'seal', 'restore'):
+                self.assertTrue(hasattr(rebuild.Host, name.replace('Host.', '')) or hasattr(rebuild, name), name)
         for line in RUNBOOK.splitlines():
             if line.startswith('sudo ') and 'avrana.ops.rebuild' in line and '#' not in line:
                 self.assertIn('PYTHONDONTWRITEBYTECODE=1', line)
@@ -594,7 +605,7 @@ class Recovery(Simulated):
     def test_restore_puts_back_what_one_apply_replaced_and_removed(self):
         host = self.host()
         host.install(b'debian default\n', '/etc/nginx/sites-enabled/default', 'root', 'root', '0644')
-        host.install(b'SystemMaxUse=1G\n', '/etc/systemd/journald.conf.d/avrana.conf', 'root', 'adm', '0640')
+        host.install(b'SystemMaxUse=1G\n', '/etc/systemd/journald.conf.d/avrana.conf', 'root', 'avrana-front', '0640')
         first = self.apply()
         self.assertRegex(first['backup'], r'^/var/backups/avrana-party/rebuild-\d{8}T\d{6}Z$')
         self.assertIsNone(self.host().kind('/etc/nginx/sites-enabled/default'))
@@ -616,7 +627,7 @@ class Recovery(Simulated):
         host = self.host(readonly=True)
         self.assertEqual(host.path('/etc/nginx/sites-enabled/default').read_bytes(), b'debian default\n')
         self.assertEqual(host.path('/etc/systemd/journald.conf.d/avrana.conf').read_bytes(), b'SystemMaxUse=1G\n')
-        self.assertEqual(host.meta('/etc/systemd/journald.conf.d/avrana.conf'), ('root', 'adm', '0640'))
+        self.assertEqual(host.meta('/etc/systemd/journald.conf.d/avrana.conf'), ('root', 'avrana-front', '0640'))
         self.assertEqual(host.meta(first['backup']), ('root', 'root', '0700'))
         with self.assertRaises(rebuild.RebuildError):
             rebuild.restore(INV, self.host(), '/var/backups/avrana-party/nothing')
@@ -719,7 +730,8 @@ class Recovery(Simulated):
                        {'path': 'etc/systemd/journald.conf.d/avrana.conf'}, {'path': '/etc/avrana-party/game-keys/bluff.key'},
                        {'path': '/etc/avrana-party/party-core.json/../game-keys/bluff.key'},
                        {'copy': '../../../../etc/avrana-party/game-keys/bluff.key'}, {'copy': 'files/999'},
-                       {'kind': 'dir'}, {'meta': ['root', 'root', '4755x']}):
+                       {'kind': 'dir'}, {'meta': ['root', 'root', '4755x']}, {'meta': ['cody', 'root', '0644']},
+                       {'meta': ['root', 'somebody', '0644']}):
             journal.write_text(json.dumps([dict(good[0], **change)]), encoding='utf-8')
             before = tree(self.root)
             with self.subTest(change=change), self.assertRaises(rebuild.RebuildError) as refused:
@@ -810,7 +822,8 @@ class Guard(Simulated):
         self.assertEqual(self.host().meta('/etc/avrana-party/game-keys'), ('cody', 'cody', '0700'))
         self.assertEqual(self.host().path('/etc/nginx/sites-available/avrana-party').read_bytes(), b'old site\n')
         self.assertEqual(self.host().kind('/etc/nginx/sites-enabled/default'), 'file')
-        self.refused('restore', '/var/backups/avrana-party/rebuild-20260101T000000Z', self.OVERRIDE)
+        self.refused('restore', '/var/backups/avrana-party/rebuild-20260101T000000Z', self.OVERRIDE,
+                     '--target-hostname', self.NAME)
         host = self.host()                               # stopped but still enabled: still an appliance
         for state in host.ledger['units'].values():
             state['active'] = False
@@ -823,7 +836,8 @@ class Guard(Simulated):
         host.install(b'stand-in', '/opt/avrana-party/current/avrana/ops/smoke.py', 'root', 'root', '0644')
         host.install(b'{}', '/var/lib/avrana-party/deployment.json', 'root', 'root', '0644')
         self.assertIn('refused', self.refused('apply', '--target-hostname', self.NAME))
-        self.assertIn('must name it', self.refused('apply', self.OVERRIDE))          # the hostname is still asked
+        for argv in (['apply'], ['restore', '/var/backups/avrana-party/rebuild-20260101T000000Z']):
+            self.assertIn('must name the machine too', self.refused(*argv, self.OVERRIDE))   # the override too
         result = self.apply(owner_override=True)
         self.assertEqual(result['failed'], [])
         marker = json.loads(self.host().path(self.MARKER).read_text(encoding='utf-8'))
@@ -831,6 +845,131 @@ class Guard(Simulated):
         self.assertIn('/opt/avrana-party exists', marker['signs_at_creation'])
         self.assertEqual(self.apply()['changed'], [])                                # open now: no flag needed
         self.assertIn(f'`{self.OVERRIDE}`', RUNBOOK)
+
+    def test_a_path_with_dot_dot_never_reaches_a_secret(self):
+        """The host-level check normalised nothing: `/etc/avrana-party/x/../game-keys/x` passed it."""
+        self.step_one()
+        host = self.host()
+        key = '/etc/avrana-party/game-keys/bluff.key'
+        self.place_secret(key, 'cody', 'cody', '0600')
+        before = tree(self.root)
+        for path in ('/etc/avrana-party/x/../game-keys/x', '/etc/avrana-party/x/../game-keys/bluff.key',
+                     '/etc/avrana-party/game-keys/../game-keys/bluff.key', '/var/lib/avrana-party/../avrana-party/lego/a',
+                     '/etc/../etc/avrana-party/cloudflare.env', 'etc/avrana-party/game-keys/bluff.key', '../x', ''):
+            for touch in (lambda: host.install(b'x', path, 'root', 'root', '0600'), lambda: host.remove(path),
+                          lambda: host.symlink('/x', path), lambda: host.sha256(path),
+                          lambda: host.mkdir(path, 'root', 'root', '0700'),
+                          lambda: rebuild._record(host, [], '/var/backups/avrana-party/rebuild-x', path)):
+                with self.subTest(path=path), self.assertRaises(rebuild.RebuildError):
+                    touch()
+        self.assertEqual(tree(self.root), before)
+        self.assertEqual(host.path(key).read_bytes(), SENTINEL)
+
+    def test_a_marker_written_for_another_machine_opens_nothing(self):
+        self.live_appliance()
+        foreign = {'schema': 'avrana.rebuild-marker/v0', 'created': '20260101T000000Z', 'hostname': 'spare-card'}
+        self.host().install(json.dumps(foreign).encode(), self.MARKER, 'root', 'root', '0644')
+        self.assertIsNone(rebuild.read_marker(INV, self.host(readonly=True)))
+        self.assertEqual(rebuild.guard_state(INV, self.host(readonly=True)), 'appliance')
+        for argv in (['apply'], ['apply', '--activate'], ['apply', '--target-hostname', self.NAME],
+                     ['restore', '/var/backups/avrana-party/rebuild-20260101T000000Z'], ['seal']):
+            self.assertIn('refused', self.refused(*argv), argv)
+        self.assertEqual(self.ran(), [])
+        lines = []
+        with contextlib.redirect_stderr(io.StringIO()):
+            rebuild.main(['plan', '--root', str(self.root)], out=lines.append)
+        self.assertIn("written for another machine ('spare-card'; this one is 'simulated-host') and is ignored", lines[1])
+        # The same file on the machine it names is a marker.
+        host = self.host()
+        host.ledger['hostname'] = 'spare-card'
+        host._save()
+        self.assertEqual(rebuild.guard_state(INV, self.host(readonly=True)), 'open')
+
+    def test_a_systemd_that_does_not_answer_is_a_sign_not_an_all_clear(self):
+        """The override's "no service running" was read from `systemctl` output; a timeout came
+        back as None and counted as not running. The parsing and the question are the real-host
+        code; only the process is replaced."""
+        def shown(active, file_state, load='loaded'):
+            return f'LoadState={load}\nActiveState={active}\nUnitFileState={file_state}\n'
+        for text_, sign in ((None, rebuild.UNANSWERED), ('', rebuild.UNANSWERED), ('garbage', rebuild.UNANSWERED),
+                            ('ActiveState=active\n', rebuild.UNANSWERED),
+                            (shown('active', 'enabled'), 'active'), (shown('activating', 'disabled'), 'activating'),
+                            (shown('reloading', 'disabled'), 'reloading'), (shown('deactivating', ''), 'deactivating'),
+                            (shown('failed', 'enabled'), 'failed but enabled'), (shown('inactive', 'enabled'), 'enabled'),
+                            (shown('inactive', 'linked'), 'linked'), (shown('inactive', 'enabled-runtime'), 'enabled-runtime'),
+                            (shown('inactive', 'disabled'), None), (shown('failed', 'disabled'), None),
+                            (shown('inactive', '', load='not-found'), None)):
+            self.assertEqual(rebuild.unit_sign(text_), sign, text_)
+
+        def timeout(argv, **kw):
+            raise rebuild.subprocess.TimeoutExpired(argv, 20)
+
+        def missing(argv, **kw):
+            raise FileNotFoundError('systemctl')
+        calls = []
+
+        def answers(argv, **kw):
+            calls.append(argv)
+            return mock.Mock(returncode=0, stdout=shown('inactive', 'disabled').encode())
+        self.assertIsNone(rebuild.systemctl_show('avrana-party-core', runner=timeout))
+        self.assertIsNone(rebuild.systemctl_show('avrana-party-core', runner=missing))
+        self.assertIsNone(rebuild.systemctl_show('x', runner=lambda argv, **kw: mock.Mock(returncode=1, stdout=b'')))
+        self.assertIsNone(rebuild.unit_sign(rebuild.systemctl_show('avrana-party-core', runner=answers)))
+        self.assertEqual(calls, [['systemctl', 'show', '--property=LoadState,ActiveState,UnitFileState', 'avrana-party-core']])
+        # A half-built target (paths, no marker) on which systemd does not answer: the override is refused.
+        self.step_one()
+        self.host().install(b'{}', '/var/lib/avrana-party/deployment.json', 'root', 'root', '0644')
+        before = tree(self.root)
+        for query in (lambda name: None, lambda name: '', lambda name: shown('activating', 'disabled'),
+                      lambda name: shown('failed', 'enabled'), lambda name: shown('inactive', 'linked')):
+            deaf = rebuild.Host(self.root, unit_query=query)
+            self.assertEqual(len(rebuild.appliance_units(INV, deaf)), len(INV['guard']['appliance_units']))
+            for command in ('apply', 'restore'):
+                with self.assertRaises(rebuild.RebuildError) as refused:
+                    rebuild.authorize(INV, deaf, command, owner_override=True, target_hostname=self.NAME)
+                self.assertIn('override included', str(refused.exception))
+            with self.assertRaises(rebuild.RebuildError):
+                rebuild.apply(INV, deaf, owner_override=True, target_hostname=self.NAME, log=lambda *_: None)
+        self.assertEqual((tree(self.root), self.ran()), (before, []))
+        with self.assertRaises(rebuild.RebuildError) as refused:
+            rebuild.authorize(INV, rebuild.Host(self.root, unit_query=lambda name: None), 'apply',
+                              owner_override=True, target_hostname=self.NAME)
+        self.assertIn('avrana-party-core is not answering', str(refused.exception))
+        # ...and with systemd answering "nothing runs" the same override goes on.
+        quiet = rebuild.Host(self.root, unit_query=lambda name: shown('inactive', '', load='not-found'))
+        rebuild.authorize(INV, quiet, 'restore', owner_override=True, target_hostname=self.NAME)
+        # A unit whose state cannot be read is treated as running when its file would be replaced.
+        self.assertEqual(rebuild._running_unit(rebuild.Host(self.root, unit_query=lambda name: None),
+                                               '/etc/systemd/system/avrana-party-core.service'), 'avrana-party-core')
+
+    def test_a_populated_key_store_of_another_owner_is_never_re_owned(self):
+        """An old-layout host with every unit stopped and disabled, the override given: the key
+        store went from the operator to avrana-party with a key inside."""
+        self.step_one()
+        host = self.host()
+        host.mkdir('/etc/avrana-party/game-keys', 'cody', 'cody', '0700')
+        self.place_secret('/etc/avrana-party/game-keys/bluff.key', 'cody', 'cody', '0600')
+        result = self.apply(owner_override=True)
+        self.assertEqual(result['failed'], [])
+        self.assertNotIn('directory /etc/avrana-party/game-keys', result['changed'])
+        self.assertEqual(self.host().meta('/etc/avrana-party/game-keys'), ('cody', 'cody', '0700'))
+        step = next(s for s in self.plan() if s['name'] == '/etc/avrana-party/game-keys')
+        self.assertEqual(step['status'], rebuild.HANDOFF)
+        self.assertIn('owner decides: /etc/avrana-party/game-keys belongs to cody and holds 1 entries', step['detail'])
+        self.assertIn(('party', 'directory /etc/avrana-party/game-keys', rebuild.FAIL),
+                      [r[:3] for r in rebuild.verify(INV, self.host(readonly=True))])
+        with self.assertRaises(rebuild.RebuildError):                # and the host refuses by itself
+            self.host().mkdir('/etc/avrana-party/game-keys', 'avrana-party', 'avrana-party', '0700')
+        self.assertEqual(self.host().meta('/etc/avrana-party/game-keys'), ('cody', 'cody', '0700'))
+        # An empty one, or one that already belongs to the service user, is set as before.
+        (self.root / 'etc/avrana-party/game-keys/bluff.key').unlink()
+        self.assertIn('directory /etc/avrana-party/game-keys', self.apply()['changed'])
+        self.assertEqual(self.host().meta('/etc/avrana-party/game-keys'), ('avrana-party', 'avrana-party', '0700'))
+        self.place_secret('/etc/avrana-party/game-keys/bluff.key', 'avrana-party', 'avrana-party', '0600')
+        loose = self.host()
+        loose.ledger['meta']['/etc/avrana-party/game-keys'] = ['avrana-party', 'avrana-party', '0750']
+        loose._save()
+        self.assertIn('directory /etc/avrana-party/game-keys', self.apply()['changed'])      # same owner: mode repaired
 
     def test_each_sign_alone_is_enough(self):
         for path in INV['guard']['appliance_paths']:
@@ -952,7 +1091,7 @@ class Guard(Simulated):
         self.assertIn('was sealed', self.refused('apply', '--target-hostname', self.NAME))
         self.assertIn('was sealed', self.refused('restore', backup))
         self.assertIn('override included', self.refused('apply', self.OVERRIDE, '--target-hostname', self.NAME))
-        self.assertIn('override included', self.refused('restore', backup, self.OVERRIDE))
+        self.assertIn('override included', self.refused('restore', backup, self.OVERRIDE, '--target-hostname', self.NAME))
         self.assertEqual(len(self.ran()), ran)
         sealed = self.host().path(self.MARKER).read_bytes()
         with contextlib.redirect_stderr(io.StringIO()):                              # sealing twice changes nothing

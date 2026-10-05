@@ -44,10 +44,13 @@ Which hosts `apply`, `restore` and `seal` will change (`plan` and `verify` only 
   appliance  signs and no valid marker, e.g. today's Pi: refused before a single package, user,
              file or command, exit 2. Moving it is docs/runbooks/service-users-migration.md.
 
-`--owner-confirms-not-the-live-appliance` gets past a refusal only when NO appliance service is
-enabled or running: a half-built target whose marker was lost, or where ops/deploy.sh ran before
-the first apply. With a service enabled or running it is refused too. NEVER RUN ON THE APPLIANCE
-as of this commit.
+A marker counts only on the machine whose hostname it records. `--owner-confirms-not-the-live-appliance`
+(with `--target-hostname`) gets past a refusal only when NO appliance service is running,
+starting or set to start, and systemd answers the question: a half-built target whose marker was
+lost, or where ops/deploy.sh ran before the first apply. Otherwise it is refused too, and even
+then a key store that holds keys and belongs to another user is never re-owned (a handoff).
+NEVER RUN ON THE APPLIANCE as of this commit, and most of the real-host code has never executed
+anywhere: docs/runbooks/rebuild.md lists it.
 
 `--root DIR` works on a SIMULATED host: file contents are real files under DIR; owners, modes,
 links, users, packages, units and the commands that would have run are kept in a ledger file
@@ -116,6 +119,38 @@ def is_secret(path, exact_tree_ok=False):
     if path in SECRET_FILES:
         return True
     return any(path.startswith(tree + '/') or (path == tree and not exact_tree_ok) for tree in SECRET_TREES)
+
+
+# Unit states that mean "this service is, or is about to be, running" and "systemd will start it".
+RUNNING_STATES = ('active', 'activating', 'reloading', 'deactivating')
+ENABLED_STATES = ('enabled', 'enabled-runtime', 'linked', 'linked-runtime', 'static', 'alias', 'indirect', 'generated')
+UNANSWERED = 'not answering (systemctl gave no usable answer)'
+
+
+def systemctl_show(name, runner=subprocess.run):
+    """`systemctl show` for one unit, or None when systemd cannot be asked. Reads only."""
+    try:
+        out = runner(['systemctl', 'show', '--property=LoadState,ActiveState,UnitFileState', name],
+                     capture_output=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return out.stdout.decode('utf-8', 'replace') if out.returncode == 0 else None
+
+
+def unit_sign(shown):
+    """From `systemctl show` output: None when the unit is neither running nor set to start,
+    else what it is. No answer is a sign too: a guard that cannot see must refuse."""
+    props = dict(line.split('=', 1) for line in (shown or '').splitlines() if '=' in line)
+    if 'LoadState' not in props or 'ActiveState' not in props:
+        return UNANSWERED
+    active, file_state = props['ActiveState'], props.get('UnitFileState', '')
+    if active in RUNNING_STATES:
+        return active
+    if file_state in ENABLED_STATES:
+        return 'failed but ' + file_state if active == 'failed' else file_state
+    return None
+
+
 SMOKE_AREAS = {'captive_probe': 'nginx', 'party_home': 'party', 'party_core': 'party', 'status': 'health',
                'games_provider': 'games', 'arcade': 'arcade', 'encoder': 'arcade', 'unit': 'health',
                'certificate': 'tls', 'dns': 'dns'}
@@ -278,7 +313,8 @@ class Host:
     """A real host, or a simulated one under `root` (contents real, everything else in a ledger)."""
     LEDGER = '.avrana-rebuild-simulation.json'
 
-    def __init__(self, root=None, readonly=False, runner=subprocess.run):
+    def __init__(self, root=None, readonly=False, runner=subprocess.run, unit_query=None):
+        self.unit_query = unit_query    # name -> `systemctl show` text or None; replaces the real question
         self.simulated = root is not None
         self.root = Path(root) if self.simulated else Path('/')
         self.readonly = readonly
@@ -348,8 +384,32 @@ class Host:
         return name(pwd.getpwuid, st.st_uid), name(grp.getgrgid, st.st_gid), f'{stat.S_IMODE(st.st_mode):04o}'
 
     def _never_a_secret(self, path, exact_tree_ok=False):
+        """Every path this object writes, links, removes, hashes or backs up passes here first.
+        A path that is not absolute or has a `..` part is refused outright, so nothing can reach a
+        secret by a detour; then the secret trees and files themselves."""
+        if not isinstance(path, str) or not path.startswith('/') or '..' in PurePosixPath(path).parts:
+            raise RebuildError(f'{path!r} is not an absolute path without "..": refused')
         if path in self.secret_paths or is_secret(path, exact_tree_ok):
             raise RebuildError(f'{path} is a secret or inside a secret tree; never read, written or removed here')
+
+    def entries(self, path):
+        """The names in a directory (never their contents), or None when it cannot be listed."""
+        try:
+            return sorted(os.listdir(self.path(path)))
+        except OSError:
+            return None
+
+    def populated_secret_tree(self, path, owner):
+        """Is `path` a secret tree that holds something and belongs to somebody else? Then its
+        owner and mode are the owner's decision: the services that read those keys run as that
+        user. An unlistable directory counts as populated."""
+        if path not in SECRET_TREES or self.kind(path) != 'dir':
+            return None
+        names, meta = self.entries(path), self.meta(path)
+        if names == [] or (meta and meta[0] == owner):
+            return None
+        return f'{path} belongs to {meta[0] if meta else "an unknown owner"} and holds ' \
+               f'{len(names) if names is not None else "an unknown number of"} entries'
 
     def hostname(self):
         return self.ledger.get('hostname', 'simulated-host') if self.simulated else socket.gethostname()
@@ -414,6 +474,18 @@ class Host:
         return (self._query(['systemctl', 'is-enabled', name]) in ('enabled', 'static', 'enabled-runtime'),
                 self._query(['systemctl', 'is-active', name]) == 'active')
 
+    def unit_sign(self, name):
+        """None, or how this unit is running or set to start (see unit_sign). What the guard
+        and the override ask; an unanswerable systemd is a sign."""
+        if self.unit_query is not None:
+            return unit_sign(self.unit_query(name))
+        if self.simulated:
+            state = self.ledger['units'].get(name, {})
+            if 'show' in state:                        # raw `systemctl show` text, or None, for tests
+                return unit_sign(state['show'])
+            return 'active' if state.get('active') else ('enabled' if state.get('enabled') else None)
+        return unit_sign(systemctl_show(name, self.runner))
+
     # -- changing
     def _guard(self):
         if self.readonly:
@@ -444,6 +516,9 @@ class Host:
     def mkdir(self, path, owner, group, mode):
         self._guard()
         self._never_a_secret(path, exact_tree_ok=True)
+        theirs = self.populated_secret_tree(path, owner)
+        if theirs:
+            raise RebuildError(f'{theirs}: its owner and mode are not changed here')
         real = self.path(path)
         self._parents(real)
         if real.exists() and not real.is_dir():
@@ -541,7 +616,7 @@ def _running_unit(host, path):
     name = path[len(prefix):].split('/')[0]
     name = name[:-2] if name.endswith('.d') else name
     name = name[:-len('.service')] if name.endswith('.service') else name
-    return name if host.unit(name)[1] else None
+    return name if host.unit_sign(name) in RUNNING_STATES + (UNANSWERED,) else None
 
 
 def plan(inv, host, party_root=REPO_ROOT, games_source=GAMES_RELEASE):
@@ -595,8 +670,12 @@ def plan(inv, host, party_root=REPO_ROOT, games_source=GAMES_RELEASE):
     for d in inv['directories']:
         want = (d['owner'], d['group'], d['mode'])
         wait = waiting(d)
+        theirs = host.populated_secret_tree(d['path'], d['owner'])
         if host.kind(d['path']) == 'dir' and host.meta(d['path']) == want:
             status, detail = OK, ''
+        elif theirs:
+            status, detail = HANDOFF, (f'owner decides: {theirs}. This tool does not re-own a populated key store: '
+                                       'whoever runs the services that read it would lose it')
         elif wait:
             status, detail = BLOCKED, wait
         else:
@@ -682,18 +761,15 @@ def appliance_signs(inv, host):
 
 
 def appliance_units(inv, host):
-    """[(unit, 'active' or 'enabled')] for the Avrana units that are either."""
-    out = []
-    for name in inv['guard']['appliance_units']:
-        enabled, active = host.unit(name)
-        if enabled or active:
-            out.append((name, 'active' if active else 'enabled'))
-    return out
+    """[(unit, state)] for the Avrana units that are running, starting, set to start, or about
+    which systemd gives no answer."""
+    return [(name, sign) for name in inv['guard']['appliance_units'] for sign in [host.unit_sign(name)] if sign]
 
 
-def read_marker(inv, host):
-    """The marker of a first apply, or None. A directory, a link, unparsable JSON or a document
-    without the expected fields is no marker: the guard then judges the host by its signs."""
+def read_marker(inv, host, any_machine=False):
+    """The marker of a first apply on THIS machine, or None. A directory, a link, unparsable JSON,
+    a document without the expected fields, or a marker written on a machine of another name
+    (a card moved, a file copied) is no marker: the guard then judges the host by its signs."""
     path = inv['guard']['marker']
     if host.kind(path) != 'file':
         return None
@@ -706,6 +782,8 @@ def read_marker(inv, host):
     if not all(isinstance(doc.get(key), str) and doc[key] for key in ('created', 'hostname')):
         return None
     if doc.get('sealed') is not None and not isinstance(doc['sealed'], str):
+        return None
+    if doc['hostname'] != host.hostname() and not any_machine:
         return None
     return doc
 
@@ -728,7 +806,15 @@ def describe_guard(inv, host):
         'appliance': 'guard: an appliance is installed here and there is no valid rebuild marker: apply and restore are '
                      'refused (docs/runbooks/service-users-migration.md)',
         'clean': 'guard: clean target, no marker: the first apply needs --target-hostname ' + host.hostname(),
-    }[state]
+    }[state] + _foreign_marker_note(inv, host)
+
+
+def _foreign_marker_note(inv, host):
+    if read_marker(inv, host):
+        return ''
+    foreign = read_marker(inv, host, any_machine=True)
+    return (f'. NOTE: the marker there was written for another machine ({foreign["hostname"]!r}; this one is '
+            f'{host.hostname()!r}) and is ignored') if foreign else ''
 
 
 def _party_sha(party_root):
@@ -781,6 +867,9 @@ def authorize(inv, host, command, party_root=REPO_ROOT, owner_override=False, no
                 + '. The override is only for a half-built target on which no appliance service is enabled or '
                 'running (a lost marker, or ops/deploy.sh run before the first apply). A host with services is '
                 'a live appliance: docs/runbooks/service-users-migration.md.')
+    if owner_override and state in ('sealed', 'appliance') and target_hostname is None:
+        raise RebuildError(f'{command} refused, nothing was changed: the override must name the machine too. This '
+                           f'machine is {name!r}: --target-hostname {name}')
     if command != 'apply':
         if state == 'clean':
             raise RebuildError(f'{command} refused, nothing was changed: no rebuild marker at {marker_path}, so this '
@@ -947,6 +1036,7 @@ def _journal(inv, host, backup):
     except ValueError:
         journal = None
     managed = {e['path'] for e in inv['files'] + inv['links'] + inv['absent']}
+    names = {'root'} | {u['name'] for u in inv['users']} | {g['name'] for g in inv['groups']}
     if not isinstance(journal, list):
         raise RebuildError(f'{backup}/journal.json is not a journal')
     for entry in journal:
@@ -958,7 +1048,8 @@ def _journal(inv, host, backup):
         if kind == 'file':
             meta = entry.get('meta')
             if not re.fullmatch(r'files/\d{3}', str(entry.get('copy'))) or not host.path(f'{backup}/{entry["copy"]}').is_file() \
-                    or not (isinstance(meta, list) and len(meta) == 3 and _mode_ok(meta[2])):
+                    or not (isinstance(meta, list) and len(meta) == 3 and _mode_ok(meta[2])
+                            and meta[0] in names and meta[1] in names):
                 raise RebuildError(f'restore refused, nothing was changed: the journal entry for {path} is damaged')
         elif kind == 'link':
             if not _absolute(entry.get('target')):
@@ -968,12 +1059,12 @@ def _journal(inv, host, backup):
     return backup, journal
 
 
-def restore(inv, host, backup, owner_override=False):
+def restore(inv, host, backup, owner_override=False, target_hostname=None):
     """Put back every path one `apply` replaced or removed, newest first. Users, groups, packages
     and directories stay: they grant nothing by themselves and the next apply reuses them. Only on
     a host `authorize` lets through, and never under a running service: a unit file or drop-in of
     an active unit is not touched until the owner has stopped that unit."""
-    authorize(inv, host, 'restore', owner_override=owner_override)
+    authorize(inv, host, 'restore', owner_override=owner_override, target_hostname=target_hostname)
     backup, journal = _journal(inv, host, backup)
     running = sorted({unit for unit in (_running_unit(host, e['path']) for e in journal) if unit})
     if running:
@@ -1122,7 +1213,8 @@ def main(argv=None, out=print):
     ap.add_argument('--activate', action='store_true',
                     help='apply: also run the reload commands of everything in place and start the units')
     ap.add_argument('--target-hostname', metavar='NAME',
-                    help='apply: the hostname of the machine you mean to build; required for the first apply')
+                    help='apply/restore: the hostname of the machine you mean to change, typed, not computed; '
+                         'required for the first apply and with the override')
     ap.add_argument('--owner-confirms-not-the-live-appliance', dest='owner_override', action='store_true',
                     help='apply/restore: OWNER ONLY, typed by a person, on a half-built target (marker lost, or '
                          'deploy before the first apply). Refused whenever an appliance service is enabled or running')
@@ -1187,7 +1279,8 @@ def main(argv=None, out=print):
         if args.command == 'restore':
             if not args.backup:
                 raise RebuildError('restore needs the backup directory')
-            for path in restore(inv, host, args.backup, owner_override=args.owner_override):
+            for path in restore(inv, host, args.backup, owner_override=args.owner_override,
+                                target_hostname=args.target_hostname):
                 out(f'restored {path}')
             out('reload what reads them: sudo systemctl daemon-reload; sudo nginx -t && sudo systemctl reload nginx')
             return 0

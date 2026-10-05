@@ -88,15 +88,21 @@ These are scripts. Each can be run twice; the second run changes nothing.
 ```bash
 cd /home/cody/avrana-party
 python3 -m avrana.ops.rebuild check && python3 -m avrana.ops.rebuild plan
-sudo PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.rebuild apply --target-hostname "$(hostname)"
+sudo PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.rebuild apply --target-hostname <the name you read on the card>
 ```
 
-Read what `plan` prints before the third line, and type the hostname rather than `$(hostname)`
-if you are not certain which machine the terminal is on: that argument is the one check that
-this is the card you mean to build. On any Linux machine that shows no sign of an appliance,
-`apply` as root would otherwise install all of this. A name that is not the machine's own is
-refused; `apply` then prints the hostname, OS release and architecture it is about to change
-and records them in the marker.
+Type the name; do not let the shell compute it. Passing the output of `hostname` there is always
+true and checks nothing: the argument exists so that a terminal which is on another machine
+than you think (a laptop, the wrong SSH session) refuses. Give the new card a hostname of its
+own in step 1 and type that. On any Linux machine that shows no sign of an appliance, `apply` as
+root would otherwise install all of this. A name that is not the machine's own is refused;
+`apply` then prints the hostname, OS release and architecture it is about to change and records
+them in the marker, and a marker counts only on the machine whose name it records.
+
+**The hostname does not protect the Pi that hosts parties.** A fresh card and today's Pi
+may share a hostname (U6): the records call the Pi both `party` and `RaspberryPi`, the image
+default. What protects the live Pi is that it has the units and install paths of an appliance
+and no marker; the name only catches the wrong terminal.
 
 The first thing the first `apply` does, on a host with none of the signs above, is write
 `/var/lib/avrana-rebuild/marker.json` (root-owned: the UTC time, the Party commit, the machine).
@@ -161,6 +167,11 @@ lines, `nginx -t`, the nginx reload, and `systemctl enable --now` for each unit 
 met (providers before Party Core; never NetworkManager). Those seven reload commands are fixed
 in the code: the inventory cannot add one. If one fails nothing after it runs; see "Rollback
 and recovery".
+
+**Every `apply --activate` restarts `systemd-journald` and reloads nginx even when nothing changed,**
+and re-runs the other reload commands, with no check for a party in progress (`ops/deploy.sh`
+refuses while a session is live; this does not). That is acceptable only on a card under build,
+before `seal`; it is one more reason to seal, after which `apply` refuses.
 
 **Step 9.**
 
@@ -256,11 +267,14 @@ every boot.
 **Overriding the guard.** `--owner-confirms-not-the-live-appliance` exists for one situation: a
 card that has never hosted a party, on which `apply` refuses because install paths exist but the
 marker does not. That happens when the marker was lost, or when `ops/deploy.sh` ran before the
-first `apply`. What it can do: let `apply` (with `--target-hostname`) or `restore` go on there;
-`apply` writes the marker and records in it that it was overridden and what it saw. What it
-cannot do: it is refused, like any other run, whenever one of the Avrana units
+first `apply`. What it can do: let `apply` or `restore`, each with `--target-hostname`, go on
+there; `apply` writes the marker and records in it that it was overridden and what it saw. What
+it cannot do: it is refused, like any other run, whenever one of the Avrana units
 (`avrana-party-core`, `avranaparty-games`, `avranaparty-arcade`, the certificate timer) is
-enabled or running, sealed or not. A host with services is a live appliance and no flag makes
+running, starting, failed-but-enabled, enabled or linked, or when `systemctl` gives no answer
+about one, sealed or not. And it never changes the owner or mode of a key store that holds keys
+and belongs to another user: `plan` shows that directory as a handoff ("owner decides"), because
+re-owning it takes the keys away from whoever runs the services that read them. A host with services is a live appliance and no flag makes
 this tool change it. It cannot be abbreviated, is never typed by an agent, and is never the
 answer to a refusal that was not understood: read what `apply` printed first.
 
@@ -402,6 +416,24 @@ the inventory are corrected from them.
 | U11 | sudoers, polkit and sshd for the operator account; whether a default nginx site was removed by hand | `ls -l /etc/nginx/sites-enabled/` |
 | U12 | Whether the phase-1 layout runs on the Pi at all | the first supervised rebuild or migration, then `verify` |
 | U13 | The exact lego command line that issues `party.avrana.net` by DNS-01 | `lego --help`; the shell history of the 2026-09-25 issuance, if kept |
+
+## Real-host code that has never executed anywhere
+
+The tests run on a simulated host and, so far, only on Windows. The first supervised run on a
+spare card is therefore also the first execution of all of this; watch each of these do what it
+says, and treat a surprise as a finding.
+
+| Never executed | What it does on a real host |
+|---|---|
+| `Host.exists`, `Host.kind`, `Host.meta`, `link_target`, `entries` | `stat`, `readlink` and `listdir` on real paths, including root-only ones |
+| `has_package`, `has_group`, `user_groups` (for a user that exists) | `dpkg-query`, the group and password databases |
+| `Host.unit`, `unit_sign`, `systemctl_show`, `_query` against a real systemd | `systemctl show`, `is-enabled`, `is-active`; the tests feed the parser text, they never ask systemd |
+| `_own`, `_parents`, and the `chmod`/`chown` in `install` and `mkdir` | ownership and modes; a missing user or group ends the run with exit 1 |
+| real `symlink`, `remove`, `run` | the `sites-enabled` link, removing Debian's default site, and every command: `apt-get`, `groupadd`, `useradd`, `usermod`, the seven reload commands, `systemctl enable --now` |
+| `hostname`, `identity` | `socket.gethostname()` and `/etc/os-release`, which `--target-hostname` and the marker rely on |
+| `live_checks`, all of it | the smoke set, `tools/avrana-topology-check`, the service boundary, the `party-core.json` check and the `/dev/uinput` check, as called from `verify` |
+| the marker written, `seal` and `restore` on a real filesystem | atomic replace under `/var/lib/avrana-rebuild` and `/var/backups/avrana-party` |
+| the Linux-only test (`test_a_real_host_is_read_but_never_changed_without_root`) | it has been read, never run; Linux CI will be its first execution |
 
 ## Tests
 
