@@ -1147,6 +1147,10 @@ ordinary way; they are not listed again.
   sound are not built. The AVR-245 and AVR-263 ones describe EXPO work that is not on `main` at the commits
   named at the top; the AVR-240 one is about who may end a game and names no pending work in
   the supported path.
+- The owner's UX/UI direction for the system shell (AVR-56, 2026-10-05 18:13 UTC) is not folded
+  into this document. Where it differs from what is recorded here as implemented (a neutral Host
+  badge instead of the crown in Rules 4.1 and 6.4, chat as a drawer from games in Rule 3.6,
+  typography), the direction governs the redesign; its own audit and wireframes come first.
 - The real-time pressure test is reasoning without a game. Checkers and Spades (ADR 0014's
   validation order) will test the simple and the team/private-hand cases.
 - The EXPO evidence is its source and its hand-run playtests; EXPO states no deployment and no
