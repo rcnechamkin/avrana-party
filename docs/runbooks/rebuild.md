@@ -15,14 +15,16 @@ Read these three limits first.
    has never run on the Pi: today every service runs as the operator account from the checkouts,
    and the games unit installed there is in no repository. A rebuild from source therefore
    produces the phase-1 layout. Rebuilding today's Pi exactly is not possible from source.
-2. **`apply` and `restore` do not run on the running Pi, and refuse to.** A host that already
-   has an Avrana unit enabled or running, or any install path of today's layout (the key store,
-   the site file, the web root, the releases, the deployment manifest: the inventory's `guard`
-   lists them), and no marker of this tool, is refused with exit 2 before a package, a user, a
-   file or a command. That host is a migration
+2. **`apply`, `restore` and `seal` change only a card that is being built, and refuse every
+   other host.** A host that has an Avrana unit enabled or running, or any install path of
+   today's layout (the key store, the site file, the web root, the releases, the deployment
+   manifest: the inventory's `guard` lists them), and no valid marker of this tool, is refused
+   with exit 2 before a package, a user, a file or a command. So is a rebuilt card after `seal`
+   (the last step below). That host is a migration
    ([service-users-migration](service-users-migration.md)), which moves state and can be
-   reversed. `plan` and `verify` only read and are safe anywhere; on such a host `plan` says
-   that `apply` would be refused.
+   reversed. The owner's override does not change this for a host with a service enabled or
+   running: it is refused too (section 3). `plan` and `verify` only read, are safe anywhere, and
+   say which of the four states the host is in: clean, open, sealed, or an appliance.
 3. **This is not an image.** No OS image is built, no card is written, nothing updates over the
    air. Image-based install and A/B rollback are later work (AVR-67, AVR-82).
 
@@ -44,14 +46,18 @@ confirmed on the device). `python3 -m avrana.ops.rebuild packages` prints the na
 ```bash
 python3 -m avrana.ops.rebuild check       # the inventory against the repository (any machine)
 python3 -m avrana.ops.rebuild plan        # read-only: in place / this tool can do / waits for / handoff
+sudo python3 -m avrana.ops.rebuild apply --target-hostname NAME   # the first apply names the machine
 sudo python3 -m avrana.ops.rebuild apply  # everything whose needs are met; run again after each handoff
 sudo python3 -m avrana.ops.rebuild verify # state, smoke, topology, boundary; then the phone checklist
+sudo python3 -m avrana.ops.rebuild seal   # the build is accepted: apply and restore refuse from now on
 python3 -m avrana.ops.rebuild unknowns    # what the owner confirms on the device
 ```
 
 Run them from a tree of the commit being installed: the checkout at first, then
-`/opt/avrana-party/current` once it exists (`cd` there; add `PYTHONDONTWRITEBYTECODE=1` under
-`sudo` so no bytecode lands in a release). `--root DIR` works on a simulated host under `DIR` and
+`/opt/avrana-party/current` once it exists (`cd` there). Under `sudo` always add
+`PYTHONDONTWRITEBYTECODE=1`, as the commands below do: without it root leaves `__pycache__`
+directories in the operator's checkout, which then is no longer clean for `ops/deploy.sh`, or in
+a release. Option names are never abbreviated: `--a` is an error, not `--activate`. `--root DIR` works on a simulated host under `DIR` and
 never touches the machine it runs on.
 
 ## Install order
@@ -60,17 +66,18 @@ Every step is one of four kinds, and the four sections below take them in turn.
 
 | # | Kind | Step |
 |---|---|---|
-| 1 | owner | Write the OS to the card, create the operator account, give it your SSH key, connect `eth0` |
+| 1 | owner | Write the OS to the card, create the operator account, give it your SSH key, connect `eth0`; install `git`, `sudo` and Python 3.11 or newer; install NetworkManager and let it run the network, at a console |
 | 2 | owner | Clone the Party checkout at the reviewed commit; carry the Games bundle, clone it, detach at the reviewed commit |
-| 3 | automated | `check`, `plan`, then `apply`: packages, service users, directories, the configuration that waits for nothing |
+| 3 | automated | `check`, `plan`, then `apply --target-hostname NAME`: the marker, packages, service users, directories, the configuration that waits for nothing |
 | 4 | automated | `ops/deploy.sh --skip-smoke` builds both code releases and the manifest; `ops/install-party-web.sh` builds the web release |
 | 5 | owner | Place what is in no repository: the games virtualenv, the libretro core, the ROM, the lego client |
 | 6 | secret | Generate the three game keys; issue and install the certificate |
 | 7 | owner | Create the access point profile and type its passphrase |
-| 8 | automated | `apply --activate`: unit files, drop-ins, the nginx site, enable and start |
+| 8 | automated | `apply --activate`: unit files, drop-ins, the nginx site; then the reload commands of everything in place, step 3's included (journal, `uinput`, udev, systemd, nginx), then enable and start |
 | 9 | automated | `verify`; then `ops/deploy.sh` once more with the same commits, so the manifest records a smoke result |
 | 10 | hardware | The phone checklist, on real phones over the party Wi-Fi |
 | 11 | owner | Optional pieces (telemetry, automatic renewal), then update SYSTEM and write a dated finding |
+| 12 | owner | `seal`: the build is over; from now on this card is an appliance and `apply` and `restore` refuse it |
 
 ## 1. Automated, reproducible steps
 
@@ -81,14 +88,31 @@ These are scripts. Each can be run twice; the second run changes nothing.
 ```bash
 cd /home/cody/avrana-party
 python3 -m avrana.ops.rebuild check && python3 -m avrana.ops.rebuild plan
-sudo python3 -m avrana.ops.rebuild apply
+sudo PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.rebuild apply --target-hostname "$(hostname)"
 ```
 
+Read what `plan` prints before the third line, and type the hostname rather than `$(hostname)`
+if you are not certain which machine the terminal is on: that argument is the one check that
+this is the card you mean to build. On any Linux machine that shows no sign of an appliance,
+`apply` as root would otherwise install all of this. A name that is not the machine's own is
+refused; `apply` then prints the hostname, OS release and architecture it is about to change
+and records them in the marker.
+
 The first thing the first `apply` does, on a host with none of the signs above, is write
-`/var/lib/avrana-rebuild/marker.json` (root-owned: the UTC time and the Party commit). Every
-later `apply` and every `restore` goes on because that file is there, including after the units
-have been started, when the host looks exactly like an appliance. So `apply` comes before
-`ops/deploy.sh` (step 4), which creates paths the guard treats as an installed appliance.
+`/var/lib/avrana-rebuild/marker.json` (root-owned: the UTC time, the Party commit, the machine).
+While that file is a valid, unsealed marker, every later `apply` and `restore` goes on, including
+after the units have been started, when the host looks exactly like an appliance; later runs
+need no `--target-hostname`. Something else at that path (a directory, a link, a file that is
+not a marker) opens nothing. So `apply` comes before `ops/deploy.sh` (step 4), which creates
+paths the guard treats as an installed appliance. The marker stops working at step 12.
+
+**What step 3 does to a running machine, so do it at a console or knowing this.** Installing
+the `nginx` package starts nginx at once, on port 80, serving Debian's default page until step 8
+replaces the site. `apply` does **not** install the `network-manager` package and never enables
+or starts NetworkManager: on an image whose network is run by something else, NetworkManager
+arriving can take over `eth0` in the middle of an SSH session, and which image this is is not
+recorded (U1). That is why it is in step 1, yours, at a console. Until it is installed `plan`
+lists it as a handoff and the captive DNS drop-in waits for it. `apply` runs no `nmcli`.
 
 `apply` installs the missing packages with `apt-get install --no-install-recommends`, creates
 the groups `avrana-front` and `avrana-games` and the users `avrana-party`, `avrana-arcade` and
@@ -100,7 +124,13 @@ That last file is installed from the example only when it is absent; an existing
 replaced, because the owner may have edited it. Everything else waits and says what for.
 
 It then prints the commands that load what it installed (restart the journal, load `uinput`,
-reload udev). `apply --activate` runs those itself; without the flag they are yours to run.
+reload udev). They can wait for step 8: `apply --activate` runs the reload commands of
+everything that is in place, every time, whichever run installed it. A line about the access
+point going down and up applies only once the profile exists (step 7), and is never run by the
+tool.
+
+A step that fails stops the run. `apply` reports only what really changed, names the failure,
+exits 1, and can simply be run again once the cause is fixed.
 
 **Step 4.** The releases and the web shell come from the scripts that already own them:
 
@@ -125,9 +155,12 @@ sudo PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.rebuild apply --activate
 
 Now the unit files and drop-ins have their users, releases and keys, and the nginx site has its
 certificate. `apply` installs them, links the site into `sites-enabled`, removes Debian's
-`default` site (it claims the same `default_server`), and with `--activate` runs
-`systemctl daemon-reload`, `nginx -t`, the nginx reload and `systemctl enable --now` for each
-unit whose needs are met. If `nginx -t` fails nothing after it runs; see "Rollback and recovery".
+`default` site (it claims the same `default_server`), and with `--activate` runs, in this
+order, `systemctl daemon-reload`, the journal restart, `modprobe uinput`, the two `udevadm`
+lines, `nginx -t`, the nginx reload, and `systemctl enable --now` for each unit whose needs are
+met (providers before Party Core; never NetworkManager). Those seven reload commands are fixed
+in the code: the inventory cannot add one. If one fails nothing after it runs; see "Rollback
+and recovery".
 
 **Step 9.**
 
@@ -163,7 +196,10 @@ user `avrana-party`, which step 3 created.
 **Certificate.** The private key and the ACME account are created on the device and stay there
 ([party-https](party-https.md), "Trust and key custody"). Issue `party.avrana.net` with lego's
 DNS-01 challenge into `/var/lib/avrana-party/lego` (the manual DNS mode needs someone with
-access to the `avrana.net` zone to add one TXT record), then:
+access to the `avrana.net` zone to add one TXT record). **No repository records the lego command
+line that was used** (U13): [party-https](party-https.md) describes the issuance in prose, and
+the only scripted lego call is the renewal, which needs the Cloudflare token. Work it out from
+`lego --help` and write it into a finding. Then:
 
 ```bash
 sudo /usr/local/libexec/avrana-party/install-party-certificate.sh \
@@ -210,24 +246,40 @@ for the profile every script here targets ("Avrana Party Internal" on `wlan0`, 5
 NetworkManager prompt for it. Run both at the device or over `eth0`, never over the party Wi-Fi.
 Set the regulatory country first (U4). The fields are the ones [network](network.md) recorded on
 2026-09-24; that record is not a full export of the profile (U5), and the printed command has
-never been run. The captive DNS drop-in was installed in step 3, before the profile first comes
+never been run. The profile is created with autoconnect on and no passphrase in it: whether the
+passphrase typed at `--ask` is stored for the next boot is not known (U5). Check with a reboot
+before section 4; if the access point does not come back, set the passphrase with `nmtui`. The captive DNS drop-in was installed in step 3, before the profile first comes
 up; if you change that file later, the profile has to go down and up, which drops every phone.
 Then apply "Boot determinism" from the network runbook if you want the access point to win at
 every boot.
 
-**Overriding the guard.** `--owner-confirms-not-the-live-appliance` makes `apply` (or `restore`)
-go on although the host shows signs of an installed appliance and has no marker; `apply` then
-writes the marker and records in it that it was overridden and what it saw. It is legitimate in
-two cases only, both on a card that has never hosted a party: a half-built target whose marker
-was lost or whose `ops/deploy.sh` ran before the first `apply`, and a card deliberately
-pre-seeded with one of those paths. It is never typed on the Pi that hosts parties, never by an
-agent, and never to get past a refusal that was not understood: read what `apply` printed first.
-Even with it, the unit file of a running service is not replaced.
+**Overriding the guard.** `--owner-confirms-not-the-live-appliance` exists for one situation: a
+card that has never hosted a party, on which `apply` refuses because install paths exist but the
+marker does not. That happens when the marker was lost, or when `ops/deploy.sh` ran before the
+first `apply`. What it can do: let `apply` (with `--target-hostname`) or `restore` go on there;
+`apply` writes the marker and records in it that it was overridden and what it saw. What it
+cannot do: it is refused, like any other run, whenever one of the Avrana units
+(`avrana-party-core`, `avranaparty-games`, `avranaparty-arcade`, the certificate timer) is
+enabled or running, sealed or not. A host with services is a live appliance and no flag makes
+this tool change it. It cannot be abbreviated, is never typed by an agent, and is never the
+answer to a refusal that was not understood: read what `apply` printed first.
 
 **Step 11.** Optional and independent of play: `telemetry/install-pi-throttle-check.sh`,
 `telemetry/install-beszel-agent.sh` (and the hub's "Add System"), the renewal timer. Then update
 [SYSTEM](../SYSTEM.md) from what `verify` and `/party/api/status` report and write a dated
 finding; this runbook's status line changes only then.
+
+**Step 12: seal.** When section 4 has passed and the card is going to host parties:
+
+```bash
+cd /opt/avrana-party/current && sudo PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.rebuild seal
+```
+
+It records the UTC time in the marker. From then on `apply` and `restore` refuse this card
+exactly as they refuse today's Pi, so a later mistake cannot re-own a key store or replace a
+site under running services. `plan` and `verify` keep working and say "SEALED". Later changes
+are deployments ([deploy](deploy.md)) or a new rebuild on another card. Do not skip it: an
+unsealed appliance is an unguarded one.
 
 ## 4. Real-hardware verification still required
 
@@ -294,7 +346,7 @@ A skip is never a pass; an area in which no live check passed is named at the en
 |---|---|---|
 | Party | unit file, config, keys present with owner and mode, `avrana-party-core` enabled and active, `/party/` and `/party/api/state` over HTTPS, `party-core.json` against the Game Contracts | inventory, `avrana.ops.smoke`, `avrana.contracts.party_config` |
 | Games | unit file and drop-in, the virtualenv, `avranaparty-games` active, `/health` and `/api/games` on loopback | inventory, `avrana.ops.smoke` |
-| Arcade | unit file and drop-in, core (and its sha256), ROM, `/stats` | inventory, `avrana.ops.smoke` |
+| Arcade | unit file and drop-in, core (and its sha256), ROM, `/stats`, and `/dev/uinput` present with group `input` mode `0660` (the module and the udev rule took effect; without it no phone can control a hero) | inventory, `avrana.ops.smoke`, a stat |
 | nginx | site file equals the repository's, enabled, no `default` site, the Apple probe on port 80, the root page | inventory, `avrana.ops.smoke`, `tools/avrana-topology-check` |
 | AP | `wlan0` is the internal radio in AP mode on the named profile, holds only `10.42.0.1/24`, upstream is `eth0`, one AP profile autoconnects | `tools/avrana-topology-check` |
 | DHCP and DNS | dnsmasq listens only on `10.42.0.1`, the DHCP range, the captive drop-in equals the repository's, every captive name and `party.avrana.net` answer `10.42.0.1` | `tools/avrana-topology-check`, `avrana.ops.smoke` |
@@ -313,7 +365,9 @@ nothing in this procedure writes to it.
 | What went wrong | What to do |
 |---|---|
 | `apply` or `restore` says "refused, nothing was changed" | Believe it: nothing was changed. On the Pi that hosts parties this is the right answer; use [service-users-migration](service-users-migration.md). On a half-built target (marker lost, or `ops/deploy.sh` run before the first `apply`) see "Overriding the guard" in section 3 |
-| `apply` installed a file you want back | `sudo python3 -m avrana.ops.rebuild restore /var/backups/avrana-party/rebuild-<UTC>` puts back every file, link and removed path of that run (the directory is printed by `apply`), newest first; then `sudo systemctl daemon-reload` and `sudo nginx -t && sudo systemctl reload nginx`. Users, groups, packages and directories stay: they grant nothing |
+| `apply` installed a file you want back (before `seal`) | `sudo python3 -m avrana.ops.rebuild restore /var/backups/avrana-party/rebuild-<UTC>` puts back every file, link and removed path of that run (the directory is printed by `apply`), newest first; then `sudo systemctl daemon-reload` and `sudo nginx -t && sudo systemctl reload nginx`. Users, groups, packages and directories stay: they grant nothing. **Restoring a step-8 backup removes the unit files that run installed**, so `restore` refuses while any of those units is running and prints the `sudo systemctl stop …` line to run first. It checks the whole journal before touching anything: a path the inventory does not manage, a secret path, or a copy outside the backup refuses the whole restore |
+| `apply` stopped with `FAILED` | Nothing after the failed step was attempted and only the lines marked `changed` happened. Fix the cause (a missing group, a path in the way, no network for `apt-get`) and run `apply` again |
+| Something is wrong after `seal` | `restore` and `apply` refuse a sealed card. Use `ops/deploy.sh` for code, the old card for everything else |
 | `nginx -t` failed in `apply --activate` | nginx keeps serving its previous configuration: nothing was reloaded. Read the error, then `restore` as above or fix and run `apply --activate` again |
 | A unit does not start | `journalctl -u <unit> -n 50`. A unit whose `LoadCredential=` key is missing does not start: `plan` shows the missing key. `sudo systemctl disable --now <unit>` takes it out without touching the others |
 | The access point does not come up | Manage the device over `eth0`. `nmcli connection up "Avrana Party Internal"`; `tools/avrana-topology-check`; [network](network.md). Never change the profile over the party Wi-Fi |
@@ -339,7 +393,7 @@ the inventory are corrected from them.
 | U2 | Which packages were installed by hand beyond the inventory, and whether the `derived` package names match (RetroArch in particular: package or local build) | `apt-mark showmanual; command -v retroarch` |
 | U3 | Boot configuration the H.264 encoder and RetroArch rely on | `cat /boot/firmware/config.txt` |
 | U4 | The Wi-Fi regulatory country and the active brcmfmac firmware alternative | `iw reg get; update-alternatives --display cyfmac43455-sdio.bin` |
-| U5 | The access point profile's remaining settings (PMF, ciphers) and the `eth0` profile | `nmcli connection show "Avrana Party Internal"` (without `-s` it prints no secret) |
+| U5 | The access point profile's remaining settings (PMF, ciphers), the `eth0` profile, and whether a passphrase typed at `nmcli --ask` is stored so the access point comes up at the next boot | `nmcli connection show "Avrana Party Internal"` (without `-s` it prints no secret) |
 | U6 | The system hostname and how `party.local` is published | `hostnamectl; grep -n host-name /etc/avahi/avahi-daemon.conf` |
 | U7 | The lego version and where its binary came from | `/usr/local/bin/lego --version` |
 | U8 | Whether the core on the Pi is the binary `arcade/evidence/selected-core.json` records, and where a rebuild gets it | `sha256sum /home/cody/avrana-party/arcade/cores/mame2010_libretro.so` |
@@ -347,6 +401,7 @@ the inventory are corrected from them.
 | U10 | How the clock is kept with no internet (a Pi 4 has no RTC) well enough for certificate validation | `timedatectl` |
 | U11 | sudoers, polkit and sshd for the operator account; whether a default nginx site was removed by hand | `ls -l /etc/nginx/sites-enabled/` |
 | U12 | Whether the phase-1 layout runs on the Pi at all | the first supervised rebuild or migration, then `verify` |
+| U13 | The exact lego command line that issues `party.avrana.net` by DNS-01 | `lego --help`; the shell history of the 2026-09-25 issuance, if kept |
 
 ## Tests
 
@@ -354,7 +409,10 @@ the inventory are corrected from them.
 the inventory agrees with the unit files, installers, network scripts and this runbook; a
 simulated clean host reaches the expected state in the order above; `plan` changes nothing; a
 second `apply` changes nothing; no secret is created, read or copied; `restore` puts replaced
-files back; a simulated live appliance is refused by `apply` and `restore` with no change and
-no command, while `plan` and `verify` still read it; a running service's unit file is not
-replaced. No test changes the machine it runs on. Tier 1 evidence about the procedure.
+files back, checks its journal first and never works under a running service; a simulated live
+appliance and a sealed card are refused by `apply` and `restore` with no change and no command,
+override included, while `plan` and `verify` still read them; no option can be abbreviated; a
+failed step stops the run; no secret path can be written, removed or copied whatever the
+inventory says; a running service's unit file is not replaced. No test changes the machine it
+runs on. Tier 1 evidence about the procedure.
 Everything in section 4, and every `derived` entry, stays unproven until a device is built.

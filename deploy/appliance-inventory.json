@@ -38,7 +38,7 @@
     "pinned_in": ["ops/deploy-party-https.sh", "tools/avrana-topology-check", "avrana-captive.conf", "avrana-party.nginx", "avrana/ops/smoke.py"]
   },
   "guard": {
-    "about": "apply and restore refuse a host that looks like an appliance this tool did not build: any of these units enabled or active, or any of these paths present, and no marker. The first apply on a host with none of them writes the marker before anything else. Today's Pi has most of them (docs/SYSTEM.md, docs/runbooks/service-users-migration.md, docs/runbooks/party-https.md): moving it to this layout is the service-users migration.",
+    "about": "apply and restore refuse a host that looks like an appliance this tool did not build: any of these units enabled or active, or any of these paths present, and no valid marker. The first apply on a host with none of them must name the machine (--target-hostname) and writes the marker before anything else; `seal` ends the build, after which the host is refused like any appliance. The owner override never applies while one of these units is enabled or active. Today's Pi has most of them (docs/SYSTEM.md, docs/runbooks/service-users-migration.md, docs/runbooks/party-https.md): moving it to this layout is the service-users migration.",
     "marker": "/var/lib/avrana-rebuild/marker.json",
     "evidence": "docs/SYSTEM.md",
     "appliance_units": ["avrana-party-core", "avranaparty-games", "avranaparty-arcade", "avrana-party-certificate.timer"],
@@ -59,7 +59,8 @@
   },
   "packages": [
     {"name": "nginx", "why": "ports 80 and 443", "confidence": "derived", "evidence": "avrana-party.nginx"},
-    {"name": "network-manager", "why": "the access point profile and its shared DHCP/DNS (nmcli)", "confidence": "derived", "evidence": "install-captive-dns.py"},
+    {"name": "network-manager", "why": "the access point profile and its shared DHCP/DNS (nmcli)", "confidence": "derived", "evidence": "install-captive-dns.py",
+     "manual": "Owner, at a console or with the consequences understood, never from this tool: sudo apt-get install network-manager. On an image whose network is run by something else, NetworkManager arriving can take over eth0 in the middle of an SSH session (U1)."},
     {"name": "dnsmasq-base", "why": "the dnsmasq NetworkManager starts for the access point; dnsmasq --test", "confidence": "derived", "evidence": "ops/check-party-config.sh"},
     {"name": "avahi-daemon", "why": "party.local", "confidence": "derived", "evidence": "docs/runbooks/network.md"},
     {"name": "openssl", "why": "certificate checks", "confidence": "derived", "evidence": "ops/install-party-certificate.sh"},
@@ -120,7 +121,7 @@
      "activate": [["udevadm", "control", "--reload-rules"], ["udevadm", "trigger", "--subsystem-match=misc"]]},
     {"path": "/etc/NetworkManager/dnsmasq-shared.d/avrana-captive.conf", "source": "party:avrana-captive.conf", "owner": "root", "group": "root", "mode": "0644", "area": "dns",
      "requires": ["package:network-manager"],
-     "owner_activate": ["sudo nmcli connection down \"Avrana Party Internal\" && sudo nmcli connection up \"Avrana Party Internal\" ifname wlan0   # drops every phone for a few seconds; never over the party Wi-Fi"]},
+     "owner_activate": ["bounce-access-point"]},
     {"path": "/etc/avrana-party/party-core.json", "source": "party:deploy/party-core/party-core.example.json", "owner": "root", "group": "root", "mode": "0644", "area": "party",
      "policy": "create-only"},
     {"path": "/usr/local/libexec/avrana-party/install-party-certificate.sh", "source": "party:ops/install-party-certificate.sh", "owner": "root", "group": "root", "mode": "0755", "area": "tls"},
@@ -181,7 +182,7 @@
     {"id": "tls-certificate", "area": "tls", "paths": [
        {"path": "/etc/avrana-party/tls/current/fullchain.pem", "owner": "root", "group": "root", "mode": "0644"},
        {"path": "/etc/avrana-party/tls/current/privkey.pem", "owner": "root", "group": "root", "mode": "0600"}],
-     "provision": "On the device only: issue party.avrana.net with lego DNS-01 into /var/lib/avrana-party/lego (docs/runbooks/party-https.md, 'Trust and key custody'), then sudo /usr/local/libexec/avrana-party/install-party-certificate.sh <fullchain> <key>. The private key and the ACME account never leave the device.", "requires": ["artifact:lego"], "evidence": "ops/install-party-certificate.sh"},
+     "provision": "On the device only: issue party.avrana.net with lego DNS-01 into /var/lib/avrana-party/lego (docs/runbooks/party-https.md, 'Trust and key custody'; the exact lego command line used on 2026-09-25 is recorded nowhere, U13), then sudo /usr/local/libexec/avrana-party/install-party-certificate.sh <fullchain> <key>. The private key and the ACME account never leave the device.", "requires": ["artifact:lego"], "evidence": "ops/install-party-certificate.sh"},
     {"id": "cloudflare-token", "area": "tls", "optional": true, "paths": [{"path": "/etc/avrana-party/cloudflare.env", "owner": "root", "group": "root", "mode": "0600"}],
      "provision": "Optional (automatic renewal): the owner writes CF_DNS_API_TOKEN and ACME_EMAIL into /etc/avrana-party/cloudflare.env on the device, root 0600. Without it renewal is manual.", "evidence": "ops/renew-party-certificate.sh"},
     {"id": "wifi-passphrase", "area": "ap", "paths": [],
@@ -191,7 +192,8 @@
   ],
   "units": [
     {"name": "nginx", "area": "nginx", "requires": ["package:nginx", "path:/etc/nginx/sites-enabled/avrana-party"]},
-    {"name": "NetworkManager", "area": "ap", "requires": ["package:network-manager"]},
+    {"name": "NetworkManager", "area": "ap", "requires": ["package:network-manager"],
+     "manual": "Owner, at a console: sudo systemctl enable --now NetworkManager, only once it is meant to run this machine's network (U1). This tool never enables or starts it."},
     {"name": "avahi-daemon", "area": "dns", "requires": ["package:avahi-daemon"]},
     {"name": "avranaparty-games", "area": "games", "requires": ["path:/etc/systemd/system/avranaparty-games.service", "path:/etc/systemd/system/avranaparty-games.service.d/avrana-party-session.conf", "artifact:games-venv"]},
     {"name": "avranaparty-arcade", "area": "arcade", "requires": ["path:/etc/systemd/system/avranaparty-arcade.service", "path:/etc/systemd/system/avranaparty-arcade.service.d/avrana-party-session.conf", "artifact:arcade-core", "artifact:arcade-rom"]},
@@ -220,13 +222,14 @@
     {"id": "U2", "question": "Which packages are installed by hand beyond this list, and do the 'derived' package names match what is installed (retroarch in particular: package or local build)?", "why": "Only arcade/install-dependencies.sh was ever a package list; the rest was installed interactively.", "confirm": "apt-mark showmanual; command -v retroarch; dpkg -S \"$(command -v retroarch)\""},
     {"id": "U3", "question": "Boot configuration: /boot/firmware/config.txt and cmdline.txt changes (GPU memory, overlays) the H.264 encoder and RetroArch rely on.", "why": "No file in the repository records them.", "confirm": "cat /boot/firmware/config.txt"},
     {"id": "U4", "question": "The Wi-Fi regulatory country and which brcmfmac firmware alternative is active.", "why": "Channel 149 needs a country that allows it; the firmware decides how many phones can join.", "confirm": "iw reg get; update-alternatives --display cyfmac43455-sdio.bin"},
-    {"id": "U5", "question": "The access point profile's remaining settings (PMF, 802-11-wireless-security.proto, group/pairwise ciphers) and the eth0 profile.", "why": "network.md records the main fields as read on 2026-09-24, not a full export; the eth0 profile was rewritten after that boot.", "confirm": "nmcli connection show \"Avrana Party Internal\"   # without -s nmcli prints no secret"},
+    {"id": "U5", "question": "The access point profile's remaining settings (PMF, 802-11-wireless-security.proto, group/pairwise ciphers), the eth0 profile, and whether a passphrase typed at `nmcli --ask connection up` is stored in the profile so the access point comes up by itself at the next boot.", "why": "network.md records the main fields as read on 2026-09-24, not a full export; the eth0 profile was rewritten after that boot.", "confirm": "nmcli connection show \"Avrana Party Internal\"   # without -s nmcli prints no secret"},
     {"id": "U6", "question": "The system hostname and how party.local is published.", "why": "party-https.md calls the host 'RaspberryPi', SYSTEM calls it 'party', and avahi publishes the hostname.", "confirm": "hostnamectl; grep -n host-name /etc/avahi/avahi-daemon.conf"},
     {"id": "U7", "question": "The lego version on the Pi and where its binary came from.", "why": "ops/deploy-party-https.sh copied it from a lab directory that is not in any repository.", "confirm": "/usr/local/bin/lego --version"},
     {"id": "U8", "question": "Whether the libretro core on the Pi is the binary arcade/evidence/selected-core.json records, and where a rebuild gets it.", "why": "The recorded URL is a 'latest' nightly, so it no longer names that binary; the service-users runbook calls the core built on the appliance.", "confirm": "sha256sum /home/cody/avrana-party/arcade/cores/mame2010_libretro.so"},
     {"id": "U9", "question": "The installed games unit and its virtualenv: Python version, and whether a fresh virtualenv from the Games requirements.txt runs the fork.", "why": "The installed unit is in no repository and the venv was inherited from the upstream checkout.", "confirm": "systemctl cat avranaparty-games; /home/cody/LAN-Games/.venv/bin/python --version"},
     {"id": "U10", "question": "How the clock is set with no internet (no RTC on a Pi 4): is time kept well enough for certificate validation after a cold start away from home?", "why": "Nothing in the repository configures or checks time.", "confirm": "timedatectl; systemctl status systemd-timesyncd"},
     {"id": "U11", "question": "sudoers, polkit and sshd settings for the operator account, and whether a default nginx site was removed by hand.", "why": "Not recorded; the nginx 'absent' entry is derived from the site file, not observed.", "confirm": "ls -l /etc/nginx/sites-enabled/; sudo -l"},
-    {"id": "U12", "question": "Whether the source layout (dedicated users, /opt releases, loopback-only games listener, the arcade's hardening) runs on the Pi at all.", "why": "ops/migrate-service-users.sh has never been run; today every service runs as the operator from the checkouts.", "confirm": "the first supervised rebuild or migration, then python3 -m avrana.ops.rebuild verify"}
+    {"id": "U12", "question": "Whether the source layout (dedicated users, /opt releases, loopback-only games listener, the arcade's hardening) runs on the Pi at all.", "why": "ops/migrate-service-users.sh has never been run; today every service runs as the operator from the checkouts.", "confirm": "the first supervised rebuild or migration, then python3 -m avrana.ops.rebuild verify"},
+    {"id": "U13", "question": "The exact lego command line that issues party.avrana.net by DNS-01 (flags, manual or Cloudflare mode, the --path).", "why": "party-https.md describes the issuance in prose; only the renewal command is in a script (ops/renew-party-certificate.sh), and it needs the Cloudflare token.", "confirm": "lego --help; the shell history of the 2026-09-25 issuance, if kept"}
   ]
 }
