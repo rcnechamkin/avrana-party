@@ -1,6 +1,6 @@
 # Shared game UX and interaction contract
 
-Status: **contract with every rule labelled by source (AVR-56, 2026-10-04); not validated on phones.**
+Status: **contract with every rule labelled by source (AVR-56, 2026-10-04; owner decisions of 2026-10-05 cited); not validated on phones.**
 
 Every rule below is labelled from three base labels. They are not interchangeable. A rule may
 carry a compound or scoped label ("Accepted for EXPO only; Proposed as a platform rule"); each
@@ -8,7 +8,7 @@ part then applies to the sentence it sits beside.
 
 | Label | Meaning | Authority |
 |---|---|---|
-| **[Implemented]** | In source on `main` of the named repository on 2026-10-04; a file is cited. Not a claim of deployment or phone proof | the cited code and its tests |
+| **[Implemented]** | In source on `main` of the named repository on 2026-10-04, at the commits named below; a file is cited. The owner decisions of 2026-10-05 changed labels, not this date: no source was re-read after it. Not a claim of deployment or phone proof | the cited code and its tests |
 | **[Accepted]** | Stated by a source with its own authority: an accepted ADR; AGENTS; ACCESSIBILITY's expectations; UI-DESIGN-SYSTEM, which is the current source UI contract of a prototype visual system and not a final decision; the owner's direction recorded in [AVR-56](https://linear.app/avranakern/issue/AVR-56); a dated owner decision recorded on a Linear issue, cited by issue and date and carrying only the scope it states (several are for EXPO only); or an owner-approved Linear product document scoped to one game, accepted for that game only (Rule 7.2). The label carries no more weight than the source's own status. Only what the source itself says is accepted; any elaboration in the same rule is marked **[Proposed]** | that source |
 | **[Proposed]** | Drafted by this document. Direction for review, not contract, until the owner accepts it | none yet |
 
@@ -172,7 +172,7 @@ that is also their order of visual weight.
 | Ready / Watch | platform | **[Implemented]**, as ADR 0011 decision 4 specifies: two large choices "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`) |
 | Host Start, or the waiting line | platform | **[Implemented]** `scene-start`, disabled with Party Core's `blocker` sentence as text |
 | Host: choose another game | platform | **[Implemented]** `scene-cancel` |
-| Host settings | none in the briefing: game-specific setup stays in the game (Rule 4.11a) | **not built**, and parked ([§4.4](#44-settings)) |
+| Host settings | undecided as a platform slot (Q3, deferred). EXPO's own setup stays inside EXPO for now (Rule 4.11a) | **not built** ([§4.4](#44-settings)) |
 | Fake-turn example | game supplies; shell draws | **not built** ([§4.3](#43-simple-games-the-reusable-pattern)) |
 
 **Rule 4.2 [Proposed].** A game's accent and art MAY tint the briefing (cover, primary button
@@ -201,11 +201,12 @@ open questions:
   their answer (ADR 0010 decision 1, `player_count`). There is no allocation rule (first to
   choose, Host picks, rotation); adding one would amend ADR 0010 decision 1.
 - *Label.* The control's words are "Play this round" and "Watch this round" (ADR 0011
-  decision 4). "Ready" in AVR-56 and in this document names the state, not a label.
+  decision 4). AVR-56 speaks of a "Ready state"; the owner has not asked to change the label,
+  so ADR 0011 decision 4's wording stands.
 
-**Rule 4.4 [Accepted: ADR 0010 decision 1, ADR 0011 decision 4, ADR 0012, and the owner's
-decision on AVR-56 of 2026-10-05; Implemented].** Watch is a legitimate round-role choice, always
-offered beside Play.
+**Rule 4.4 [Accepted: the owner's decision on AVR-56 of 2026-10-05, with ADR 0010 decision 1,
+ADR 0011 decision 4 and ADR 0012; parts Implemented and parts Proposed, each marked].** Watch is
+a legitimate round-role choice.
 
 The owner's decision, in full: "Watch/Spectate remains a legitimate round-role choice. It may be
 visually secondary to Play/Ready, but it must not be treated as an invalid or shame-path
@@ -218,35 +219,46 @@ the ADRs, which say:
 - ADR 0011 decision 4: the setup scene has "two large **Play this round / Watch this round**
   choices".
 - ADR 0012 (shell consequence): a phone that cannot play a game here "is told why and may always
-  choose Watch, so it can never hold up a round" (`seatChoice()` in `web/party/lib/limited.js`).
+  choose Watch, so it can never hold up a round".
 
-What follows, and nothing more:
+**[Accepted]**, and only this, in the sources' own words:
 
-1. **Watch is always an available answer in the briefing.** It MUST NOT be hidden, disabled or
-   withheld so that a member who cannot or does not want to play has no answer to give; under
-   ADR 0010 decision 1 that member would block the Start, or be pushed into Play to unblock it.
-   This holds whatever the Game Contract's `spectators` field says: the shell does not read that
-   field today, and it MUST NOT use it to remove the choice.
-2. **Watch MAY be visually secondary to Play.** Weight, order and size are presentation. Today
-   both are large and UI-DESIGN-SYSTEM lists both as primary buttons, as ADR 0011 decision 4
-   specifies; the owner's decision permits a lighter Watch and does not require one. A change of
-   weight updates ADR 0011 decision 4's "two large" and UI-DESIGN-SYSTEM "Buttons" in the same
-   change, so the ADR keeps describing the scene.
-3. **Watch is not a failure path.** Its wording, placement and the roster badge for a watcher
-   MUST NOT present it as an error, a penalty or what is left when Play is refused. Where Play
-   is unavailable on a phone, the reason sits beside Play (Rule 4.5); Watch keeps its ordinary
-   label.
+1. Watch is "a legitimate round-role choice".
+2. It "may be visually secondary to Play/Ready".
+3. It "must not be treated as an invalid or shame-path fallback".
+4. "A member must not be forced into Play merely so the Party can proceed."
+5. In Limited Mode, a phone that cannot play a game here "may always choose Watch" (ADR 0012).
 
-AVR-56's "when the game supports it" is therefore not read as a condition on offering the
-choice. What a watcher is *shown* by a game whose contract says `"spectators": "none"` (one
-does: `contracts/games/arcade-gauntlet2.json`) is not settled by the decision and is Q12 in
+**[Implemented]**: Watch is always offered today. The shell draws both choices for every game
+(`web/party/app.js` `renderScene`), `seatLimits()` in `web/party/lib/limited.js` returns
+`watch: true` in every case, and the shell does not read the Game Contract's `spectators`
+field. Both choices are large, and UI-DESIGN-SYSTEM lists both as primary buttons, as ADR 0011
+decision 4 specifies.
+
+**[Proposed]**, this document's reading, not the owner's words:
+
+- The shell MUST NOT hide, disable or withhold Watch on the strength of the Game Contract's
+  `spectators` field. The reasoning: under ADR 0010 decision 1 a member with no answer blocks
+  the Start, or is pushed into Play to unblock it, which accepted point 4 forbids. Whether Watch
+  itself must be that answer for a game declaring `"spectators": "none"`, or another
+  non-blocking answer may take its place, is open (Q12).
+- If Watch is drawn lighter than Play, the same change updates ADR 0011 decision 4's "two
+  large" and UI-DESIGN-SYSTEM "Buttons", so the ADR keeps describing the scene. The owner's
+  decision permits a lighter Watch and does not require one.
+- Watch's label, its placement and the roster badge for a watcher MUST NOT present it as an
+  error, a penalty or what is left when Play is refused. Where Play is unavailable on a phone,
+  the reason sits beside Play (Rule 4.5) and Watch keeps its ordinary label.
+
+AVR-56's "when the game supports it" was not withdrawn by the decision and is not interpreted
+here. One contract says `"spectators": "none"` (`contracts/games/arcade-gauntlet2.json`); what
+such a game offers a member who does not play, and what that member is shown, is Q12 in
 [§18](#18-open-questions-for-the-owner).
 
 **Rule 4.5 [Accepted for Limited Mode, ADR 0012; Implemented].** A phone that cannot play this
 game here sees Play disabled with the reason in words beside it, and Watch stays available
 (`seatChoice()`, shown in `scene-seat`). **[Proposed]**: the same for any other reason a phone
-cannot take a seat. Such a phone may always answer Watch (Rule 4.4); what it is then shown by a
-game that declares no spectators is Q12.
+cannot take a seat. What such a phone may answer, and what it is shown, when the game declares
+no spectators is undecided (Q12).
 
 **Rule 4.6 [Accepted, ADR 0010].** A game in a Party round MUST NOT run a second lobby: its own
 ready, start and settings verbs are refused and the launch roster is seated at once
@@ -280,25 +292,26 @@ reference size.
 **Rule 4.11 [Accepted, AVR-56].** "Host settings are optional and should not appear unless the
 game genuinely needs pre-start configuration."
 
-**Rule 4.11a [Accepted for EXPO only, owner decision on AVR-245 of 2026-10-05].** "For now,
-Party-launched EXPO should handle its mission choice, timed-mode choice and Tonoja seat choice
-**inside EXPO before the first deal**, rather than extending the Party launch contract/pregame.
-Keep this game-side and avoid a Party↔Games contract change unless a later product decision
-deliberately moves setup into Party." EXPO is the only game that needs pre-start configuration
-today, so no settings are drawn in the briefing and the launch carries none. ADR 0010 decision 5
-still refuses a game's own lobby `settings` verb in a Party round; EXPO's in-game setup step is
-AVR-245's to design, not this document's.
+**Rule 4.11a [Accepted for EXPO only, and "for now": owner decision on AVR-245 of 2026-10-05].**
+"For now, Party-launched EXPO should handle its mission choice, timed-mode choice and Tonoja seat
+choice **inside EXPO before the first deal**, rather than extending the Party launch
+contract/pregame. Keep this game-side and avoid a Party↔Games contract change unless a later
+product decision deliberately moves setup into Party." This decides EXPO's case, not the
+platform question. ADR 0010 decision 5 still refuses a game's own lobby `settings` verb in a
+Party round; EXPO's in-game setup step is AVR-245's to design, not this document's.
 
-**[Proposed], parked by that decision, not a pending question:** if a later product decision
-moves setup into Party, a game with sensible defaults shows none; settings are the Host's;
-everyone else sees the chosen values as plain text, not disabled controls; the game declares a
-short list from a closed vocabulary (`choice`, `toggle`, `count`), the shell draws them between
-the premise and the roster, and the game validates the values at the start and may refuse with
-a sentence. That would need the values to reach the game with the launch, which the session
-protocol does not carry
-([§20](#20-machine-contract-changes-this-document-proposes-but-does-not-make)), and a
-game-drawn panel inside the briefing would additionally amend ADR 0011 decision 4. **Not
-built, and not to be built on the strength of this paragraph.**
+**The platform question is deferred, not answered** (Q3 in
+[§18](#18-open-questions-for-the-owner)): whether host settings are ever drawn in the briefing,
+and by whom. EXPO raised it and is now decided game-side for now, so no game is waiting on it.
+
+**[Proposed]**, for whenever that question is taken up: a game with sensible defaults shows
+none; settings are the Host's; everyone else sees the chosen values as plain text, not disabled
+controls; the game declares a short list from a closed vocabulary (`choice`, `toggle`,
+`count`), the shell draws them between the premise and the roster, and the game validates the
+values at the start and may refuse with a sentence. That would need the values to reach the
+game with the launch, which the session protocol does not carry
+([§20](#20-machine-contract-changes-this-document-proposes-but-does-not-make)); a game-drawn
+panel inside the briefing would instead amend ADR 0011 decision 4. **Not built.**
 
 ### 4.5 Heavy games: Quick Start plus Rules Guide
 
@@ -426,8 +439,9 @@ Rules for the draft:
   ([§7](#7-actions-legality-and-unavailable-explanations)), so they can be reviewed, linked to a
   section and later localized. The *decision* that an action is unavailable still comes only
   from the game's server.
-- `settings` is drafted for the parked case in [§4.4](#44-settings) only; under the owner's
-  AVR-245 decision of 2026-10-05 no shell reads it and EXPO's setup stays inside EXPO.
+- `settings` is drafted for the deferred platform question in [§4.4](#44-settings) (Q3) only;
+  no shell reads it, and under the owner's AVR-245 decision of 2026-10-05 EXPO's setup stays
+  inside EXPO for now.
 - The file describes; it never executes. Nothing in it is evaluated as a rule.
 - Suitable for package tooling: one JSON file, a schema name, stable ids, no code. Where it
   lives in a future `.avrgame` package is AVR-37's decision, not this document's.
@@ -524,7 +538,7 @@ What exists today:
 | Party briefing: why the Host cannot start | Party Core's `blocker` sentence, shown as text under a disabled Start (`core.py` `setup_status`, `app.js` `scene-status`) | **[Implemented]** |
 | Party briefing: why this phone cannot play | `seatChoice().why` from `evaluate.js` `explain()` | **[Implemented]**, Limited Mode only |
 | Party library: why a game does not fit this phone | `avrana-fit`, `.why` on the tile, `explain()` | **[Implemented]** |
-| EXPO | server-owned `me.legal_cards`, `me.play_reason`, `may_pass_task`, `may_decline_volunteer`; a `why()` paragraph beside the control; stable refusal codes with sentences | **[Implemented]**; on `main` six client sentences differ from the server's (EXPO defect E-D8, AVR-263). The owner decided on 2026-10-05 that the server's wording is the single source; the fix is AVR-263's and is not on `main` at the commit named above |
+| EXPO | server-owned `me.legal_cards`, `me.play_reason`, `may_pass_task`, `may_decline_volunteer`; a `why()` paragraph beside the control; stable refusal codes with sentences | **[Implemented]**; on `main` six client sentences differ from the server's (EXPO defect E-D8, AVR-263). The owner decided on 2026-10-05 that the server's wording is the single source for rows 1–4, the four AVR-263 had left open; the fix is AVR-263's and is not on `main` at the commit named above |
 | BLUFF | the server lists `me.actions`; a missing action is drawn disabled with no reason | **[Implemented]** without explanation ([§16](#16-current-deviations-observations-not-tasks) B-2) |
 | A shared primitive a game can import | none | **specified only** |
 
@@ -674,9 +688,9 @@ retries by itself, and offers one manual retry. **[Implemented]**: `#away` on th
 ("Can't reach the party", Try again), `avrana-status`, the games' reconnect banner.
 
 **Rule 10.5 [Proposed].** A game that cannot run on this phone at all sends the player to Watch
-with the reason; it never shows a blank or broken board. Watch is always an available answer
-(Rule 4.4, Accepted); what that phone is shown by a game that declares no spectators is
-undecided (Q12).
+with the reason; it never shows a blank or broken board. Watch is offered for every game today
+(Rule 4.4, Implemented); what that phone may answer and is shown when a game declares no
+spectators is undecided (Q12).
 
 ## 11. System feedback: sound, haptics, motion
 
@@ -736,10 +750,12 @@ waiting line (Rule 3.8). **[Implemented]** in BLUFF's bar, EXPO's result takeove
 "Round over" panel.
 
 **Rule 12.3 [Accepted in part; Proposed in part].** **[Accepted, ADR 0011 decision 1]**: only
-the Party Host moves the Party, including End. **[Accepted for EXPO only, owner decision on
-AVR-240 of 2026-10-05]**: "Party Host owns lifecycle and may end the current EXPO game
-immediately/unilaterally", with no crew vote ("Do not require a crew vote to leave/end the
-Party's current game"). **[Proposed]** for every game: End for everyone during play is the Host's, confirmed
+the Party Host moves the Party, including End. **[Accepted for EXPO only, two owner comments on
+AVR-240 of 2026-10-05]**. The clarification of 16:06 UTC: "In a Party-launched EXPO round, Party
+Host owns Party lifecycle and may end EXPO immediately/unilaterally. Do not require a crew vote
+to leave/end the Party's current game." The decision of 17:12 UTC: "For the supported product
+path, Party Host owns lifecycle and may end the current EXPO game immediately/unilaterally."
+**[Proposed]** for every game: End for everyone during play is the Host's, confirmed
 ([§8](#8-controls-layout-and-surfaces)), reachable in at most two taps, and never placed beside
 the turn's primary action. The Host's own confirmation step is a guard against a slip, not a
 vote; whether "immediately" leaves room for it, and in which form, is Q6.
@@ -811,10 +827,10 @@ needs it.
 
 | Primitive | Section |
 |---|---|
-| What a watcher is shown by a game that declares no spectators (Q12) | §4.2 |
+| What a game that declares no spectators offers a member who does not play, and shows them (Q12) | §4.2 |
 | Game accent beyond the cover | §4.1 |
 | Fake-turn example strip | §4.3 |
-| Declared host settings drawn by the shell (parked by the AVR-245 decision of 2026-10-05) | §4.4 |
+| Declared host settings drawn by the shell (platform question deferred, Q3; EXPO decided game-side for now, AVR-245) | §4.4 |
 | Quick Start plus structured, linkable, searchable Rules Guide; `avrana.onboarding/v1` | §4.5, §5.2 |
 | One rules source for briefing and in-play help; a platform rules sheet a game can open in play | §4.6 |
 | A shared unavailable-action shape and a `reasons` catalogue | §7 |
@@ -850,9 +866,9 @@ focus restore) are the same unbuilt set; this document does not duplicate that l
 - **Strains.** It is a heavy game: 96 tasks, mission modifiers, a two-player variant. Its help
   is seven paragraphs in the client and it ships no onboarding file, so the Party briefing shows
   only the catalog summary. It genuinely needs pre-start configuration (mission, timed, the
-  dummy's seat) and on `main` that exists only in its standalone lobby, which is a
-  development and testing path and not a supported product mode (owner decision on AVR-240,
-  2026-10-05). The next mission is chosen in the game's result screen, which is a
+  dummy's seat) and on `main` that exists only in its standalone lobby; standalone EXPO is "a
+  development/testing path, not a supported Avrana Party product mode" (owner decision on
+  AVR-240, 2026-10-05, 17:12 UTC). The next mission is chosen in the game's result screen, which is a
   game-internal host action, not a Party transition.
 - **The contract says.** EXPO is the first consumer of Quick Start plus Rules Guide (§4.5),
   which is unbuilt. Its setup happens inside EXPO before the first deal (Rule 4.11a, AVR-245),
@@ -908,9 +924,9 @@ order; Linear decides what becomes work.
 
 | # | Observation | Where |
 |---|---|---|
-| P-1 | Conforms to ADR 0011 decision 4 (two large choices) and to Rule 4.4. The owner's decision of 2026-10-05 permits a visually lighter Watch and does not require one | `web/party/index.html` `#choose-play`, `#choose-watch` |
-| P-2 | Conforms to ADR 0011 decision 4, ADR 0012 and Rule 4.4: Watch is always offered, and the shell does not read the Game Contract's `spectators`. What a watcher is shown by a game that declares none is Q12 | `web/party/app.js` `renderScene`; `web/party/lib/limited.js` `seatChoice` |
-| P-3 | The label "Play this round" is ADR 0011 decision 4's wording; AVR-56's "Ready state" names the state (Rule 4.3). Not a deviation | `web/party/index.html` |
+| P-1 | Conforms to ADR 0011 decision 4 (two large choices). The owner's decision of 2026-10-05 permits a visually lighter Watch and does not require one (Rule 4.4) | `web/party/index.html` `#choose-play`, `#choose-watch` |
+| P-2 | Conforms to ADR 0011 decision 4 and ADR 0012: Watch is always offered, and the shell does not read the Game Contract's `spectators`. Whether it should for a game that declares none, and what a non-player is then offered and shown, is Q12 | `web/party/app.js` `renderScene`; `web/party/lib/limited.js` `seatChoice` |
+| P-3 | The label "Play this round" is ADR 0011 decision 4's wording. AVR-56 speaks of a "Ready state"; the owner has not asked to change the label (Rule 4.3). Not a deviation | `web/party/index.html` |
 | P-4 | The accent reaches only the cover; briefings for two games differ by icon and text only (Rule 4.2) | `app.js` `renderScene` (`--game-accent` on `#scene-cover`) |
 | P-5 | No settings slot, no example slot, no Quick Start / guide rendering, no section links or search | `app.js` `openRules` renders `rules[].title/points` only |
 | P-6 | A game without `onboarding.json` gets its catalog summary as the entire How to play | `app.js` `openRules` fallback |
@@ -937,11 +953,11 @@ order; Linear decides what becomes work.
 | E-1 | No `onboarding.json`; help is seven paragraphs hard-coded in the client; the Party briefing shows only the catalog summary though the contract declares `pregame: true` | `games/expo/web/client.js` `HELP`; `contracts/games/expo.json` |
 | E-2 | A heavy game with no Quick Start and no sectioned guide; no contextual link from a `why()` sentence to a rule (Rules 4.12, 4.13) | `games/expo/web/client.js` `helpSheet`, `why` |
 | E-3 | Mission, timed and dummy-seat settings exist only in the standalone lobby and are ignored in a Party round. Decided 2026-10-05 (AVR-245): the setup goes inside EXPO before the first deal; not built on `main` at the commit named above | `games/expo/docs/ACTIONS.md` (`settings`, E-P1); `games/expo/README.md` |
-| E-4 | Six unavailable-control sentences differ from the server's refusal (Rule 7.5); known as E-D8, AVR-263. Decided 2026-10-05: the server's wording is the single source | `games/expo/README.md` "Known defects" |
+| E-4 | Six unavailable-control sentences differ from the server's refusal (Rule 7.5); known as E-D8, AVR-263. Decided 2026-10-05 for rows 1–4, the four that issue had left open: the server's wording is the single source | `games/expo/README.md` "Known defects" |
 | E-5 | Reasons are also set as `title` on disabled buttons and cards; the visible `why()` and `hand-reason` text is what a phone shows | `games/expo/web/client.js` `button`, `cardNode` |
 | E-6 | The play viewport's top bar shows the platform's name above the game's (Rule 3.6) | `games/expo/web/index.html` `.brand` |
 | E-7 | Text is sized in `px` (11 to 14 px in places) while its Game Contract declares `text_scalable: true`; behaviour at large system text was not measured for this document | `games/expo/web/expo.css`; `contracts/games/expo.json` |
-| E-8 | The standalone lobby still asks for a name and avatar; a Party round seats the launch roster without that lobby (ADR 0010 decision 5). Standalone EXPO is "a development/testing path, not a supported Avrana Party product mode" (owner decision on AVR-240, 2026-10-05), so this is not a product-path deviation | `games/expo/web/index.html` `#lobby-form` |
+| E-8 | The standalone lobby still asks for a name and avatar; a Party round seats the launch roster without that lobby (ADR 0010 decision 5). Standalone EXPO is "a development/testing path, not a supported Avrana Party product mode" (owner decision on AVR-240, 2026-10-05, 17:12 UTC), so this is not a product-path deviation | `games/expo/web/index.html` `#lobby-form` |
 
 ## 17. Exit criteria
 
@@ -951,7 +967,7 @@ order; Linear decides what becomes work.
 | Required shared states have reusable primitives | §14. Built: location/follow, briefing shell, Ready/Watch/Start, start blocker, rules sheet, host controls API, held results, reconnect recovery, fit/degraded explanation. Specified only: settings, example, guide, shared unavailable-action shape, shared sheet/confirm/announce, system cues, preferences |
 | Accessibility expectations are explicit | §9, on top of ACCESSIBILITY's MUST table; reduced motion and per-device preferences in §9; cues in Rule 11.3 |
 | Games retain intentional visual identity | Rules 2.1, 2.2, 3.6, 4.2, 6.2, 11.4, 12.2; pressure test |
-| Rules/settings screens have a common platform-shaped baseline | §4 (briefing shell, built), §4.4 (settings: none in the briefing for now; the shell-drawn shape is parked), §4.6 and §5 (rules) |
+| Rules/settings screens have a common platform-shaped baseline | §4 (briefing shell, built), §4.4 (settings: the platform question is deferred, Q3; a shape is proposed), §4.6 and §5 (rules) |
 | No emoji is implicitly required as production game art | Rules 13.1, 13.2; observation B-5 |
 | Simple games have a reusable first-play briefing pattern | §4.3; built except the example strip |
 | Complex games have a Quick Start plus structured Rules Guide pattern | §4.5, §5.2; specified, not built; EXPO is the first consumer |
@@ -963,32 +979,42 @@ The second and tenth rows are honest partials: the contract is written, the shar
 
 ## 18. Open questions for the owner
 
-Four questions have no accepted answer. Each is one decision with its options; this document
-does not pick one. The numbers are the original ones, kept so that references stay stable.
+Each is one decision with its options; this document does not pick one. The numbers are the
+original ones, kept so that references stay stable.
+
+**Open: no accepted answer.**
 
 | # | Question | Options | What bears on it |
 |---|---|---|---|
-| Q6 | **One form of the Host's confirmation for End for everyone.** | (a) a dialog everywhere; (b) tap-again-within-four-seconds everywhere; (c) dialog for turn-based games, tap-again for real-time; (d) no confirmation step at all | Both forms exist (BLUFF's dialog; tap-again in the fallback End and EXPO). ADR 0011 decision 5 says only that BLUFF's End is "confirmed in its own dialog". The AVR-240 decision of 2026-10-05 says the Host may end EXPO "immediately/unilaterally"; it rules out a crew vote and does not say whether the Host's own slip-guard stays |
+| Q6 | **One form of the Host's confirmation for End for everyone.** | (a) a dialog everywhere; (b) tap-again everywhere; (c) dialog for turn-based games, tap-again for real-time; (d) no confirmation step at all | Both forms exist (BLUFF's dialog; tap-again in the fallback End and EXPO). ADR 0011 decision 5 says only that BLUFF's End is "confirmed in its own dialog". The AVR-240 comments of 2026-10-05 say the Host may end EXPO "immediately/unilaterally"; they rule out a crew vote and do not say whether the Host's own slip-guard stays |
 | Q8 | **Platform sound.** | (a) none; (b) the closed cue set of §11, off by default; (c) the same, on by default | No accepted answer. AVR-56 lists "subtle platform sounds where useful" under "Consider"; phones share one room |
 | Q11 | **Rules in play for a game that draws no rules control of its own.** | (a) the game must draw one (Rule 4.16 as proposed; no platform UI in play); (b) the platform provides a rules sheet over the game's page | Reachability itself is accepted (Rule 4.15). Option (b) is platform UI over the game during a round, which amends ADR 0011 decision 5 and, under ADR 0013, crosses origins |
-| Q12 | **What a watcher is shown by a game whose contract says `"spectators": "none"`.** Watch is always an available answer (Rule 4.4); this is only about what the watching phone then displays. | (a) a platform-drawn holding screen (who is playing, who hosts, waiting for the Host); (b) every Party-launched game must supply at least a public view, so `none` is not allowed for one; (c) the game's page with whatever it shows a non-player today | The case exists on `main`: `contracts/games/arcade-gauntlet2.json` declares `none` and has no pregame, so members beyond the maximum are already spectators of it (`avrana/party/core.py`). Option (a) during a round touches ADR 0011 decision 5; option (b) changes the Game Contract vocabulary's meaning |
+| Q12 | **A game whose contract says `"spectators": "none"`.** Two parts. (1) What does it offer a member who cannot or does not want to play? (2) What is that member shown during the round? | (1): (a) Watch, as for every game today; (b) another non-blocking answer in its place, such as "sitting out"; (c) an automatic non-answer that does not block the Start. (2): (a) a platform-drawn holding screen; (b) every Party-launched game must supply at least a public view, so `none` is not allowed for one; (c) the game's page with whatever it shows a non-player today | Accepted: a member "must not be forced into Play merely so the Party can proceed" (AVR-56, 2026-10-05); the Start waits for every member who is here (ADR 0010 decision 1); in Limited Mode a phone that cannot play "may always choose Watch" (ADR 0012). AVR-56's "when the game supports it" was not withdrawn. Today Watch is always offered and `spectators` is not read; `contracts/games/arcade-gauntlet2.json` declares `none` and has no pregame, so members beyond its maximum are already made spectators of it (`avrana/party/core.py` `launch`). (1)(b) and (1)(c) amend ADR 0010 decision 1; (2)(a) touches ADR 0011 decision 5; (2)(b) changes what the Game Contract vocabulary allows |
 
-**Closed on 2026-10-05** (no decision is waiting; listed once so earlier references resolve):
+**Deferred: open, but nothing is waiting on it.**
 
-| # | Was | Answer | Now in |
+| # | Question | Options | What bears on it |
 |---|---|---|---|
-| Q1 | Ready wording and Watch's weight | Watch is a legitimate choice and may be visually secondary (owner decision on AVR-56, 2026-10-05). The label is ADR 0011 decision 4's | Rules 4.3, 4.4 |
-| Q2 | Must every member answer? | Yes: ADR 0010 decision 1. Watch satisfies the gate | Rule 4.3 |
-| Q3 | Who draws settings in the briefing | Nobody, for now: EXPO's setup is inside EXPO before the first deal (owner decision on AVR-245, 2026-10-05) | Rule 4.11a |
-| Q4 | More players than seats | The Start is refused until someone changes their answer: ADR 0010 decision 1 | Rule 4.3 |
-| Q5 | Rematch without a briefing | No: ADR 0011 decision 1 and ADR 0010 decision 2 | Rule 12.1 |
-| Q7 | How far a game may take over the briefing | Bounded by ADR 0011 decision 4; the tint inside that bound is an ordinary proposed rule | Rule 4.2 |
-| Q9 | Platform overlays during play | Not without amending ADR 0011 decision 5 | Rule 3.6 |
-| Q10 | Must every title have a briefing? | No: ADR 0011 decision 1 | §3, after Rule 3.2 |
+| Q3 | **Host settings in the briefing, as a platform matter.** Are they ever drawn there, and by whom? | (a) never: game-specific setup always stays in the game; (b) the shell draws them from a declared closed vocabulary (§4.4); (c) a game draws its own panel inside the briefing | EXPO raised it and is decided game-side "for now" (owner decision on AVR-245, 2026-10-05), with a contract change avoided "unless a later product decision deliberately moves setup into Party". That decision is EXPO's, not a platform rule. (b) needs the launch to carry the values (§20); (c) amends ADR 0011 decision 4; ADR 0010 decision 5 refuses the game's own lobby `settings` verb in a Party round either way |
 
-Closing a question on an ADR means the ADR's answer stands until someone with authority asks to
-amend it; it does not mean the answer was re-examined here. The **[Proposed]** rules throughout
-this document also await the owner's acceptance, in the ordinary way; they are not listed again.
+**No longer listed: an accepted ADR or an owner decision already answers these.** Listed once so
+that earlier references resolve.
+
+| # | Was | Answered by | Answer | Now in |
+|---|---|---|---|---|
+| Q1 (Watch's weight) | Is Watch an equal choice or a secondary one? | **owner decision**, AVR-56, 2026-10-05 | A legitimate choice that "may be visually secondary" | Rule 4.4 |
+| Q1 (label) | "Ready" or "Play this round"? | standing ADR 0011 decision 4 | "Play this round"; the owner has not asked to change it | Rule 4.3 |
+| Q2 | Must every member answer? | standing ADR 0010 decision 1 | Yes | Rule 4.3 |
+| Q4 | More players than seats | standing ADR 0010 decision 1 | The Start is refused until someone changes their answer | Rule 4.3 |
+| Q5 | Rematch without a briefing | standing ADR 0011 decision 1 and ADR 0010 decision 2 | No | Rule 12.1 |
+| Q7 | How far a game may take over the briefing | standing ADR 0011 decision 4 | Bounded by it; the tint inside that bound is an ordinary proposed rule | Rule 4.2 |
+| Q9 | Platform overlays during play | standing ADR 0011 decision 5 | Not without amending it | Rule 3.6 |
+| Q10 | Must every title have a briefing? | standing ADR 0011 decision 1 | No | §3, after Rule 3.2 |
+
+Only the first row was decided by the owner on 2026-10-05. The others stand on an ADR: its
+answer holds until someone with authority asks to amend it, nobody has, and it was not
+re-examined here. The **[Proposed]** rules throughout this document also await the owner's
+acceptance, in the ordinary way; they are not listed again.
 
 ## 19. Evidence still outstanding
 
@@ -1001,11 +1027,12 @@ this document also await the owner's acceptance, in the ordinary way; they are n
   the Host. It remains a validation dependency of this contract. It may give reasons to revisit:
   briefing size limits (Rule 4.10), the first-play gate (Rule 4.9), the all-answer Start gate
   and the no-allocation rule (Rule 4.3, ADR 0010 decision 1), how prominent Watch is drawn
-  (Rule 4.4 item 2; that it is offered is not in question), the waiting line (Rule 3.8), text
+  (Rule 4.4), the waiting line (Rule 3.8), text
   size floors, and whether any system cue is wanted (§11, Q8).
 - The owner decisions of 2026-10-05 cited here are decisions, not evidence: none was tested on a
-  phone, and the EXPO ones (AVR-240, AVR-245, AVR-263) describe work that is not on `main` at
-  the commits named at the top.
+  phone. The AVR-245 and AVR-263 ones describe EXPO work that is not on `main` at the commits
+  named at the top; the AVR-240 one is about who may end a game and names no pending work in
+  the supported path.
 - The real-time pressure test is reasoning without a game. Checkers and Spades (ADR 0014's
   validation order) will test the simple and the team/private-hand cases.
 - The EXPO evidence is its source and its hand-run playtests; EXPO states no deployment and no
@@ -1017,7 +1044,7 @@ this document also await the owner's acceptance, in the ordinary way; they are n
 |---|---|---|
 | Declare the onboarding file (schema name, path convention) in the Party ↔ Games contract | today it is an undeclared convention (P-9) | `contracts/party-games.v0.json`, both checkers, paired PRs |
 | Adopt `avrana.onboarding/v1` | Quick Start, guide, example, reasons, settings | a schema and validator; AVR-37 for packaging |
-| Carry declared settings in the launch | the shell cannot hand settings to a game today. **Not wanted now**: the AVR-245 decision of 2026-10-05 keeps EXPO's setup game-side and avoids a contract change "unless a later product decision deliberately moves setup into Party" | ADR 0006 session protocol (additive), paired PRs |
+| Carry declared settings in the launch | the shell cannot hand settings to a game today. **Not wanted now** (Q3, deferred): the AVR-245 decision of 2026-10-05 keeps EXPO's setup game-side for now and avoids a contract change "unless a later product decision deliberately moves setup into Party" | ADR 0006 session protocol (additive), paired PRs |
 | Per-action `available` / `reason` / `code` convention in a game's view | shared explanation primitive | games-side convention first; not a Party wire change |
 
 ## References
