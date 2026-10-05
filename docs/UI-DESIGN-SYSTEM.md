@@ -162,6 +162,10 @@ screens; a full BLUFF game): zero non-local requests.
 
 ## Platform UX and game identity
 
+The behavioural boundary (briefing, rules access, host controls, unavailable actions, system
+cues, art slots) is owned by [GAME-UX-CONTRACT](design/GAME-UX-CONTRACT.md). This section keeps
+only the visual ownership of the surfaces this system styles.
+
 | Owned by Avrana (the platform) | Owned by each game |
 |---|---|
 | Party page, library, identity/avatars, chat, status, diagnostics | gameplay screens, tables, boards, pieces |

@@ -10,6 +10,10 @@ cues can change **for one person** without changing anyone else's game (`NATIVE-
 
 ## MUST — every page a player uses (platform and games)
 
+[GAME-UX-CONTRACT](GAME-UX-CONTRACT.md) §9 applies these rules to the platform/game boundary
+(announced turn state, per-device preferences, reduced motion in play) and §11 to system sound
+and haptics; it does not restate the table.
+
 | # | Rule | Check |
 |---|---|---|
 | 1 | Real controls: `<button>`, `<a href>`, `<input>`, `<select>`. A clickable `<div>` needs `role="button"`, `tabindex="0"`, Enter/Space handling and a name — prefer a `<button>`. | every visible control has an accessible name |

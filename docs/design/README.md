@@ -50,6 +50,10 @@ Read in this order:
      and per-game process direction; signing kept separate from isolation
    - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
      the hub/BLUFF audit
+   - `GAME-UX-CONTRACT.md` — the shared game UX and interaction contract (AVR-56): what the
+     platform owns and what a game owns on a phone, the briefing, rules access, unavailable-action
+     explanations, interaction floors, system cues and art slots; each rule labelled implemented,
+     accepted or proposed; not validated on phones
    - `PARTY-GAMES-CONTRACT.md` — the versioned Party ↔ Games boundary, its two declarations
      and the checker both CIs run
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)
