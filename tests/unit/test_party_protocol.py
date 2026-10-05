@@ -32,6 +32,9 @@ class Vectors(unittest.TestCase):
                 self.assertEqual(P.seal(key, v['payload']), v['token'])
                 aud = v['payload']['aud']
                 self.assertEqual(P.unseal(key, v['token'], v['name'], aud, now=doc['now']), v['payload'])
+        said = next(v for v in doc['vectors'] if v['payload'].get('host') is True)
+        self.assertIs(P.verify_ticket(key, said['token'], said['payload']['aud'], said['payload']['sid'],
+                                      now=doc['now'])['host'], True)
         g = doc['game_token']
         self.assertEqual(P.game_token(key, g['sid'], g['participant']), g['token'])
 
@@ -98,7 +101,10 @@ class Tickets(unittest.TestCase):
             ticket = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW, host=said)
             self.assertIs(P.verify_ticket(KEY, ticket, 'bluff', SID, now=NOW + 1)['host'], read)
             self.assertEqual('host' in P.unseal(KEY, ticket, 'ticket', 'bluff', now=NOW + 1), said is not None)
-        for forged in (1, 'true', [True], {'host': True}):       # only a JSON boolean is a claim
+        for unsaid in (1, 0, 'false', 'no'):                      # the mint signs a boolean or nothing
+            with self.assertRaises(ValueError):
+                P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW, host=unsaid)
+        for forged in (1, 0, None, 'true', 'false', [True], {'host': True}):       # only a JSON boolean is a claim
             payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
             payload['host'] = forged
             self.assertIsNone(P.verify_ticket(KEY, P.seal(KEY, payload), 'bluff', SID, now=NOW + 1)['host'])

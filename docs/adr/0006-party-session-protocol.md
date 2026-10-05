@@ -121,7 +121,7 @@ Game concepts do not move into Party Core because BLUFF happens to use them.
 | Message | Path | Carries | Checks |
 |---|---|---|---|
 | launch | party → game, `POST {game}/avrana/session/v0/launch` | `sid`, roster of exactly `{participant, name, role}` | 30 s expiry, nonce (replay refused) |
-| ticket | party → browser → game | `sid`, `pid`, `role` | 120 s expiry; audience = game; must match the game's running session |
+| ticket | party → browser → game | `sid`, `pid`, `role` (later `jti`, and `host`: see the amendments) | 120 s expiry; audience = game; must match the game's running session |
 | end | party → game, `POST {game}/avrana/session/v0/end` | `sid` | the game returns to a non-running state; tickets for that session die |
 | ended | game → party, `POST /internal/party-session/v0/ended` | `sid`, `completed` or `abandoned` | no results in v0 |
 
@@ -212,7 +212,8 @@ navigation/results deferrals. This retained plan does not assign current work; c
 
 Status: **proposed** ([AVR-275](https://linear.app/avranakern/issue/AVR-275),
 [AVR-252](https://linear.app/avranakern/issue/AVR-252)); in source with this change, not
-deployed, and awaiting the owner's review of the mechanism.
+deployed, and awaiting the owner's review of the mechanism. The party mints the claim as soon
+as this is merged, so merging it is the acceptance; the status changes to accepted in that merge.
 
 **Why.** D1 gives the party "host, succession, versioned host actions" and a game its rules. A
 game that lets the Party Host do something inside the game (EXPO: begin a mission, retry, go on
@@ -232,8 +233,10 @@ prevent.
   connect) and sends it with the action; the game verifies that one ticket as it verifies a
   hello (signature, audience, running session, single use) and reads the claim from it
   (`GameSide.present`). A ticket lives 120 s and works once, so a host who lost the role
-  holds at most one unspent ticket for at most two minutes, and nothing after it: there is no
-  reconnect to wait for and no state to correct in the game.
+  can still spend the tickets minted before the change, each once, for at most two minutes, and
+  nothing after that: there is no reconnect to wait for and no state to correct in the game.
+  The ticket route does not cap how many a member fetches, so that window is bounded by time,
+  not by count. A game that needs it tighter needs a host epoch in the ticket; not built.
 - The party attests *who the host is* and nothing else. What the host may do in a game, and
   what the game's own rules still require first, stay the game's (D1): no game verb moves into
   Party Core, and the bridge protocol (`avrana.party-bridge/v1`) is unchanged, since the claim
