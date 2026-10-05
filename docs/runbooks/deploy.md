@@ -3,7 +3,8 @@
 Status: **current procedure (AVR-232, AVR-262); not yet run in production** as of 2026-10-04. The
 earlier per-issue scripts and the manual sequences in
 [party-core-deploy](party-core-deploy.md) and [games-fork-deploy](games-fork-deploy.md) remain
-the reference for first-time installation (units, keys, nginx, drop-ins). This runbook covers
+the reference for first-time installation (units, keys, nginx, drop-ins); a clean target is
+[rebuild](rebuild.md) (proposed, not run). This runbook covers
 the routine case: both services are installed and a newer reviewed commit should run.
 
 Production deployment is a human decision and a human action. Nothing in CI, in an agent's
