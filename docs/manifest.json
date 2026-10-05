@@ -107,6 +107,7 @@
     {"path": "docs/runbooks/bluff-playtest.md", "class": "runbook", "status": "mixed", "authority": "procedure", "notes": "Historical checklist sections remain dated; reconcile against current ADRs before a new physical run."},
     {"path": "docs/runbooks/games-fork-deploy.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/service-users-migration.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "ADR 0016 phase 1 (AVR-256). Not run; owner-only.", "status_marker": "Status: **PROPOSED procedure, NOT RUN** (2026-10-03). Written from source and from the Pi's facts"},
+    {"path": "docs/runbooks/rebuild.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "Clean-target rebuild (AVR-32). Not run on any device; owner-only.", "status_marker": "Status: **PROPOSED procedure, NOT RUN** (2026-10-05). Written from source and from the facts"},
     {"path": "docs/runbooks/logs-and-retention.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/network.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/party-core-deploy.md", "class": "runbook", "status": "current", "authority": "procedure"},
