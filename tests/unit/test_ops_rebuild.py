@@ -10,7 +10,13 @@ Three things are pinned here, all Tier 1 (no device, any platform):
      a clean host reaches the expected state, `plan` changes nothing, a second `apply` changes
      nothing, secrets are handoffs that the tool never creates, reads or copies, and `restore`
      puts replaced files back;
-  3. the runbook names every handoff and every unknown.
+  3. the runbook names every handoff and every unknown;
+  4. `apply` and `restore` refuse a host that already looks like an installed appliance and
+     carries no marker of this tool (class Guard): the mistake of running them on today's Pi.
+
+No test here changes the machine it runs on, as any user: every host that can be changed is a
+temporary directory, and the one test that reads the real machine is read-only with `apply` and
+`restore` replaced (CommandLine).
 
 None of this is evidence about a Raspberry Pi: the commands a real `apply` runs (apt-get, useradd,
 systemctl, nginx) are recorded here, never executed, and the simulated host answers as the
@@ -26,6 +32,7 @@ import platform
 import re
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -444,25 +451,30 @@ class Recovery(Simulated):
         host = self.host()
         host.install(b'debian default\n', '/etc/nginx/sites-enabled/default', 'root', 'root', '0644')
         host.install(b'SystemMaxUse=1G\n', '/etc/systemd/journald.conf.d/avrana.conf', 'root', 'adm', '0640')
-        self.hand_over()
-        result = self.apply(activate=True)
-        self.assertRegex(result['backup'], r'^/var/backups/avrana-party/rebuild-\d{8}T\d{6}Z$')
+        first = self.apply()
+        self.assertRegex(first['backup'], r'^/var/backups/avrana-party/rebuild-\d{8}T\d{6}Z$')
         self.assertIsNone(self.host().kind('/etc/nginx/sites-enabled/default'))
-        restored = rebuild.restore(self.host(), result['backup'])
+        self.hand_over()
+        second = self.apply(activate=True)
+        self.assertNotEqual(first['backup'], second['backup'])
+        restored = rebuild.restore(INV, self.host(), second['backup'])       # newest first, as a person would
+        host = self.host(readonly=True)
+        self.assertIn('/etc/systemd/system/avrana-party-core.service', restored)
+        self.assertIsNone(host.kind('/etc/nginx/sites-available/avrana-party'))     # it did not exist before
+        self.assertIsNone(host.kind('/etc/nginx/sites-enabled/avrana-party'))
+        rebuild.restore(INV, self.host(), first['backup'])
         host = self.host(readonly=True)
         self.assertEqual(host.path('/etc/nginx/sites-enabled/default').read_bytes(), b'debian default\n')
         self.assertEqual(host.path('/etc/systemd/journald.conf.d/avrana.conf').read_bytes(), b'SystemMaxUse=1G\n')
         self.assertEqual(host.meta('/etc/systemd/journald.conf.d/avrana.conf'), ('root', 'adm', '0640'))
-        self.assertIsNone(host.kind('/etc/nginx/sites-available/avrana-party'))     # it did not exist before
-        self.assertIsNone(host.kind('/etc/nginx/sites-enabled/avrana-party'))
-        self.assertIn('/etc/systemd/system/avrana-party-core.service', restored)
-        self.assertEqual(host.meta(result['backup']), ('root', 'root', '0700'))
+        self.assertEqual(host.meta(first['backup']), ('root', 'root', '0700'))
         with self.assertRaises(rebuild.RebuildError):
-            rebuild.restore(self.host(), '/var/backups/avrana-party/nothing')
+            rebuild.restore(INV, self.host(), '/var/backups/avrana-party/nothing')
 
     def test_the_unit_file_of_a_running_service_is_not_replaced(self):
-        """Today's Pi: services running from units this repository does not have. That is the
-        service-users migration, with its state moves and its reverse; never a silent overwrite."""
+        """The second line of defence, behind the guard (class Guard): even on a host this tool
+        is allowed to change, a running service's unit file is never silently overwritten."""
+        self.apply()                                     # a clean target: the marker is written
         host = self.host()
         old = b'[Service]\nUser=operator\n'
         for name in ('avrana-party-core', 'avranaparty-arcade', 'avranaparty-games'):
@@ -493,6 +505,155 @@ class Recovery(Simulated):
         self.assertFalse([c for c in ran if c.startswith('systemctl enable --now avrana')])
         self.assertIn('sudo systemctl reload nginx', result['pending'])
         self.assertTrue(result['backup'])                                    # and restore can undo it
+
+
+class Guard(Simulated):
+    """`apply` and `restore` change only a host this tool built. Today's Pi, on which somebody
+    types `sudo python3 -m avrana.ops.rebuild apply` by mistake, is refused before anything."""
+    MARKER = INV['guard']['marker']
+
+    def live_appliance(self):
+        """A simulated host with what SYSTEM records on the Pi: the three services running from
+        units of the operator's, the key store, the site, the releases. No marker."""
+        host = self.host()
+        for name in ('avrana-party-core', 'avranaparty-arcade', 'avranaparty-games'):
+            host.install(b'[Service]\nUser=operator\n', f'/etc/systemd/system/{name}.service', 'root', 'root', '0644')
+            host.run(['systemctl', 'enable', '--now', name])
+        host.install(b'old site\n', '/etc/nginx/sites-available/avrana-party', 'root', 'root', '0644')
+        host.install(b'{}', '/etc/avrana-party/party-core.json', 'root', 'root', '0644')
+        host.install(b'{}', '/var/lib/avrana-party/deployment.json', 'root', 'root', '0644')
+        host.install(b'debian default\n', '/etc/nginx/sites-enabled/default', 'root', 'root', '0644')
+        return len(host.ledger['commands'])
+
+    def test_a_live_appliance_is_refused_with_nothing_changed_and_no_command_run(self):
+        commands = self.live_appliance()
+        before = tree(self.root)
+        for kw in ({}, {'activate': True}):
+            with self.assertRaises(rebuild.RebuildError) as refused:
+                self.apply(**kw)
+            self.assertIn('service-users-migration.md', str(refused.exception))
+            self.assertIn('nothing was changed', str(refused.exception))
+        self.assertEqual(tree(self.root), before)                        # no file, no backup, no marker
+        self.assertEqual(len(self.host().ledger['commands']), commands)  # no apt-get, useradd, systemctl
+        self.assertIsNone(self.host().kind(self.MARKER))
+        lines = []
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(rebuild.main(['apply', '--activate', '--root', str(self.root)], out=lines.append), 2)
+        self.assertIn('refused', err.getvalue())
+        self.assertEqual(tree(self.root), before)
+
+    def test_each_sign_alone_is_enough(self):
+        for path in INV['guard']['appliance_paths']:
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as tmp:
+                host = rebuild.Host(tmp)
+                leaf = path if Path(path).suffix else path + '/x'      # a unit or config file, else a directory
+                host.install(b'x', leaf, 'root', 'root', '0644')
+                self.assertTrue(rebuild.appliance_signs(INV, host), path)
+                with self.assertRaises(rebuild.RebuildError):
+                    rebuild.apply(INV, host, log=lambda *_: None)
+                self.assertEqual(host.ledger['commands'], [])
+        for unit in INV['guard']['appliance_units']:
+            for state in ({'enabled': True, 'active': False}, {'enabled': False, 'active': True}):
+                with self.subTest(unit=unit, state=state), tempfile.TemporaryDirectory() as tmp:
+                    host = rebuild.Host(tmp)
+                    host.ledger['units'][unit] = state
+                    with self.assertRaises(rebuild.RebuildError):
+                        rebuild.apply(INV, host, log=lambda *_: None)
+                    self.assertEqual(host.ledger['commands'], [])
+        # A fresh Debian image already runs these; they are not signs of an Avrana appliance.
+        with tempfile.TemporaryDirectory() as tmp:
+            host = rebuild.Host(tmp)
+            for unit in ('nginx', 'NetworkManager', 'avahi-daemon'):
+                host.ledger['units'][unit] = {'enabled': True, 'active': True}
+            host.install(b'stand-in', '/home/cody/avrana-party/.git', 'cody', 'cody', '0644')   # runbook step 2
+            self.assertEqual(rebuild.appliance_signs(INV, host), [])
+
+    def test_a_clean_target_gets_the_marker_before_anything_else(self):
+        order = []
+
+        class Watching(rebuild.Host):
+            def install(self, data, path, *meta):
+                order.append(path)
+                return super().install(data, path, *meta)
+
+            def run(self, argv):
+                order.append(' '.join(argv))
+                return super().run(argv)
+        rebuild.apply(INV, Watching(self.root), log=lambda *_: None)
+        self.assertEqual(order[0], self.MARKER)
+        self.assertEqual(order[1], 'apt-get update')
+        host = self.host(readonly=True)
+        marker = json.loads(host.path(self.MARKER).read_text(encoding='utf-8'))
+        self.assertEqual((marker['schema'], marker['owner_override'], marker['signs_at_creation']),
+                         ('avrana.rebuild-marker/v0', False, []))
+        self.assertRegex(marker['created'], r'^\d{8}T\d{6}Z$')
+        self.assertTrue(marker['party_sha'] is None or re.fullmatch(r'[0-9a-f]{40}', marker['party_sha']))
+        self.assertEqual(host.meta(self.MARKER), ('root', 'root', '0644'))
+
+    def test_with_the_marker_repeat_applies_converge_after_units_are_running(self):
+        self.build()                                     # apply, handoffs, apply --activate
+        self.assertTrue(rebuild.appliance_signs(INV, self.host(readonly=True)))     # it is an appliance now
+        marker = self.host().path(self.MARKER).read_bytes()
+        for _ in range(2):
+            again = self.apply(activate=True)
+            self.assertEqual((again['changed'], again['failed']), ([], []))
+        self.assertEqual(self.host().path(self.MARKER).read_bytes(), marker)        # written once
+
+    def test_restore_obeys_the_same_rule(self):
+        first = self.apply()
+        self.host().install(b'edited\n', '/etc/systemd/journald.conf.d/avrana.conf', 'root', 'root', '0644')
+        backup = self.apply()['backup']
+        self.assertTrue(backup and backup != first['backup'])
+        self.host().remove(self.MARKER)                  # the same host, as if this tool never built it
+        before = tree(self.root)
+        with self.assertRaises(rebuild.RebuildError) as refused:
+            rebuild.restore(INV, self.host(), backup)
+        self.assertIn('no rebuild marker', str(refused.exception))
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(rebuild.main(['restore', backup, '--root', str(self.root)], out=lambda *_: None), 2)
+        self.assertEqual(tree(self.root), before)
+        with self.assertRaises(rebuild.RebuildError):    # and apply no longer goes on either
+            self.apply()
+        self.assertEqual(tree(self.root), before)
+
+    def test_plan_and_verify_are_allowed_on_a_live_appliance_and_change_nothing(self):
+        self.live_appliance()
+        before = tree(self.root)
+        with contextlib.redirect_stderr(io.StringIO()):
+            lines = []
+            self.assertEqual(rebuild.main(['plan', '--root', str(self.root)], out=lines.append), 0)
+            self.assertIn('apply would be refused here', '\n'.join(lines))
+            self.assertEqual(rebuild.main(['verify', '--root', str(self.root)], out=lambda *_: None), 1)
+        self.assertEqual(tree(self.root), before)
+
+    def test_only_the_loudly_named_owner_flag_overrides_and_it_is_recorded(self):
+        self.live_appliance()
+        flags = [a for a in ('--force', '--yes', '-f', '--override') if a]
+        for flag in flags:
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                rebuild.main(['apply', flag, '--root', str(self.root)], out=lambda *_: None)
+        result = self.apply(owner_override=True)
+        self.assertEqual(result['failed'], [])
+        marker = json.loads(self.host().path(self.MARKER).read_text(encoding='utf-8'))
+        self.assertTrue(marker['owner_override'])
+        self.assertTrue(marker['signs_at_creation'])
+        # Even then a running service keeps its unit file (Recovery, above).
+        self.assertEqual(self.host().path('/etc/systemd/system/avrana-party-core.service').read_bytes(),
+                         b'[Service]\nUser=operator\n')
+        self.assertIn('`--owner-confirms-not-the-live-appliance`', RUNBOOK)
+
+    def test_the_guard_is_pinned_to_the_inventory(self):
+        def broken(change):
+            inv = copy.deepcopy(INV)
+            change(inv)
+            return ' | '.join(rebuild.validate(inv))
+        self.assertIn('is not an appliance sign', broken(lambda i: i['guard']['appliance_paths'].remove(
+            '/etc/systemd/system/avranaparty-games.service')))
+        self.assertIn('unit avrana-party-core is not an appliance sign',
+                      broken(lambda i: i['guard']['appliance_units'].remove('avrana-party-core')))
+        self.assertIn('marker must live outside', broken(lambda i: i['guard'].update(marker='/var/lib/avrana-party/m.json')))
+        self.assertIn('guard: needs', broken(lambda i: i.pop('guard')))
+        self.assertIn(self.MARKER, RUNBOOK)
 
 
 class Verify(Simulated):
@@ -590,12 +751,19 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn('--root', err)
 
-    @unittest.skipUnless(platform.system() == 'Linux' and hasattr(os, 'geteuid') and os.geteuid() != 0,
-                         'needs Linux as an ordinary user')
+    @unittest.skipUnless(platform.system() == 'Linux', 'a real host needs Linux')
     def test_a_real_host_is_read_but_never_changed_without_root(self):
-        rc, _, err = self.run_cli('apply')
-        self.assertEqual(rc, 2)
-        self.assertIn('run as root', err)
+        """The only test that looks at the machine it runs on, and it only looks. `apply` and
+        `restore` are replaced for its duration, so no user this runs as (root in a container
+        included) can reach a real change; the refusal itself is checked with a pretended uid."""
+        def unreachable(*args, **kwargs):
+            raise AssertionError('a test reached a real apply or restore')
+        with mock.patch.object(rebuild, 'apply', unreachable), mock.patch.object(rebuild, 'restore', unreachable), \
+                mock.patch.object(os, 'geteuid', lambda: 1000):
+            for command in (['apply'], ['apply', '--activate'], ['restore', '/var/backups/avrana-party/x']):
+                rc, _, err = self.run_cli(*command)
+                self.assertEqual(rc, 2, command)
+                self.assertIn('run as root', err)
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / 'file'
             target.write_bytes(b'x')
@@ -607,6 +775,21 @@ class CommandLine(unittest.TestCase):
                              ('file', 'link', 'dir'))
             self.assertIsNone(host.kind(str(Path(tmp) / 'absent')))
             self.assertIsNone(host.user_groups('avrana-no-such-user'))
+            for change in (lambda: host.install(b'', str(target), 'root', 'root', '0644'), lambda: host.remove(str(target)),
+                           lambda: host.mkdir(tmp + '/d', 'root', 'root', '0755'), lambda: host.run(['true'])):
+                with self.assertRaises(rebuild.RebuildError):
+                    change()
+            self.assertEqual(target.read_bytes(), b'x')
+
+    def test_every_other_test_works_on_a_simulated_host(self):
+        """No test may construct a real host that can change anything: the one above is read-only.
+        Every `main` call that can change something carries --root."""
+        source = Path(__file__).read_text(encoding='utf-8')
+        self.assertEqual(source.count('rebuild.Host(' + 'readonly=True)'), 1)
+        self.assertNotIn('rebuild.Host(' + ')', source)
+        for call in re.findall(r"rebuild\.main\(\[([^\]]*)\]", source):
+            if "'apply'" in call or "'restore'" in call:
+                self.assertIn("'--root'", call, call)
 
 
 if __name__ == '__main__':

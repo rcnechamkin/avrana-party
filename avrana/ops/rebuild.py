@@ -22,10 +22,19 @@ new changes nothing. Files it replaces are kept under /var/backups/avrana-party/
 links, users, packages, units and the commands that would have run are kept in a ledger file
 there. That is what the tests use and it is a rehearsal of the procedure, not evidence about a Pi.
 On a real host (`--root` absent) this needs Linux, and root for `apply`, `restore` and a complete
-`verify`. NEVER RUN ON THE APPLIANCE as of this commit; docs/runbooks/rebuild.md is the procedure
-and says which steps are the owner's.
+`verify`. NEVER RUN ON THE APPLIANCE as of this commit, and `apply` and `restore` enforce that: a
+host that already has an Avrana unit enabled or running, or any install path of today's layout
+(the inventory's `guard`), and no marker written by an earlier `apply`, is refused before a single
+package, user, file or command, with exit 2. That host is the running appliance: moving it to this
+layout is docs/runbooks/service-users-migration.md. The first `apply` on a host with none of those
+signs writes the marker (UTC time, the Party commit) before anything else, and later runs go on
+because of it. `--owner-confirms-not-the-live-appliance` is the one way past a refusal; the owner
+types it, on a half-built target whose marker was lost, never an agent and never on the Pi that
+hosts parties. `plan` and `verify` only read and run anywhere. docs/runbooks/rebuild.md is the
+procedure and says which steps are the owner's.
 
-Exit status: 0; 1 when `check`, `apply --activate` or `verify` found a failure; 2 for a usage error.
+Exit status: 0; 1 when `check`, `apply --activate` or `verify` found a failure; 2 for a usage
+error or a refused host.
 """
 import argparse
 from datetime import datetime, timezone
@@ -150,6 +159,23 @@ def validate(inv, party_root=REPO_ROOT):
     for area in REQUIRED_AREAS:
         if not any(h['area'] == area for h in inv['hardware_checks']):
             errors.append(f'hardware_checks: nothing for {area}')
+    guard = inv.get('guard') or {}
+    signs = guard.get('appliance_paths') or []
+    if not _absolute(guard.get('marker')) or not guard.get('appliance_units') or not signs:
+        errors.append('guard: needs a marker path, appliance_units and appliance_paths')
+    else:
+        marker = guard['marker']
+        if any(marker == s or marker.startswith(s + '/') for s in signs) or marker in managed \
+                or any(marker.startswith(d['path'] + '/') for d in inv['directories']):
+            errors.append('guard: the marker must live outside every path that marks an installed appliance')
+        for entry in inv['files']:
+            if entry['path'].startswith('/etc/systemd/system/') and entry['path'].endswith('.service') \
+                    and not entry.get('optional') and entry['path'] not in signs:
+                errors.append(f'guard: {entry["path"]} is not an appliance sign')
+        for unit in inv['units']:
+            if any(r.startswith('path:/etc/systemd/system/') for r in unit.get('requires', [])) \
+                    and unit['name'] not in guard['appliance_units']:
+                errors.append(f'guard: unit {unit["name"]} is not an appliance sign')
     ids = [u.get('id') for u in inv['unknowns']]
     if len(set(ids)) != len(ids) or not all(u.get('question') and u.get('confirm') for u in inv['unknowns']):
         errors.append('unknowns: each needs a unique id, a question and how to confirm it on the device')
@@ -540,8 +566,61 @@ def _record(host, journal, backup, path):
     host.install(json.dumps(journal, indent=1).encode('utf-8'), f'{backup}/journal.json', 'root', 'root', '0600')
 
 
-def apply(inv, host, party_root=REPO_ROOT, games_source=GAMES_RELEASE, activate=False, now=None, log=print):
-    """Do every step of the plan whose needs are met. Returns {changed, pending, backup, failed}."""
+def appliance_signs(inv, host):
+    """What on this host says an appliance is already installed here: Avrana units that are
+    enabled or active, and install paths of the deployed layout. Reads only."""
+    guard = inv['guard']
+    signs = []
+    for name in guard['appliance_units']:
+        enabled, active = host.unit(name)
+        if enabled or active:
+            signs.append(f'unit {name} is ' + ('active' if active else 'enabled'))
+    signs += [f'{path} exists' for path in guard['appliance_paths'] if host.exists(path)]
+    return signs
+
+
+def _party_sha(party_root):
+    """The commit of the tree this runs from, for the marker; None when it cannot be told."""
+    root = Path(party_root).resolve()
+    if root.parent.name == 'releases':                 # /opt/avrana-party/releases/<sha>
+        return root.name
+    try:
+        out = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    sha = out.stdout.decode('ascii', 'replace').strip()
+    return sha if len(sha) == 40 and out.returncode == 0 else None
+
+
+def authorize(inv, host, command, party_root=REPO_ROOT, owner_override=False, now=None):
+    """May `apply` or `restore` change this host? Raises RebuildError, having changed nothing,
+    unless the marker of an earlier apply is there, or (apply only) the host shows no sign of an
+    installed appliance, in which case the marker is written here, before anything else."""
+    marker = inv['guard']['marker']
+    if host.exists(marker):
+        return
+    signs = appliance_signs(inv, host)
+    if command == 'restore' and not owner_override:
+        raise RebuildError(f'restore refused, nothing was changed: no rebuild marker at {marker}, so this host '
+                           'was not built by this tool (docs/runbooks/rebuild.md, "Rollback and recovery")')
+    if signs and not owner_override:
+        raise RebuildError(
+            f'{command} refused, nothing was changed: this host already looks like an installed appliance '
+            f'({"; ".join(signs[:4])}{" ..." if len(signs) > 4 else ""}) and has no rebuild marker at {marker}. '
+            'This tool builds a clean target only. Moving a running appliance to this layout is '
+            'docs/runbooks/service-users-migration.md; docs/runbooks/rebuild.md says when the owner may override.')
+    if command == 'apply':
+        record = {'schema': 'avrana.rebuild-marker/v0', 'created': _stamp(now), 'party_sha': _party_sha(party_root),
+                  'owner_override': bool(owner_override), 'signs_at_creation': signs}
+        host.mkdir(str(PurePosixPath(marker).parent), 'root', 'root', '0755')
+        host.install((json.dumps(record, indent=1) + '\n').encode('utf-8'), marker, 'root', 'root', '0644')
+
+
+def apply(inv, host, party_root=REPO_ROOT, games_source=GAMES_RELEASE, activate=False, now=None, log=print,
+          owner_override=False):
+    """Do every step of the plan whose needs are met. Returns {changed, pending, backup, failed}.
+    Refuses, before any change, a host `authorize` does not let through."""
+    authorize(inv, host, 'apply', party_root, owner_override, now)
     steps = plan(inv, host, party_root, games_source)
     todo = [s for s in steps if s['status'] == CHANGE]
     backup, journal, changed, commands, failed = None, [], [], [], []
@@ -615,9 +694,11 @@ def apply(inv, host, party_root=REPO_ROOT, games_source=GAMES_RELEASE, activate=
     return {'changed': changed, 'pending': pending, 'backup': backup, 'failed': failed}
 
 
-def restore(host, backup):
+def restore(inv, host, backup, owner_override=False):
     """Put back every path one `apply` replaced or removed, newest first. Users, groups, packages
-    and directories stay: they grant nothing by themselves and the next apply reuses them."""
+    and directories stay: they grant nothing by themselves and the next apply reuses them. Only on
+    a host that carries the marker of an apply."""
+    authorize(inv, host, 'restore', owner_override=owner_override)
     journal_path = host.path(f'{backup}/journal.json')
     if not journal_path.is_file():
         raise RebuildError(f'{backup} is not a backup written by apply (no journal.json)')
@@ -642,7 +723,12 @@ def parse_topology(text):
         word, _, what = line.partition(' ')
         if word in ('PASS', 'FAIL', 'WARN'):
             lowered = what.lower()
-            area = 'dns' if ('dns' in lowered or 'dhcp' in lowered) else                 'nginx' if ('nginx' in lowered or 'http' in lowered) else 'ap'
+            if 'dns' in lowered or 'dhcp' in lowered:
+                area = 'dns'
+            elif 'nginx' in lowered or 'http' in lowered:
+                area = 'nginx'
+            else:
+                area = 'ap'
             out.append((area, f'topology {what}', word.lower(), ''))
     return out or [('ap', 'topology', FAIL, 'tools/avrana-topology-check printed no verdict')]
 
@@ -743,6 +829,10 @@ def main(argv=None, out=print):
     ap.add_argument('--games-source', default=GAMES_RELEASE, help='the Games release the games unit files come from')
     ap.add_argument('--inventory', help='another inventory file (tests)')
     ap.add_argument('--activate', action='store_true', help='apply: also run the reload/enable commands')
+    ap.add_argument('--owner-confirms-not-the-live-appliance', dest='owner_override', action='store_true',
+                    help='apply/restore: OWNER ONLY, typed by a person. Go on although the host looks like an '
+                         'installed appliance and has no rebuild marker (a half-built target whose marker '
+                         'was lost). Never on the appliance that hosts parties')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args(argv)
     inv = load_inventory(args.inventory)
@@ -776,13 +866,18 @@ def main(argv=None, out=print):
             out('not root: root-only paths (the certificate, the key store) read as absent')
         if args.command == 'plan':
             steps = plan(inv, host, games_source=args.games_source)
+            signs = appliance_signs(inv, host)
+            if signs and not host.exists(inv['guard']['marker']) and not args.json:
+                out(f'NOTE: apply would be refused here: an appliance is already installed ({len(signs)} signs, '
+                    f'first: {signs[0]}) and there is no rebuild marker. See docs/runbooks/service-users-migration.md')
             if args.json:
                 out(json.dumps([{k: v for k, v in s.items() if k != 'entry'} for s in steps], indent=1))
             else:
                 _print_plan(steps, out)
             return 0
         if args.command == 'apply':
-            result = apply(inv, host, games_source=args.games_source, activate=args.activate)
+            result = apply(inv, host, games_source=args.games_source, activate=args.activate,
+                           owner_override=args.owner_override)
             for line in result['changed']:
                 out(f'changed  {line}')
             if result['backup']:
@@ -798,7 +893,7 @@ def main(argv=None, out=print):
         if args.command == 'restore':
             if not args.backup:
                 raise RebuildError('restore needs the backup directory')
-            for path in restore(host, args.backup):
+            for path in restore(inv, host, args.backup, owner_override=args.owner_override):
                 out(f'restored {path}')
             out('reload what reads them: sudo systemctl daemon-reload; sudo nginx -t && sudo systemctl reload nginx')
             return 0

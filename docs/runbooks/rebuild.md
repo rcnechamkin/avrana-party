@@ -15,10 +15,14 @@ Read these three limits first.
    has never run on the Pi: today every service runs as the operator account from the checkouts,
    and the games unit installed there is in no repository. A rebuild from source therefore
    produces the phase-1 layout. Rebuilding today's Pi exactly is not possible from source.
-2. **Do not run `apply` on the running Pi to get there.** A host with services already running
-   is a migration ([service-users-migration](service-users-migration.md)), which moves state and
-   can be reversed. `apply` refuses to replace the unit file of a running service for that
-   reason. `plan` and `verify` only read and are safe anywhere.
+2. **`apply` and `restore` do not run on the running Pi, and refuse to.** A host that already
+   has an Avrana unit enabled or running, or any install path of today's layout (the key store,
+   the site file, the web root, the releases, the deployment manifest: the inventory's `guard`
+   lists them), and no marker of this tool, is refused with exit 2 before a package, a user, a
+   file or a command. That host is a migration
+   ([service-users-migration](service-users-migration.md)), which moves state and can be
+   reversed. `plan` and `verify` only read and are safe anywhere; on such a host `plan` says
+   that `apply` would be refused.
 3. **This is not an image.** No OS image is built, no card is written, nothing updates over the
    air. Image-based install and A/B rollback are later work (AVR-67, AVR-82).
 
@@ -79,6 +83,12 @@ cd /home/cody/avrana-party
 python3 -m avrana.ops.rebuild check && python3 -m avrana.ops.rebuild plan
 sudo python3 -m avrana.ops.rebuild apply
 ```
+
+The first thing the first `apply` does, on a host with none of the signs above, is write
+`/var/lib/avrana-rebuild/marker.json` (root-owned: the UTC time and the Party commit). Every
+later `apply` and every `restore` goes on because that file is there, including after the units
+have been started, when the host looks exactly like an appliance. So `apply` comes before
+`ops/deploy.sh` (step 4), which creates paths the guard treats as an installed appliance.
 
 `apply` installs the missing packages with `apt-get install --no-install-recommends`, creates
 the groups `avrana-front` and `avrana-games` and the users `avrana-party`, `avrana-arcade` and
@@ -205,6 +215,15 @@ up; if you change that file later, the profile has to go down and up, which drop
 Then apply "Boot determinism" from the network runbook if you want the access point to win at
 every boot.
 
+**Overriding the guard.** `--owner-confirms-not-the-live-appliance` makes `apply` (or `restore`)
+go on although the host shows signs of an installed appliance and has no marker; `apply` then
+writes the marker and records in it that it was overridden and what it saw. It is legitimate in
+two cases only, both on a card that has never hosted a party: a half-built target whose marker
+was lost or whose `ops/deploy.sh` ran before the first `apply`, and a card deliberately
+pre-seeded with one of those paths. It is never typed on the Pi that hosts parties, never by an
+agent, and never to get past a refusal that was not understood: read what `apply` printed first.
+Even with it, the unit file of a running service is not replaced.
+
 **Step 11.** Optional and independent of play: `telemetry/install-pi-throttle-check.sh`,
 `telemetry/install-beszel-agent.sh` (and the hub's "Add System"), the renewal timer. Then update
 [SYSTEM](../SYSTEM.md) from what `verify` and `/party/api/status` report and write a dated
@@ -293,6 +312,7 @@ nothing in this procedure writes to it.
 
 | What went wrong | What to do |
 |---|---|
+| `apply` or `restore` says "refused, nothing was changed" | Believe it: nothing was changed. On the Pi that hosts parties this is the right answer; use [service-users-migration](service-users-migration.md). On a half-built target (marker lost, or `ops/deploy.sh` run before the first `apply`) see "Overriding the guard" in section 3 |
 | `apply` installed a file you want back | `sudo python3 -m avrana.ops.rebuild restore /var/backups/avrana-party/rebuild-<UTC>` puts back every file, link and removed path of that run (the directory is printed by `apply`), newest first; then `sudo systemctl daemon-reload` and `sudo nginx -t && sudo systemctl reload nginx`. Users, groups, packages and directories stay: they grant nothing |
 | `nginx -t` failed in `apply --activate` | nginx keeps serving its previous configuration: nothing was reloaded. Read the error, then `restore` as above or fix and run `apply --activate` again |
 | A unit does not start | `journalctl -u <unit> -n 50`. A unit whose `LoadCredential=` key is missing does not start: `plan` shows the missing key. `sudo systemctl disable --now <unit>` takes it out without touching the others |
@@ -334,5 +354,7 @@ the inventory are corrected from them.
 the inventory agrees with the unit files, installers, network scripts and this runbook; a
 simulated clean host reaches the expected state in the order above; `plan` changes nothing; a
 second `apply` changes nothing; no secret is created, read or copied; `restore` puts replaced
-files back; a running service's unit file is not replaced. Tier 1 evidence about the procedure.
+files back; a simulated live appliance is refused by `apply` and `restore` with no change and
+no command, while `plan` and `verify` still read it; a running service's unit file is not
+replaced. No test changes the machine it runs on. Tier 1 evidence about the procedure.
 Everything in section 4, and every `derived` entry, stays unproven until a device is built.

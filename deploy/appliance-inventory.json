@@ -37,6 +37,26 @@
     "mdns_name": "party.local",
     "pinned_in": ["ops/deploy-party-https.sh", "tools/avrana-topology-check", "avrana-captive.conf", "avrana-party.nginx", "avrana/ops/smoke.py"]
   },
+  "guard": {
+    "about": "apply and restore refuse a host that looks like an appliance this tool did not build: any of these units enabled or active, or any of these paths present, and no marker. The first apply on a host with none of them writes the marker before anything else. Today's Pi has most of them (docs/SYSTEM.md, docs/runbooks/service-users-migration.md, docs/runbooks/party-https.md): moving it to this layout is the service-users migration.",
+    "marker": "/var/lib/avrana-rebuild/marker.json",
+    "evidence": "docs/SYSTEM.md",
+    "appliance_units": ["avrana-party-core", "avranaparty-games", "avranaparty-arcade", "avrana-party-certificate.timer"],
+    "appliance_paths": [
+      "/etc/systemd/system/avrana-party-core.service",
+      "/etc/systemd/system/avranaparty-games.service",
+      "/etc/systemd/system/avranaparty-arcade.service",
+      "/etc/avrana-party",
+      "/etc/nginx/sites-available/avrana-party",
+      "/etc/NetworkManager/dnsmasq-shared.d/avrana-captive.conf",
+      "/var/www/avrana-party",
+      "/var/lib/avrana-party",
+      "/var/lib/avrana-party-core",
+      "/opt/avrana-party",
+      "/opt/avrana-party-games",
+      "/home/cody/LAN-Games"
+    ]
+  },
   "packages": [
     {"name": "nginx", "why": "ports 80 and 443", "confidence": "derived", "evidence": "avrana-party.nginx"},
     {"name": "network-manager", "why": "the access point profile and its shared DHCP/DNS (nmcli)", "confidence": "derived", "evidence": "install-captive-dns.py"},
