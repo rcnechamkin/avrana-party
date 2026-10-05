@@ -42,9 +42,13 @@ U1–U13 real-device facts and the first supervised spare-card run remain valida
 
 | Gate | What | Who | State on 2026-10-05 |
 |---|---|---|---|
-| 0 | **Read-only inventory of the working Pi: U1–U13.** The commands are the "Confirm with" column of ["Unknown: the owner must confirm on the device"](#unknown-the-owner-must-confirm-on-the-device), and nothing else | the owner, at the device or over `eth0` | **not run** |
+| 0 | **Read-only inventory of the working Pi: U1–U13.** The commands are the `confirm` strings of `unknowns` in [`deploy/appliance-inventory.json`](../../deploy/appliance-inventory.json), which is authoritative (`python3 -m avrana.ops.rebuild unknowns` prints them); the "Confirm with" column of ["Unknown: the owner must confirm on the device"](#unknown-the-owner-must-confirm-on-the-device) repeats them. Nothing else | the owner, at the device or over `eth0` | **not run** |
 | 1 | **Reconcile.** Correct the inventory's `derived` entries and the table in "Reconciliation with today's appliance" from the Gate 0 answers; record the answers in SYSTEM or a dated finding; add a check for every reconciliation item no U-number covers | an agent or the owner, in a pull request, from the recorded answers only | not started; waits for Gate 0 |
 | 2 | **First supervised run on a spare card**, sections 1 to 4 of this runbook, with the working card untouched as the rollback | the owner, supervising every step | not run; waits for Gate 1 |
+
+The reconciliation table below was drafted from source before Gate 0 ran. That is ahead of the
+owner's stated order ("First inventory [...] Then [...]"): it is a draft of what the repository
+records, not the reconciliation itself, and Gate 1 corrects it from the device's answers.
 
 Rules that hold at every gate:
 
@@ -54,9 +58,13 @@ Rules that hold at every gate:
   is [service-users-migration](service-users-migration.md), a separate owner deployment.
 - **Gate 0 is read-only and owner-run.** Every U1–U11 command reads and changes nothing: none
   writes a file, restarts a service or touches the network, and `nmcli connection show` without
-  `-s` prints no secret. U13 is answered from `lego --help` and, if kept, the shell history of
-  the 2026-09-25 issuance; nothing is issued. U12 has no command of this kind: only Gate 2 (or
-  the migration) answers it. Do not run them during a party or a power measurement.
+  `-s` prints no secret. `sudo -l` (U11) only lists what the account may run; it runs nothing,
+  though it may ask for the password and sudo logs the query. U13 is answered from `lego --help`
+  and, if kept, the shell history of the 2026-09-25 issuance; nothing is issued. **Shell history
+  may contain a DNS-provider token** (a variable set on a command line): read it on the device,
+  record only the lego flags, and never paste a history line into SYSTEM, a finding, the
+  inventory, a pull request or a chat. U12 has no command of this kind: only Gate 2 (or the
+  migration) answers it. Do not run them during a party or a power measurement.
 - **Gate 0 is not authorized for agents.** No agent task, CI job or sentence in this document
   authorizes contacting the Pi. The commands have not been run for this runbook, and no answer
   to U1–U13 is assumed anywhere in it.
@@ -89,30 +97,38 @@ have to change on the Pi instead.
 | R6 | Key store | `/etc/avrana-party/game-keys` `avrana-party:avrana-party` `0700`, keys `0600`; the games and arcade units receive theirs through `LoadCredential=` | `0700 cody`, keys `0600 cody`; every service can read every key (SYSTEM, read 2026-10-03) | KNOWN-FROM-SOURCE |
 | R7 | Game keys present | `bluff.key`, `expo.key`, `arcade-gauntlet2.key`, all newly generated on the new card | `bluff.key` and `arcade-gauntlet2.key`; no `expo.key` (SYSTEM, read 2026-10-03) | KNOWN-FROM-SOURCE. No key is carried between devices |
 | R8 | Unit hardening | every unit as its file in source says | only Party Core's unit has systemd hardening (SYSTEM) | KNOWN-FROM-SOURCE. The arcade's hardening with RetroArch, Xvfb, PulseAudio and `uinput` has never run on any host: UNVERIFIED-ON-DEVICE, U12 |
-| R9 | Arcade unit | `arcade/avranaparty-arcade.service` at the installed commit | installed by `arcade/install-service.py` from an earlier revision of the file ([service-users-migration](service-users-migration.md)) | UNVERIFIED-ON-DEVICE; no U-number covers the arcade and Party Core units (U9 reads only the games unit) |
+| R9 | Arcade unit | `arcade/avranaparty-arcade.service` at the installed commit | installed by `arcade/install-service.py` from an earlier revision of the file ([service-users-migration](service-users-migration.md)) | KNOWN-FROM-SOURCE that it was installed from an earlier revision. What the installed unit says: UNVERIFIED-ON-DEVICE; no U-number covers the arcade and Party Core units (U9 reads only the games unit) |
 | R10 | Libretro core | `/opt/avrana-arcade/cores/mame2010_libretro.so`, root-owned, placed by the owner | `/home/cody/avrana-party/arcade/cores/mame2010_libretro.so`, built on the appliance and in no repository | KNOWN-FROM-SOURCE for the location. Which binary it is, and where a rebuild gets it: UNVERIFIED-ON-DEVICE, U8 |
-| R11 | Games virtualenv | a fresh root-owned `/opt/avrana-party-games/venv` from the Games `requirements.txt` | a virtualenv inherited from the upstream checkout (`/home/cody/LAN-Games/.venv`) | KNOWN-FROM-SOURCE for the location. Its Python version, and whether a fresh one runs the fork: UNVERIFIED-ON-DEVICE, U9 |
+| R11 | Games virtualenv | a fresh root-owned `/opt/avrana-party-games/venv` from the Games `requirements.txt` | a virtualenv inherited from the upstream checkout (`/home/cody/LAN-Games/.venv`) | KNOWN-FROM-SOURCE for the location. Its Python version: UNVERIFIED-ON-DEVICE, U9. Whether a fresh one runs the fork: UNVERIFIED-ON-DEVICE, and no read-only check can settle it; only Gate 2 does |
 | R12 | Runtime state | systemd state directories `/var/lib/avrana-party-core`, `/var/lib/avrana-arcade`, `/var/lib/avrana-lan-games`, starting empty | the device store owned by `cody`; the fork's `data/` and the arcade's `runtime/saves` and `runtime/system` inside the checkouts ([service-users-migration](service-users-migration.md)) | KNOWN-FROM-SOURCE for the locations. What they hold: UNVERIFIED-ON-DEVICE, no U-number covers it. A rebuild carries none of it over ("What a rebuild does not carry over") |
 | R13 | Upstream LAN Games | absent | `/home/cody/LAN-Games` at upstream `5da1764`, kept for rollback, not served (SYSTEM) | KNOWN-FROM-SOURCE |
-| R14 | Deployed commits | the two reviewed commits the owner names at step 2, from current `main` | latest verified production Party `956b968`, Games `c6d7b52` (SYSTEM, finding of 2026-09-29); source is ahead of verified production | KNOWN-FROM-SOURCE. A rebuilt card therefore also runs application behaviour that has never been deployed or tried on phones; that acceptance belongs to the issues that own it, not to this runbook |
+| R14 | Deployed commits | the two reviewed commits the owner names at step 2, from current `main` | latest verified production Party `956b968`, Games `c6d7b52` (SYSTEM; [finding of 2026-09-29](../findings/2026-09-29-avr129-deploy.md)); source is ahead of verified production | KNOWN-FROM-SOURCE. A rebuilt card therefore also runs application behaviour that has never been deployed or tried on phones; that acceptance belongs to the issues that own it, not to this runbook |
 | R15 | `party-core.json` | installed from `deploy/party-core/party-core.example.json`, only when absent | the Pi's own file; whether it was edited by hand is not recorded | UNVERIFIED-ON-DEVICE, no U-number covers it |
 | R16 | OS image and boot configuration | "Debian 13" on a Raspberry Pi 4 is all the inventory can say | image, release, kernel, `config.txt` not recorded | UNVERIFIED-ON-DEVICE, U1 and U3 |
 | R17 | Packages | the inventory's list; most names are `derived` | installed interactively; only `arcade/install-dependencies.sh` was ever a list | UNVERIFIED-ON-DEVICE, U2 (RetroArch in particular: package or local build) |
-| R18 | Access point and Wi-Fi | the profile `ap-profile` prints, from the fields [network](network.md) recorded on 2026-09-24 | the same fields as recorded; PMF, ciphers, the `eth0` profile, the regulatory country and the firmware alternative are not recorded | KNOWN-FROM-SOURCE for the recorded fields. The rest: UNVERIFIED-ON-DEVICE, U4 and U5 |
+| R18 | Access point and Wi-Fi | the profile `ap-profile` prints, from the fields [network](network.md) recorded on 2026-09-24 | the same fields as recorded, PMF among them ("PMF default"); the security `proto` and ciphers as a full export, the `eth0` profile, the regulatory country and the firmware alternative are not recorded | KNOWN-FROM-SOURCE for the recorded fields. The country and firmware: UNVERIFIED-ON-DEVICE, U4. The access point profile's remaining settings: U5. The `eth0` profile: U5 asks about it, but its command shows only the access point profile, so no U-number's check covers it |
 | R19 | Hostname and `party.local` | a hostname of the new card's own (step 1) | called both `party` and `RaspberryPi` in the records | UNVERIFIED-ON-DEVICE, U6 |
 | R20 | nginx | the repository's site file, Debian's `default` site removed | the same site file is the intended state (SYSTEM's compare step); whether `default` was removed by hand is not recorded | UNVERIFIED-ON-DEVICE, U11 |
 | R21 | Certificate and lego | a new key, ACME account and certificate issued on the new card; lego placed by the owner | issued on the Pi on 2026-09-25 with a lego binary copied from a lab directory that is in no repository; the command line was not recorded | KNOWN-FROM-SOURCE that nothing is carried over. lego's version and origin, and the issuing command: UNVERIFIED-ON-DEVICE, U7 and U13 |
 | R22 | Clock | nothing configured by this procedure | nothing in the repository configures or checks time | UNVERIFIED-ON-DEVICE, U10 |
-| R23 | Operator account | created by the owner in step 1 | sudoers, polkit and sshd settings not recorded | UNVERIFIED-ON-DEVICE, U11 |
+| R23 | Operator account | created by the owner in step 1 | sudoers, polkit and sshd settings not recorded | UNVERIFIED-ON-DEVICE. sudoers: U11 (`sudo -l`). polkit and sshd: U11 asks, but its commands read neither, so no U-number's check covers them |
 | R24 | Development and test area | none | `~/avrana-lab`, the dev front door and the PS1 and BLUFF dev servers on ports 8190, 8196 and 8198 when started (SYSTEM) | KNOWN-FROM-SOURCE. Not part of the target; the rebuild creates none of it |
 | R25 | Telemetry | optional, installed by its own scripts (step 11) | minute power telemetry in `/var/log/avrana/` (SYSTEM); which optional pieces are installed is not recorded here | KNOWN-FROM-SOURCE that it is outside `apply`. Not needed to play |
 
-Items no U-number covers today: R3 (whether `/opt` releases exist), R9 (the arcade and Party
-Core units as installed), R12 (what the state holds) and R15 (`party-core.json`). The migration
-runbook already names a read-only check for R9 (`systemctl cat avranaparty-games
-avranaparty-arcade avrana-party-core`); whether the others get a check of their own is a Gate 1
-decision. None of them blocks a spare-card build, because the rebuild takes nothing from the
-working Pi; all of them matter to the in-place migration.
+Items no U-number fully covers today:
+
+- R3: whether `/opt` releases already exist on the Pi.
+- R9: the arcade and Party Core units as installed. The migration runbook names a read-only
+  check (`systemctl cat avranaparty-games avranaparty-arcade avrana-party-core`).
+- R11: whether a fresh virtualenv runs the fork. No read-only check can say; Gate 2 does.
+- R12: what the runtime state holds.
+- R15: whether `party-core.json` was edited by hand.
+- R18: the `eth0` profile. U5 asks; its command reads only the access point profile.
+- R23: polkit and sshd. U11 asks; its commands read neither.
+
+Whether each gets a check of its own is a Gate 1 decision. None of them blocks a spare-card
+build, because the rebuild takes nothing from the working Pi; all of them matter to the in-place
+migration.
 
 ## What is enumerated, and where
 
@@ -484,7 +500,8 @@ is the owner's choice and is not scripted; none of it ever goes into Git.
 ## Unknown: the owner must confirm on the device
 
 This is **Gate 0** ("Gates, in order"). The repository cannot answer these, so nothing above
-guesses them. Each is a read-only command on the working Pi, run by the owner; the answers
+guesses them. Each is a read-only command on the working Pi, run by the owner, and the same
+string as that unknown's `confirm` in the inventory, which is authoritative; the answers
 belong in SYSTEM or a dated finding, and the `derived` entries of the inventory and the
 reconciliation table are corrected from them (Gate 1). **None has been run for this runbook, and
 no agent is authorized to run one.**
@@ -492,18 +509,18 @@ no agent is authorized to run one.**
 | | Question | Confirm with |
 |---|---|---|
 | U1 | Which OS image, release and kernel the Pi is installed from (Raspberry Pi OS or plain Debian 13, 64-bit, Lite or desktop) | `cat /etc/os-release; uname -a` |
-| U2 | Which packages were installed by hand beyond the inventory, and whether the `derived` package names match (RetroArch in particular: package or local build) | `apt-mark showmanual; command -v retroarch` |
+| U2 | Which packages were installed by hand beyond the inventory, and whether the `derived` package names match (RetroArch in particular: package or local build) | `apt-mark showmanual; command -v retroarch; dpkg -S "$(command -v retroarch)"` |
 | U3 | Boot configuration the H.264 encoder and RetroArch rely on | `cat /boot/firmware/config.txt` |
 | U4 | The Wi-Fi regulatory country and the active brcmfmac firmware alternative | `iw reg get; update-alternatives --display cyfmac43455-sdio.bin` |
 | U5 | The access point profile's remaining settings (PMF, ciphers), the `eth0` profile, and whether a passphrase typed at `nmcli --ask` is stored so the access point comes up at the next boot | `nmcli connection show "Avrana Party Internal"` (without `-s` it prints no secret) |
 | U6 | The system hostname and how `party.local` is published | `hostnamectl; grep -n host-name /etc/avahi/avahi-daemon.conf` |
 | U7 | The lego version and where its binary came from | `/usr/local/bin/lego --version` |
 | U8 | Whether the core on the Pi is the binary `arcade/evidence/selected-core.json` records, and where a rebuild gets it | `sha256sum /home/cody/avrana-party/arcade/cores/mame2010_libretro.so` |
-| U9 | The installed games unit and its virtualenv, and whether a fresh virtualenv runs the fork | `systemctl cat avranaparty-games` |
-| U10 | How the clock is kept with no internet (a Pi 4 has no RTC) well enough for certificate validation | `timedatectl` |
-| U11 | sudoers, polkit and sshd for the operator account; whether a default nginx site was removed by hand | `ls -l /etc/nginx/sites-enabled/` |
+| U9 | The installed games unit and its virtualenv, and whether a fresh virtualenv runs the fork | `systemctl cat avranaparty-games; /home/cody/LAN-Games/.venv/bin/python --version` |
+| U10 | How the clock is kept with no internet (a Pi 4 has no RTC) well enough for certificate validation | `timedatectl; systemctl status systemd-timesyncd` |
+| U11 | sudoers, polkit and sshd for the operator account; whether a default nginx site was removed by hand | `ls -l /etc/nginx/sites-enabled/; sudo -l` (lists only; runs nothing) |
 | U12 | Whether the phase-1 layout runs on the Pi at all | the first supervised rebuild or migration, then `verify` |
-| U13 | The exact lego command line that issues `party.avrana.net` by DNS-01 | `lego --help`; the shell history of the 2026-09-25 issuance, if kept |
+| U13 | The exact lego command line that issues `party.avrana.net` by DNS-01 | `lego --help`; the shell history of the 2026-09-25 issuance, if kept (it may hold a DNS-provider token: record the flags only, never the line) |
 
 ## Real-host code that has never executed anywhere
 
