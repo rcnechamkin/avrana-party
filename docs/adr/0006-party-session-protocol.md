@@ -208,12 +208,11 @@ navigation/results deferrals. This retained plan does not assign current work; c
   `Invalid('clock')`, not `expired`. The wire format and tolerances are unchanged.
 - The clock policy itself (NTP steps, no RTC) is AVR-79.
 
-## Amendment 2026-10-04: a ticket says whether its participant is the host
+## Amendment 2026-10-04: the party says who its host is, and answers for it at the action
 
-Status: **proposed** ([AVR-275](https://linear.app/avranakern/issue/AVR-275),
-[AVR-252](https://linear.app/avranakern/issue/AVR-252)); in source with this change, not
-deployed, and awaiting the owner's review of the mechanism. The party mints the claim as soon
-as this is merged, so merging it is the acceptance; the status changes to accepted in that merge.
+Status: **accepted** by the owner on 2026-10-04 ([AVR-275](https://linear.app/avranakern/issue/AVR-275),
+[AVR-252](https://linear.app/avranakern/issue/AVR-252)), with the condition met below that a
+former host has nothing left to spend. In source with this change; not merged, not deployed.
 
 **Why.** D1 gives the party "host, succession, versioned host actions" and a game its rules. A
 game that lets the Party Host do something inside the game (EXPO: begin a mission, retry, go on
@@ -222,39 +221,59 @@ role}` and the browser's `isHost()` is only a page's word. Without a signed answ
 trusts the page or invents a host of its own, and a second host is what this ADR exists to
 prevent.
 
-**Decision.**
+**Decision.** Two things, and a game needs both before it acts for the host.
 
-- Every ticket the party mints carries `host`: `true` when its participant is the Party Host at
-  that moment, `false` otherwise. Party Core answers under its lock, so succession, a transfer
-  and a returning member are all already in the answer. The ticket row of D5 therefore reads
-  `sid`, `pid`, `role`, `jti`, `host`.
-- The claim is true only of the moment it was minted. A game **keeps no host**. For a host-only
-  action the browser fetches a fresh ticket (the route and the bridge request it already uses to
-  connect) and sends it with the action; the game verifies that one ticket as it verifies a
-  hello (signature, audience, running session, single use) and reads the claim from it
-  (`GameSide.present`). A ticket lives 120 s and works once, so a host who lost the role
-  can still spend the tickets minted before the change, each once, for at most two minutes, and
-  nothing after that: there is no reconnect to wait for and no state to correct in the game.
-  The ticket route does not cap how many a member fetches, so that window is bounded by time,
-  not by count. A game that needs it tighter needs a host epoch in the ticket; not built.
+1. **The claim.** Every ticket the party mints carries `host`: `true` when its participant is
+   the Party Host at that moment, `false` otherwise. The ticket row of D5 therefore reads `sid`,
+   `pid`, `role`, `jti`, `host`. For a host-only action the browser fetches a fresh ticket (the
+   route and the bridge request it already uses to connect) and sends it with the action; the
+   game verifies that one ticket as it verifies a hello (signature, audience, running session,
+   single use, `GameSide.present`).
+2. **The question.** A claim is true only of the moment it was minted, and a ticket lives
+   120 s. So a `host: true` claim does not authorize anything by itself: the game asks the
+   party, server to server, whether that participant is the host **now**, and acts only on a
+   yes.
+
+   | Message | Path | Carries | Checks |
+   |---|---|---|---|
+   | host | game → party, `POST /internal/party-session/v0/host` | `sid`, `pid`, nonce | 30 s expiry, nonce (replay refused), issuer is the session's game, loopback and unproxied like `ended` |
+   | host_is | party → game, in the reply | `sid`, `pid`, the question's nonce, `host` true or false | 30 s expiry; must repeat the question's session, participant and nonce |
+
+   Party Core answers under its lock with its timers run first (`Core.is_host`), so a transfer,
+   a succession, a returning member and an ended session are already in the answer. No answer
+   (the party is down or slow), a refusal, a forged or mismatched answer and a "no" all mean the
+   action does not happen. **A host who lost the role has nothing left to spend**, however many
+   tickets it fetched while host: each still says `host: true`, and the party says no.
+
+- A game **keeps no host**, before or after: there is no host field to correct, no reconnect to
+  wait for and no push to miss. The party is the only place the answer exists.
 - The party attests *who the host is* and nothing else. What the host may do in a game, and
   what the game's own rules still require first, stay the game's (D1): no game verb moves into
   Party Core, and the bridge protocol (`avrana.party-bridge/v1`) is unchanged, since the claim
   travels inside the ticket it already carries.
 - Additive inside `avrana.party-session/v0`, like `jti`: the envelope, signature and every
-  refusal rule are unchanged; a verifier that predates the field ignores it; a ticket without
-  the field (an older party) reads as `host: None`, never as true or false, so a game can tell
-  "not the host" from "this party does not say" and keep its earlier behaviour for the latter.
+  existing refusal rule are unchanged; a verifier that predates the claim ignores it.
 - A late member's spectator ticket carries the claim too: a host who watches is still the host.
+- Cost: one loopback request per host action. Host actions are rare (a mission begins, is
+  retried, or the next one starts). The answer is not cached.
+
+**Transitional, not a mode.** A ticket without the field (a party from before this amendment)
+reads as `host: None`, never as true or false, and a game then keeps its earlier behaviour for
+what a host would do. That exists only so the two repositories can deploy in either order. A
+game must say so where it applies (LAN Games logs it once per session and EXPO shows it to the
+players), and the allowance is removed once the party that mints the claim is the deployed one.
 
 **Not decided here.** Pushing host changes to a game server (a game that must *show* the host
 without an action still reads it from the page's Party view, which is display, not authority);
 binding a ticket to a connection (still deferred, as above).
 
-**Evidence.** `tests/unit/test_party_protocol.py` (the claim, forged non-boolean values,
-`present` is single-use, another session's host), `tests/unit/test_party_session_flow.py`
-(`test_a_ticket_says_whether_its_member_is_the_host_right_now`: transfer, an older ticket, a
-late spectator), the added `ticket` vector. Tier 1 only.
+**Evidence.** `tests/unit/test_party_protocol.py` (the claim, forged non-boolean values, `present`
+is single-use; `HostQuestion`: yes and no, an answer bound to its own question, forged, expired,
+other-session and other-audience answers, a question opened once);
+`tests/unit/test_party_session_flow.py` over real HTTP (a transfer with five hoarded host
+tickets, each refused by the party's answer; a host who leaves; the route refused through the
+proxy, from the public API, for another key, another session and an unknown participant); the
+added `ticket`, `host` and `host_is` vectors. Tier 1 only.
 
 ## Amendment 2026-10-03: whose key, and which local endpoint
 

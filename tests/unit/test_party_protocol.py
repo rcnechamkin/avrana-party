@@ -448,5 +448,74 @@ class KeyFilePermissions(unittest.TestCase):
                 P.read_key(path)                                          # plain 0440: no ACL
 
 
+class HostQuestion(unittest.TestCase):
+    """A ticket's claim opens the question; the party's answer, now, decides it."""
+
+    def setUp(self):
+        self.side = P.GameSide(KEY, 'bluff')
+        self.side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW), now=NOW)
+        self.guard = P.ReplayGuard()
+
+    def answer(self, question, host, key=KEY):
+        return P.host_answer(key, P.open_message(KEY, question, 'host', 'party', self.guard, now=NOW), host, now=NOW)
+
+    def test_the_partys_yes_and_no(self):
+        for said in (True, False):
+            q = self.side.ask_host(PID, now=NOW)
+            self.assertIs(self.side.host_is(q, self.answer(q, said), now=NOW + 1), said)
+
+    def test_an_answer_answers_only_its_own_question(self):
+        q1, q2 = self.side.ask_host(PID, now=NOW), self.side.ask_host(PID, now=NOW)
+        other = self.side.ask_host(PID2, now=NOW)
+        yes = self.answer(q1, True)
+        for q in (q2, other):                                   # another nonce, another participant
+            with self.assertRaises(Invalid) as e:
+                self.side.host_is(q, yes, now=NOW + 1)
+            self.assertEqual(str(e.exception), 'answer')
+
+    def test_what_is_not_an_answer(self):
+        q = self.side.ask_host(PID, now=NOW)
+        yes = self.answer(q, True)
+        opened = P.unseal(KEY, yes, 'host_is', 'bluff', now=NOW)
+        cases = {'signature': self.answer(self.side.ask_host(PID, now=NOW), True, key=P.new_key()),
+                 'type': q,                                     # the question is not its own answer
+                 'issuer': P.seal(KEY, dict(opened, iss='bluff')),
+                 'answer': P.seal(KEY, dict(opened, host=1)),
+                 'audience': P.seal(KEY, dict(opened, aud='spades')),
+                 'session': P.seal(KEY, dict(opened, sid='session-' + 'f' * 32))}
+        for reason, bad in cases.items():
+            with self.subTest(reason), self.assertRaises(Invalid) as e:
+                self.side.host_is(q, bad, now=NOW + 1)
+            if reason != 'signature':
+                self.assertEqual(str(e.exception), reason)
+        with self.assertRaises(Invalid):                        # too late
+            self.side.host_is(q, yes, now=NOW + P.MESSAGE_TTL)
+        with self.assertRaises(ValueError):                     # the party signs a boolean
+            P.host_answer(KEY, opened, 'yes')
+
+    def test_no_session_no_question_and_an_old_answer_dies_with_its_session(self):
+        q = self.side.ask_host(PID, now=NOW)
+        yes = self.answer(q, True)
+        self.side.on_end(P.end_message(KEY, 'bluff', SID, now=NOW), now=NOW)
+        with self.assertRaises(Invalid):
+            self.side.host_is(q, yes, now=NOW + 1)
+        with self.assertRaises(Invalid):
+            self.side.ask_host(PID, now=NOW)
+
+    def test_the_party_opens_a_question_once_and_only_a_question(self):
+        q = self.side.ask_host(PID, now=NOW)
+        self.assertEqual(P.open_message(KEY, q, 'host', 'party', self.guard, now=NOW)['pid'], PID)
+        with self.assertRaises(Invalid) as e:
+            P.open_message(KEY, q, 'host', 'party', self.guard, now=NOW)
+        self.assertEqual(str(e.exception), 'replay')
+        opened = P.unseal(KEY, q, 'host', 'party', now=NOW)
+        with self.assertRaises(Invalid) as e:
+            P.open_message(KEY, P.seal(KEY, dict(opened, pid='someone', nonce='e' * 24)), 'host', 'party',
+                           self.guard, now=NOW)
+        self.assertEqual(str(e.exception), 'host fields')
+        with self.assertRaises(ValueError):
+            P.host_question(KEY, 'bluff', SID, 'someone')
+
+
 if __name__ == '__main__':
     unittest.main()

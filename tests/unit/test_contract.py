@@ -42,7 +42,8 @@ def fake_games(root, party_decl):
     (root / 'games/bluff/game.py').write_text('class S:\n    def game_result(self, ref):\n        return None\n',
                                               encoding='utf-8')
     (root / 'core/party_session.py').write_text(f'KEYS_ENV = "{p["environment"]["keys_dir"]}"\n'
-                                                f'ENDED_PATH = "{p["routes"]["party_ended"]}"\n', encoding='utf-8')
+                                                f'ENDED_PATH = "{p["routes"]["party_ended"]}"\n'
+                                                f'HOST_PATH = "{p["routes"]["party_host"]}"\n', encoding='utf-8')
     (root / 'server.py').write_text(f'@app.post("/games/{{slug}}{p["routes"]["game_launch"]}")\n'
                                     f'@app.post("/games/{{slug}}{p["routes"]["game_end"]}")\n', encoding='utf-8')
     (root / 'ops/export_avrana_catalog.py').write_text(f"INTEGRATION = '{p['launch']['integration']}'\n", encoding='utf-8')
@@ -74,6 +75,7 @@ class Declaration(unittest.TestCase):
         self.assertEqual(d['session_protocol']['prefix'], protocol.PREFIX)
         self.assertEqual(d['routes']['party_ticket'], sessions.TICKET_ROUTE)
         self.assertEqual(d['routes']['party_ended'], sessions.ENDED_ROUTE)
+        self.assertEqual(d['routes']['party_host'], sessions.HOST_ROUTE)
         self.assertEqual(d['routes']['game_launch'], sessions.LAUNCH_PATH)
         self.assertEqual(d['routes']['game_end'], sessions.END_PATH)
         self.assertEqual(party_games.versions(d), {'party_games': 'avrana.party-games/v0',

@@ -54,6 +54,18 @@ class ReferenceGame:
         """What core/net.py will do with {"t": "hello", "ticket": …}."""
         return self.side.admit(ticket)
 
+    def ask_host(self, participant, headers=None, message=None):
+        """What core/net.py does before a host action: (status, True/False/None)."""
+        q = message or self.side.ask_host(participant)
+        conn = http.client.HTTPConnection('127.0.0.1', self.party_port, timeout=10)
+        h = {'Content-Type': 'application/json'}
+        h.update(headers or {})
+        conn.request('POST', sessions.HOST_ROUTE, json.dumps({'message': q}), h)
+        r = conn.getresponse()
+        body = json.loads(r.read() or b'{}')
+        conn.close()
+        return r.status, (self.side.host_is(q, body['answer']) if r.status == 200 else None)
+
     def report(self, message, headers=None):
         conn = http.client.HTTPConnection('127.0.0.1', self.party_port, timeout=10)
         h = {'Content-Type': 'application/json'}
@@ -183,6 +195,42 @@ class Flow(ServiceCase):
         cy.post('join', {'name': 'Cy'})
         seen = self.game.side.present(self.ticket(cy)[1]['ticket'])
         self.assertEqual((seen['role'], seen['host']), ('spectator', False))
+
+    def test_the_party_answers_who_its_host_is_now_so_a_lost_role_is_worth_nothing(self):
+        """AVR-275: a `host: true` ticket fetched before the role moved is still a valid ticket,
+        but the game asks the party at the action, and Party Core answers for this moment."""
+        sid = self.launch()
+        who = lambda phone: self.game.side.present(self.ticket(phone)[1]['ticket'])
+        ana, ben = who(self.ana)['participant'], who(self.ben)['participant']
+        hoard = [self.ticket(self.ana)[1]['ticket'] for _ in range(5)]     # fetched while host
+        self.assertEqual((self.game.ask_host(ana), self.game.ask_host(ben)), ((200, True), (200, False)))
+        _, v, _ = self.ana.state()
+        to = next(m['id'] for m in v['members'] if m['name'] == 'Ben')
+        self.assertEqual(self.ana.post('host', {'to': to, 'if_version': v['version']})[0], 200)
+        for t in hoard:                                    # every hoarded ticket still claims it
+            self.assertIs(self.game.side.present(t)['host'], True)
+            self.assertEqual(self.game.ask_host(ana), (200, False))        # and the party says no
+        self.assertEqual(self.game.ask_host(ben), (200, True))
+        # only this machine, never through the proxy, only this game's key, only this session
+        self.assertEqual(self.game.ask_host(ben, {'X-Forwarded-For': '10.0.0.9'})[0], 404)
+        self.assertEqual(self.ana.post('session/host', {'message': self.game.side.ask_host(ben)})[0], 404)
+        forged = protocol.host_question(protocol.new_key(), 'bluff', sid, ben)
+        self.assertEqual(self.game.ask_host(ben, message=forged)[0], 403)
+        q = self.game.side.ask_host(ben)
+        self.assertEqual(self.game.ask_host(ben, message=q)[0], 200)
+        self.assertEqual(self.game.ask_host(ben, message=q)[0], 403)       # a question is asked once
+        stranger = 'participant-' + '9' * 32
+        self.assertEqual(self.game.ask_host(stranger)[0], 409)
+        old = protocol.host_question(KEY, 'bluff', 'session-' + '0' * 32, ben)
+        self.assertEqual(self.game.ask_host(ben, message=old)[0], 409)
+
+    def test_when_the_host_leaves_the_party_names_another_and_says_so(self):
+        self.launch()
+        who = lambda phone: self.game.side.present(self.ticket(phone)[1]['ticket'])['participant']
+        ana, ben = who(self.ana), who(self.ben)
+        self.assertEqual(self.ana.post('leave', {})[0], 200)
+        self.assertEqual(self.game.ask_host(ana)[1], False)
+        self.assertEqual(self.game.ask_host(ben)[1], True)
 
     def test_late_member_gets_a_spectator_ticket(self):
         self.launch()

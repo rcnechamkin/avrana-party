@@ -15,6 +15,7 @@ Browser -> party (cookie-authenticated, Origin-checked, never in a URL):
 
 Game -> party (server to server, loopback and unproxied only, signed):
     POST /internal/party-session/v0/ended   {"message": <ended>}   -> 200 {"ok": true}
+    POST /internal/party-session/v0/host    {"message": <host>}    -> 200 {"ok": true, "answer": <host_is>}
     When the message carries a `result` (avrana.party.result, ADR 0015) the reply adds
     "result": "accepted", or "result": "refused" with a "reason". Either way the session ended.
 
@@ -40,6 +41,7 @@ log = logging.getLogger('avrana.party.sessions')
 LAUNCH_PATH = '/avrana/session/v0/launch'
 END_PATH = '/avrana/session/v0/end'
 ENDED_ROUTE = '/internal/party-session/v0/ended'
+HOST_ROUTE = '/internal/party-session/v0/host'
 TICKET_ROUTE = '/party/api/session/ticket'
 
 
@@ -149,8 +151,8 @@ def routes(service, endpoints):
         try:
             with service.lock:
                 s, p = service.core.participant_for(device, game)
-                # the host, as Party Core has it at this moment (succession included): the only
-                # way a game learns it, and the game asks again for every host action
+                # the host, as Party Core has it at this moment (succession included). A game
+                # that acts on it asks again, server to server, at the action (HOST_ROUTE)
                 host = p.member_id == service.core.party.host_id
                 service._notify()
         except core.Refused as e:
@@ -189,4 +191,28 @@ def routes(service, endpoints):
                             s.result_refused)
         return _send(h, 200, reply)
 
-    return {('POST', TICKET_ROUTE): ticket}, {ENDED_ROUTE: ended}
+    def host(h, body):
+        """A game asks whether one participant of its running session is the Party Host now.
+        Party Core answers under its lock, timers run first, so a transfer, a succession and an
+        ended session are all already in the answer. The answer is signed and repeats the
+        question's nonce; who the host is otherwise is not said."""
+        with service.lock:
+            s = service.core.party.session
+            game_id = s.game_id if s is not None else None
+        ep = endpoints.get(game_id)
+        if ep is None:
+            return _send(h, 409, {'error': 'stale_session', 'message': 'No game session.'})
+        try:
+            with service.lock:                    # the replay guard is shared between threads
+                q = protocol.open_message(ep.key, body.get('message'), 'host', 'party', guard)
+            if q['iss'] != ep.game_id:
+                raise protocol.Invalid('issuer')
+        except protocol.Invalid as e:
+            return _send(h, 403, {'error': 'bad_message', 'reason': str(e)})
+        with service.lock:
+            is_host = service.core.is_host(q['sid'], q['pid'])
+        if is_host is None:
+            return _send(h, 409, {'error': 'stale_session', 'message': 'No game session.'})
+        return _send(h, 200, {'ok': True, 'answer': protocol.host_answer(ep.key, q, is_host)})
+
+    return {('POST', TICKET_ROUTE): ticket}, {ENDED_ROUTE: ended, HOST_ROUTE: host}
