@@ -705,6 +705,19 @@ class PartyCore:
             self._commit()
         return s, p
 
+    def is_host(self, session_id, participant_id):
+        """Whether that participant of the active session is the party's host at this moment:
+        True or False, or None when that session is not the one running (or has no such
+        participant). For a game that is about to act on a ticket's host claim."""
+        self._timed()
+        s = self._live_session()
+        if s is None or s.state != ACTIVE or s.id != session_id:
+            return None
+        p = next((p for p in s.participants.values() if p.id == participant_id), None)
+        if p is None:
+            return None
+        return self.party.host_id is not None and p.member_id == self.party.host_id
+
     def _late_admit(self, m):
         """Party admission after launch. v0 admits late members as spectators only; a game that
         wants more says so in its contract (late_join) and a later version honours it."""

@@ -32,6 +32,9 @@ class Vectors(unittest.TestCase):
                 self.assertEqual(P.seal(key, v['payload']), v['token'])
                 aud = v['payload']['aud']
                 self.assertEqual(P.unseal(key, v['token'], v['name'], aud, now=doc['now']), v['payload'])
+        said = next(v for v in doc['vectors'] if v['payload'].get('host') is True)
+        self.assertIs(P.verify_ticket(key, said['token'], said['payload']['aud'], said['payload']['sid'],
+                                      now=doc['now'])['host'], True)
         g = doc['game_token']
         self.assertEqual(P.game_token(key, g['sid'], g['participant']), g['token'])
 
@@ -86,11 +89,25 @@ class Tickets(unittest.TestCase):
 
     def test_valid(self):
         got = P.verify_ticket(KEY, self.ticket(), 'bluff', SID, now=NOW + 1)
-        self.assertEqual(got, {'participant': PID, 'role': 'player', 'sid': SID})
+        self.assertEqual(got, {'participant': PID, 'role': 'player', 'sid': SID, 'host': None})
 
     def test_carries_no_identity_beyond_the_participant(self):
         payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
         self.assertEqual(set(payload), {'v', 'typ', 'iss', 'aud', 'sid', 'iat', 'exp', 'pid', 'role', 'jti'})   # jti: random, no identity
+
+    def test_the_host_claim_is_the_partys_word_or_absent(self):
+        """True, False, or nothing: a ticket that does not say is never read as either."""
+        for said, read in ((True, True), (False, False), (None, None)):
+            ticket = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW, host=said)
+            self.assertIs(P.verify_ticket(KEY, ticket, 'bluff', SID, now=NOW + 1)['host'], read)
+            self.assertEqual('host' in P.unseal(KEY, ticket, 'ticket', 'bluff', now=NOW + 1), said is not None)
+        for unsaid in (1, 0, 'false', 'no'):                      # the mint signs a boolean or nothing
+            with self.assertRaises(ValueError):
+                P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW, host=unsaid)
+        for forged in (1, 0, None, 'true', 'false', [True], {'host': True}):       # only a JSON boolean is a claim
+            payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
+            payload['host'] = forged
+            self.assertIsNone(P.verify_ticket(KEY, P.seal(KEY, payload), 'bluff', SID, now=NOW + 1)['host'])
 
     def test_expired(self):
         self.refused(self.ticket(), 'expired', now=NOW + P.TICKET_TTL)
@@ -235,6 +252,22 @@ class GameSideLifecycle(unittest.TestCase):
         b = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
         self.assertNotEqual(a, b)
         self.assertEqual(side.admit(a, now=NOW + 1), side.admit(b, now=NOW + 1))
+
+    def test_present_reads_the_host_claim_from_one_spent_ticket(self):
+        """A host action carries its own fresh ticket: the claim is read once and the ticket dies."""
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'spectator', now=NOW, host=True)
+        self.assertEqual(side.present(t, now=NOW + 1),
+                         {'token': P.game_token(KEY, SID, PID), 'role': 'spectator',
+                          'participant': PID, 'host': True})
+        with self.assertRaises(Invalid) as e:
+            side.present(t, now=NOW + 2)
+        self.assertEqual(str(e.exception), 'replay')
+        plain = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        self.assertIsNone(side.present(plain, now=NOW + 1)['host'])
+        other = P.mint_ticket(KEY, 'bluff', SID2, PID, 'player', now=NOW, host=True)
+        with self.assertRaises(Invalid):
+            side.present(other, now=NOW + 1)                 # another session's host is nobody here
 
     def test_refused_ticket_is_not_spent(self):
         side = self.launched()
@@ -413,6 +446,75 @@ class KeyFilePermissions(unittest.TestCase):
             os.chmod(path, 0o440)
             with self.assertRaises(ValueError):
                 P.read_key(path)                                          # plain 0440: no ACL
+
+
+class HostQuestion(unittest.TestCase):
+    """A ticket's claim opens the question; the party's answer, now, decides it."""
+
+    def setUp(self):
+        self.side = P.GameSide(KEY, 'bluff')
+        self.side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW), now=NOW)
+        self.guard = P.ReplayGuard()
+
+    def answer(self, question, host, key=KEY):
+        return P.host_answer(key, P.open_message(KEY, question, 'host', 'party', self.guard, now=NOW), host, now=NOW)
+
+    def test_the_partys_yes_and_no(self):
+        for said in (True, False):
+            q = self.side.ask_host(PID, now=NOW)
+            self.assertIs(self.side.host_is(q, self.answer(q, said), now=NOW + 1), said)
+
+    def test_an_answer_answers_only_its_own_question(self):
+        q1, q2 = self.side.ask_host(PID, now=NOW), self.side.ask_host(PID, now=NOW)
+        other = self.side.ask_host(PID2, now=NOW)
+        yes = self.answer(q1, True)
+        for q in (q2, other):                                   # another nonce, another participant
+            with self.assertRaises(Invalid) as e:
+                self.side.host_is(q, yes, now=NOW + 1)
+            self.assertEqual(str(e.exception), 'answer')
+
+    def test_what_is_not_an_answer(self):
+        q = self.side.ask_host(PID, now=NOW)
+        yes = self.answer(q, True)
+        opened = P.unseal(KEY, yes, 'host_is', 'bluff', now=NOW)
+        cases = {'signature': self.answer(self.side.ask_host(PID, now=NOW), True, key=P.new_key()),
+                 'type': q,                                     # the question is not its own answer
+                 'issuer': P.seal(KEY, dict(opened, iss='bluff')),
+                 'answer': P.seal(KEY, dict(opened, host=1)),
+                 'audience': P.seal(KEY, dict(opened, aud='spades')),
+                 'session': P.seal(KEY, dict(opened, sid='session-' + 'f' * 32))}
+        for reason, bad in cases.items():
+            with self.subTest(reason), self.assertRaises(Invalid) as e:
+                self.side.host_is(q, bad, now=NOW + 1)
+            if reason != 'signature':
+                self.assertEqual(str(e.exception), reason)
+        with self.assertRaises(Invalid):                        # too late
+            self.side.host_is(q, yes, now=NOW + P.MESSAGE_TTL)
+        with self.assertRaises(ValueError):                     # the party signs a boolean
+            P.host_answer(KEY, opened, 'yes')
+
+    def test_no_session_no_question_and_an_old_answer_dies_with_its_session(self):
+        q = self.side.ask_host(PID, now=NOW)
+        yes = self.answer(q, True)
+        self.side.on_end(P.end_message(KEY, 'bluff', SID, now=NOW), now=NOW)
+        with self.assertRaises(Invalid):
+            self.side.host_is(q, yes, now=NOW + 1)
+        with self.assertRaises(Invalid):
+            self.side.ask_host(PID, now=NOW)
+
+    def test_the_party_opens_a_question_once_and_only_a_question(self):
+        q = self.side.ask_host(PID, now=NOW)
+        self.assertEqual(P.open_message(KEY, q, 'host', 'party', self.guard, now=NOW)['pid'], PID)
+        with self.assertRaises(Invalid) as e:
+            P.open_message(KEY, q, 'host', 'party', self.guard, now=NOW)
+        self.assertEqual(str(e.exception), 'replay')
+        opened = P.unseal(KEY, q, 'host', 'party', now=NOW)
+        with self.assertRaises(Invalid) as e:
+            P.open_message(KEY, P.seal(KEY, dict(opened, pid='someone', nonce='e' * 24)), 'host', 'party',
+                           self.guard, now=NOW)
+        self.assertEqual(str(e.exception), 'host fields')
+        with self.assertRaises(ValueError):
+            P.host_question(KEY, 'bluff', SID, 'someone')
 
 
 if __name__ == '__main__':

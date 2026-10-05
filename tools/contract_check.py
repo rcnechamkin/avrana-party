@@ -89,6 +89,7 @@ def check_party(party):
     r = d['routes']
     expect(constant(sessions, 'TICKET_ROUTE'), r['party_ticket'], 'party ticket route', where)
     expect(constant(sessions, 'ENDED_ROUTE'), r['party_ended'], 'party ended route', where)
+    expect(constant(sessions, 'HOST_ROUTE'), r['party_host'], 'party host route', where)
     expect(constant(sessions, 'LAUNCH_PATH'), r['game_launch'], 'game launch route', where)
     expect(constant(sessions, 'END_PATH'), r['game_end'], 'game end route', where)
     lan = (party / 'avrana/contracts/lan_catalog.py').read_text(encoding='utf-8')
@@ -135,6 +136,7 @@ def check_games(games):
     session = games / 'core/party_session.py'
     r = d['routes']
     expect(constant(session, 'ENDED_PATH'), r['party_ended'], 'games ended route', where)
+    expect(constant(session, 'HOST_PATH'), r['party_host'], 'games host route', where)
     server = (games / 'server.py').read_text(encoding='utf-8')
     for key, route in (('game_launch', r['game_launch']), ('game_end', r['game_end'])):
         if f'"/games/{{slug}}{route}"' not in server and f"'/games/{{slug}}{route}'" not in server:
@@ -179,7 +181,7 @@ def check_cross(party, games, p, g):
                     f'{pb["reference"]} (Party); re-vendor the file and update both declarations')
     if gb['vectors_sha256'] != pb['vectors_sha256']:
         raise Drift('bridge vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
-    for key in ('party_ticket', 'party_ended', 'game_launch', 'game_end'):
+    for key in ('party_ticket', 'party_ended', 'party_host', 'game_launch', 'game_end'):
         if p['routes'][key] != g['routes'][key]:
             raise Drift(f'route {key} drifted: Party {p["routes"][key]!r} vs Games {g["routes"][key]!r}')
     if p['launch'] != g['launch']:
