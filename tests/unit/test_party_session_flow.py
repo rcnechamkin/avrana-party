@@ -165,6 +165,25 @@ class Flow(ServiceCase):
         self.assertNotEqual(self.game.hello(ta['ticket'])[0], tok1)
         self.assertNotIn(self.ben.cookie, json.dumps([t1, t2]))
 
+    def test_a_ticket_says_whether_its_member_is_the_host_right_now(self):
+        """AVR-252: a game learns the host from the party, per ticket, and keeps no copy. After
+        the role moves, the next tickets say so; a ticket minted before still says what was true
+        then, which is why a host action carries a fresh one."""
+        self.launch()
+        claim = lambda phone: self.game.side.present(self.ticket(phone)[1]['ticket'])['host']
+        self.assertEqual((claim(self.ana), claim(self.ben)), (True, False))
+        _, before, _ = self.ticket(self.ana)
+        _, v, _ = self.ana.state()
+        ben = next(m['id'] for m in v['members'] if m['name'] == 'Ben')
+        status, _, _ = self.ana.post('host', {'to': ben, 'if_version': v['version']})
+        self.assertEqual(status, 200)
+        self.assertEqual((claim(self.ana), claim(self.ben)), (False, True))
+        self.assertIs(self.game.side.present(before['ticket'])['host'], True)
+        cy = self.phone()                                # a late member watches, and is not host
+        cy.post('join', {'name': 'Cy'})
+        seen = self.game.side.present(self.ticket(cy)[1]['ticket'])
+        self.assertEqual((seen['role'], seen['host']), ('spectator', False))
+
     def test_late_member_gets_a_spectator_ticket(self):
         self.launch()
         cy = self.phone()

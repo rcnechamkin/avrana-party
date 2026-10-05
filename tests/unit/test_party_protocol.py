@@ -86,11 +86,22 @@ class Tickets(unittest.TestCase):
 
     def test_valid(self):
         got = P.verify_ticket(KEY, self.ticket(), 'bluff', SID, now=NOW + 1)
-        self.assertEqual(got, {'participant': PID, 'role': 'player', 'sid': SID})
+        self.assertEqual(got, {'participant': PID, 'role': 'player', 'sid': SID, 'host': None})
 
     def test_carries_no_identity_beyond_the_participant(self):
         payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
         self.assertEqual(set(payload), {'v', 'typ', 'iss', 'aud', 'sid', 'iat', 'exp', 'pid', 'role', 'jti'})   # jti: random, no identity
+
+    def test_the_host_claim_is_the_partys_word_or_absent(self):
+        """True, False, or nothing: a ticket that does not say is never read as either."""
+        for said, read in ((True, True), (False, False), (None, None)):
+            ticket = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW, host=said)
+            self.assertIs(P.verify_ticket(KEY, ticket, 'bluff', SID, now=NOW + 1)['host'], read)
+            self.assertEqual('host' in P.unseal(KEY, ticket, 'ticket', 'bluff', now=NOW + 1), said is not None)
+        for forged in (1, 'true', [True], {'host': True}):       # only a JSON boolean is a claim
+            payload = P.unseal(KEY, self.ticket(), 'ticket', 'bluff', now=NOW + 1)
+            payload['host'] = forged
+            self.assertIsNone(P.verify_ticket(KEY, P.seal(KEY, payload), 'bluff', SID, now=NOW + 1)['host'])
 
     def test_expired(self):
         self.refused(self.ticket(), 'expired', now=NOW + P.TICKET_TTL)
@@ -235,6 +246,22 @@ class GameSideLifecycle(unittest.TestCase):
         b = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
         self.assertNotEqual(a, b)
         self.assertEqual(side.admit(a, now=NOW + 1), side.admit(b, now=NOW + 1))
+
+    def test_present_reads_the_host_claim_from_one_spent_ticket(self):
+        """A host action carries its own fresh ticket: the claim is read once and the ticket dies."""
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'spectator', now=NOW, host=True)
+        self.assertEqual(side.present(t, now=NOW + 1),
+                         {'token': P.game_token(KEY, SID, PID), 'role': 'spectator',
+                          'participant': PID, 'host': True})
+        with self.assertRaises(Invalid) as e:
+            side.present(t, now=NOW + 2)
+        self.assertEqual(str(e.exception), 'replay')
+        plain = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        self.assertIsNone(side.present(plain, now=NOW + 1)['host'])
+        other = P.mint_ticket(KEY, 'bluff', SID2, PID, 'player', now=NOW, host=True)
+        with self.assertRaises(Invalid):
+            side.present(other, now=NOW + 1)                 # another session's host is nobody here
 
     def test_refused_ticket_is_not_spent(self):
         side = self.launched()

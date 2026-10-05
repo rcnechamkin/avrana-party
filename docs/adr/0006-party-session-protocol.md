@@ -5,7 +5,8 @@ are **deployed, server-side verified 2026-09-29** (AVR-51). See
 [deployment evidence](../findings/2026-09-29-party-core-deploy.md) and [SYSTEM](../SYSTEM.md).
 Real-phone proof is separate. Status reconciled 2026-10-01.
 
-**Amendments:** ADRs 0007/0008 implement host navigation, ADR 0009 adds Party-managed arcade,
+**Amendments:** a proposed host claim on tickets (2026-10-04, below); ADRs 0007/0008 implement
+host navigation, ADR 0009 adds Party-managed arcade,
 ADR 0010 adds Play/Watch, and accepted/merged ADR 0011 adds automatic profile-backed presence,
 authoritative location, Party-owned setup and held results. ADR 0011 deployment/phone proof
 remains AVR-212. Context and original deferrals below describe the 2026-09-27 decision, not a
@@ -206,6 +207,51 @@ navigation/results deferrals. This retained plan does not assign current work; c
 - `clock` is a distinct refusal reason (AVR-221): `iat` beyond `CLOCK_SKEW` (5 s) ahead of now is
   `Invalid('clock')`, not `expired`. The wire format and tolerances are unchanged.
 - The clock policy itself (NTP steps, no RTC) is AVR-79.
+
+## Amendment 2026-10-04: a ticket says whether its participant is the host
+
+Status: **proposed** ([AVR-275](https://linear.app/avranakern/issue/AVR-275),
+[AVR-252](https://linear.app/avranakern/issue/AVR-252)); in source with this change, not
+deployed, and awaiting the owner's review of the mechanism.
+
+**Why.** D1 gives the party "host, succession, versioned host actions" and a game its rules. A
+game that lets the Party Host do something inside the game (EXPO: begin a mission, retry, go on
+to the next) had no way to know who the host is: the launch roster is `{participant, name,
+role}` and the browser's `isHost()` is only a page's word. Without a signed answer a game either
+trusts the page or invents a host of its own, and a second host is what this ADR exists to
+prevent.
+
+**Decision.**
+
+- Every ticket the party mints carries `host`: `true` when its participant is the Party Host at
+  that moment, `false` otherwise. Party Core answers under its lock, so succession, a transfer
+  and a returning member are all already in the answer. The ticket row of D5 therefore reads
+  `sid`, `pid`, `role`, `jti`, `host`.
+- The claim is true only of the moment it was minted. A game **keeps no host**. For a host-only
+  action the browser fetches a fresh ticket (the route and the bridge request it already uses to
+  connect) and sends it with the action; the game verifies that one ticket as it verifies a
+  hello (signature, audience, running session, single use) and reads the claim from it
+  (`GameSide.present`). A ticket lives 120 s and works once, so a host who lost the role
+  holds at most one unspent ticket for at most two minutes, and nothing after it: there is no
+  reconnect to wait for and no state to correct in the game.
+- The party attests *who the host is* and nothing else. What the host may do in a game, and
+  what the game's own rules still require first, stay the game's (D1): no game verb moves into
+  Party Core, and the bridge protocol (`avrana.party-bridge/v1`) is unchanged, since the claim
+  travels inside the ticket it already carries.
+- Additive inside `avrana.party-session/v0`, like `jti`: the envelope, signature and every
+  refusal rule are unchanged; a verifier that predates the field ignores it; a ticket without
+  the field (an older party) reads as `host: None`, never as true or false, so a game can tell
+  "not the host" from "this party does not say" and keep its earlier behaviour for the latter.
+- A late member's spectator ticket carries the claim too: a host who watches is still the host.
+
+**Not decided here.** Pushing host changes to a game server (a game that must *show* the host
+without an action still reads it from the page's Party view, which is display, not authority);
+binding a ticket to a connection (still deferred, as above).
+
+**Evidence.** `tests/unit/test_party_protocol.py` (the claim, forged non-boolean values,
+`present` is single-use, another session's host), `tests/unit/test_party_session_flow.py`
+(`test_a_ticket_says_whether_its_member_is_the_host_right_now`: transfer, an older ticket, a
+late spectator), the added `ticket` vector. Tier 1 only.
 
 ## Amendment 2026-10-03: whose key, and which local endpoint
 

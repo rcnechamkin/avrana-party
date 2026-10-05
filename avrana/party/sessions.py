@@ -149,13 +149,16 @@ def routes(service, endpoints):
         try:
             with service.lock:
                 s, p = service.core.participant_for(device, game)
+                # the host, as Party Core has it at this moment (succession included): the only
+                # way a game learns it, and the game asks again for every host action
+                host = p.member_id == service.core.party.host_id
                 service._notify()
         except core.Refused as e:
             return _refused(h, e)
         ep = endpoints.get(s.game_id)
         if ep is None:
             return _send(h, 409, {'error': 'no_game', 'message': 'That game has no server here.'})
-        tok = protocol.mint_ticket(ep.key, ep.game_id, s.id, p.id, p.role)
+        tok = protocol.mint_ticket(ep.key, ep.game_id, s.id, p.id, p.role, host=host)
         return _send(h, 200, {'protocol': protocol.VERSION, 'game': s.game_id, 'session': s.id,
                               'role': p.role, 'ticket': tok, 'expires_in': protocol.TICKET_TTL})
 
