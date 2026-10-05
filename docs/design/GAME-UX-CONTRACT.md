@@ -13,7 +13,7 @@ Every rule below carries one of three labels. They are not interchangeable.
 Nothing here is deployed or validated on real phones by this document.
 [SYSTEM](../SYSTEM.md) says what runs. AVR-56 is formally blocked by AVR-27 (four-human offline
 BLUFF acceptance), which has not happened; the owner authorized writing the contract first.
-[§17](#19-evidence-still-outstanding) lists what that acceptance may change.
+[§19](#19-evidence-still-outstanding) lists what that acceptance may change.
 
 Games-repository paths (`games/...`, `web/...`, `core/...`) refer to `avrana-party-games`
 `origin/main` at `5308705`; all other paths are this repository at `83788b3`.
@@ -35,7 +35,7 @@ which behaviours are the same in every game.** It does not restate its neighbour
 | Platform versus game responsibility, the briefing, rules access, unavailable actions, shared interaction rules, system feedback, art slots | **this document** |
 
 This document changes no machine contract. Where it believes one must change, it says so in
-[§18](#20-machine-contract-changes-this-document-proposes-but-does-not-make).
+[§20](#20-machine-contract-changes-this-document-proposes-but-does-not-make).
 
 ## 2. The boundary
 
@@ -163,7 +163,7 @@ do not block. Roles change only at this boundary; a late arrival watches.
 **Rule 4.4 [Accepted, AVR-56].** Ready is the primary answer. Watch is a *secondary* round-role
 choice and is offered only when the game supports spectators. Today the shell draws both at
 equal weight and does not read the Game Contract's `spectators` field
-([§15](#16-current-deviations-observations-not-tasks) P-1, P-2).
+([§16](#16-current-deviations-observations-not-tasks) P-1, P-2).
 
 **Rule 4.5 [Proposed].** A phone that cannot play here (Limited Mode capability, a full table)
 MUST see Ready disabled with the reason in words beside it and Watch still available.
@@ -207,9 +207,9 @@ everyone else sees the chosen values as plain text, not disabled controls.
 (`choice`, `toggle`, `count`), the shell draws them in the briefing between the premise and the
 roster, and the game validates the values at the start and may refuse with a sentence. This
 needs the values to reach the game with the launch, which the session protocol does not carry
-today ([§18](#20-machine-contract-changes-this-document-proposes-but-does-not-make)). **Not
+today ([§20](#20-machine-contract-changes-this-document-proposes-but-does-not-make)). **Not
 built.** Whether a game may instead draw its own settings panel inside the shell is an open
-question ([§16](#18-open-questions-for-the-owner) Q3).
+question ([§18](#18-open-questions-for-the-owner) Q3).
 
 ### 4.5 Heavy games: Quick Start plus Rules Guide
 
@@ -242,7 +242,7 @@ waiting" line) and EXPO (`#help-toggle`, the `help` sheet).
 
 **Rule 4.17 [Proposed].** What the in-play control shows MUST be the same content the briefing
 showed, from one source. Today neither game meets this
-([§15](#16-current-deviations-observations-not-tasks) B-1, E-1).
+([§16](#16-current-deviations-observations-not-tasks) B-1, E-1).
 
 ## 5. Rules content
 
@@ -409,7 +409,7 @@ What exists today:
 | Party briefing: why this phone cannot play | `seatChoice().why` from `evaluate.js` `explain()` | **[Implemented]**, Limited Mode only |
 | Party library: why a game does not fit this phone | `avrana-fit`, `.why` on the tile, `explain()` | **[Implemented]** |
 | EXPO | server-owned `me.legal_cards`, `me.play_reason`, `may_pass_task`, `may_decline_volunteer`; a `why()` paragraph beside the control; stable refusal codes with sentences | **[Implemented]**; six client sentences differ from the server's (EXPO defect E-D8, AVR-263) |
-| BLUFF | the server lists `me.actions`; a missing action is drawn disabled with no reason | **[Implemented]** without explanation ([§15](#16-current-deviations-observations-not-tasks) B-2) |
+| BLUFF | the server lists `me.actions`; a missing action is drawn disabled with no reason | **[Implemented]** without explanation ([§16](#16-current-deviations-observations-not-tasks) B-2) |
 | A shared primitive a game can import | none | **specified only** |
 
 ## 8. Controls, layout and surfaces
@@ -456,7 +456,7 @@ undone, the safe choice MUST be the default focus, and the destructive choice MU
 primary style. Two forms are acceptable and both exist: a dialog (BLUFF `confirmAction`: "End
 the game for everyone?" / "Keep playing" focused) and tap-again-within-four-seconds
 (`party-follow.js` `onEnd`, EXPO `endButton`). Which one is the standard is open
-([§16](#18-open-questions-for-the-owner) Q6).
+([§18](#18-open-questions-for-the-owner) Q6).
 
 **Phone-first layout [Proposed, extends UI-DESIGN-SYSTEM "Mobile first"].**
 
@@ -734,7 +734,7 @@ focus restore) are the same unbuilt set; this document does not duplicate that l
   "Whose turn" on a board with no hand needs a non-colour cue.
 - **The contract says.** Ready stays first-come up to the maximum and the blocker sentence is
   what resolves it today; who plays when more want to than fit is unsettled
-  ([§16](#18-open-questions-for-the-owner) Q4). Play again returns to the briefing by the
+  ([§18](#18-open-questions-for-the-owner) Q4). Play again returns to the briefing by the
   location model; whether a rematch may skip it is unsettled (Q5). Rule 9.3 covers the turn cue.
 
 ### A real-time, action-heavy game (hypothetical)
@@ -807,7 +807,7 @@ None is a work order; Linear decides what becomes work.
 |---|---|
 | Platform-owned vs game-owned visual responsibilities are documented | §2 (table, Rules 2.1 to 2.3), §3 phase table, §13 slots |
 | Required shared states have reusable primitives | §14. Built: location/follow, briefing shell, Ready/Watch/Start, start blocker, rules sheet, host controls API, held results, reconnect recovery, fit/degraded explanation. Specified only: settings, example, guide, shared unavailable-action shape, shared sheet/confirm/announce, system cues, preferences |
-| Accessibility expectations are explicit | §9, on top of ACCESSIBILITY's MUST table; reduced motion and per-device preferences in §9; cues in §11.3 |
+| Accessibility expectations are explicit | §9, on top of ACCESSIBILITY's MUST table; reduced motion and per-device preferences in §9; cues in Rule 11.3 |
 | Games retain intentional visual identity | Rules 2.1, 2.2, 3.6, 4.2, 6.2, 11.4, 12.2; pressure test |
 | Rules/settings screens have a common platform-shaped baseline | §4 (briefing shell, built), §4.4 (settings, proposed), §4.6 and §5 (rules) |
 | No emoji is implicitly required as production game art | Rules 13.1, 13.2; observation B-5 |
