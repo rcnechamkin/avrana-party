@@ -29,7 +29,8 @@
     "check:ui": "node tools/check-ui.mjs",
     "build:avatars": "node tools/build-avatars.mjs",
     "build:art": "node tools/build-art.mjs",
-    "check:repo": "node tools/repo-check.mjs"
+    "check:repo": "node tools/repo-check.mjs",
+    "setup:design-skills": "node tools/install-design-skills.mjs"
   },
   "repository": {
     "type": "git",

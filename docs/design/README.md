@@ -54,6 +54,10 @@ Read in this order:
      platform owns and what a game owns on a phone, the briefing, rules access, unavailable-action
      explanations, interaction floors, system cues and art slots; each rule labelled implemented,
      accepted or proposed; not validated on phones
+   - `AVRANA-UX-UI-PRODUCT-BRIEF.md` — the **owner-approved** UX/UI direction (2026-10-05): product
+     character, visual language, navigation, Party, Library, Host, degraded states, Arcade and EXPO
+     presentation, the design-first process and what is deliberately undecided; direction for the
+     redesign, not implemented
    - `PARTY-GAMES-CONTRACT.md` — the versioned Party ↔ Games boundary, its two declarations
      and the checker both CIs run
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)

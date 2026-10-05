@@ -29,6 +29,14 @@ arcade/evidence/*
 .claude/*
 !.claude/settings.json
 !.claude/agents/
+# Only the Avrana design skill is tracked; third-party design skills are installed locally
+# by tools/install-design-skills.mjs (docs/agents/design-skills.md)
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/avrana-ux-ui/
+.claude/agents/impeccable-*.md
+/skills-lock.json
+/.agents/
 
 # Safety net
 .env*
