@@ -1,13 +1,15 @@
 # Shared game UX and interaction contract
 
-Status: **contract in three labelled layers (AVR-56, 2026-10-04); not validated on phones.**
+Status: **contract with every rule labelled by source (AVR-56, 2026-10-04); not validated on phones.**
 
-Every rule below carries one of three labels. They are not interchangeable.
+Every rule below is labelled from three base labels. They are not interchangeable. A rule may
+carry a compound or scoped label ("Accepted for EXPO only; Proposed as a platform rule"); each
+part then applies to the sentence it sits beside.
 
 | Label | Meaning | Authority |
 |---|---|---|
 | **[Implemented]** | In source on `main` of the named repository on 2026-10-04; a file is cited. Not a claim of deployment or phone proof | the cited code and its tests |
-| **[Accepted]** | Decided elsewhere: an accepted ADR, a current repository document with scoped authority (ACCESSIBILITY, UI-DESIGN-SYSTEM, AGENTS), or the owner's direction recorded in [AVR-56](https://linear.app/avranakern/issue/AVR-56). Only what the source itself says is accepted; any elaboration in the same rule is marked **[Proposed]** | that source |
+| **[Accepted]** | Stated by a source with its own authority: an accepted ADR; AGENTS; ACCESSIBILITY's expectations; UI-DESIGN-SYSTEM, which is the current source UI contract of a prototype visual system and not a final decision; the owner's direction recorded in [AVR-56](https://linear.app/avranakern/issue/AVR-56); or an owner-approved Linear product document scoped to one game, accepted for that game only (Rule 7.2). The label carries no more weight than the source's own status. Only what the source itself says is accepted; any elaboration in the same rule is marked **[Proposed]** | that source |
 | **[Proposed]** | Drafted by this document. Direction for review, not contract, until the owner accepts it | none yet |
 
 Where AVR-56's direction and an accepted ADR disagree (Rule 4.4), the rule says so and is not
@@ -109,7 +111,8 @@ own forfeit or sit-out is a game rule and MUST NOT move the player's page.
 
 **Rule 3.5 [Accepted, AVR-56; Implemented].** Reconnect is recovery into the current Party
 state. A phone that reloads, wakes or regains Wi-Fi lands where the Party is now, in its
-existing role, with no offer, banner or Rejoin button (`party-follow.js` `onView`; a move that
+existing role, with no offer, banner or Rejoin button (ADR 0011 decision 3; `party-follow.js`
+`onView`; a move that
 arrives offline waits for `online`). **[Proposed]**: it MUST NOT pass through onboarding or the
 briefing again if the round has started.
 
@@ -835,8 +838,8 @@ order; Linear decides what becomes work.
 | P-6 | A game without `onboarding.json` gets its catalog summary as the entire How to play | `app.js` `openRules` fallback |
 | P-7 | No system sound or haptic cue; no Party-owned per-device preferences | `web/party/` (no audio or vibrate call) |
 | P-8 | The fallback host End uses tap-again; BLUFF uses a dialog: two confirmation patterns | `web/party/lib/party-follow.js` `onEnd` |
-| P-10 | An away member is shown by `opacity: 0.6` alone in both rosters, with no word, icon or shape. ACCESSIBILITY rule 5 names "disconnected" among states that must not be conveyed by colour alone and gives an "Away" badge as its example, so this looks like a deviation from an accepted rule; the Host is an icon with an accessible name and no visible word | `web/src/party.css` `.avrana-roster li[data-away]`, `.avrana-lineup li[data-away]`; `web/party/app.js` `personChip`, `renderScene` |
 | P-9 | The briefing is not declared in the Party ↔ Games contract; `onboarding.json` is fetched by convention beside the entry page | `app.js` `onboardingFor`; `contracts/party-games.v0.json` |
+| P-10 | An away member is shown by `opacity: 0.6` alone in both rosters, with no word, icon or shape. ACCESSIBILITY rule 5 names "disconnected" among states that must not be conveyed by colour alone and gives an "Away" badge as its example, so this looks like a deviation from an accepted rule; the Host is an icon with an accessible name and no visible word | `web/src/party.css` `.avrana-roster li[data-away]`, `.avrana-lineup li[data-away]`; `web/party/app.js` `personChip`, `renderScene` |
 
 **BLUFF (`avrana-party-games`)**
 
@@ -889,7 +892,7 @@ answers; the last column says which, so that a change is made as an amendment an
 |---|---|---|
 | Q1 | **Ready wording and Watch's weight.** Is the primary control "Ready" (AVR-56 speaks of a "Ready state") or "Play this round"? Is Watch an equal choice or a secondary one? | ADR 0011 decision 4: two large "Play this round / Watch this round" choices. A change would amend ADR 0011 decision 4 and UI-DESIGN-SYSTEM "Buttons" |
 | Q2 | **Does every member have to answer?** The Mario Party reference starts when the Host starts. Keep the all-answer gate, or let the Host start once the minimum is in and treat the rest as watching? | ADR 0010 decision 1: Start is refused until every member who is here has chosen. A change would amend ADR 0010 decision 1 |
-| Q3 | **Settings ownership.** Are host settings always drawn by the platform shell from a declared closed vocabulary (§4.4), or may a game draw its own settings panel inside the briefing? | No accepted answer for settings in the briefing. ADR 0010 decision 5 refuses a game's own lobby `settings` verb in a Party round; a game-drawn panel would amend it, and either path needs the launch to carry values (§20) |
+| Q3 | **Settings ownership.** Are host settings always drawn by the platform shell from a declared closed vocabulary (§4.4), or may a game draw its own settings panel inside the briefing? | No accepted answer for settings in the briefing. A game-drawn panel inside it would amend ADR 0011 decision 4 (the setup is the Party's own scene; the game supplies content as data). ADR 0010 decision 5 separately refuses the game's own lobby `settings` verb in a Party round, so either path needs the launch to carry the values (§20) |
 | Q4 | **More players than seats.** When more people choose to play than the game allows, who plays: first to choose, Host picks, or rotation across rounds? | ADR 0010 decision 1: Start is refused with a sentence until someone changes their answer. Any allocation rule would amend ADR 0010 decision 1 |
 | Q5 | **Rematch.** May a game with no settings go straight to a new round with the same roles? | ADR 0011 decision 1: Play again goes to a new setup; ADR 0010 decision 2: no choices carry over. A shortcut would amend both |
 | Q6 | **One destructive confirmation.** Dialog (BLUFF) or tap-again (fallback End, EXPO) as the standard for End for everyone? Or dialog for turn-based and tap-again for real-time? | No accepted answer; ADR 0011 decision 5 only says BLUFF's End is "confirmed in its own dialog" |
