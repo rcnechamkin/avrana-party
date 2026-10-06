@@ -50,7 +50,7 @@ tools/build-art.mjs ──(npm run build:art: contracts/artwork.json + assets/ve
 | `control` | `#6e6c72` | the edge of anything you can press: 3:1 on the ground and on the material |
 | `primary` | `#edeae4` on `#121214` | **ink, not a colour**: the one main action of a region |
 | `secondary` / `accent` | `#b9a9e8` (Atomic Purple) | selection, focus ring, links, quiet icon tints; never a fill for a region |
-| `material`, `material-solid`, `material-edge`, `select` | smoky violet at 78%, its solid fallback, its edge, the selected tint | the bars, the drawer and sheets; `backdrop-filter` where the phone has it, the solid colour where it does not |
+| `material`, `material-solid`, `material-edge`, `select` | smoky violet at 78%, the same violet solid, its edge, the selected tint | the bottom bar is the translucent colour over `backdrop-filter` (a phone without it shows the 78% colour unblurred); the drawer and sheets are the solid colour |
 | `success`, `warning`, `error`, `info` | green, `#e6b862`, `#f08a7e`, blue | state icons and marks only, always beside a word; never large fills |
 | radius | field and box 0.625 rem, selector 0.25 rem | one radius for anything you press or read in a block; a small one for marks |
 | control size | `--size-field: .3rem` → 48 px buttons and inputs | touch targets ≥ 44 px (tested, bars included) |
@@ -61,7 +61,8 @@ like every other file (provenance: `assets/vendor/README.md`); the system face s
 (`font-display: swap`) and if it never does. The words "Avrana Party" alone use the `brand` face:
 a light Helvetica where the phone really has one (`local()` only, so Android and Windows never
 fall back to Arial), Geist Light elsewhere. Sizes are rem, so they follow the phone's text size;
-body is 0.9375 rem and guest text is never smaller, except marks and counts beside a name.
+body is 0.9375 rem; supporting lines (a sender's name in chat, a value on a list row, counts) are
+0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor.
 Light mode was dropped with the prototype system; `prefers-contrast: more` and
 `prefers-reduced-motion` are honoured. Transitions are 150 ms, colour/border only, plus a chevron
 turn.
@@ -79,14 +80,13 @@ repeat:
 | `avrana-limmark` | the Limited Mode mark in the top bar: icon + the word; opens the "About Limited Mode" sheet |
 | `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
 | `avrana-lede`, `avrana-sub` | Home's sentence about who is here, and the quieter lines under it |
-| `avrana-list` | 56 px rows that lead somewhere (a place, a sheet), chevron on the right |
+| `avrana-list` | 52 px rows that lead somewhere (a place, a sheet), chevron on the right |
 | `avrana-faces`, `avrana-people` | people as faces with names (Party page) and as rows (drawer) |
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
-| `avrana-screen` | page container with safe-area padding, for what is outside the frame (the setup scene, diagnostics, the doorway) |
+| `avrana-screen` | page container with safe-area padding, for diagnostics; the setup scene and the doorway use `avrana-scene` |
 | `avrana-surface` | one raised, bordered surface level |
 | `avrana-section-title` | section heading with quiet meta on the right |
 | `avrana-status` | connection line: spinner while checking, dot + words after (text first, colour never the only cue) |
-| `avrana-disclosure` | 56 px disclosure row (chat, this phone) with a turning chevron |
 | `avrana-avatar` (`sm`, `lg`) | a person's photo or Gaze avatar (older chat entries: their emoji) |
 | `avrana-avatar-choice` | avatar picker cell: ring **and** check badge when chosen, `aria-pressed` |
 | `avrana-game-card`, `-cover`, `-title`, `-facts` | game library tile |
@@ -113,7 +113,8 @@ comes back in the same place.
 The Party drawer (People, and Chat while today's chat exists) opens from the Party control on
 any of the four. Today's chat is served by the old games runtime that ADR 0014 retires: it is
 offered only while that runtime answers, connects only while the drawer's Chat side is on
-screen, and when it is gone the control and the row are simply not there
+screen, gives up and says so after six tries in a row (opening the side again tries again), and
+when the runtime is gone the control and the row are simply not there
 (the redesign plan, "Today's chat and the runtime it depends on").
 A phone in Limited Mode has the full notice on Home and the mark in the top bar everywhere else.
 
@@ -222,7 +223,7 @@ primary action, ≥ 44 px targets, text-first status, line icons for chrome, red
 
 The brand face (Helvetica-style, per the UX/UI brief), the app icon (`icon.svg`, unchanged), dark-only
 theming, the tile layout and the `avrana-*` names. No Party page or script hard-codes a colour; the
-copies of the palette outside `web/src/party.css` are `theme-color` in the two HTML heads and
+copies of the palette outside `web/src/party.css` are `theme-color` in the three HTML heads (the page, diagnostics, the doorway) and
 `manifest.json` (updated with the tokens), and the games' pre-game layer and Back to Party bar,
 which **still carry the earlier palette's hex values** until the Games repository takes the new
 tokens (the redesign plan, follow-up F3).

@@ -46,6 +46,12 @@ export function chatOffered({ reachable, hub, status } = {}) {
   return Boolean(reachable) && (Boolean(hub) || status === 'connected');
 }
 
+/** How many tries in a row today's chat gets before the shell stops trying and says so. A
+ * connection that drops is retried at once; one that never comes must not read "reconnecting"
+ * for ever. Opening the Chat side again starts over. */
+export const CHAT_TRIES = 6;
+export const chatGivesUp = (failures) => failures >= CHAT_TRIES;
+
 /** Which side of the drawer to open: the one asked for when it exists, else chat, else people;
  * null when there is nothing to open. */
 export function startTab({ party, chat, want } = {}) {

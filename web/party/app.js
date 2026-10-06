@@ -28,7 +28,7 @@ import { donorAvailability, visibleGames, filterGames, launchTarget } from './li
 import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
-import { chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
+import { chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -38,7 +38,7 @@ const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
-  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed' };
+  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0 };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -322,13 +322,14 @@ function renderSocial() {
     const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
     $('social-people').replaceChildren(...roster(view).map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'sm')));
   }
+  syncChat();           // the side on screen may have changed by itself (chat's runtime went away)
 }
 
 function openSocial(want) {
   state.tab = want;
-  renderSocial();
+  state.chatFails = 0;
   if (startTab({ party: state.partyMode && Boolean(party.view()), chat: chatOn(), want }) && !$('social').open) $('social').showModal();
-  syncChat();
+  renderSocial();
 }
 
 function renderParty(view) {
@@ -594,8 +595,10 @@ const chat = createPartyChat({
     const was = chatOn();
     state.chatStatus = snapshot.status;
     if (was !== chatOn()) renderHud();
-    const labels = { closed: 'Open to chat', connecting: 'Connecting…',
-      unavailable: 'Chat is reconnecting…', profile_required: 'Save your profile to chat' };
+    if (snapshot.status === 'connected') state.chatFails = 0;
+    else if (snapshot.status === 'unavailable' && chatGivesUp(++state.chatFails)) { chat.close(); return; }
+    const labels = { closed: chatGivesUp(state.chatFails) ? 'Chat isn’t available right now.' : 'Open to chat',
+      connecting: 'Connecting…', unavailable: 'Chat is reconnecting…', profile_required: 'Save your profile to chat' };
     $('chat-status').textContent = snapshot.status === 'connected'
       ? snapshot.online + ' in chat' : labels[snapshot.status];
     $('chat-send').disabled = snapshot.status !== 'connected';
@@ -652,13 +655,15 @@ $('rules-ok').onclick = async () => {
 /** Today's chat is connected only while it is on screen: the drawer open, on its Chat side. */
 function syncChat(reconnect = false) {
   const showing = $('social').open && state.tab === 'chat';
-  if (state.reachable && showing && profile.snapshot().name) {
+  const nameless = showing && state.reachable && !profile.snapshot().name;
+  $('chat-name').hidden = !nameless;
+  if (state.reachable && showing && !nameless) {
+    if (chatGivesUp(state.chatFails)) return;                 // it said so; opening the side again tries again
     const opened = chat.open();
     if (reconnect && !opened) chat.reconnect();
   } else {
     chat.close();
-    if (showing && state.reachable && !profile.snapshot().name)
-      $('chat-status').textContent = 'Choose your name on the Party page to chat';
+    if (nameless) $('chat-status').textContent = 'Choose your name to chat.';
   }
 }
 $('hud').onclick = () => openSocial(null);
@@ -667,11 +672,19 @@ $('social-tabs').onclick = (event) => {
   const button = event.target.closest('button[data-tab]');
   if (!button) return;
   state.tab = button.dataset.tab;
+  state.chatFails = 0;
   renderSocial();
-  syncChat();
 };
 $('social-close').onclick = () => $('social').close();
 $('social').addEventListener('close', () => syncChat());
+$('chat-name').onclick = () => { $('social').close(); openProfile(); };
+// "Skip to the games": the Library, with focus on its heading (the title, when there are none to show).
+$('skip').onclick = (event) => {
+  event.preventDefault();
+  if ($('main').hidden) return;
+  if (state.page !== 'library') { history.pushState(null, '', '#library'); showPage('library'); }
+  ($('games-section').hidden ? $('top-title') : $('games-h')).focus();
+};
 $('limited-mark').onclick = () => { if (!$('about-limited').open) $('about-limited').showModal(); };
 $('about-close').onclick = () => $('about-limited').close();
 $('about-done').onclick = () => $('about-limited').close();
@@ -681,6 +694,8 @@ for (const id of ['social', 'about-limited'])
 $('home-name').onclick = () => openProfile();
 window.addEventListener('hashchange', () => {
   if (location.hash === '#diag') { location.replace('diag/'); return; }
+  // The phone's Back, or a link: nothing stays open over a place that changed underneath it.
+  for (const id of ['social', 'about-limited']) if ($(id).open) $(id).close();
   showPage(pageOf(location.hash), true);
 });
 $('chat-form').onsubmit = (event) => {

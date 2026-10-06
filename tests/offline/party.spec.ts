@@ -126,6 +126,32 @@ test('the frame: four places in one page, and the bar says which one you are in'
   await expect(page.locator('#view-home')).toBeVisible();
 });
 
+test('"Skip to the games" goes to the Library and puts focus on its heading, from any place', async ({ page }) => {
+  await open(page);
+  const skip = page.locator('#skip');
+  for (const from of ['home', 'library'] as const) {
+    await place(page, from);
+    await skip.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+    await expect(page.locator('#games-h')).toBeFocused();
+  }
+  await page.goBack();                                                    // it was a step, like the bar's
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
+});
+
+test('the phone’s Back closes what is open over a place', async ({ page, context }) => {
+  await context.addInitScript(() => { try { localStorage.setItem('wc-name', 'Robin'); } catch { /* none */ } });
+  await open(page);
+  await place(page, 'party');
+  await place(page, 'system');
+  await page.locator('#hud').click();
+  await expect(page.locator('#social')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'party');
+  await expect(page.locator('#social')).toBeHidden();
+});
+
 test('the frame holds at 200% text on a small phone: nothing sideways, the bars stay, words stay whole', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 });
   await open(page);

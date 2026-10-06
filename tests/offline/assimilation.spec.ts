@@ -126,6 +126,48 @@ test('Party Chat, in the drawer, uses the same hello and server echo, then recon
   await expect(page.locator('#social')).toBeHidden();
   await expect(page.locator('#chat-send')).toBeDisabled();
 });
+test('chat’s runtime going away while the drawer is open ends the connection and says so', async ({ page }) => {
+  await legacyProfile(page);
+  let hub = true, sockets = 0;
+  await page.routeWebSocket('**/chat/ws', (ws) => {
+    sockets++;
+    if (!hub) { ws.close(); return; }
+    ws.onMessage((raw) => {
+      if (JSON.parse(String(raw)).t === 'hello') {
+        ws.send(JSON.stringify({ type: 'welcome', you: 'hashed-uid' }));
+        ws.send(JSON.stringify({ type: 'presence', online: 1 }));
+      }
+    });
+  });
+  await open(page);
+  await page.locator('#hud').click();
+  await expect(page.locator('#chat-status')).toHaveText('1 in chat');
+  await page.keyboard.press('Escape');
+  // the hub stops answering: a few tries in a row, then the drawer says so and stops trying
+  hub = false;
+  await page.locator('#hud').click();
+  await expect(page.locator('#chat-status')).toHaveText('Chat isn’t available right now.', { timeout: 30_000 });
+  await expect(page.locator('#chat-send')).toBeDisabled();
+  const tried = sockets;
+  await page.waitForTimeout(6_000);
+  expect(sockets).toBe(tried);                                            // it really stopped
+  // closing and opening the drawer tries again, and a hub that is back is found
+  hub = true;
+  await page.keyboard.press('Escape');
+  await page.locator('#hud').click();
+  await expect(page.locator('#chat-status')).toHaveText('1 in chat');
+});
+
+test('a phone with no name is offered its name, not a dead end, on the Chat side', async ({ page }) => {
+  await open(page);
+  await page.locator('#hud').click();
+  await expect(page.locator('#chat-status')).toHaveText('Choose your name to chat.');
+  await page.locator('#chat-name').click();
+  await expect(page.locator('#social')).toBeHidden();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'party');
+  await expect(page.locator('#profile-name')).toBeFocused();
+});
+
 test('missing donor service disables its titles without disabling the arcade or losing the profile', async ({ page }) => {
   await legacyProfile(page);
   await page.route('**/api/games', (route) => route.fulfill({ status: 502, body: 'down' }));

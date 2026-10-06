@@ -182,6 +182,12 @@ One banner, plain words: the connection is not private, what is missing on this 
 the owner restores it by renewing the certificate. It never imitates a padlock and never hides a
 browser warning.
 
+**As built (UX/UI redesign PR 1.1, in source, not deployed).** The banner, with its wording
+unchanged, is on the shell's Home. In the shell's other places (Party, Library, System) a mark
+in the top bar, an icon and the word "Limited", opens a sheet with the same three facts and the
+same link that checks for the full version. Whether the banner may fold, and what the Host is
+told, are open owner decisions and are not built.
+
 ## 4. Decisions (accepted by the owner, 2026-10-03)
 
 | # | Decision | Accepted |

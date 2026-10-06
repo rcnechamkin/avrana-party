@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PAGES, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab }
+import { CHAT_TRIES, PAGES, chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab }
   from '../../web/party/lib/frame.js';
 
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
@@ -60,6 +60,13 @@ test('chat is offered only while the runtime that serves it answers, or it is al
   assert.equal(chatOffered({ reachable: true, hub: false, status: 'connected' }), true);
   assert.equal(chatOffered({ reachable: false, hub: true, status: 'connected' }), false);
   assert.equal(chatOffered(), false);
+});
+
+test('chat that never comes gives up after a few tries in a row', () => {
+  assert.equal(chatGivesUp(0), false);
+  assert.equal(chatGivesUp(CHAT_TRIES - 1), false);
+  assert.equal(chatGivesUp(CHAT_TRIES), true);
+  assert.ok(CHAT_TRIES >= 3 && CHAT_TRIES <= 10);
 });
 
 test('the drawer opens on the side asked for when it exists, else chat, else people', () => {

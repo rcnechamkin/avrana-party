@@ -163,7 +163,7 @@
   }
   .avrana-top-title.brand { font-family: var(--font-brand); font-weight: 300; font-size: 1.4375rem; letter-spacing: 0.005em; }
   .avrana-main {
-    overflow-y: auto; overscroll-behavior: contain;
+    overflow-y: auto;          /* no overscroll-behavior here: the phone's pull-to-refresh must still work */
     padding: 0.25rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
   }
   @media (min-width: 44rem) {
@@ -274,15 +274,6 @@
   .avrana-status .spin { display: inline-flex; }
   .avrana-status:not([data-state="checking"]) .spin { display: none; }
 
-  /* Disclosure rows (profile, chat, this phone): a full-width 56 px tap target with a chevron. */
-  .avrana-disclosure > summary {
-    display: flex; align-items: center; gap: 0.75rem; min-height: 3.5rem; padding: 0.5rem 1rem;
-    border-radius: var(--radius-box); font-weight: 650;
-  }
-  .avrana-disclosure > summary > .chev { margin-left: auto; color: var(--color-muted); transition: transform 150ms ease; }
-  .avrana-disclosure[open] > summary > .chev { transform: rotate(180deg); }
-  .avrana-disclosure > summary:hover { background: color-mix(in oklab, var(--color-base-300) 45%, transparent); }
-  .avrana-disclosure > .body { padding: 0 1rem 1rem; }
 
   /* A person: avatar + name. Emoji avatars are identity content, kept as chosen. */
   .avrana-avatar {

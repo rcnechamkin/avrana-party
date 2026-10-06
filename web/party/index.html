@@ -13,7 +13,7 @@
 <script type="module" src="app.js"></script>
 </head>
 <body>
-<a class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 btn btn-primary" href="#library">Skip to the games</a>
+<a class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 btn btn-primary" id="skip" href="#library">Skip to the games</a>
 <!-- The frame (UX/UI redesign, slice 1): people on top, the page in the middle, the four places at
      the bottom. One document; the places are in-page views (lib/frame.js), and the Party's own
      location always wins over the address (ADR 0011). -->
@@ -172,6 +172,7 @@
   </div>
   <div id="chat" class="body" hidden>
     <p id="chat-status" class="m-0 text-[0.9375rem] text-muted" role="status">Open to chat</p>
+    <button id="chat-name" type="button" class="btn btn-outline mt-3" hidden>Choose your name</button>
     <ol id="chat-messages" class="my-2 list-none p-0 [overflow-wrap:anywhere]" aria-label="Party messages"></ol>
     <p id="chat-feedback" class="text-[0.9375rem] text-warning empty:hidden" role="status"></p>
   </div>
