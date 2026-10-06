@@ -164,7 +164,8 @@ all"). Nothing to show always says why and offers the way back.
   Recent once per round (`localStorage['avrana-recent-round']` holds the last round recorded),
   for a player and a watcher alike; held results are not a round.
 - **"The party" is everyone in it**, the same number the Party page shows, including someone
-  whose phone has gone quiet but who has not left.
+  whose phone has gone quiet but who has not left. Built so; the owner has not been asked
+  (redesign open decision 21), nor whether a watcher's phone should record a round (22).
 - **Home never repeats a title**: the lead is not listed again under "Recently played", and a
   shelf with nothing on it has no heading.
 - **A cover opens the game** in the game sheet (a native `<dialog>`: focus goes in, Escape, the

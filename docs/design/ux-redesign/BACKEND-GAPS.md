@@ -221,6 +221,14 @@ per phone and shown to everyone, and are disclosed there. Decision 18 is still n
     not capped. The layout was rebuilt as one scrolling column with only the keys pinned, which
     satisfies ACCESSIBILITY MUST 4 ("the layout must scroll rather than clip at 200 % text").
     What remains poor at 200% on the smallest screen is listed in REVISION-2.
+21. **Who counts toward "Great for four".** *Not asked before PR 1.2; built one way, open.* The
+    Library and Home use the number of people in the Party, which is the number the Party page
+    shows and includes a member whose phone has gone quiet but who has not left (Party Core
+    keeps a member until an explicit Leave). The alternative is to count only members who are
+    present. It changes order, headings and the "Max 2" marks; it never hides a game.
+22. **Whose phone a round is "recently played" on.** *Not asked before PR 1.2; built one way,
+    open.* Every phone the Party took to the round records it, a watcher's as well as a
+    player's. The alternative is players only.
 
 Where the other audit questions went: LIB-23 is decision 9 and LIB-24 is decision 6. EXPO's
 share card (EX-43) and standalone lobby (EX-47) are not touched by this package and stay open

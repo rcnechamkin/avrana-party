@@ -25,7 +25,7 @@ import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
 import { loadCatalog } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
-import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
+import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
@@ -542,7 +542,8 @@ function onPartyView(view) {
   const url = destination(view, HOME, state.catalog);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
-    if (g && view.me && locationOf(view).at === 'game') recordRound(g, locationOf(view));   // a round, not its held results
+    const round = roundToRemember(view);       // a round that is on, not its held results
+    if (g && round) recordRound(g, round);
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
     location.replace(url);
@@ -564,7 +565,8 @@ async function renderGames(refresh = true) {
     const installed = state.catalog.games.filter((g) => g.installed && g.health);
     const [donor, ...healths] = await Promise.all([
       getJSON('/api/games', { cache: 'no-store', signal: AbortSignal.timeout(4000) })
-        .then(donorAvailability).catch((err) => (err && err.status ? null : SILENT)),
+        // an error status, or an answer that is not the list, is an answer; only silence is silence
+        .then(donorAvailability).catch((err) => (err && (err.status || err instanceof SyntaxError) ? null : SILENT)),
       ...installed.map((g) => health(g.health)),
     ]);
     state.donor = donor === SILENT ? null : donor;

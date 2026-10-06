@@ -169,6 +169,17 @@ test('no answer is not "off": a phone that cannot ask does not blame the games',
   await expect((await openGame(page, 'arcade-gauntlet2')).getByRole('button', { name: 'Play' })).toBeDisabled();
 });
 
+test('an answer that is not the game list is an answer: those games are off, and say so', async ({ page }) => {
+  await page.route('**/api/games', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Sign in to Wi-Fi</h1>' }));
+  await open(page);
+  for (const id of ['bluff', 'expo']) await expect(page.locator(`#games [data-game="${id}"]`), id).toHaveAttribute('data-note', 'off');
+  await page.unroute('**/api/games');
+  await page.route('**/api/games', (route) => route.fulfill({ status: 502, body: 'bad gateway' }));
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  for (const id of ['bluff', 'expo']) await expect(page.locator(`#games [data-game="${id}"]`), id).toContainText('Off for now');
+});
+
 test('filters: the button, the sheet, the heading, the count and the hidden line all agree', async ({ page }) => {
   await open(page);
   const button = page.locator('#lib-filter'), badge = page.locator('#lib-filter-count'), sheet = page.locator('#lib-filters');

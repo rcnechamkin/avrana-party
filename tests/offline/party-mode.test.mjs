@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { HOME, readView, partyGame, tileMode, destination, roster, setupPanel } from '../../web/party/lib/party-mode.js';
+import { HOME, readView, partyGame, tileMode, destination, roster, roundToRemember, setupPanel } from '../../web/party/lib/party-mode.js';
 import { createPartyClient } from '../../web/party/lib/party-client.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
@@ -18,6 +18,17 @@ const at = (where, game = 'bluff', session = 'session-1') => ({ at: where, game:
 const active = (id = 'session-1', game = 'bluff', state = 'active') =>
   ({ id, game, state, outcome: null, detail: null, players: 2, my_role: 'player' });
 const ben = { id: 'member-b', name: 'Ben', host: false };
+
+test('a phone remembers a round only while it is on, and only as a member', () => {
+  assert.deepEqual(roundToRemember(view({ state: 'active', session: active(), location: at('game') })), { game: 'bluff', session: 'session-1' });
+  assert.deepEqual(roundToRemember(view({ me: ben, state: 'active', session: { ...active(), my_role: 'spectator' }, location: at('game') })),
+    { game: 'bluff', session: 'session-1' });                              // a watcher was taken there too
+  for (const where of ['home', 'setup', 'results'])                         // held results: a late phone was never in that round
+    assert.equal(roundToRemember(view({ location: at(where) })), null, where);
+  assert.equal(roundToRemember(view({ me: null, location: at('game') })), null);   // no profile, no record
+  assert.equal(roundToRemember(null), null);
+  assert.equal(roundToRemember({}), null);
+});
 
 test('only a real Party Core view turns Party mode on; anything else keeps the catalog', () => {
   assert.ok(readView(view()));
