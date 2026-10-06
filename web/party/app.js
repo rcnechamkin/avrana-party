@@ -692,7 +692,9 @@ function renderBox() {
   const link = document.documentElement.dataset.link || 'ok';
   const found = host && link === 'ok' ? troubles(state.box, visibleGames(state.catalog)) : [];
   const trouble = found[0] || null;
-  if (host && state.box && !trouble) put('sessionStorage', TROUBLE_KEY, null);      // a new trouble is said again
+  // A trouble that has gone is forgotten, so that it is said again if it returns. A phone that
+  // is merely out of touch knows nothing either way, and forgets nothing.
+  if (host && link === 'ok' && state.box && !trouble) put('sessionStorage', TROUBLE_KEY, null);
   const show = Boolean(trouble) && kept('sessionStorage', TROUBLE_KEY) !== trouble.id;
   if (!show) refocusFrom($('trouble'));
   $('trouble').hidden = !show;
@@ -711,14 +713,18 @@ function renderBox() {
   const entries = state.entries ? [...state.entries.values()] : [];
   const installed = entries.filter((e) => e.game.installed && e.game.entry);
   let known = false;                             // is anything known about the box at all?
+  const off = installed.filter((e) => e.note && e.note.kind === 'off');
+  const onShelf = state.polled ? offLine(off.map((e) => e.game.name), installed.length - off.length) : null;
+  const shelfBlock = () => healthBlock('warn', 'triangle-alert', onShelf.title, onShelf.text ? h('p', { text: onShelf.text }) : null);
   if (host) {
     known = Boolean(state.box);
     for (const t of found) blocks.push(healthBlock('warn', 'triangle-alert', t.title, h('p', { text: t.detail })));
+    // A title the shelf marks off for a reason the box's account has no word for: System says
+    // what the shelf says, and never "everything's working" over it.
+    if (!found.length && link === 'ok' && onShelf) blocks.push(shelfBlock());
   } else if (state.polled) {
-    const off = installed.filter((e) => e.note && e.note.kind === 'off');
     known = installed.length > 0 && !installed.some((e) => e.live && e.live.unknown);
-    const line = offLine(off.map((e) => e.game.name), installed.length - off.length);
-    if (line) blocks.push(healthBlock('warn', 'triangle-alert', line.title, line.text ? h('p', { text: line.text }) : null));
+    if (onShelf) blocks.push(shelfBlock());
   }
   if (!blocks.length && known && link === 'ok' && state.reachable && state.report) {
     const fine = fineLine(ESSENTIAL.every((name) => state.report.caps[name] && state.report.caps[name].status === 'yes'));
@@ -843,6 +849,7 @@ function onPartyView(view, previous = null) {
   ensurePresent(view);
   const passed = hostPassed(previous, view);
   if (passed) state.passed = passed;
+  else if (state.passed && previous && previous.party !== view.party) state.passed = null;   // a new Party: that was the last one's news
   const hosts = Boolean(view.me && view.me.host);
   if (hosts !== Boolean(previous && previous.me && previous.me.host)) refreshBox().then(renderBox);   // the Host's notice is the Host's
   const url = destination(view, HOME, state.catalog);

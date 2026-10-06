@@ -47,8 +47,9 @@ export function awayHost(view) {
 
 /** Hosting changed hands between two views of the same Party: { to, from, mine, wasAway }, or
  * null. `wasAway` is true only when the earlier view said the old Host was away, so "has been
- * away" is never said of a Host who left or handed the role over. A phone that was not watching
- * (asleep, just arrived) has no earlier view and is told nothing: there is nothing to tell from. */
+ * away" is never said of a Host who left or handed the role over. A phone that slept through it
+ * compares with the last view it had, and is told when it wakes; a phone that has just arrived
+ * has no earlier view and is told nothing: there is nothing to tell from. */
 export function hostPassed(previous, view) {
   if (!previous || !view || previous.party !== view.party) return null;
   const was = hostOf(previous), now = hostOf(view);

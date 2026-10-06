@@ -33,7 +33,9 @@ const SCREENS: Array<[string, (page: Page) => Promise<unknown>]> = [
   ['Library, the filter sheet', async (p) => { await place(p, 'library'); await p.locator('#lib-filter').click(); await p.locator('#filter-players [data-players="2"]').click(); await expect(p.locator('#lib-filters')).toBeVisible(); }],
   ['Library, nothing found', async (p) => { await place(p, 'library'); await p.locator('#filters-reset').evaluate((b: HTMLButtonElement) => b.click()); await p.locator('#game-search').fill('zzzz'); await expect(p.locator('#games [data-empty="search"]')).toBeVisible(); }],
   ['Library, no favorites', async (p) => { await place(p, 'library'); await p.locator('#game-search').fill(''); await p.locator('#game-views [data-view="favorites"]').click(); await expect(p.locator('#games [data-empty="favorites"]')).toBeVisible(); }],
-  ['a game’s page', async (p) => { await place(p, 'library'); await p.locator('#game-views [data-view="all"]').click(); await openGame(p, 'bluff'); }],
+  ['Library, nothing recent', async (p) => { await place(p, 'library'); await p.locator('#game-views [data-view="recent"]').click(); await expect(p.locator('#games [data-empty="recent"]')).toBeVisible(); }],
+  ['Library, filters that leave nothing', async (p) => { await place(p, 'library'); await p.locator('#game-views [data-view="all"]').click(); await p.locator('#lib-filter').click(); await p.locator('#filter-players [data-players="6"]').click(); await p.locator('#filter-screens [data-screen="tv_required"]').click(); await p.locator('#filters-show').click(); await expect(p.locator('#games [data-empty="filters"]')).toBeVisible(); }],
+  ['a game’s page', async (p) => { await place(p, 'library'); await p.locator('#filters-reset').evaluate((b: HTMLButtonElement) => b.click()); await p.locator('#game-views [data-view="all"]').click(); await openGame(p, 'bluff'); }],
   ['a game that is not installed', async (p) => { await openGame(p, 'ps1-worms'); }],
   ['System', (p) => place(p, 'system')],
 ];
@@ -62,7 +64,8 @@ test('the checks themselves: each one catches a fault planted for it', async ({ 
     const icon = document.createElement('button'); icon.id = 'planted-nameless'; icon.type = 'button'; icon.className = 'btn btn-square'; icon.style.borderColor = '#2a2a2e';
     const tip = document.createElement('div'); tip.id = 'planted-label'; tip.setAttribute('aria-labelledby', 'planted-nothing'); tip.textContent = 'x';
     const up = document.createElement('button'); up.id = 'planted-above'; up.type = 'button'; up.className = 'btn'; up.textContent = 'Above'; Object.assign(up.style, { position: 'absolute', top: '4rem', left: '1rem' });
-    view.append(p, icon, tip, up);
+    const dark = document.createElement('button'); dark.id = 'planted-noring'; dark.type = 'button'; dark.className = 'btn'; dark.textContent = 'No ring'; dark.style.outline = 'none';
+    view.append(p, icon, tip, up, dark);
   });
   // (planted through the style object: the page's own rules refuse a style written into markup)
   expect(await lowContrast(page, '#main')).toEqual([expect.stringContaining('"Hard to read"')]);
@@ -70,6 +73,7 @@ test('the checks themselves: each one catches a fault planted for it', async ({ 
   const names = await unnamed(page, '#main');
   expect(names).toEqual(expect.arrayContaining([expect.stringContaining('no name: button#planted-nameless'), expect.stringContaining('aria-labelledby="planted-nothing"')]));
   expect(await outOfOrder(page)).toEqual([expect.stringContaining('planted-above is drawn above')]);
+  expect((await focusWalk(page)).bad).toEqual([expect.stringContaining('planted-noring')]);   // of every stop, only the one with its ring taken away
   // motion: something that runs is seen, and the page's own rule stops it when less motion is asked for
   await page.evaluate(() => { document.getElementById('planted-dim')!.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 60_000, iterations: Infinity }); });
   expect(await moving(page)).toEqual(expect.arrayContaining([expect.stringContaining('animation on')]));

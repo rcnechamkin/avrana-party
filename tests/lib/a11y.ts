@@ -177,8 +177,9 @@ export async function outOfOrder(page: Page, regions = ['#top', '#content', '#sc
 
 /** Walk the page with Tab and report every stop that shows no focus ring (MUST 9). Returns the
  * number of stops too, so a walk that went nowhere cannot pass. */
-export async function focusWalk(page: Page, max = 60) {
+export async function focusWalk(page: Page, max = 90) {
   const bad: string[] = [], seen: string[] = [];
+  let wrapped = false;
   for (let i = 0; i < max; i++) {
     await page.keyboard.press('Tab');
     const at = await page.evaluate(() => {
@@ -189,12 +190,12 @@ export async function focusWalk(page: Page, max = 60) {
       const key = `${el.tagName.toLowerCase()}#${el.id || (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24)}`;
       return { key, ok: ring(el) || Boolean(host && ring(host)) };
     });
-    if (!at) break;
+    if (!at) { if (wrapped) break; wrapped = true; continue; }   // off the end of the page: the next Tab starts at its top
     if (seen.includes(at.key)) break;                      // came round again
     seen.push(at.key);
     if (!at.ok) bad.push(`no focus ring: ${at.key}`);
   }
-  return { stops: seen.length, bad };
+  return { stops: seen.length, bad, keys: seen };
 }
 
 /** Anything still moving: running animations, and transitions that take time (MUST 8, with

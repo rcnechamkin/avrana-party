@@ -730,6 +730,7 @@ test.describe('three phones at one party', () => {
       expect(await sideways(p.page), p.name).toBeLessThanOrEqual(0);
     }
     await expect(bob.page.locator('#choose-play')).toHaveAttribute('aria-pressed', 'true');   // an answer already given stays
+    await view(bob); await view(cleo);                                      // both have asked since: they are here when the role passes
     await later(request, 30);
     await expect(bob.page.locator('#scene-start')).toBeVisible();
     await expect(bob.page.locator('#scene-status')).toHaveText(/^You’re hosting now\./);
@@ -822,7 +823,9 @@ test.describe('three phones at one party', () => {
     expect(await sideways(cleo.page)).toBeLessThanOrEqual(0);
     await expect(cleo.page.locator('#nav')).toBeHidden();                   // still a briefing: no way off it
     await restore();                                                        // (nothing changed meanwhile: the box has no news to send)
-    await cleo.page.locator('#scene-retry').click();                        // "Try again" asks at once
+    // "Try again" asks at once. (Pressed through the page: the phone's own next try may land
+    // first and take the button away, which is the same recovery and not a failure.)
+    await cleo.page.locator('#scene-retry').evaluate((b: HTMLButtonElement) => b.click());
     await expect(cleo.page.locator('#scene-live')).toBeVisible();
     await expect(cleo.page.locator('#scene-lost')).toBeHidden();
     await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
@@ -861,6 +864,13 @@ test.describe('three phones at one party', () => {
       await note.getByRole('button', { name: 'Dismiss' }).click();
       await expect(note).toBeHidden();
       await expect(host.page.locator('#top-title')).toBeFocused();
+      // a blip is not news: out of touch and back again, it is still put away
+      const back = await cutOff(host, bob);
+      await expect(host.page.locator('html')).toHaveAttribute('data-link', 'reconnecting');
+      await back();
+      await expect(host.page.locator('html')).toHaveAttribute('data-link', 'ok', { timeout: 12_000 });
+      await expect(note).toHaveAttribute('data-trouble', 'arcade');           // the trouble is still known
+      await expect(note).toBeHidden();
       await host.page.reload();
       await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
       await expect(host.page.locator('#home-games')).toBeVisible();
@@ -884,6 +894,43 @@ test.describe('three phones at one party', () => {
       await expect(note).toBeVisible();
     } finally {
       await request.post('/__test__/arcade/up');
+    }
+  });
+
+  test('the Host’s System never says all is well over a shelf that says a game is off', async ({ request }) => {
+    try {
+      expect((await request.post('/__test__/arcade/down')).status()).toBe(204);
+      // the box's own account names no trouble (a kind it has no word for), yet the shelf marks a title off
+      await host.context.route('**/party/api/status*', async (route) => {
+        const response = await route.fetch();
+        const body = await response.json();
+        body.arcade = { ...(body.arcade || {}), ok: true, emulator_running: true, error: null };
+        await route.fulfill({ response, json: body });
+      });
+      await host.page.reload();
+      await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
+      await expect(host.page.locator('#home-games')).toBeVisible();
+      await expect(host.page.locator('#trouble')).toBeHidden();             // no notice: the account gives it nothing to say
+      await place(host.page, 'system');
+      await expect(host.page.locator('#health [data-health="warn"] b')).toHaveText('Gauntlet II is off for now');
+      await expect(host.page.locator('#health [data-health="ok"]')).toHaveCount(0);
+    } finally {
+      await request.post('/__test__/arcade/up');
+    }
+  });
+
+  test('a new Party says nothing about who took over hosting in the last one', async ({ request }) => {
+    await goQuiet(host);
+    await later(request, 50);
+    await view(bob); await view(cleo);
+    await later(request, 30);
+    await expect(bob.page.locator('#host-now')).toBeVisible();
+    await expect(cleo.page.locator('#party-state')).toContainText('Bob is hosting now');
+    expect((await request.post('/__test__/party/reset')).status()).toBe(204);   // the box starts over; the phones stay where they are
+    for (const p of [bob, cleo]) await expect(p.page.locator('#party-lede'), p.name).toHaveText('Two of you are here.', { timeout: 15_000 });
+    for (const p of [bob, cleo]) {
+      await expect(p.page.locator('#host-now'), p.name).toBeHidden();
+      await expect(p.page.locator('#party-state'), p.name).not.toContainText('hosting now');
     }
   });
 

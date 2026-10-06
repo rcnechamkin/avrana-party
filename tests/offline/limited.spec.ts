@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { place, sideways, smallTargets, startForEveryone } from '../lib/frame';
-import { faintEdges, lowContrast, outOfOrder, unnamed } from '../lib/a11y';
+import { faintEdges, focusWalk, lowContrast, moving, outOfOrder, unnamed } from '../lib/a11y';
 
 /**
  * ADR 0012 / AVR-225 (Tier 2): Limited Mode with a simulated second scheme. Real Chromium, the
@@ -109,12 +109,22 @@ test('the notice on Home folds into the mark: said once in full, then always mar
   await named(context, 'Lena');
   await home(page, LIMITED);
   const banner = page.locator('#limited'), mark = page.locator('#limited-mark'), sheet = page.locator('#about-limited');
-  const audit = async () => [...await lowContrast(page, '#main'), ...await faintEdges(page), ...await unnamed(page, '#main'), ...await outOfOrder(page)];
+  // each state as it is drawn, then as a phone that asks for more contrast and less motion draws it
+  const audit = async () => {
+    const bad = [...await lowContrast(page, '#main'), ...await faintEdges(page), ...await unnamed(page, '#main'), ...await outOfOrder(page)];
+    await page.emulateMedia({ contrast: 'more', reducedMotion: 'reduce' });
+    bad.push(...await lowContrast(page, '#main', 7), ...await faintEdges(page), ...await moving(page));
+    await page.emulateMedia({ contrast: null, reducedMotion: null });
+    return bad;
+  };
   await expect(banner).toBeVisible();
   await expect(mark).toBeHidden();                                          // never both at once
   const fold = banner.getByRole('button', { name: 'Fold this notice away' });
   expect(await smallTargets(page, '#limited a, #limited button')).toEqual([]);
   expect(await audit()).toEqual([]);
+  const walk = await focusWalk(page);                                       // Tab reaches the fold, with a ring at every stop
+  expect(walk.bad).toEqual([]);
+  expect(walk.keys).toContain('button#limited-fold');
   await fold.focus();
   await page.keyboard.press('Enter');
   await expect(banner).toBeHidden();
@@ -142,7 +152,7 @@ test('the notice on Home folds into the mark: said once in full, then always mar
   // everyone still sees how this phone reaches the Party
   await place(page, 'party');
   await expect(person(page, 'Lena (you)').locator('.mode')).toHaveText('Limited');
-  // folded for this visit: a reload, and a game and back, keep it folded
+  // folded for this visit: a reload keeps it folded
   await place(page, 'home');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
