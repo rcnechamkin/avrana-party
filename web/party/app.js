@@ -43,8 +43,8 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
-  // leaving: the cover just tapped, until its page shows; round: the briefing on screen (its id)
-  screen: 'main', round: null, game: null, back: null, leaving: null, rulesGame: null };
+  // round: the briefing on screen (its id)
+  screen: 'main', round: null, game: null, back: null, rulesGame: null };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -139,9 +139,10 @@ const spoken = ({ game, note }, people) => [game.name,
   seatsMark(game, people).ok ? playersText(game.players) : seatsPhrase(game, people),
   screenText(game).text, note && note.text].filter(Boolean).join('. ');
 
-/** Where a cover leads: the game's own page. The link is a real one (the phone's Back returns);
- * the click only notes where it was opened from, so Back lands on the same cover. */
-const gameLink = (game) => ({ href: '#game/' + game.id, onclick: (event) => leaveFor(game.id, event.currentTarget) });
+/** Where a cover leads: the game's own page. The link is a real one (a new tab, a long press, the
+ * phone's Back all work); a plain tap opens the page with where it was opened from, so Back lands
+ * on the same cover. */
+const gameLink = (game) => ({ href: '#game/' + game.id, onclick: (event) => openFrom(event, game.id) });
 
 /** A cover on a shelf. It opens the game's page; it never starts one. */
 function tile(entry, people, { seats = true, meta = true } = {}) {
@@ -416,22 +417,23 @@ function renderTop() {
   if (!game) document.title = !brief && state.page === 'home' ? title : `${title} · Avrana Party`;
 }
 
-/** A cover was tapped: note where, so the way back lands on the same cover at the same scroll. */
-function leaveFor(id, cover) {
-  state.leaving = { page: state.page === 'game' ? 'library' : state.page, scroll: $('content').scrollTop, id,
-    within: cover.closest('#games, #home-games')?.id || null };
+/** A cover was tapped: its page opens as a new history entry that carries where it was opened
+ * from (the place, its scroll, the cover). Both are made in the same step, so nothing a person
+ * does next, however fast, can separate the page from its way back. Any other kind of click (a
+ * new tab, a modifier key) is left to the link. */
+function openFrom(event, id) {
+  if (event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const from = { page: state.page === 'game' ? 'library' : state.page, scroll: $('content').scrollTop, id,
+    within: event.currentTarget.closest('#games, #home-games')?.id || null };
+  try { history.pushState({ avranaFrom: from }, '', '#game/' + id); } catch { return; }   // the plain link still works
+  event.preventDefault();
+  closeSheets();
+  go();
 }
 
-/** Where the game's page on screen was opened from: the cover just tapped, else what this
- * history entry remembers (the phone's Forward, a reload), else nothing (a typed address). It is
- * kept with the entry, so the way back is right however the page was reached. */
+/** Where the game's page on screen was opened from: what its history entry carries (a tap on a
+ * cover, and the phone's Forward or a reload afterwards), else nothing (a typed address). */
 function origin(id) {
-  const left = state.leaving;
-  state.leaving = null;
-  if (left && left.id === id) {
-    try { history.replaceState({ avranaFrom: left }, ''); } catch { /* the page still works without it */ }
-    return left;
-  }
   const kept = history.state && history.state.avranaFrom;
   return kept && kept.id === id && PAGES.includes(kept.page) ? { page: kept.page, scroll: Number(kept.scroll) || 0, id,
     within: ['games', 'home-games'].includes(kept.within) ? kept.within : null } : null;
@@ -442,7 +444,6 @@ function origin(id) {
 function go(focus = true) {
   const id = gameOf(location.hash);
   if (id) { showPage('game', focus, id, origin(id)); return; }
-  state.leaving = null;
   const page = pageOf(location.hash), back = state.back;
   const returning = Boolean(back && back.page === page);
   showPage(page, focus && !returning);

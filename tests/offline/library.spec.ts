@@ -333,6 +333,9 @@ test('a cover is a link to the game’s own page: its facts, one heading, and it
   await open(page);
   const tile = page.locator('#games [data-game="expo"]');
   await expect(tile).toHaveAttribute('href', '#game/expo');                          // a link, so the phone's Back returns
+  // a click that asks for a new tab is left to the link: this page does not move
+  await tile.dispatchEvent('click', { ctrlKey: true, bubbles: true, cancelable: true });
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
   await expect(tile).not.toHaveAttribute('aria-haspopup', /.*/);
   await tile.focus();
   await page.keyboard.press('Enter');                                               // by keyboard
@@ -418,13 +421,15 @@ test('back from a game’s page returns to the same cover at the same scroll, ho
     expect(Math.abs((await top()) - was), how).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => location.hash), how).toBe('#library');
   }
-  // the phone's Forward returns to the game's page, which still knows where it came from
+  // the phone's Forward returns to the game's page, which still knows where it came from,
+  // however fast Back followed the tap
   await tile.click();
   await page.goBack();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
   await page.goForward();
   await expect(page.locator('#game-detail[data-id="ps1-worms"]')).toBeVisible();
   await expect(page.locator('#top-back')).toHaveAccessibleName('Library');
+  expect(await page.evaluate(() => history.state?.avranaFrom?.page)).toBe('library');   // kept with the entry, made at the tap
   // a reload stays on the game's page, and Back still lands on its cover
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');

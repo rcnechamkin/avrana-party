@@ -183,8 +183,9 @@ all"). Nothing to show always says why and offers the way back.
 only: the Party stays where it is. The top bar holds the way back, named for the place the page
 was opened from ("Library", "Home"); the bar of places keeps that place marked
 (`aria-current="page"` on a place the page belongs to, not on the page itself); the game's name
-is the page's one heading and takes focus. Where it was opened from is kept with its history
-entry, so the phone's Forward and a reload still know. Back (the bar's link, the phone's Back or the bar of
+is the page's one heading and takes focus. Where it was opened from is put in its history
+entry at the tap itself (`openFrom`), so the phone's Forward and a reload still know, and a Back
+pressed at once cannot lose it. Back (the bar's link, the phone's Back or the bar of
 places) returns to the same cover at the same scroll. A reload stays on the page; a typed
 address has nowhere to return to and its Back is a link to the Library; an address that names no
 title on the shelf is the Library. The page shows only what the catalog and the game
