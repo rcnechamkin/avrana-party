@@ -155,6 +155,20 @@ export function homeShelves({ all, people = 0, keyOf = (g) => g.id, recent = [] 
   };
 }
 
+/** Does this game suit the people here? One sentence for its page, or null when there is no party
+ * to suit. Too many: a game with a watch view says how many watch, one without says how many sit
+ * out (GAME-UX-CONTRACT rule 4.4a). Whether a start is refused is Party Core's rule, not this. */
+export function fitLine(game, people = 0) {
+  if (people < 2) return null;
+  if (fits(game, people)) return { ok: true, icon: 'check', text: people === 2 ? 'Room for both of you.' : `Room for all ${countWord(people)} of you.` };
+  const { min, max } = game.players;
+  if (people < min) return { ok: false, icon: 'triangle-alert', text: `Needs ${min} or more; you’re ${people}.` };
+  const over = people - max, watch = game.spectators === 'watch';
+  const rest = over === 1 ? (watch ? 'one of you watches' : 'one of you sits out')
+    : `${countWord(over)} of you ${watch ? 'watch' : 'sit out'}`;
+  return { ok: false, icon: 'triangle-alert', text: `Up to ${max} play; ${rest}.` };
+}
+
 /** The line under Home's lead title. */
 export function leadLine(game, { people = 0, played = false } = {}) {
   const parts = [];

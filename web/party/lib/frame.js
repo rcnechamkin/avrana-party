@@ -16,6 +16,18 @@ export function pageOf(hash) {
 
 export const pageTitle = (page) => TITLES[page] || TITLES.home;
 
+/** The game a fragment names ("#game/bluff"), or null. Only its shape is checked here: whether
+ * such a title is on the shelf is the catalog's to say. A game's page is a fifth view of the same
+ * document. It is browsing: it is not a place in the bar, and nothing on it moves the Party but
+ * the Host's own button. */
+export function gameOf(hash) {
+  const found = /^#?game\/([a-z0-9][a-z0-9-]{0,63})$/.exec(String(hash || ''));
+  return found ? found[1] : null;
+}
+
+/** Where a game's page goes back to, in a word: the place it was opened from. */
+export const backWord = (page) => (page === 'home' ? 'Home' : pageTitle(PAGES.includes(page) ? page : 'library'));
+
 const COUNT = ['Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
 
 /** How many people are here, as a sentence. */

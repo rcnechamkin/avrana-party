@@ -241,11 +241,11 @@ Delivery as four PRs, each leaving `main` deployable, so no flag is needed:
 |---|---|
 | 1.1 | Tokens, Geist and compiled CSS; the frame (top bar with the Limited mark and the Party control, bottom bar, view router); the Party drawer (people, and today's chat while its hub answers) and the Limited sheet on the four ordinary pages; Home (who is here, and one row to the Library), Party and System; today's game list moved under Library unchanged; today's setup scene untouched |
 | 1.2 | Library: covers, four views, search, the two filters, favorites, recents, consequence lines; Home's lead tile and its "Great for N" and "Recently played" rows, which are made of the same tiles. **As built (AVR-285):** a cover opens a sheet that holds today's tile and today's button, so nothing about starting a game changes before 1.3 draws the detail page |
-| 1.3 | Game detail; the briefing redrawn; the drawer (people only) and the Limited sheet over it (needs slice 0 merged) |
+| 1.3 | Game detail; the briefing redrawn; the drawer (people only) and the Limited sheet over it (needs slice 0 merged). **As built (AVR-286):** a cover is a link to the game's own page (`#game/<id>`), which replaces PR 1.2's sheet; the briefing sits under the frame's top bar. Kept from today and not from the drawings, for the owner to change: the Host's button still says "Start for everyone" (ADR 0007; the drawn "Bring the Party in" is not adopted), the two choices keep the words "Play this round" and "Watch this round" whether or not they are chosen, and "How to play" sits above the line-up so it is on screen however many people there are. No length, "quick start" or suggestion is shown |
 | 1.4 | States (reconnecting, Host away and passed, the Host's notice and System's health line, the folded Limited notice, empty states), the accessibility pass, the phone findings |
 
 Pictures of each pull request as built (before and after, and each state it adds) are in
-[`slice-1/`](slice-1/), named for the pull request: `pr-1.1-*.png`, `pr-1.2-*.png`. They are
+[`slice-1/`](slice-1/), named for the pull request: `pr-1.1-*.png`, `pr-1.2-*.png`, `pr-1.3-*.png`. They are
 Chromium at phone sizes, not phones.
 
 ### Rules for every PR of slice 1

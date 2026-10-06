@@ -3,8 +3,8 @@ import { openGame, place, sideways, smallTargets } from '../lib/frame';
 
 /**
  * The Library and Home's shelves (AVR-285) against the simulated Party (Tier 2), on a phone with
- * no party behind it: the five real titles, four views, two real filters, and a sheet that holds
- * today's tile. What the size of a party does to the shelf is in tests/party/multi-client.spec.ts
+ * no party behind it: the five real titles, four views, two real filters, and a cover that opens
+ * the game's own page (AVR-286). What the size of a party does to the shelf is in tests/party/multi-client.spec.ts
  * (it needs a party); the arranging itself is in tests/offline/library.test.mjs.
  * Chromium at phone sizes: not a real phone (docs/TESTING.md, Tier 3).
  */
@@ -315,7 +315,7 @@ test('a favourite is kept with the heart, from the list or from the opened game,
   const card = await openGame(page, 'bluff');
   await card.getByRole('button', { name: 'Add BLUFF to favorites' }).click();
   await expect(card.getByRole('button', { name: 'Remove BLUFF from favorites' })).toBeFocused();
-  await page.keyboard.press('Escape');
+  await page.locator('#top-back').click();
   await expect(page.locator('#games [data-game="bluff"]')).toBeFocused();
   await page.locator('#game-views').getByRole('button', { name: 'Favorites', exact: true }).click();
   expect(await shown(page)).toEqual(['bluff', 'expo']);
@@ -329,36 +329,87 @@ test('a favourite is kept with the heart, from the list or from the opened game,
   expect(await shown(page)).toEqual(['bluff']);
 });
 
-test('a cover opens the game in a sheet: named, focus inside, and closed three ways with focus returned', async ({ page }) => {
+test('a cover is a link to the game’s own page: its facts, one heading, and its own button', async ({ page }) => {
   await open(page);
-  const tile = page.locator('#games [data-game="expo"]'), sheet = page.locator('#game-sheet');
-  await expect(tile).toHaveAttribute('aria-haspopup', 'dialog');
+  const tile = page.locator('#games [data-game="expo"]');
+  await expect(tile).toHaveAttribute('href', '#game/expo');                          // a link, so the phone's Back returns
+  await expect(tile).not.toHaveAttribute('aria-haspopup', /.*/);
   await tile.focus();
   await page.keyboard.press('Enter');                                               // by keyboard
-  await expect(sheet).toBeVisible();
-  await expect(sheet).toHaveAccessibleName('EXPO');
-  expect(await page.evaluate(() => document.activeElement?.closest('dialog')?.id)).toBe('game-sheet');
-  const card = page.locator('#game-card [data-id="expo"]');
+  const card = page.locator('#game-detail[data-id="expo"]');
+  await expect(card).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'game');
+  await expect(page).toHaveTitle('EXPO · Avrana Party');
+  await expect(page.locator('#game-title')).toHaveText('EXPO');
+  await expect(page.locator('#game-title')).toBeFocused();                          // a move: focus goes to what the page is
+  await expect(page.locator('h1:visible')).toHaveCount(1);                          // one heading names the page
+  await expect(card).toHaveAccessibleName('EXPO');
+  // the way back says where it goes; the bar keeps the place the page was opened from
+  await expect(page.locator('#top-back')).toHaveAccessibleName('Library');
+  await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'library');
+  // the catalog's own facts, nothing invented
   await expect(card).toContainText('One crew. Every card matters.');
+  await expect(card.locator('.avrana-game-facts')).toContainText('2–5 players');
+  await expect(card.locator('.avrana-game-facts')).toContainText('Phone only');
+  await expect(card).toContainText('Works on this phone');
+  await expect(card.locator('[data-suits]')).toHaveCount(0);                        // no party here to suit
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/expo/?avrana=1');   // today's own button
-  expect(await smallTargets(page, `#game-sheet :is(${CONTROLS})`)).toEqual([]);
+  await expect(card.getByRole('button', { name: 'Add EXPO to favorites' })).toHaveAttribute('aria-pressed', 'false');
+  for (const word of ['Quick start', 'minutes', 'Suggest', 'Bring the Party in']) await expect(card).not.toContainText(word);
+  expect(await smallTargets(page, `:is(#view-game, #top, #nav) :is(${CONTROLS})`)).toEqual([]);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
-  await page.keyboard.press('Escape');
-  await expect(sheet).toBeHidden();
-  await expect(tile).toBeFocused();
+  // reading order: the art, the name, what it is, the facts, the button
+  const order = await card.evaluate((el) => [...el.children].map((c) => c.id || c.className.split(' ')[0]));
+  expect(order.slice(0, 4)).toEqual(['avrana-cover', 'game-title', 'avrana-premise', 'avrana-game-facts']);
+  expect(order.indexOf('avrana-act')).toBeGreaterThan(order.indexOf('avrana-game-facts'));
+});
+
+test('back from a game’s page returns to the same cover at the same scroll, however it is done', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 480 });                           // short enough for the list to scroll
+  await open(page);
+  await setView(page, 'list');
+  const tile = page.locator('#games [data-game="ps1-worms"]'), content = page.locator('#content');
+  const top = () => content.evaluate((el) => el.scrollTop);
+  const backs: Array<[string, () => Promise<unknown>]> = [
+    ['the way back in the top bar', () => page.locator('#top-back').click()],
+    ['the phone’s Back', () => page.goBack()],
+    ['the bar’s Library', () => page.locator('#nav a[data-go="library"]').click()],
+    ['the keyboard', async () => { await page.locator('#top-back').focus(); await page.keyboard.press('Enter'); }],
+  ];
+  for (const [how, back] of backs) {
+    await tile.scrollIntoViewIfNeeded();
+    const was = await top();
+    expect(was, how).toBeGreaterThan(0);
+    await tile.click();
+    await expect(page.locator('#game-detail[data-id="ps1-worms"]'), how).toBeVisible();
+    expect(await top(), how).toBe(0);                                                // a new page starts at its top
+    await back();
+    await expect(page.locator('html'), how).toHaveAttribute('data-place', 'library');
+    await expect(tile, how).toBeFocused();
+    expect(Math.abs((await top()) - was), how).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => location.hash), how).toBe('#library');
+  }
+  // a reload stays on the game's page; with nothing to return to, Back is a plain link to the Library
   await tile.click();
-  await page.locator('#game-sheet-close').click();
-  await expect(sheet).toBeHidden();
-  await expect(tile).toBeFocused();
-  await tile.click();
-  await page.mouse.click(180, 20);                                                  // a tap outside it
-  await expect(sheet).toBeHidden();
-  await expect(page.locator('#game-card > *')).toHaveCount(0);                      // nothing stale left behind
-  // the phone's Back, or the bar: no sheet stays open over a place that changed underneath it
-  await tile.click();
-  await page.evaluate(() => { location.hash = '#system'; });
-  await expect(sheet).toBeHidden();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('#game-detail[data-id="ps1-worms"]')).toBeVisible();
+  await expect(page.locator('#top-back')).toHaveAttribute('href', '#library');
+  await page.locator('#top-back').click();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  await expect(page.locator('#top-title')).toBeFocused();
+  // a title that is not on the shelf is the Library, and the address says so
+  await page.goto('/party/#game/no-such-game');
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  expect(await page.evaluate(() => location.hash)).toBe('#library');
+  await expect(page.locator('#game-detail > *')).toHaveCount(0);
+  // from a game's page, the bar goes anywhere
+  await page.locator('#games [data-game="bluff"]').click();
+  await page.locator('#nav a[data-go="system"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'system');
+  await expect(page.locator('#top-back')).toBeHidden();
+  await expect(page.locator('#top-title')).toHaveText('System');
 });
 
 test('Home’s shelves: a lead title, the games, and what this phone played, all from the same list', async ({ page }) => {
@@ -377,9 +428,11 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   expect(await sideways(page)).toBeLessThanOrEqual(0);
   // a cover on Home opens the same game the Library does, and focus comes back to it
   await lead.click();
-  await expect(page.locator('#game-sheet')).toBeVisible();
-  await expect(page.locator('#game-card [data-id="bluff"]')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
+  await expect(page.locator('#top-back')).toHaveAccessibleName('Home');             // back to where it was opened from
+  await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
+  await page.locator('#top-back').click();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
   await expect(lead).toBeFocused();
   await page.locator('#home-games').getByRole('link', { name: 'Library' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
@@ -401,7 +454,7 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
     .toEqual(['arcade-gauntlet2']);                                                 // what was played before that
   // a keyboard's focus ring on a rail's first cover is whole: the rail leaves it room
   const room = await page.locator('#home-great').evaluate((rail) => {
-    const a = rail.getBoundingClientRect(), b = rail.querySelector('button')!.getBoundingClientRect();
+    const a = rail.getBoundingClientRect(), b = rail.querySelector('a')!.getBoundingClientRect();
     return [b.left - a.left, b.top - a.top];
   });
   for (const px of room) expect(px).toBeGreaterThanOrEqual(4);
@@ -463,11 +516,14 @@ test('the Library holds at 200% text on a small phone: every view, both sheets a
   await expect(page.locator('#view-choices [data-v="list"]')).toBeInViewport();
   await page.keyboard.press('Escape');
   const card = await openGame(page, 'bluff');
-  expect(await wide('#game-sheet')).toBeLessThanOrEqual(1);
-  const play = card.getByRole('link', { name: 'Play' });
-  await play.scrollIntoViewIfNeeded();
-  await expect(play).toBeInViewport();
-  await page.keyboard.press('Escape');
+  expect(await sideways(page)).toBeLessThanOrEqual(0);
+  await expect(page.locator('#top-back')).toBeInViewport();
+  await expect(page.locator('#game-title')).toHaveText('BLUFF');
+  for (const el of [card.getByRole('link', { name: 'Play' }), card.getByRole('button', { name: /favorites/ })]) {
+    await el.scrollIntoViewIfNeeded();
+    await expect(el).toBeInViewport();
+  }
+  expect(await smallTargets(page, `:is(#view-game, #top) :is(${CONTROLS})`)).toEqual([]);
   await place(page, 'home');
   expect(await sideways(page)).toBeLessThanOrEqual(0);
 });
@@ -485,7 +541,7 @@ test('with reduced motion nothing in the Library animates', async ({ page }) => 
 test('reading order: search, filters, view, the tabs, then the shelf; the skip link lands on the games', async ({ page }) => {
   await open(page);
   const order = await page.locator('#view-library').evaluate((root) =>
-    [...root.querySelectorAll('input, button')].filter((el) => el.getClientRects().length)
+    [...root.querySelectorAll('input, button, a[data-game]')].filter((el) => el.getClientRects().length)
       .map((el) => el.id || (el as HTMLElement).dataset.view || (el as HTMLElement).dataset.game).slice(0, 8));
   expect(order).toEqual(['game-search', 'lib-filter', 'lib-view', 'all', 'favorites', 'recent', 'bluff', 'expo']);
   await page.locator('#game-search').focus();

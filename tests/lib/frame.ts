@@ -10,13 +10,15 @@ export async function place(page: Page, name: Place) {
   await expect(page.locator('html')).toHaveAttribute('data-place', name);
 }
 
-/** Open a game from its cover in the Library (be there first). Returns its card: today's tile,
- * with its facts and its own button, in the sheet. */
+/** Open a game's page from its cover in the Library (be there first, or on another game's page).
+ * Returns the page's article: its facts and its own button. */
 export async function openGame(page: Page, id: string) {
   if (await page.locator('dialog[open]').count()) await page.keyboard.press('Escape');
+  if ((await page.locator('html').getAttribute('data-place')) === 'game') await place(page, 'library');
   await page.locator(`#games [data-game="${id}"]`).click();
-  const card = page.locator(`#game-card [data-id="${id}"]`);
+  const card = page.locator(`#game-detail[data-id="${id}"]`);
   await expect(card).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'game');
   return card;
 }
 

@@ -138,6 +138,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   a Limited Mode mark opens the explanation, which there carries no link that leaves the scene;
   the Library, the navigation bar and "This phone" stay off the scene. Decisions 1 to 3 and 5 to
   7 are unchanged: one location, the Host moves it, and the game owns the viewport during a
-  round. `#scene` on `main` is as decision 4 describes until the shell redesign builds this
+  round. Built in source by the shell redesign's PR 1.3 (AVR-286, 2026-10-06; not deployed
+  or checked on a phone)
   ([GAME-UX-CONTRACT](../design/GAME-UX-CONTRACT.md) Rule 3.2;
   [plan](../design/ux-redesign/IMPLEMENTATION-PLAN.md), slice 1, PR 1.3).

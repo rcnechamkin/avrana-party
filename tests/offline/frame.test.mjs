@@ -3,8 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CHAT_TRIES, PAGES, chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab }
-  from '../../web/party/lib/frame.js';
+import { CHAT_TRIES, PAGES, chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab, gameOf, backWord } from '../../web/party/lib/frame.js';
 
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
 
@@ -84,4 +83,24 @@ test('the Party control names itself for a screen reader', () => {
   assert.equal(hudLabel({ party: false, chat: true }), 'Party chat');
   assert.equal(hudLabel({ party: false, chat: false }), '');
   assert.equal(hudLabel(), '');
+});
+
+test('a game’s page is named by its address, and only by a well-formed one', () => {
+  assert.equal(gameOf('#game/bluff'), 'bluff');
+  assert.equal(gameOf('game/arcade-gauntlet2'), 'arcade-gauntlet2');
+  assert.equal(gameOf('#game/ps1-worms'), 'ps1-worms');
+  for (const bad of ['', '#', '#game', '#game/', '#game/Bluff', '#game/bluff/extra', '#game/../x', '#game/-x', '#game/a b',
+    '#games/bluff', '#library', '#game/' + 'a'.repeat(65), '#game/<img>', null, undefined, 7])
+    assert.equal(gameOf(bad), null, String(bad));
+  // it is never one of the four places: an address that names a game is not a place in the bar
+  assert.equal(pageOf('#game/bluff'), 'home');
+  assert.equal(PAGES.includes('game'), false);
+});
+
+test('the way back from a game’s page is named after the place it returns to', () => {
+  assert.equal(backWord('library'), 'Library');
+  assert.equal(backWord('home'), 'Home');
+  assert.equal(backWord('party'), 'Party');
+  assert.equal(backWord('system'), 'System');
+  for (const odd of ['game', '', undefined, 'nowhere']) assert.equal(backWord(odd), 'Library', String(odd));
 });
