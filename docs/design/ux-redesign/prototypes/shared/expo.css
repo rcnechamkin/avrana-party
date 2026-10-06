@@ -1,0 +1,555 @@
+/* EXPO: design-concept stylesheet (2026-10-05). A design artifact for owner review, not game source.
+   Direction: a field unit carried through irradiated country. Matte housing, one small window onto
+   the land, a signal lamp for "now", and cards that are brighter than everything around them.
+   The material and the land are CSS stand-ins (flat shapes, procedural grain); the last section says
+   what human-made art they hold the place for.
+   The game's own palette and shapes; only behaviour is shared with the Avrana shell. */
+
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+
+:root {
+  color-scheme: dark;
+  --housing: #111416;
+  --panel: #1a1e21;
+  --panel-2: #22272b;
+  --seam: #323a40;
+  --seam-2: #4a545c;
+  --ink: #e6e9e4;
+  --ink-2: #a9b2ad;
+  --ink-3: #8b9590;
+  --lamp: #f5a524;          /* the one signal colour: whose turn, what needs you */
+  --on-lamp: #1a1204;
+  --good: #86d6a0;
+  --bad: #f4857b;
+
+  --blue: #2a63c9; --green: #1d7a50; --pink: #bf3b84; --yellow: #e2ad1b; --sub: #0b0c0e;
+  --card-w: 62px; --card-h: 78px; --trick-w: 68px; --trick-h: 92px;
+  --pad: 12px;
+  --ui: "Geist", system-ui, sans-serif;
+  --read: var(--ui);        /* counts and clocks: the same face, tabular figures */
+  --control: #6b7780;       /* the edge of a key: 3:1 on the panel */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--housing); color: var(--ink); font: 400 0.9375rem/1.35 var(--ui); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; overflow: hidden; }
+h1, h2, h3, p, ul, ol { margin: 0; padding: 0; } ul, ol { list-style: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+img { display: block; }
+:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+::selection { background: rgba(245, 165, 36, 0.35); }
+i[data-i] { display: inline-flex; width: 1.25rem; height: 1.25rem; flex: none; }
+i[data-i] svg { width: 100%; height: 100%; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+html[data-role="guest"] .host-only, html[data-role="host"] .guest-only { display: none !important; }
+
+/* notched plate: the unit's one structural shape */
+.plate { background: var(--panel); border: 1px solid var(--seam); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+
+[hidden] { display: none !important; }
+html[data-text="150"] { font-size: 150%; }   /* ?text=: a simulated larger text size (see the last section) */
+html[data-text="200"] { font-size: 200%; }
+
+/* ---------- the board: five zones, one viewport ---------- */
+.board {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+/* every zone names its row, so the objectives sheet can lie over rows 1 to 4 without moving them */
+.stage { grid-row: 1; } .crew { grid-row: 2; } .trick, .radio { grid-row: 3; } .goals { grid-row: 4; } .tray { grid-row: 5; }
+.board > * { grid-column: 1; min-width: 0; }
+
+/* A. mission stage: the window */
+.stage { position: relative; min-height: clamp(70px, 13.5dvh, 118px); display: grid; overflow: hidden; border-bottom: 1px solid var(--seam); background: #2b2e25; }
+.land { position: absolute; inset: 0; }
+.land::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 58%; background: #3d4032; }
+.land::after { content: ""; position: absolute; right: 31%; top: 20%; width: 34px; height: 34px; border-radius: 50%; background: #b9ad6b; opacity: 0.75; }
+.land i { position: absolute; bottom: 0; display: block; }
+.land .r1 { left: -4%; width: 62%; height: 52%; background: #23261e; clip-path: polygon(0 100%, 0 42%, 14% 30%, 30% 46%, 44% 12%, 58% 40%, 76% 30%, 100% 100%); }
+.land .r2 { right: -6%; width: 70%; height: 40%; background: #1b1d18; clip-path: polygon(0 100%, 12% 50%, 28% 62%, 46% 20%, 60% 44%, 78% 24%, 100% 58%, 100% 100%); }
+.land .r3 { left: 0; right: 0; height: 16%; background: #131512; }
+.stage__in { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr; padding: 4px 4px 12px var(--pad); background: linear-gradient(90deg, rgba(14, 16, 17, 0.9) 0 40%, rgba(14, 16, 17, 0.28) 70%, rgba(14, 16, 17, 0)); }
+.stage__id { align-self: center; font-family: var(--read); font-size: 0.75rem; color: var(--ink); display: flex; gap: 12px; }
+.stage__id b { color: var(--ink); font-weight: 500; }
+.stage__tools { display: flex; }
+.tool { width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink); position: relative; flex: none; }
+.tool .n { position: absolute; top: 5px; right: 3px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--ink); color: var(--housing); font-size: 0.625rem; font-weight: 600; line-height: 16px; text-align: center; }
+.stage__goal { grid-column: 1 / -1; align-self: end; font-size: 1rem; font-weight: 550; line-height: 1.2; max-width: 26ch; text-wrap: balance; }
+
+/* the one live instruction: it sits on the tray, beside the cards and the key it is about */
+.status { display: flex; align-items: flex-start; gap: 8px; min-height: 36px; font-size: 0.9375rem; font-weight: 550; line-height: 1.25; margin-bottom: 8px; }
+.status .lampdot { width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--lamp); flex: none; box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.2); }
+.status small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--ink-2); }
+.status[data-idle] .lampdot { background: var(--seam-2); box-shadow: none; }
+.status[data-idle] { font-weight: 450; color: var(--ink-2); }
+.status .status__net { display: none; width: 1.125rem; height: 1.125rem; margin: 1px -1px 0 -3px; color: var(--ink); }
+
+/* B. crew strip: name; role and tricks; burst. Three short lines so nothing has to overlap. */
+.crew { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; padding: 8px var(--pad) 0; }
+.seat { position: relative; padding: 6px 5px 6px 7px; min-width: 0; overflow: visible; }
+.seat__who { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.seat__who img { width: 18px; height: 18px; border-radius: 50%; background: var(--panel-2); flex: none; }
+.seat__who i { width: 16px; height: 16px; color: var(--ink-2); }
+.seat__who b { font-size: 0.8125rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat__meta, .seat__sig { display: flex; align-items: center; gap: 5px; margin-top: 3px; font-size: 0.6875rem; color: var(--ink-2); white-space: nowrap; min-height: 16px; }
+.seat__meta span { display: inline-flex; align-items: center; gap: 2px; font-family: var(--read); }
+.seat__meta i, .seat__sig i { width: 11px; height: 11px; }
+.seat__tag { font-family: var(--ui); font-size: 0.6875rem; font-weight: 600; color: var(--ink); border: 1px solid var(--seam-2); border-radius: 2px; padding: 0 3px; line-height: 13px; flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 2px; font-family: var(--read); font-weight: 600; color: #fff; padding: 0 3px; border-radius: 2px; line-height: 15px; }
+.chip svg { width: 8px; height: 8px; }
+.chip[data-s="blue"] { background: var(--blue); } .chip[data-s="green"] { background: var(--green); } .chip[data-s="pink"] { background: var(--pink); }
+.chip[data-s="yellow"] { background: var(--yellow); color: #1c1503; }
+.seat[data-turn] { border-color: var(--lamp); background: #2a230e; }
+.seat__turn { display: none; }
+.seat[data-turn] .seat__turn { display: block; position: absolute; left: 8px; top: -8px; font-size: 0.6875rem; font-weight: 700; color: var(--on-lamp); background: var(--lamp); padding: 0 5px; line-height: 15px; border-radius: 2px; z-index: 1; }
+/* the plate's notch would clip the tab, so the turn seat is drawn as a plain bordered box */
+.seat[data-turn].plate { clip-path: none; border-radius: 2px; }
+/* Tonoja is a hand with no player: no face, a broken edge, who plays it, and what is showing */
+.seat[data-kind="tonoja"] { border-style: dashed; border-color: var(--control); background: none; clip-path: none; border-radius: 2px; }
+.seat[data-kind="tonoja"][data-turn] { border-color: var(--lamp); background: #2a230e; }
+.seat__by { color: var(--ink); }
+.seat[data-away] .seat__sig { color: var(--ink); font-weight: 600; }
+
+/* C. shared trick */
+.trick { display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 0 var(--pad); min-height: 0; }
+/* trick cards are as tall as the tier allows and give way, down to 44 px, before anything overlaps */
+.plays { display: flex; align-items: stretch; justify-content: center; gap: 10px; min-height: 0; padding-top: 8px; }
+.play { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; position: relative; min-height: 0; }
+.play__n { font-size: 0.75rem; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
+.play__n .lead { font-size: 0.6875rem; font-weight: 600; border: 1px solid var(--seam-2); border-radius: 2px; padding: 0 3px; line-height: 13px; }
+.play .card, .play .slot { width: var(--trick-w); height: auto; flex: 0 1 var(--trick-h); min-height: 44px; }
+.play[data-winning] .card { transform: translateY(-8px); box-shadow: 0 0 0 2px var(--ink), 0 10px 18px rgba(0, 0, 0, 0.5); }
+.play[data-winning] .play__n { color: var(--ink); font-weight: 550; }
+.slot { border: 1.5px dashed var(--ink-3); border-radius: 6px; display: grid; place-items: center; font-size: 0.6875rem; color: var(--ink-3); text-align: center; }
+.play[data-next] .slot { border-color: var(--lamp); color: var(--lamp); }
+/* the current winner has a fixed home: this line, always in the same place, always in words */
+.winning { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 30px; margin-top: 6px; border-top: 1px solid var(--seam); font-size: 0.875rem; color: var(--ink-2); }
+.winning b { color: var(--ink); font-weight: 600; }
+.winning i { width: 15px; height: 15px; }
+
+/* D. objectives. The header is one 44 px control: the count, and the way to the whole list. */
+.goals { margin: 0 var(--pad); }
+.goals__head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 6px 0 10px; text-align: left; }
+.goals__t { font-size: 0.8125rem; font-weight: 550; color: var(--ink); }
+.goals__n { font-family: var(--read); font-size: 0.75rem; color: var(--ink-2); }
+.goals__all { margin-left: auto; display: inline-flex; align-items: center; gap: 1px; min-height: 30px; padding: 0 3px 0 9px; border: 1px solid var(--control); border-radius: 4px; background: var(--panel-2); font-size: 0.75rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.goals__all i { width: 1rem; height: 1rem; }
+.goal { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 10px; border-top: 1px solid var(--seam); min-height: 34px; }
+.goal img { width: 22px; height: 22px; border-radius: 50%; background: var(--panel-2); }
+.goal__ic { width: 20px; height: 20px; color: var(--ink-2); }
+.goal p { font-size: 0.8125rem; line-height: 1.25; }
+.goal p b { font-weight: 600; }
+.state { display: inline-flex; align-items: center; gap: 3px; font-size: 0.6875rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.state i { width: 13px; height: 13px; }
+.state[data-s="done"] { color: var(--good); }
+.state[data-s="failed"] { color: var(--bad); }
+.state[data-s="active"] { color: var(--ink); }
+/* how many stay on the board is a matter of height; the rest are in the sheet. Gameplay board only. */
+.goals__list .goal:nth-child(n + 4) { display: none; }
+
+/* the full list: a sheet over zones A to D that stops at the tray */
+.veil, .sheet { display: none; grid-row: 1 / 5; }
+html[data-sheet="objectives"] .veil { display: block; z-index: 5; width: 100%; height: 100%; background: rgba(8, 10, 11, 0.74); cursor: default; }
+html[data-sheet="objectives"] .sheet { display: grid; grid-template-rows: auto minmax(0, 1fr); z-index: 6; align-self: end; max-height: 100%; min-height: 0; background: var(--panel); border-top: 1px solid var(--seam-2); box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.5); }
+.sheet__head { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 2px 0 var(--pad); border-bottom: 1px solid var(--seam-2); }
+.sheet__head h2 { font-size: 1rem; font-weight: 600; }
+.sheet__head span { font-family: var(--read); font-size: 0.8125rem; color: var(--ink-2); margin-right: auto; }
+.sheet__list { overflow-y: auto; min-height: 0; padding: 0 var(--pad); overscroll-behavior: contain; }
+.sheet .goal { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; padding: 10px 0; min-height: 52px; border-top: 0; border-bottom: 1px solid var(--seam); }
+.sheet .goal img { width: 26px; height: 26px; }
+.sheet .goal p { font-size: 0.9375rem; line-height: 1.3; }
+.sheet .state { font-size: 0.75rem; }
+/* a scroller says it goes on: a fade that rides its lower edge and lies on blank space at the end */
+.sheet__list::after, .evidence::after { content: ""; display: block; position: sticky; bottom: 0; height: 22px; pointer-events: none; }
+.sheet__list::after { background: linear-gradient(rgba(26, 30, 33, 0), var(--panel)); }
+.evidence::after { background: linear-gradient(rgba(17, 20, 22, 0), var(--housing)); }
+
+/* E. hand and controls: the tray */
+.tray { background: var(--panel); border-top: 1px solid var(--seam-2); padding: 8px var(--pad) 10px; }
+.hand { display: grid; grid-template-columns: repeat(5, var(--card-w)); justify-content: space-between; gap: 8px 0; }
+/* eleven cards or more (the deals for two and three players are 13 and 14): rows of seven.
+   Seven 44 px columns and six 4 px gaps are 332 px, which is what a 360 px phone has. */
+.hand[data-cols="7"] { grid-template-columns: repeat(7, minmax(44px, 1fr)); justify-content: stretch; gap: 8px 4px; }
+.hand[data-cols="7"] .card, .hand[data-cols="7"] .gap { width: auto; }
+.hand[data-cols="7"] .card b { left: 5px; font-size: 1.375rem; }
+.hand[data-cols="7"] .card svg { right: 4px; top: 6px; width: 13px; height: 13px; }
+.hand[data-cols="7"] .card span { left: 5px; }
+/* a narrow card has no room for the struck mark beside its suit word: it sits under the suit shape */
+.hand[data-cols="7"] .card[aria-disabled="true"]::after { right: 4px; top: 24px; bottom: auto; }
+.hand[data-cols="7"] .card[aria-pressed="true"] { transform: translateY(-5px); }
+/* Tonoja's row: a place whose card has been played is an outlined, named hole, never a blank */
+.gap { height: var(--card-h); border: 1.5px dashed var(--ink-3); border-radius: 6px; display: grid; place-items: center; font-size: 0.6875rem; color: var(--ink-3); }
+.tonote { margin-top: 8px; min-height: var(--card-h); font-size: 0.8125rem; line-height: 1.3; color: var(--ink-2); }
+/* two players: whose cards the hand shows. Pressed is an outline, a tick and weight, not a colour. */
+.handsw { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.handsw__b { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 1px solid var(--control); border-radius: 6px; background: var(--panel-2); font-size: 0.875rem; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.handsw__b small { font-family: var(--read); font-size: 0.75rem; font-weight: 400; color: var(--ink-2); }
+.handsw__b i { display: none; width: 1rem; height: 1rem; }
+.handsw__b[aria-pressed="true"] { background: var(--housing); border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); font-weight: 650; }
+.handsw__b[aria-pressed="true"] i { display: inline-flex; }
+.dock { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; margin-top: 10px; }
+.key { min-height: 48px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--control); background: var(--panel-2); display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 0.9375rem; white-space: nowrap; }
+.key small { display: block; font-family: var(--read); font-size: 0.6875rem; font-weight: 500; color: var(--ink-2); }
+.key--go { background: var(--lamp); color: var(--on-lamp); border-color: transparent; }
+.key--plain { background: var(--ink); color: var(--housing); border-color: transparent; }
+.key[disabled] { background: var(--panel-2); color: var(--ink-3); border-color: var(--seam); cursor: default; }
+.key[disabled] small { color: var(--ink-3); }
+.key--quiet { background: none; border-color: var(--seam); font-weight: 500; color: var(--ink-2); }
+
+/* ---------- cards: the brightest, plainest things on the board ---------- */
+.card {
+  position: relative; width: var(--card-w); height: var(--card-h);
+  border-radius: 6px; color: #fff; text-align: left;
+  display: block; flex: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+.card[data-s="blue"] { background: var(--blue); }
+.card[data-s="green"] { background: var(--green); }
+.card[data-s="pink"] { background: var(--pink); }
+.card[data-s="yellow"] { background: var(--yellow); color: #1c1503; }
+.card[data-s="submarine"] { background: var(--sub); box-shadow: inset 0 0 0 1.5px var(--lamp), 0 2px 5px rgba(0, 0, 0, 0.45); }
+.card b { position: absolute; left: 7px; top: 3px; font-size: 1.75rem; font-weight: 650; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.card svg { position: absolute; right: 6px; top: 7px; width: 16px; height: 16px; }
+.card span { position: absolute; left: 7px; bottom: 5px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.01em; }
+/* cannot be played now: the colour stays, the card sinks and darkens, and a struck circle marks it.
+   The sentence on the tray says why. */
+.card[aria-disabled="true"] { transform: translateY(4px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34); color: rgba(255, 255, 255, 0.86); }
+.card[aria-disabled="true"][data-s="blue"] { background: color-mix(in srgb, var(--blue) 42%, #14171a); }
+.card[aria-disabled="true"][data-s="green"] { background: color-mix(in srgb, var(--green) 46%, #14171a); }
+.card[aria-disabled="true"][data-s="pink"] { background: color-mix(in srgb, var(--pink) 42%, #14171a); }
+.card[aria-disabled="true"][data-s="yellow"] { background: color-mix(in srgb, var(--yellow) 30%, #14171a); }
+.card[aria-disabled="true"][data-s="submarine"] { background: #1b1d20; box-shadow: inset 0 0 0 1px rgba(245, 165, 36, 0.5); }
+.card[aria-disabled="true"] svg { opacity: 0.86; }
+.card[aria-disabled="true"]::after { content: ""; position: absolute; right: 6px; bottom: calc(var(--card-h) * 0.3); width: 12px; height: 12px; border-radius: 50%; color: #f2f4f0; border: 1.5px solid currentColor; background: linear-gradient(135deg, transparent 43%, currentColor 43% 57%, transparent 57%), rgba(10, 12, 14, 0.72); box-shadow: 0 0 0 2px rgba(10, 12, 14, 0.72); }
+.card[aria-pressed="true"] { transform: translateY(-8px); box-shadow: 0 0 0 2px var(--housing), 0 0 0 4px var(--lamp), 0 10px 16px rgba(0, 0, 0, 0.5); }
+.mini { --card-w: 30px; --card-h: 38px; border-radius: 4px; }
+.mini b { font-size: 1rem; left: 4px; top: 2px; } .mini svg { width: 9px; height: 9px; right: 3px; top: 4px; } .mini span { display: none; }
+
+/* ---------- Burst Transmission: the helmet radio, opened in place of the trick ---------- */
+.radio { margin: 0 var(--pad); padding: 10px 12px 12px; display: grid; gap: 10px; align-content: start; align-self: center; background: var(--panel); border: 1px solid var(--seam-2); border-radius: 4px; min-height: 0; max-height: 100%; overflow-y: auto; }
+.radio__head { display: flex; align-items: baseline; justify-content: space-between; }
+.radio__head h2 { font-size: 1rem; font-weight: 600; }
+.radio__head span { font-family: var(--read); font-size: 0.75rem; color: var(--lamp); }
+.radio__say { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.radio__say p { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.opt { min-height: 46px; border: 1px solid var(--control); border-radius: 4px; background: var(--panel-2); font-weight: 600; font-size: 0.875rem; text-align: center; }
+.opt[aria-pressed="true"] { border-color: var(--lamp); box-shadow: inset 0 0 0 1px var(--lamp); }
+.opt[disabled] { color: var(--ink-3); background: none; border-style: dashed; cursor: default; }
+.radio__why { font-size: 0.8125rem; color: var(--ink-2); }
+
+/* ---------- result: the word first, then the cause, then the evidence ---------- */
+.result { height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.verdict { padding: 22px var(--pad) 18px; border-bottom: 1px solid var(--seam); background: #2a1715; position: relative; overflow: hidden; }
+.verdict[data-ok] { background: #14261c; }
+.verdict__mark { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--bad); margin-top: 12px; }
+.verdict[data-ok] .verdict__mark { color: var(--good); }
+.verdict h1 { font-size: 2rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1.05; }
+.verdict p { font-size: 1.0625rem; margin-top: 8px; max-width: 32ch; position: relative; z-index: 1; text-wrap: pretty; }
+/* the evidence is the part that scrolls; every objective's outcome is in it at every size */
+.evidence { overflow-y: auto; padding: 4px var(--pad) 0; overscroll-behavior: contain; }
+.evidence h2 { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); margin: 16px 0 8px; }
+.evidence .plays { justify-content: flex-start; gap: 8px; padding-top: 10px; }
+.evidence .play .card { --trick-w: 54px; --trick-h: 70px; }
+.evidence .goal { border: 1px solid var(--seam); background: var(--panel); border-radius: 4px; padding: 8px 10px; }
+.evidence .goal + .goal { margin-top: 6px; }
+.play[data-trigger] .card { box-shadow: 0 0 0 2px var(--housing), 0 0 0 4px var(--bad); }
+.play[data-trigger] .play__n { color: var(--ink); font-weight: 600; }
+.play[data-trigger] .lead { border-color: var(--bad); color: var(--bad); }
+.after { padding: 10px var(--pad) 12px; border-top: 1px solid var(--seam-2); background: var(--panel); display: grid; gap: 8px; }
+.after__row { display: grid; grid-template-columns: 1fr 1.15fr; gap: 8px; }
+.after__more { display: flex; justify-content: space-between; gap: 8px; margin: -4px 0 -6px; }
+html[data-role="guest"] .after__more { justify-content: center; }
+.textkey { min-height: 44px; padding: 0 4px; font-size: 0.875rem; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--seam-2); }
+.pick { min-width: 0; min-height: 48px; padding: 0 10px; border: 1px solid var(--control); border-radius: 6px; background: var(--panel-2); color: var(--ink); font: inherit; font-weight: 600; font-size: 0.9375rem; }
+.after p { text-align: center; font-size: 0.8125rem; color: var(--ink-2); }
+
+/* phase switches */
+html:not([data-state="radio"]) .radio, html[data-state="radio"] .trick, html:not([data-state="radio"]) .dock--radio, html[data-state="radio"] .dock--play { display: none; }
+html:not([data-state="result"]) .result, html[data-state="result"] .board { display: none; }
+html:not([data-ok]) .result [data-ok], html[data-ok] .result [data-fail] { display: none; }
+
+/* this phone lost the table: one calm line in the status place, and nothing amber claims to be "now" */
+html[data-net="reconnecting"] .status .lampdot { display: none; }
+html[data-net="reconnecting"] .status .status__net { display: inline-flex; }
+html[data-net="reconnecting"] .seat[data-turn] { border-color: var(--seam-2); background: var(--panel); }
+html[data-net="reconnecting"] .seat[data-turn] .seat__turn { background: var(--seam-2); color: var(--ink); }
+html[data-net="reconnecting"] .play[data-next] .slot { border-color: var(--ink-3); color: var(--ink-3); }
+
+/* ---------- height tiers. Objectives fold on the gameplay board only. ---------- */
+/* taller phones: give the height to the cards and the window */
+@media (min-height: 760px) {
+  :root { --card-w: 64px; --card-h: 80px; --trick-w: 72px; --trick-h: 94px; }
+  .board { gap: 10px; }
+  .board[data-n="5"] { --trick-w: 60px; --trick-h: 84px; }
+  .status { margin-bottom: 14px; }
+  html[data-state="radio"] .goals__list .goal:nth-child(n + 2) { display: none; }
+  /* two players: the Yours / Tonoja switch takes a row, so one objective and some trick height give way */
+  .board[data-n="2"] { --trick-h: 72px; }
+  .board[data-n="2"] .status { margin-bottom: 10px; }
+  .board[data-n="2"] .goals__list .goal:nth-child(n + 3) { display: none; }
+}
+/* typical in-browser heights: two objectives on the board, the rest one tap away */
+@media (max-height: 759px) {
+  :root { --card-h: 56px; --trick-w: 52px; --trick-h: 60px; }
+  .board { gap: 6px; }
+  .plays { padding-top: 6px; }
+  .play { gap: 4px; }
+  .winning { min-height: 24px; margin-top: 4px; }
+  .crew { padding-top: 6px; }
+  .card b { font-size: 1.5rem; top: 2px; }
+  .card span { bottom: 3px; }
+  .goal { min-height: 32px; padding-block: 4px; }
+  .status { margin-bottom: 8px; }
+  .handsw { margin-bottom: 8px; }
+  .goals__list .goal:nth-child(n + 3) { display: none; }
+  /* two players: the Yours / Tonoja switch takes the row an objective had; the header and its sheet remain */
+  .board[data-n="2"] .goals__list .goal { display: none; }
+  html[data-state="radio"] .goals__list .goal { display: none; }
+  .radio { padding: 8px 10px 10px; gap: 6px; }
+  .radio__say p { margin-bottom: 4px; }
+  .opt { min-height: 44px; }
+}
+/* short phones */
+@media (max-height: 650px) {
+  :root { --card-h: 54px; --trick-w: 50px; --trick-h: 60px; }
+  .board { gap: 6px; }
+  .stage { min-height: 66px; }
+  .stage__goal { font-size: 0.9375rem; }
+  .winning { min-height: 24px; margin-top: 4px; font-size: 0.8125rem; }
+  .play { gap: 3px; }
+  .status { min-height: 0; margin-bottom: 8px; }
+  .key { min-height: 44px; }
+  .goals__list .goal:nth-child(n + 2) { display: none; }
+  .board[data-n="2"] { --trick-h: 54px; }
+  .board[data-n="2"] .handsw { margin-bottom: 6px; }
+  .tray { padding-top: 6px; padding-bottom: 8px; }
+}
+@media (min-width: 700px) { .board, .result { max-width: 560px; margin: 0 auto; border-inline: 1px solid var(--seam); } }
+@media (prefers-reduced-motion: no-preference) { .card { transition: transform 0.14s ease-out, box-shadow 0.14s ease-out; } }
+
+/* landscape phone: the board splits. Left: stage, crew, objectives. Right: trick above the hand.
+   Four rows: the tray takes what it needs (row 4), the trick takes the rest of the right side. */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root { --card-w: 46px; --card-h: 54px; --trick-w: 48px; --trick-h: 60px; --pad: 10px; }
+  .board { grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 6px 0; max-width: none; margin: 0; border-inline: 0; padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  .stage { grid-column: 1; grid-row: 1; min-height: 62px; }
+  .stage__goal { font-size: 0.875rem; max-width: none; }
+  .crew { grid-column: 1; grid-row: 2; }
+  .goals { grid-column: 1; grid-row: 3 / 5; align-self: start; margin-bottom: 6px; }
+  .trick, .radio { grid-column: 2; grid-row: 1 / 4; }
+  .tray { grid-column: 2; grid-row: 4; border-left: 1px solid var(--seam-2); padding-top: 6px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: start; }
+  /* a tray taller than the right side can spare scrolls inside itself; it never pushes the stage out */
+  .tray { max-height: calc(100dvh - 156px); overflow-y: auto; }
+  .veil, .sheet { grid-column: 1; grid-row: 1 / 5; }
+  html[data-sheet="objectives"] .sheet { align-self: stretch; border-top: 0; border-right: 1px solid var(--seam-2); }
+  /* the hand: one row up to eight cards, two rows beyond; the hand switch shares the status line */
+  .hand, .tonote, .dock { grid-column: 1 / -1; }
+  .hand { grid-template-columns: repeat(8, var(--card-w)); justify-content: start; gap: 6px; }
+  .hand[data-rows="2"] { --card-h: 46px; grid-template-columns: repeat(var(--lcols, 7), minmax(44px, 60px)); gap: 6px 4px; }
+  .hand[data-rows="2"] .card { width: auto; }
+  .hand[data-rows="2"] .card[aria-pressed="true"] { transform: translateY(-4px); }
+  .hand[data-cols="7"][data-rows="1"] { grid-template-columns: repeat(7, minmax(44px, 60px)); }
+  .handsw { grid-column: 2; grid-row: 1; margin-bottom: 6px; }
+  .handsw__b small { display: none; }
+  .tonote { min-height: 0; margin-top: 6px; }
+  .status { margin-bottom: 10px; min-height: 0; }
+  .status small { display: inline; margin-left: 6px; }
+  .dock { margin-top: 6px; }
+  .key { min-height: 44px; }
+  .card span { display: none; }
+  .board .hand .card[aria-disabled="true"]::after { top: auto; bottom: 5px; }   /* no suit word here, so the mark takes its corner */
+  .plays { padding-top: 12px; gap: 8px; }
+  .winning { min-height: 22px; margin-top: 2px; font-size: 0.8125rem; }
+  /* the left side has room for five objectives, burst open or not */
+  html:root .board .goals .goals__list .goal { display: grid; }
+  html:root .board .goals .goals__list .goal:nth-child(n + 6) { display: none; }
+  .radio { align-self: stretch; margin-top: 6px; padding: 6px 10px; gap: 6px; }
+  .radio__say .card { display: none; }
+  .radio__say { grid-template-columns: 1fr; }
+  .radio__why { display: none; }
+  /* result: the verdict and the Host's actions on the left, the evidence scrolling on the right */
+  .result { grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; max-width: none; margin: 0; border-inline: 0; padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  .verdict { grid-column: 1; grid-row: 1; padding-top: 14px; border-bottom: 0; overflow-y: auto; }
+  .after { grid-column: 1; grid-row: 2; }
+  .evidence { grid-column: 2; grid-row: 1 / 3; border-left: 1px solid var(--seam-2); }
+}
+
+/* five at the table: names before faces */
+.crew[data-n="5"] { gap: 4px; }
+.crew[data-n="5"] .seat { padding-inline: 5px 3px; }
+.crew[data-n="5"] .seat__who img { display: none; }
+.board[data-n="5"] .plays { gap: 8px; }
+
+/* ---------- enlarged text (?text=150, ?text=200) ----------
+   A fixed-height board cannot hold text half as big again, so it stops trying. Revision 2: everything is
+   ONE scrolling column (mission, crew, objectives, trick, then the status line and the hand) and only the
+   action keys stay pinned. Nothing scrolls inside anything else, and no part of the screen is reserved
+   for the hand: the page opens with the hand just above the keys and the trick above the hand, and one
+   swipe gives the whole screen to the board. Burst Transmission becomes a step in the same column
+   (the instruction, your cards, what to say about the chosen one) with Cancel and Send pinned.
+   Big hands and Tonoja's cards keep their rows of seven, so 14 cards are two rows at any text size.
+   The script in expo.html puts the zones in this order in the document, not only on screen. */
+html[data-text]:not([data-state="result"]) .board { display: block; overflow-y: auto; overscroll-behavior: contain; }
+html[data-text] .board > * { margin-bottom: 10px; }
+html[data-text] .stage { min-height: 0; }
+html[data-text] .stage__id { flex-wrap: wrap; gap: 2px 12px; }
+html[data-text] .stage__goal { max-width: none; }
+html[data-text] .crew { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 6px; padding-top: 12px; }
+html[data-text] .seat__who b { white-space: normal; overflow-wrap: anywhere; }
+html[data-text] .seat__meta, html[data-text] .seat__sig { white-space: normal; flex-wrap: wrap; }
+html[data-text] .seat__meta i, html[data-text] .seat__sig i { width: 0.75rem; height: 0.75rem; }
+html[data-text] .seat__tag, html[data-text] .play__n .lead { line-height: 1.3; }
+html[data-text] .chip { line-height: 1.35; }
+html[data-text] .chip svg { width: 0.55em; height: 0.55em; }
+html[data-text] .seat[data-turn] .seat__turn { top: -0.55rem; line-height: 1.35; }
+html[data-text] .crew[data-n="5"] .seat__who img { display: block; }
+html[data-text]:not([data-state="radio"]) .trick { display: block; }
+html[data-text] .plays { flex-wrap: wrap; align-items: flex-start; gap: 14px 10px; padding-top: 12px; }
+html[data-text] .play__n { flex-direction: column; gap: 2px; text-align: center; }
+html[data-text] .slot { font-size: min(0.6875rem, 13px); }
+html[data-text] .winning { display: block; min-height: 0; margin-top: 10px; padding: 8px 0; text-align: center; }
+html[data-text] .goals__head { flex-wrap: wrap; padding-block: 8px; }
+html[data-text] .goals__all { display: none; }      /* the whole list is already on the board */
+html[data-text] .board .goals .goals__list .goal { display: grid; }
+html[data-text] .goal { padding-block: 8px; }
+html[data-text] .state { white-space: normal; }
+html[data-text] .radio { align-self: auto; }
+html[data-text] .radio__head { flex-wrap: wrap; gap: 2px 12px; }
+html[data-text] .opts { grid-template-columns: repeat(auto-fit, minmax(4.4rem, 1fr)); }
+html[data-text] .opt { padding: 6px 4px; }
+html[data-text] .tray { margin-bottom: 0; padding-bottom: 12px; }
+html[data-text][data-state="radio"] .radio { margin-top: 10px; max-height: none; overflow: visible; }
+html[data-text] .radio__say { grid-template-columns: minmax(0, 1fr); }
+html[data-text] .radio__say > .card { display: none; }      /* the chosen card is lit in the hand just above */
+/* the pinned keys: one row; keys lose their icons and side padding and let their words wrap */
+html[data-text] .pin { position: sticky; bottom: 0; z-index: 4; margin-bottom: 0; padding: 10px var(--pad) calc(10px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--seam-2); box-shadow: 0 -10px 18px rgba(0, 0, 0, 0.5); }
+html[data-text] .dock { margin-top: 0; }
+html[data-text]:not([data-state="radio"]) .dock--play, html[data-text][data-state="radio"] .dock--radio { display: flex; }
+html[data-text] .dock .key { flex: 1 1 auto; min-width: 0; }
+html[data-text] .dock .key--quiet, html[data-text] #radio-key { flex: none; }
+html[data-text] .key { white-space: normal; text-align: center; padding: 8px; line-height: 1.2; }
+html[data-text] .key > i { display: none; }
+html[data-text] .handsw__b { white-space: normal; flex-wrap: wrap; gap: 0 6px; padding: 6px 4px; line-height: 1.2; }
+html[data-text="200"] .handsw__b small { display: none; }   /* the counts are in the crew strip and under Tonoja's cards */
+/* cards stay cards: geometry in px. The rank grows with the text setting as far as a card allows; the suit
+   word grows as far as a card is wide. In rows of seven a card is about 45 px wide, so there the word
+   stays small and the rank and the drawn shape carry the suit. */
+html[data-text] { --card-w: 62px; --card-h: 60px; --trick-w: 58px; --trick-h: 72px; }
+html[data-text] .hand { grid-template-columns: repeat(auto-fill, 62px); justify-content: space-between; gap: 8px 4px; }
+html[data-text] .hand .card, html[data-text] .hand .gap { width: var(--card-w); }
+html[data-text] .hand { padding-bottom: 6px; }
+html[data-text] .card b { font-size: 28px; left: 7px; top: 2px; }
+html[data-text="150"] .card b { font-size: 31px; top: 1px; }
+html[data-text="200"] .card b { font-size: 34px; top: 0; }
+html[data-text] .card svg { width: 16px; height: 16px; right: 6px; top: 7px; }
+html[data-text] .card span { font-size: 14px; left: 6px; bottom: 4px; }
+html[data-text] .hand[data-cols="7"] { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); justify-content: stretch; }   /* seven across from 360 px, six at 320 px */
+html[data-text] .hand[data-cols="7"] .card, html[data-text] .hand[data-cols="7"] .gap { width: auto; }
+html[data-text] .hand[data-cols="7"] .card b { font-size: 28px; left: 5px; top: 1px; }
+html[data-text="200"] .hand[data-cols="7"] .card b { font-size: 30px; }
+html[data-text] .hand[data-cols="7"] .card svg { width: 13px; height: 13px; right: 4px; top: 6px; }
+html[data-text] .hand[data-cols="7"] .card span { font-size: 12px; left: 5px; }
+html[data-text] .hand[data-cols="7"] .gap { font-size: 11px; }
+html[data-text] .gap { font-size: 14px; }
+html[data-text] .tonote { min-height: 0; margin-bottom: 8px; }
+/* the sheet has nothing to rise over in a scrolling column: it takes the screen and has its own Close */
+html[data-text][data-sheet="objectives"] .veil { display: none; }
+html[data-text][data-sheet="objectives"] .sheet { position: fixed; inset: 0; z-index: 10; align-self: normal; max-height: none; margin: 0; }
+html[data-text] .sheet__head { padding-block: 6px; }
+html[data-text] .sheet__head span { min-width: 0; }
+/* result: verdict and evidence scroll as one page; the Host's actions stay pinned */
+html[data-text][data-state="result"] .result { display: block; overflow-y: auto; }
+html[data-text] .verdict { padding-top: 16px; }
+html[data-text] .evidence { overflow: visible; padding-bottom: 12px; }
+html[data-text] .evidence::after { display: none; }
+html[data-text] .evidence .plays { flex-wrap: wrap; }
+html[data-text] .after { position: sticky; bottom: 0; z-index: 3; box-shadow: 0 -10px 18px rgba(0, 0, 0, 0.5); }
+/* "Look at the table" and "End EXPO" follow the evidence in the page, so only the Host's choice is pinned */
+html[data-text] .result > .after__more { margin: 0; padding: 4px var(--pad) 12px; flex-wrap: wrap; }
+html[data-text] .after__row { grid-template-columns: 1fr; }
+
+/* ================= the field-unit treatment (proposal, revision 1) =================
+   What carries "a dangerous radiated expedition seen through rugged field equipment":
+   1. the window: an irradiated dusk behind glass, framed by sight marks, with the mission's trick
+      count running along its sill as a strip of segments (the same number the text gives);
+   2. the housing: powder-coated metal, a faint grain on the body and plates, never on a card;
+   3. the radio: Burst Transmission is the one panel built like equipment (a heavier edge, fasteners);
+   4. the result: the verdict is read against the same land, storm-red or cleared.
+   The land is flat CSS geometry and the grain is procedural noise. Both hold the place for
+   human-made or licensed art (see SCREENS.md, "EXPO art need"). Cards stay the brightest things. */
+:root { --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E"); }
+body { background: var(--grain), var(--housing); }
+.plate, .tray, .goals, .after { background-image: var(--grain); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+
+/* the land: sky in two bands, a low sun with one ring, haze, three ridges and a dead mast */
+.stage { background: #5a5226; border-bottom: 0; box-shadow: inset 0 0 0 1px #07090a, inset 0 0 0 2px rgba(255, 255, 255, 0.07); }
+.land { background: linear-gradient(#34371f 0 34%, #4a4623 34% 58%, #6a5a24 58% 74%, #2a2a1c 74%); }
+.land::before, .land::after { content: none; }
+.land i { position: absolute; display: block; }
+.land .sun { right: 29%; top: 36%; bottom: auto; width: 30px; height: 30px; border-radius: 50%; background: #e0cf7a; box-shadow: 0 0 0 7px rgba(224, 207, 122, 0.16), 0 0 0 8px rgba(224, 207, 122, 0.3); }
+.land .haze { left: 0; right: 0; top: 52%; bottom: auto; height: 9%; background: rgba(226, 208, 128, 0.2); }
+.land .r1 { left: 30%; width: 50%; height: 44%; bottom: 0; background: #2b2d1d; clip-path: polygon(0 100%, 0 62%, 12% 44%, 24% 58%, 40% 20%, 52% 48%, 70% 34%, 86% 60%, 100% 50%, 100% 100%); }
+.land .r2 { right: -4%; left: auto; width: 62%; height: 34%; bottom: 0; background: #1c1e15; clip-path: polygon(0 100%, 8% 70%, 22% 78%, 40% 30%, 54% 56%, 70% 38%, 84% 62%, 100% 44%, 100% 100%); }
+/* a dead pylon: an A-frame with two arms of different length, leaning. (A single post with one
+   crossbar read as a grave marker; it must not.) */
+.land .mast { right: 10%; bottom: 16%; width: 34px; height: 50%; background: #14160f; transform: rotate(-5deg); transform-origin: 50% 100%;
+  clip-path: polygon(47% 0, 53% 0, 54% 14%, 86% 14%, 86% 19%, 55% 19%, 56% 30%, 100% 30%, 100% 35%, 57% 35%, 78% 100%, 68% 100%, 50% 52%, 32% 100%, 22% 100%, 43% 35%, 0 35%, 0 30%, 44% 30%, 45% 19%, 14% 19%, 14% 14%, 46% 14%); }
+.land .r3 { left: 0; right: 0; height: 14%; bottom: 0; background: #0f110d; }
+.land::after { content: ""; position: absolute; inset: 0; background: var(--grain); opacity: 0.9; mix-blend-mode: overlay; }
+/* sight marks: four corner brackets on the glass */
+.optic { position: absolute; inset: 8px 96px 12px 48%; pointer-events: none; opacity: 0.55;
+  background:
+    linear-gradient(#e6e9e4, #e6e9e4) left top / 9px 1px no-repeat, linear-gradient(#e6e9e4, #e6e9e4) left top / 1px 9px no-repeat,
+    linear-gradient(#e6e9e4, #e6e9e4) right top / 9px 1px no-repeat, linear-gradient(#e6e9e4, #e6e9e4) right top / 1px 9px no-repeat,
+    linear-gradient(#e6e9e4, #e6e9e4) left bottom / 9px 1px no-repeat, linear-gradient(#e6e9e4, #e6e9e4) left bottom / 1px 9px no-repeat,
+    linear-gradient(#e6e9e4, #e6e9e4) right bottom / 9px 1px no-repeat, linear-gradient(#e6e9e4, #e6e9e4) right bottom / 1px 9px no-repeat; }
+/* the sill: one segment per trick of the mission */
+.ticks { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; display: flex; gap: 2px; padding: 0 var(--pad); background: #07090a; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.ticks i { flex: 1; margin: 1px 0; background: #343b41; }
+.ticks i[data-done] { background: #9aa6a0; }
+.ticks i[data-now] { background: var(--lamp); }
+
+/* the radio: the one panel that is built like equipment */
+.radio { border-radius: 2px; border-color: var(--control); background-color: #171b1e;
+  background-image:
+    radial-gradient(circle at 7px 7px, #07090a 0 1.6px, #58636b 1.6px 2.6px, transparent 3px),
+    radial-gradient(circle at calc(100% - 7px) 7px, #07090a 0 1.6px, #58636b 1.6px 2.6px, transparent 3px),
+    radial-gradient(circle at 7px calc(100% - 7px), #07090a 0 1.6px, #58636b 1.6px 2.6px, transparent 3px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #07090a 0 1.6px, #58636b 1.6px 2.6px, transparent 3px),
+    var(--grain); }
+.radio__head { padding-left: 8px; }
+.radio__head span { margin-right: 10px; }
+
+/* the result is read against the same land */
+.verdict { background: #171210; }
+.verdict .land { opacity: 1; }
+.verdict .land--storm { background: linear-gradient(#3a1d16 0 30%, #57281b 30% 56%, #7a3a1e 56% 72%, #24140f 72%); }
+.verdict .land--storm .sun { background: #d98a4a; box-shadow: 0 0 0 7px rgba(217, 138, 74, 0.18), 0 0 0 8px rgba(217, 138, 74, 0.32); }
+.verdict .land--storm .haze { top: 40%; height: 22%; background: rgba(214, 120, 70, 0.28); }
+.verdict .land--storm .r1 { background: #2e1812; } .verdict .land--storm .r2 { background: #1d100c; } .verdict .land--storm .r3, .verdict .land--storm .mast { background: #120a08; }
+.verdict .land--clear { background: linear-gradient(#1f3a33 0 34%, #2f5444 34% 58%, #5a7a4c 58% 74%, #18261f 74%); }
+.verdict .land--clear .sun { background: #e6e3b0; box-shadow: 0 0 0 7px rgba(230, 227, 176, 0.16), 0 0 0 8px rgba(230, 227, 176, 0.3); }
+.verdict .land--clear .haze { background: rgba(200, 226, 190, 0.16); }
+.verdict .land--clear .r1 { background: #1c2f27; } .verdict .land--clear .r2 { background: #13211b; } .verdict .land--clear .r3, .verdict .land--clear .mast { background: #0c1511; }
+.verdict::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(14, 16, 17, 0.92) 0 46%, rgba(14, 16, 17, 0.62) 72%, rgba(14, 16, 17, 0.3)); }
+.verdict .land .sun { right: 7%; top: 12%; }
+.verdict .land .mast { right: 24%; }
+.verdict > h1, .verdict > p { position: relative; z-index: 1; }
+.verdict .optic { inset: 10px 10px 10px 66%; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage__in { background: linear-gradient(90deg, rgba(14, 16, 17, 0.9) 0 62%, rgba(14, 16, 17, 0.5)); }
+  .stage .optic { display: none; }
+}
+
+/* under the floor the column runs at normal text size: keep the hand tight so the board keeps its room */
+html[data-text="100"] .hand { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); justify-content: stretch; gap: 6px 4px; --card-h: 54px; }
+html[data-text="100"] .hand[data-cols="7"] { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+html[data-text="100"] .hand .card, html[data-text="100"] .hand .gap { width: auto; }
+html[data-text="100"] .hand[data-cols="7"] .card b { font-size: 22px; left: 5px; }
+html[data-text="100"] .hand[data-cols="7"] .card svg { width: 13px; height: 13px; right: 4px; top: 6px; }
+html[data-text="100"] .hand[data-cols="7"] .card span { font-size: 11px; left: 5px; }
+html[data-text="100"] .hand[data-cols="7"] .card[aria-disabled="true"]::after { right: 4px; top: 24px; bottom: auto; }

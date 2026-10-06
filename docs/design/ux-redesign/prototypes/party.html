@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Party · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  .now { display: flex; align-items: center; gap: 8px; color: var(--ink-2); margin-top: 6px; }
+  .more { margin-top: 26px; border-top: 1px solid var(--line); }
+  .more .list > :first-child { border-top: 0; }
+  html:not([data-sheet="profile"]) #profile, html:not([data-sheet="profile"]) #scrim { display: none; }
+  .me { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .me img { width: 64px; height: 64px; border-radius: 50%; background: var(--well); }
+  .me .field { flex: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="top__title">Party</h1>
+    <button class="limmark lim-only" data-set="about=limited" aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><i data-i="triangle-alert"></i><span>Limited</span></button>
+    <button class="hud" data-set="drawer=chat" aria-haspopup="dialog" aria-label="Party chat, 2 new messages">
+      <i data-i="message-circle"></i><span class="hud__new">2</span>
+    </button>
+  </header>
+
+  <main class="main"><div class="wrap">
+    <p class="netline net-re" role="status"><i data-i="loader"></i><span>Reconnecting. What you see may be out of date.</span></p>
+    <p class="netline net-off" role="status"><i data-i="wifi-off"></i><span>Not connected. Check this phone is on the Wi-Fi “Avrana Party”. <button class="textlink" data-set="net=reconnecting">Try again</button></span></p>
+    <p class="lede">Choosing a game</p>
+    <p class="sub host-only">Nothing is running. You pick what’s next.</p>
+    <p class="sub guest-only n-h-away">Nothing is running. <bdi class="hn">Dana</bdi> picks what’s next.</p>
+    <p class="sub guest-only h-away">Nothing is running. <bdi>Dana</bdi> picks what’s next, and is away.</p>
+    <!-- The Host stopped answering. Party Core passes the role on by itself (45 s to count as away, then 30 s more; never while the Host is in a round that is on) -->
+    <p class="status h-away" role="status"><i data-i="moon-star"></i><span>Hosting passes to someone here if <bdi>Dana</bdi> isn’t back soon.</span></p>
+    <p class="status h-moved host-only" role="status"><i data-i="arrow-up-down"></i><span>You’re hosting now. <bdi>Dana</bdi> has been away.</span></p>
+    <p class="status h-moved guest-only" role="status"><i data-i="arrow-up-down"></i><span><bdi>Sam</bdi> is hosting now. <bdi>Dana</bdi> has been away.</span></p>
+
+    <ul class="faces" aria-label="People in the Party">
+      <li><button class="face" data-set="sheet=profile" aria-label="Cody, you. Edit your name and avatar">
+        <img src="../../../../web/party/avatars/gaze-07.svg" alt="">
+        <span class="face__n"><bdi>Cody</bdi></span>
+        <span class="face__s"><span class="tag">You</span><span class="tag host-only">Host</span><span class="tag lim-only"><i data-i="triangle-alert"></i>Limited</span></span>
+      </button></li>
+      <li class="face" data-was-host>
+        <img src="../../../../web/party/avatars/gaze-12.svg" alt="">
+        <span class="face__n"><bdi>Dana</bdi></span>
+        <span class="face__s"><span class="tag guest-only n-h-moved">Host</span><span class="h-only"><i data-i="moon-star"></i> Away</span></span>
+      </li>
+      <li class="face">
+        <img src="../../../../web/party/avatars/gaze-21.svg" alt="">
+        <span class="face__n"><bdi>Sam</bdi></span>
+        <span class="face__s"><span class="tag guest-only h-moved">Host</span></span>
+      </li>
+      <li class="face" data-away>
+        <img src="../../../../web/party/avatars/gaze-28.svg" alt="">
+        <span class="face__n"><bdi>Priya</bdi></span>
+        <span class="face__s"><i data-i="moon-star"></i>Away</span>
+      </li>
+      <li><a class="face face--add" href="#join">
+        <span class="ring"><i data-i="plus"></i></span>
+        <span class="face__n" style="font-weight:450;color:var(--ink-2)">Add someone</span>
+      </a></li>
+    </ul>
+
+    <div class="more">
+      <ul class="list">
+        <li class="chat-only"><button data-set="drawer=chat" aria-haspopup="dialog" style="display:contents"><i data-i="message-circle"></i><span>Party chat</span><span class="val">2 new<i data-i="chevron-right"></i></span></button></li>
+        <li id="join"><i data-i="qr-code"></i><span>How to join</span><span class="val">Wi-Fi “Avrana Party”<i data-i="chevron-right"></i></span></li>
+        <li class="host-only"><i data-i="hand-metal" hidden></i><i data-i="arrow-up-down"></i><span>Hand hosting to someone else</span><span class="val"><i data-i="chevron-right"></i></span></li>
+      </ul>
+    </div>
+  </div></main>
+
+  <nav class="nav" aria-label="Avrana">
+    <a href="home.html"><i data-i="house"></i>Home</a>
+    <a href="party.html" aria-current="page"><i data-i="users"></i>Party</a>
+    <a href="library.html"><i data-i="library-big"></i>Library</a>
+    <a href="system.html"><i data-i="settings"></i>System</a>
+  </nav>
+</div>
+
+<!-- Profile is a sheet you open on purpose, not a permanent section -->
+<div class="scrim" id="scrim" data-set="sheet="></div>
+<section class="sheet" id="profile" role="dialog" aria-modal="true" aria-labelledby="profile-h">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet__head"><h2 id="profile-h">You</h2><button class="iconbtn" data-set="sheet=" aria-label="Close"><i data-i="x"></i></button></div>
+  <div class="sheet__body">
+    <div class="me">
+      <img src="../../../../web/party/avatars/gaze-07.svg" alt="Your avatar">
+      <label class="field"><span>Name</span><input value="Cody" autocomplete="nickname" maxlength="16"></label>
+    </div>
+    <div class="picker" role="group" aria-label="Avatar">
+      <button aria-pressed="true" aria-label="Avatar 7"><img src="../../../../web/party/avatars/gaze-07.svg" alt=""></button>
+      <button aria-label="Avatar 1"><img src="../../../../web/party/avatars/gaze-01.svg" alt=""></button>
+      <button aria-label="Avatar 3"><img src="../../../../web/party/avatars/gaze-03.svg" alt=""></button>
+      <button aria-label="Avatar 9"><img src="../../../../web/party/avatars/gaze-09.svg" alt=""></button>
+      <button aria-label="Avatar 14"><img src="../../../../web/party/avatars/gaze-14.svg" alt=""></button>
+      <button aria-label="Avatar 17"><img src="../../../../web/party/avatars/gaze-17.svg" alt=""></button>
+      <button aria-label="Avatar 19"><img src="../../../../web/party/avatars/gaze-19.svg" alt=""></button>
+      <button aria-label="Avatar 22"><img src="../../../../web/party/avatars/gaze-22.svg" alt=""></button>
+      <button aria-label="Avatar 24"><img src="../../../../web/party/avatars/gaze-24.svg" alt=""></button>
+      <button aria-label="Avatar 26"><img src="../../../../web/party/avatars/gaze-26.svg" alt=""></button>
+      <button aria-label="Avatar 30"><img src="../../../../web/party/avatars/gaze-30.svg" alt=""></button>
+      <button aria-label="Avatar 32"><img src="../../../../web/party/avatars/gaze-32.svg" alt=""></button>
+    </div>
+  </div>
+  <div class="sheet__foot"><button class="btn btn--primary" data-set="sheet=">Save</button></div>
+</section>
+
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+  // Prototype only: composable switches travel with the prototype's own links (see home.html)
+  (function (d) {
+    if (d.state === 'limited') { d.phone = 'limited'; delete d.state; }
+    if (d.host === 'away') d.role = 'guest';
+    if (d.host === 'moved' && d.role === 'guest') document.querySelectorAll('.hn').forEach(function (n) { n.textContent = 'Sam'; });
+    if (d.net) document.querySelectorAll('.needs-box').forEach(function (b) { b.setAttribute('aria-disabled', 'true'); });
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest('a[href]'), u = a && a.getAttribute('href');
+      if (!u || !/^([a-z-]+\.html|\?)/.test(u)) return;
+      ['phone', 'box', 'net', 'host', 'text'].forEach(function (k) { if (d[k] && u.indexOf(k + '=') < 0) u += (u.indexOf('?') < 0 ? '?' : '&') + k + '=' + d[k]; });
+      a.setAttribute('href', u);
+    }, true);
+  })(document.documentElement.dataset);
+</script>
+<script src="shared/proto.js"></script>
+<script src="shared/social.js"></script>
+</html>
