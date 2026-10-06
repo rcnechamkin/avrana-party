@@ -111,6 +111,15 @@ pre-round screen and not as Party Home: the library, chat row and "This phone" M
 visible in it **[Implemented: `show('scene')` hides `#main`]**. Which page or origin draws the
 shell is an implementation matter and may move with ADR 0013; the behaviour is the contract.
 
+**[Accepted, owner decision 2026-10-05; not implemented.]** Three pieces of Party chrome MAY be
+on a briefing: the Party control (who is here), the People drawer it opens, and, on a phone in
+Limited Mode, the Limited Mode mark with its explanation. The drawer and the explanation open
+over the briefing and close back to it. Nothing in them may move the phone off the briefing,
+change the round, or cover the briefing's own controls once closed. The Library, Party chat, the
+navigation bar and "This phone" stay off the briefing: the drawer there shows people only. Chat
+over a briefing waits for a Party-owned chat and its own decision. ADR 0011 carries the matching
+amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`.
+
 **Rule 3.3 [Accepted, AVR-56; Implemented].** While the Party is in a game, a non-host has no
 normal route back to Party Home or to another game. The integration bar and every
 `[data-avrana-global]` control are hidden in a Party (`web/avrana-integration.css`, games); a

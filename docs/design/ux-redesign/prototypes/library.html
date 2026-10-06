@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Library · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  .tools { margin-top: 2px; }
+  .main { padding-top: 0; }
+  .sec:first-of-type { margin-top: 18px; }
+  /* one page, four views: ?view=medium (default) | large | compact | list */
+  html[data-view="list"] .as-grid, html:not([data-view="list"]) .as-list { display: none; }
+  html:not([data-sheet="filters"]) #filters, html:not([data-sheet="view"]) #viewmenu, html:not([data-sheet]) #scrim { display: none; }
+  .menu { position: fixed; right: 12px; top: calc(var(--top-h) + 52px); z-index: 11; width: 216px; background: var(--material-solid); border: 1px solid var(--material-edge); border-radius: var(--r-m); padding: 4px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+  .menu button { width: 100%; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 6px; font-size: var(--t-md); }
+  .menu button[aria-checked="true"] { background: var(--select); }
+  .menu button i:last-child { margin-left: auto; visibility: hidden; }
+  .menu button[aria-checked="true"] i:last-child { visibility: visible; }
+  .seg--text button { font-size: var(--t-sm); }
+  .seg--text { grid-auto-columns: auto; grid-template-columns: 0.7fr 1.2fr 1.2fr 1.1fr; grid-auto-flow: row; }
+  .fav { color: var(--ink-2); }
+  .fav[aria-pressed="true"] { color: var(--ink); }
+  .fav[aria-pressed="true"] svg { fill: currentColor; }
+  /* filtering is explicit and separate from ranking: ?filter=players4 (five match), ?filter=none (a combination
+     that hides everything), ?q=text (a search with no result), ?fav=none (no favorites yet) */
+  html[data-filter] .f-off, html:not([data-filter="players4"]) .f-p4, html:not([data-filter]) .count { display: none !important; }
+  html[data-filter="none"] .results, html[data-q] .results, html[data-fav="none"] .results { display: none !important; }
+  html:not([data-filter="none"]) .e-filter, html:not([data-q]) .e-q, html:not([data-fav="none"]) .e-fav { display: none; }
+  .hid { margin-top: 18px; }
+  html[data-text] .seg--text { grid-template-columns: 1fr 1fr; }
+  html[data-text] #filterbtn { width: auto; min-width: 44px; display: inline-flex; align-items: center; gap: 4px; }
+  html[data-text] #filterbtn .count { position: static; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="top__title">Library</h1>
+    <button class="limmark lim-only" data-set="about=limited" aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><i data-i="triangle-alert"></i><span>Limited</span></button>
+    <button class="hud" data-set="drawer=chat" aria-haspopup="dialog" aria-label="Your Party: 4 people here, 2 new messages. Open people and chat">
+      <span class="hud__faces">
+        <img src="../../../../web/party/avatars/gaze-07.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-12.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-21.svg" alt="">
+      </span>
+      <span class="hud__n">+1</span>
+      <span class="hud__new">2</span>
+    </button>
+  </header>
+
+  <main class="main"><div class="wrap">
+    <p class="netline net-re" role="status"><i data-i="loader"></i><span>Reconnecting. What you see may be out of date.</span></p>
+    <p class="netline net-off" role="status"><i data-i="wifi-off"></i><span>Not connected. Check this phone is on the Wi-Fi “Avrana Party”. <button class="textlink" data-set="net=reconnecting">Try again</button></span></p>
+    <div class="tools">
+      <label class="search"><i data-i="search"></i><span class="vh">Search games</span><input type="search" id="q" placeholder="Search games" enterkeyhint="search"></label>
+      <button class="iconbtn" id="filterbtn" data-set="sheet=filters" aria-label="Filters"><i data-i="sliders-horizontal"></i><span class="count" id="filtercount" aria-hidden="true">1</span></button>
+      <button class="iconbtn" data-set="sheet=view" aria-label="View: medium grid" aria-haspopup="menu"><i data-i="grid-3x3" class="as-grid"></i><i data-i="list" class="as-list"></i></button>
+    </div>
+    <nav class="tabs" aria-label="Collections">
+      <a href="#" id="tab-all" aria-current="true">All</a>
+      <a href="#" id="tab-fav">Favorites</a>
+      <a href="#">Recent</a>
+      <a href="#">Co-op</a>
+      <a href="#">Versus</a>
+      <a href="#">Quick</a>
+      <a href="#">Classics</a>
+      <a href="#">Arcade</a>
+    </nav>
+
+    <!-- GRID -->
+    <div class="as-grid results">
+      <div class="sec f-off"><h2>Great for four</h2><span class="meta">5</span></div>
+      <div class="sec f-p4"><h2>5 games for 4 players</h2><button class="link" data-set="filter=">Reset</button></div>
+      <ul class="grid" data-grid>
+        <li><a class="tile" href="game.html"><span class="cover"><img src="../../../../web/party/art/lan-bluff.svg" alt=""><span class="seats"><i data-i="users"></i>2–6</span></span><span class="tile__t">BLUFF</span><span class="tile__m">Bluffing, 15 min</span></a></li>
+        <li><a class="tile" href="game.html?game=expo"><span class="cover"><span class="ph ph--expo"><b>EXPO</b></span><span class="seats"><i data-i="users"></i>2–5</span></span><span class="tile__t">EXPO</span><span class="tile__m">Co-op, 20 min</span></a></li>
+        <li><a class="tile" href="game.html"><span class="cover"><span class="ph ph--spades"><b>Spades</b></span><span class="seats"><i data-i="users"></i>4</span></span><span class="tile__t">Spades</span><span class="tile__m">Teams, 30 min</span></a></li>
+        <li><a class="tile" href="game.html?game=bomberman"><span class="cover"><img src="../../../../web/party/art/kenney-exploding.svg" alt=""><span class="seats"><i data-i="users"></i>1–4</span></span><span class="tile__t">Bomberman Party Edition</span><span class="tile__m">Versus, 10 min</span></a></li>
+        <li><a class="tile" href="game.html?game=worms"><span class="cover"><span class="ph ph--worms"><b>Worms</b></span><span class="seats"><i data-i="users"></i>1–4</span></span><span class="tile__t">Worms Armageddon</span><span class="tile__m n-lim">Versus, 25 min</span><span class="tile__m tile__m--warn lim-only"><i data-i="eye"></i>Watch only on this phone</span></a></li>
+      </ul>
+
+      <div class="sec f-off"><h2>Not for four</h2><span class="meta">2</span></div>
+      <ul class="grid f-off" data-grid>
+        <li><a class="tile" href="game.html?game=gauntlet&state=mismatch"><span class="cover"><img src="../../../../web/party/art/kenney-sword.svg" alt=""><span class="seats seats--no"><i data-i="triangle-alert"></i>Max 2</span></span><span class="tile__t">Gauntlet II</span><span class="tile__m n-lim n-deg">Co-op, open-ended</span><span class="tile__m tile__m--warn lim-only n-deg"><i data-i="triangle-alert"></i>Not on this phone</span><span class="tile__m tile__m--warn deg-only"><i data-i="triangle-alert"></i>Off for now</span></a></li>
+        <li><a class="tile" href="game.html"><span class="cover"><span class="ph ph--checkers"><b>Checkers</b></span><span class="seats seats--no"><i data-i="triangle-alert"></i>Max 2</span></span><span class="tile__t">Checkers</span><span class="tile__m">Classic, 10 min</span></a></li>
+      </ul>
+      <p class="meta hid f-p4">2 games hidden by this filter. <button class="textlink" data-set="filter=">Show all</button></p>
+    </div>
+
+    <!-- LIST -->
+    <div class="as-list results">
+      <div class="sec f-off"><h2>All games</h2><span class="meta">7, best fit first</span></div>
+      <div class="sec f-p4"><h2>5 games for 4 players</h2><button class="link" data-set="filter=">Reset</button></div>
+      <ul class="rows">
+        <li class="row"><a class="cover" href="game.html" aria-label="BLUFF"><img src="../../../../web/party/art/lan-bluff.svg" alt=""></a>
+          <a href="game.html"><p class="row__t">BLUFF</p><p class="row__d">Claim anything. Get caught, lose a card.</p><p class="row__m"><span><i data-i="users"></i>2–6</span><span><i data-i="clock"></i>15 min</span><span><i data-i="smartphone"></i>Phones only</span></p></a>
+          <button class="iconbtn fav" aria-pressed="true" aria-label="Favorite BLUFF"><i data-i="heart"></i></button></li>
+        <li class="row"><a class="cover" href="game.html?game=expo" aria-label="EXPO"><span class="ph ph--expo"></span></a>
+          <a href="game.html?game=expo"><p class="row__t">EXPO</p><p class="row__d">One crew. Every card matters.</p><p class="row__m"><span><i data-i="users"></i>2–5</span><span><i data-i="clock"></i>20 min</span><span><i data-i="smartphone"></i>Phones only</span></p></a>
+          <button class="iconbtn fav" aria-pressed="true" aria-label="Favorite EXPO"><i data-i="heart"></i></button></li>
+        <li class="row"><a class="cover" href="game.html" aria-label="Spades"><span class="ph ph--spades"></span></a>
+          <a href="game.html"><p class="row__t">Spades</p><p class="row__d">Partners, bids and a trump suit that never changes.</p><p class="row__m"><span><i data-i="users"></i>4</span><span><i data-i="clock"></i>30 min</span><span><i data-i="smartphone"></i>Phones only</span></p></a>
+          <button class="iconbtn fav" aria-pressed="false" aria-label="Favorite Spades"><i data-i="heart"></i></button></li>
+        <li class="row"><a class="cover" href="game.html?game=bomberman" aria-label="Bomberman Party Edition"><img src="../../../../web/party/art/kenney-exploding.svg" alt=""></a>
+          <a href="game.html?game=bomberman"><p class="row__t">Bomberman Party Edition</p><p class="row__d">Up to four bombers on one arena. Phones are the controllers.</p><p class="row__m"><span><i data-i="users"></i>1–4</span><span><i data-i="clock"></i>10 min</span><span><i data-i="tv"></i>TV optional</span></p></a>
+          <button class="iconbtn fav" aria-pressed="false" aria-label="Favorite Bomberman Party Edition"><i data-i="heart"></i></button></li>
+        <li class="row"><a class="cover" href="game.html?game=worms" aria-label="Worms Armageddon"><span class="ph ph--worms"></span></a>
+          <a href="game.html?game=worms"><p class="row__t">Worms Armageddon</p><p class="row__d">One controller, up to four players taking turns.</p><p class="row__m"><span><i data-i="users"></i>1–4</span><span><i data-i="clock"></i>25 min</span><span><i data-i="tv"></i>TV optional</span><span class="no lim-only"><i data-i="eye"></i>Watch only on this phone</span></p></a>
+          <button class="iconbtn fav" aria-pressed="false" aria-label="Favorite Worms Armageddon"><i data-i="heart"></i></button></li>
+        <li class="row f-off"><a class="cover" href="game.html?game=gauntlet&state=mismatch" aria-label="Gauntlet II"><img src="../../../../web/party/art/kenney-sword.svg" alt=""></a>
+          <a href="game.html?game=gauntlet&state=mismatch"><p class="row__t">Gauntlet II</p><p class="row__d">Two heroes, one dungeon. Every phone is a controller and a screen.</p><p class="row__m"><span class="no"><i data-i="triangle-alert"></i>Max 2, you’re 4</span><span><i data-i="clock"></i>Open-ended</span><span class="no lim-only n-deg"><i data-i="triangle-alert"></i>Not on this phone</span><span class="no deg-only"><i data-i="triangle-alert"></i>Off for now</span></p></a>
+          <button class="iconbtn fav" aria-pressed="false" aria-label="Favorite Gauntlet II"><i data-i="heart"></i></button></li>
+        <li class="row f-off"><a class="cover" href="game.html" aria-label="Checkers"><span class="ph ph--checkers"></span></a>
+          <a href="game.html"><p class="row__t">Checkers</p><p class="row__d">Jump, capture, crown. The rest of the room watches.</p><p class="row__m"><span class="no"><i data-i="triangle-alert"></i>Max 2, you’re 4</span><span><i data-i="clock"></i>10 min</span></p></a>
+          <button class="iconbtn fav" aria-pressed="false" aria-label="Favorite Checkers"><i data-i="heart"></i></button></li>
+      </ul>
+      <p class="meta hid f-p4">2 games hidden by this filter. <button class="textlink" data-set="filter=">Show all</button></p>
+    </div>
+
+    <!-- EMPTY: what was asked, that nothing matched, the one way back -->
+    <div class="empty e-q" role="status">
+      <i data-i="search-x"></i>
+      <h2>Nothing matches “<bdi id="q-echo"></bdi>”</h2>
+      <p>The Library has 7 games.</p>
+      <button class="btn" data-set="q=">Clear search</button>
+    </div>
+    <div class="empty e-filter" role="status">
+      <i data-i="filter-x"></i>
+      <h2>No games match these filters</h2>
+      <p>6+ players, TV needed</p>
+      <button class="btn" data-set="filter=">Reset filters</button>
+    </div>
+    <div class="empty e-fav">
+      <i data-i="heart"></i>
+      <h2>No favorites yet</h2>
+      <p>Tap the heart on any game to keep it here.</p>
+      <button class="btn" data-set="fav=">See all games</button>
+    </div>
+  </div></main>
+
+  <nav class="nav" aria-label="Avrana">
+    <a href="home.html"><i data-i="house"></i>Home</a>
+    <a href="party.html"><i data-i="users"></i>Party</a>
+    <a href="library.html" aria-current="page"><i data-i="library-big"></i>Library</a>
+    <a href="system.html"><i data-i="settings"></i>System</a>
+  </nav>
+</div>
+
+<div class="scrim" id="scrim" data-set="sheet="></div>
+
+<div class="menu" id="viewmenu" role="menu" aria-label="View">
+  <button role="menuitemradio" data-v="large"><i data-i="grid-2x2"></i>Large grid<i data-i="check"></i></button>
+  <button role="menuitemradio" data-v="medium"><i data-i="grid-3x3"></i>Medium grid<i data-i="check"></i></button>
+  <button role="menuitemradio" data-v="compact"><i data-i="layout-grid"></i>Compact grid<i data-i="check"></i></button>
+  <button role="menuitemradio" data-v="list"><i data-i="list"></i>List<i data-i="check"></i></button>
+</div>
+
+<section class="sheet" id="filters" role="dialog" aria-modal="true" aria-labelledby="filters-h">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet__head"><h2 id="filters-h">Filters</h2><button class="btn btn--quiet" data-set="filter=">Reset</button><button class="iconbtn" data-set="sheet=" aria-label="Close"><i data-i="x"></i></button></div>
+  <div class="sheet__body">
+    <div class="group">
+      <h3>Players <span>Your Party is 4</span></h3>
+      <div class="seg" role="group" aria-label="Players">
+        <button data-set="filter=" data-on="">Any</button><button>1</button><button>2</button><button>3</button><button data-set="filter=players4" data-on="players4">4</button><button>5</button><button data-on="none">6+</button>
+      </div>
+    </div>
+    <div class="group">
+      <h3>Length <span>Any</span></h3>
+      <div class="range" role="group" aria-label="Length, any">
+        <span class="fill" style="left:0;width:100%"></span>
+        <span class="knob" style="left:0" role="slider" tabindex="0" aria-label="Shortest" aria-valuemin="5" aria-valuemax="60" aria-valuenow="5" aria-valuetext="5 minutes"></span>
+        <span class="knob" style="left:100%" role="slider" tabindex="0" aria-label="Longest" aria-valuemin="5" aria-valuemax="60" aria-valuenow="60" aria-valuetext="60 minutes or more"></span>
+      </div>
+      <div class="range__scale"><span>5</span><span>15</span><span>30</span><span>45</span><span>60+</span></div>
+    </div>
+    <div class="group">
+      <h3>How you play</h3>
+      <div class="checks" role="group" aria-label="How you play">
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Co-op</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Versus</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Teams</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Free-for-all</button>
+      </div>
+    </div>
+    <div class="group">
+      <h3>Kind of game</h3>
+      <div class="checks" role="group" aria-label="Kind of game">
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Cards</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Board</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Party</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Trivia</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Arcade</button>
+        <button class="check" role="checkbox" aria-checked="false"><span class="box"><i data-i="check"></i></span>Console</button>
+      </div>
+    </div>
+    <div class="group">
+      <h3>Screens</h3>
+      <div class="seg seg--text" role="group" aria-label="Screens">
+        <button data-on=",players4">Any</button><button>Phones only</button><button>TV optional</button><button data-on="none">TV needed</button>
+      </div>
+    </div>
+  </div>
+  <div class="sheet__foot"><button class="btn btn--primary" data-set="sheet=" id="show">Show 7 games</button></div>
+</section>
+
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+  // Prototype only: composable switches travel with the prototype's own links (see home.html)
+  (function (d) {
+    if (d.net) document.querySelectorAll('.needs-box').forEach(function (b) { b.setAttribute('aria-disabled', 'true'); });
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest('a[href]'), u = a && a.getAttribute('href');
+      if (!u || !/^([a-z-]+\.html|\?)/.test(u)) return;
+      ['phone', 'box', 'net', 'host', 'text'].forEach(function (k) { if (d[k] && u.indexOf(k + '=') < 0) u += (u.indexOf('?') < 0 ? '?' : '&') + k + '=' + d[k]; });
+      a.setAttribute('href', u);
+    }, true);
+  })(document.documentElement.dataset);
+
+  // the filter button, its badge, the sheet's pressed choices and its button all say the same thing as the results
+  var F = { '': { n: 0, label: 'Filters', show: 'Show 7 games' },
+    players4: { n: 1, label: 'Filters, 1 on: 4 players', show: 'Show 5 games' },
+    none: { n: 2, label: 'Filters, 2 on: 6 or more players, TV needed', show: 'Show 0 games' } };
+  function syncFilters() {
+    var d = document.documentElement.dataset, k = F[d.filter] ? d.filter : '', f = F[k];
+    var set = function (el, a, val) { if (el.getAttribute(a) !== val) el.setAttribute(a, val); };
+    set(document.getElementById('filterbtn'), 'aria-label', f.label);
+    document.getElementById('filtercount').textContent = f.n;
+    document.getElementById('show').textContent = f.show;
+    document.querySelectorAll('#filters [data-on]').forEach(function (b) { set(b, 'aria-pressed', String(b.dataset.on.split(',').indexOf(k) >= 0)); });
+    var fav = d.fav === 'none';
+    document.getElementById('tab-all')[fav ? 'removeAttribute' : 'setAttribute']('aria-current', 'true');
+    document.getElementById('tab-fav')[fav ? 'setAttribute' : 'removeAttribute']('aria-current', 'true');
+    document.getElementById('q').value = d.q || '';
+    document.getElementById('q-echo').textContent = d.q || '';
+  }
+  new MutationObserver(syncFilters).observe(document.documentElement, { attributes: true });
+  syncFilters();
+
+  // grid density and the view menu's checked item follow ?view=
+  var v = document.documentElement.dataset.view || 'medium';
+  var cls = { large: 'grid--l', medium: 'grid--m', compact: 'grid--c' }[v];
+  document.querySelectorAll('[data-grid]').forEach(function (g) { if (cls) g.classList.add(cls); });
+  document.querySelectorAll('#viewmenu [data-v]').forEach(function (b) {
+    b.setAttribute('aria-checked', String(b.dataset.v === v));
+    b.addEventListener('click', function () { var q = new URLSearchParams(location.search); q.set('view', b.dataset.v); q.delete('sheet'); location.search = '?' + q; });
+  });
+</script>
+<script src="shared/proto.js"></script>
+<script src="shared/social.js"></script>
+</html>

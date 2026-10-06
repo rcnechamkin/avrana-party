@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arcade shell · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  /* Lower-priority sketch: the picture dominates, chrome recedes, controls sit under the thumbs.
+     The controller layout framework itself is undecided (brief §29); this shows d-pad + 2 buttons. */
+  body { background: #08080a; }
+  .arc { height: 100dvh; display: grid; grid-template-rows: auto auto minmax(0, 1fr); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .bar { height: 48px; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 var(--gutter); }
+  .bar b { flex: 1; min-width: 0; font-weight: 550; font-size: var(--t-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .meta { margin-right: 6px; display: inline-flex; align-items: center; gap: 4px; }
+  .bar .meta i { width: 14px; height: 14px; }
+  .screen { aspect-ratio: 4 / 3; width: 100%; background: #17171b; display: grid; place-items: center; color: var(--ink-3); font-size: var(--t-sm); position: relative; overflow: hidden; }
+  .screen::before { content: ""; position: absolute; inset: 12% 10%; border: 1px dashed rgba(255,255,255,.12); }
+  .pad { display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 0 22px; }
+  .dpad { width: 148px; height: 148px; position: relative; }
+  .dpad button { position: absolute; width: 50px; height: 50px; background: var(--well); border: 1px solid var(--line-strong); display: grid; place-items: center; color: var(--ink-2); }
+  .dpad .u { left: 49px; top: 0; border-radius: 10px 10px 0 0; border-bottom: 0; }
+  .dpad .d { left: 49px; bottom: 0; border-radius: 0 0 10px 10px; border-top: 0; }
+  .dpad .l { left: 0; top: 49px; border-radius: 10px 0 0 10px; border-right: 0; }
+  .dpad .r { right: 0; top: 49px; border-radius: 0 10px 10px 0; border-left: 0; }
+  .dpad::after { content: ""; position: absolute; left: 49px; top: 49px; width: 50px; height: 50px; background: var(--well); }
+  .ab { justify-self: end; width: 148px; height: 120px; position: relative; }
+  .ab button { position: absolute; width: 68px; height: 68px; border-radius: 50%; background: var(--well); border: 1px solid var(--line-strong); font-weight: 600; font-size: var(--t-lg); text-align: center; color: var(--ink); }
+  .ab .a { right: 0; top: 0; }
+  .ab .b { left: 0; bottom: 0; }
+  .aux { grid-column: 1 / -1; display: flex; justify-content: center; gap: 12px; align-self: start; }
+  .aux button { height: 44px; padding: 0 16px; border-radius: var(--r-m); border: 1px solid var(--line-strong); font-size: var(--t-sm); color: var(--ink-2); }
+  .land-only { display: none; }
+
+  @media (orientation: landscape) {
+    .arc { grid-template-rows: none; grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr); padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+    .bar { display: none; }
+    .screen { height: 100dvh; width: auto; grid-column: 2; grid-row: 1; }
+    .pad { display: contents; }
+    .dpad { grid-column: 1; grid-row: 1; align-self: end; justify-self: center; margin-bottom: 34px; }
+    .ab { grid-column: 3; grid-row: 1; align-self: end; justify-self: center; margin-bottom: 44px; }
+    .aux { grid-column: 3; grid-row: 1; align-self: start; justify-self: end; margin: 6px 6px 0 0; gap: 0; }
+    .aux button:not(.land-only) { display: none; }
+    .aux .land-only { display: inline-grid; }
+  }
+</style>
+</head>
+<body>
+<div class="arc">
+  <header class="bar">
+    <b>Gauntlet II</b>
+    <span class="meta"><i data-i="gamepad-2"></i>Player 1</span>
+    <button class="iconbtn" aria-label="Sound on" aria-pressed="true"><i data-i="volume-2"></i></button>
+    <button class="iconbtn" aria-label="Rotate to landscape"><i data-i="rotate-cw"></i></button>
+    <button class="iconbtn" aria-label="Controller options"><i data-i="sliders-horizontal"></i></button>
+    <button class="iconbtn host-only" aria-label="End game for everyone"><i data-i="log-out"></i></button>
+  </header>
+  <div class="screen" role="img" aria-label="Game picture">game picture, 4:3</div>
+  <div class="pad">
+    <div class="dpad" role="group" aria-label="Direction">
+      <button class="u" aria-label="Up"><i data-i="chevron-up"></i></button>
+      <button class="l" aria-label="Left"><i data-i="chevron-left"></i></button>
+      <button class="r" aria-label="Right"><i data-i="chevron-right"></i></button>
+      <button class="d" aria-label="Down"><i data-i="chevron-down"></i></button>
+    </div>
+    <div class="ab" role="group" aria-label="Buttons">
+      <button class="a">A</button>
+      <button class="b">B</button>
+    </div>
+    <div class="aux">
+      <button>Coin</button><button>Start</button>
+      <button class="iconbtn land-only" aria-label="Game menu: sound, controller, start, coin, leave"><i data-i="ellipsis"></i></button>
+    </div>
+  </div>
+</div>
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+</body>
+</html>

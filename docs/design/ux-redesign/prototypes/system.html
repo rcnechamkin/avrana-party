@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>System · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  .health { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0 4px; }
+  .health i { margin-top: 2px; }
+  .health b { display: block; font-weight: 550; }
+  .health p { color: var(--ink-2); font-size: var(--t-sm); }
+  /* healthy is one quiet line; each trouble has its own block and they can appear together */
+  html[data-phone^="limited"] .ok, html[data-box="degraded"] .ok, html[data-net] .ok { display: none; }
+  .lim i, .deg i { color: var(--warn); }
+  html[data-phone^="limited"] .deg { margin-top: 10px; }
+  .sec { margin-top: 22px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="top__title">System</h1>
+    <button class="limmark lim-only" data-set="about=limited" aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><i data-i="triangle-alert"></i><span>Limited</span></button>
+    <button class="hud" data-set="drawer=chat" aria-haspopup="dialog" aria-label="Your Party: 4 people here, 2 new messages. Open people and chat">
+      <span class="hud__faces">
+        <img src="../../../../web/party/avatars/gaze-07.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-12.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-21.svg" alt="">
+      </span>
+      <span class="hud__n">+1</span>
+      <span class="hud__new">2</span>
+    </button>
+  </header>
+
+  <main class="main"><div class="wrap">
+    <!-- Healthy: one quiet line. Trouble: what it means for play, then where the detail is. -->
+    <p class="netline net-re" role="status"><i data-i="loader"></i><span>Reconnecting. What you see may be out of date.</span></p>
+    <p class="netline net-off" role="status"><i data-i="wifi-off"></i><span>Not connected. Check this phone is on the Wi-Fi “Avrana Party”. <button class="textlink" data-set="net=reconnecting">Try again</button></span></p>
+    <div class="health ok"><i data-i="circle-check"></i><div><b>Everything’s working</b><p>The Party box and this phone are fine.</p></div></div>
+    <div class="health lim lim-only" id="limited-mode"><i data-i="triangle-alert"></i><div><b>This phone is in Limited Mode</b>
+      <p>The connection isn’t private: other people on this Wi-Fi could see what this phone sends. The Party, the Host and card games work. This phone can’t play Gauntlet II or Worms; it can still watch Worms. The screen may dim while you play.</p>
+      <p style="margin-top:6px">Full Mode returns when the box’s owner renews its certificate.</p></div></div>
+    <div class="health deg deg-only host-only"><i data-i="triangle-alert"></i><div><b>Arcade games are off right now</b>
+      <p>The arcade part of the Party box isn’t answering. Gauntlet II can’t be played. Card and party games are not affected. Restarting the box usually brings it back.</p></div></div>
+    <div class="health deg deg-only guest-only"><i data-i="triangle-alert"></i><div><b>Gauntlet II is off for now</b>
+      <p>Every other game plays as usual.</p></div></div>
+
+    <div class="sec"><h2>You</h2></div>
+    <ul class="list">
+      <li><a href="party.html?sheet=profile" style="display:contents"><img class="avatar" src="../../../../web/party/avatars/gaze-07.svg" alt="" style="width:32px;height:32px"><span><bdi>Cody</bdi></span><span class="val">Name and avatar<i data-i="chevron-right"></i></span></a></li>
+    </ul>
+
+    <div class="sec"><h2>This phone</h2></div>
+    <ul class="list">
+      <li><i data-i="volume-2"></i><span>System sounds</span><button class="switch" role="switch" aria-checked="true" aria-label="System sounds"></button></li>
+      <li><i data-i="vibrate"></i><span>Vibration</span><button class="switch" role="switch" aria-checked="true" aria-label="Vibration"></button></li>
+      <li><i data-i="zap"></i><span>Reduce motion</span><span class="val">Follows phone<i data-i="chevron-right"></i></span></li>
+      <li><i data-i="contrast"></i><span>Higher contrast</span><span class="val">Follows phone<i data-i="chevron-right"></i></span></li>
+    </ul>
+
+    <div class="sec"><h2>Party box</h2></div>
+    <ul class="list">
+      <li><i data-i="qr-code"></i><span>How to join</span><span class="val"><i data-i="chevron-right"></i></span></li>
+      <li><i data-i="info"></i><span>Diagnostics</span><span class="val">For the box’s owner<i data-i="chevron-right"></i></span></li>
+      <li><i data-i="book-open"></i><span>About and licences</span><span class="val"><i data-i="chevron-right"></i></span></li>
+    </ul>
+  </div></main>
+
+  <nav class="nav" aria-label="Avrana">
+    <a href="home.html"><i data-i="house"></i>Home</a>
+    <a href="party.html"><i data-i="users"></i>Party</a>
+    <a href="library.html"><i data-i="library-big"></i>Library</a>
+    <a href="system.html" aria-current="page"><i data-i="settings"></i>System</a>
+  </nav>
+</div>
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+  // Prototype only: composable switches travel with the prototype's own links (see home.html)
+  (function (d) {
+    if (d.state === 'limited') { d.phone = 'limited'; delete d.state; }
+    if (d.state === 'degraded') { d.box = 'degraded'; delete d.state; }
+    if (d.host === 'away') d.role = 'guest';
+    if (d.host === 'moved' && d.role === 'guest') document.querySelectorAll('.hn').forEach(function (n) { n.textContent = 'Sam'; });
+    if (d.net) document.querySelectorAll('.needs-box').forEach(function (b) { b.setAttribute('aria-disabled', 'true'); });
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest('a[href]'), u = a && a.getAttribute('href');
+      if (!u || !/^([a-z-]+\.html|\?)/.test(u)) return;
+      ['phone', 'box', 'net', 'host', 'text'].forEach(function (k) { if (d[k] && u.indexOf(k + '=') < 0) u += (u.indexOf('?') < 0 ? '?' : '&') + k + '=' + d[k]; });
+      a.setAttribute('href', u);
+    }, true);
+  })(document.documentElement.dataset);
+</script>
+<script src="shared/proto.js"></script>
+<script src="shared/social.js"></script>
+</html>

@@ -58,6 +58,12 @@ Read in this order:
      character, visual language, navigation, Party, Library, Host, degraded states, Arcade and EXPO
      presentation, the design-first process and what is deliberately undecided; direction for the
      redesign, not implemented
+   - `ux-redesign/` — the design-phase package for that brief (2026-10-05): audits of the
+     current shell and EXPO, phone-sized concepts with live prototypes and overview sheets, a
+     cross-surface system proposal, backend implications, the open owner decisions and a sliced
+     implementation plan; start at [ux-redesign/README.md](ux-redesign/README.md). The owner
+     approved the direction and the plan's slices 0 and 1 on 2026-10-05; it is design reference,
+     not contract, and says nothing about what is built
    - `PARTY-GAMES-CONTRACT.md` — the versioned Party ↔ Games boundary, its two declarations
      and the checker both CIs run
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)

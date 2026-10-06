@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>First run · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  .app { grid-template-rows: minmax(0, 1fr) auto; }
+  .main { padding-top: 28px; }
+  .brandline { font-family: var(--brand); font-weight: 300; font-size: 1.4375rem; color: var(--ink-2); }
+  .lede { margin-top: 22px; }
+  .me { display: flex; align-items: center; gap: 14px; margin: 26px 0 20px; }
+  .me img { width: 72px; height: 72px; border-radius: 50%; background: var(--well); }
+  .me .field { flex: 1; }
+  .hint { font-size: var(--t-sm); color: var(--ink-2); margin: 0 0 10px; }
+  @media (max-height: 620px) { .main { padding-top: 14px; } .lede { margin-top: 12px; } .me { margin: 16px 0 14px; } .me img { width: 60px; height: 60px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="main"><div class="wrap">
+    <p class="brandline">Avrana Party</p>
+    <h1 class="lede">Three people are already here. Who are you?</h1>
+
+    <div class="me">
+      <img src="../../../../web/party/avatars/gaze-07.svg" alt="Your avatar">
+      <label class="field"><span>Your name</span><input value="Cody" autocomplete="nickname" maxlength="16" enterkeyhint="done"></label>
+    </div>
+
+    <p class="hint">Pick a face</p>
+    <div class="picker" role="group" aria-label="Avatar">
+      <button aria-pressed="true" aria-label="Avatar 7"><img src="../../../../web/party/avatars/gaze-07.svg" alt=""></button>
+      <button aria-label="Avatar 1"><img src="../../../../web/party/avatars/gaze-01.svg" alt=""></button>
+      <button aria-label="Avatar 3"><img src="../../../../web/party/avatars/gaze-03.svg" alt=""></button>
+      <button aria-label="Avatar 9"><img src="../../../../web/party/avatars/gaze-09.svg" alt=""></button>
+      <button aria-label="Avatar 14"><img src="../../../../web/party/avatars/gaze-14.svg" alt=""></button>
+      <button aria-label="Avatar 17"><img src="../../../../web/party/avatars/gaze-17.svg" alt=""></button>
+      <button aria-label="Avatar 19"><img src="../../../../web/party/avatars/gaze-19.svg" alt=""></button>
+      <button aria-label="Avatar 22"><img src="../../../../web/party/avatars/gaze-22.svg" alt=""></button>
+      <button aria-label="Avatar 24"><img src="../../../../web/party/avatars/gaze-24.svg" alt=""></button>
+      <button aria-label="Avatar 26"><img src="../../../../web/party/avatars/gaze-26.svg" alt=""></button>
+      <button aria-label="Avatar 30"><img src="../../../../web/party/avatars/gaze-30.svg" alt=""></button>
+      <button aria-label="Avatar 32"><img src="../../../../web/party/avatars/gaze-32.svg" alt=""></button>
+    </div>
+  </div></main>
+  <div class="dock">
+    <a class="btn btn--primary btn--wide" href="home.html?role=guest">Join the Party</a>
+  </div>
+</div>
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+</body>
+</html>

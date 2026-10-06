@@ -126,3 +126,15 @@ The decision above is unchanged. This adds the product-level invariant it alread
   switch); the link's `end` gives up before that timer does. A launch that succeeds after the party
   cancelled or timed it out is ended at the game. PARTY-LIFECYCLE.md already described the
   abandoned → home behaviour; Core now matches it.
+- **2026-10-05 (owner decision, UX/UI redesign; not implemented).** Decision 4 called the setup
+  "the Party's own full-screen scene" and listed what is on it. That list gains three things and
+  loses nothing: the Party control (who is here), the People drawer it opens, and, on a phone in
+  Limited Mode, the Limited Mode mark with its explanation
+  ([ADR 0012](0012-limited-mode-party-survives-https-loss.md) wants that mode visible wherever
+  the phone is). The drawer and the explanation open over the scene and close back to it; they
+  never move the phone, and they change nothing about the round. The Library, Party chat, the
+  navigation bar and "This phone" stay off the scene, so the drawer there shows people only.
+  Decisions 1 to 3 and 5 to 7 are unchanged: one location, the Host moves it, and the game owns
+  the viewport during a round. `#scene` on `main` is as decision 4 describes until the shell
+  redesign builds this ([GAME-UX-CONTRACT](../design/GAME-UX-CONTRACT.md) Rule 3.2;
+  [plan](../design/ux-redesign/IMPLEMENTATION-PLAN.md), slice 1, PR 1.3).
