@@ -154,6 +154,21 @@ test('a title that is off says so in every view, and stops saying so when it is 
   await expect(tile).not.toContainText('Off for now');
 });
 
+test('no answer is not "off": a phone that cannot ask does not blame the games', async ({ page }) => {
+  await h264(page, true);
+  await page.route('**/arcade/stats', (route) => route.abort());          // out of range, not a game that is down
+  await page.route('**/api/games', (route) => route.abort());
+  await open(page);
+  expect(await shown(page)).toEqual(ALL);
+  for (const id of ['bluff', 'expo', 'arcade-gauntlet2']) {
+    await expect(page.locator(`#games [data-game="${id}"]`), id).not.toHaveAttribute('data-note', /.+/);
+    await expect(page.locator(`#games [data-game="${id}"]`), id).not.toContainText('Off for now');
+  }
+  await expect(page.locator('#games [data-game="ps1-worms"]')).toHaveAttribute('data-note', 'not_installed');   // that much is known
+  // the opened game is as careful as it has always been: nothing is offered that cannot be reached
+  await expect((await openGame(page, 'arcade-gauntlet2')).getByRole('button', { name: 'Play' })).toBeDisabled();
+});
+
 test('filters: the button, the sheet, the heading, the count and the hidden line all agree', async ({ page }) => {
   await open(page);
   const button = page.locator('#lib-filter'), badge = page.locator('#lib-filter-count'), sheet = page.locator('#lib-filters');
@@ -232,7 +247,7 @@ test('nothing to show always says why and offers the way back', async ({ page })
   await page.locator('#filters-show').click();
   await expect(blank).toHaveAttribute('data-empty', 'filters');
   await expect(blank).toContainText('No games match these filters');
-  await expect(blank).toContainText('6 or more players, Needs the TV');
+  await expect(blank).toContainText('Room for 6 or more, Needs the TV');
   await expect(page.locator('#game-count')).toHaveText('No games match these filters');
   await blank.getByRole('button', { name: 'Reset filters' }).click();
   expect(await shown(page)).toEqual(ALL);
@@ -259,6 +274,7 @@ test('nothing to show always says why and offers the way back', async ({ page })
   await expect(blank).toContainText('Tap the heart on any game to keep it here.');
   await blank.getByRole('button', { name: 'See all games' }).click();
   await expect(tab('All')).toHaveAttribute('aria-pressed', 'true');
+  await expect(tab('All')).toBeFocused();                                           // the button is gone; focus is not
   expect(await shown(page)).toEqual(ALL);
   await tab('Recent').click();
   await expect(blank).toHaveAttribute('data-empty', 'recent');
@@ -295,6 +311,7 @@ test('a favourite is kept with the heart, from the list or from the opened game,
   await expect(page.locator('#games h3')).toHaveText(['Favorites']);
   await page.locator('#games [data-fav="expo"]').click();                           // un-keeping it takes it off this shelf
   expect(await shown(page)).toEqual(['bluff']);
+  await expect(page.locator('#game-views').getByRole('button', { name: 'Favorites', exact: true })).toBeFocused();   // its row is gone; focus is not
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
   await page.locator('#game-views').getByRole('button', { name: 'Favorites', exact: true }).click();
@@ -361,11 +378,25 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await open(page, 'home');
   await expect(lead).toHaveAttribute('data-game', 'arcade-gauntlet2');
   await expect(lead).toContainText('You played this last.');
-  await expect(page.locator('#home-recent [data-game]')).toHaveCount(1);
+  await expect(page.locator('#home-recent-sec')).toBeHidden();                      // the lead is not listed a second time
+  await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(0);
+  await place(page, 'library');
+  await (await openGame(page, 'expo')).getByRole('link', { name: 'Play' }).click();
+  await expect(page).toHaveURL(/\/games\/expo\//);
+  await open(page, 'home');
+  await expect(lead).toHaveAttribute('data-game', 'expo');
   await expect(page.locator('#home-recent-sec')).toBeVisible();
+  expect(await page.locator('#home-recent [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game)))
+    .toEqual(['arcade-gauntlet2']);                                                 // what was played before that
+  // a keyboard's focus ring on a rail's first cover is whole: the rail leaves it room
+  const room = await page.locator('#home-great').evaluate((rail) => {
+    const a = rail.getBoundingClientRect(), b = rail.querySelector('button')!.getBoundingClientRect();
+    return [b.left - a.left, b.top - a.top];
+  });
+  for (const px of room) expect(px).toBeGreaterThanOrEqual(4);
   await place(page, 'library');
   await page.locator('#game-views').getByRole('button', { name: 'Recent', exact: true }).click();
-  expect(await shown(page)).toEqual(['arcade-gauntlet2']);
+  expect(await shown(page)).toEqual(['expo', 'arcade-gauntlet2']);                  // newest first
   await expect(page.locator('#games h3')).toHaveText(['Recently played']);
 });
 
@@ -377,6 +408,19 @@ test('thumb-sized targets and nothing sideways in every view, at 360 px', async 
     expect(await smallTargets(page, `#view-library :is(${CONTROLS})`), view).toEqual([]);
     expect(await sideways(page), view).toBeLessThanOrEqual(0);
   }
+  // and with a filter on: "Reset" and "Show all" are short words and still thumb-sized
+  for (const view of ['list', 'medium']) {
+    await setView(page, view);
+    await setFilter(page, { players: 4 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#games .avrana-hid')).toBeVisible();
+    expect(await smallTargets(page, `#view-library :is(${CONTROLS})`), view + ', filtered').toEqual([]);
+    expect(await sideways(page), view + ', filtered').toBeLessThanOrEqual(0);
+    await page.locator('#games .avrana-sec').getByRole('button', { name: 'Reset' }).click();
+  }
+  // empty states too
+  await page.locator('#game-views').getByRole('button', { name: 'Favorites', exact: true }).click();
+  expect(await smallTargets(page, `#view-library :is(${CONTROLS})`), 'empty').toEqual([]);
 });
 
 test('the Library holds at 200% text on a small phone: every view, both sheets and an opened game', async ({ page }) => {
@@ -445,4 +489,19 @@ test('reading order: search, filters, view, the tabs, then the shelf; the skip l
   const ring = await page.locator('#games [data-game="bluff"]').evaluate((el) => {
     const s = getComputedStyle(el); return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 2; });
   expect(ring).toBe(true);
+  // the filter segments clip at their edge, so their ring is drawn inside them, where it shows
+  await page.locator('#lib-filter').click();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  const seg = await page.locator('#filter-players [data-players="0"]').evaluate((el) => {
+    (el as HTMLElement).focus();
+    const s = getComputedStyle(el);
+    return { on: el.matches(':focus-visible'), style: s.outlineStyle, width: parseFloat(s.outlineWidth), offset: parseFloat(s.outlineOffset) };
+  });
+  expect(seg.on).toBe(true);
+  expect(seg.style).not.toBe('none');
+  expect(seg.width).toBeGreaterThanOrEqual(2);
+  expect(seg.offset + seg.width).toBeLessThanOrEqual(0);                            // wholly inside the segment
+  // the sheet's heading is the word, and the party's size is beside it, not part of its name
+  await expect(page.locator('#lib-filters h3').first()).toHaveText('Players');
 });

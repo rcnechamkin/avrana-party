@@ -3,10 +3,9 @@ import { expect, type Page } from '@playwright/test';
 /** The shell's four places (web/party/lib/frame.js). They are views of one document. */
 export type Place = 'home' | 'party' | 'library' | 'system';
 
-/** Go to a place the way a person does: the bar at the bottom of the frame. A sheet left open by
- * the step before is closed first, as a person would have to. */
+/** Go to a place the way a person does: the bar at the bottom of the frame. It does not close a
+ * sheet for the test: a sheet that should have closed by itself, and did not, fails here. */
 export async function place(page: Page, name: Place) {
-  if (await page.locator('dialog[open]').count()) await page.keyboard.press('Escape');
   await page.locator(`#nav a[data-go="${name}"]`).click();
   await expect(page.locator('html')).toHaveAttribute('data-place', name);
 }

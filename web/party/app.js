@@ -70,7 +70,9 @@ async function health(path) {
     const running = !(body && (body.error || body.emulator_running === false));
     return { running, players: count(body && body.players), max: count(body && body.max_players) };
   } catch {
-    return { running: false };
+    // No answer at all (out of range, a slow box): the tile still cannot be played from here, but
+    // nobody knows the game is off, and the shelf does not say so (lib/library.js consequence).
+    return { running: false, unknown: true };
   }
 }
 
@@ -119,7 +121,10 @@ function favButton(game, cls = '') {
       const within = event.currentTarget.closest('dialog, #games');
       try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
       catch (err) { $('profile-note').textContent = err.message; }
-      if (within) within.querySelector(`[data-fav="${game.id}"]`)?.focus();
+      // The redraw replaced this button. When its row has left the shelf (un-kept in Favorites),
+      // focus goes to the tab that is showing, never nowhere.
+      const again = within && within.querySelector(`[data-fav="${CSS.escape(game.id)}"]`);
+      (again || (within && within.id === 'games' ? $('game-views').querySelector('[aria-pressed="true"]') : null))?.focus();
     } }, icon('heart'));
 }
 
@@ -181,6 +186,7 @@ function sync(parent, next) {
   next.forEach((node, i) => {
     if (old[i].isEqualNode(node)) return;
     if (node.dataset.sync !== 'list') { old[i].replaceWith(node); return; }
+    for (const attr of [...old[i].attributes]) if (!node.hasAttribute(attr.name)) old[i].removeAttribute(attr.name);
     for (const attr of node.attributes) old[i].setAttribute(attr.name, attr.value);
     sync(old[i], [...node.children]);
   });
@@ -429,6 +435,7 @@ function renderParty(view) {
     state.failShown = s.id;
     const g = partyGame(state.catalog, s.game);
     $('party-note').textContent = `${g ? g.name : s.game} didn’t start.` + (s.detail ? ` ${s.detail}` : '');
+    closeSheets();                               // the reason is on the page, not behind the sheet
   }
 }
 
@@ -535,7 +542,7 @@ function onPartyView(view) {
   const url = destination(view, HOME, state.catalog);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
-    if (g && view.me) recordRound(g, locationOf(view));
+    if (g && view.me && locationOf(view).at === 'game') recordRound(g, locationOf(view));   // a round, not its held results
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
     location.replace(url);
@@ -557,10 +564,11 @@ async function renderGames(refresh = true) {
     const installed = state.catalog.games.filter((g) => g.installed && g.health);
     const [donor, ...healths] = await Promise.all([
       getJSON('/api/games', { cache: 'no-store', signal: AbortSignal.timeout(4000) })
-        .then(donorAvailability).catch(() => null),
+        .then(donorAvailability).catch((err) => (err && err.status ? null : SILENT)),
       ...installed.map((g) => health(g.health)),
     ]);
-    state.donor = donor;
+    state.donor = donor === SILENT ? null : donor;
+    state.donorSilent = donor === SILENT;       // no answer at all, which is not "off"
     state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));
     state.polled = true;
     renderHud();                        // the chat is offered only while its own runtime answers
@@ -570,7 +578,8 @@ async function renderGames(refresh = true) {
   const entries = new Map();
   for (const game of visibleGames(state.catalog)) {
     profile.keyFor(game);
-    const live = game.legacySlug ? state.donor?.get(game.legacySlug) || { running: false } : state.healths?.get(game.id);
+    const live = game.legacySlug ? state.donor?.get(game.legacySlug) || { running: false, unknown: state.donorSilent }
+      : state.healths?.get(game.id);
     const result = evaluateSeat(game, caps, 'player');
     const installed = Boolean(game.installed && game.entry);
     entries.set(game.id, { game, live, result, note: consequence({ installed, outcome: result.outcome, live }) });
@@ -585,6 +594,7 @@ async function renderGames(refresh = true) {
   renderGameSheet(entries);
 }
 
+const SILENT = Symbol('no answer');
 const VIEW_ICONS = { large: 'grid-2x2', medium: 'grid-3x3', compact: 'layout-grid', list: 'list' };
 const gamesWord = (n) => (n === 1 ? '1 game' : `${n} games`);
 
@@ -596,8 +606,9 @@ function renderShelf(entries, shelf, people) {
   if (shelf.empty) {
     const undo = { search: () => { $('game-search').value = ''; renderGames(false); $('game-search').focus(); },
       filters: () => { reset(); $('lib-filter').focus(); },
-      favorites: () => setTab('all'), recent: () => setTab('all') }[shelf.empty.kind];
-    nodes.push(h('div', { class: 'avrana-blank', role: 'status', 'data-empty': shelf.empty.kind }, icon(shelf.empty.icon),
+      favorites: () => seeAll(), recent: () => seeAll() }[shelf.empty.kind];
+    // (#game-count announces the same title; this block is not a second live region)
+    nodes.push(h('div', { class: 'avrana-blank', 'data-empty': shelf.empty.kind }, icon(shelf.empty.icon),
       h('h3', { text: shelf.empty.title }), h('p', { text: shelf.empty.text }),
       h('button', { type: 'button', class: 'btn', text: shelf.empty.action, onclick: undo })));
   } else if (!shelf.total) {
@@ -651,6 +662,12 @@ function setTab(name) {
   renderGames(false);
 }
 
+/** "See all games" from an empty Favorites or Recent: the button goes away, so focus goes to All. */
+function seeAll() {
+  setTab('all');
+  $('game-views').querySelector('[data-view="all"]').focus();
+}
+
 /** Home's shelves, from the same titles and the same words as the Library. */
 function renderHomeShelves(entries, shelves, people) {
   const of = (game) => entries.get(game.id);
@@ -665,6 +682,7 @@ function renderHomeShelves(entries, shelves, people) {
   h('span', { class: 'row' }, h('span', {}, h('span', { class: 't', text: lead.game.name }), h('span', { class: 'm', text: line }),
     warnLine(lead.note, 'm warn')), icon('chevron-right')))]);
   $('home-great-h').textContent = shelves.title;
+  $('home-great-sec').hidden = !shelves.great.length;        // never a heading over nothing
   sync($('home-great'), shelves.great.map((g) => tile(of(g), people)));
   $('home-recent-sec').hidden = !shelves.played.length;
   sync($('home-recent'), shelves.played.map((g) => tile(of(g), people, { seats: false, meta: false })));
@@ -686,14 +704,16 @@ function renderGameSheet(entries) {
   sync($('game-card'), [gameCard(entry.game, entry.result, entry.live)]);
 }
 
-/** A round that begins on this phone is remembered on this phone (the same list the Play button
- * has always written), once per round however often the page is opened during it. */
+/** A round that takes this phone to a game is remembered on this phone (the same list, and the
+ * same count, the Play button has always written), once per round however often, and in however
+ * many tabs, the page is opened during it. Whoever the Party took there is recorded, players
+ * and watchers alike. */
 function recordRound(game, where) {
   const round = String(where.session || game.id);
   try {
-    if (sessionStorage.getItem('avrana-recent-round') === round) return;
-    sessionStorage.setItem('avrana-recent-round', round);
-  } catch { /* no tab storage: it is written again, which only repeats the same order */ }
+    if (localStorage.getItem('avrana-recent-round') === round) return;
+    localStorage.setItem('avrana-recent-round', round);
+  } catch { /* a phone that keeps nothing: remember() below keeps nothing either */ }
   try { profile.remember(game); } catch { /* this phone keeps nothing */ }
 }
 

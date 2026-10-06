@@ -55,7 +55,7 @@ function matchesScreen(game, screen) {
 /** The filters that are on, in words: ["4 players", "TV optional"]. */
 export function filterWords({ players = 0, screen = 'any' } = {}) {
   const words = [];
-  if (players) words.push(players >= 6 ? '6 or more players' : players === 1 ? '1 player' : `${players} players`);
+  if (players) words.push(players >= 6 ? 'Room for 6 or more' : players === 1 ? '1 player' : `${players} players`);
   if (screen && screen !== 'any') words.push(SCREEN_NAMES[screen]);
   return words;
 }
@@ -70,10 +70,12 @@ export function filterLabel(filters) {
  * decisive first; the same words in every view.
  *   installed: the catalog says it is on this Party box
  *   outcome:   what this phone can do with it (ready, limited, watch, unavailable)
- *   live:      the title's live state, or null when nothing is known ({ running, integration }) */
+ *   live:      the title's live state ({ running, integration, unknown }), or null when it has none.
+ *              `unknown` is a question that got no answer at all: that is this phone's connection,
+ *              not the game, so it is never "off" */
 export function consequence({ installed, outcome, live }) {
   if (!installed) return { kind: 'not_installed', icon: 'circle-slash', text: 'Not installed' };
-  if (live && (live.running === false || live.integration === false)) return { kind: 'off', icon: 'triangle-alert', text: 'Off for now' };
+  if (live && !live.unknown && (live.running === false || live.integration === false)) return { kind: 'off', icon: 'triangle-alert', text: 'Off for now' };
   if (outcome === 'watch') return { kind: 'watch', icon: 'eye', text: 'Watch only on this phone' };
   if (outcome !== 'ready' && outcome !== 'limited') return { kind: 'no', icon: 'triangle-alert', text: 'Not on this phone' };
   return null;
@@ -82,7 +84,8 @@ export function consequence({ installed, outcome, live }) {
 function headingFor(count, filters) {
   const { players = 0, screen = 'any' } = filters;
   let text = games(count);
-  if (players) text += players >= 6 ? ' for 6 or more players' : players === 1 ? ' for 1 player' : ` for ${players} players`;
+  // "6+" is a title six or more can play; it does not promise room for seven
+  if (players) text += players >= 6 ? ' with room for 6 or more' : players === 1 ? ' for 1 player' : ` for ${players} players`;
   if (screen !== 'any') text += `, ${SCREEN_NAMES[screen]}`;
   return text;
 }
@@ -138,16 +141,17 @@ export function arrange({ all, people = 0, tab = 'all', query = '', filters = {}
 }
 
 /** Home's shelves, from the same titles: the lead (the last one played on this phone, else the
- * first that suits the party), the rest that suit it, and what was played recently. */
+ * first that suits the party), the rest that suit it, and what was played before that. No title
+ * is on Home twice with the lead; `great` may be empty, and then its heading is not shown. */
 export function homeShelves({ all, people = 0, keyOf = (g) => g.id, recent = [] }) {
-  const played = recent.map((key) => all.find((g) => keyOf(g) === key)).filter(Boolean);
+  const recents = recent.map((key) => all.find((g) => keyOf(g) === key)).filter(Boolean);
   const suits = (g) => people < 2 || fits(g, people);
-  const lead = played[0] || all.find((g) => g.installed && suits(g)) || all.find(suits) || all[0] || null;
+  const lead = recents[0] || all.find((g) => g.installed && suits(g)) || all.find(suits) || all[0] || null;
   const great = all.filter((g) => g !== lead && suits(g));
   return {
-    lead, leadPlayed: Boolean(lead && played[0] === lead),
+    lead, leadPlayed: Boolean(lead && recents[0] === lead),
     title: people >= 2 ? `Great for ${countWord(people)}` : 'Games',
-    great, played,
+    great, played: recents.filter((g) => g !== lead),
   };
 }
 

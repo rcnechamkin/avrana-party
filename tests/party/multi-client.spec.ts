@@ -203,10 +203,18 @@ test.describe('three phones at one party', () => {
     for (const p of [host, bob, cleo]) {
       await expect(p.page, p.name).toHaveURL(/\/party\/$/);
       await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toContainText('You played this last.');
-      await expect(p.page.locator('#home-recent [data-game]'), p.name).toHaveCount(1);
+      await expect(p.page.locator('#home-recent-sec'), p.name).toBeHidden();   // it leads; it is not listed twice
       // per phone, in the list the games have always written (decision 9: nothing Party-wide)
       expect(await p.page.evaluate(() => localStorage.getItem('lg-recent')), p.name).toBe('["avrana:expo"]');
+      // once: Bob came back to the page mid-round, and the round still counts as one game opened
+      expect(await p.page.evaluate(() => localStorage.getItem('lg-play-total')), p.name).toBe('1');
     }
+    // a second round is a second game opened; held results are not a round
+    await startForEveryone(host.page, 'expo');
+    for (const p of [host, bob]) await expect(p.page).toHaveURL(/\/games\/expo\//);
+    await endForEveryone(host);
+    await expect(bob.page).toHaveURL(/\/party\/$/);
+    expect(await bob.page.evaluate(() => localStorage.getItem('lg-play-total'))).toBe('2');
     await place(cleo.page, 'library');                                       // Cleo watched; it is still what her phone was at
     await cleo.page.locator('#game-views').getByRole('button', { name: 'Recent', exact: true }).click();
     await expect(cleo.page.locator('#games [data-game]')).toHaveCount(1);

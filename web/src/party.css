@@ -226,6 +226,7 @@
   .avrana-lede { margin: 0; font-size: 1.75rem; font-weight: 550; line-height: 1.12; letter-spacing: -0.02em; text-wrap: balance; }
   .avrana-sub { margin: 0.375rem 0 0; color: var(--color-muted); text-wrap: pretty; overflow-wrap: anywhere; }
   .avrana-textlink { color: var(--color-base-content); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-line-strong); display: inline-block; padding: 0.75rem 0; margin: -0.75rem 0; }
+  button.avrana-textlink { min-width: 2.75rem; min-height: 2.75rem; text-align: end; cursor: pointer; }   /* a short word is still a thumb wide */
 
   /* A word for a person's role or state: text first, never a crown, never colour alone. */
   .avrana-tag {
@@ -443,7 +444,8 @@
   .avrana-hero .m.warn { color: var(--color-warning); }
   .avrana-hero .m.warn .avrana-icon { width: 0.75rem; height: 0.75rem; margin-right: 0.1875rem; }
   .avrana-hero .row > .avrana-icon { color: var(--color-muted); flex: none; }
-  .avrana-rail { display: flex; gap: 0.625rem; margin: 0; padding: 0 0 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+  /* (the rail clips what leaves it, so it keeps a focus ring's width of room on every side) */
+  .avrana-rail { display: flex; gap: 0.625rem; margin: -0.25rem; padding: 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 0.25rem; }
   .avrana-rail::-webkit-scrollbar { display: none; }
   .avrana-rail > li { flex: none; width: 7.25rem; min-width: 0; scroll-snap-align: start; }
   .avrana-rail.small > li { width: 5rem; }
@@ -455,6 +457,9 @@
   .avrana-seg.words { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .avrana-seg button { min-height: 2.75rem; padding: 0.25rem; text-align: center; color: var(--color-muted); cursor: pointer; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 0.5px var(--color-line); }
   .avrana-seg button[aria-pressed="true"] { background: var(--color-base-content); color: var(--color-primary-content); font-weight: 600; }
+  /* the segments clip at their rounded edge, so the focus ring is drawn inside the segment */
+  .avrana-seg button:focus-visible { outline-offset: -3px; }
+  .avrana-seg button[aria-pressed="true"]:focus-visible { outline-color: var(--color-base-100); }
   .avrana-choices { display: grid; padding-bottom: 0.75rem; }
   .avrana-choices button { display: flex; align-items: center; gap: 0.75rem; min-height: 3rem; padding: 0 0.5rem; border-radius: var(--radius-field); text-align: left; cursor: pointer; }
   .avrana-choices button > .avrana-icon:first-child { color: var(--color-muted); }

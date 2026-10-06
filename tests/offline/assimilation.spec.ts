@@ -25,7 +25,7 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
   await expect(page.locator('#game-count')).toHaveText('5 games'); // BLUFF, EXPO, the arcade and two PS1 titles; no retired LAN Games title
   // Home leads with what this phone played last, from the same list the games have always written.
   await expect(page.locator('#home-lead [data-game="expo"]')).toContainText('You played this last.');
-  await expect(page.locator('#home-recent [data-game]')).toHaveCount(1);
+  await expect(page.locator('#home-recent-sec')).toBeHidden();              // one title played: it leads, and is not listed twice
   await place(page, 'library');
   const shelf = page.locator('#games [data-game]');
   await expect(shelf).toHaveCount(5);

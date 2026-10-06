@@ -61,7 +61,7 @@ test('filters in words, and the filter button says how many are on', () => {
   assert.deepEqual(filterWords(), []);
   assert.deepEqual(filterWords({ players: 1 }), ['1 player']);
   assert.deepEqual(filterWords({ players: 4, screen: 'tv_optional' }), ['4 players', 'TV optional']);
-  assert.deepEqual(filterWords({ players: 6, screen: 'any' }), ['6 or more players']);
+  assert.deepEqual(filterWords({ players: 6, screen: 'any' }), ['Room for 6 or more']);
   assert.equal(filterLabel({ players: 0, screen: 'any' }), 'Filters');
   assert.equal(filterLabel({ players: 4, screen: 'any' }), 'Filters, 1 on: 4 players');
   assert.equal(filterLabel({ players: 2, screen: 'phone' }), 'Filters, 2 on: 2 players, Phone only');
@@ -72,6 +72,9 @@ test('one consequence line per title, the most decisive first', () => {
   assert.equal(consequence({ installed: true, outcome: 'ready', live: up }), null);
   assert.equal(consequence({ installed: true, outcome: 'limited', live: null }), null);       // unknown is not "off"
   assert.equal(consequence({ installed: true, outcome: 'ready', live: undefined }), null);
+  // a question nobody answered is this phone's connection, not the game: never "off"
+  assert.equal(consequence({ installed: true, outcome: 'ready', live: { running: false, unknown: true } }), null);
+  assert.equal(consequence({ installed: true, outcome: 'watch', live: { running: false, unknown: true } }).kind, 'watch');
   assert.deepEqual(consequence({ installed: true, outcome: 'watch', live: up }), { kind: 'watch', icon: 'eye', text: 'Watch only on this phone' });
   assert.equal(consequence({ installed: true, outcome: 'unavailable', live: up }).text, 'Not on this phone');
   assert.equal(consequence({ installed: true, outcome: 'ready', live: down }).text, 'Off for now');
@@ -122,7 +125,9 @@ test('a filter leaves titles out, says so, and its count, heading and hidden num
   assert.equal(both.hidden, 3);
   assert.equal(both.filtersOn, 2);
   assert.deepEqual(ids(shelf({ filters: { players: 6 } }).flat), ['bluff']);              // "6 or more" is a title that seats six
-  assert.equal(shelf({ filters: { players: 6 } }).groups[0].title, '1 game for 6 or more players');
+  assert.equal(shelf({ filters: { players: 6 } }).groups[0].title, '1 game with room for 6 or more');   // not "for seven"
+  assert.equal(arrange({ all: [...all, { ...game('bluff'), id: 'big', players: { min: 4, max: 10 } }], filters: { players: 6 } }).groups[0].title,
+    '2 games with room for 6 or more');
   assert.deepEqual(ids(shelf({ filters: { players: 1 } }).flat), ['arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);
   assert.deepEqual(ids(shelf({ filters: { screen: 'tv_optional' } }).flat), ['arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);
   // a title that is off or not installed is still listed: only an explicit filter leaves one out
@@ -133,7 +138,7 @@ test('nothing to show always says why, and offers the way back', () => {
   const none = shelf({ filters: { players: 6, screen: 'tv_required' } });
   assert.deepEqual([none.count, none.hidden, none.groups.length], [0, 5, 0]);
   assert.deepEqual(none.empty, { kind: 'filters', icon: 'filter-x', title: 'No games match these filters',
-    text: '6 or more players, Needs the TV', action: 'Reset filters' });
+    text: 'Room for 6 or more, Needs the TV', action: 'Reset filters' });
   const search = shelf({ query: '  chess ' });
   assert.equal(search.empty.kind, 'search');
   assert.equal(search.empty.title, 'Nothing matches “chess”');
@@ -177,12 +182,18 @@ test('Home leads with the last title played here, else the first that suits the 
   const back = homeShelves({ all, people: 4, keyOf: key, recent: ['avrana:arcade-gauntlet2', 'gone:title', 'avrana:expo'] });
   assert.equal(back.lead.id, 'arcade-gauntlet2');                                           // played last, even though it seats two
   assert.equal(back.leadPlayed, true);
-  assert.deepEqual(ids(back.played), ['arcade-gauntlet2', 'expo']);
+  assert.deepEqual(ids(back.played), ['expo']);                                             // the lead is not listed again
   assert.deepEqual(ids(back.great), ['bluff', 'expo', 'ps1-bomberman', 'ps1-worms']);
+  const once = homeShelves({ all, people: 4, keyOf: key, recent: ['avrana:bluff'] });
+  assert.deepEqual([once.lead.id, once.leadPlayed, once.played.length, ids(once.great)], ['bluff', true, 0, ['expo', 'ps1-bomberman', 'ps1-worms']]);
   const alone = homeShelves({ all, people: 1, keyOf: key });
   assert.equal(alone.title, 'Games');
   assert.deepEqual([alone.lead.id, alone.great.length], ['bluff', 4]);
-  assert.equal(homeShelves({ all, people: 9, keyOf: key }).lead.id, 'bluff');               // nothing suits nine: still a way in
+  // six: only BLUFF seats them, it leads, and nothing is left for a "Great for six" shelf
+  const six = homeShelves({ all, people: 6, keyOf: key });
+  assert.deepEqual([six.lead.id, six.great.length], ['bluff', 0]);
+  const nine = homeShelves({ all, people: 9, keyOf: key });                                 // nothing suits nine: still a way in
+  assert.deepEqual([nine.lead.id, nine.great.length], ['bluff', 0]);
   assert.deepEqual(homeShelves({ all: [], people: 4 }), { lead: null, leadPlayed: false, title: 'Great for four', great: [], played: [] });
 });
 

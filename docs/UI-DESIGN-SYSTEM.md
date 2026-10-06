@@ -149,7 +149,7 @@ all"). Nothing to show always says why and offers the way back.
   list. A view changes how much is said per title, never which titles are listed. The compact
   grid drops the plain facts and keeps every warning.
 - **Two filters**, in the Filters sheet, and only because the catalog really says both: Players
-  (Any, 1 to 5, 6+) and Screens (Any, Phone only, TV optional, Needs the TV: the tiles' own
+  (Any, 1 to 5, and 6+, which means a title with room for six or more) and Screens (Any, Phone only, TV optional, Needs the TV: the tiles' own
   words). They are for now, not for ever: a reload starts with every game on the shelf. There is
   no length, kind or "quick start" filter because no title carries that data.
 - **A cover's corner** carries the player range, or a warning with words when the party does not
@@ -157,10 +157,16 @@ all"). Nothing to show always says why and offers the way back.
 - **One consequence line per title**, the same words in every view, with an icon (never colour
   alone), the most decisive first: `Not installed`, `Off for now`, `Not on this phone`,
   `Watch only on this phone`. A title that is off or not installed stays on the shelf, for
-  everyone.
+  everyone. "Off for now" needs an answer that says so: a phone whose question got no answer at
+  all (out of range, a slow box) says nothing about the game on its cover.
 - **Favorites and Recent** are this phone's own lists, the ones the games have always written
   (`lg-favorites`, `lg-recent`). A Party round that takes this phone to a game is added to
-  Recent once per round.
+  Recent once per round (`localStorage['avrana-recent-round']` holds the last round recorded),
+  for a player and a watcher alike; held results are not a round.
+- **"The party" is everyone in it**, the same number the Party page shows, including someone
+  whose phone has gone quiet but who has not left.
+- **Home never repeats a title**: the lead is not listed again under "Recently played", and a
+  shelf with nothing on it has no heading.
 - **A cover opens the game** in the game sheet (a native `<dialog>`: focus goes in, Escape, the
   Close button or a tap outside closes it, focus returns to the cover). The sheet holds the game
   tile below, with the button it has always had. This is the bridge until the game detail page

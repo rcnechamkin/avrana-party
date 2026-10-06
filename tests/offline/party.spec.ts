@@ -57,6 +57,7 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(bluff).toContainText('BLUFF');
   await expect(bluff.locator('img[src$="art/lan-bluff.svg"]')).toHaveCount(1);
   await expect(bluff.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
+  await page.keyboard.press('Escape');
   await place(page, 'system');
   await expect(page.locator('#phone-summary')).toHaveText('All set');
   await expect(page.locator('#phone-list [data-cap="video.h264"]')).toHaveAttribute('data-status', 'yes');
@@ -72,6 +73,7 @@ test('a phone that cannot play the video is told why, and can still try', async 
   await expect(card).toContainText('Not on this phone');
   await expect(card).toContainText('This browser can’t play the Party’s video format.');
   await expect(card.getByRole('link', { name: 'Try anyway' })).toHaveAttribute('href', '/arcade/');
+  await page.keyboard.press('Escape');
   await place(page, 'system');
   await expect(page.locator('#phone-summary')).toHaveText('Some things are limited');
 });

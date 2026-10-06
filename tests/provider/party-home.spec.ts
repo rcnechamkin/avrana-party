@@ -196,6 +196,7 @@ test('a failed start says why and stays home; a second party game cannot start o
   await joinParty(ben.page, 'Ben');
   await startForEveryone(ana.page, 'expo');
   await expect(ana.page.locator('#party-note')).toContainText('EXPO didn’t start');
+  await expect(ana.page.locator('#game-sheet')).toBeHidden();                  // the reason is not behind the open game
   await ben.page.waitForTimeout(1_500);
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(AT_HOME);
   await startForEveryone(ana.page, 'bluff');

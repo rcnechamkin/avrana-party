@@ -129,8 +129,8 @@ Only what the concepts could not settle from the brief, the ADRs or the code.
 [slice 0](IMPLEMENTATION-PLAN.md#slice-0-decisions-and-wording)): decision 1 is settled and its
 wording change is made (Rule 3.2, ADR 0011 amendment); decision 12 is settled as today's
 behaviour (listed, marked "Not installed"); decision 16 is settled. Decision 2's geometry is a
-separate design task and nothing in slice 1 waits for it. Decisions 4, 7, 9, 15 and 18 are
-**not answered**: slice 1 was approved as drawn, so it builds them as drawn, provisionally, and
+separate design task and nothing in slice 1 waits for it. As of that date, decisions 4, 7, 9, 15 and 18 were
+**not answered** (the next paragraph is later): slice 1 was approved as drawn, so it builds them as drawn, provisionally, and
 each is raised again in the pull request that builds it. Decision 4 reads an accepted ADR and
 wants an explicit yes before PR 1.4 folds the notice. Everything else below is open as well.
 
