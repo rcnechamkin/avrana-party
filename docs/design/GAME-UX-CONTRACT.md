@@ -108,10 +108,12 @@ Today the briefing is `location.at = setup` with `location.game` set, drawn by t
 on the Party page (`#scene` in `web/party/index.html`, `renderScene` in `web/party/app.js`; ADR
 0011 decision 4). That is compatible with Rule 3.2 as long as the screen reads as the game's
 pre-round screen and not as Party Home: the library, chat row and "This phone" MUST NOT be
-visible in it **[Implemented: `show('scene')` hides `#main`]**. Which page or origin draws the
+visible in it **[Implemented: `show('scene')` hides the frame's middle (`#content`) and its bar
+of places (`#nav`); the top bar stays, AVR-286]**. Which page or origin draws the
 shell is an implementation matter and may move with ADR 0013; the behaviour is the contract.
 
-**[Accepted, owner decisions of 2026-10-05, relayed to this change; not implemented.]** Of the
+**[Accepted, owner decisions of 2026-10-05, relayed to this change; implemented in source by
+AVR-286 (2026-10-06), not deployed or checked on a phone.]** Of the
 shell redesign the owner said: "Make Party access and the Limited explanation open over the briefing, preserving its location."
 and, approving its revision 2: "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings."
 So the Party control (who is here) with a drawer of the people here, and, on a phone in Limited
@@ -122,7 +124,9 @@ round or covers the briefing's own controls once closed; the explanation over a 
 no link that leaves the page (the link that checks for the full version is on the ordinary
 pages); the Library, the navigation bar and "This phone" stay off the briefing. Chat over a
 briefing waits for a Party-owned chat and its own decision. ADR 0011 carries the matching
-amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`.
+amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`. As built, each of the
+proposed points holds: `renderSocial` and `renderLimited` in `web/party/app.js`, and
+`tests/party/multi-client.spec.ts` and `tests/offline/limited.spec.ts`.
 
 **Rule 3.3 [Accepted, AVR-56; Implemented].** While the Party is in a game, a non-host has no
 normal route back to Party Home or to another game. The integration bar and every
@@ -183,11 +187,11 @@ that is also their order of visual weight.
 
 | Slot | Supplied by | Today |
 |---|---|---|
-| Title, art, accent | game (catalog: `name`, `artwork`, `accent`) | **[Implemented]** `scene-title`, `scene-art`, `--game-accent` on the cover only |
+| Title, art, accent | game (catalog: `name`, `artwork`, `accent`) | **[Implemented]** `scene-title`, `scene-cover`, `--game-accent` on the cover only |
 | Premise | game (`onboarding.json` `premise`, else catalog `summary`) | **[Implemented]** |
 | Rules entry "How to play" | shell; content from the game | **[Implemented]** `#rules` dialog, `openRules` |
-| Roster with state | platform | **[Implemented]** `avrana-lineup`: Gaze avatar, host crown, Playing / Watching / Choosing as differently shaped icon badges with an accessible name (no visible word); the host crown likewise; away is opacity only (P-10) |
-| Ready / Watch | platform | **[Implemented]**, as ADR 0011 decision 4 specifies: two large choices "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`) |
+| Roster with state | platform | **[Implemented]** `avrana-lineup` (AVR-286): Gaze avatar, the name, the visible word "Host", and Playing / Watching / Choosing as a differently shaped icon with the visible word; away is the visible word "Away" and a greyed avatar |
+| Ready / Watch | platform | **[Implemented]**, as ADR 0011 decision 4 specifies: two choices "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`). Since AVR-286 they are 56 px tall, side by side in the dock (they were 76 px) |
 | Host Start, or the waiting line | platform | **[Implemented]** `scene-start`, disabled with Party Core's `blocker` sentence as text |
 | Host: choose another game | platform | **[Implemented]** `scene-cancel` |
 | Host settings | deferred by the owner as a platform concern (Q3). EXPO's own setup stays inside EXPO for now (Rule 4.11a) | **not built** ([§4.4](#44-settings)) |
@@ -538,10 +542,12 @@ never markup. System text is never rendered as if a player said it.
 
 **Rule 6.4 [Proposed].** "You", the Host and away are each marked with a visible word or a
 distinct icon, never by colour or opacity alone. **Today, partly:** "You" is a visible word
-(`You` in `avrana-lineup`, `(you)` in `avrana-roster`); the Host is a crown icon whose only text
-is an accessible name (`aria-label="host"`), with no visible word; away is `data-away` drawn as
-`opacity: 0.6` and nothing else in both lists (`web/src/party.css`, `personChip` and
-`renderScene` in `web/party/app.js`), which is observation P-10.
+(`You` in `avrana-lineup`, `(you)` on the Party page and in the drawer). **Built ahead of this
+rule's acceptance by the shell redesign (PR 1.1 for the frame, where the owner accepted the word
+"Host"; AVR-286 for the briefing, which the owner has not yet reviewed):** the Host is the visible word "Host" and away is the visible word
+"Away" with a greyed avatar, in the briefing's line-up, on the Party page and in the drawer
+(`personItem` and `renderScene` in `web/party/app.js`); observation P-10 described the crown and
+the opacity that these replaced.
 
 **Rule 6.5 [Accepted, ADR 0006 and its 2026-10-04 amendment].** A game never receives device
 identity, and a game keeps no host: the Party is the only place that answer exists.
@@ -904,7 +910,7 @@ needs it.
 | One authoritative location and the follow rule | `web/party/lib/party-mode.js` (`destination`, `locationOf`), `party-follow.js` |
 | Host controls for a game's own chrome | `window.AvranaParty` in `party-follow.js`; `[data-avrana-party-shell]`; fallback End |
 | Host authority at the action | ticket `host` claim and the party's answer (ADR 0006 amendment); `conn.hostAction` in `web/hubnet.js` (games) |
-| Briefing shell | `#scene` in `web/party/index.html`, `renderScene` in `app.js`, `avrana-scene`, `avrana-lineup`, `avrana-choice` in `web/src/party.css` |
+| Briefing shell | `#scene` in `web/party/index.html`, `renderScene` and `show` in `app.js`, `avrana-brief`, `avrana-dock`, `avrana-lineup`, `avrana-choice` in `web/src/party.css` |
 | Start blocker as a sentence | `avrana/party/core.py` `setup_status`; `setupPanel` in `party-mode.js` |
 | Rules sheet and first-play acknowledgement | `#rules`, `openRules`, `acknowledged` in `app.js`; `avrana-rules` |
 | Onboarding content file | `avrana.onboarding/v0`: `games/bluff/web/onboarding.json` |

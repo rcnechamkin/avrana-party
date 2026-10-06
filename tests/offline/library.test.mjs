@@ -4,8 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PLAYER_CHOICES, SCREEN_CHOICES, SCREEN_NAMES, TABS, VIEWS, VIEW_NAMES, arrange, consequence, countWord, filterLabel,
-  filterWords, fits, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from '../../web/party/lib/library.js';
+import { PLAYER_CHOICES, SCREEN_CHOICES, SCREEN_NAMES, TABS, VIEWS, VIEW_NAMES, arrange, consequence, countWord, filterLabel, filterWords, fits, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf, fitLine } from '../../web/party/lib/library.js';
 import { screenText } from '../../web/party/lib/ui.js';
 import { visibleGames } from '../../web/party/lib/catalog-view.js';
 
@@ -204,4 +203,39 @@ test('the line under Home’s lead title says what is true of it for this party'
   assert.equal(leadLine({ players: { min: 3, max: 8 } }, { people: 2 }), 'Needs 3 or more.');
   assert.equal(leadLine(game('bluff'), { people: 1, played: true }), 'You played this last.');
   assert.equal(leadLine(game('bluff'), { people: 0 }), '');
+});
+
+test('a game’s page says whether it suits the people here, and what happens to the rest', () => {
+  const game = (min, max, spectators) => ({ players: { min, max }, spectators });
+  // nobody to suit: no sentence at all
+  for (const n of [0, 1, undefined]) assert.equal(fitLine(game(2, 6, 'watch'), n), null);
+  assert.deepEqual(fitLine(game(2, 6, 'watch'), 4), { ok: true, icon: 'check', text: 'Room for all four of you.' });
+  assert.equal(fitLine(game(2, 6, 'watch'), 2).text, 'Room for both of you.');
+  assert.equal(fitLine(game(2, 6, 'watch'), 6).text, 'Room for all six of you.');
+  // too many: a game with a watch view says how many watch; one without says how many sit out
+  assert.deepEqual(fitLine(game(2, 6, 'watch'), 7), { ok: false, icon: 'triangle-alert', text: 'Up to 6 play; one of you watches.' });
+  assert.equal(fitLine(game(2, 6, 'watch'), 9).text, 'Up to 6 play; three of you watch.');
+  assert.equal(fitLine(game(1, 2, 'none'), 3).text, 'Up to 2 play; one of you sits out.');
+  assert.equal(fitLine(game(1, 2, 'none'), 4).text, 'Up to 2 play; two of you sit out.');
+  assert.equal(fitLine(game(1, 2, undefined), 5).text, 'Up to 2 play; three of you sit out.');   // unknown is not a promise of a watch view
+  // too few
+  assert.deepEqual(fitLine(game(3, 5, 'watch'), 2), { ok: false, icon: 'triangle-alert', text: 'Needs 3 or more; you’re 2.' });
+  // every sentence that is not a plain yes carries a mark: never colour alone
+  for (let n = 2; n <= 12; n++) for (const g of [game(2, 6, 'watch'), game(1, 2, 'none'), game(3, 5, 'watch'), game(1, 4, 'watch')]) {
+    const line = fitLine(g, n);
+    assert.equal(line.ok, n >= g.players.min && n <= g.players.max, `${n} ${JSON.stringify(g)}`);
+    assert.ok(line.icon && line.text, `${n}`);
+    assert.doesNotMatch(line.text, /undefined|NaN/);
+  }
+});
+
+test('the fit sentence on the five real titles, for a party of four', () => {
+  const lines = Object.fromEntries(catalog.games.map((g) => [g.id, fitLine(g, 4).text]));
+  assert.deepEqual(lines, {
+    bluff: 'Room for all four of you.',
+    expo: 'Room for all four of you.',
+    'arcade-gauntlet2': 'Up to 2 play; two of you sit out.',
+    'ps1-bomberman': 'Room for all four of you.',
+    'ps1-worms': 'Room for all four of you.',
+  });
 });

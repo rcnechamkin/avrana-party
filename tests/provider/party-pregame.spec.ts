@@ -18,7 +18,7 @@ const expect = baseExpect.configure({ timeout: 20_000 });
 const PHONE = devices['iPhone 13'];               // 390 x 844
 type Phone = { context: BrowserContext; page: Page };
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
-const AT_HOME = /\/party\/(#(home|party|library|system))?$/;   // the shell, in whichever of its places
+const AT_HOME = /\/party\/(#(home|party|library|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places, or a game's page
 
 function record() {
   const Native = window.WebSocket;
@@ -107,7 +107,8 @@ async function pickBluff(host: Page, phones: Phone[]) {
   for (const p of phones) {
     await expect(p.page).toHaveURL(AT_HOME);
     await expect(p.page.locator('#scene')).toBeVisible();
-    await expect(p.page.locator('#main')).toBeHidden();
+    for (const gone of ['#nav', '#content']) await expect(p.page.locator(gone)).toBeHidden();   // only the top bar of the frame stays
+    await expect(p.page.locator('#top-title')).toHaveText('Getting ready');
   }
 }
 
@@ -126,7 +127,7 @@ test('presence is automatic: a profile is membership, there is no Join, a reopen
   await ana.context.close();
 });
 
-test('the host picks BLUFF: a full-screen setup scene on every phone, host-only Start, then everyone is in the round', async ({ browser, request }, info) => {
+test('the host picks BLUFF: a briefing on every phone, host-only Start, then everyone is in the round', async ({ browser, request }, info) => {
   const phones = await setUp(browser, request, ['Ana', 'Ben', 'Cy'], [false, true, true]);
   const [ana, ben, cy] = phones;
   await pickBluff(ana.page, phones);
@@ -138,8 +139,9 @@ test('the host picks BLUFF: a full-screen setup scene on every phone, host-only 
     await expect(p.page.locator('#scene-roster img[src*="gaze-"]')).toHaveCount(3);
     expect(await welcomeOf(p.page)).toBeUndefined();                 // no game socket, no table
   }
-  await expect(ana.page.locator('#scene-host-name')).toHaveText('You’re the host');
-  await expect(ben.page.locator('#scene-host-name')).toHaveText('Hosted by Ana');
+  await expect(ana.page.locator('#scene-roster li', { hasText: 'You' }).locator('.avrana-tag')).toHaveText('Host');   // the word, not a crown
+  await expect(ben.page.locator('#scene-roster li', { hasText: 'Ana' }).locator('.avrana-tag')).toHaveText('Host');
+  await expect(ben.page.locator('#scene-roster .ans', { hasText: 'Choosing' })).toHaveCount(3);
   // only the host has Start; it says why it waits; followers see who they wait for, once
   await expect(ben.page.locator('#scene-start')).toBeHidden();
   await expect(ben.page.locator('#scene-status')).toHaveText('Waiting for Ana to start');
@@ -149,6 +151,19 @@ test('the host picks BLUFF: a full-screen setup scene on every phone, host-only 
   await assertPhoneLayout(ana.page, ['#scene-title', '#scene-rules', '#choose-play', '#choose-watch', '#scene-start', '#scene-status']);
   let v = await partyState(ben.page);
   expect(await api(ben.page, 'session/start', { if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
+
+  // the people, over the real briefing: only them, and the briefing is given back as it was
+  await ben.page.locator('#hud').click();
+  await expect(ben.page.locator('#social')).toBeVisible();
+  await expect(ben.page.locator('#social-where')).toHaveText('Getting ready for BLUFF.');
+  await expect(ben.page.locator('#social-people li')).toHaveCount(3);
+  for (const gone of ['#social-tabs', '#chat', '#chat-form']) await expect(ben.page.locator(gone)).toBeHidden();
+  await ben.page.screenshot({ path: info.outputPath('setup-people-390x844.png') });
+  await ben.page.keyboard.press('Escape');
+  await expect(ben.page.locator('#social')).toBeHidden();
+  await expect(ben.page.locator('#hud')).toBeFocused();
+  await expect(ben.page.locator('#scene')).toBeVisible();
+  expect(await welcomeOf(ben.page)).toBeUndefined();                  // and still no table
 
   // How to play: one sheet, in and out, and the setup is untouched
   await ben.page.locator('#scene-rules').click();
@@ -168,7 +183,8 @@ test('the host picks BLUFF: a full-screen setup scene on every phone, host-only 
   await ben.page.locator('#choose-play').click();
   await cy.page.locator('#choose-watch').click();
   await expect(cy.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-  await expect(ana.page.getByRole('img', { name: 'Watching' })).toHaveCount(1);          // Cy's badge, in words for assistive tech
+  await expect(ana.page.locator('#scene-roster .ans', { hasText: 'Watching' })).toHaveCount(1);   // Cy's answer, an icon and the word
+  await expect(ana.page.locator('#scene-roster .ans', { hasText: 'Playing' })).toHaveCount(2);
   await expect(ana.page.locator('#scene-start')).toBeEnabled();
   await cy.page.screenshot({ path: info.outputPath('setup-follower-390x844.png'), fullPage: true });
   await assertPhoneLayout(cy.page, ['#scene-title', '#scene-rules', '#choose-play', '#choose-watch', '#scene-status']);
@@ -217,7 +233,7 @@ test('the host picks BLUFF: a full-screen setup scene on every phone, host-only 
   await ana.page.locator('#confirm-yes').click();                       // the table's own confirmation
   for (const p of phones) {
     await expect(p.page).toHaveURL(AT_HOME);
-    await expect(p.page.locator('#main')).toBeVisible();
+    await expect(p.page.locator('#nav')).toBeVisible();
   }
   for (const p of phones) await p.context.close();
 });
@@ -269,7 +285,7 @@ test('the host can take the party back home from the setup', async ({ browser, r
   await pickBluff(ana.page, [ana, ben]);
   await expect(ben.page.locator('#scene-cancel')).toBeHidden();
   await ana.page.locator('#scene-cancel').click();
-  for (const p of [ana, ben]) await expect(p.page.locator('#main')).toBeVisible();
+  for (const p of [ana, ben]) await expect(p.page.locator('#nav')).toBeVisible();
   expect((await partyState(ben.page)).location.at).toBe('home');
   await ana.context.close(); await ben.context.close();
 });
@@ -329,7 +345,7 @@ test('results are held for the host: Play again takes everyone to a new setup, P
   await ana.page.getByRole('button', { name: 'Party Home' }).click();
   for (const p of [ana, ben]) {
     await expect(p.page).toHaveURL(AT_HOME);
-    await expect(p.page.locator('#main')).toBeVisible();
+    await expect(p.page.locator('#nav')).toBeVisible();
   }
   v = await partyState(ana.page);
   expect(v.location.at).toBe('home');

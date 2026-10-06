@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { place, sideways, smallTargets } from '../lib/frame';
+import { place, sideways, smallTargets, startForEveryone } from '../lib/frame';
 
 /**
  * ADR 0012 / AVR-225 (Tier 2): Limited Mode with a simulated second scheme. Real Chromium, the
@@ -139,6 +139,85 @@ test('one party in two modes: each phone sees who is in Limited Mode, and only t
     // the two credentials never cross: the Full phone holds no Limited cookie and the reverse
     expect((await fay.context.cookies(`${FULL}/party/`)).map((c) => c.name)).toEqual(['avrana_device']);
     expect((await context.cookies(`${LIMITED}/party/`)).map((c) => c.name)).toEqual(['avrana_limited']);
+  } finally {
+    await fay.context.close();
+  }
+});
+
+test('on a briefing the mark opens the explanation over it, with no way off the page, and gives the briefing back', async ({ page, context, browser }) => {
+  await named(context, 'Lena');
+  await page.setViewportSize({ width: 360, height: 500 });                    // short: the dock un-pins and the whole briefing scrolls
+  await home(page, LIMITED);
+  await expect(page.locator('#party-members')).toContainText('Lena (you)');
+  const fay = await secondPhone(browser, 'Fay');
+  try {
+    await home(fay.page, FULL);
+    await expect(page.locator('#party-members li')).toHaveCount(2);
+    await startForEveryone(page, 'bluff');                                    // Lena hosts: a Limited phone can
+    for (const p of [page, fay.page]) await expect(p.locator('#scene')).toBeVisible();
+    const mark = page.locator('#limited-mark'), sheet = page.locator('#about-limited');
+    await expect(fay.page.locator('#limited-mark')).toBeHidden();             // a Full Mode phone is never marked
+    await expect(mark).toBeVisible();                                         // the briefing has no Home to say it on
+    await expect(mark).toHaveAccessibleName('Limited Mode on this phone. What this means');
+    expect(await smallTargets(page, '#top button')).toEqual([]);
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+    await page.locator('#choose-watch').click();
+    await expect(page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
+    const scroll = (to?: number) => page.evaluate((y) => {
+      const all = document.getElementById('scene')!, mid = document.getElementById('scene-scroll')!;
+      const el = all.scrollHeight > all.clientHeight + 1 ? all : mid;
+      if (typeof y === 'number') el.scrollTop = y;
+      return Math.round(el.scrollTop);
+    }, to);
+    await scroll(80);
+    const was = await scroll();
+    expect(was).toBeGreaterThan(0);
+    const closers: Array<[string, () => Promise<unknown>]> = [
+      ['Escape', () => page.keyboard.press('Escape')],
+      ['Close', () => page.locator('#about-close').click()],
+      ['Done', () => page.getByRole('button', { name: 'Done' }).click()],
+      ['a tap outside', () => page.mouse.click(180, 12)],
+    ];
+    for (const [how, close] of closers) {
+      await mark.click();
+      await expect(sheet, how).toBeVisible();
+      for (const fact of ['not private', 'screen may dim', 'renews its certificate']) await expect(sheet, how).toContainText(fact);
+      await expect(sheet.getByRole('link'), how).toHaveCount(0);              // nothing here leaves the briefing
+      await expect(page.locator('#about-leave'), how).toBeHidden();
+      expect(await page.evaluate(() => document.activeElement?.closest('dialog')?.id), how).toBe('about-limited');
+      expect(await page.evaluate(() => { const b = document.getElementById('choose-play')!; b.focus(); return document.activeElement === b; }), how).toBe(false);
+      expect(await smallTargets(page, '#about-limited button'), how).toEqual([]);
+      await close();
+      await expect(sheet, how).toBeHidden();
+      await expect(page.locator('#scene'), how).toBeVisible();
+      await expect(mark, how).toBeFocused();                                  // focus returns to what opened it
+      expect(await scroll(), how).toBe(was);                                  // the briefing never moved
+      await expect(page.locator('#choose-watch'), how).toHaveAttribute('aria-pressed', 'true');
+    }
+    // the people, over the same briefing, say who is in Limited Mode in words
+    await fay.page.locator('#hud').click();
+    await expect(fay.page.locator('#social-people li', { hasText: 'Lena' }).locator('.mode')).toHaveText('Limited');
+    await expect(fay.page.locator('#social-tabs')).toBeHidden();
+    // the sheet is open when the Party moves: it closes, and at home it has its way out again
+    await mark.click();
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await fay.page.keyboard.press('Escape');
+    await mark.click();
+    await fay.page.locator('#hud').click();
+    // (the Host's own call, from her page: Playwright's client cannot resolve the Limited name)
+    expect(await page.evaluate(async () => {
+      const version = (await (await fetch('/party/api/state')).json()).version;
+      return (await fetch('/party/api/session/end', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ if_version: version }) })).status;
+    })).toBe(200);
+    await expect(page.locator('#scene')).toBeHidden();
+    await expect(sheet).toBeHidden();
+    await expect(fay.page.locator('#social')).toBeHidden();
+    await expect(page.locator('html')).toHaveAttribute('data-place', 'game');  // where Lena started it from
+    await expect(mark).toBeVisible();
+    await mark.click();
+    await expect(sheet.getByRole('link', { name: 'Check for the full version' })).toHaveAttribute('href', 'doorway/');
   } finally {
     await fay.context.close();
   }

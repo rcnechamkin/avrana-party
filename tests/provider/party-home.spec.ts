@@ -67,7 +67,7 @@ async function joinParty(page: Page, name: string) {
 }
 
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
-const AT_HOME = /\/party\/(#(home|party|library|system))?$/;   // the shell, in whichever of its places
+const AT_HOME = /\/party\/(#(home|party|library|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places, or a game's page
 const partyState = (page: Page) => page.evaluate(async () => (await fetch('/party/api/state', { cache: 'no-store' })).json());
 const store = (page: Page, key: string) => page.evaluate((k) => sessionStorage.getItem(k), key);
 // For expect.poll: the page under watch may be mid-navigation (the move being waited for), which
@@ -120,8 +120,21 @@ test('the host starts BLUFF once and every phone is in the same game, with no Jo
   await expect(ben.page.locator('#party-host')).toContainText('Ana is the host');
   await place(ben.page, 'library');
   for (const id of ['bluff', 'expo']) {
-    await expect((await openGame(ben.page, id)).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
+    const card = await openGame(ben.page, id);
+    await expect(card.locator('[data-wait]')).toHaveText('The host starts it. Ana chooses what the Party plays.');
+    await expect(card.getByRole('button', { name: /start/i })).toHaveCount(0);   // a guest has nothing to press that moves the Party
   }
+  // BLUFF's own page, from the real game: its premise and its rules, read without moving anyone
+  const bluff = await openGame(ben.page, 'bluff');
+  await expect(bluff.locator('.avrana-about')).toContainText('secret roles');
+  await expect(bluff.locator('.avrana-game-facts')).toContainText('2–6 players');
+  await expect(bluff.locator('[data-suits="true"]')).toHaveText('Room for all three of you.');
+  await bluff.getByRole('button', { name: 'How to play' }).click();
+  await expect(ben.page.locator('#rules')).toBeVisible();
+  await expect(ben.page.locator('#rules-body section')).toHaveCount(5);
+  await ben.page.keyboard.press('Escape');
+  await expect(bluff.getByRole('button', { name: 'How to play' })).toBeFocused();
+  expect((await partyState(ben.page)).location.at).toBe('home');
   const v = await partyState(ben.page);
   expect(await api(ben.page, 'session/launch', { game: 'bluff', if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
   await startForEveryone(ana.page, 'bluff');
@@ -196,7 +209,7 @@ test('a failed start says why and stays home; a second party game cannot start o
   await joinParty(ben.page, 'Ben');
   await startForEveryone(ana.page, 'expo');
   await expect(ana.page.locator('#party-note')).toContainText('EXPO didn’t start');
-  await expect(ana.page.locator('#game-sheet')).toBeHidden();                  // the reason is not behind the open game
+  await expect(ana.page.locator('#party-note')).toBeInViewport();              // the reason is in sight, on the game's page
   await ben.page.waitForTimeout(1_500);
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(AT_HOME);
   await startForEveryone(ana.page, 'bluff');
@@ -217,7 +230,7 @@ test('the host ends BLUFF from the table and every phone goes home together', as
   await ana.page.locator('#confirm-yes').click();
   for (const p of [ana, ben]) {
     await expect(p.page).toHaveURL(AT_HOME);
-    await expect(p.page.locator('#main')).toBeVisible();
+    await expect(p.page.locator('#nav')).toBeVisible();
   }
   expect(await partyState(ben.page)).toMatchObject({ state: 'lobby', location: { at: 'home' } });
   await ana.context.close(); await ben.context.close();

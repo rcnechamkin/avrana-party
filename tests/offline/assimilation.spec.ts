@@ -36,7 +36,7 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
   await expect(page.locator('#games [data-game="ps1-worms"]')).toContainText('Not installed');
   await expect(await openGame(page, 'ps1-worms')).toContainText('Experimental');
   await expect((await openGame(page, 'ps1-bomberman')).locator('button', { hasText: 'Not installed' })).toBeDisabled();
-  await page.keyboard.press('Escape');
+  await place(page, 'library');
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(shelf).toHaveCount(1);
   await expect(page.locator('#games')).toContainText('EXPO');
@@ -76,7 +76,7 @@ test('search, group size and cross-provider favorites work together', async ({ p
   await heart.click();
   await expect(heart).toHaveAttribute('aria-pressed', 'true');
   await expect(heart).toBeFocused();                                       // the toggle keeps focus through the redraw
-  await page.keyboard.press('Escape');
+  await place(page, 'library');
   await page.locator('#game-search').fill('');
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(page.locator('#games')).toContainText('Worms Armageddon');

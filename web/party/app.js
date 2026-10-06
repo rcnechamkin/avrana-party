@@ -28,8 +28,8 @@ import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-vie
 import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
-import { VIEW_NAMES, arrange, consequence, filterLabel, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
-import { chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
+import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
+import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -40,7 +40,11 @@ const HEALTH_EVERY_MS = 15000;
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
   mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0,
-  polled: false, libView: 'medium', openFrom: 'games', filters: { players: 0, screen: 'any' }, openGame: null };
+  polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
+  // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
+  // game: the title whose page is open; back: where that page was opened from, to return there exactly
+  // round: the briefing on screen (its id)
+  screen: 'main', round: null, game: null, back: null, rulesGame: null };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -100,25 +104,13 @@ const ACCENT = /^#[0-9a-f]{6}$/i;
 
 const ARTWORK = /^art\/(lan|kenney)-[A-Za-z0-9_]+\.svg$/;
 
-// Artwork, most specific first: the title's own art (or, for a few games, a curated Kenney
-// icon), else a generic kind icon. Decorative: the title sits right beside it.
-function cover(game) {
-  const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
-  const el = h('div', { class: 'avrana-game-cover' + (art ? ' has-art' : ''), 'aria-hidden': 'true' },
-    art ? h('img', { src: art, alt: '', width: 72, height: 72, loading: 'lazy', decoding: 'async' })
-      : icon(kindIcon(game)));
-  // The catalog's own colour for the game; CSSOM, so the CSP's style-src still holds.
-  if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
-  return el;
-}
-
 /** Keep or drop a favourite: a toggle with a name per game. Focus stays on it after the redraw. */
 function favButton(game, cls = '') {
   const on = profile.isFavorite(game);
   return h('button', { type: 'button', class: 'btn btn-ghost btn-square avrana-fav ' + cls, 'data-fav': game.id,
     'aria-label': (on ? 'Remove ' : 'Add ') + game.name + (on ? ' from favorites' : ' to favorites'),
     'aria-pressed': String(on), onclick: (event) => {
-      const within = event.currentTarget.closest('dialog, #games');
+      const within = event.currentTarget.closest('#game-detail, #games');
       try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
       catch (err) { $('profile-note').textContent = err.message; }
       // The redraw replaced this button. When its row has left the shelf (un-kept in Favorites),
@@ -128,11 +120,12 @@ function favButton(game, cls = '') {
     } }, icon('heart'));
 }
 
-/** A square cover: the title's own art, else its kind icon on its own colour. `mark` is the
- * player range for the corner (lib/library.js seatsMark), or null. */
-function tileCover(game, mark) {
+/** A cover: the title's own art, else its kind icon on its own colour. `mark` is the player
+ * range for the corner (lib/library.js seatsMark), or null. `shape`: 'wide' for the lead cover on
+ * Home, a game's page and the briefing; square otherwise. */
+function tileCover(game, mark, shape = '') {
   const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
-  const el = h('span', { class: 'avrana-cover' + (art ? ' has-art' : '') + (art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
+  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (art ? ' has-art' : '') + (art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
     art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async' }) : icon(kindIcon(game)),
     mark ? h('span', { class: 'seats' + (mark.ok ? '' : ' no') }, icon(mark.ok ? 'users' : 'triangle-alert'), mark.text) : null);
   if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
@@ -146,11 +139,16 @@ const spoken = ({ game, note }, people) => [game.name,
   seatsMark(game, people).ok ? playersText(game.players) : seatsPhrase(game, people),
   screenText(game).text, note && note.text].filter(Boolean).join('. ');
 
-/** A cover on a shelf. It opens the game; it never starts one. */
+/** Where a cover leads: the game's own page. The link is a real one (a new tab, a long press, the
+ * phone's Back all work); a plain tap opens the page with where it was opened from, so Back lands
+ * on the same cover. */
+const gameLink = (game) => ({ href: '#game/' + game.id, onclick: (event) => openFrom(event, game.id) });
+
+/** A cover on a shelf. It opens the game's page; it never starts one. */
 function tile(entry, people, { seats = true, meta = true } = {}) {
   const { game, note } = entry;
-  return h('li', {}, h('button', { type: 'button', class: 'avrana-tile', 'data-game': game.id, 'data-note': note ? note.kind : null,
-    'aria-haspopup': 'dialog', 'aria-label': spoken(entry, people), onclick: () => openGame(game.id) },
+  return h('li', {}, h('a', { class: 'avrana-tile', 'data-game': game.id, 'data-note': note ? note.kind : null,
+    'aria-label': spoken(entry, people), ...gameLink(game) },
   tileCover(game, seats ? seatsMark(game, people) : null),
   h('span', { class: 't', text: game.name }),
   meta ? h('span', { class: 'm', text: screenText(game).text }) : null,
@@ -162,8 +160,8 @@ function row(entry, people) {
   const { game, note } = entry;
   const mark = seatsMark(game, people), screen = screenText(game);
   return h('li', { class: 'avrana-row' },
-    h('button', { type: 'button', class: 'open', 'data-game': game.id, 'data-note': note ? note.kind : null,
-      'aria-haspopup': 'dialog', 'aria-label': spoken(entry, people), onclick: () => openGame(game.id) },
+    h('a', { class: 'open', 'data-game': game.id, 'data-note': note ? note.kind : null,
+      'aria-label': spoken(entry, people), ...gameLink(game) },
     tileCover(game, null),
     h('span', {}, h('span', { class: 't', text: game.name }),
       game.summary ? h('span', { class: 'd', text: game.summary }) : null,
@@ -180,7 +178,16 @@ function row(entry, people) {
 function sync(parent, next) {
   const old = [...parent.children];
   if (old.length !== next.length || old.some((el, i) => el.tagName !== next[i].tagName || el.className !== next[i].className)) {
-    parent.replaceChildren(...next);
+    // A node came or went (a game's rules arrived, a line no longer applies). What did not change
+    // stays where it is, in order, so focus on it is not lost; the rest is put in around it.
+    let at = 0;
+    for (const node of next) {
+      const found = old.findIndex((el, i) => i >= at && el.isEqualNode(node));
+      if (found < 0) { parent.insertBefore(node, old[at] || null); continue; }
+      for (let i = at; i < found; i++) old[i].remove();
+      at = found + 1;
+    }
+    for (let i = at; i < old.length; i++) old[i].remove();
     return;
   }
   next.forEach((node, i) => {
@@ -201,10 +208,15 @@ function liveText(hp) {
   return 'Running';
 }
 
-function gameCard(game, result, hp) {
+/** A game's own page: what it is, whether it suits the people here and this phone, and its one
+ * button. The facts, the fit, the live state and the button are the ones the Library's tile has
+ * always had; only the Host's button moves the Party, and it does what it did. */
+function detailNodes(entry, people) {
+  const { game, result, live: hp, note } = entry;
+  const ob = ONBOARDING.get(game.id) || null;
   const target = launchTarget(game);
   const installed = Boolean(game.installed && game.entry);
-  const note = installed ? explain(result, state.catalog.labels || {}) : '';
+  const why = installed ? explain(result, state.catalog.labels || {}) : '';
   const running = installed && Boolean(target) && !(hp && !hp.running);
   const fits = result.outcome !== 'unavailable';
   const remember = (event) => {
@@ -219,54 +231,73 @@ function gameCard(game, result, hp) {
     catch (err) { event.preventDefault(); $('profile-note').textContent = err.message; }
   };
   const label = result.outcome === 'watch' ? 'Watch' : 'Play';
-  const mode = state.partyMode ? tileMode(game, party.view()) : null;
-  const action = mode ? partyAction(game, mode)
+  const view = state.partyMode ? party.view() : null;
+  const mode = view ? tileMode(game, view) : null;
+  const action = mode ? partyAction(game, mode, view.members.find((m) => m.host))
     : running && fits
     ? h('a', { class: 'btn btn-primary', href: target, onclick: remember }, icon(label === 'Watch' ? 'eye' : 'play'), label)
     : running
       ? h('a', { class: 'btn btn-outline', href: target, onclick: remember, text: 'Try anyway' })
       : h('button', { type: 'button', class: 'btn', disabled: true, text: installed ? 'Play' : 'Not installed' });
-  const star = favButton(game, '-mr-1 -mt-1');
-  const live = mode ? 'Everyone plays together: the host starts it'
+  // What the Host's button does to everyone, said beside it (it moves the whole Party at once).
+  const helper = !mode ? null : mode.kind === 'start' ? 'Moves everyone to this game.'
+    : mode.kind === 'wait' ? null : 'Everyone plays together: the host starts it.';
+  const live = mode ? null
     : installed && hp?.integration === false ? 'Games update needed before opening here' : installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
   const screen = screenText(game);
   const how = howText(game);
-  return h('li', { class: 'avrana-game-card', 'data-id': game.id, 'data-outcome': installed ? result.outcome : 'unavailable',
-    'data-party': mode ? mode.kind : null },
-    cover(game),
-    h('div', { class: 'min-w-0' }, h('h3', { class: 'avrana-game-title', text: game.name }),
-      h('p', { class: 'avrana-game-facts m-0' },
-        h('span', {}, icon('users'), playersText(game.players)),
-        h('span', {}, icon(screen.icon), screen.text))),
-    star,
-    game.summary ? h('p', { class: 'summary wide m-0', text: game.summary }) : null,
-    how ? h('p', { class: 'wide m-0 text-[0.9375rem] text-muted', text: capitalize(how) }) : null,
-    game.hardwareValidationRequired ? h('p', { class: 'wide m-0 text-[0.9375rem] text-muted', text: 'Needs a device check before use.' }) : null,
-    note ? h('p', { class: 'why wide m-0', text: note }) : null,
-    h('div', { class: 'foot' },
-      h('div', { class: 'grid gap-0.5' }, installed ? chipFor(result) : null,
-        live ? h('span', { class: 'text-[0.9375rem] text-muted', text: live }) : null),
-      action));
+  const fit = view && view.me ? fitLine(game, people) : null;
+  const about = ob && ob.premise && ob.premise !== game.summary ? ob.premise : '';
+  return [
+    tileCover(game, null, 'wide'),
+    h('h1', { id: 'game-title', tabindex: '-1', text: game.name }),
+    game.summary ? h('p', { class: 'avrana-premise', text: game.summary }) : null,
+    about ? h('p', { class: 'avrana-about', text: about }) : null,
+    h('p', { class: 'avrana-game-facts m-0' },
+      h('span', {}, icon('users'), playersText(game.players)),
+      h('span', {}, icon(screen.icon), screen.text)),
+    how ? h('p', { class: 'avrana-line quiet', text: capitalize(how) }) : null,
+    game.hardwareValidationRequired ? h('p', { class: 'avrana-line quiet', text: 'Needs a device check before use.' }) : null,
+    fit ? h('p', { class: 'avrana-line' + (fit.ok ? '' : ' warn'), 'data-suits': String(fit.ok) }, icon(fit.icon), h('span', { text: fit.text })) : null,
+    // where the page does not already say it in the game's own words (a Party game, whose live
+    // line is the Host's): the same words as its cover
+    mode && note && note.kind === 'off' ? h('p', { class: 'avrana-line warn', 'data-note': note.kind }, icon(note.icon), h('span', { text: note.text })) : null,
+    installed ? h('div', { class: 'grid gap-1' }, chipFor(result), why ? h('p', { class: 'why m-0', text: why }) : null) : null,
+    live ? h('p', { class: 'avrana-line quiet', text: live }) : null,
+    h('div', { class: 'avrana-act', 'data-sync': 'list' }, action, favButton(game)),
+    helper ? h('p', { class: 'avrana-helper', text: helper }) : null,
+    ob ? h('ul', { class: 'avrana-list' }, h('li', {}, h('button', { type: 'button', 'data-rules': game.id, 'aria-haspopup': 'dialog',
+      onclick: () => openRules(game, ob) }, icon('book-open'), h('span', { text: 'How to play' }), h('span', { class: 'val' }, icon('chevron-right'))))) : null,
+  ].filter(Boolean);
 }
 
 // ---- Party mode (ADR 0011: one party, one place, the host moves it) ---------------------------
 
-/** A party game's tile, while the party is home. The host's start is the only way it begins. */
-function partyAction(game, mode) {
+/** A party game's button, while the party is home. The host's start is the only way it begins;
+ * everyone else reads who starts it, as a sentence and not a button that cannot be pressed. */
+function partyAction(game, mode, host) {
   if (mode.kind === 'profile') {
     return h('button', { type: 'button', class: 'btn btn-outline', text: 'Choose your name to play',
       onclick: () => openProfile() });
   }
   if (mode.kind === 'start') {
-    return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
-      onclick: () => hostStart(game, mode.game) }, icon('play'), 'Start for everyone');
+    // Busy is said, not enforced by removing the button from reach: it keeps its place and the
+    // focus while the start is on its way (hostStart ignores a second press).
+    // The game is read from the button when it is pressed, never remembered by it.
+    return h('button', { type: 'button', class: 'btn btn-primary', 'data-sync': 'list', 'data-start': mode.game,
+      'aria-disabled': String(Boolean(state.partyBusy)),
+      onclick: (event) => hostStart(event.currentTarget.dataset.start) }, icon('play'), 'Start for everyone');
   }
-  const text = mode.kind === 'wait' ? 'The host starts it' : 'Starting…';
-  return h('button', { type: 'button', class: 'btn', disabled: true, text });
+  if (mode.kind === 'wait') {
+    return h('p', { class: 'wait', 'data-wait': '' }, icon('users'),
+      h('span', { text: `The host starts it. ${host ? `${host.name} chooses what the Party plays.` : 'Nobody is hosting right now.'}` }));
+  }
+  return h('button', { type: 'button', class: 'btn', disabled: true, text: 'Starting…' });
 }
 
-async function hostStart(game, id) {
-  if (state.partyBusy) return;
+async function hostStart(id) {
+  if (state.partyBusy || !id) return;
+  const game = partyGame(state.catalog, id) || { name: 'The game' };
   state.partyBusy = true;
   $('party-note').textContent = '';
   renderGames(false);
@@ -274,9 +305,17 @@ async function hostStart(game, id) {
   state.partyBusy = false;
   if (!res.ok) {
     $('party-note').textContent = res.message || `${game.name} didn’t start. Please try again.`;
-    closeSheets();                               // the reason is on the page, not behind the sheet
+    $('content').scrollTop = 0;                  // the reason is at the top of the page, in sight
   }
-  renderGames(false);
+  await renderGames(false);
+  if (!res.ok) refocusStart();
+}
+
+/** The Host's button was redrawn while a start was on its way. When the start came to nothing and
+ * the Party did not move, focus goes back to the button and is not left nowhere. */
+function refocusStart() {
+  if (state.screen !== 'main' || state.page !== 'game' || document.activeElement !== document.body) return;
+  $('game-detail').querySelector('.avrana-act .btn:not(:disabled)')?.focus({ preventScroll: true });
 }
 
 /** This phone's profile, as Party Core takes it (16 characters, a bundled avatar). */
@@ -319,7 +358,11 @@ function renderLimited() {
   $('limited').hidden = !on;
   // The mode is always marked on the phone it applies to: in full on Home, and by the mark in the
   // top bar on every other page, which opens the same words over that page.
-  $('limited-mark').hidden = !on || state.page === 'home';
+  // The briefing has no Home to say it on, so it carries the mark; its sheet has no link that
+  // leaves the page (GAME-UX-CONTRACT rule 3.2).
+  const brief = state.screen === 'scene';
+  $('limited-mark').hidden = !on || (!brief && state.page === 'home');
+  $('about-leave').hidden = brief;
   if (!on) { if ($('about-limited').open) $('about-limited').close(); return; }
   const caps = statuses(state.report);
   const notice = limitedNotice({ caps, blocked: state.catalog ? blockedGames(visibleGames(state.catalog), caps) : [] });
@@ -334,19 +377,80 @@ function renderLimited() {
 
 /** Show one of the shell's places. The party's own location is not this function's business:
  * show() hides the whole frame while the party is anywhere but home. */
-function showPage(page, focus = false) {
+function showPage(page, focus = false, game = null, back = null) {
   state.page = page;
-  for (const el of $('content').querySelectorAll('[data-page]')) el.hidden = el.dataset.page !== page;
-  for (const link of $('nav').querySelectorAll('a')) {
-    if (link.dataset.go === page) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  state.game = page === 'game' ? game : null;
+  state.back = page === 'game' ? back : null;
+  if (page !== 'game' || $('game-detail').dataset.id !== game) {   // nothing of another game's page is kept
+    $('game-detail').replaceChildren();
+    for (const key of ['id', 'outcome', 'party']) delete $('game-detail').dataset[key];
   }
-  const title = pageTitle(page);
-  $('top-title').textContent = title;
-  $('top-title').classList.toggle('brand', page === 'home');
-  document.title = page === 'home' ? title : `${title} · Avrana Party`;
+  for (const el of $('content').querySelectorAll('[data-page]')) el.hidden = el.dataset.page !== page;
+  // A game's page is not a place of its own: the bar keeps the place it was opened from.
+  const under = page === 'game' ? (state.back ? state.back.page : 'library') : page;
+  for (const link of $('nav').querySelectorAll('a')) {
+    if (link.dataset.go === under) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  }
   document.documentElement.dataset.place = page;
+  renderTop();
   renderLimited();
-  if (focus) { $('content').scrollTop = 0; $('top-title').focus({ preventScroll: true }); }
+  if (page === 'game') renderGames(false);
+  if (focus) { $('content').scrollTop = 0; titleEl().focus({ preventScroll: true }); }
+}
+
+/** The heading that names what is on screen, for focus after a move: the top bar's title, or on a
+ * game's page the game's own name (the bar there holds the way back). */
+const titleEl = () => (state.screen === 'main' && state.page === 'game' ? $('game-title') || $('top-back') : $('top-title'));
+
+/** The top bar: the place's title; on a game's page, the way back; on a briefing, "Getting ready". */
+function renderTop() {
+  const brief = state.screen === 'scene', game = !brief && state.page === 'game';
+  const from = state.back ? state.back.page : 'library';
+  $('top-back').hidden = !game;
+  $('top-back').setAttribute('href', '#' + from);
+  $('top-back-word').textContent = backWord(from);
+  $('top-title').hidden = game;
+  const title = brief ? 'Getting ready' : pageTitle(state.page);
+  $('top-title').textContent = title;
+  $('top-title').classList.toggle('brand', !brief && state.page === 'home');
+  $('top-title').classList.toggle('quiet', brief);
+  if (!game) document.title = !brief && state.page === 'home' ? title : `${title} · Avrana Party`;
+}
+
+/** A cover was tapped: its page opens as a new history entry that carries where it was opened
+ * from (the place, its scroll, the cover). Both are made in the same step, so nothing a person
+ * does next, however fast, can separate the page from its way back. Any other kind of click (a
+ * new tab, a modifier key) is left to the link. */
+function openFrom(event, id) {
+  if (event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const from = { page: state.page === 'game' ? 'library' : state.page, scroll: $('content').scrollTop, id,
+    within: event.currentTarget.closest('#games, #home-games')?.id || null };
+  try { history.pushState({ avranaFrom: from }, '', '#game/' + id); } catch { return; }   // the plain link still works
+  event.preventDefault();
+  closeSheets();
+  go();
+}
+
+/** Where the game's page on screen was opened from: what its history entry carries (a tap on a
+ * cover, and the phone's Forward or a reload afterwards), else nothing (a typed address). */
+function origin(id) {
+  const kept = history.state && history.state.avranaFrom;
+  return kept && kept.id === id && PAGES.includes(kept.page) ? { page: kept.page, scroll: Number(kept.scroll) || 0, id,
+    within: ['games', 'home-games'].includes(kept.within) ? kept.within : null } : null;
+}
+
+/** Show what the address names: a game's page, or one of the four places. Coming back from a
+ * game's page to the place it was opened from restores that place as it was. */
+function go(focus = true) {
+  const id = gameOf(location.hash);
+  if (id) { showPage('game', focus, id, origin(id)); return; }
+  const page = pageOf(location.hash), back = state.back;
+  const returning = Boolean(back && back.page === page);
+  showPage(page, focus && !returning);
+  if (!returning || !focus) return;
+  $('content').scrollTop = back.scroll;
+  const cover = (back.within ? $(back.within) : $('content')).querySelector(`[data-game="${CSS.escape(back.id)}"]`);
+  (cover || $('top-title')).focus({ preventScroll: true });
 }
 
 /** Your name and avatar live on the Party page. */
@@ -365,10 +469,12 @@ function renderHome() {
   if (state.reachable === false) $('home-games').hidden = true;   // nothing to browse while the Pi is out of reach
 }
 
-/** Everything open over the frame. None of it may stay over a place that changed underneath. */
-const SHEETS = ['social', 'about-limited', 'game-sheet', 'lib-filters', 'lib-views'];
+/** Everything open over the frame. None of it may stay over a place that changed underneath, or
+ * over the Party moving (to a briefing, to a game, home again). */
+const SHEETS = ['social', 'about-limited', 'lib-filters', 'lib-views'];
 function closeSheets() {
   for (const id of SHEETS) if ($(id).open) $(id).close();
+  if ($('rules').open) $('rules').close();
 }
 
 /** The Party control: faces and a count while there is a party; a chat mark when there is only
@@ -376,9 +482,9 @@ function closeSheets() {
 function renderHud() {
   const view = state.partyMode ? party.view() : null;
   const people = view ? roster(view) : [];
-  const chatting = chatOn();
+  $('party-chat-row').hidden = !chatOn();
+  const chatting = chatOn() && state.screen !== 'scene';      // people only over a briefing
   $('hud').hidden = !(people.length || chatting);
-  $('party-chat-row').hidden = !chatting;
   $('hud').setAttribute('aria-label', hudLabel({ party: people.length > 0, count: people.length, chat: chatting }));
   $('hud-faces').replaceChildren(...(people.length
     ? people.slice(0, 3).map((m) => avatarNode({ avatar: m.avatar || '' }, 'xs'))
@@ -389,10 +495,17 @@ function renderHud() {
 
 function renderSocial() {
   const view = state.partyMode ? party.view() : null;
-  const tab = startTab({ party: Boolean(view), chat: chatOn(), want: state.tab });
+  // Over a briefing the drawer is the people here and nothing else (GAME-UX-CONTRACT rule 3.2):
+  // no chat, no way out. It says where the Party is.
+  const brief = state.screen === 'scene';
+  const chatting = chatOn() && !brief;
+  const tab = startTab({ party: Boolean(view), chat: chatting, want: brief ? 'people' : state.tab });
   if (!tab) { $('social').close(); return; }
   state.tab = tab;
-  $('social-tabs').hidden = !(view && chatOn());
+  const playing = brief && view ? partyGame(state.catalog, view.session && view.session.game) : null;
+  $('social-where').hidden = !brief;
+  $('social-where').textContent = brief ? `Getting ready${playing ? ` for ${playing.name}` : ''}.` : '';
+  $('social-tabs').hidden = !(view && chatting);
   for (const button of $('social-tabs').querySelectorAll('button'))
     button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
   $('pane-people').hidden = tab !== 'people';
@@ -409,7 +522,8 @@ function renderSocial() {
 function openSocial(want) {
   state.tab = want;
   state.chatFails = 0;
-  if (startTab({ party: state.partyMode && Boolean(party.view()), chat: chatOn(), want }) && !$('social').open) $('social').showModal();
+  const chatting = chatOn() && state.screen !== 'scene';
+  if (startTab({ party: state.partyMode && Boolean(party.view()), chat: chatting, want }) && !$('social').open) $('social').showModal();
   renderSocial();
 }
 
@@ -435,7 +549,9 @@ function renderParty(view) {
     state.failShown = s.id;
     const g = partyGame(state.catalog, s.game);
     $('party-note').textContent = `${g ? g.name : s.game} didn’t start.` + (s.detail ? ` ${s.detail}` : '');
-    closeSheets();                               // the reason is on the page, not behind the sheet
+    closeSheets();
+    $('content').scrollTop = 0;                  // the reason is at the top of the page, in sight
+    state.refocus = true;                        // once the page is redrawn (onPartyView)
   }
 }
 
@@ -474,6 +590,7 @@ function openRules(game, ob, then = null) {
       h('ul', {}, ...sec.points.map((p) => h('li', { text: fill(p) }))))));
   $('rules-ok').textContent = then ? 'Got it, I’ll play' : 'Got it';
   state.rulesThen = then;
+  state.rulesGame = game;
   $('rules').showModal();
 }
 
@@ -493,22 +610,21 @@ async function renderScene(view) {
   if (!panel || !game) return;
   $('scene').dataset.game = game.id;
   $('scene-title').textContent = game.name;
-  const art = ARTWORK.test(game.artwork || '') ? game.artwork : 'icon.svg';
-  if ($('scene-art').getAttribute('src') !== art) $('scene-art').src = art;
-  if (ACCENT.test(game.accent || '')) $('scene-cover').style.setProperty('--game-accent', game.accent);
-  $('scene-host-name').textContent = panel.host ? 'You’re the host' : panel.hostName ? `Hosted by ${panel.hostName}` : 'Nobody is hosting';
+  sync($('scene-cover'), [tileCover(game, null, 'wide')]);
   const ob = await onboardingFor(game);
   $('scene-premise').textContent = (ob && ob.premise) || game.summary || '';
-  const words = { player: ['play', 'Playing'], spectator: ['eye', 'Watching'] };
+  // Each person's answer is an icon and a word; the Host is marked by the word.
+  const words = { player: ['check', 'Playing'], spectator: ['eye', 'Watching'] };
   const people = roster(view);
   $('scene-count').textContent = `${panel.players} playing · ${panel.spectators} watching`;
   $('scene-roster').replaceChildren(...people.map((m) => {
     const [ic, text] = words[m.choice] || ['hourglass', 'Choosing'];
-    return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null },
-      h('span', { class: 'face' }, avatarNode({ avatar: m.avatar || '' }),
-        m.host ? h('span', { class: 'crown' }, icon('crown', { label: 'host' })) : null,
-        h('span', { class: 'badge' }, icon(ic, { label: text }))),
-      h('span', { class: 'who', text: m.me ? 'You' : m.name }));
+    return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null, 'data-host': m.host ? '' : null },
+      avatarNode({ avatar: m.avatar || '' }),
+      h('span', { class: 'who' }, h('span', { text: m.me ? 'You' : m.name }),
+        m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null),
+      h('span', { class: 'ans' }, icon(ic), h('span', { text: text })),
+      m.away ? h('span', { class: 'avrana-tag quiet', text: 'Away' }) : null);
   }));
   $('choose-play').setAttribute('aria-pressed', String(panel.mine === 'player'));
   $('choose-watch').setAttribute('aria-pressed', String(panel.mine === 'spectator'));
@@ -523,17 +639,32 @@ async function renderScene(view) {
   $('scene-start').disabled = !panel.canStart || state.partyBusy;
   $('scene-status').textContent = panel.starting ? 'Starting…'
     : panel.host ? panel.blocker || ''
-      : `Waiting for ${panel.hostName || 'the host'} to start`;
+      : panel.hostName ? `Waiting for ${panel.hostName} to start` : 'Nobody is hosting right now.';
 }
 
-function show(which) {
-  // The drawer and the sheet belong to the frame: they never stay open over a round's setup or
-  // the way to a game, where they would stand between a person and their answer.
-  if (which !== 'main') closeSheets();
-  $('main').hidden = which !== 'main';
+/** Which screen has the phone: a place of the frame (main), the briefing (scene) or the way to a
+ * game (going). Where the Party is decides, never the address. The briefing keeps the frame's top
+ * bar (who is here, the Limited mark) and nothing else of it. */
+function show(which, round = null) {
+  const moved = which !== state.screen || round !== state.round;
+  state.round = round;
+  // Whatever was open belonged to the screen that was there: an authoritative move closes it, so
+  // nothing stands between a person and where the Party now is. (While the screen stays, the
+  // drawer and the sheet stay open over it: a briefing keeps its place under them.)
+  if (moved) closeSheets();
+  state.screen = which;
+  $('main').hidden = which === 'going';
+  $('content').hidden = which !== 'main';
+  $('nav').hidden = which !== 'main';
   $('scene').hidden = which !== 'scene';
   $('going').hidden = which !== 'going';
+  $('skip').hidden = which !== 'main';
   document.documentElement.dataset.screen = which;
+  if (!moved) return;
+  renderTop();
+  renderLimited();
+  if (which === 'scene') $('scene-scroll').scrollTop = 0;
+  if (which !== 'going') titleEl().focus({ preventScroll: true });
 }
 
 function onPartyView(view) {
@@ -550,13 +681,18 @@ function onPartyView(view) {
     return;
   }
   if (view.me && locationOf(view).at === 'setup') {
-    show('scene');
+    show('scene', locationOf(view).session || locationOf(view).game || null);
+    renderHud();                              // who is here, over the briefing too
     renderScene(view);
     return;
   }
   show('main');
   renderParty(view);
-  renderGames(false);
+  renderGames(false).then(() => {
+    if (!state.refocus) return;
+    state.refocus = false;
+    refocusStart();
+  });
 }
 
 async function renderGames(refresh = true) {
@@ -593,7 +729,7 @@ async function renderGames(refresh = true) {
   renderShelf(entries, arrange({ all, people, tab: state.view, query: $('game-search').value, filters: state.filters,
     keyOf: profile.keyFor, favorites: me.favorites, recent: me.recent }), people);
   renderHomeShelves(entries, homeShelves({ all, people, keyOf: profile.keyFor, recent: me.recent }), people);
-  renderGameSheet(entries);
+  renderDetail(entries, people);
 }
 
 const SILENT = Symbol('no answer');
@@ -677,10 +813,9 @@ function renderHomeShelves(entries, shelves, people) {
   if (!shelves.lead) return;
   const lead = of(shelves.lead);
   const line = leadLine(lead.game, { people, played: shelves.leadPlayed }) || playersText(lead.game.players);
-  sync($('home-lead'), [h('button', { type: 'button', class: 'avrana-hero', 'data-game': lead.game.id, 'data-note': lead.note ? lead.note.kind : null,
-    'aria-haspopup': 'dialog', 'aria-label': [lead.game.name, line, lead.note && lead.note.text].filter(Boolean).join(' '),
-    onclick: () => openGame(lead.game.id) },
-  tileCover(lead.game, seatsMark(lead.game, people)),
+  sync($('home-lead'), [h('a', { class: 'avrana-hero', 'data-game': lead.game.id, 'data-note': lead.note ? lead.note.kind : null,
+    'aria-label': [lead.game.name, line, lead.note && lead.note.text].filter(Boolean).join(' '), ...gameLink(lead.game) },
+  tileCover(lead.game, seatsMark(lead.game, people), 'wide'),
   h('span', { class: 'row' }, h('span', {}, h('span', { class: 't', text: lead.game.name }), h('span', { class: 'm', text: line }),
     warnLine(lead.note, 'm warn')), icon('chevron-right')))]);
   $('home-great-h').textContent = shelves.title;
@@ -690,20 +825,29 @@ function renderHomeShelves(entries, shelves, people) {
   sync($('home-recent'), shelves.played.map((g) => tile(of(g), people, { seats: false, meta: false })));
 }
 
-/** A game, opened from a cover: today's tile, with its facts and its own button. */
-function openGame(id) {
-  state.openGame = id;
-  state.openFrom = document.activeElement?.closest('#games, #home-games')?.id || 'games';
-  renderGames(false);
-  if (state.openGame && !$('game-sheet').open) $('game-sheet').showModal();
-}
-
-function renderGameSheet(entries) {
-  if (!state.openGame) return;
-  const entry = entries.get(state.openGame);
-  if (!entry) { state.openGame = null; if ($('game-sheet').open) $('game-sheet').close(); return; }
-  $('game-sheet-h').textContent = entry.game.name;
-  sync($('game-card'), [gameCard(entry.game, entry.result, entry.live)]);
+/** The game's page, when it is the one on screen. A title that is not on the shelf (an old link, a
+ * typo) is the Library. Its premise comes with the game's onboarding, which arrives a moment
+ * after the page: the catalog's own sentence stands in until then. */
+function renderDetail(entries, people) {
+  if (state.page !== 'game') return;
+  const entry = entries.get(state.game);
+  if (!entry) {
+    history.replaceState(null, '', '#library');
+    showPage('library', document.activeElement === document.body);
+    return;
+  }
+  const { game, result } = entry, root = $('game-detail');
+  const mode = state.partyMode && party.view() ? tileMode(game, party.view()) : null;
+  root.dataset.id = game.id;
+  root.dataset.outcome = game.installed && game.entry ? result.outcome : 'unavailable';
+  if (mode) root.dataset.party = mode.kind; else delete root.dataset.party;
+  sync(root, detailNodes(entry, people));
+  document.title = `${game.name} · Avrana Party`;
+  // (asked only of a game served from /games/<slug>/, where onboarding lives; never of another service)
+  const own = game.installed && game.entry && new URL(launchTarget(game), location.href).pathname.startsWith('/games/');
+  if (own && !ONBOARDING.has(game.id)) {
+    onboardingFor(game).then((ob) => { if (ob && state.game === game.id) renderGames(false); });
+  }
 }
 
 /** A round that takes this phone to a game is remembered on this phone (the same list, and the
@@ -850,10 +994,12 @@ $('scene-rules').onclick = async () => {
   const game = view && partyGame(state.catalog, view.session && view.session.game);
   if (game) openRules(game, await onboardingFor(game));
 };
-$('rules-close').onclick = () => { state.rulesThen = null; $('rules').close(); };
+$('rules-close').onclick = () => $('rules').close();
+// Close, Escape or a tap outside: the rules go away and nothing is chosen for the reader.
+$('rules').addEventListener('click', (event) => { if (event.target === $('rules')) $('rules').close(); });
+$('rules').addEventListener('close', () => { state.rulesThen = null; });
 $('rules-ok').onclick = async () => {
-  const view = party.view();
-  const game = view && partyGame(state.catalog, view.session && view.session.game);
+  const game = state.rulesGame;
   if (game) acknowledge(await onboardingFor(game));
   const then = state.rulesThen;
   state.rulesThen = null;
@@ -889,7 +1035,7 @@ $('chat-name').onclick = () => { $('social').close(); openProfile(); };
 // "Skip to the games": the Library, with focus on its heading (the title, when there are none to show).
 $('skip').onclick = (event) => {
   event.preventDefault();
-  if ($('main').hidden) return;
+  if (state.screen !== 'main') return;
   if (state.page !== 'library') { history.pushState(null, '', '#library'); showPage('library'); }
   ($('games-section').hidden ? $('top-title') : $('games-h')).focus();
 };
@@ -904,8 +1050,15 @@ window.addEventListener('hashchange', () => {
   if (location.hash === '#diag') { location.replace('diag/'); return; }
   // The phone's Back, or a link: nothing stays open over a place that changed underneath it.
   closeSheets();
-  showPage(pageOf(location.hash), true);
+  go();
 });
+// Back, on a game's page: the way it was reached, so the place is as it was left. Reached by a
+// link from elsewhere (or a reload), it is simply a link to the Library.
+$('top-back').onclick = (event) => {
+  if (!state.back) return;
+  event.preventDefault();
+  history.back();
+};
 $('chat-form').onsubmit = (event) => {
   event.preventDefault();
   if (chat.send($('chat-text').value)) {
@@ -945,16 +1098,6 @@ $('view-choices').onclick = (event) => {
   $('lib-views').close();
 };
 $('views-close').onclick = () => $('lib-views').close();
-$('game-sheet-close').onclick = () => $('game-sheet').close();
-$('game-sheet').addEventListener('close', () => {
-  const id = state.openGame;
-  state.openGame = null;
-  $('game-card').replaceChildren();
-  // The browser hands focus back to the cover that opened it. When that cover was redrawn
-  // meanwhile (a favourite changed its row), the same title's cover takes it instead.
-  if (id && $('main').contains(document.activeElement)) return;
-  if (id && !$('main').hidden) $(state.openFrom)?.querySelector(`[data-game="${CSS.escape(id)}"]`)?.focus();
-});
 window.addEventListener('pagehide', () => { chat.close(); party.stop(); });
 
 $('retry').addEventListener('click', () => { boot(); });
@@ -965,7 +1108,7 @@ document.addEventListener('visibilitychange', () => {
   (state.reachable === false ? boot() : refreshHealth());
 });
 window.addEventListener('pageshow', (event) => { if (event.persisted) boot(); else syncChat(); });
-showPage(pageOf(location.hash));
+go(false);
 window.addEventListener('online', () => { if (state.reachable === false) boot(); });
 state.healthTimer = setInterval(refreshHealth, HEALTH_EVERY_MS);
 boot();

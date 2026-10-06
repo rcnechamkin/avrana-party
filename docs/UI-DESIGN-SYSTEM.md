@@ -7,8 +7,8 @@ newer ADR 0011 setup/results UI is merged source with deployment/phone proof pen
 design package and implementation plan under `docs/design/ux-redesign/`, which arrive with the
 slice 0 documents PR):
 the tokens, the type and the Party shell's frame below are the redesign's; nothing of it is
-deployed or checked on a real phone. The setup scene, the diagnostics page and the games still
-carry the older layout on the new tokens until their own slices.
+deployed or checked on a real phone. The diagnostics page and the games still carry the older
+layout on the new tokens until their own slices.
 The brand face is **temporary** (the brief's Helvetica-style treatment); no final logo or art
 direction is decided here. When the real identity arrives, replace the theme block and the
 `avrana-*` layer; the markup and the build stay.
@@ -83,17 +83,22 @@ repeat:
 | `avrana-list` | 52 px rows that lead somewhere (a place, a sheet), chevron on the right |
 | `avrana-faces`, `avrana-people` | people as faces with names (Party page) and as rows (drawer) |
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
-| `avrana-screen` | page container with safe-area padding, for diagnostics; the setup scene and the doorway use `avrana-scene` |
+| `avrana-screen` | page container with safe-area padding, for diagnostics |
+| `avrana-scene` | one full screen with one thing on it: the way to a game, and the doorway |
+| `avrana-brief`, `avrana-dock` | the briefing (a round's setup) under the frame's top bar: what and who scroll, the decision stays at the bottom. Under 32rem of height (512 px, or 1024 px at 200% text) the dock un-pins and the whole briefing scrolls |
+| `avrana-lineup` | the briefing's people: a face, the name, the word "Host", and the answer as an icon and a word (Playing, Watching, Choosing) |
+| `avrana-choice` | Play this round / Watch this round: two equal buttons; the chosen one has a tick, a fill and a stronger edge (`aria-pressed`), and its words do not change |
+| `avrana-back` | the way back in the top bar of a game's page: a chevron and the name of the place it returns to |
 | `avrana-surface` | one raised, bordered surface level |
 | `avrana-section-title` | section heading with quiet meta on the right |
 | `avrana-status` | connection line: spinner while checking, dot + words after (text first, colour never the only cue) |
 | `avrana-avatar` (`sm`, `lg`) | a person's photo or Gaze avatar (older chat entries: their emoji) |
 | `avrana-avatar-choice` | avatar picker cell: ring **and** check badge when chosen, `aria-pressed` |
-| `avrana-game-card`, `-cover`, `-title`, `-facts` | a game, opened: its facts, what it means on this phone, and its one button (in the game sheet) |
+| `avrana-detail`, `avrana-premise`, `avrana-game-facts`, `avrana-line` (`quiet`, `warn`), `avrana-act`, `avrana-helper` | a game's own page: wide cover, name, what it is, facts as icon and words, whether it suits the people here and this phone, its one button with the heart, and a line saying what the button does |
 | `avrana-tools` | the Library's top row: search, the Filters button (with a count of filters that are on) and the View button |
 | `avrana-shelf`, `avrana-sec` | the Library's shelves and a shelf's heading (its count, or Reset while a filter is on) |
 | `avrana-grid` (`large`, `medium`, `compact`), `avrana-rows` | the four Library views: three grids of covers, and a list of rows |
-| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A button that opens the game; it never starts one |
+| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A link to the game's own page; it never starts one. `wide` on a cover is the 16:9 shape of Home's lead, a game's page and the briefing |
 | `avrana-hero`, `avrana-rail` | Home's lead cover, and Home's shelves that scroll sideways inside themselves |
 | `avrana-fav` | the heart: keep or drop a favourite (`aria-pressed`, a name per game) |
 | `avrana-blank`, `avrana-hid` | the Library with nothing to show (why, and the way back), and the line that says how many titles a filter left out |
@@ -108,9 +113,12 @@ repeat:
 the address's fragment (`#home`, `#party`, `#library`, `#system`; anything else is Home), so
 moving between them loads nothing, the phone's Back works, and a reload stays put
 (`lib/frame.js`, pure and tested). Changing place moves focus to the title in the top bar and
-sets the document title. **Where the Party is always wins over the frame**: when the Host takes
-everyone to a setup scene or a game, the frame (bars, drawer, sheet) leaves the screen, and it
-comes back in the same place.
+sets the document title. A game's own page is a fifth view (`#game/<id>`, below); it is not a
+place in the bar. **Where the Party is always wins over the frame**: when the Host takes everyone
+to a briefing, the middle of the frame and the bar of places give way to it and only the top bar
+stays; on the way to a game the whole frame leaves the screen. Whatever was open (drawer, sheet,
+rules) closes when the Party moves (to a briefing, to another round's briefing, to a game, or
+home), and the frame comes back in the same place, a game's page included.
 
 - **Home**: who is here, in a sentence; the connection line; the Limited Mode notice in full when
   it applies; a nameless phone's first step; then the games: a lead cover (the last title played
@@ -168,20 +176,63 @@ all"). Nothing to show always says why and offers the way back.
   (redesign open decision 21), nor whether a watcher's phone should record a round (22).
 - **Home never repeats a title**: the lead is not listed again under "Recently played", and a
   shelf with nothing on it has no heading.
-- **A cover opens the game** in the game sheet (a native `<dialog>`: focus goes in, Escape, the
-  Close button or a tap outside closes it, focus returns to the cover). The sheet holds the game
-  tile below, with the button it has always had. This is the bridge until the game detail page
-  of the redesign plan's PR 1.3 replaces it. The sheet closes when the Host moves the Party.
+- **A cover is a link to the game's own page** (`#game/<id>`, PR 1.3). Nothing on a shelf starts
+  a game.
 
-**The game tile** (in the game sheet). Only catalog metadata: title; the title's artwork (below); players; screen
-(`Phone only` / `TV optional` / `Needs the TV` from the contract's `screen`); how you play when it
-adds something; summary; fit for this phone; live state; Play. When enlarged text leaves the title no column beside the cover and the
-heart, the title takes the row under them (container query). No ratings, prices or store language. Favourites show as a filled
-heart. ADR 0011 source uses automatic profile-backed presence and authoritative location;
-there are no normal Join/Leave or Rejoin offers. At home the host chooses a Party game. Setup
-is a full-screen Party scene with roster, Play/Watch, How to play and host-only Start (or a
-follower’s waiting state). Game/results own the viewport; host End, Play again and Party Home
-live in game chrome. These console changes await AVR-212 deployment/phone proof.
+**A game's page** (AVR-286; `detailNodes`, `renderDetail`, `gameOf` in `lib/frame.js`). Browsing
+only: the Party stays where it is. The top bar holds the way back, named for the place the page
+was opened from ("Library", "Home"); the bar of places keeps that place marked
+(`aria-current="page"` on a place the page belongs to, not on the page itself); the game's name
+is the page's one heading and takes focus. Where it was opened from is put in its history
+entry at the tap itself (`openFrom`), so the phone's Forward and a reload still know, and a Back
+pressed at once cannot lose it. Back (the bar's link, the phone's Back or the bar of
+places) returns to the same cover at the same scroll. A reload stays on the page; a typed
+address has nowhere to return to and its Back is a link to the Library; an address that names no
+title on the shelf is the Library. The page shows only what the catalog and the game
+supply: the title's artwork, name, the catalog's summary, under it the game's own premise when
+its `onboarding.json` has one (asked only of a game served from `/games/<slug>/`; it arrives a
+moment after the page and replaces nothing), players, screen (`Phone only` / `TV optional` / `Needs the TV`), how you play
+when it adds something, a device-check line where the catalog asks for one, fit for this phone
+with its reason, and live state. With a party of two or more it adds one sentence on whether the
+game suits them (`fitLine` in `lib/library.js`): "Room for all four of you.", or what happens to
+the rest ("Up to 2 play; two of you sit out."; "watch" where the game has a watch view), with a
+mark and never colour alone. No length, kind, rating, "quick start" or suggestion is shown,
+because no title carries that data.
+
+- **One button, and only the Host's moves the Party.** The Host's button keeps its accepted
+  words, "Start for everyone" (ADR 0007), and a line under it says what it does: "Moves everyone
+  to this game." While a start is on its way the button says it is busy (`aria-disabled`) and
+  keeps its place and the focus. A guest has no button: a sentence says "The host starts it. {Host} chooses what
+  the Party plays." (ADR 0009's words first). Outside a party the button is Play, Watch or "Try
+  anyway", as it has always been.
+- **How to play** is a row on the page when the game ships onboarding; it opens the same rules
+  sheet as the briefing. "Got it" there records that the rules were read; closing does not.
+- The heart keeps or drops a favourite and keeps focus.
+- A start that fails says why at the top of the page, which scrolls into sight.
+
+**The briefing** (ADR 0011 decision 4 and its 2026-10-05 amendment; GAME-UX-CONTRACT rule 3.2;
+`#scene`, `renderScene`, `show()`). The lifecycle is unchanged: Party Core decides who is where,
+who may start, and why a start waits. Under the top bar ("Getting ready", the Limited mark on a
+Limited phone, the Party control): the game's wide art, its name, its premise, the "How to play"
+row, then the line-up. A dock at the bottom holds the two choices, the Host's "Start game", one
+status line (Party Core's reason for the Host, "Waiting for {Host} to start" for a guest) and the
+Host's "Choose another game". There is no bar of places, no Library, no chat and no "This phone"
+on it, and no link that leaves it. Who hosts is the word "Host" in the line-up and, for a guest,
+the status line; with no Host the line says "Nobody is hosting right now." The separate "You're
+the host / Hosted by Ana" line of the older scene is gone.
+
+- **Over it**, the Party control opens the drawer with the people only (no tabs, no chat, a line
+  "Getting ready for {game}."), and the Limited mark opens the explanation without its "Check for
+  the full version" link. Both are native modal dialogs: focus goes in and stays in, the briefing
+  behind is inert, and Escape, Close or a tap outside gives focus back to what opened it with the
+  briefing at the same scroll. Someone's answer arriving does not close them; the Party moving does.
+- **A first-timer's Play** opens the rules first ("Got it, I’ll play" is the Play); leaving the
+  rules any other way chooses nothing.
+- After "Choose another game" each phone is back in the place it was in; the Host is on the
+  game's page they started from.
+- ADR 0011 source uses automatic profile-backed presence and authoritative location; there are no
+  normal Join/Leave or Rejoin offers. Game/results own the viewport; host End, Play again and
+  Party Home live in game chrome. These console changes await AVR-212 deployment/phone proof.
 
 ## Player avatars
 
