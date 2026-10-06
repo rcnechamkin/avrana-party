@@ -95,8 +95,10 @@ raised to ≥ 4.5:1 with an 11–12 px floor, one shared reduced-motion rule.
   and there is no sideways scroll at 375 px, in Chromium and WebKit. Copy the pattern for new pages.
 - **Automated (the Party shell, since UX/UI redesign PR 1.4):** `tests/offline/a11y.spec.ts`
   and `tests/party/a11y.spec.ts` run the helpers in `tests/lib/a11y.ts` over every shell page
-  and state: contrast, names, headings, reading order, the focus ring on a Tab walk, reduced
-  motion, more contrast, targets and sideways scroll. Chromium only; it replaces none of the
-  manual pass below.
+  and state: contrast, edges, names and reading order, each screen also drawn with more
+  contrast and less motion asked for; a Tab walk with a ring at every stop over the places, a
+  game's page and every Party state. What each covers exactly is in
+  [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md). Chromium only; it replaces none of the manual
+  pass below.
 - **Manual (per release, 10 minutes):** VoiceOver on an iPhone or TalkBack on Android through one
   full round; the largest system text size; reduced motion on; one colour-blindness simulator pass.

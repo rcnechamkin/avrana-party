@@ -9,7 +9,7 @@ the end as not done; it stays with AVR-295 (and AVR-212 for the appliance).
 
 | What | Exactly |
 |---|---|
-| Party, the change under test | branch `feat/avr-287-shell-states-accessibility` at `b6ccf1bd8f81c658a9af6073bc5bb2e785a33027`; the shell is tree `22edf925d0d27f0b752e0757b544bbeb6a416941` (`git rev-parse <commit>:web/party`). Later commits on the branch that change only documents and pictures leave that tree as it is |
+| Party, the change under test | branch `feat/avr-287-shell-states-accessibility` at `0ac53cce6a53f9060f7251516adb16ce1d86c56d`; the shell is tree `bbcfad28ba4d98f1b9eff6b022eececd20e92518` (`git rev-parse <commit>:web/party`). Later commits on the branch that change only documents and pictures leave that tree as it is |
 | Party, the base | `origin/main` `1a2b89737e7d` (the merge of PR #82) |
 | Games, for the real BLUFF | `origin/main` `a4489729e1d0522a302b0475a7631ed90c219812`, in a temporary detached worktree (the local Games checkout is on an older branch and was not used) |
 | Browser | Playwright 1.63's Chromium, phone-sized contexts |
@@ -21,13 +21,21 @@ the end as not done; it stays with AVR-295 (and AVR-212 for the appliance).
 |---|---|---|
 | Browser modules | `node --test "tests/offline/*.test.mjs"` | 163 pass, 0 fail |
 | Offline browser, both projects | `AVRANA_PYTHON=python npx playwright test -c playwright.offline.config.ts` | 178 pass, 0 fail |
-| Party, three and four phones | `AVRANA_PYTHON=python npx playwright test -c playwright.party.config.ts` | 30 pass, 0 fail |
+| Party, three and four phones | `AVRANA_PYTHON=python npx playwright test -c playwright.party.config.ts` | 32 pass, 0 fail |
 | Provider, the real BLUFF | `playwright.provider.config.ts` with `AVRANA_GAMES_REPO` at the Games worktree above | 40 pass, 0 fail; 30 skipped (the `iphone-size` project, as that suite is configured to do on this host) |
 | Rollback rehearsal, to `origin/main` | `AVRANA_PYTHON=python npx playwright test -c playwright.rollback.config.ts` | 1 pass |
 | Rollback rehearsal, to `578534f` | the same with `AVRANA_ROLLBACK_FROM=578534f` | 1 pass |
 
 Python unit tests and the repository checks are reported in the pull request, because they
 also read this file.
+
+An earlier state of the branch (`e6f536a`, shell tree `22edf925d0d2`) was run in full by a
+separate verifier with the same counts except the Party suite (30 then; two tests were added
+after review). A review of that state found three faults, fixed before the commit above and
+each now held by a test that fails without its fix: a heads-up the Host had dismissed came
+back after a moment out of touch with the box; the Host's System page could say "Everything's
+working" while the shelf marked a game off for a reason the box's account does not name; and
+"hosting now" from one Party could linger into a new one.
 
 ## The four-phone journey (Full Mode, real BLUFF)
 
@@ -67,8 +75,8 @@ whose Party Core is not restarted.
 
 | Run | NEW (this change) | OLD (gone back to) | Result |
 |---|---|---|---|
-| 1 | build `b6ccf1bd8f81` | build `1a2b89737e7d`, `origin/main` | pass |
-| 2 | build `b6ccf1bd8f81` | build `578534f6c19c`, the last release before the redesign | pass; that build has no frame, so its shelves were not walked, only its game list and a briefing |
+| 1 | build `0ac53cce6a53` | build `1a2b89737e7d`, `origin/main` | pass |
+| 2 | build `0ac53cce6a53` | build `578534f6c19c`, the last release before the redesign | pass; that build has no frame, so its shelves were not walked, only its game list and a briefing |
 
 Each run showed, in order: the new build served and running with its offline copy; a favorite,
 a played game, a name and the Library view kept on the phone; **flip**, after which the box
@@ -84,12 +92,29 @@ Not shown by it: `ops/install-party-web.sh --rollback` itself, nginx, the Pi, th
 
 ## The accessibility pass
 
-`tests/offline/a11y.spec.ts` (10 tests, two projects) and `tests/party/a11y.spec.ts` (3 tests)
-over every shell page and every state this pull request adds. The helpers are first run
-against planted faults (a low-contrast line, an unnamed button, a removed focus ring) and must
-catch each. One phone in the Party tests asks for less motion and one for more contrast.
+`tests/offline/a11y.spec.ts` (10 tests, two projects), `tests/party/a11y.spec.ts` (3 tests)
+and the fold test in `tests/offline/limited.spec.ts`. The helpers are first run against
+planted faults (a dim line, a nameless faint-edged button, a label that points nowhere, a
+control drawn out of order, a button with its focus ring taken away, something moving) and
+must catch each.
 
-It found three things, fixed in the same pull request:
+What is covered, exactly:
+
+- Contrast (4.5:1), edges (3:1), names and reading order: every page, the Library's sheets and
+  empty states, the drawer, the rules, the briefing, and every state this pull request adds.
+- The same screens drawn as a phone that asks for more contrast (7:1) and less motion (nothing
+  may move) draws them.
+- One top heading, no skipped level, 44 px targets, nothing sideways: every Party screen and
+  state in the Party spec; the other pages by the suites that came before.
+- A Tab walk with a visible ring required at every stop: the four places and a game's page;
+  every Party screen and state, where it must also reach that state's own button ("Try again"
+  on a page and on a briefing, both Dismiss buttons, the fold). The Library's sheets and empty
+  states are not Tab-walked.
+
+It found four things, fixed in the same pull request:
+
+- "Choose your name" from Home or from a game's page went to the Party page without a step the
+  phone's Back could undo; it is now a step, and Back returns where the person was;
 
 - the edge of the search and name fields was 1.68:1 against the page; it is now the control
   colour, above 3:1;

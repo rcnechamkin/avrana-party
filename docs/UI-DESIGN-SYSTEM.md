@@ -250,7 +250,8 @@ endpoint already say; the phone invents one number, and it is the owner's.
   while the phone is out of touch, so nothing says "Connected" over a stale page.
 - **On a briefing** the same two steps are in the dock: "Reconnecting. Your answer stays as it
   is for now." under the choices, then the choices and Start give way to the sentence and "Try
-  again", which takes focus. On recovery the choices return and focus goes to the title.
+  again", which takes focus when focus was on what gave way. On recovery the choices return and
+  focus, if it was on "Try again", goes to the title.
 - **The Host is away** (Party Core marks them so after 45 s of silence): the host line says "Ada
   is the host, and is away." and a line under it "Hosting passes to someone here if Ada isn’t
   back soon." on Home and the Party page; the briefing's status line says "Ada, the Host, is
@@ -258,7 +259,8 @@ endpoint already say; the phone invents one number, and it is the owner's.
   No countdown and no name for who is next: the view carries neither.
 - **Hosting passed on.** The new Host gets a notice with Dismiss, "You’re hosting now / Ada has
   been away, so you pick what the Party plays."; everyone else reads "Bob is hosting now. Ada
-  has been away." It is said once and cleared when the Party next moves. On a briefing it leads
+  has been away." It is said once and cleared when the Party next moves, or when the phone
+  finds itself in a new Party. On a briefing it leads
   the status line ("You’re hosting now. …") and the Host's buttons appear.
 - **Never during a round**: a Host who holds a place in the round that is on keeps the role and
   is not shown as away (Party Core's rule), so none of the above appears.
@@ -266,7 +268,9 @@ endpoint already say; the phone invents one number, and it is the owner's.
   endpoint says a part that changes what can be played is off, the Host's Home carries one
   notice, the most serious only: "Arcade games are off right now / Card and party games play as
   usual.", a link "What changed" to System, and Dismiss. Dismissed, it stays away for the visit
-  and comes back if the trouble does after a spell of health. Guests never see it: they see
+  and comes back if the trouble does after a spell of health (losing touch with the box for a
+  moment is not a spell of health). If the shelf marks a title off for a reason the box's
+  account does not name, the Host gets no notice and System says what the shelf says. Guests never see it: they see
   "Off for now" on the title, as before.
 - **System opens with how things are**: "Everything’s working / The Party box and this phone
   are fine.", or what is off. The Host reads the box's own account ("The arcade part of the
@@ -279,12 +283,19 @@ endpoint already say; the phone invents one number, and it is the owner's.
   again. A phone that cannot keep the choice simply shows the notice.
 
 **Accessibility, checked by the suite** (`tests/lib/a11y.ts`, `tests/offline/a11y.spec.ts`,
-`tests/party/a11y.spec.ts`): on every page and every state above, text contrast (4.5:1, and 7:1
-when the phone asks for more), the edges of fields (3:1), a name on every control, one top
-heading and no skipped level, reading order against visual order, a visible focus ring on every
-stop of a Tab walk, nothing moving when the phone asks for less motion, 44 px targets and no
-sideways scroll. The checks test themselves first against planted faults. This is Chromium: no
-screen reader, no Safari and no phone setting has been tried (AVR-295).
+`tests/party/a11y.spec.ts`, and the fold in `tests/offline/limited.spec.ts`). On every page, the
+Library's sheets and empty states, and every state above: text contrast (4.5:1), the edges of
+fields and outlined buttons (3:1), a name on every control, and reading order against visual
+order; then the same screen as a phone that asks for more contrast (7:1) and for less motion
+(nothing may move) draws it. One top heading, no skipped level, 44 px targets and no sideways
+scroll are checked on every Party screen and state by the Party spec, and elsewhere by the
+suites that came before it. A Tab walk, with a visible ring required at every stop, covers the
+four places, a game's page, the briefing, the drawer, the rules and every state above, and
+must reach each state's own button ("Try again", Dismiss, the fold); the Library's sheets and
+empty states are not Tab-walked. The checks are first run against planted faults (a dim line, a
+nameless faint button, a broken label, a control drawn out of order, a ring taken away,
+something moving) and must catch each. This is Chromium: no screen reader, no Safari and no
+phone setting has been tried (AVR-295).
 
 - ADR 0011 source uses automatic profile-backed presence and authoritative location; there are no
   normal Join/Leave or Rejoin offers. Game/results own the viewport; host End, Play again and

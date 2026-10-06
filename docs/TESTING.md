@@ -34,14 +34,15 @@ All Tier 1–2: no Pi, no phones. Linux CI is authoritative; rows note what Wind
 | Agent tooling | `-p test_claude_gate.py`, `-p test_avr_context.py` | offline lane | convenience only; nothing is enforced by a hook |
 | Multi-client Party browser tests | `npm run test:party-browser` (Windows: `AVRANA_PYTHON=python`) | offline lane | three browser contexts as phones against `devserver --party` (a real Party Core, stub game pages): host and followers, start/end for everyone, switching, reload keeps identity and seat, stale and unauthorized actions, Play/Watch setup, host departure; plus the diagnostics build report. Chromium at phone size is not a phone: iPhone Safari and Android stay Tier 3 |
 
-| Shell accessibility (UX/UI redesign PR 1.4) | part of `npm run test:offline-browser` (`tests/offline/a11y.spec.ts`) and `npm run test:party-browser` (`tests/party/a11y.spec.ts`) | offline lane | contrast, names, headings, reading order, focus ring, reduced motion, more contrast, targets and sideways scroll on every shell page and state; the helpers (`tests/lib/a11y.ts`) are first run against planted faults. Chromium: no screen reader, no Safari, no phone setting (AVR-295) |
+| Shell accessibility (UX/UI redesign PR 1.4) | part of `npm run test:offline-browser` (`tests/offline/a11y.spec.ts`) and `npm run test:party-browser` (`tests/party/a11y.spec.ts`) | offline lane | contrast, edges, names and reading order on every shell page, Library sheet and empty state and every Party state, each also drawn with more contrast and less motion asked for; headings, targets and sideways scroll on every Party screen; a Tab walk with a ring at every stop over the four places, a game's page and every Party state (not the Library's sheets and empty states). The helpers (`tests/lib/a11y.ts`) are first run against planted faults. Chromium: no screen reader, no Safari, no phone setting (AVR-295) |
 | Rollback rehearsal (UX/UI redesign PR 1.4) | `npm run test:rollback` (Windows: `AVRANA_PYTHON=python`; `AVRANA_ROLLBACK_FROM=<git ref>` names the release to go back to, default `origin/main`) | none: run by hand before a release | needs that ref in the local repository, which CI's shallow checkout does not have. Two real builds, a `current` link flipped under a running dev server; proves nothing about the install script, nginx, the Pi or a real phone's cache |
 
 `python3 -m avrana.web.devserver --party` is also the local way to try Party mode by hand.
 With `--test-controls` it also answers `POST /__test__/party/reset` and
 `POST /__test__/party/advance?s=N`, which moves the simulated Party's clock forward N seconds
 (0 to 3600) so that "away after 45 s" and "hosting passes after 30 s more" can be tested without
-waiting; neither route exists without the flag, and neither exists on the appliance.
+waiting. It moves only a party that a reset made (409 otherwise). Neither route exists without
+the flag, and neither exists on the appliance.
 
 ## AVR-130 source coverage (PR #35 merged during AVR-213)
 
