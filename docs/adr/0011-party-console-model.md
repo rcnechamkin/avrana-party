@@ -101,8 +101,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   (`destination`, `roster`, `setupPanel`), `party-client.js` (`join/rename` with avatar,
   `goHome`), `party-follow.js` (routing, presence, the `AvranaParty` API), theme components in
   `web/src/party.css` (`avrana-scene`, `avrana-lineup`, `avrana-choice`, `avrana-rules`; daisyUI
-  `modal`), Lucide `crown` and `hourglass` (since AVR-286: `avrana-brief`, `avrana-dock`, and the
-  word "Host" in place of the crown).
+  `modal`), Lucide `crown` and `hourglass`.
 - Games: `web/avrana-integration.js/.css` (no bar in a Party), `web/hubnet.js` (a Party's
   "Round over" with the host's choices on reconnect during results), `core/session.py` (held
   results), `core/net.py` (a held results room released with its own outcome),

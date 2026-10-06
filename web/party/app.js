@@ -282,8 +282,10 @@ function partyAction(game, mode, host) {
   if (mode.kind === 'start') {
     // Busy is said, not enforced by removing the button from reach: it keeps its place and the
     // focus while the start is on its way (hostStart ignores a second press).
-    return h('button', { type: 'button', class: 'btn btn-primary', 'data-sync': 'list', 'aria-disabled': String(Boolean(state.partyBusy)),
-      onclick: () => hostStart(game, mode.game) }, icon('play'), 'Start for everyone');
+    // The game is read from the button when it is pressed, never remembered by it.
+    return h('button', { type: 'button', class: 'btn btn-primary', 'data-sync': 'list', 'data-start': mode.game,
+      'aria-disabled': String(Boolean(state.partyBusy)),
+      onclick: (event) => hostStart(event.currentTarget.dataset.start) }, icon('play'), 'Start for everyone');
   }
   if (mode.kind === 'wait') {
     return h('p', { class: 'wait', 'data-wait': '' }, icon('users'),
@@ -292,8 +294,9 @@ function partyAction(game, mode, host) {
   return h('button', { type: 'button', class: 'btn', disabled: true, text: 'Starting…' });
 }
 
-async function hostStart(game, id) {
-  if (state.partyBusy) return;
+async function hostStart(id) {
+  if (state.partyBusy || !id) return;
+  const game = partyGame(state.catalog, id) || { name: 'The game' };
   state.partyBusy = true;
   $('party-note').textContent = '';
   renderGames(false);
@@ -377,7 +380,7 @@ function showPage(page, focus = false, game = null, back = null) {
   state.page = page;
   state.game = page === 'game' ? game : null;
   state.back = page === 'game' ? back : null;
-  if (page !== 'game') {                       // nothing of the last game's page is kept behind
+  if (page !== 'game' || $('game-detail').dataset.id !== game) {   // nothing of another game's page is kept
     $('game-detail').replaceChildren();
     for (const key of ['id', 'outcome', 'party']) delete $('game-detail').dataset[key];
   }

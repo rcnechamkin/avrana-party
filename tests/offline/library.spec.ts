@@ -383,7 +383,7 @@ test('a game’s rules arriving after its page opened do not take the focus or r
   await expect(page.locator('#game-title')).toBeFocused();                          // still on the name
   await expect(card.locator('.avrana-premise')).toHaveText('Claim anything. Get caught, lose a card.');   // the catalog's sentence stays
   await expect(card.locator('.avrana-about')).toHaveText('A premise from the game.');
-  // the heart keeps focus too when a line comes and goes around it
+  // the heart keeps focus through its own redraw on a page that has the rules row
   const heart = card.getByRole('button', { name: 'Add BLUFF to favorites' });
   await heart.click();
   await expect(card.getByRole('button', { name: 'Remove BLUFF from favorites' })).toBeFocused();
@@ -432,12 +432,15 @@ test('back from a game’s page returns to the same cover at the same scroll, ho
   await page.locator('#top-back').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
   await expect(tile).toBeFocused();
-  // an address typed by hand has nowhere to return to: Back is a plain link to the Library
-  await page.goto('/party/#game/expo');
-  await expect(page.locator('#game-detail[data-id="expo"]')).toBeVisible();
-  await page.evaluate(() => { location.hash = '#game/bluff'; });                     // and typed again, over another game
+  // an address typed by hand, over a page that was opened from a cover, has nowhere of its own to
+  // return to: Back is a plain link to the Library, not a step back to the other game
+  await tile.click();
+  await expect(page.locator('#game-detail[data-id="ps1-worms"]')).toBeVisible();
+  await page.evaluate(() => { location.hash = '#game/bluff'; });
   await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
   await expect(page.locator('#game-title')).toHaveText('BLUFF');
+  await expect(page.locator('#game-title')).toBeFocused();
+  await expect(page.locator('#game-detail')).not.toContainText('Worms');             // nothing of the other game's page is left
   await expect(page.locator('#top-back')).toHaveAttribute('href', '#library');
   await page.locator('#top-back').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');

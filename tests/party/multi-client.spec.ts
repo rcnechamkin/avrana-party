@@ -612,6 +612,22 @@ test.describe('three phones at one party', () => {
     await endForEveryone(host);
   });
 
+  test('the Host’s button starts the game on screen, also when one game’s page follows another’s directly', async () => {
+    await place(host.page, 'library');
+    const expo = await openGame(host.page, 'expo');
+    await expect(expo.getByRole('button', { name: 'Start for everyone' })).toHaveAttribute('data-start', 'expo');
+    await host.page.evaluate(() => { location.hash = '#game/arcade-gauntlet2'; });   // no place in between: the page is redrawn in place
+    const two = host.page.locator('#game-detail[data-id="arcade-gauntlet2"]');
+    await expect(two).toBeVisible();
+    await expect(host.page.locator('#game-title')).toHaveText('Gauntlet II');
+    const start = two.getByRole('button', { name: 'Start for everyone' });
+    await expect(start).toHaveAttribute('data-start', 'arcade-gauntlet2');
+    await start.click();
+    for (const p of [host, bob, cleo]) await expect(p.page, p.name).toHaveURL(/\/arcade\//);
+    expect((await view(host)).session.game).toBe('arcade-gauntlet2');
+    await endForEveryone(host);
+  });
+
   test('Choose another game: the Host takes everyone back, each to the page they were on', async () => {
     await place(bob.page, 'party');
     await startForEveryone(host.page, 'bluff');                              // Ada starts it from BLUFF's own page
