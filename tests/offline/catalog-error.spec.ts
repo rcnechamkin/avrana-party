@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { place } from '../lib/frame';
 
 /**
  * AVR-220: a missing, corrupt or wrong-shaped catalog.json must not take Party Home down.
@@ -27,6 +28,7 @@ for (const [name, reply] of Object.entries(BROKEN)) {
     await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('#status')).not.toContainText('Checking the connection');
     const notice = page.locator('#catalog-error');
+    await place(page, 'library');
     await expect(notice).toBeVisible();
     await expect(notice).toContainText('Game list unavailable');
     await expect(page.locator('[data-id]')).toHaveCount(0);            // no game cards, no crash

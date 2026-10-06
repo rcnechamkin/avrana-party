@@ -1,4 +1,4 @@
-/* Avrana Party system UI: source stylesheet (prototype-era design system, not the final brand).
+/* Avrana Party system UI: source stylesheet (UX/UI redesign tokens, 2026-10; the brand face is temporary).
  *
  *   web/src/party.css  --(npm run build:css, Tailwind CSS 4 + daisyUI 5, build time only)-->  web/party/styles.css
  *
@@ -8,7 +8,8 @@
  * Layers, most general first: the `avrana` daisyUI theme (colour, radius, control size) ->
  * Tailwind @theme tokens (text/line colours, fonts) -> base element rules -> a small `avrana-*`
  * component layer for patterns the pages repeat. Layout and one-offs use Tailwind utilities in the
- * markup. No web fonts, no remote assets, no inline styles (the /party/ CSP forbids them). */
+ * markup. One bundled font (Geist, served by the Pi like every other file), no remote assets, no
+ * inline styles (the /party/ CSP forbids them). */
 
 @import "tailwindcss" source(none);
 @source "../party/index.html";
@@ -17,6 +18,24 @@
 @source "../party/diag/diag.js";
 @source "../party/lib/ui.js";
 @source "../party/lib/profile-ui.js";
+
+/* Interface type: Geist (SIL OFL 1.1, web/party/fonts/OFL.txt), one variable file. */
+@font-face {
+  font-family: "Geist";
+  src: url("fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+/* The words "Avrana Party" only (temporary, UX/UI brief): a light Helvetica where the phone really
+   has one, Geist Light everywhere else. local() matches installed faces only, so Windows and
+   Android never fall back to Arial. */
+@font-face {
+  font-family: "Avrana Brand";
+  src: local("Helvetica Neue Light"), local("HelveticaNeue-Light"), local("Helvetica Light"), local("Helvetica-Light"),
+       url("fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 300;
+  font-display: swap;
+}
 
 /* Only the daisyUI parts the pages use; JS words such as "toggle", "list" or "status" would
    otherwise pull in unrelated components. Add a name here when a page starts using one. */
@@ -30,33 +49,34 @@
   name: "avrana";
   default: true;
   color-scheme: dark;
-  /* Surfaces: deep charcoal with a faint violet cast, each level a step up. */
-  --color-base-100: oklch(18.5% 0.012 285);
-  --color-base-200: oklch(22.5% 0.015 285);
-  --color-base-300: oklch(27.5% 0.018 285);
-  --color-base-content: oklch(94% 0.008 85);
-  /* Muted cosmic purple; white text on it passes WCAG AA. */
-  --color-primary: oklch(55% 0.135 293);
-  --color-primary-content: oklch(98.5% 0.006 293);
-  --color-secondary: oklch(74% 0.07 305);
-  --color-secondary-content: oklch(20% 0.03 300);
-  --color-accent: oklch(80% 0.075 300);
-  --color-accent-content: oklch(20% 0.03 300);
-  --color-neutral: oklch(31% 0.02 285);
-  --color-neutral-content: oklch(92% 0.01 285);
-  /* State colours: recognisable, never loud. */
+  /* Surfaces: near-black neutrals, each level a step up. */
+  --color-base-100: #0d0d0f;
+  --color-base-200: #161618;
+  --color-base-300: #1e1e21;
+  --color-base-content: #edeae4;
+  /* The one main action of a region is ink on the ground, not a colour. */
+  --color-primary: #edeae4;
+  --color-primary-content: #121214;
+  /* Atomic Purple: selection, focus, links and quiet icon tints; never a fill for a whole region. */
+  --color-secondary: #b9a9e8;
+  --color-secondary-content: #121214;
+  --color-accent: #b9a9e8;
+  --color-accent-content: #121214;
+  --color-neutral: #1e1e21;
+  --color-neutral-content: #edeae4;
+  /* State colours: always beside a word or an icon, never alone. */
   --color-info: oklch(74% 0.085 250);
   --color-info-content: oklch(20% 0.03 250);
   --color-success: oklch(76% 0.11 158);
   --color-success-content: oklch(20% 0.04 158);
-  --color-warning: oklch(82% 0.11 78);
-  --color-warning-content: oklch(22% 0.04 78);
-  --color-error: oklch(68% 0.15 22);
-  --color-error-content: oklch(20% 0.04 22);
-  /* One radius per role: fields/buttons, boxes (panels, tiles), small selectors. */
-  --radius-selector: 0.5rem;
-  --radius-field: 0.75rem;
-  --radius-box: 1rem;
+  --color-warning: #e6b862;
+  --color-warning-content: #121214;
+  --color-error: #f08a7e;
+  --color-error-content: #121214;
+  /* One radius for anything you press or read in a block; a small one for marks. */
+  --radius-selector: 0.25rem;
+  --radius-field: 0.625rem;
+  --radius-box: 0.625rem;
   /* size-field x 10 = 48 px default buttons and inputs. */
   --size-selector: 0.25rem;
   --size-field: 0.3rem;
@@ -66,11 +86,20 @@
 }
 
 @theme {
-  --color-muted: oklch(76% 0.025 290);
-  --color-line: oklch(33% 0.02 285);
-  --color-line-strong: oklch(42% 0.03 290);
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-display: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-muted: #aeaba7;
+  --color-faint: #8f8c89;
+  --color-line: rgb(255 255 255 / 0.09);
+  --color-line-strong: rgb(255 255 255 / 0.18);
+  /* The edge of anything you can press: 3:1 on the ground and on the material. */
+  --color-control: #6e6c72;
+  /* The smoky violet material (bars, the drawer, sheets) and what is selected on it. */
+  --color-material: rgb(38 33 56 / 0.78);
+  --color-material-solid: #1c1a26;
+  --color-material-edge: rgb(200 186 255 / 0.22);
+  --color-select: rgb(185 169 232 / 0.16);
+  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-brand: "Avrana Brand", "Geist", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -79,17 +108,22 @@
   body {
     min-height: 100vh; min-height: 100dvh;
     background: var(--color-base-100); color: var(--color-base-content);
-    font: 1.0625rem/1.5 var(--font-sans);
+    font: 0.9375rem/1.45 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
   [hidden] { display: none !important; }
   h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+  /* A heading that only receives focus when its page or sheet opens shows no ring. */
+  h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
+  dialog { color: inherit; }
   a { color: var(--color-accent); text-underline-offset: 3px; }
-  :focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   summary { list-style: none; cursor: pointer; }
   summary::-webkit-details-marker { display: none; }
   @media (prefers-contrast: more) {
-    :root { --color-muted: var(--color-base-content); --color-line: var(--color-base-content); }
+    :root { --color-muted: #d2cfcb; --color-faint: #b9b6b3; --color-line: rgb(255 255 255 / 0.3);
+            --color-line-strong: rgb(255 255 255 / 0.5); --color-control: #a5a3a8; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -100,21 +134,120 @@
   /* An inline Lucide icon (lib/icons.js); it scales with the text around it. */
   .avrana-icon { width: 1.25em; height: 1.25em; flex: none; display: inline-block; vertical-align: -0.25em; }
 
-  /* The page: phone first, safe areas respected. On wide screens the Party page becomes a rail
-     (you, chat, this phone) beside the game library; DOM order stays phone order. */
+  /* A plain page (diagnostics): phone first, safe areas respected. */
   .avrana-screen {
     margin-inline: auto; width: 100%; max-width: 40rem;
     padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
              max(2.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
   }
-  @media (min-width: 64rem) {
-    .avrana-screen.avrana-split {
-      max-width: 84rem; display: grid; column-gap: 2.5rem; align-items: start;
-      grid-template-columns: 21rem minmax(0, 1fr); grid-template-rows: repeat(6, auto) 1fr;
-    }
-    .avrana-split > * { grid-column: 1; }
-    .avrana-split > .avrana-library { grid-column: 2; grid-row: 1 / -1; }
+
+  /* The frame: people on top, the page in the middle, the four places at the bottom. The middle
+     scrolls; the bars stay. Until a wide layout is designed it is a phone-width column. */
+  .avrana-app {
+    height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    padding-top: env(safe-area-inset-top);
   }
+  .avrana-top {
+    min-height: 3.25rem; display: flex; align-items: center; gap: 0.5rem; container: top / inline-size;
+    padding: 0 max(0.5rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+  }
+  .avrana-top-title {
+    flex: 1; min-width: 0; margin: 0; font-size: 1.375rem; font-weight: 550; line-height: 1.15;
+    letter-spacing: -0.01em; overflow-wrap: break-word;
+  }
+  /* A narrow bar, or large text (the width is measured in the text's own size): the title keeps
+     its whole words, the Party control shows one face and the Limited mark its icon. Both controls
+     keep their names for screen readers. */
+  @container top (max-width: 18rem) {
+    .avrana-hud .faces .avrana-avatar:nth-child(n + 2), .avrana-hud .n, .avrana-limmark .word { display: none; }
+  }
+  .avrana-top-title.brand { font-family: var(--font-brand); font-weight: 300; font-size: 1.4375rem; letter-spacing: 0.005em; }
+  .avrana-main {
+    overflow-y: auto; overscroll-behavior: contain;
+    padding: 0.25rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
+  }
+  @media (min-width: 44rem) {
+    .avrana-top, .avrana-main > .wrap { width: 100%; max-width: 42.5rem; margin-inline: auto; }
+  }
+
+  /* Limited Mode, folded: the same mark in the top bar of every page but Home (which says it in
+     full), opening the same words over that page. A word with its icon; the icon alone, still
+     named for screen readers, where the bar is narrow or the text is large. */
+  .avrana-limmark {
+    flex: none; min-width: 2.75rem; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--color-warning); cursor: pointer;
+  }
+  .avrana-limmark .pill {
+    display: inline-flex; align-items: center; gap: 0.25rem; min-height: 1.5rem; padding: 0 0.4375rem;
+    border: 1px solid currentColor; border-radius: var(--radius-selector);
+    font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.01em;
+  }
+  .avrana-limmark .avrana-icon { width: 0.8125rem; height: 0.8125rem; vertical-align: 0; }
+
+  /* The Party control: one control on every page. Faces and a count. */
+  .avrana-hud {
+    flex: none; min-width: 2.75rem; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center;
+    gap: 0.5rem; padding: 0 0.5rem; border-radius: var(--radius-field); color: var(--color-muted); cursor: pointer;
+  }
+  .avrana-hud .faces { display: inline-flex; align-items: center; }
+  .avrana-hud .faces .avrana-avatar { margin-left: -0.5rem; border: 0; box-shadow: 0 0 0 2px var(--color-base-100); }
+  .avrana-hud .faces .avrana-avatar:first-child { margin-left: 0; }
+  .avrana-hud .faces .avrana-icon { width: 1.375rem; height: 1.375rem; }
+  .avrana-hud .n { font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+  .avrana-hud .n:empty { display: none; }
+
+  /* The four places, on the one smoky surface. The place you are in is said three ways: weight,
+     a mark above it and aria-current. */
+  .avrana-nav {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    background: var(--color-material); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+    border-top: 1px solid var(--color-material-edge);
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .avrana-nav a {
+    position: relative; min-width: 0; min-height: 3.625rem; padding: 0.375rem 0.125rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1875rem;
+    color: var(--color-muted); text-decoration: none; text-align: center;
+    font-size: 0.6875rem; font-weight: 450; letter-spacing: 0.01em; line-height: 1.2; overflow-wrap: anywhere;
+  }
+  .avrana-nav a .avrana-icon { width: 1.375rem; height: 1.375rem; vertical-align: 0; }
+  .avrana-nav a[aria-current="page"] { color: var(--color-base-content); font-weight: 600; }
+  .avrana-nav a[aria-current="page"]::before {
+    content: ""; position: absolute; top: -1px; left: 50%; width: 1.75rem; height: 2px;
+    transform: translateX(-50%); background: var(--color-secondary); border-radius: 0 0 2px 2px;
+  }
+  .avrana-nav a:focus-visible { outline-offset: -3px; }
+  @media (max-height: 38.75rem) {
+    .avrana-top { min-height: 2.875rem; }
+    .avrana-nav a { min-height: 3.25rem; }
+  }
+
+  /* Home's one statement, and the line under it. */
+  .avrana-lede { margin: 0; font-size: 1.75rem; font-weight: 550; line-height: 1.12; letter-spacing: -0.02em; text-wrap: balance; }
+  .avrana-sub { margin: 0.375rem 0 0; color: var(--color-muted); text-wrap: pretty; overflow-wrap: anywhere; }
+  .avrana-textlink { color: var(--color-base-content); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-line-strong); display: inline-block; padding: 0.75rem 0; margin: -0.75rem 0; }
+
+  /* A word for a person's role or state: text first, never a crown, never colour alone. */
+  .avrana-tag {
+    display: inline-flex; align-items: center; min-height: 1.125rem; padding: 0 0.3125rem;
+    border: 1px solid var(--color-line-strong); border-radius: var(--radius-selector);
+    font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.01em; color: var(--color-muted); white-space: nowrap;
+  }
+  .avrana-tag.mode { color: var(--color-warning); border-color: currentColor; }
+  .avrana-tag.quiet { border-color: transparent; padding: 0; }
+
+  /* A plain list of rows that go somewhere: hairlines between, no boxes. */
+  .avrana-list { margin: 0; padding: 0; list-style: none; }
+  .avrana-list > li { border-top: 1px solid var(--color-line); }
+  .avrana-list > li[hidden] + li, .avrana-list > li:first-child { border-top: 0; }
+  .avrana-list > li > a, .avrana-list > li > button {
+    display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 3.25rem; padding: 0.375rem 0;
+    color: inherit; text-align: left; text-decoration: none; cursor: pointer;
+  }
+  .avrana-list .avrana-icon { color: var(--color-muted); }
+  .avrana-list .val { margin-left: auto; display: inline-flex; align-items: center; gap: 0.25rem; color: var(--color-muted); font-size: 0.8125rem; }
+  .avrana-bullets { margin: 0; padding-left: 1.25rem; list-style: disc; display: grid; gap: 0.375rem; }
+  .avrana-bullets:empty { display: none; }
 
   /* A raised surface: one step above the page, bordered, not shadowed. */
   .avrana-surface {
@@ -124,8 +257,8 @@
 
   /* Section heading row (title + quiet meta on the right). */
   .avrana-section-title {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
-    margin: 0 0 0.75rem; font-size: 1.25rem; font-weight: 750; letter-spacing: -0.01em;
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 1rem;
+    margin: 0 0 0.625rem; font-size: 1.0625rem; font-weight: 550; letter-spacing: -0.005em;
   }
 
   /* Connection state: text first, the mark is only decoration (never a colour-only cue). */
@@ -157,7 +290,9 @@
     display: inline-grid; place-items: center; font-size: 1.75rem; line-height: 1;
     background: var(--color-base-300); border: 1px solid var(--color-line-strong);
   }
+  .avrana-avatar.xs { width: 1.75rem; height: 1.75rem; font-size: 1rem; }
   .avrana-avatar.sm { width: 2.25rem; height: 2.25rem; font-size: 1.25rem; }
+  .avrana-avatar.xl { width: 4.75rem; height: 4.75rem; font-size: 2.5rem; }
   .avrana-avatar.lg { width: 3.5rem; height: 3.5rem; font-size: 2rem; }
 
   /* Avatar picker: large, tappable portraits; the choice shows a ring AND a check badge. */
@@ -168,12 +303,10 @@
   }
   .avrana-avatar-choice img { width: 100%; height: 100%; border-radius: 50%; }
   .avrana-avatar-choice:hover { border-color: var(--color-line-strong); }
-  .avrana-avatar-choice[aria-pressed="true"] {
-    border-color: var(--color-primary); background: color-mix(in oklab, var(--color-primary) 22%, var(--color-base-200));
-  }
+  .avrana-avatar-choice[aria-pressed="true"] { border-color: var(--color-secondary); background: var(--color-select); }
   .avrana-avatar-choice .tick {
     display: none; position: absolute; top: 0.125rem; right: 0.125rem; width: 1.5rem; height: 1.5rem; padding: 0.25rem;
-    border-radius: 50%; background: var(--color-primary); color: var(--color-primary-content);
+    border-radius: 50%; background: var(--color-secondary); color: var(--color-secondary-content);
   }
   .avrana-avatar-choice[aria-pressed="true"] .tick { display: block; }
 
@@ -212,6 +345,17 @@
   }
   .avrana-game-card .foot .btn { margin-left: auto; min-width: 7.5rem; }
   .avrana-game-card[data-outcome="unavailable"] .avrana-game-cover { filter: grayscale(1); opacity: 0.6; }
+  /* Enlarged text on a narrow phone: the cover and the star leave the title no column of its own,
+     so the title takes the row under them. */
+  .avrana-games { container: games / inline-size; }
+  @container games (max-width: 17rem) {
+    .avrana-game-card { grid-template-columns: 3rem minmax(0, 1fr) auto; column-gap: 0.5rem; padding: 0.625rem; }
+    .avrana-game-card > .avrana-game-cover { width: 3rem; height: 3rem; font-size: 1.5rem; }
+    .avrana-game-card > .avrana-game-cover .avrana-icon { width: 1.5rem; height: 1.5rem; }
+    .avrana-game-card > .min-w-0 { grid-column: 1 / -1; grid-row: 2; }
+    .avrana-game-card > .btn-square { grid-column: 3; grid-row: 1; }
+    .avrana-game-card .foot .btn { min-width: 0; margin-left: 0; flex: 1 1 100%; }
+  }
 
   /* Fit for this phone: icon + words; colour only tints the icon. */
   .avrana-fit { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.9375rem; font-weight: 650; }
@@ -237,27 +381,64 @@
   }
   .avrana-scene-actions { margin-top: auto; display: grid; gap: 0.75rem; }
 
-  /* People, compactly (Party Home): avatar and name in a pill. */
-  .avrana-roster { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
-  .avrana-roster > li {
-    display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; max-width: 100%;
-    padding: 0.25rem 0.875rem 0.25rem 0.25rem; border-radius: 999px; background: var(--color-base-300);
-    font-size: 0.9375rem;
+  /* People on the Party page: faces first, the name under each, then what is true of them. */
+  .avrana-faces {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr)); gap: 1.25rem 0.5rem;
+    margin: 0; padding: 0; list-style: none;
   }
-  .avrana-roster .who { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .avrana-roster li[data-away] { opacity: 0.6; }
-  .avrana-roster .mode { font-size: 0.8125rem; font-weight: 650; color: var(--color-warning); }
+  .avrana-faces > li { display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
+  .avrana-faces .who { margin-top: 0.5rem; max-width: 100%; font-weight: 550; overflow-wrap: anywhere; }
+  .avrana-faces .tags { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem; min-height: 1.25rem; margin-top: 0.125rem; }
+  .avrana-faces li[data-away] .avrana-avatar, .avrana-people li[data-away] .avrana-avatar { filter: grayscale(1) brightness(0.6); }
 
-  /* Limited Mode (ADR 0012): said plainly, in the warning colour, never dressed as a padlock. */
+  /* People in the drawer: one row each. */
+  .avrana-people { margin: 0; padding: 0; list-style: none; }
+  .avrana-people > li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; min-height: 3.5rem; padding: 0.5rem 0; }
+  .avrana-people > li + li { border-top: 1px solid var(--color-line); }
+  .avrana-people .who { font-weight: 550; min-width: 0; overflow-wrap: anywhere; }
+  .avrana-people .tags { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; margin-left: auto; }
+
+  /* Limited Mode (ADR 0012): said plainly, with the warning mark, never dressed as a padlock. */
   .avrana-limited {
-    display: grid; gap: 0.5rem; margin-bottom: 1rem; padding: 1rem;
-    background: var(--color-base-200); border: 1px solid var(--color-warning); border-radius: var(--radius-box);
+    display: grid; gap: 0.5rem; padding: 0.875rem 1rem;
+    background: var(--color-base-200); border-radius: var(--radius-box); border-left: 3px solid var(--color-warning);
   }
   .avrana-limited[hidden] { display: none; }
-  .avrana-limited h2 { margin: 0; font-size: 1.125rem; font-weight: 750; color: var(--color-warning); }
+  .avrana-limited h2 { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1.0625rem; font-weight: 550; }
+  .avrana-limited h2 .avrana-icon { color: var(--color-warning); }
   .avrana-limited p, .avrana-limited ul { margin: 0; }
   .avrana-limited ul { padding-left: 1.25rem; list-style: disc; font-size: 0.9375rem; }
   .avrana-limited ul:empty { display: none; }
+
+  /* The drawer (from above: about people) and the sheet (from below: about the thing on screen).
+     Both are dialogs: the browser keeps focus inside, closes them on Escape and gives focus back
+     to what opened them. */
+  .avrana-drawer, .avrana-sheet {
+    position: fixed; left: 0; right: 0; margin: 0 auto; padding: 0; width: 100%; max-width: 42.5rem;
+    max-height: calc(100dvh - 2.5rem); overflow: hidden; flex-direction: column;
+    background: var(--color-material-solid); border: 1px solid var(--color-material-edge);
+  }
+  .avrana-drawer[open], .avrana-sheet[open] { display: flex; }
+  .avrana-drawer { top: 0; bottom: auto; border-top: 0; border-radius: 0 0 1.125rem 1.125rem; padding-top: env(safe-area-inset-top); }
+  .avrana-sheet { top: auto; bottom: 0; border-bottom: 0; border-radius: 1.125rem 1.125rem 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .avrana-drawer::backdrop, .avrana-sheet::backdrop { background: rgb(4 4 6 / 0.6); }
+  .avrana-drawer > .head, .avrana-sheet > .head { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem 0.25rem 1rem; flex: none; }
+  .avrana-drawer > .head h2, .avrana-sheet > .head h2 { flex: 1; min-width: 0; font-size: 1.0625rem; font-weight: 550; overflow-wrap: anywhere; }
+  .avrana-drawer > .body, .avrana-sheet > .body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 1rem 0.75rem; }
+  .avrana-drawer > .body { flex: 1; }
+  .avrana-sheet > .foot { flex: none; padding: 0.625rem 1rem 0.875rem; border-top: 1px solid var(--color-line); }
+  .avrana-drawer > .compose { flex: none; display: flex; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem; border-top: 1px solid var(--color-line); }
+  /* With the chat on screen the drawer keeps a steady height, so the message field does not jump. */
+  .avrana-drawer:has(#chat:not([hidden])) { height: min(86dvh, 40rem); }
+
+  /* Chat or People: two words, the one on screen underlined (and aria-pressed). */
+  .avrana-tabs { flex: none; display: flex; gap: 1.25rem; padding: 0 1rem; border-bottom: 1px solid var(--color-line); }
+  .avrana-tabs button {
+    position: relative; min-height: 2.75rem; min-width: 2.75rem; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--color-muted); cursor: pointer;
+  }
+  .avrana-tabs button[aria-pressed="true"] { color: var(--color-base-content); font-weight: 550; }
+  .avrana-tabs button[aria-pressed="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--color-base-content); }
 
   /* The round's roster (the setup scene): a grid of people, each an avatar with a badge for what
      they chose (Play, Watch, still choosing; the word is there for screen readers) and the name. */
@@ -289,9 +470,7 @@
     transition: border-color 150ms ease, background-color 150ms ease;
   }
   .avrana-choice:hover { border-color: var(--color-secondary); }
-  .avrana-choice[aria-pressed="true"] {
-    border-color: var(--color-primary); background: color-mix(in oklab, var(--color-primary) 28%, var(--color-base-200));
-  }
+  .avrana-choice[aria-pressed="true"] { border-color: var(--color-secondary); background: var(--color-select); }
   .avrana-choice:disabled { opacity: 0.55; cursor: not-allowed; }
 
   /* How to play: short sections, one idea per line. */
@@ -314,6 +493,8 @@
 }
 
 /* Unlayered, so they win over daisyUI's own (layered) defaults. Keep this list short. */
-.btn { --fontsize: 1rem; font-weight: 650; }
+.btn { --fontsize: 0.9375rem; font-weight: 550; }
+/* A plain button is an outline you can see is pressable; the filled one is the region's main action. */
+.btn:not(.btn-primary, .btn-ghost, .btn-outline, :disabled) { background: transparent; border-color: var(--color-control); }
 .input, .select { font-size: 1rem; }
 .input:focus-within, .input:focus, .select:focus, .file-input:focus-within { outline: 2px solid var(--color-accent); outline-offset: 2px; }

@@ -160,7 +160,10 @@ test('the doorway page names the canonical origins and takes nothing from its ad
 
 test('the shell shows the banner only from Party Core’s word and never claims a padlock', () => {
   const html = read('web/party/index.html');
-  assert.match(html, /<section id="limited" class="avrana-limited" hidden/);
+  assert.match(html, /<section id="limited" class="avrana-limited[^"]*" hidden/);
+  // the mark in the top bar is shown from the same word, and its sheet is closed until asked for
+  assert.match(html, /<button id="limited-mark"[^>]* hidden/);
+  assert.doesNotMatch(html, /<dialog[^>]* open/);
   assert.match(html, /href="doorway\/">Check for the full version/);
   const app = read('web/party/app.js');
   assert.match(app, /state\.mode = modeOf\(partyView\)/);

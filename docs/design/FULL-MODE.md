@@ -35,7 +35,7 @@ and authoritative Party follow. PS1 adoption remains experiment work, not runtim
 
 | File | Role |
 |---|---|
-| `web/party/index.html`, `app.js`, `styles.css` | the guest page; `styles.css` is **generated** from `web/src/party.css` (Tailwind CSS 4 + daisyUI 5 at build time; `npm run check:ui`), the prototype-era `avrana` theme in [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md): dark only, rem type, 48 px targets, no web fonts, no machinery words (tested) |
+| `web/party/index.html`, `app.js`, `styles.css` | the guest page; `styles.css` is **generated** from `web/src/party.css` (Tailwind CSS 4 + daisyUI 5 at build time; `npm run check:ui`), the prototype-era `avrana` theme in [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md): dark only, rem type, 48 px targets, one bundled font and no remote ones, no machinery words (tested) |
 | `web/party/lib/icons.js` | **generated** Lucide subset (`npm run build:icons`) |
 | `web/party/lib/party-mode.js`, `party-client.js` | Party mode (ADR 0011): pure decisions from the Party Core view (`destination`, `roster`, `setupPanel`); the `/party/api/state` long poll, automatic presence and the host's moves. Party Home renders home and a round's full-screen setup scene |
 | `web/party/lib/party-follow.js` | The Party under a game page (ADR 0011): keeps a member's page where the party is, keeps the phone present, and lends the game shell the host's controls (`window.AvranaParty`); no Party UI on the game |

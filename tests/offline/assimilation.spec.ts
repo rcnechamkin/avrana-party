@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { place } from '../lib/frame';
 
 async function open(page: Page) {
   await page.goto('/party/');
@@ -28,6 +29,7 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Worms Armageddon');
   await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Experimental');
   await expect(page.locator('[data-id="ps1-bomberman"] button', { hasText: 'Not installed' })).toBeDisabled();
+  await place(page, 'library');
   await page.getByRole('button', { name: 'Favorites', exact: true }).click();
   await expect(page.locator('#games > li')).toHaveCount(1);
   await expect(page.locator('#games')).toContainText('EXPO');
@@ -37,6 +39,7 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
 });
 test('profile edits and a direct legacy game visit share the same backing identity', async ({ page }) => {
   await legacyProfile(page); await open(page);
+  await place(page, 'party');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Robin Two');
   const choice = page.locator('#avatar-choices [data-avatar="gaze-17"]');
@@ -49,6 +52,7 @@ test('profile edits and a direct legacy game visit share the same backing identi
   expect(snapshot).toEqual({ token: 'existing-player-01', name: 'Robin Two', avatar: 'gaze-17' });
   await page.route('**/games/expo/?avrana=1', (route) => route.fulfill({
     contentType: 'text/html', body: '<!doctype html><title>Legacy game stub</title><h1>Expo</h1>' }));
+  await place(page, 'library');
   await page.locator('[data-id="expo"]').getByRole('link', { name: 'Play', exact: true }).click();
   await expect(page).toHaveURL(/\/games\/expo\/\?avrana=1$/);
   // These are the exact getters in the inspected legacy Hub.identity implementation.
@@ -58,6 +62,7 @@ test('profile edits and a direct legacy game visit share the same backing identi
 });
 test('search, group size and cross-provider favorites work together', async ({ page }) => {
   await open(page);
+  await place(page, 'library');
   await page.locator('#game-search').fill('worms');
   await expect(page.locator('#games > li')).toHaveCount(1);
   await page.locator('[data-id="ps1-worms"]').getByRole('button', { name: /to favorites/ }).click();
@@ -71,7 +76,7 @@ test('search, group size and cross-provider favorites work together', async ({ p
   await page.locator('#game-players').selectOption('2');
   await expect(page.locator('#games')).toContainText('Gauntlet II');
 });
-test('Party Chat uses the same hello and server echo, then reconnects after a profile edit', async ({ page }) => {
+test('Party Chat, in the drawer, uses the same hello and server echo, then reconnects after a profile edit', async ({ page }) => {
   await legacyProfile(page);
   const hellos: any[] = [];
   await page.routeWebSocket('**/chat/ws', (ws) => {
@@ -89,7 +94,13 @@ test('Party Chat uses the same hello and server echo, then reconnects after a pr
         text: msg.text, pfp: null, ts: 2345 }));
     });
   });
-  await open(page); await page.locator('#chat summary').click();
+  await open(page);
+  // No Party here, only the old chat: the Party control is a chat mark and opens straight to it.
+  await expect(page.locator('#hud')).toHaveAccessibleName('Party chat');
+  expect(hellos).toHaveLength(0);                                        // connected only while it is on screen
+  await page.locator('#hud').click();
+  await expect(page.locator('#social')).toBeVisible();
+  await expect(page.locator('#social-tabs')).toBeHidden();               // nobody to list: no People side
   await expect(page.locator('#chat-status')).toHaveText('2 in chat');
   await expect(page.locator('#chat-messages')).toContainText('Hello from the games');
   expect(hellos[0]).toEqual({ t: 'hello', token: 'existing-player-01', name: 'Robin', avatar: 'gaze-02' });
@@ -98,18 +109,36 @@ test('Party Chat uses the same hello and server echo, then reconnects after a pr
   await expect(page.locator('#chat-messages')).toContainText('<b>Hello Party</b>');
   await expect(page.locator('#chat-messages b')).toHaveCount(0);
   await expect(page.locator('#chat-messages li')).toHaveCount(2);
+  // Escape closes the drawer, gives focus back to the control that opened it, and ends the connection.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#social')).toBeHidden();
+  await expect(page.locator('#hud')).toBeFocused();
+  await expect(page.locator('#chat-send')).toBeDisabled();
+  await place(page, 'party');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Robin Two');
   await page.getByRole('button', { name: 'Save profile' }).click();
+  // The Party page's own row opens the same chat, under the new name and the same identity.
+  await page.locator('#party-chat').click();
   await expect.poll(() => hellos.at(-1)?.name).toBe('Robin Two');
   expect(hellos.at(-1).token).toBe(hellos[0].token);
-  await page.locator('#chat summary').click();
+  await page.locator('#social-close').click();
+  await expect(page.locator('#social')).toBeHidden();
   await expect(page.locator('#chat-send')).toBeDisabled();
 });
 test('missing donor service disables its titles without disabling the arcade or losing the profile', async ({ page }) => {
   await legacyProfile(page);
   await page.route('**/api/games', (route) => route.fulfill({ status: 502, body: 'down' }));
+  let sockets = 0;
+  page.on('websocket', (ws) => { if (ws.url().endsWith('/chat/ws')) sockets++; });
   await open(page);
+  // Today's chat is served by that same runtime (ADR 0014 retires it): with it gone the shell
+  // offers no chat at all, rather than a chat that reconnects for ever.
+  await expect(page.locator('#hud')).toBeHidden();
+  await place(page, 'party');
+  await expect(page.locator('#party-chat-row')).toBeHidden();
+  expect(sockets).toBe(0);
+  await place(page, 'library');
   await expect(page.locator('[data-id="expo"]')).toContainText('Not running right now');
   await expect(page.locator('[data-id="expo"]').getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
   await expect(page.locator('[data-id="arcade-gauntlet2"]').getByRole('link')).toBeVisible();
@@ -125,7 +154,7 @@ test('photo framing uses the shared avatar endpoint and removal handles failures
       return route.fulfill({ status: 503, body: 'offline' });
     return route.fulfill({ json: { url: '/avatars/0123456789abcdef0123.webp?v=12' } });
   });
-  await open(page); await page.locator('#player-chip').click();
+  await open(page); await place(page, 'party'); await page.locator('#player-chip').click();
   const image = await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 10; c.height = 20;
     const ctx = c.getContext('2d')!; ctx.fillStyle = 'red'; ctx.fillRect(0,0,10,20);

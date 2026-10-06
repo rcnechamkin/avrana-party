@@ -1,4 +1,5 @@
 import { test, expect as baseExpect, devices, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { place, startForEveryone } from '../lib/frame';
 
 /**
  * Party Home on Party Core, the console model (ADR 0011; AVR-20/127/128 before it), with a game
@@ -58,6 +59,7 @@ async function home(page: Page) {
 /** The only gate is a profile: saving it is being in the party (there is no Join). */
 async function joinParty(page: Page, name: string) {
   await home(page);
+  await place(page, 'party');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -66,7 +68,7 @@ async function joinParty(page: Page, name: string) {
 
 const tile = (page: Page, id: string) => page.locator(`[data-id="${id}"]`);
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
-const AT_HOME = /\/party\/$/;
+const AT_HOME = /\/party\/(#(home|party|library|system))?$/;   // the shell, in whichever of its places
 const partyState = (page: Page) => page.evaluate(async () => (await fetch('/party/api/state', { cache: 'no-store' })).json());
 const store = (page: Page, key: string) => page.evaluate((k) => sessionStorage.getItem(k), key);
 // For expect.poll: the page under watch may be mid-navigation (the move being waited for), which
@@ -100,7 +102,7 @@ async function startTogether(browser: Browser, request: any, names = ['Ana', 'Be
     await joinParty(p.page, name);
     phones.push(p);
   }
-  await tile(phones[0].page, 'bluff').getByRole('button', { name: 'Start for everyone' }).click();
+  await startForEveryone(phones[0].page, 'bluff');
   for (const p of phones) await expect(p.page).toHaveURL(IN_BLUFF);
   const pids: string[] = [];
   for (const p of phones) pids.push((await welcome(p.page)).pid);
@@ -117,12 +119,13 @@ test('the host starts BLUFF once and every phone is in the same game, with no Jo
   for (const p of [ana, ben, cleo]) await expect(p.page.getByRole('button', { name: /Join the party|Leave the party/ })).toHaveCount(0);
   await expect(ana.page.locator('#party-host')).toContainText('You’re the host');
   await expect(ben.page.locator('#party-host')).toContainText('Ana is the host');
+  await place(ben.page, 'library');
   for (const id of ['bluff', 'expo']) {
     await expect(tile(ben.page, id).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
   }
   const v = await partyState(ben.page);
   expect(await api(ben.page, 'session/launch', { game: 'bluff', if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
-  await tile(ana.page, 'bluff').getByRole('button', { name: 'Start for everyone' }).click();
+  await startForEveryone(ana.page, 'bluff');
   for (const p of [ana, ben, cleo]) await expect(p.page).toHaveURL(IN_BLUFF);
   const welcomes = [await welcome(ana.page), await welcome(ben.page), await welcome(cleo.page)];
   for (const w of welcomes) { expect(w.pid).toBeTruthy(); expect(w.watch).toBeUndefined(); }
@@ -164,7 +167,7 @@ test('a start from a stale view is re-checked and happens once; everyone still g
   expect((await api(ben.page, 'rename', { name: 'Benji' })).status).toBe(200);
   const starts: string[] = [];
   ana.page.on('request', (r) => { if (r.url().endsWith('/party/api/session/launch')) starts.push(r.postData() || ''); });
-  await tile(ana.page, 'bluff').getByRole('button', { name: 'Start for everyone' }).click();
+  await startForEveryone(ana.page, 'bluff');
   await expect(ana.page).toHaveURL(IN_BLUFF);
   await expect(ben.page).toHaveURL(IN_BLUFF);
   expect(starts.length).toBe(2);
@@ -192,11 +195,11 @@ test('a failed start says why and stays home; a second party game cannot start o
   const ana = await phone(browser, 0), ben = await phone(browser, 1);
   await joinParty(ana.page, 'Ana');
   await joinParty(ben.page, 'Ben');
-  await tile(ana.page, 'expo').getByRole('button', { name: 'Start for everyone' }).click();
+  await startForEveryone(ana.page, 'expo');
   await expect(ana.page.locator('#party-note')).toContainText('EXPO didn’t start');
   await ben.page.waitForTimeout(1_500);
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(AT_HOME);
-  await tile(ana.page, 'bluff').getByRole('button', { name: 'Start for everyone' }).click();
+  await startForEveryone(ana.page, 'bluff');
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(IN_BLUFF);
   const v = await partyState(ana.page);
   expect(await api(ana.page, 'session/launch', { game: 'expo', if_version: v.version })).toMatchObject({ status: 409, body: { error: 'busy' } });
@@ -241,6 +244,7 @@ test('without Party Core, Party Home is the catalog it always was', async ({ pag
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('html')).toHaveAttribute('data-party', 'off');
   await expect(page.locator('#party')).toBeHidden();
+  await place(page, 'library');
   await expect(tile(page, 'bluff').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
   await expect(tile(page, 'bluff')).not.toHaveAttribute('data-party', /.*/);
 });

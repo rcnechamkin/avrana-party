@@ -1,7 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
+import { place, sideways, smallTargets } from '../lib/frame';
 
 /**
- * The Full Mode Party page (/party/) against the simulated Party (Tier 2).
+ * The Full Mode Party page (/party/) against the simulated Party (Tier 2). The page is a frame
+ * with four places (Home, Party, Library, System); the games are in the Library and "This phone"
+ * is in System.
  * Capabilities that depend on the browser build (H.264 in WebRTC) are pinned with an init script
  * so each state is tested on purpose, not by accident of the CI browser.
  */
@@ -36,6 +39,7 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await open(page);
   await expect(page.locator('#status')).toContainText('Connected to the party');
   await expect(page.locator('#secure')).toBeVisible();
+  await place(page, 'library');
   const card = page.locator('[data-id="arcade-gauntlet2"]');
   await expect(card).toContainText('Gauntlet II');
   await expect(card).toContainText('1–2 players');
@@ -50,7 +54,7 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(bluff).toContainText('BLUFF');
   await expect(bluff.locator('img[src$="art/lan-bluff.svg"]')).toHaveCount(1);
   await expect(bluff.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
-  await page.locator('#phone summary').click();
+  await place(page, 'system');
   await expect(page.locator('#phone-summary')).toHaveText('All set');
   await expect(page.locator('#phone-list [data-cap="video.h264"]')).toHaveAttribute('data-status', 'yes');
 });
@@ -58,12 +62,13 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
 test('a phone that cannot play the video is told why, and can still try', async ({ page }) => {
   await h264(page, false);
   await open(page);
+  await place(page, 'library');
   const card = page.locator('[data-id="arcade-gauntlet2"]');
   await expect(card).toHaveAttribute('data-outcome', 'unavailable');
   await expect(card).toContainText('Not on this phone');
   await expect(card).toContainText('This browser can’t play the Party’s video format.');
   await expect(card.getByRole('link', { name: 'Try anyway' })).toHaveAttribute('href', '/arcade/');
-  await page.locator('#phone summary').click();
+  await place(page, 'system');
   await expect(page.locator('#phone-summary')).toHaveText('Some things are limited');
 });
 
@@ -71,6 +76,7 @@ test('live game state: not running, and full', async ({ page }) => {
   await h264(page, true);
   await arcade(page, 'down');
   await open(page);
+  await place(page, 'library');
   const card = page.locator('[data-id="arcade-gauntlet2"]');
   await expect(card).toContainText('Not running right now');
   await expect(card.getByRole('button', { name: 'Play' })).toBeDisabled();
@@ -82,16 +88,60 @@ test('live game state: not running, and full', async ({ page }) => {
 test('guest words only, and basic accessibility', async ({ page }) => {
   await h264(page, false);
   await open(page);
-  await page.locator('#phone summary').click();
-  const text = await page.locator('main').innerText();
-  expect(text).not.toMatch(JARGON);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  const small = await page.$$eval('main a.btn, main button, summary', (els) => els
-    .filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().height < 44)
-    .map((el) => el.textContent));
-  expect(small).toEqual([]);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
+  for (const name of ['home', 'party', 'library', 'system'] as const) {
+    await place(page, name);
+    expect(await page.locator('#main').innerText(), name).not.toMatch(JARGON);
+    // every control in the frame, bars included: at least 44 px each way
+    expect(await smallTargets(page, '#main a, #main button, #main summary, #main select, #main input:not([type="range"])'), name).toEqual([]);
+    expect(await sideways(page), name).toBeLessThanOrEqual(0);
+  }
+});
+
+test('the frame: four places in one page, and the bar says which one you are in', async ({ page }) => {
+  await open(page);
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
+  await expect(page.locator('#top-title')).toHaveText('Avrana Party');
+  await expect(page.locator('#nav a[aria-current="page"]')).toHaveText('Home');
+  for (const [name, title] of [['party', 'Party'], ['library', 'Library'], ['system', 'System']] as const) {
+    await place(page, name);
+    await expect(page.locator('#top-title')).toHaveText(title);
+    await expect(page.locator('#top-title')).toBeFocused();              // a screen reader hears the new place
+    await expect(page.locator('#nav a[aria-current="page"]')).toHaveText(title);
+    await expect(page.locator('#nav a[aria-current="page"]')).toHaveCount(1);
+    await expect(page).toHaveTitle(`${title} · Avrana Party`);
+    await expect(page.locator(`#view-${name}`)).toBeVisible();
+    await expect(page.locator('#view-home')).toBeHidden();
+  }
+  // one document: no load between places, and the phone's Back goes to the place before
+  await page.goBack();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  // a reload stays where it was; an address the frame does not know is Home
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  await expect(page.locator('[data-id="arcade-gauntlet2"]')).toBeVisible();
+  await page.goto('/party/#nowhere');
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
+  await expect(page.locator('#view-home')).toBeVisible();
+});
+
+test('the frame holds at 200% text on a small phone: nothing sideways, the bars stay, words stay whole', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await open(page);
+  await page.evaluate(() => document.documentElement.style.setProperty('font-size', '200%'));
+  for (const name of ['home', 'party', 'library', 'system'] as const) {
+    await place(page, name);
+    expect(await sideways(page), name).toBeLessThanOrEqual(0);
+    const title = await page.locator('#top-title').evaluate((el) => {
+      const range = document.createRange(); range.selectNodeContents(el);
+      return { lines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size, words: (el.textContent || '').split(' ').length };
+    });
+    expect(title.lines, `${name}: the title breaks only between words`).toBeLessThanOrEqual(title.words);
+    const bar = await page.locator('#nav').boundingBox();
+    expect(bar!.y + bar!.height, name).toBeLessThanOrEqual(640);            // the bar is on screen
+    expect(bar!.height / 640, name).toBeLessThan(0.3);                       // and leaves the page its room
+  }
 });
 
 test('the offline copy: saved on this phone, and honest when the Pi is out of reach', async ({ page, context }) => {
@@ -106,6 +156,9 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
   await page.reload();
   await expect(page.locator('#away')).toBeVisible();
   await expect(page.locator('#status')).toContainText('Not connected to the party');
+  await expect(page.locator('#home-library')).toBeHidden();              // nothing to browse while away
+  await place(page, 'library');
+  await expect(page.locator('#away')).toBeVisible();                     // said in every place, not only on Home
   await expect(page.locator('#games-section')).toBeHidden();
   await expect(page.locator('#away a')).toHaveCount(0);   // the retired LAN Games hub is not offered as a way out
 
@@ -123,6 +176,7 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
 test('a refresh keeps keyboard focus on an unchanged card', async ({ page }) => {
   await h264(page, true);
   await open(page);
+  await place(page, 'library');
   const play = page.locator('[data-id="arcade-gauntlet2"]').getByRole('link', { name: 'Play' });
   await play.focus();
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));  // triggers a refresh

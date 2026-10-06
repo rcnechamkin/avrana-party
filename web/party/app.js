@@ -4,6 +4,10 @@
 // capabilities, and show each installed game with what it will be like on *this* phone. Profiles
 // and chat share donor adapters. Guest copy only.
 //
+// The page is a frame with four places (Home, Party, Library, System: lib/frame.js) that are views
+// of this one document, and two things that open over whichever is on screen: the Party drawer
+// (people, and today's chat while the old chat still answers) and the Limited Mode sheet.
+//
 // Party mode (ADR 0011, the console model) is progressive enhancement: only when Party Core answers
 // /party/api/state is this page the party's home screen. A phone with a profile is in the party on
 // its own (no Join). The party is in one place and only its host moves it: home (this catalog), a
@@ -24,6 +28,7 @@ import { donorAvailability, visibleGames, filterGames, launchTarget } from './li
 import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
+import { chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -33,7 +38,7 @@ const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
-  mode: 'full' };
+  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed' };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -125,7 +130,7 @@ function gameCard(game, result, hp) {
   const remember = (event) => {
     try {
       if (!profile.snapshot().name) {
-        event.preventDefault(); $('profile').open = true; $('profile-name').focus();
+        event.preventDefault(); openProfile();
         $('profile-note').textContent = 'Choose your Party name before opening a game.';
         return;
       }
@@ -176,7 +181,7 @@ function gameCard(game, result, hp) {
 function partyAction(game, mode) {
   if (mode.kind === 'profile') {
     return h('button', { type: 'button', class: 'btn btn-outline', text: 'Choose your name to play',
-      onclick: () => { $('profile').open = true; $('profile-name').focus(); } });
+      onclick: () => openProfile() });
   }
   if (mode.kind === 'start') {
     return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
@@ -216,15 +221,18 @@ async function ensurePresent(view) {
   if (!res.ok) $('party-note').textContent = res.message ? `${res.message} Change it in your profile.` : '';
 }
 
-function personChip(m, extra = []) {
-  return h('li', { 'data-presence': m.presence, 'data-choice': m.choice || null, 'data-away': m.away ? '' : null,
+/** A person at the party: face, name, and what is true of them in words (never colour or an
+ * icon alone). The same item serves the Party page (large faces) and the drawer (rows). */
+function personItem(m, size = '') {
+  return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null,
     'data-mode': m.limited ? LIMITED : null },
-    avatarNode({ avatar: m.avatar || '' }, 'sm'),
+    avatarNode({ avatar: m.avatar || '' }, size),
     h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
-    m.host ? h('span', { class: 'what', 'aria-label': 'host' }, icon('crown', { cls: 'text-secondary' })) : null,
-    // ADR 0012 D4: how each member reaches the party is visible to everyone
-    m.limited ? h('span', { class: 'mode', text: 'Limited' }) : null,
-    ...extra);
+    h('span', { class: 'tags' },
+      m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null,
+      // ADR 0012 D4: how each member reaches the party is visible to everyone
+      m.limited ? h('span', { class: 'avrana-tag mode', text: 'Limited' }) : null,
+      m.away ? h('span', { class: 'avrana-tag quiet', text: 'Away' }) : null));
 }
 
 /** The Limited Mode banner (ADR 0012): shown only when Party Core says this phone reached it
@@ -232,25 +240,113 @@ function personChip(m, extra = []) {
 function renderLimited() {
   const on = state.mode === LIMITED && Boolean(state.report);
   $('limited').hidden = !on;
-  if (!on) return;
+  // The mode is always marked on the phone it applies to: in full on Home, and by the mark in the
+  // top bar on every other page, which opens the same words over that page.
+  $('limited-mark').hidden = !on || state.page === 'home';
+  if (!on) { if ($('about-limited').open) $('about-limited').close(); return; }
   const caps = statuses(state.report);
   const notice = limitedNotice({ caps, blocked: state.catalog ? blockedGames(visibleGames(state.catalog), caps) : [] });
-  $('limited-intro').textContent = notice.intro;
-  $('limited-list').replaceChildren(...notice.missing.map((text) => h('li', { text })));
-  $('limited-restore').textContent = notice.restore;
+  for (const where of ['limited', 'about']) {
+    $(`${where}-intro`).textContent = notice.intro;
+    $(`${where}-list`).replaceChildren(...notice.missing.map((text) => h('li', { text })));
+    $(`${where}-restore`).textContent = notice.restore;
+  }
+}
+
+// ---- the frame: four places, the Party control, the drawer ---------------------------------------
+
+/** Show one of the shell's places. The party's own location is not this function's business:
+ * show() hides the whole frame while the party is anywhere but home. */
+function showPage(page, focus = false) {
+  state.page = page;
+  for (const el of $('content').querySelectorAll('[data-page]')) el.hidden = el.dataset.page !== page;
+  for (const link of $('nav').querySelectorAll('a')) {
+    if (link.dataset.go === page) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  }
+  const title = pageTitle(page);
+  $('top-title').textContent = title;
+  $('top-title').classList.toggle('brand', page === 'home');
+  document.title = page === 'home' ? title : `${title} · Avrana Party`;
+  document.documentElement.dataset.place = page;
+  renderLimited();
+  if (focus) { $('content').scrollTop = 0; $('top-title').focus({ preventScroll: true }); }
+}
+
+/** Your name and avatar live on the Party page. */
+function openProfile() {
+  if (state.page !== 'party') { history.replaceState(null, '', '#party'); showPage('party'); }
+  $('profile').open = true;
+  $('profile-name').focus();
+}
+
+const chatOn = () => chatOffered({ reachable: state.reachable, hub: state.donor !== null && state.donor !== undefined, status: state.chatStatus });
+
+/** Home's own words: who you are here, and the way to the games. */
+function renderHome() {
+  const view = state.partyMode ? party.view() : null;
+  $('home-name').hidden = Boolean(profile.snapshot().name);
+  $('home-library').hidden = state.reachable === false;      // nothing to browse while the Pi is out of reach
+  $('home-library-text').textContent = view && view.me && view.me.host ? 'Pick a game' : 'Open the Library';
+  $('home-library').classList.toggle('btn-primary', Boolean(view && view.me && view.me.host));
+}
+
+/** The Party control: faces and a count while there is a party; a chat mark when there is only
+ * the chat; nothing when there is neither. */
+function renderHud() {
+  const view = state.partyMode ? party.view() : null;
+  const people = view ? roster(view) : [];
+  const chatting = chatOn();
+  $('hud').hidden = !(people.length || chatting);
+  $('party-chat-row').hidden = !chatting;
+  $('hud').setAttribute('aria-label', hudLabel({ party: people.length > 0, count: people.length, chat: chatting }));
+  $('hud-faces').replaceChildren(...(people.length
+    ? people.slice(0, 3).map((m) => avatarNode({ avatar: m.avatar || '' }, 'xs'))
+    : [icon('message-circle')]));
+  $('hud-count').textContent = people.length > 3 ? `+${people.length - 3}` : '';
+  if ($('social').open) renderSocial();
+}
+
+function renderSocial() {
+  const view = state.partyMode ? party.view() : null;
+  const tab = startTab({ party: Boolean(view), chat: chatOn(), want: state.tab });
+  if (!tab) { $('social').close(); return; }
+  state.tab = tab;
+  $('social-tabs').hidden = !(view && chatOn());
+  for (const button of $('social-tabs').querySelectorAll('button'))
+    button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
+  $('pane-people').hidden = tab !== 'people';
+  $('chat').hidden = tab !== 'chat';
+  $('chat-form').hidden = tab !== 'chat';
+  $('social-h').textContent = view ? 'Your Party' : 'Party chat';
+  if (view) {
+    const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
+    $('social-people').replaceChildren(...roster(view).map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'sm')));
+  }
+}
+
+function openSocial(want) {
+  state.tab = want;
+  renderSocial();
+  if (startTab({ party: state.partyMode && Boolean(party.view()), chat: chatOn(), want }) && !$('social').open) $('social').showModal();
+  syncChat();
 }
 
 function renderParty(view) {
   const me = view.me;
   $('party').hidden = false;
+  $('party-people').hidden = false;
   const count = view.members.length;
   $('party-count').textContent = count === 1 ? '1 person' : `${count} people`;
   const host = view.members.find((m) => m.host);
-  $('party-host').textContent = !me ? (partyIdentity() ? 'Joining the party…' : 'Choose your name above to join the party.')
-    : me.host ? 'You’re the host: start a game below and everyone goes there together.'
-      : host ? `${host.name} is the host and picks the games.` : 'Nobody is hosting right now.';
+  const people = roster(view);
+  $('party-lede').textContent = me ? hereLine(count)
+    : partyIdentity() ? 'Joining the party…' : 'Choose your name to join the party.';
+  $('party-names').textContent = me ? namesLine(people) : '';
+  $('party-host').textContent = hostLine(me, host);
   const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
-  $('party-members').replaceChildren(...roster(view).map((m) => personChip({ ...m, limited: limited.has(m.id) })));
+  $('party-members').replaceChildren(...people.map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'xl')));
+  renderHome();
+  renderHud();
   const s = view.session;
   const failed = s && s.outcome === 'launch_failed' && me && me.host && s.id !== state.failShown;
   if (failed) {
@@ -348,6 +444,9 @@ async function renderScene(view) {
 }
 
 function show(which) {
+  // The drawer and the sheet belong to the frame: they never stay open over a round's setup or
+  // the way to a game, where they would stand between a person and their answer.
+  if (which !== 'main') for (const id of ['social', 'about-limited']) if ($(id).open) $(id).close();
   $('main').hidden = which !== 'main';
   $('scene').hidden = which !== 'scene';
   $('going').hidden = which !== 'going';
@@ -386,6 +485,7 @@ async function renderGames(refresh = true) {
     ]);
     state.donor = donor;
     state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));
+    renderHud();                        // the chat is offered only while its own runtime answers
   }
   if (state.reachable === false) return;
   const caps = statuses(state.report);
@@ -452,8 +552,6 @@ async function boot() {
   catalog.games.forEach((game) => profile.keyFor(game));
   state.report = report;
   $('away').hidden = reachable;
-  $('chat').hidden = !reachable;
-  syncChat();
   $('games-section').hidden = !reachable;
   // Party mode only when the Pi answered, the catalog loaded and Party Core gave a real view.
   state.partyMode = Boolean(reachable && catalog && partyView);
@@ -461,6 +559,7 @@ async function boot() {
   document.documentElement.dataset.mode = state.mode;
   document.documentElement.dataset.party = state.partyMode ? 'on' : 'off';
   $('party').hidden = !state.partyMode;
+  $('party-people').hidden = !state.partyMode;
   if (state.partyMode) party.start(partyView);
   if (!reachable) {
     setStatus('away', 'Not connected to the party');
@@ -472,6 +571,9 @@ async function boot() {
   if (catalog) renderPhone();
   renderLimited();
   if (reachable && catalog) await renderGames();
+  renderHome();
+  renderHud();
+  syncChat();
   document.documentElement.dataset.ready = 'true';
   // The offline copy is never on the critical path.
   const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500));
@@ -489,22 +591,26 @@ const profile = createProfile(storage);
 const chat = createPartyChat({
   identity: () => profile.identity(), origin: location.origin,
   onChange: (snapshot) => {
+    const was = chatOn();
+    state.chatStatus = snapshot.status;
+    if (was !== chatOn()) renderHud();
     const labels = { closed: 'Open to chat', connecting: 'Connecting…',
       unavailable: 'Chat is reconnecting…', profile_required: 'Save your profile to chat' };
     $('chat-status').textContent = snapshot.status === 'connected'
       ? snapshot.online + ' in chat' : labels[snapshot.status];
     $('chat-send').disabled = snapshot.status !== 'connected';
     const list = $('chat-messages');
-    const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    const atEnd = $('chat').scrollHeight - $('chat').scrollTop - $('chat').clientHeight < 40;
     list.replaceChildren(...snapshot.messages.map((m) =>
-      h('li', { class: 'flex gap-3 border-b border-line py-2.5 last:border-b-0' }, avatarNode(m, 'sm'), h('div', { class: 'min-w-0' },
-        h('strong', { class: 'text-[0.9375rem]', text: m.name }),
+      h('li', { class: 'flex gap-3 py-2' }, avatarNode(m, 'sm'), h('div', { class: 'min-w-0' },
+        h('strong', { class: 'text-[0.8125rem] font-medium text-muted', text: m.name }),
         h('p', { class: 'm-0 whitespace-pre-wrap', text: m.text }),
         m.photo ? h('p', { class: 'm-0 inline-flex items-center gap-1.5 text-[0.9375rem] text-muted' }, icon('image'), 'Photo shared') : null))));
-    if (atEnd) list.scrollTop = list.scrollHeight;
+    const pane = $('chat');
+    if (atEnd) { list.scrollTop = list.scrollHeight; pane.scrollTop = pane.scrollHeight; }
   },
 });
-const renderProfile = wireProfile(profile, () => { renderGames(false); syncChat(true); syncPresence(); });
+const renderProfile = wireProfile(profile, () => { renderGames(false); renderHome(); syncChat(true); syncPresence(); });
 /** A saved profile is who this phone is at the party: join with it, or show the new name. */
 function syncPresence() {
   const view = party.view(), who = partyIdentity();
@@ -543,17 +649,40 @@ $('rules-ok').onclick = async () => {
   $('rules').close();
   if (then) then();
 };
+/** Today's chat is connected only while it is on screen: the drawer open, on its Chat side. */
 function syncChat(reconnect = false) {
-  if (state.reachable && $('chat').open && profile.snapshot().name) {
+  const showing = $('social').open && state.tab === 'chat';
+  if (state.reachable && showing && profile.snapshot().name) {
     const opened = chat.open();
     if (reconnect && !opened) chat.reconnect();
   } else {
     chat.close();
-    if ($('chat').open && state.reachable && !profile.snapshot().name)
-      $('chat-status').textContent = 'Choose your name above to chat';
+    if (showing && state.reachable && !profile.snapshot().name)
+      $('chat-status').textContent = 'Choose your name on the Party page to chat';
   }
 }
-$('chat').addEventListener('toggle', () => syncChat());
+$('hud').onclick = () => openSocial(null);
+$('party-chat').onclick = () => openSocial('chat');
+$('social-tabs').onclick = (event) => {
+  const button = event.target.closest('button[data-tab]');
+  if (!button) return;
+  state.tab = button.dataset.tab;
+  renderSocial();
+  syncChat();
+};
+$('social-close').onclick = () => $('social').close();
+$('social').addEventListener('close', () => syncChat());
+$('limited-mark').onclick = () => { if (!$('about-limited').open) $('about-limited').showModal(); };
+$('about-close').onclick = () => $('about-limited').close();
+$('about-done').onclick = () => $('about-limited').close();
+// A tap outside either one closes it (the dialog element itself is only its backdrop and edge).
+for (const id of ['social', 'about-limited'])
+  $(id).addEventListener('click', (event) => { if (event.target === $(id)) $(id).close(); });
+$('home-name').onclick = () => openProfile();
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#diag') { location.replace('diag/'); return; }
+  showPage(pageOf(location.hash), true);
+});
 $('chat-form').onsubmit = (event) => {
   event.preventDefault();
   if (chat.send($('chat-text').value)) {
@@ -580,6 +709,7 @@ document.addEventListener('visibilitychange', () => {
   (state.reachable === false ? boot() : refreshHealth());
 });
 window.addEventListener('pageshow', (event) => { if (event.persisted) boot(); else syncChat(); });
+showPage(pageOf(location.hash));
 window.addEventListener('online', () => { if (state.reachable === false) boot(); });
 state.healthTimer = setInterval(refreshHealth, HEALTH_EVERY_MS);
 boot();

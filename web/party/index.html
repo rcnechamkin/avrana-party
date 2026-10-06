@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#121218">
+<meta name="theme-color" content="#0d0d0f">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="same-origin">
 <title>Avrana Party</title>
@@ -13,127 +13,185 @@
 <script type="module" src="app.js"></script>
 </head>
 <body>
-<a class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 btn btn-primary" href="#games-h">Skip to the games</a>
-<main id="main" class="avrana-screen avrana-split">
-  <header class="mb-4">
-    <div class="flex items-center gap-3">
-      <img src="icon.svg" alt="" width="36" height="36" class="size-9 rounded-lg">
-      <h1 class="m-0 text-[1.75rem] font-extrabold leading-tight tracking-tight">Avrana Party</h1>
-    </div>
-    <p id="status" class="avrana-status mt-2" role="status" data-state="checking">
-      <span class="dot" aria-hidden="true"></span>
-      <span class="spin" aria-hidden="true"><span class="loading loading-spinner loading-xs text-muted"></span></span>
-      <span id="status-text">Checking the connection…</span>
-      <span id="secure" class="inline-flex items-center gap-1 text-sm font-semibold text-muted" hidden><span data-icon="lock"></span>Secure</span>
-    </p>
-    <button id="player-chip" type="button" class="avrana-surface mt-4 flex w-full min-h-18 cursor-pointer items-center gap-3 px-3 py-2.5 text-left text-lg font-bold transition-colors hover:border-line-strong" aria-controls="profile">Choose your name</button>
+<a class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 btn btn-primary" href="#library">Skip to the games</a>
+<!-- The frame (UX/UI redesign, slice 1): people on top, the page in the middle, the four places at
+     the bottom. One document; the places are in-page views (lib/frame.js), and the Party's own
+     location always wins over the address (ADR 0011). -->
+<div id="main" class="avrana-app">
+  <header id="top" class="avrana-top">
+    <h1 id="top-title" class="avrana-top-title brand" tabindex="-1">Avrana Party</h1>
+    <button id="limited-mark" type="button" class="avrana-limmark" hidden aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><span class="pill"><span data-icon="triangle-alert"></span><span class="word">Limited</span></span></button>
+    <button id="hud" type="button" class="avrana-hud" hidden aria-haspopup="dialog"><span id="hud-faces" class="faces"></span><span id="hud-count" class="n"></span></button>
   </header>
 
-  <details id="profile" class="avrana-surface -mt-2 mb-4 not-open:hidden">
-    <summary hidden><h2>Your Avrana profile</h2></summary>
-    <div class="p-4">
-      <h2 class="m-0 text-lg font-bold">Your Avrana profile</h2>
-      <p class="mb-4 mt-1 text-[0.9375rem] text-muted">Saved on this browser. Shared with the party games.</p>
-      <form id="profile-form">
-        <label for="profile-name" class="mb-1.5 block text-[0.9375rem] font-semibold">Your name</label>
-        <input id="profile-name" class="input w-full text-base" maxlength="24" autocomplete="nickname" required>
-        <p class="mb-2 mt-5 flex items-baseline justify-between gap-3 text-[0.9375rem]"><span class="font-semibold" id="avatar-label">Your avatar</span><span id="avatar-chosen" class="text-muted"></span></p>
-        <div id="avatar-choices" class="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-4" role="group" aria-labelledby="avatar-label"></div>
-        <button type="submit" class="btn btn-primary btn-block mt-4">Save profile</button>
-      </form>
-      <div class="mt-5 border-t border-line pt-4">
-        <label for="profile-photo" class="mb-1.5 block text-[0.9375rem] font-semibold">Or use your photo</label>
-        <input id="profile-photo" class="file-input w-full" type="file" accept="image/jpeg,image/png,image/webp">
-        <div id="photo-crop" class="mt-3" hidden>
-          <canvas id="photo-canvas" class="mx-auto my-3 block w-full max-w-64 rounded-box" width="512" height="512" aria-label="Photo preview"></canvas>
-          <label for="photo-zoom" class="block text-[0.9375rem]">Zoom</label><input id="photo-zoom" class="range range-primary mb-3 w-full" type="range" min="1" max="4" step="0.01" value="1">
-          <label for="photo-x" class="block text-[0.9375rem]">Left to right</label><input id="photo-x" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
-          <label for="photo-y" class="block text-[0.9375rem]">Top to bottom</label><input id="photo-y" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
-          <div class="flex flex-wrap gap-2"><button id="photo-use" type="button" class="btn btn-primary flex-1">Use photo</button><button id="photo-cancel" type="button" class="btn btn-ghost flex-1">Cancel</button></div>
+  <main id="content" class="avrana-main"><div class="wrap">
+    <section id="away" class="avrana-surface mb-4 grid justify-items-center gap-2 px-5 py-8 text-center" hidden aria-labelledby="away-h">
+      <span class="mb-1 grid size-16 place-items-center rounded-full bg-base-300 text-warning" data-icon="wifi-off" data-icon-class="size-8"></span>
+      <h2 id="away-h" class="m-0 text-2xl font-semibold">Can’t reach the party</h2>
+      <p class="m-0 max-w-sm">Make sure this phone is on the <strong>Avrana Party</strong> Wi-Fi, then try again.</p>
+      <button type="button" id="retry" class="btn btn-primary btn-wide mt-3">Try again</button>
+    </section>
+    <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
+    <p id="party-note" class="mb-3 text-[0.9375rem] text-warning empty:hidden" role="status"></p>
+
+    <!-- Home: who is here and who hosts. -->
+    <section id="view-home" data-page="home">
+      <!-- Party mode (ADR 0011, the console model): shown only when Party Core answers. Being here is
+           automatic once this phone has a profile; there is no Join and no Leave. -->
+      <section id="party" class="mt-2" hidden aria-label="Who is here">
+        <p id="party-lede" class="avrana-lede"></p>
+        <p id="party-names" class="avrana-sub empty:hidden"></p>
+        <p id="party-host" class="avrana-sub empty:hidden"></p>
+      </section>
+      <p id="status" class="avrana-status mt-3" role="status" data-state="checking">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="spin" aria-hidden="true"><span class="loading loading-spinner loading-xs text-muted"></span></span>
+        <span id="status-text">Checking the connection…</span>
+        <span id="secure" class="inline-flex items-center gap-1 text-sm font-semibold text-muted" hidden><span data-icon="lock"></span>Secure</span>
+      </p>
+
+      <!-- Limited Mode (ADR 0012): shown only when Party Core says this phone reached the party over
+           the plain-HTTP fallback. It says so plainly and never imitates a padlock. -->
+      <section id="limited" class="avrana-limited mt-4" hidden aria-labelledby="limited-h">
+        <h2 id="limited-h"><span data-icon="triangle-alert"></span>Limited Mode</h2>
+        <p id="limited-intro"></p>
+        <ul id="limited-list" aria-label="What is different on this phone"></ul>
+        <p id="limited-restore" class="text-[0.9375rem] text-muted"></p>
+        <p class="text-[0.9375rem]"><a class="avrana-textlink" href="doorway/">Check for the full version</a></p>
+      </section>
+
+      <div class="mt-6 grid gap-2">
+        <button id="home-name" type="button" class="btn btn-primary btn-block" hidden><span data-icon="user-round-pen"></span>Choose your name</button>
+        <a id="home-library" class="btn btn-block" href="#library"><span data-icon="library-big"></span><span id="home-library-text">Open the Library</span></a>
+      </div>
+    </section>
+
+    <!-- Party: you, and the people here. -->
+    <section id="view-party" data-page="party" hidden>
+      <h2 class="avrana-section-title mt-2">You</h2>
+      <button id="player-chip" type="button" class="avrana-surface flex w-full min-h-18 cursor-pointer items-center gap-3 px-3 py-2.5 text-left text-lg font-semibold transition-colors hover:border-line-strong" aria-controls="profile">Choose your name</button>
+      <details id="profile" class="avrana-surface mt-2 not-open:hidden">
+        <summary hidden><h2>Your Avrana profile</h2></summary>
+        <div class="p-4">
+          <h2 class="m-0 text-lg font-bold">Your Avrana profile</h2>
+          <p class="mb-4 mt-1 text-[0.9375rem] text-muted">Saved on this browser. Shared with the party games.</p>
+          <form id="profile-form">
+            <label for="profile-name" class="mb-1.5 block text-[0.9375rem] font-semibold">Your name</label>
+            <input id="profile-name" class="input w-full text-base" maxlength="24" autocomplete="nickname" required>
+            <p class="mb-2 mt-5 flex items-baseline justify-between gap-3 text-[0.9375rem]"><span class="font-semibold" id="avatar-label">Your avatar</span><span id="avatar-chosen" class="text-muted"></span></p>
+            <div id="avatar-choices" class="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-4" role="group" aria-labelledby="avatar-label"></div>
+            <button type="submit" class="btn btn-primary btn-block mt-4">Save profile</button>
+          </form>
+          <div class="mt-5 border-t border-line pt-4">
+            <label for="profile-photo" class="mb-1.5 block text-[0.9375rem] font-semibold">Or use your photo</label>
+            <input id="profile-photo" class="file-input w-full" type="file" accept="image/jpeg,image/png,image/webp">
+            <div id="photo-crop" class="mt-3" hidden>
+              <canvas id="photo-canvas" class="mx-auto my-3 block w-full max-w-64 rounded-box" width="512" height="512" aria-label="Photo preview"></canvas>
+              <label for="photo-zoom" class="block text-[0.9375rem]">Zoom</label><input id="photo-zoom" class="range range-primary mb-3 w-full" type="range" min="1" max="4" step="0.01" value="1">
+              <label for="photo-x" class="block text-[0.9375rem]">Left to right</label><input id="photo-x" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
+              <label for="photo-y" class="block text-[0.9375rem]">Top to bottom</label><input id="photo-y" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
+              <div class="flex flex-wrap gap-2"><button id="photo-use" type="button" class="btn btn-primary flex-1">Use photo</button><button id="photo-cancel" type="button" class="btn btn-ghost flex-1">Cancel</button></div>
+            </div>
+            <button id="remove-photo" type="button" class="btn btn-ghost mt-2 text-error" hidden>Remove photo</button>
+          </div>
+          <p id="profile-stats" class="mb-0 mt-4 text-[0.9375rem] text-muted"></p>
         </div>
-        <button id="remove-photo" type="button" class="btn btn-ghost mt-2 text-error" hidden>Remove photo</button>
-      </div>
-      <p id="profile-stats" class="mb-0 mt-4 text-[0.9375rem] text-muted"></p>
-    </div>
-  </details>
-  <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
+      </details>
+      <section id="party-people" class="mt-6" hidden aria-labelledby="party-h">
+        <h2 id="party-h" class="avrana-section-title">People here <span id="party-count" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
+        <ul id="party-members" class="avrana-faces" aria-label="People at the party"></ul>
+      </section>
+      <ul class="avrana-list mt-6">
+        <li id="party-chat-row" hidden><button id="party-chat" type="button" aria-haspopup="dialog"><span data-icon="message-circle"></span><span>Party chat</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
+      </ul>
+    </section>
 
-  <!-- Limited Mode (ADR 0012): shown only when Party Core says this phone reached the party over
-       the plain-HTTP fallback. It says so plainly and never imitates a padlock. -->
-  <section id="limited" class="avrana-limited" hidden aria-labelledby="limited-h">
-    <h2 id="limited-h">Limited Mode</h2>
-    <p id="limited-intro"></p>
-    <ul id="limited-list" aria-label="What is different on this phone"></ul>
-    <p id="limited-restore" class="text-[0.9375rem] text-muted"></p>
-    <p class="text-[0.9375rem]"><a href="doorway/">Check for the full version</a></p>
-  </section>
+    <!-- Library: today's game list, as it was, until the Library is rebuilt. -->
+    <section id="view-library" data-page="library" hidden>
+      <section id="games-section" class="mb-6 mt-2" aria-labelledby="games-h">
+        <h2 id="games-h" class="avrana-section-title" tabindex="-1">Games <span id="game-count" class="font-sans text-[0.9375rem] font-normal text-muted" role="status"></span></h2>
+        <div id="catalog-error" class="avrana-surface mb-4 flex flex-wrap items-center gap-3 p-4" role="status" hidden>
+          <p class="m-0 flex-1">Game list unavailable.</p>
+          <button type="button" id="catalog-retry" class="btn btn-primary">Retry</button>
+        </div>
+        <div class="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <label for="game-search" class="sr-only">Search games</label>
+          <div class="input w-full"><span data-icon="search" class="text-muted"></span><input id="game-search" type="search" class="text-base" placeholder="Search games"></div>
+          <div class="flex flex-wrap items-center gap-2">
+            <label for="game-players" class="whitespace-nowrap text-[0.9375rem] font-semibold"><span data-icon="users" class="mr-1 text-muted"></span>People playing</label>
+            <select id="game-players" class="select min-w-0 flex-1 text-base sm:w-44"><option value="0">Any group size</option>
+              <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+              <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="8">8</option><option value="10">10</option><option value="12">12</option>
+            </select>
+          </div>
+        </div>
+        <nav id="game-views" class="mb-4 flex flex-wrap gap-1 sm:w-fit rounded-field bg-base-200 p-1" aria-label="Your games">
+          <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="all" aria-pressed="true">All games</button>
+          <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="favorites" aria-pressed="false">Favorites</button>
+          <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="recent" aria-pressed="false">Recently opened</button>
+        </nav>
+        <ul id="games" class="avrana-games m-0 grid list-none grid-cols-1 gap-3 p-0" aria-busy="true">
+          <li class="skeleton h-44 rounded-box" aria-hidden="true"></li>
+          <li class="skeleton h-44 rounded-box" aria-hidden="true"></li>
+        </ul>
+      </section>
+    </section>
 
-  <!-- Party mode (ADR 0011, the console model): shown only when Party Core answers. Presence is
-       automatic once this phone has a profile; there is no Join and no Leave. -->
-  <section id="party" class="avrana-surface mb-4 grid gap-3 p-4" hidden aria-labelledby="party-h">
-    <div class="flex items-center gap-2"><span data-icon="users" class="text-secondary"></span><h2 id="party-h" class="m-0 text-lg font-bold">Your party</h2><span id="party-count" class="ml-auto text-[0.9375rem] text-muted"></span></div>
-    <p id="party-host" class="m-0"></p>
-    <ul id="party-members" class="avrana-roster" aria-label="People at the party"></ul>
-    <p id="party-note" class="m-0 text-[0.9375rem] text-warning empty:hidden" role="status"></p>
-  </section>
+    <!-- System: this phone. -->
+    <section id="view-system" data-page="system" hidden>
+      <section id="phone" class="mt-2" aria-labelledby="phone-h">
+        <h2 id="phone-h" class="avrana-section-title">This phone <span id="phone-summary" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
+        <ul id="phone-list" class="avrana-checks" aria-labelledby="phone-h"></ul>
+      </section>
+      <ul class="avrana-list mt-6">
+        <li><a href="#party"><span data-icon="user-round-pen"></span><span>Your name and avatar</span><span class="val"><span data-icon="chevron-right"></span></span></a></li>
+        <li><a href="diag/"><span data-icon="settings"></span><span>Technical details</span><span class="val"><span data-icon="chevron-right"></span></span></a></li>
+      </ul>
+    </section>
+  </div></main>
 
-  <section id="away" class="avrana-surface mb-4 grid justify-items-center gap-2 px-5 py-8 text-center lg:col-start-2 lg:row-start-1" hidden aria-labelledby="away-h">
-    <span class="mb-1 grid size-16 place-items-center rounded-full bg-base-300 text-warning" data-icon="wifi-off" data-icon-class="size-8"></span>
-    <h2 id="away-h" class="m-0 text-2xl font-extrabold">Can’t reach the party</h2>
-    <p class="m-0 max-w-sm">Make sure this phone is on the <strong>Avrana Party</strong> Wi-Fi, then try again.</p>
-    <button type="button" id="retry" class="btn btn-primary btn-wide mt-3">Try again</button>
-  </section>
+  <nav id="nav" class="avrana-nav" aria-label="Avrana">
+    <a href="#home" data-go="home" aria-current="page"><span data-icon="house"></span>Home</a>
+    <a href="#party" data-go="party"><span data-icon="users"></span>Party</a>
+    <a href="#library" data-go="library"><span data-icon="library-big"></span>Library</a>
+    <a href="#system" data-go="system"><span data-icon="settings"></span>System</a>
+  </nav>
+</div>
 
-  <details id="chat" class="avrana-disclosure avrana-surface mb-4" hidden>
-    <summary><span data-icon="message-circle" class="text-secondary"></span><h2 class="m-0 text-base font-bold">Party Chat</h2><span id="chat-status" class="ml-auto text-[0.9375rem] font-normal text-muted">Open to chat</span><span class="chev ml-0!" data-icon="chevron-down"></span></summary>
-    <div class="body">
-      <p class="m-0 text-[0.9375rem] text-muted">For everyone at the party, whatever you’re playing.</p>
-      <ol id="chat-messages" class="my-3 max-h-72 list-none overflow-y-auto overscroll-contain p-0 [overflow-wrap:anywhere]" aria-label="Party messages"></ol>
-      <p id="chat-feedback" class="text-[0.9375rem] text-warning empty:hidden" role="status"></p>
-      <form id="chat-form">
-        <label for="chat-text" class="mb-1.5 block text-[0.9375rem] font-semibold">Message</label>
-        <div class="flex gap-2"><input id="chat-text" class="input min-w-0 flex-1 text-base" maxlength="400" autocomplete="off" required><button id="chat-send" type="submit" class="btn btn-primary" disabled><span data-icon="send-horizontal"></span>Send</button></div>
-      </form>
-    </div>
-  </details>
+<!-- Your Party: the people here and, while the old chat still answers, today's chat. It opens over
+     the page that is open and closes back to it. -->
+<dialog id="social" class="avrana-drawer" aria-labelledby="social-h">
+  <div class="head"><h2 id="social-h" class="m-0">Your Party</h2><button id="social-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
+  <div id="social-tabs" class="avrana-tabs" role="group" aria-label="Show">
+    <button id="tab-chat" type="button" data-tab="chat" aria-pressed="false">Chat</button>
+    <button id="tab-people" type="button" data-tab="people" aria-pressed="true">People</button>
+  </div>
+  <div id="pane-people" class="body">
+    <ul id="social-people" class="avrana-people" aria-label="People at the party"></ul>
+  </div>
+  <div id="chat" class="body" hidden>
+    <p id="chat-status" class="m-0 text-[0.9375rem] text-muted" role="status">Open to chat</p>
+    <ol id="chat-messages" class="my-2 list-none p-0 [overflow-wrap:anywhere]" aria-label="Party messages"></ol>
+    <p id="chat-feedback" class="text-[0.9375rem] text-warning empty:hidden" role="status"></p>
+  </div>
+  <form id="chat-form" class="compose" hidden>
+    <label for="chat-text" class="sr-only">Message</label>
+    <input id="chat-text" class="input min-w-0 flex-1 text-base" maxlength="400" autocomplete="off" placeholder="Message the Party" required><button id="chat-send" type="submit" class="btn btn-primary" disabled><span data-icon="send-horizontal"></span>Send</button>
+  </form>
+</dialog>
 
-  <section id="games-section" class="avrana-library mb-6" aria-labelledby="games-h">
-    <h2 id="games-h" class="avrana-section-title" tabindex="-1">Games <span id="game-count" class="font-sans text-[0.9375rem] font-normal text-muted" role="status"></span></h2>
-    <div id="catalog-error" class="avrana-surface mb-4 flex flex-wrap items-center gap-3 p-4" role="status" hidden>
-      <p class="m-0 flex-1">Game list unavailable.</p>
-      <button type="button" id="catalog-retry" class="btn btn-primary">Retry</button>
-    </div>
-    <div class="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-      <label for="game-search" class="sr-only">Search games</label>
-      <div class="input w-full"><span data-icon="search" class="text-muted"></span><input id="game-search" type="search" class="text-base" placeholder="Search games"></div>
-      <div class="flex items-center gap-2">
-        <label for="game-players" class="whitespace-nowrap text-[0.9375rem] font-semibold"><span data-icon="users" class="mr-1 text-muted"></span>People playing</label>
-        <select id="game-players" class="select min-w-0 flex-1 text-base sm:w-44"><option value="0">Any group size</option>
-          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
-          <option value="8">8</option><option value="10">10</option><option value="12">12</option>
-        </select>
-      </div>
-    </div>
-    <nav id="game-views" class="mb-4 flex gap-1 sm:w-fit rounded-field bg-base-200 p-1" aria-label="Your games">
-      <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="all" aria-pressed="true">All games</button>
-      <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="favorites" aria-pressed="false">Favorites</button>
-      <button type="button" class="btn btn-ghost min-h-11 flex-auto whitespace-nowrap px-2 sm:px-4 text-[0.9375rem] aria-pressed:bg-base-300 aria-pressed:text-base-content" data-view="recent" aria-pressed="false">Recently opened</button>
-    </nav>
-    <ul id="games" class="m-0 grid list-none gap-3 p-0 xl:grid-cols-2" aria-busy="true">
-      <li class="skeleton h-44 rounded-box" aria-hidden="true"></li>
-      <li class="skeleton h-44 rounded-box" aria-hidden="true"></li>
-    </ul>
-  </section>
-
-  <details id="phone" class="avrana-disclosure mb-4 border-t border-line">
-    <summary><span data-icon="smartphone" class="text-muted"></span><h2 id="phone-h" class="m-0 text-base font-bold">This phone</h2><span id="phone-summary" class="ml-auto text-[0.9375rem] font-normal text-muted"></span><span class="chev ml-0!" data-icon="chevron-down"></span></summary>
-    <div class="body">
-      <ul id="phone-list" class="avrana-checks" aria-labelledby="phone-h"></ul>
-      <p class="mb-0 mt-4 text-[0.9375rem]"><a href="diag/">Technical details</a></p>
-    </div>
-  </details>
-</main>
+<!-- What Limited Mode means on this phone (ADR 0012), from the mark in the top bar. -->
+<dialog id="about-limited" class="avrana-sheet" aria-labelledby="about-h">
+  <div class="head"><h2 id="about-h" class="m-0">Limited Mode on this phone</h2><button id="about-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
+  <div class="body grid gap-3">
+    <p id="about-intro" class="m-0"></p>
+    <ul id="about-list" class="avrana-bullets" aria-label="What is different on this phone"></ul>
+    <p id="about-restore" class="m-0 text-muted"></p>
+    <p class="m-0"><a class="avrana-textlink" href="doorway/">Check for the full version</a></p>
+  </div>
+  <div class="foot"><button id="about-done" type="button" class="btn btn-primary btn-block">Done</button></div>
+</dialog>
 
 <!-- A round's setup (ADR 0011): the Party's own full-screen scene, themed by the game's catalog
      entry and its onboarding.json. The game's table is not on screen until the host starts. -->
