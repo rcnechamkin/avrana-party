@@ -111,18 +111,18 @@ pre-round screen and not as Party Home: the library, chat row and "This phone" M
 visible in it **[Implemented: `show('scene')` hides `#main`]**. Which page or origin draws the
 shell is an implementation matter and may move with ADR 0013; the behaviour is the contract.
 
-**[Accepted, owner decision of 2026-10-05, relayed to this change; not implemented.]** The owner
-approved revision 2 of the shell redesign, which draws Party chrome on a briefing, and said of
-its drawer: "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings."
-So the Party control (who is here) and a drawer of the people here MAY be on a briefing, and
-Party chat MUST NOT be. **[Proposed]**, as revision 2 draws it and no further: on a phone in
-Limited Mode the Limited Mode mark and its explanation are on the briefing too; the drawer and
-the explanation open over the briefing and close back to it; nothing in them moves the phone off
-the briefing, changes the round, or covers the briefing's own controls once closed, so the
-explanation there carries no link that leaves the page (the link that checks for the full
-version stays on Party Home); the Library, the navigation bar and "This phone" stay off the
-briefing. Chat over a briefing waits for a Party-owned chat and its own decision. ADR 0011
-carries the matching amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`.
+**[Accepted, owner decisions of 2026-10-05, relayed to this change; not implemented.]** Of the
+shell redesign the owner said: "Make Party access and the Limited explanation open over the briefing, preserving its location."
+and, approving its revision 2: "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings."
+So the Party control (who is here) with a drawer of the people here, and, on a phone in Limited
+Mode, the Limited Mode explanation, MAY open over a briefing and MUST leave the phone on it; and
+Party chat MUST NOT be there. **[Proposed]**, as revision 2 draws it and no further: the Limited
+Mode mark is what opens the explanation; nothing in the drawer or the explanation changes the
+round or covers the briefing's own controls once closed; the explanation over a briefing carries
+no link that leaves the page (the link that checks for the full version is on the ordinary
+pages); the Library, the navigation bar and "This phone" stay off the briefing. Chat over a
+briefing waits for a Party-owned chat and its own decision. ADR 0011 carries the matching
+amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`.
 
 **Rule 3.3 [Accepted, AVR-56; Implemented].** While the Party is in a game, a non-host has no
 normal route back to Party Home or to another game. The integration bar and every
@@ -1094,8 +1094,7 @@ whatever the words do not reach as **[Proposed]**.
 | Q8 | Platform sound | "Allow restrained Avrana platform sounds for things such as: lifecycle transitions; launch/entry; errors; important platform-level state changes. Individual games own their gameplay soundscape. The platform should not layer unnecessary sound over a game's own audio design." | 11.1a, 11.4 |
 | Q11 | Rules during play | "Provide a platform-standard way to open the game's rules while the game remains active. This should behave like an overlay/sheet rather than navigating the user away from the running game." | 4.15 |
 | Q12 | A game that declares `spectators: none` | "If a game declares spectators: none, do not invent a fake spectator experience. A person who is not participating should receive a clear state equivalent to: Game in progress / You are not playing this round. They may retain appropriate Party-level access, but do not expose a game viewport pretending to be spectator support. When the game ends, normal Party participation resumes." | 4.4a |
-
-| S1 (shell redesign) | May Party chrome be on a briefing? | "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings." (relayed with the approval of revision 2 of the shell redesign and of slices 0 and 1 of its plan) | 3.2 |
+| S1 (shell redesign) | May Party chrome be on a briefing? | "Make Party access and the Limited explanation open over the briefing, preserving its location." and, with the approval of revision 2 and of slices 0 and 1 of its plan: "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings." | 3.2 |
 
 Q6, Q8, Q11 and Q12 are the owner's decisions of the evening of 2026-10-05, quoted as they were
 relayed to this change. S1 was relayed later the same day with the shell redesign's approval; it
