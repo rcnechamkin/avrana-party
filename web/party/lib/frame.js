@@ -44,11 +44,13 @@ export function namesLine(people) {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}.`;
 }
 
-/** Who picks the games, for this phone. `me` and `host` are members (or null). */
-export function hostLine(me, host) {
+/** Who picks the games, for this phone. `me` and `host` are members (or null); `away`: Party
+ * Core says the Host is away (lib/states.js awayHost). */
+export function hostLine(me, host, away = false) {
   if (!me) return '';
   if (me.host) return 'You’re the host. Pick a game in the Library and everyone goes there together.';
-  return host ? `${host.name} is the host and picks the games.` : 'Nobody is hosting right now.';
+  if (!host) return 'Nobody is hosting right now.';
+  return away ? `${host.name} is the host, and is away.` : `${host.name} is the host and picks the games.`;
 }
 
 /** Is today's chat on offer? It is served by the old games runtime, which is being retired

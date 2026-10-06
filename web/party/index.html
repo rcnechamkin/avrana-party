@@ -26,6 +26,14 @@
   </header>
 
   <main id="content" class="avrana-main"><div class="wrap">
+    <!-- This phone and the Party box. While Party Core stops answering: one quiet line, and what
+         was last known stays on screen. Not back after a while: what happened, and the one thing
+         a person can do. The phone keeps trying by itself either way. -->
+    <div id="net" class="avrana-notice" role="status" hidden>
+      <span id="net-icon" class="mark"></span>
+      <p><b id="net-title"></b><span id="net-text"></span></p>
+      <button type="button" id="net-retry" class="btn" hidden>Try again</button>
+    </div>
     <section id="away" class="avrana-surface mb-4 grid justify-items-center gap-2 px-5 py-8 text-center" hidden aria-labelledby="away-h">
       <span class="mb-1 grid size-16 place-items-center rounded-full bg-base-300 text-warning" data-icon="wifi-off" data-icon-class="size-8"></span>
       <h2 id="away-h" class="m-0 text-2xl font-semibold">Can’t reach the party</h2>
@@ -43,6 +51,8 @@
         <p id="party-lede" class="avrana-lede"></p>
         <p id="party-names" class="avrana-sub empty:hidden"></p>
         <p id="party-host" class="avrana-sub empty:hidden"></p>
+        <!-- The Host stopped answering, or hosting passed on: Party Core's own rule, said where it applies. -->
+        <p id="party-state" class="avrana-state" role="status" hidden></p>
       </section>
       <p id="status" class="avrana-status mt-3" role="status" data-state="checking">
         <span class="dot" aria-hidden="true"></span>
@@ -53,8 +63,22 @@
 
       <!-- Limited Mode (ADR 0012): shown only when Party Core says this phone reached the party over
            the plain-HTTP fallback. It says so plainly and never imitates a padlock. -->
+      <!-- Hosting passed to this phone: said once, and put away by the person it was said to. -->
+      <div id="host-now" class="avrana-notice mt-4" role="status" hidden>
+        <span class="mark" data-icon="arrow-up-down"></span>
+        <p><b id="host-now-title"></b><span id="host-now-text"></span></p>
+        <button type="button" id="host-now-x" class="btn btn-ghost btn-square" aria-label="Dismiss"><span data-icon="x"></span></button>
+      </div>
+      <!-- Trouble on the Party box that changes what can be played: the Host only, who may put it away. -->
+      <div id="trouble" class="avrana-notice warn mt-4" role="status" hidden>
+        <span class="mark" data-icon="triangle-alert"></span>
+        <p><b id="trouble-title"></b><span id="trouble-text"></span> <a class="avrana-textlink" href="#system">What changed</a></p>
+        <button type="button" id="trouble-x" class="btn btn-ghost btn-square" aria-label="Dismiss"><span data-icon="x"></span></button>
+      </div>
+
       <section id="limited" class="avrana-limited mt-4" hidden aria-labelledby="limited-h">
-        <h2 id="limited-h"><span data-icon="triangle-alert"></span>Limited Mode</h2>
+        <div class="head"><h2 id="limited-h"><span data-icon="triangle-alert"></span>Limited Mode</h2>
+          <button type="button" id="limited-fold" class="btn btn-ghost btn-square" aria-label="Fold this notice away"><span data-icon="chevron-up"></span></button></div>
         <p id="limited-intro"></p>
         <ul id="limited-list" aria-label="What is different on this phone"></ul>
         <p id="limited-restore" class="text-[0.9375rem] text-muted"></p>
@@ -108,6 +132,7 @@
           <p id="profile-stats" class="mb-0 mt-4 text-[0.9375rem] text-muted"></p>
         </div>
       </details>
+      <p id="people-state" class="avrana-state mt-5" role="status" hidden></p>
       <section id="party-people" class="mt-6" hidden aria-labelledby="party-h">
         <h2 id="party-h" class="avrana-section-title">People here <span id="party-count" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
         <ul id="party-members" class="avrana-faces" aria-label="People at the party"></ul>
@@ -152,7 +177,10 @@
 
     <!-- System: this phone. -->
     <section id="view-system" data-page="system" hidden>
-      <section id="phone" class="mt-2" aria-labelledby="phone-h">
+      <!-- How things are: one quiet line when all is well; otherwise what it means for play.
+           Limited Mode's own words are kept here for as long as the phone is in it. -->
+      <section id="health" class="mt-2 grid gap-3" aria-label="How things are" hidden></section>
+      <section id="phone" class="mt-5" aria-labelledby="phone-h">
         <h2 id="phone-h" class="avrana-section-title">This phone <span id="phone-summary" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
         <ul id="phone-list" class="avrana-checks" aria-labelledby="phone-h"></ul>
       </section>
@@ -182,13 +210,21 @@
       </section>
     </div>
     <div class="avrana-dock">
-      <p id="scene-seat" class="m-0 text-center text-[0.8125rem] text-warning empty:hidden" role="status"></p>
-      <div class="choices" role="group" aria-label="Your choice for this round">
-        <button id="choose-play" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Play this round</span></button>
-        <button id="choose-watch" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Watch this round</span></button>
+      <!-- Not back after a while: the round's choices give way to the one thing a person can do. -->
+      <div id="scene-lost" class="lost" hidden>
+        <p role="status"><span data-icon="wifi-off"></span><span id="scene-lost-text"></span></p>
+        <button type="button" id="scene-retry" class="btn btn-block">Try again</button>
       </div>
-      <button id="scene-start" type="button" class="btn btn-primary btn-block" hidden>Start game</button>
-      <p class="line"><span id="scene-status" role="status" aria-live="polite"></span> <button id="scene-cancel" type="button" class="avrana-textlink" hidden>Choose another game</button></p>
+      <div id="scene-live" class="live">
+        <p id="scene-seat" class="m-0 text-center text-[0.8125rem] text-warning empty:hidden" role="status"></p>
+        <div class="choices" role="group" aria-label="Your choice for this round">
+          <button id="choose-play" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Play this round</span></button>
+          <button id="choose-watch" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Watch this round</span></button>
+        </div>
+        <button id="scene-start" type="button" class="btn btn-primary btn-block" hidden>Start game</button>
+        <p id="scene-net" class="m-0 text-center text-[0.8125rem] text-muted" role="status" hidden></p>
+        <p class="line"><span id="scene-status" role="status" aria-live="polite"></span> <button id="scene-cancel" type="button" class="avrana-textlink" hidden>Choose another game</button></p>
+      </div>
     </div>
   </section>
 
@@ -277,14 +313,14 @@
 </dialog>
 
 <!-- How to play: one sheet, easy to open and to leave; the page underneath (a game's page, or
-     the briefing) is untouched. -->
+     the briefing) is untouched. A tap outside it closes it (app.js); there is no second, unseen
+     Close button for a keyboard or a screen reader to land on. -->
 <dialog id="rules" class="modal modal-bottom sm:modal-middle" aria-labelledby="rules-title">
-  <div class="modal-box grid max-h-[85dvh] gap-4 bg-base-200">
-    <div class="flex items-center gap-2"><h2 id="rules-title" class="m-0 text-xl font-bold">How to play</h2><button id="rules-close" type="button" class="btn btn-ghost btn-square ml-auto" aria-label="Close"><span data-icon="x"></span></button></div>
-    <div id="rules-body" class="grid gap-4 overflow-y-auto overscroll-contain"></div>
-    <button id="rules-ok" type="button" class="btn btn-primary btn-block">Got it</button>
+  <div class="modal-box flex max-h-[85dvh] flex-col gap-4 overflow-hidden bg-base-200">
+    <div class="flex flex-none items-center gap-2"><h2 id="rules-title" class="m-0 text-xl font-bold">How to play</h2><button id="rules-close" type="button" class="btn btn-ghost btn-square ml-auto" aria-label="Close"><span data-icon="x"></span></button></div>
+    <div id="rules-body" class="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto overscroll-contain"></div>
+    <button id="rules-ok" type="button" class="btn btn-primary btn-block flex-none">Got it</button>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>Close</button></form>
 </dialog>
 
 <!-- Where the party is, while this phone goes there (a moment, never something to act on). -->

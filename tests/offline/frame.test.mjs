@@ -48,6 +48,9 @@ test('who picks the games', () => {
   const ana = { name: 'Ana', host: true }, ben = { name: 'Ben' };
   assert.match(hostLine(ana, ana), /^You’re the host\. Pick a game in the Library/);
   assert.equal(hostLine(ben, ana), 'Ana is the host and picks the games.');
+  assert.equal(hostLine(ben, ana, true), 'Ana is the host, and is away.');
+  assert.match(hostLine(ana, ana, true), /^You’re the host\./);            // this phone is never told it is away
+  assert.equal(hostLine(ben, null, true), 'Nobody is hosting right now.');
   assert.equal(hostLine(ben, null), 'Nobody is hosting right now.');
   assert.equal(hostLine(null, ana), '');
 });

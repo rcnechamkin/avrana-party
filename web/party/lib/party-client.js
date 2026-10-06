@@ -5,14 +5,17 @@
 //
 // Views only move forward: a newer version, or a new party. An action's own answer always wins
 // over a poll that was already on its way (that poll may predate the Join cookie).
+//
+// The poll is also how the page knows whether Party Core still answers: `onLink` hears every try
+// that ends, { ok, answered } (answered: something answered, only not with a view).
 import { readView } from './party-mode.js';
 
 const WAIT_S = 20;              // long-poll wait; the service caps it at 25 s
 const RETRY_MS = [1000, 2000, 5000];
 
-export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), base = 'api/', onView,
+export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), base = 'api/', onView, onLink = () => {},
   schedule = setTimeout, cancel = clearTimeout } = {}) {
-  let view = null, gen = 0, epoch = 0, poll = null;
+  let view = null, gen = 0, epoch = 0, poll = null, wake = null;
 
   async function request(path, body) {
     try {
@@ -37,7 +40,11 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     return true;
   }
 
-  const sleep = (ms) => new Promise((resolve) => schedule(resolve, ms));
+  /** The pause between two tries after one failed. poke() ends it early. */
+  const sleep = (ms) => new Promise((resolve) => {
+    const timer = schedule(() => { wake = null; resolve(); }, ms);
+    wake = () => { cancel(timer); wake = null; resolve(); };
+  });
 
   async function loop(g) {
     let failures = 0;
@@ -47,27 +54,34 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
       const current = { ctl, poked: false };
       poll = current;
       const timer = schedule(() => ctl && ctl.abort(), (WAIT_S + 10) * 1000);
-      let v = null;
+      let v = null, answered = false;
       try {
-        const res = await fetch(`${base}state?since=${view ? view.version : 0}&wait=${WAIT_S}`,
+        // After a try that failed, the next one does not wait for a change: the first answer
+        // is what says the box is back, and it must not sit on the box for WAIT_S to say so.
+        const res = await fetch(`${base}state?since=${view ? view.version : 0}&wait=${failures ? 0 : WAIT_S}`,
           { cache: 'no-store', credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+        answered = true;
         v = res.ok ? readView(await res.json().catch(() => null)) : null;
       } catch { /* aborted, offline, or the Pi is restarting */ }
       cancel(timer);
       if (g !== gen) return;
       if (v) {
         failures = 0;
+        onLink({ ok: true, answered: true });
         if (e === epoch) accept(v);
       } else if (!current.poked) {
+        onLink({ ok: false, answered });
         await sleep(RETRY_MS[Math.min(failures++, RETRY_MS.length - 1)]);
       }
     }
   }
 
-  /** Stop waiting on the current poll and ask again at once (after an action, or on wake). */
+  /** Stop waiting on the current poll, or on the pause after a failed one, and ask again at once
+   * (after an action, on wake, when the network returns, or "Try again"). */
   function poke() {
     const current = poll;
     if (current) { current.poked = true; if (current.ctl) current.ctl.abort(); }
+    if (wake) wake();
   }
 
   async function act(path, body = {}) {

@@ -46,12 +46,16 @@ export function locationOf(view) {
   return loc && typeof loc.at === 'string' ? loc : { at: HOME, game: null, session: null };
 }
 
-/** The round this phone remembers having been taken to ({ game, session }), or null. Only a
- * member, and only while the round is on: not its setup, and not its held results, which a phone
- * can arrive at without having been in the round. */
+/** The round this phone remembers having played ({ game, session }), or null. Only a member who
+ * plays it (Party Core's own role for this member: `session.my_role`; the owner, 2026-10-06: a
+ * round someone only watched is not in their "recently played"), and only while the round is on:
+ * not its setup, and not its held results, which a phone can arrive at without having been in
+ * the round. */
 export function roundToRemember(view) {
   const loc = locationOf(view);
-  return view && view.me && loc.at === 'game' && loc.game ? { game: loc.game, session: loc.session || null } : null;
+  if (!view || !view.me || loc.at !== 'game' || !loc.game) return null;
+  if (!view.session || view.session.my_role !== 'player') return null;
+  return { game: loc.game, session: loc.session || null };
 }
 
 /** Where this member's page must be, or null when it is already there.
