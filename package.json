@@ -17,6 +17,7 @@
     "test:modules": "node --test 'tests/offline/*.test.mjs'",
     "test:offline-browser": "playwright test -c playwright.offline.config.ts",
     "test:party-browser": "playwright test -c playwright.party.config.ts",
+    "test:rollback": "playwright test -c playwright.rollback.config.ts",
     "check:contract": "python3 tools/contract_check.py",
     "smoke:local": "python3 -m avrana.ops.smoke --local http://127.0.0.1:8180",
     "test:offline": "npm run test:unit && npm run test:modules && npm run test:offline-browser && npm run test:party-browser",
