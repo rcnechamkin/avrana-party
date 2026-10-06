@@ -134,6 +134,13 @@ separate design task and nothing in slice 1 waits for it. Decisions 4, 7, 9, 15 
 each is raised again in the pull request that builds it. Decision 4 reads an accepted ADR and
 wants an explicit yes before PR 1.4 folds the notice. Everything else below is open as well.
 
+**Owner answers of 2026-10-06** (the questions and the owner's words are in the plan's
+[slice 0](IMPLEMENTATION-PLAN.md#owner-answers-of-2026-10-06)): decision 7 is settled, the top
+edge. Decision 4's reading, "notice on Home, small mark everywhere else", is "Correct"; the
+folded notice and the Host's notice were asked in the same breath, so PR 1.4 states them again
+before building them. Decisions 9 and 15 are built in PR 1.2 as its issue (AVR-285) directs,
+per phone and shown to everyone, and are disclosed there. Decision 18 is still not answered.
+
 1. **The Party control on the briefing** (X1). Owner direction (revision 2): keep it, and it
    opens over the briefing. The wording change in GAME-UX-CONTRACT Rule 3.2 and the dated note on
    ADR 0011 decision 4 are written in the slice 0 pull request, which is the owner's to merge.
@@ -141,7 +148,7 @@ wants an explicit yes before PR 1.4 folds the notice. Everything else below is o
    needs an ADR amendment either way, and its geometry is a brief §29 item.
 3. **Does every game get a briefing** (X3, C2), or do games without a pregame keep going
    straight from the detail page into play?
-4. **Limited Mode visibility** (X4, audit PS-34). *Not answered; provisional in slice 1.* Is "always marked on the affected phone,
+4. **Limited Mode visibility** (X4, audit PS-34). *Owner, 2026-10-06: "Correct", to "notice on Home, small mark everywhere else"; the fold and the Host's notice are restated in PR 1.4.* Is "always marked on the affected phone,
    foldable, with the three required facts in plain words; appliance trouble Host-only and
    dismissible" the right reading of both the brief and ADR 0012? The "Limited" tag is drawn
    under your own face on the Party page; beside other members' names (PS-35, ADR 0012 D4) it is
@@ -150,7 +157,7 @@ wants an explicit yes before PR 1.4 folds the notice. Everything else below is o
    brief's "Ready / Watch"?
 6. **Suggestions** (C1). Show "Suggest to the Party" in the first implementation as a plain,
    advisory nudge, or leave the control out until the voting model is designed?
-7. **Where the social layer opens from.** *Not answered; provisional in slice 1.* The concept brings it down from the top edge; a bottom
+7. **Where the social layer opens from.** *Settled, 2026-10-06: the owner, "Top edge".* The concept brings it down from the top edge; a bottom
    sheet is the alternative. This touches the undecided Party HUD geometry.
 8. **EXPO direction.** Three departures from the build that the owner should accept or reject by
    name: the live status line moves from above the board to the top of the hand tray; the
@@ -160,8 +167,8 @@ wants an explicit yes before PR 1.4 folds the notice. Everything else below is o
    seat and the radio token are called in the expedition fiction (EX-40; the concept keeps
    today's "submarine" and "burst"), whether missions get names (EX-48), and whether landscape
    is supported (EX-44; a split layout is sketched in the prototype).
-9. **Recently played**: per device (free) or Party-wide (D1)? *Not answered; per device,
-   provisionally, in slice 1.*
+9. **Recently played**: per device (free) or Party-wide (D1)? *Built per device in PR 1.2, as
+   its issue (AVR-285) directs; Party-wide stays D1, for later.*
 10. **Library metadata vocabulary** (R1): the owner or game authors need to name the short list
     of kinds and the length for each title before filters mean anything.
 11. **A deliberate hand-over of hosting** (Party shell audit PS-20). The route exists
@@ -180,8 +187,8 @@ wants an explicit yes before PR 1.4 folds the notice. Everything else below is o
     points this way); "not your turn" keeps the hand in full colour while "this card is
     illegal" darkens it (EX-45); Party avatars appear on the board (EX-46).
 
-15. **An unavailable game and everyone who is not the Host.** *Not answered; provisional in
-    slice 1.* The brief sends degraded notices
+15. **An unavailable game and everyone who is not the Host.** *Built in PR 1.2 as its issue
+    (AVR-285) directs: "Off for now" under the title, for everyone.* The brief sends degraded notices
     to the Host. The concept keeps the notice Host-only but shows "Off for now" under the
     affected title to everyone, and stops a non-Host suggesting it, so that a game that cannot
     start does not look startable. Right reading?

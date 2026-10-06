@@ -78,6 +78,23 @@ changes are in the same pull request as this revision and are the owner's to mer
 | 0.6 | Open decisions the drawings already answer and slice 1 builds | **Not answered; provisional.** Slice 1 was approved as drawn and the owner did not name these, so each is built as drawn and stays open in [BACKEND-GAPS](BACKEND-GAPS.md#open-owner-decisions): Limited Mode visibility (decision 4), the drawer from the top edge (7), recents per phone (9), "Off for now" shown to everyone (15), the reconnecting timer (18). Each is called out again in the pull request that builds it, where it can still be changed. **Decision 4 wants an explicit yes before PR 1.4** folds the notice and adds the Host's notice: it reads an accepted ADR. PR 1.1 keeps today's notice and its wording, open on Home, and adds only the mark and its sheet | PR 1.1 (7; of 4, the mark and the sheet), PR 1.2 (9, 15), PR 1.4 (18; the rest of 4) |
 | 0.7 | The design package's weight | The owner: "Commit documents, prototypes, overview sheets and essential referenced evidence. Keep bulk screenshots and ZIP archives out of Git, with their location documented." **Read here as**: documents, prototypes, the ten overview sheets and the capture scripts are committed; the 422 loose pictures and the archive are not, and the [README](README.md#pictures-that-are-not-in-git) says where they are. **To confirm:** no loose picture was judged essential. The `current/` pictures cannot be retaken once the shell changes; if a small set of them should be in Git, say which | this pull request |
 
+### Owner answers of 2026-10-06
+
+After PRs 1.1 and its documents were merged, the owner was asked four things and answered each
+in a word or two. The questions are as they were put; the answers are the owner's own words.
+
+| Asked | The owner | What it changes |
+|---|---|---|
+| "**Limited Mode:** is 'notice on Home, small mark everywhere else' right? May the notice fold away? Should the Host be told when something on the box is wrong?" | "Correct" | Decision 4's reading stands as drawn and as PR 1.1 built it. One word answered three questions, so PR 1.4 states the folded notice and the Host's notice again, in its own pull request, before it builds them |
+| "**Drawer:** from the top edge, as built, or from the bottom?" | "Top edge" | Decision 7 is settled |
+| "**The choices I made in #80:** smaller body text (15 px), no desktop rail, drawer opens on Chat first, 'Host' as a word instead of the crown. Say which to keep and which to change." | "That's fine" | All four stay |
+| "**Old screenshots:** should a few pictures of the old UI go into Git? They can no longer be retaken from main." | "Nah." | Row 0.7's open point is closed: no loose picture of the old shell goes into Git |
+
+Decisions 9 (recents per phone) and 15 ("Off for now" shown to everyone) were not among the
+four. The issue for PR 1.2 (AVR-285) says to build them as the plan has them and to disclose
+that in the pull request, which is what PR 1.2 does; they can still be changed at its review.
+Decision 18 (the reconnecting timer) is still not answered and is PR 1.4's to raise.
+
 ### Today's chat and the runtime it depends on
 
 Party chat is not Party Core's. The shell's chat client (`web/party/lib/party-chat.js`) speaks
@@ -223,7 +240,7 @@ Delivery as four PRs, each leaving `main` deployable, so no flag is needed:
 | PR | Content |
 |---|---|
 | 1.1 | Tokens, Geist and compiled CSS; the frame (top bar with the Limited mark and the Party control, bottom bar, view router); the Party drawer (people, and today's chat while its hub answers) and the Limited sheet on the four ordinary pages; Home (who is here, and one row to the Library), Party and System; today's game list moved under Library unchanged; today's setup scene untouched |
-| 1.2 | Library: covers, four views, search, the two filters, favorites, recents, consequence lines; Home's lead tile and its "Great for N" and "Recently played" rows, which are made of the same tiles |
+| 1.2 | Library: covers, four views, search, the two filters, favorites, recents, consequence lines; Home's lead tile and its "Great for N" and "Recently played" rows, which are made of the same tiles. **As built (AVR-285):** a cover opens a sheet that holds today's tile and today's button, so nothing about starting a game changes before 1.3 draws the detail page |
 | 1.3 | Game detail; the briefing redrawn; the drawer (people only) and the Limited sheet over it (needs slice 0 merged) |
 | 1.4 | States (reconnecting, Host away and passed, the Host's notice and System's health line, the folded Limited notice, empty states), the accessibility pass, the phone findings |
 

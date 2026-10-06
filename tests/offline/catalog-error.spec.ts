@@ -31,13 +31,14 @@ for (const [name, reply] of Object.entries(BROKEN)) {
     await place(page, 'library');
     await expect(notice).toBeVisible();
     await expect(notice).toContainText('Game list unavailable');
-    await expect(page.locator('[data-id]')).toHaveCount(0);            // no game cards, no crash
+    await expect(page.locator('[data-game], [data-id]')).toHaveCount(0);   // no covers, no cards, no crash
+    await expect(page.locator('#games [data-empty]')).toHaveCount(0);  // and not dressed up as an empty search
     await expect(page.locator('#away')).toBeHidden();                  // the party itself is reachable
 
     await page.unroute('**/party/catalog.json');                       // the file is back
     await page.locator('#catalog-retry').click();
     await expect(notice).toBeHidden();
-    await expect(page.locator('[data-id="arcade-gauntlet2"]')).toContainText('Gauntlet II');
+    await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).toContainText('Gauntlet II');
     expect(errors).toEqual([]);
   });
 }

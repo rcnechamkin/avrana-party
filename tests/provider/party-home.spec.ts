@@ -1,5 +1,5 @@
 import { test, expect as baseExpect, devices, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { place, startForEveryone } from '../lib/frame';
+import { openGame, place, startForEveryone } from '../lib/frame';
 
 /**
  * Party Home on Party Core, the console model (ADR 0011; AVR-20/127/128 before it), with a game
@@ -66,7 +66,6 @@ async function joinParty(page: Page, name: string) {
   await expect(page.locator('#party-members')).toContainText(`${name} (you)`);
 }
 
-const tile = (page: Page, id: string) => page.locator(`[data-id="${id}"]`);
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
 const AT_HOME = /\/party\/(#(home|party|library|system))?$/;   // the shell, in whichever of its places
 const partyState = (page: Page) => page.evaluate(async () => (await fetch('/party/api/state', { cache: 'no-store' })).json());
@@ -121,7 +120,7 @@ test('the host starts BLUFF once and every phone is in the same game, with no Jo
   await expect(ben.page.locator('#party-host')).toContainText('Ana is the host');
   await place(ben.page, 'library');
   for (const id of ['bluff', 'expo']) {
-    await expect(tile(ben.page, id).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
+    await expect((await openGame(ben.page, id)).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
   }
   const v = await partyState(ben.page);
   expect(await api(ben.page, 'session/launch', { game: 'bluff', if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
@@ -245,8 +244,9 @@ test('without Party Core, Party Home is the catalog it always was', async ({ pag
   await expect(page.locator('html')).toHaveAttribute('data-party', 'off');
   await expect(page.locator('#party')).toBeHidden();
   await place(page, 'library');
-  await expect(tile(page, 'bluff').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
-  await expect(tile(page, 'bluff')).not.toHaveAttribute('data-party', /.*/);
+  const bluff = await openGame(page, 'bluff');
+  await expect(bluff.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
+  await expect(bluff).not.toHaveAttribute('data-party', /.*/);
 });
 
 test('standalone BLUFF (no Party Core) keeps its own lobby and its Back link', async ({ page }) => {

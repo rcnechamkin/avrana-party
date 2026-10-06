@@ -48,8 +48,8 @@ test('every title Party still routes has a mounted direct page and explicit inte
 test('no retired LAN Games title is offered by Party Home', async ({ page }) => {
   await seed(page); await home(page);
   expect(shell.games.filter((g: { provider: string }) => g.provider === 'lan-games').map((g: { id: string }) => g.id).sort()).toEqual(PARTY_TITLES);
-  await expect(page.locator('[data-id^="lan-"]')).toHaveCount(0);
-  for (const id of PARTY_TITLES) await expect(page.locator(`[data-id="${id}"]`)).toHaveCount(1);
+  await expect(page.locator('[data-game^="lan-"]')).toHaveCount(0);
+  for (const id of PARTY_TITLES) await expect(page.locator(`#games [data-game="${id}"]`)).toHaveCount(1);
 });
 
 test('a shell profile edit reaches a game page, and the return to Party survives a refresh', async ({ page }) => {

@@ -18,6 +18,7 @@ const ICONS = [
   'search', 'search-x', 'send-horizontal', 'smartphone', 'spade', 'star', 'user-round-pen', 'users',
   'wifi', 'wifi-off', 'x', 'crown', 'hourglass',
   'house', 'library-big', 'settings', 'triangle-alert',
+  'filter-x', 'grid-2x2', 'grid-3x3', 'heart', 'layout-grid', 'list', 'sliders-horizontal',
 ];
 
 const require = createRequire(import.meta.url);

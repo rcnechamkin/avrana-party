@@ -3,16 +3,28 @@ import { expect, type Page } from '@playwright/test';
 /** The shell's four places (web/party/lib/frame.js). They are views of one document. */
 export type Place = 'home' | 'party' | 'library' | 'system';
 
-/** Go to a place the way a person does: the bar at the bottom of the frame. */
+/** Go to a place the way a person does: the bar at the bottom of the frame. A sheet left open by
+ * the step before is closed first, as a person would have to. */
 export async function place(page: Page, name: Place) {
+  if (await page.locator('dialog[open]').count()) await page.keyboard.press('Escape');
   await page.locator(`#nav a[data-go="${name}"]`).click();
   await expect(page.locator('html')).toHaveAttribute('data-place', name);
 }
 
-/** The Host's start, from the Library, where the games are. */
+/** Open a game from its cover in the Library (be there first). Returns its card: today's tile,
+ * with its facts and its own button, in the sheet. */
+export async function openGame(page: Page, id: string) {
+  if (await page.locator('dialog[open]').count()) await page.keyboard.press('Escape');
+  await page.locator(`#games [data-game="${id}"]`).click();
+  const card = page.locator(`#game-card [data-id="${id}"]`);
+  await expect(card).toBeVisible();
+  return card;
+}
+
+/** The Host's start: the Library, the game's cover, its own button. */
 export async function startForEveryone(page: Page, id: string) {
   await place(page, 'library');
-  await page.locator(`[data-id="${id}"]`).getByRole('button', { name: 'Start for everyone' }).click();
+  await (await openGame(page, id)).getByRole('button', { name: 'Start for everyone' }).click();
 }
 
 /** Controls a thumb would miss: visible and less than 44 px tall or wide. */

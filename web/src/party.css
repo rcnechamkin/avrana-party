@@ -355,6 +355,118 @@
   .avrana-fit[data-fit="watch"] .avrana-icon { color: var(--color-info); }
   .avrana-fit[data-fit="no"] .avrana-icon { color: var(--color-error); }
 
+  /* ---- The Library and Home's shelves ------------------------------------------------------- */
+  /* Search, then two square controls. Enlarged text wraps the controls under the field. */
+  .avrana-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.25rem; margin-top: 0.25rem; }
+  .avrana-tools > .input { flex: 1 1 11rem; width: auto; min-width: min(100%, 9rem); }
+  .avrana-tools > .btn { position: relative; color: var(--color-muted); }
+  .avrana-tools .count {
+    position: absolute; top: 0.25rem; right: 0.125rem; min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem;
+    background: var(--color-base-content); color: var(--color-primary-content); font-size: 0.6875rem; font-weight: 600; line-height: 1rem; text-align: center;
+  }
+  .avrana-tabs.shelf { padding: 0; margin-top: 0.25rem; flex-wrap: wrap; }
+  .avrana-shelf { margin-top: 0.25rem; }
+  /* A shelf's heading: its name, then a count, a link or Reset. */
+  .avrana-sec { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 1rem; margin: 1.125rem 0 0.625rem; }
+  .avrana-sec h2, .avrana-sec h3 { margin: 0; font-size: 1.0625rem; font-weight: 550; letter-spacing: -0.005em; overflow-wrap: anywhere; }
+  .avrana-sec .meta { color: var(--color-faint); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+  .avrana-hid { margin: 1.125rem 0 0; color: var(--color-muted); font-size: 0.8125rem; }
+  /* Covers: square, the title's own art or its kind icon on its own colour, the player range in
+     the corner. A range that does not suit the people here is amber, with a mark and words. */
+  .avrana-cover {
+    --game-accent: var(--color-secondary);
+    position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; overflow: hidden;
+    border-radius: var(--radius-box); border: 1px solid var(--color-line);
+    background: color-mix(in oklab, var(--game-accent) 16%, var(--color-base-300)); color: var(--game-accent);
+  }
+  .avrana-cover.has-art { background: var(--color-base-300); }
+  .avrana-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .avrana-cover > .avrana-icon { width: 38%; height: 38%; }
+  .avrana-cover .seats {
+    position: absolute; left: 0.375rem; bottom: 0.375rem; display: inline-flex; align-items: center; gap: 0.25rem;
+    padding: 0.125rem 0.375rem; border-radius: var(--radius-selector); background: rgb(13 13 15 / 0.82);
+    color: var(--color-base-content); font-size: 0.6875rem; font-weight: 550; line-height: 1.3; font-variant-numeric: tabular-nums;
+  }
+  .avrana-cover .seats .avrana-icon { width: 0.75rem; height: 0.75rem; }
+  .avrana-cover .seats.no { color: var(--color-warning); }
+  .avrana-grid { display: grid; gap: 0.875rem 0.625rem; margin: 0; padding: 0; list-style: none; container: shelf / inline-size; }
+  .avrana-grid > li { min-width: 0; }
+  .avrana-grid.medium { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .avrana-grid.large { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.125rem 0.75rem; }
+  .avrana-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.625rem 0.5rem; }
+  @media (min-width: 44rem) { .avrana-grid.medium { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  .avrana-tile { display: block; width: 100%; min-width: 0; min-height: 2.75rem; text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius-box); }
+  .avrana-tile .t { display: block; margin-top: 0.4375rem; font-size: 0.8125rem; font-weight: 550; line-height: 1.25; overflow-wrap: anywhere; }
+  .avrana-tile .m { display: block; color: var(--color-muted); font-size: 0.6875rem; line-height: 1.3; }
+  .avrana-tile .m.warn { color: var(--color-warning); margin-top: 0.125rem; }
+  .avrana-tile .m.warn .avrana-icon { width: 0.6875rem; height: 0.6875rem; margin-right: 0.1875rem; }
+  .avrana-grid.large .t { font-size: 0.9375rem; }
+  .avrana-grid.large .m { font-size: 0.8125rem; }
+  .avrana-grid.compact .t { font-size: 0.6875rem; margin-top: 0.3125rem; }
+  /* compact drops the plain facts and keeps every warning: why a title does not fit, what stands in its way */
+  .avrana-grid.compact .m:not(.warn), .avrana-grid.compact .seats:not(.no) { display: none; }
+  /* Enlarged text (the width is measured in the text's own size): fewer covers across. */
+  .avrana-shelf { container: shelfwrap / inline-size; }
+  @container shelfwrap (max-width: 16rem) {
+    .avrana-grid.medium, .avrana-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .avrana-grid.large { grid-template-columns: minmax(0, 1fr); }
+    .avrana-row > .open { grid-template-columns: 3rem minmax(0, 1fr); }
+  }
+  /* The list: cover, title, the catalog's sentence, facts as icon and words; the heart at the end. */
+  .avrana-rows { margin: 0; padding: 0; list-style: none; }
+  .avrana-rows > li + li { border-top: 1px solid var(--color-line); }
+  .avrana-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem; padding: 0.625rem 0; }
+  .avrana-row > .open { display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: 0.75rem; align-items: center; min-height: 4rem; text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius-box); }
+  .avrana-row .t { display: block; font-weight: 550; overflow-wrap: anywhere; }
+  .avrana-row .d { display: block; color: var(--color-muted); font-size: 0.8125rem; line-height: 1.35; }
+  .avrana-row .f { display: flex; flex-wrap: wrap; gap: 0.125rem 0.75rem; margin-top: 0.1875rem; color: var(--color-muted); font-size: 0.8125rem; }
+  .avrana-row .f > span { display: inline-flex; align-items: center; gap: 0.3125rem; }
+  .avrana-row .f .no { color: var(--color-warning); }
+  .avrana-fav { color: var(--color-muted); }
+  .avrana-fav[aria-pressed="true"] { color: var(--color-base-content); }
+  .avrana-fav[aria-pressed="true"] .avrana-icon { fill: currentColor; }
+  /* Nothing to show: what was asked for, and the one way back. */
+  .avrana-blank { display: grid; justify-items: start; gap: 0.375rem; margin-top: 1.75rem; }
+  .avrana-blank > .avrana-icon { width: 1.75rem; height: 1.75rem; color: var(--color-muted); margin-bottom: 0.375rem; }
+  .avrana-blank h3 { margin: 0; font-size: 1.0625rem; font-weight: 550; overflow-wrap: anywhere; }
+  .avrana-blank p { margin: 0; color: var(--color-muted); font-size: 0.8125rem; }
+  .avrana-blank .btn { margin-top: 0.625rem; }
+  /* Home: the lead cover, then shelves that scroll sideways inside themselves. */
+  .avrana-hero { display: block; width: 100%; text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius-box); }
+  .avrana-hero .avrana-cover { aspect-ratio: 16 / 9; }
+  .avrana-hero .avrana-cover > img { object-position: 50% 0; }   /* a square cover keeps its top, where its subject is */
+  .avrana-hero .avrana-cover.icon-art > img { object-fit: contain; padding: 0.75rem; }
+  .avrana-hero .row { display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; margin-top: 0.5rem; }
+  .avrana-hero .row > span:first-child { flex: 1; min-width: 0; }
+  .avrana-hero .t { display: block; font-size: 1.0625rem; font-weight: 550; overflow-wrap: anywhere; }
+  .avrana-hero .m { display: block; color: var(--color-muted); font-size: 0.8125rem; }
+  .avrana-hero .m.warn { color: var(--color-warning); }
+  .avrana-hero .m.warn .avrana-icon { width: 0.75rem; height: 0.75rem; margin-right: 0.1875rem; }
+  .avrana-hero .row > .avrana-icon { color: var(--color-muted); flex: none; }
+  .avrana-rail { display: flex; gap: 0.625rem; margin: 0; padding: 0 0 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .avrana-rail::-webkit-scrollbar { display: none; }
+  .avrana-rail > li { flex: none; width: 7.25rem; min-width: 0; scroll-snap-align: start; }
+  .avrana-rail.small > li { width: 5rem; }
+  .avrana-rail:empty { display: none; }
+  /* A sheet's choices. Segments: one of a few, the chosen one filled (and aria-pressed). */
+  .avrana-group-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 1rem; margin: 0 0 0.5rem; font-size: 0.9375rem; font-weight: 550; }
+  .avrana-group-h > span { color: var(--color-muted); font-size: 0.8125rem; font-weight: 400; }
+  .avrana-seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(2.75rem, 1fr)); border: 1px solid var(--color-control); border-radius: var(--radius-field); overflow: hidden; }
+  .avrana-seg.words { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .avrana-seg button { min-height: 2.75rem; padding: 0.25rem; text-align: center; color: var(--color-muted); cursor: pointer; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 0.5px var(--color-line); }
+  .avrana-seg button[aria-pressed="true"] { background: var(--color-base-content); color: var(--color-primary-content); font-weight: 600; }
+  .avrana-choices { display: grid; padding-bottom: 0.75rem; }
+  .avrana-choices button { display: flex; align-items: center; gap: 0.75rem; min-height: 3rem; padding: 0 0.5rem; border-radius: var(--radius-field); text-align: left; cursor: pointer; }
+  .avrana-choices button > .avrana-icon:first-child { color: var(--color-muted); }
+  .avrana-choices button .tick { margin-left: auto; visibility: hidden; }
+  .avrana-choices button[aria-pressed="true"] { background: var(--color-select); }
+  .avrana-choices button[aria-pressed="true"] .tick { visibility: visible; }
+
+  /* A game opened in its sheet: the tile without its own surface. */
+  .avrana-sheet .avrana-game-card, .avrana-sheet .avrana-game-card:hover, .avrana-sheet .avrana-game-card:focus-within {
+    padding: 0 0 0.5rem; border-color: transparent; background: none;
+  }
+
   /* Empty state: icon, one sentence, maybe an action. */
   .avrana-empty {
     display: grid; justify-items: center; gap: 0.5rem; padding: 2rem 1rem; text-align: center;
@@ -413,8 +525,8 @@
   .avrana-drawer { top: 0; bottom: auto; border-top: 0; border-radius: 0 0 1.125rem 1.125rem; padding-top: env(safe-area-inset-top); }
   .avrana-sheet { top: auto; bottom: 0; border-bottom: 0; border-radius: 1.125rem 1.125rem 0 0; padding-bottom: env(safe-area-inset-bottom); }
   .avrana-drawer::backdrop, .avrana-sheet::backdrop { background: rgb(4 4 6 / 0.6); }
-  .avrana-drawer > .head, .avrana-sheet > .head { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem 0.25rem 1rem; flex: none; }
-  .avrana-drawer > .head h2, .avrana-sheet > .head h2 { flex: 1; min-width: 0; font-size: 1.0625rem; font-weight: 550; overflow-wrap: anywhere; }
+  .avrana-drawer > .head, .avrana-sheet > .head { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 0.5rem; padding: 0.25rem 0.5rem 0.25rem 1rem; flex: none; }
+  .avrana-drawer > .head h2, .avrana-sheet > .head h2 { flex: 1 1 5rem; min-width: min(100%, 5rem); font-size: 1.0625rem; font-weight: 550; overflow-wrap: break-word; }
   .avrana-drawer > .body, .avrana-sheet > .body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 1rem 0.75rem; }
   .avrana-drawer > .body { flex: 1; }
   .avrana-sheet > .foot { flex: none; padding: 0.625rem 1rem 0.875rem; border-top: 1px solid var(--color-line); }

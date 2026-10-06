@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { place, sideways, smallTargets } from '../lib/frame';
+import { openGame, place, sideways, smallTargets } from '../lib/frame';
 
 /**
  * The Full Mode Party page (/party/) against the simulated Party (Tier 2). The page is a frame
@@ -40,17 +40,20 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(page.locator('#status')).toContainText('Connected to the party');
   await expect(page.locator('#secure')).toBeVisible();
   await place(page, 'library');
-  const card = page.locator('[data-id="arcade-gauntlet2"]');
+  await expect(page.locator('#games [data-game]')).toHaveCount(5);
+  await expect(page.locator('#games [data-game^="lan-"]')).toHaveCount(0);       // no retired LAN Games title is offered
+  await expect(page.locator('#games [data-game="ps1-worms"]')).toContainText('Not installed');
+  await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).not.toHaveAttribute('data-note', /.+/);
+  const card = await openGame(page, 'arcade-gauntlet2');
   await expect(card).toContainText('Gauntlet II');
   await expect(card).toContainText('1–2 players');
   await expect(card).toContainText('Works on this phone');
   await expect(card).toContainText('1 of 2 playing');
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/arcade/');
-  await expect(page.locator('[data-id="expo"]').getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/expo/?avrana=1');
-  await expect(page.locator('[data-id^="lan-"]')).toHaveCount(0);                // no retired LAN Games title is offered
-  await expect(page.locator('[data-id="ps1-worms"]')).toContainText('Not installed');
+  await expect((await openGame(page, 'expo')).getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/expo/?avrana=1');
   // BLUFF is installed: listed with its own art and launched through the Avrana-integrated path.
-  const bluff = page.locator('[data-id="bluff"]');
+  await expect(page.locator('#games [data-game="bluff"] img[src$="art/lan-bluff.svg"]')).toHaveCount(1);
+  const bluff = await openGame(page, 'bluff');
   await expect(bluff).toContainText('BLUFF');
   await expect(bluff.locator('img[src$="art/lan-bluff.svg"]')).toHaveCount(1);
   await expect(bluff.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
@@ -63,7 +66,8 @@ test('a phone that cannot play the video is told why, and can still try', async 
   await h264(page, false);
   await open(page);
   await place(page, 'library');
-  const card = page.locator('[data-id="arcade-gauntlet2"]');
+  await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).toContainText('Not on this phone');   // said on the shelf
+  const card = await openGame(page, 'arcade-gauntlet2');
   await expect(card).toHaveAttribute('data-outcome', 'unavailable');
   await expect(card).toContainText('Not on this phone');
   await expect(card).toContainText('This browser can’t play the Party’s video format.');
@@ -77,11 +81,16 @@ test('live game state: not running, and full', async ({ page }) => {
   await arcade(page, 'down');
   await open(page);
   await place(page, 'library');
-  const card = page.locator('[data-id="arcade-gauntlet2"]');
+  const tile = page.locator('#games [data-game="arcade-gauntlet2"]');
+  await expect(tile).toContainText('Off for now');                         // said on the shelf, before anyone opens it
+  let card = await openGame(page, 'arcade-gauntlet2');
   await expect(card).toContainText('Not running right now');
   await expect(card.getByRole('button', { name: 'Play' })).toBeDisabled();
   await arcade(page, 'full');
   await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await expect(tile).not.toContainText('Off for now');
+  card = await openGame(page, 'arcade-gauntlet2');
   await expect(card).toContainText('Full right now');
 });
 
@@ -120,7 +129,7 @@ test('the frame: four places in one page, and the bar says which one you are in'
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
-  await expect(page.locator('[data-id="arcade-gauntlet2"]')).toBeVisible();
+  await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).toBeVisible();
   await page.goto('/party/#nowhere');
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
   await expect(page.locator('#view-home')).toBeVisible();
@@ -182,7 +191,7 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
   await page.reload();
   await expect(page.locator('#away')).toBeVisible();
   await expect(page.locator('#status')).toContainText('Not connected to the party');
-  await expect(page.locator('#home-library')).toBeHidden();              // nothing to browse while away
+  await expect(page.locator('#home-games')).toBeHidden();                // nothing to browse while away
   await place(page, 'library');
   await expect(page.locator('#away')).toBeVisible();                     // said in every place, not only on Home
   await expect(page.locator('#games-section')).toBeHidden();
@@ -196,19 +205,26 @@ test('the offline copy: saved on this phone, and honest when the Pi is out of re
   await context.setOffline(false);
   await expect(page.locator('#away')).toBeHidden();
   await expect(page.locator('#status')).toContainText('Connected to the party');
-  await expect(page.locator('[data-id="arcade-gauntlet2"]')).toBeVisible();
+  await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).toBeVisible();
 });
 
 test('a refresh keeps keyboard focus on an unchanged card', async ({ page }) => {
   await h264(page, true);
   await open(page);
   await place(page, 'library');
-  const play = page.locator('[data-id="arcade-gauntlet2"]').getByRole('link', { name: 'Play' });
+  const refresh = async () => {
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));  // triggers a refresh
+    await page.waitForTimeout(500);
+  };
+  const tile = page.locator('#games [data-game="arcade-gauntlet2"]');
+  await tile.focus();
+  await refresh();
+  await expect(tile).toBeFocused();                                        // a cover on the shelf
+  const play = (await openGame(page, 'arcade-gauntlet2')).getByRole('link', { name: 'Play' });
   await play.focus();
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));  // triggers a refresh
-  await page.waitForTimeout(500);
+  await refresh();
   expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('Play');
-  await expect(play).toBeFocused();
+  await expect(play).toBeFocused();                                        // and the open game's own button
 });
 
 test('the worker never controls the games hub', async ({ page }) => {
