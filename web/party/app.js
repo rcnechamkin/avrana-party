@@ -30,6 +30,7 @@ import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
 import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
+import { LOST_AFTER_MS, awayHost, briefLine, fineLine, hostNote, hostPassed, linkState, linkWords, offLine, troubles } from './lib/states.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -44,7 +45,11 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
   // round: the briefing on screen (its id)
-  screen: 'main', round: null, game: null, back: null, rulesGame: null };
+  screen: 'main', round: null, game: null, back: null, rulesGame: null,
+  // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
+  // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
+  // box: the status document, asked for by the Host only; entries: the shelf as last drawn
+  failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -351,17 +356,23 @@ function personItem(m, size = '') {
       m.away ? h('span', { class: 'avrana-tag quiet', text: 'Away' }) : null));
 }
 
+const FOLD_KEY = 'avrana-limited-folded';
+
 /** The Limited Mode banner (ADR 0012): shown only when Party Core says this phone reached it
  * over the plain-HTTP fallback. Plain words, what is missing on this phone, how it is restored. */
 function renderLimited() {
   const on = state.mode === LIMITED && Boolean(state.report);
-  $('limited').hidden = !on;
-  // The mode is always marked on the phone it applies to: in full on Home, and by the mark in the
-  // top bar on every other page, which opens the same words over that page.
+  // The mode is always marked on the phone it applies to: in full on Home until its person folds
+  // the notice away (the owner, 2026-10-06), and by the mark in the top bar everywhere else, which
+  // opens the same words over that page. The notice and the mark are never shown together. A
+  // fold lasts for this visit: the next time the phone opens the Party in Limited Mode it is
+  // told once more.
   // The briefing has no Home to say it on, so it carries the mark; its sheet has no link that
   // leaves the page (GAME-UX-CONTRACT rule 3.2).
+  const folded = on && kept('sessionStorage', FOLD_KEY) === '1';
+  $('limited').hidden = !on || folded;
   const brief = state.screen === 'scene';
-  $('limited-mark').hidden = !on || (!brief && state.page === 'home');
+  $('limited-mark').hidden = !on || (!brief && state.page === 'home' && !folded);
   $('about-leave').hidden = brief;
   if (!on) { if ($('about-limited').open) $('about-limited').close(); return; }
   const caps = statuses(state.report);
@@ -456,7 +467,7 @@ function go(focus = true) {
 /** Your name and avatar live on the Party page. */
 function openProfile() {
   closeSheets();
-  if (state.page !== 'party') { history.replaceState(null, '', '#party'); showPage('party'); }
+  if (state.page !== 'party') { history.pushState(null, '', '#party'); showPage('party'); }
   $('profile').open = true;
   $('profile-name').focus();
 }
@@ -538,7 +549,9 @@ function renderParty(view) {
   $('party-lede').textContent = me ? hereLine(count)
     : partyIdentity() ? 'Joining the party…' : 'Choose your name to join the party.';
   $('party-names').textContent = me ? namesLine(people) : '';
-  $('party-host').textContent = hostLine(me, host);
+  const away = awayHost(view);
+  $('party-host').textContent = hostLine(me, host, Boolean(away));
+  renderHostNote(me ? hostNote({ away, passed: state.passed }) : null);
   const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
   $('party-members').replaceChildren(...people.map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'xl')));
   renderHome();
@@ -553,6 +566,172 @@ function renderParty(view) {
     $('content').scrollTop = 0;                  // the reason is at the top of the page, in sight
     state.refocus = true;                        // once the page is redrawn (onPartyView)
   }
+}
+
+/** A line about the Party: a mark and a sentence. Redrawn only when its words change, so a
+ * status that has not changed is not announced again. */
+function stateLine(el, note, text = note && note.text) {
+  el.hidden = !note;
+  if (!note) { el.replaceChildren(); delete el.dataset.said; return; }
+  if (el.dataset.said === text) return;
+  el.dataset.said = text;
+  el.replaceChildren(icon(note.icon), h('span', { text }));
+}
+
+/** The Host is away, or hosting passed on (lib/states.js hostNote), where Party Core's rule
+ * applies and the shell is on screen: Home and the Party page. A hand-over to this phone is a
+ * notice on Home, which its person puts away. */
+function renderHostNote(note) {
+  const mine = Boolean(note && note.mine);
+  stateLine($('party-state'), mine ? null : note);
+  stateLine($('people-state'), note, note ? [note.title, note.text].filter(Boolean).join('. ') : '');
+  $('host-now').hidden = !mine;
+  $('host-now-title').textContent = mine ? note.title : '';
+  $('host-now-text').textContent = mine ? note.text : '';
+}
+
+/** A notice was put away, or went by itself: focus is not left on a control that is gone. */
+function refocusFrom(el) {
+  if (el.contains(document.activeElement)) titleEl().focus({ preventScroll: true });
+}
+
+// ---- this phone and the Party box ---------------------------------------------------------------
+
+/** Every try at Party Core that ends (lib/party-client.js). The first one in a row that fails
+ * starts "Reconnecting"; LOST_AFTER_MS later, still failing, the phone says it lost the box. The
+ * client keeps trying throughout, so the first answer puts everything back by itself. */
+function onLink({ ok, answered }) {
+  state.trying = false;
+  if (ok) {
+    if (state.failingSince === null) return;
+    state.failingSince = null;
+    clearTimeout(state.lostTimer);
+    renderLink();
+    refreshHealth();                            // what was off may be on again, and the other way
+    return;
+  }
+  state.answered = answered;
+  if (state.failingSince === null) {
+    state.failingSince = Date.now();
+    state.lostTimer = setTimeout(renderLink, LOST_AFTER_MS + 20);
+  }
+  renderLink();
+}
+
+function renderLink() {
+  const link = state.partyMode ? linkState(state.failingSince, Date.now()) : 'ok';
+  const view = party.view();
+  const who = { link, answered: state.answered, host: Boolean(view && view.me && view.me.host) };
+  const words = linkWords(who), lost = link === 'lost';
+  const changed = document.documentElement.dataset.link !== link;
+  document.documentElement.dataset.link = link;
+  // (Home's "Connected" line would contradict it)
+  $('status').hidden = Boolean(words);
+  if (!words) refocusFrom($('net'));
+  $('net').hidden = !words;
+  if (words) {
+    $('net').classList.toggle('quiet', !lost);
+    $('net').classList.toggle('warn', lost);
+    if (changed) $('net-icon').replaceChildren(lost ? icon('wifi-off') : h('span', { class: 'loading loading-spinner loading-xs' }));
+    $('net-title').textContent = words.title;
+    $('net-text').textContent = state.trying ? 'Trying again…' : words.text;
+    $('net-retry').hidden = !words.retry;
+  }
+  // The briefing says it in its dock: a line while it reconnects; after that the choices, which
+  // would go nowhere, give way to what happened and "Try again".
+  const brief = linkWords({ ...who, brief: true });
+  $('scene-net').hidden = link !== 'reconnecting';
+  $('scene-net').textContent = link === 'reconnecting' ? brief.text : '';
+  const inLive = $('scene-live').contains(document.activeElement), inLost = $('scene-lost').contains(document.activeElement);
+  $('scene-live').hidden = lost;
+  $('scene-lost').hidden = !lost;
+  $('scene-lost-text').textContent = !lost ? '' : state.trying ? 'Trying again…' : `${brief.title}. ${brief.text}`;
+  if (lost && inLive) $('scene-retry').focus({ preventScroll: true });
+  if (!lost && inLost) titleEl().focus({ preventScroll: true });
+  renderBox();
+}
+
+/** "Try again": ask Party Core now, not when the next try was due. */
+function tryAgain() {
+  state.trying = true;
+  renderLink();
+  party.poke();
+}
+
+// ---- the Party box: trouble that changes what can be played ---------------------------------------
+
+/** The status document (avrana.status/v0), asked for by the Host's phone only: the Host is the
+ * person who can act on it. A read that fails keeps the last answer; the line above says when the
+ * box itself is out of reach. */
+async function refreshBox() {
+  const view = state.partyMode ? party.view() : null;
+  if (!view || !view.me || !view.me.host) { state.box = null; return; }
+  try { state.box = await getJSON('api/status', { cache: 'no-store', signal: AbortSignal.timeout(4000) }); }
+  catch { /* the last answer stands */ }
+}
+
+const TROUBLE_KEY = 'avrana-trouble-dismissed';
+function put(store, key, value) {
+  try { if (value === null) window[store].removeItem(key); else window[store].setItem(key, value); } catch { /* this phone keeps nothing */ }
+}
+function kept(store, key) {
+  try { return window[store].getItem(key); } catch { return null; }
+}
+
+const healthBlock = (kind, mark, title, ...body) => h('div', { class: 'avrana-health' + (kind === 'warn' ? ' warn' : ''), 'data-health': kind },
+  icon(mark), h('div', {}, h('b', { text: title }), ...body.filter(Boolean)));
+
+/** The Host's notice on Home, and System's health: one quiet line when all is well, otherwise
+ * what it means for play. The Host reads the box's own account; everyone else reads what their
+ * shelf already shows ("Off for now"). Limited Mode's words are kept here whenever the phone is
+ * in it, folded on Home or not. */
+function renderBox() {
+  if (!state.catalog) return;
+  const view = state.partyMode ? party.view() : null;
+  const host = Boolean(view && view.me && view.me.host);
+  const link = document.documentElement.dataset.link || 'ok';
+  const found = host && link === 'ok' ? troubles(state.box, visibleGames(state.catalog)) : [];
+  const trouble = found[0] || null;
+  // A trouble that has gone is forgotten, so that it is said again if it returns. A phone that
+  // is merely out of touch knows nothing either way, and forgets nothing.
+  if (host && link === 'ok' && state.box && !trouble) put('sessionStorage', TROUBLE_KEY, null);
+  const show = Boolean(trouble) && kept('sessionStorage', TROUBLE_KEY) !== trouble.id;
+  if (!show) refocusFrom($('trouble'));
+  $('trouble').hidden = !show;
+  $('trouble').dataset.trouble = trouble ? trouble.id : '';
+  $('trouble-title').textContent = show ? trouble.title : '';
+  $('trouble-text').textContent = show ? trouble.text : '';
+
+  const blocks = [];
+  const limited = state.mode === LIMITED && Boolean(state.report);
+  if (limited) {
+    const caps = statuses(state.report);
+    const notice = limitedNotice({ caps, blocked: blockedGames(visibleGames(state.catalog), caps) });
+    blocks.push(healthBlock('warn', 'triangle-alert', 'This phone is in Limited Mode', h('p', { text: notice.intro }),
+      notice.missing.length ? h('ul', {}, notice.missing.map((text) => h('li', { text }))) : null, h('p', { text: notice.restore })));
+  }
+  const entries = state.entries ? [...state.entries.values()] : [];
+  const installed = entries.filter((e) => e.game.installed && e.game.entry);
+  let known = false;                             // is anything known about the box at all?
+  const off = installed.filter((e) => e.note && e.note.kind === 'off');
+  const onShelf = state.polled ? offLine(off.map((e) => e.game.name), installed.length - off.length) : null;
+  const shelfBlock = () => healthBlock('warn', 'triangle-alert', onShelf.title, onShelf.text ? h('p', { text: onShelf.text }) : null);
+  if (host) {
+    known = Boolean(state.box);
+    for (const t of found) blocks.push(healthBlock('warn', 'triangle-alert', t.title, h('p', { text: t.detail })));
+    // A title the shelf marks off for a reason the box's account has no word for: System says
+    // what the shelf says, and never "everything's working" over it.
+    if (!found.length && link === 'ok' && onShelf) blocks.push(shelfBlock());
+  } else if (state.polled) {
+    known = installed.length > 0 && !installed.some((e) => e.live && e.live.unknown);
+    if (onShelf) blocks.push(shelfBlock());
+  }
+  if (!blocks.length && known && link === 'ok' && state.reachable && state.report) {
+    const fine = fineLine(ESSENTIAL.every((name) => state.report.caps[name] && state.report.caps[name].status === 'yes'));
+    blocks.push(healthBlock('ok', 'circle-check', fine.title, h('p', { text: fine.text })));
+  }
+  sync($('health'), blocks);
+  $('health').hidden = !blocks.length;
 }
 
 // ---- the setup scene ----------------------------------------------------------------------------
@@ -637,9 +816,7 @@ async function renderScene(view) {
   $('scene-start').hidden = !panel.host;
   $('scene-cancel').hidden = !panel.host || panel.starting;
   $('scene-start').disabled = !panel.canStart || state.partyBusy;
-  $('scene-status').textContent = panel.starting ? 'Starting…'
-    : panel.host ? panel.blocker || ''
-      : panel.hostName ? `Waiting for ${panel.hostName} to start` : 'Nobody is hosting right now.';
+  $('scene-status').textContent = briefLine(panel, { away: awayHost(view), passed: state.passed });
 }
 
 /** Which screen has the phone: a place of the frame (main), the briefing (scene) or the way to a
@@ -651,7 +828,7 @@ function show(which, round = null) {
   // Whatever was open belonged to the screen that was there: an authoritative move closes it, so
   // nothing stands between a person and where the Party now is. (While the screen stays, the
   // drawer and the sheet stay open over it: a briefing keeps its place under them.)
-  if (moved) closeSheets();
+  if (moved) { closeSheets(); state.passed = null; }     // "hosting passed" was about the place that was
   state.screen = which;
   $('main').hidden = which === 'going';
   $('content').hidden = which !== 'main';
@@ -667,13 +844,18 @@ function show(which, round = null) {
   if (which !== 'going') titleEl().focus({ preventScroll: true });
 }
 
-function onPartyView(view) {
+function onPartyView(view, previous = null) {
   if (!state.partyMode) return;
   ensurePresent(view);
+  const passed = hostPassed(previous, view);
+  if (passed) state.passed = passed;
+  else if (state.passed && previous && previous.party !== view.party) state.passed = null;   // a new Party: that was the last one's news
+  const hosts = Boolean(view.me && view.me.host);
+  if (hosts !== Boolean(previous && previous.me && previous.me.host)) refreshBox().then(renderBox);   // the Host's notice is the Host's
   const url = destination(view, HOME, state.catalog);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
-    const round = roundToRemember(view);       // a round that is on, not its held results
+    const round = roundToRemember(view);       // a round this phone plays, while it is on
     if (g && round) recordRound(g, round);
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
@@ -704,10 +886,11 @@ async function renderGames(refresh = true) {
         // an error status, or an answer that is not the list, is an answer; only silence is silence
         .then(donorAvailability).catch((err) => (err && (err.status || err instanceof SyntaxError) ? null : SILENT)),
       ...installed.map((g) => health(g.health)),
+      refreshBox(),
     ]);
     state.donor = donor === SILENT ? null : donor;
     state.donorSilent = donor === SILENT;       // no answer at all, which is not "off"
-    state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));
+    state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));   // (refreshBox's own answer is not one of them)
     state.polled = true;
     renderHud();                        // the chat is offered only while its own runtime answers
   }
@@ -730,6 +913,8 @@ async function renderGames(refresh = true) {
     keyOf: profile.keyFor, favorites: me.favorites, recent: me.recent }), people);
   renderHomeShelves(entries, homeShelves({ all, people, keyOf: profile.keyFor, recent: me.recent }), people);
   renderDetail(entries, people);
+  state.entries = entries;
+  renderBox();
 }
 
 const SILENT = Symbol('no answer');
@@ -850,10 +1035,10 @@ function renderDetail(entries, people) {
   }
 }
 
-/** A round that takes this phone to a game is remembered on this phone (the same list, and the
- * same count, the Play button has always written), once per round however often, and in however
- * many tabs, the page is opened during it. Whoever the Party took there is recorded, players
- * and watchers alike. */
+/** A round this phone plays is remembered on this phone (the same list, and the same count, the
+ * Play button has always written), once per round however often, and in however many tabs, the
+ * page is opened during it. A round its person only watches is not (lib/party-mode.js
+ * roundToRemember). */
 function recordRound(game, where) {
   const round = String(where.session || game.id);
   try {
@@ -895,6 +1080,9 @@ async function boot() {
   }
   setStatus('checking', 'Checking the connection…');
   party.stop();
+  state.failingSince = null;
+  state.trying = false;
+  clearTimeout(state.lostTimer);
   const [reachable, loaded, report, partyView] = await Promise.all([
     checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(),
   ]);
@@ -923,6 +1111,7 @@ async function boot() {
   }
   if (catalog) renderPhone();
   renderLimited();
+  renderLink();
   if (reachable && catalog) await renderGames();
   renderHome();
   renderHud();
@@ -972,7 +1161,26 @@ function syncPresence() {
   if (!state.partyMode || !view || !who) return;
   if (view.me) party.rename(who.name, who.avatar); else ensurePresent(view);
 }
-const party = createPartyClient({ onView: onPartyView });
+const party = createPartyClient({ onView: onPartyView, onLink });
+$('net-retry').onclick = tryAgain;
+$('scene-retry').onclick = tryAgain;
+$('host-now-x').onclick = () => {
+  state.passed = null;
+  const view = party.view();
+  renderHostNote(view && view.me ? hostNote({ away: awayHost(view), passed: null }) : null);
+  titleEl().focus({ preventScroll: true });
+};
+$('trouble-x').onclick = () => {
+  put('sessionStorage', TROUBLE_KEY, $('trouble').dataset.trouble);
+  renderBox();
+  titleEl().focus({ preventScroll: true });
+};
+$('limited-fold').onclick = () => {
+  put('sessionStorage', FOLD_KEY, '1');
+  renderLimited();
+  // the mark now stands where the notice was said; without storage the notice simply stays
+  if (!$('limited-mark').hidden) $('limited-mark').focus({ preventScroll: true });
+};
 $('choose-play').onclick = () => choose('player');
 $('choose-watch').onclick = () => choose('spectator');
 $('scene-start').onclick = async () => {
@@ -1109,6 +1317,9 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pageshow', (event) => { if (event.persisted) boot(); else syncChat(); });
 go(false);
-window.addEventListener('online', () => { if (state.reachable === false) boot(); });
+window.addEventListener('online', () => {
+  if (state.reachable === false) boot();
+  else if (state.partyMode) party.poke();     // the network is back: ask Party Core now, not at the next try
+});
 state.healthTimer = setInterval(refreshHealth, HEALTH_EVERY_MS);
 boot();

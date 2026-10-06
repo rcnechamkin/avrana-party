@@ -167,7 +167,11 @@ origin `secure_context`, `wake_lock` and `service_worker` are "no". The banner l
 missing on this phone and names the installed games it cannot play. In a round's setup, a phone
 that cannot play the game has Play disabled and the reason shown, and may still choose Watch.
 Not yet: a game page in Limited Mode does not follow the party, because game pages and the arcade
-page load the follower only in a secure context (a paired change with Games).
+page load the follower only in a secure context (a paired change with Games; tracked as AVR-290).
+
+**The notice folds (UX/UI redesign PR 1.4; the owner, 2026-10-06).** The notice on Home can be
+folded away for the visit; the phone is still marked, by the "Limited" mark in the top bar, and
+the mark opens the same three facts. A new visit shows the notice in full again.
 
 ### 3.8 The second origin in Limited Mode
 

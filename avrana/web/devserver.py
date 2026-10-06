@@ -11,7 +11,9 @@ with a fake /arcade/stats, and a stub games hub at /. With --test-controls, POST
 With --party, a REAL Party Core (avrana.party.service) runs beside it on an ephemeral loopback
 port and /party/api/ is forwarded to it, as nginx does on the appliance: Join, host, launch,
 switch, end and /party/api/status all work, with a game link that accepts every launch and stub
-game pages under /games/<slug>/. POST /__test__/party/reset starts a fresh party (test controls).
+game pages under /games/<slug>/. POST /__test__/party/reset starts a fresh party, and
+POST /__test__/party/advance?s=N moves that party's clock N seconds on, so a test can see a member
+go away and hosting pass on without waiting for it (test controls).
 Nothing here deploys; the party is memory-only and dies with the process.
 
 Limited Mode (ADR 0012) is simulated as a second scheme: requests whose Host is
@@ -28,7 +30,7 @@ import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from avrana import REPO_ROOT, WEB_DIR
 
@@ -114,13 +116,30 @@ class SimulatedParty:
         self.limited_port = self.limited_server.server_address[1]
         threading.Thread(target=self.limited_server.serve_forever, daemon=True).start()
         threading.Thread(target=self.svc.run_timer, args=(self.stop,), daemon=True).start()
+        self.skew = 0.0
+        self.simulated = False      # only a party made by reset() follows the clock advance() moves
 
     def reset(self):
         import time
         from avrana.party import core
         with self.svc.lock:
-            self.svc.core = core.PartyCore(time.monotonic, self.service_module.load_games(PARTY_GAMES))
+            self.skew = 0.0
+            self.simulated = True
+            self.svc.core = core.PartyCore(lambda: time.monotonic() + self.skew,
+                                           self.service_module.load_games(PARTY_GAMES))
             self.svc._notify()
+
+    def advance(self, seconds):
+        """Move the party's clock on (never back): what Party Core does by time alone, it now does.
+        Only a party made by reset() follows this clock: for any other, nothing moves and the
+        answer is False."""
+        with self.svc.lock:
+            if not self.simulated:
+                return False
+            self.skew += max(0.0, float(seconds))
+            if self.svc.core.tick():
+                self.svc._notify()
+            return True
 
     def forward(self, method, target, headers, body, client):
         h = {k: v for k, v in headers.items() if k.lower() in FORWARD}
@@ -330,6 +349,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._party()
         if cfg['test_controls'] and path == '/__test__/party/reset' and cfg['party'] is not None:
             cfg['party'].reset()
+            return self._send(204, b'')
+        if cfg['test_controls'] and path == '/__test__/party/advance' and cfg['party'] is not None:
+            try:
+                seconds = float(parse_qs(urlsplit(self.path).query).get('s', [''])[0])
+            except ValueError:
+                return self._send(400, b'bad seconds')
+            if not 0 <= seconds <= 3600:
+                return self._send(400, b'bad seconds')
+            if not cfg['party'].advance(seconds):
+                return self._send(409, b'reset the party first')
             return self._send(204, b'')
         if cfg['test_controls'] and path in ('/__test__/full/up', '/__test__/full/down'):
             cfg['full_down'] = path.endswith('down')

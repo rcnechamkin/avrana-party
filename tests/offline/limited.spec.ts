@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { place, sideways, smallTargets, startForEveryone } from '../lib/frame';
+import { faintEdges, focusWalk, lowContrast, moving, outOfOrder, unnamed } from '../lib/a11y';
 
 /**
  * ADR 0012 / AVR-225 (Tier 2): Limited Mode with a simulated second scheme. Real Chromium, the
@@ -102,6 +103,79 @@ test('away from Home the mode stays marked: the mark opens the same words over t
   await place(page, 'home');
   await expect(page.locator('#limited')).toBeVisible();
   await expect(mark).toBeHidden();
+});
+
+test('the notice on Home folds into the mark: said once in full, then always marked, and kept in System', async ({ page, context }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  const banner = page.locator('#limited'), mark = page.locator('#limited-mark'), sheet = page.locator('#about-limited');
+  // each state as it is drawn, then as a phone that asks for more contrast and less motion draws it
+  const audit = async () => {
+    const bad = [...await lowContrast(page, '#main'), ...await faintEdges(page), ...await unnamed(page, '#main'), ...await outOfOrder(page)];
+    await page.emulateMedia({ contrast: 'more', reducedMotion: 'reduce' });
+    bad.push(...await lowContrast(page, '#main', 7), ...await faintEdges(page), ...await moving(page));
+    await page.emulateMedia({ contrast: null, reducedMotion: null });
+    return bad;
+  };
+  await expect(banner).toBeVisible();
+  await expect(mark).toBeHidden();                                          // never both at once
+  const fold = banner.getByRole('button', { name: 'Fold this notice away' });
+  expect(await smallTargets(page, '#limited a, #limited button')).toEqual([]);
+  expect(await audit()).toEqual([]);
+  const walk = await focusWalk(page);                                       // Tab reaches the fold, with a ring at every stop
+  expect(walk.bad).toEqual([]);
+  expect(walk.keys).toContain('button#limited-fold');
+  await fold.focus();
+  await page.keyboard.press('Enter');
+  await expect(banner).toBeHidden();
+  await expect(mark).toBeVisible();                                         // Home is now marked like every other page
+  await expect(mark).toBeFocused();                                         // focus goes to what stands in for the notice
+  await expect(page.locator('html')).toHaveAttribute('data-mode', 'limited');
+  await expect(page.locator('#status-text')).toHaveText('Connected in Limited Mode');
+  expect(await audit()).toEqual([]);
+  // the mark gives the same words back over Home, with the way to the full version
+  await mark.click();
+  for (const fact of ['not private', 'screen may dim', 'not saved on this phone', 'renews its certificate'])
+    await expect(sheet).toContainText(fact);
+  await expect(sheet.getByRole('link', { name: 'Check for the full version' })).toHaveAttribute('href', 'doorway/');
+  await page.keyboard.press('Escape');
+  await expect(mark).toBeFocused();
+  // System keeps the facts in full for as long as the phone is in Limited Mode, folded or not
+  await place(page, 'system');
+  const record = page.locator('#health [data-health="warn"]');
+  await expect(record.locator('b')).toHaveText('This phone is in Limited Mode');
+  for (const fact of ['not private', 'screen may dim', 'not saved on this phone', 'renews its certificate'])
+    await expect(record).toContainText(fact);
+  await expect(page.locator('#health [data-health="ok"]')).toHaveCount(0);  // "everything's working" is not said beside it
+  expect(await audit()).toEqual([]);
+  expect(await sideways(page)).toBeLessThanOrEqual(0);
+  // everyone still sees how this phone reaches the Party
+  await place(page, 'party');
+  await expect(person(page, 'Lena (you)').locator('.mode')).toHaveText('Limited');
+  // folded for this visit: a reload keeps it folded
+  await place(page, 'home');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await expect(banner).toBeHidden();
+  await expect(mark).toBeVisible();
+  // the next time the phone opens the Party in Limited Mode, it is told once more
+  const again = await context.newPage();
+  await home(again, LIMITED);
+  await expect(again.locator('#limited')).toBeVisible();
+  await expect(again.locator('#limited-mark')).toBeHidden();
+  await again.close();
+});
+
+test('a phone that keeps nothing cannot fold the notice away: it stays said in full', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    const deny = () => { throw new DOMException('denied', 'SecurityError'); };
+    Object.defineProperty(window, 'sessionStorage', { configurable: true, get: deny });
+  });
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  await page.locator('#limited-fold').click();
+  await expect(page.locator('#limited')).toBeVisible();                     // never hidden with nothing in its place
+  await expect(page.locator('#limited-mark')).toBeHidden();
 });
 
 async function secondPhone(browser: Browser, name: string) {

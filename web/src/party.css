@@ -237,6 +237,38 @@
   .avrana-textlink { color: var(--color-base-content); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-line-strong); display: inline-block; padding: 0.75rem 0; margin: -0.75rem 0; }
   button.avrana-textlink { min-width: 2.75rem; min-height: 2.75rem; text-align: end; cursor: pointer; }   /* a short word is still a thumb wide */
 
+  /* A notice: something happened that a person should know, with at most one thing to do. A mark,
+     a bold line, a sentence, then the action or Dismiss. Enlarged text wraps the action under.
+     `quiet` is the passing kind (reconnecting): a line, not a block. Never colour alone. */
+  .avrana-notice {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; margin-bottom: 0.75rem;
+    padding: 0.625rem 0.5rem 0.625rem 0.875rem; background: var(--color-base-200);
+    border: 1px solid var(--color-line); border-radius: var(--radius-box);
+  }
+  .avrana-notice[hidden] { display: none; }
+  .avrana-notice > .mark { flex: none; display: inline-flex; color: var(--color-muted); }
+  .avrana-notice.warn > .mark { color: var(--color-warning); }
+  .avrana-notice > p { flex: 1 1 9rem; min-width: min(100%, 7rem); margin: 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
+  .avrana-notice > p > b { display: block; font-weight: 550; }
+  .avrana-notice > p > b:empty { display: none; }
+  .avrana-notice > p > span { color: var(--color-muted); }
+  .avrana-notice > .btn { flex: none; margin-left: auto; }
+  .avrana-notice.quiet { padding: 0.25rem 0; background: none; border: 0; }
+  /* A line about the Party (the Host is away, hosting passed on): a mark and a sentence. */
+  .avrana-state { display: flex; align-items: flex-start; gap: 0.5rem; color: var(--color-muted); font-size: 0.9375rem; overflow-wrap: anywhere; }
+  .avrana-state[hidden] { display: none; }
+  .avrana-sub + .avrana-state { margin: 0.5rem 0 0; }
+  .avrana-state > .avrana-icon { flex: none; width: 1.125rem; height: 1.125rem; margin-top: 0.1875rem; }
+  /* System: how things are. One quiet line when all is well, a block for each thing that is not. */
+  .avrana-health { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.25rem 0.75rem; padding: 0.875rem 1rem; background: var(--color-base-200); border-radius: var(--radius-box); border-left: 3px solid var(--color-success); }
+  .avrana-health > .avrana-icon { margin-top: 0.125rem; color: var(--color-success); }
+  .avrana-health.warn { border-left-color: var(--color-warning); }
+  .avrana-health.warn > .avrana-icon { color: var(--color-warning); }
+  .avrana-health > div { display: grid; gap: 0.375rem; min-width: 0; overflow-wrap: anywhere; }
+  .avrana-health b { font-weight: 550; }
+  .avrana-health p, .avrana-health ul { margin: 0; color: var(--color-muted); font-size: 0.9375rem; }
+  .avrana-health ul { padding-left: 1.25rem; list-style: disc; }
+
   /* A word for a person's role or state: text first, never a crown, never colour alone. */
   .avrana-tag {
     display: inline-flex; align-items: center; min-height: 1.125rem; padding: 0 0.3125rem;
@@ -486,7 +518,11 @@
     background: var(--color-material); border-top: 1px solid var(--color-material-edge);
     -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
   }
-  .avrana-dock > p { margin: 0; }
+  .avrana-dock p { margin: 0; }
+  .avrana-dock .live, .avrana-dock .lost { display: grid; gap: 0.5rem; }
+  .avrana-dock .live[hidden], .avrana-dock .lost[hidden] { display: none; }
+  .avrana-dock .lost > p { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.9375rem; overflow-wrap: anywhere; }
+  .avrana-dock .lost > p > span:first-child { flex: none; color: var(--color-warning); }
   .avrana-dock .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
   .avrana-dock .line { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 0.75rem; min-height: 2.75rem; color: var(--color-muted); font-size: 0.8125rem; text-align: center; }
   .avrana-dock .line > span:empty { display: none; }
@@ -526,6 +562,7 @@
     background: var(--color-base-200); border-radius: var(--radius-box); border-left: 3px solid var(--color-warning);
   }
   .avrana-limited[hidden] { display: none; }
+  .avrana-limited .head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: -0.375rem -0.5rem -0.375rem 0; }
   .avrana-limited h2 { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1.0625rem; font-weight: 550; }
   .avrana-limited h2 .avrana-icon { color: var(--color-warning); }
   .avrana-limited p, .avrana-limited ul { margin: 0; }
@@ -612,5 +649,6 @@
 .btn { --fontsize: 0.9375rem; font-weight: 550; }
 /* A plain button is an outline you can see is pressable; the filled one is the region's main action. */
 .btn:not(.btn-primary, .btn-ghost, .btn-outline, :disabled) { background: transparent; border-color: var(--color-control); }
-.input, .select { font-size: 1rem; }
+/* A field's edge is what says it can be typed in: 3:1 like every other control (daisyUI's own is fainter). */
+.input, .select, .file-input { font-size: 1rem; border-color: var(--color-control); }
 .input:focus-within, .input:focus, .select:focus, .file-input:focus-within { outline: 2px solid var(--color-accent); outline-offset: 2px; }
