@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { place, sideways, smallTargets } from '../lib/frame';
 
 /**
  * ADR 0012 / AVR-225 (Tier 2): Limited Mode with a simulated second scheme. Real Chromium, the
@@ -52,7 +53,11 @@ test('a phone on the plain-HTTP origin is in the party, in Limited Mode, and is 
   await expect(banner).toContainText('not saved on this phone');
   await expect(banner).toContainText('renews its certificate');
   await expect(banner.getByRole('link', { name: 'Check for the full version' })).toHaveAttribute('href', 'doorway/');
+  // Home says it in full, so the mark in the top bar is not doubled there.
+  const mark = page.locator('#limited-mark');
+  await expect(mark).toBeHidden();
   // The same party model: present on its own, and the first one in is the host.
+  await place(page, 'party');
   await expect(person(page, 'Lena (you)')).toBeVisible();
   await expect(person(page, 'Lena (you)').locator('.mode')).toHaveText('Limited');
   await expect(page.locator('#party-host')).toContainText('You’re the host');
@@ -65,6 +70,40 @@ test('a phone on the plain-HTTP origin is in the party, in Limited Mode, and is 
   expect(await page.evaluate(() => 'serviceWorker' in navigator)).toBe(false);
 });
 
+test('away from Home the mode stays marked: the mark opens the same words over the page, and gives the page back', async ({ page, context }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  const mark = page.locator('#limited-mark'), sheet = page.locator('#about-limited');
+  for (const name of ['party', 'library', 'system'] as const) {
+    await place(page, name);
+    await expect(mark, name).toBeVisible();
+    await expect(mark).toHaveAccessibleName('Limited Mode on this phone. What this means');
+    expect(await smallTargets(page, '#top button'), name).toEqual([]);
+    expect(await sideways(page), name).toBeLessThanOrEqual(0);
+  }
+  await place(page, 'library');
+  await page.locator('#game-search').fill('bluff');                         // something the page would lose on a reload
+  await mark.click();
+  await expect(sheet).toBeVisible();
+  for (const fact of ['not private', 'screen may dim', 'not saved on this phone', 'renews its certificate'])
+    await expect(sheet).toContainText(fact);
+  await expect(sheet.getByRole('link', { name: 'Check for the full version' })).toHaveAttribute('href', 'doorway/');
+  expect(await page.evaluate(() => document.activeElement?.closest('dialog')?.id)).toBe('about-limited');
+  expect(await smallTargets(page, '#about-limited a, #about-limited button')).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
+  await expect(mark).toBeFocused();                                         // focus returns to what opened it
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  await expect(page.locator('#game-search')).toHaveValue('bluff');          // the page underneath never moved
+  await mark.click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(sheet).toBeHidden();
+  // back on Home the full notice is there and the mark is not
+  await place(page, 'home');
+  await expect(page.locator('#limited')).toBeVisible();
+  await expect(mark).toBeHidden();
+});
+
 async function secondPhone(browser: Browser, name: string) {
   const context = await browser.newContext();
   await named(context, name);
@@ -74,12 +113,15 @@ async function secondPhone(browser: Browser, name: string) {
 test('one party in two modes: each phone sees who is in Limited Mode, and only the Limited phone gets the banner', async ({ page, context, browser }) => {
   await named(context, 'Lena');
   await home(page, LIMITED);
+  await place(page, 'party');
   await expect(person(page, 'Lena (you)')).toBeVisible();
   const fay = await secondPhone(browser, 'Fay');
   try {
     await home(fay.page, FULL);
     await expect(fay.page.locator('html')).toHaveAttribute('data-mode', 'full');
     await expect(fay.page.locator('#limited')).toBeHidden();
+    await place(fay.page, 'party');
+    await expect(fay.page.locator('#limited-mark')).toBeHidden();             // a Full Mode phone is never marked
     await expect(fay.page.locator('#status-text')).toHaveText('Connected to the party');
     await expect(person(fay.page, 'Fay (you)')).toBeVisible();
     await expect(person(fay.page, 'Fay (you)').locator('.mode')).toHaveCount(0);
@@ -88,6 +130,12 @@ test('one party in two modes: each phone sees who is in Limited Mode, and only t
     // and the Limited phone sees the Full Mode member arrive
     await expect(person(page, 'Fay')).toBeVisible();
     await expect(person(page, 'Fay').locator('.mode')).toHaveCount(0);
+    // the drawer says the same of everyone, in words
+    await fay.page.locator('#hud').click();
+    await fay.page.getByRole('button', { name: 'People', exact: true }).click();
+    await expect(fay.page.locator('#social-people li', { hasText: 'Lena' }).locator('.mode')).toHaveText('Limited');
+    await expect(fay.page.locator('#social-people li', { hasText: 'Fay (you)' }).locator('.mode')).toHaveCount(0);
+    await fay.page.keyboard.press('Escape');
     // the two credentials never cross: the Full phone holds no Limited cookie and the reverse
     expect((await fay.context.cookies(`${FULL}/party/`)).map((c) => c.name)).toEqual(['avrana_device']);
     expect((await context.cookies(`${LIMITED}/party/`)).map((c) => c.name)).toEqual(['avrana_limited']);
@@ -99,9 +147,11 @@ test('one party in two modes: each phone sees who is in Limited Mode, and only t
 test('the same phone on the other origin is a new member: nothing carries across a mode switch', async ({ page, context }) => {
   await named(context, 'Lena');
   await home(page, LIMITED);
+  await place(page, 'party');
   await expect(person(page, 'Lena (you)')).toBeVisible();
   await home(page, FULL);
   await expect(page.locator('#limited')).toBeHidden();
+  await place(page, 'party');
   // Joined again as a new device: the earlier member still holds the name, so this one is "Lena 2".
   await expect(person(page, 'Lena 2 (you)')).toBeVisible();
   await expect(page.locator('#party-members li')).toHaveCount(2);           // the Limited member is still listed

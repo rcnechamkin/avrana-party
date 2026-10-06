@@ -17,6 +17,7 @@ const ICONS = [
   'dices', 'eye', 'gamepad-2', 'history', 'image', 'layers', 'lock', 'message-circle', 'monitor', 'play',
   'search', 'search-x', 'send-horizontal', 'smartphone', 'spade', 'star', 'user-round-pen', 'users',
   'wifi', 'wifi-off', 'x', 'crown', 'hourglass',
+  'house', 'library-big', 'settings', 'triangle-alert',
 ];
 
 const require = createRequire(import.meta.url);

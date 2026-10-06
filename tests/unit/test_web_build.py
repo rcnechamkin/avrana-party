@@ -39,10 +39,13 @@ class ShellFiles(unittest.TestCase):
     def test_guest_page_has_no_machinery_words(self):
         text = re.sub(r'<[^>]+>', ' ', (WEB_DIR / 'index.html').read_text(encoding='utf-8'))
         self.assertIsNone(JARGON.search(text))
-        app = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
-        for literal in re.findall(r"'([^'\n]{12,})'", app):
-            if ' ' in literal:  # sentences only, not identifiers or selectors
-                self.assertIsNone(JARGON.search(literal), literal)
+        # app.js and the frame's sentences (lib/frame.js: who is here, the Party control's name)
+        for name, quotes in (('app.js', "'"), ('lib/frame.js', "'`")):
+            source = (WEB_DIR / name).read_text(encoding='utf-8')
+            for quote in quotes:
+                for literal in re.findall(quote + '([^' + quote + '\\n]{12,})' + quote, source):
+                    if ' ' in literal:  # sentences only, not identifiers or selectors
+                        self.assertIsNone(JARGON.search(literal), f'{name}: {literal}')
 
 
 class NoCredentialsInUrls(unittest.TestCase):
