@@ -64,18 +64,19 @@ Slices 1 and 2 are in different repositories and can run at the same time, one a
 
 ## Slice 0: decisions and wording
 
-No code. Decided by the owner on 2026-10-05; the wording changes are in the same pull request
-as this revision and are the owner's to merge.
+No code. Rows 0.1 to 0.5 and 0.7 are the owner's decisions of 2026-10-05. **Row 0.6 is not a
+decision**: it lists what slice 1 builds as drawn while the question stays open. The wording
+changes are in the same pull request as this revision and are the owner's to merge.
 
-| # | Item | Decided | Where it lands |
+| # | Item | Decided (0.6: assumed) | Where it lands |
 |---|---|---|---|
-| 0.1 | The Party control, the People drawer and the Limited sheet on a briefing | **Allowed.** They open over the briefing and close back to it; the Library, chat, the navigation bar and "This phone" stay off it | `docs/design/GAME-UX-CONTRACT.md` Rule 3.2 and a dated amendment on ADR 0011 (decision 4), both in this pull request. Built in PR 1.3 |
-| 0.2 | Today's chat in slice 1 | **Kept, in the drawer, on ordinary shell pages** (Home, Party, Library, System), exactly as it works now; **people only over a briefing** | PR 1.1 builds the drawer. See "Today's chat and the runtime it depends on" below |
+| 0.1 | The Party control, the People drawer and the Limited sheet on a briefing | **Allowed.** They open over the briefing and close back to it; the Library, chat, the navigation bar and "This phone" stay off it. Proposed with it, as drawn: the sheet on a briefing has no link that leaves the page, so "Check for the full version" is on Home and not there | `docs/design/GAME-UX-CONTRACT.md` Rule 3.2 and a dated amendment on ADR 0011 (decision 4), both in this pull request. Built in PR 1.3 |
+| 0.2 | Today's chat in slice 1 | **Kept, in the drawer, on ordinary shell pages** (Home, Party, Library, System): the same hub and messages as now, connected only while it is on screen, and offered only while its hub answers; **people only over a briefing** | PR 1.1 builds the drawer. See "Today's chat and the runtime it depends on" below |
 | 0.3 | Titles that are not installed | **Today's behaviour is kept**: listed, marked "Not installed", in the same line as other unavailable titles (decision 12) | PR 1.2 |
 | 0.4 | Tokens and typeface | **The brief's temporary treatment is kept**: a Helvetica-style light face for the words "Avrana Party" (a real Helvetica Light where the phone has one, Geist Light elsewhere) and Geist for interface text (bundled, SIL OFL 1.1). The smoky-violet tokens go into `web/src/party.css` | PR 1.1, with `docs/UI-DESIGN-SYSTEM.md` in the same pull request so the document never describes tokens the code does not have |
 | 0.5 | Where a Party layer would sit during play | **A separate design task.** It does not block slice 1 | [Follow-up work](#follow-up-work). Slice 5 depends on it; slice 2 proceeds without it |
-| 0.6 | Open decisions the drawings already answer and slice 1 builds | **Built as drawn**, because slice 1 was approved as drawn and none was changed: Limited Mode visibility (decision 4), the drawer from the top edge (7), recents per phone (9), "Off for now" shown to everyone (15), the reconnecting timer (18). The owner did not name them one by one; each is called out again in the pull request that builds it, where it can still be changed | PR 1.1 (4, 7), PR 1.2 (9, 15), PR 1.4 (18) |
-| 0.7 | The design package's weight | **Documents, prototypes, the ten overview sheets and the capture scripts are committed. Bulk screenshots and ZIP archives are not**; where they are kept is in the [README](README.md#pictures-that-are-not-in-git) | this pull request |
+| 0.6 | Open decisions the drawings already answer and slice 1 builds | **Not answered; provisional.** Slice 1 was approved as drawn and the owner did not name these, so each is built as drawn and stays open in [BACKEND-GAPS](BACKEND-GAPS.md#open-owner-decisions): Limited Mode visibility (decision 4), the drawer from the top edge (7), recents per phone (9), "Off for now" shown to everyone (15), the reconnecting timer (18). Each is called out again in the pull request that builds it, where it can still be changed. **Decision 4 wants an explicit yes before PR 1.4** folds the notice and adds the Host's notice: it reads an accepted ADR. PR 1.1 keeps today's notice and its wording, open on Home, and adds only the mark and its sheet | PR 1.1 (7; of 4, the mark and the sheet), PR 1.2 (9, 15), PR 1.4 (18; the rest of 4) |
+| 0.7 | The design package's weight | The owner: "Commit documents, prototypes, overview sheets and essential referenced evidence. Keep bulk screenshots and ZIP archives out of Git, with their location documented." **Read here as**: documents, prototypes, the ten overview sheets and the capture scripts are committed; the 422 loose pictures and the archive are not, and the [README](README.md#pictures-that-are-not-in-git) says where they are. **To confirm:** no loose picture was judged essential. The `current/` pictures cannot be retaken once the shell changes; if a small set of them should be in Git, say which | this pull request |
 
 ### Today's chat and the runtime it depends on
 
@@ -221,8 +222,8 @@ Delivery as four PRs, each leaving `main` deployable, so no flag is needed:
 
 | PR | Content |
 |---|---|
-| 1.1 | Tokens, Geist and compiled CSS; the frame (top bar with the Limited mark and the Party control, bottom bar, view router); the Party drawer (people, and today's chat while its hub answers) and the Limited sheet on the four ordinary pages; Home, Party and System; today's game list moved under Library unchanged; today's setup scene untouched |
-| 1.2 | Library: covers, four views, search, the two filters, favorites, recents, consequence lines; Home's "Great for N" and "Recently played" rows, which are made of the same tiles |
+| 1.1 | Tokens, Geist and compiled CSS; the frame (top bar with the Limited mark and the Party control, bottom bar, view router); the Party drawer (people, and today's chat while its hub answers) and the Limited sheet on the four ordinary pages; Home (who is here, and one row to the Library), Party and System; today's game list moved under Library unchanged; today's setup scene untouched |
+| 1.2 | Library: covers, four views, search, the two filters, favorites, recents, consequence lines; Home's lead tile and its "Great for N" and "Recently played" rows, which are made of the same tiles |
 | 1.3 | Game detail; the briefing redrawn; the drawer (people only) and the Limited sheet over it (needs slice 0 merged) |
 | 1.4 | States (reconnecting, Host away and passed, the Host's notice and System's health line, the folded Limited notice, empty states), the accessibility pass, the phone findings |
 
@@ -238,10 +239,13 @@ A pull request that cannot keep one of them stops and says which.
 - **Reconnecting.** A phone that cannot reach the box says so and offers "Try again"; it
   recovers by itself when the network returns and when the page becomes visible again; a phone
   that wakes asks Party Core at once; a move made while it was away is followed on return
-  (`web/party/app.js:575-583`, `tests/offline/party.spec.ts` "the offline copy").
+  (`web/party/app.js:575-583`). Of these, `tests/offline/party.spec.ts` "the offline copy"
+  covers "Try again" and recovery when the network returns; a pull request that touches the
+  others (waking, following a missed move) brings its own test for them.
 - **Limited Mode.** The mode is always marked on the phone it applies to, with the three facts
   in plain words (not private, what is missing here, how Full Mode returns:
-  `docs/design/LIMITED-MODE.md` §3.9) and the link that checks for the full version; no padlock
+  `docs/design/LIMITED-MODE.md` §3.9) and, on the ordinary pages, the link that checks for the
+  full version (the sheet over a briefing has no link that leaves it: slice 0.1); no padlock
   is shown; every member sees who is in Limited Mode; a phone that cannot play a title cannot
   choose Play and is told why; the shell works with no service worker and no secure context
   (`tests/offline/limited.spec.ts`).
@@ -420,7 +424,7 @@ only. If slice 0.2 kept today's chat, a rollback returns to it.
 Gauntlet II gets the same path as BLUFF: detail, briefing, Play or Watch, Start. Seats are
 visibly scarce (two of four). A phone that cannot play the title (by its own capability report,
 not by its mode alone) learns before the stream starts that it sits this round out. Someone not playing a title with no watch view gets a plain "Game in progress, you
-are not playing this round" (owner decision Q12, `docs/design/GAME-UX-CONTRACT.md:1072-1081`).
+are not playing this round" (owner decision Q12, `docs/design/GAME-UX-CONTRACT.md` §18).
 The same applies to the PS1 titles when they exist as Party games.
 
 ### 2. Existing backend support, and what is missing

@@ -4,8 +4,9 @@ Status: **PROPOSED (2026-10-05, revision 2). Design reference: the owner approve
 
 The first design review for the [UX/UI product brief](../AVRANA-UX-UI-PRODUCT-BRIEF.md): an
 audit of what exists, phone-sized concepts for the shell and for EXPO, and the list of what the
-concepts would need. No production file was changed to make it. Implementation waits for the
-owner's answer to one question: does this feel like Avrana?
+concepts would need. No production file was changed to make it. Its one question was "does this
+feel like Avrana?"; the owner answered by approving the direction, and slice 1 is being built in
+its own pull requests from 2026-10-05.
 
 The owner reviewed the first package, kept the shell direction and asked for six gaps to be
 closed. What was found and done is in [REVISION-1](REVISION-1.md). The owner then approved the
@@ -230,8 +231,11 @@ scaling the root font size in a desktop browser.
 
 ## Pictures that are not in Git
 
-The owner's decision (2026-10-05): documents, prototypes, overview sheets and the evidence the
-documents link to are committed; bulk screenshots and ZIP archives are not. About 34 MB of
+The owner's decision (2026-10-05): "Commit documents, prototypes, overview sheets and essential
+referenced evidence. Keep bulk screenshots and ZIP archives out of Git, with their location
+documented." The committed set is the documents, the prototypes, the ten overview sheets and the
+capture scripts; no loose picture was judged essential, which the plan's row 0.7 asks the owner
+to confirm. About 34 MB of
 pictures and a 35 MB archive would otherwise sit beside about 4 MB of tracked files.
 
 | What | Where |
@@ -245,11 +249,11 @@ taken again from the prototypes: from the repository root, with the development 
 installed (`npm ci`, `npx playwright install chromium`),
 
 ```
-node docs/design/ux-redesign/capture/shoot.mjs <output folder> $(cat docs/design/ux-redesign/capture/jobs-r2-1x.txt)
+DPR=1 node docs/design/ux-redesign/capture/shoot.mjs <output folder> $(cat docs/design/ux-redesign/capture/jobs-r2-1x.txt)
 ```
 
-and the other job lists in `capture/` in the same way (`DPR=2` in the environment for the
-`-2x` lists). Each job is `name=page.html?switches@WIDTHxHEIGHT`. The `current/` pictures
+and the other job lists in `capture/` in the same way (`DPR=1` for the `-1x` lists; the script's
+default, 2, is right for the `-2x` lists). Each job is `name=page.html?switches@WIDTHxHEIGHT`. The `current/` pictures
 cannot be retaken once the shell changes; the audits describe what they showed.
 
 ## What this phase did not do

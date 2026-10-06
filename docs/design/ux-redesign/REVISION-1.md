@@ -1,6 +1,6 @@
 # UX/UI redesign: revision 1 after the first owner review
 
-Status: **PROPOSED (2026-10-05). Design revision awaiting owner review; nothing here is implemented, accepted or scheduled.**
+Status: **PROPOSED (2026-10-05). Design revision; the owner approved its visual direction on 2026-10-05. Nothing here is implemented by this document.**
 
 The owner kept the shell direction and asked for six gaps to be closed before final approval.
 This file says what was found, what was done about it, and what is still limited. The owner

@@ -130,10 +130,12 @@ The decision above is unchanged. This adds the product-level invariant it alread
   "the Party's own full-screen scene" and listed what is on it. That list gains three things and
   loses nothing: the Party control (who is here), the People drawer it opens, and, on a phone in
   Limited Mode, the Limited Mode mark with its explanation
-  ([ADR 0012](0012-limited-mode-party-survives-https-loss.md) wants that mode visible wherever
-  the phone is). The drawer and the explanation open over the scene and close back to it; they
-  never move the phone, and they change nothing about the round. The Library, Party chat, the
-  navigation bar and "This phone" stay off the scene, so the drawer there shows people only.
+  ([ADR 0012](0012-limited-mode-party-survives-https-loss.md) decision 4: Limited Mode is
+  "visible and understandable"). The owner's words, relayed: "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings."
+  The rest is revision 2 of the shell redesign as approved and drawn: the drawer and the
+  explanation open over the scene and close back to it; nothing in them moves the phone off the
+  scene (the explanation there carries no link that leaves it) or changes anything about the
+  round. The Library, Party chat, the navigation bar and "This phone" stay off the scene.
   Decisions 1 to 3 and 5 to 7 are unchanged: one location, the Host moves it, and the game owns
   the viewport during a round. `#scene` on `main` is as decision 4 describes until the shell
   redesign builds this ([GAME-UX-CONTRACT](../design/GAME-UX-CONTRACT.md) Rule 3.2;

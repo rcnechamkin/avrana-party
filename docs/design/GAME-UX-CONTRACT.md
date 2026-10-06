@@ -111,14 +111,18 @@ pre-round screen and not as Party Home: the library, chat row and "This phone" M
 visible in it **[Implemented: `show('scene')` hides `#main`]**. Which page or origin draws the
 shell is an implementation matter and may move with ADR 0013; the behaviour is the contract.
 
-**[Accepted, owner decision 2026-10-05; not implemented.]** Three pieces of Party chrome MAY be
-on a briefing: the Party control (who is here), the People drawer it opens, and, on a phone in
-Limited Mode, the Limited Mode mark with its explanation. The drawer and the explanation open
-over the briefing and close back to it. Nothing in them may move the phone off the briefing,
-change the round, or cover the briefing's own controls once closed. The Library, Party chat, the
-navigation bar and "This phone" stay off the briefing: the drawer there shows people only. Chat
-over a briefing waits for a Party-owned chat and its own decision. ADR 0011 carries the matching
-amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`.
+**[Accepted, owner decision of 2026-10-05, relayed to this change; not implemented.]** The owner
+approved revision 2 of the shell redesign, which draws Party chrome on a briefing, and said of
+its drawer: "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings."
+So the Party control (who is here) and a drawer of the people here MAY be on a briefing, and
+Party chat MUST NOT be. **[Proposed]**, as revision 2 draws it and no further: on a phone in
+Limited Mode the Limited Mode mark and its explanation are on the briefing too; the drawer and
+the explanation open over the briefing and close back to it; nothing in them moves the phone off
+the briefing, changes the round, or covers the briefing's own controls once closed, so the
+explanation there carries no link that leaves the page (the link that checks for the full
+version stays on Party Home); the Library, the navigation bar and "This phone" stay off the
+briefing. Chat over a briefing waits for a Party-owned chat and its own decision. ADR 0011
+carries the matching amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`.
 
 **Rule 3.3 [Accepted, AVR-56; Implemented].** While the Party is in a game, a non-host has no
 normal route back to Party Home or to another game. The integration bar and every
@@ -1091,8 +1095,11 @@ whatever the words do not reach as **[Proposed]**.
 | Q11 | Rules during play | "Provide a platform-standard way to open the game's rules while the game remains active. This should behave like an overlay/sheet rather than navigating the user away from the running game." | 4.15 |
 | Q12 | A game that declares `spectators: none` | "If a game declares spectators: none, do not invent a fake spectator experience. A person who is not participating should receive a clear state equivalent to: Game in progress / You are not playing this round. They may retain appropriate Party-level access, but do not expose a game viewport pretending to be spectator support. When the game ends, normal Party participation resumes." | 4.4a |
 
+| S1 (shell redesign) | May Party chrome be on a briefing? | "Keep existing chat reachable in the drawer on ordinary shell pages; people only over briefings." (relayed with the approval of revision 2 of the shell redesign and of slices 0 and 1 of its plan) | 3.2 |
+
 Q6, Q8, Q11 and Q12 are the owner's decisions of the evening of 2026-10-05, quoted as they were
-relayed to this change. EXPO-scoped decisions of the same day (AVR-240, AVR-245, AVR-263) are
+relayed to this change. S1 was relayed later the same day with the shell redesign's approval; it
+has no question number because this document had not asked it. EXPO-scoped decisions of the same day (AVR-240, AVR-245, AVR-263) are
 cited in Rules 4.11a, 7.5 and 12.3 and are not platform rules.
 
 ### Deferred
@@ -1157,9 +1164,10 @@ ordinary way; they are not listed again.
   named at the top; the AVR-240 one is about who may end a game and names no pending work in
   the supported path.
 - The owner's UX/UI direction for the system shell (AVR-56, 2026-10-05 18:13 UTC) is not folded
-  into this document. Where it differs from what is recorded here as implemented (a neutral Host
-  badge instead of the crown in Rules 4.1 and 6.4, chat as a drawer from games in Rule 3.6,
-  typography), the direction governs the redesign; its own audit and wireframes come first.
+  into this document, except for Rule 3.2's paragraph of 2026-10-05. Where it differs from what
+  is recorded here as implemented (a neutral Host badge instead of the crown in Rules 4.1 and
+  6.4, chat as a drawer from games in Rule 3.6, typography), the direction governs the redesign;
+  its audit, drawings and plan are in `docs/design/ux-redesign/` and are proposals, not contract.
 - The real-time pressure test is reasoning without a game. Checkers and Spades (ADR 0014's
   validation order) will test the simple and the team/private-hand cases.
 - The EXPO evidence is its source and its hand-run playtests; EXPO states no deployment and no

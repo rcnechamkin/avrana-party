@@ -1,6 +1,6 @@
 # UX/UI redesign: revision 2, the cleanup pass
 
-Status: **PROPOSED (2026-10-05). Design cleanup awaiting owner review; nothing here is implemented, accepted or scheduled.**
+Status: **PROPOSED (2026-10-05). Design cleanup; the owner approved it, with slices 0 and 1 of the plan, on 2026-10-05. Nothing here is implemented by this document.**
 
 The owner approved revision 1's visual direction (the shell, the Library hierarchy and the EXPO
 direction) and asked for one focused cleanup pass and an implementation plan. This file is the
@@ -62,7 +62,7 @@ enlarged-text picture and the three below-the-floor pictures. One was removed
   controls, and End's confirmation step, which the owner has decided should become Cancel /
   End Game (GAME-UX-CONTRACT Q6) and is not drawn.
 - **EXPO's undrawn states** (its own setup, task selection, predictions, distress, menus) have
-  no enlarged-text design yet. The plan makes that a design step before slice 2.
+  no enlarged-text design yet. That design work stays inside slice 2 (owner, 2026-10-05).
 - **Still open from revision 1 and untouched here:** Home's fourth tile in a Limited row is off
   screen until scrolled; the first-run page has no Limited mark; EXPO's objectives sheet does
   not move focus at normal text size; EXPO's identity still wants human-made or licensed art;
