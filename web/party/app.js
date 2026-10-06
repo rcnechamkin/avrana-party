@@ -29,7 +29,7 @@ import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setu
 import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
-import { backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
+import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
 
 const $ = (id) => document.getElementById(id);
 // "This phone" list, most useful first. Labels come from the catalog (contracts/capabilities.v0.json).
@@ -43,7 +43,8 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
-  screen: 'main', game: null, back: null, rulesGame: null };
+  // leaving: the cover just tapped, until its page shows; round: the briefing on screen (its id)
+  screen: 'main', round: null, game: null, back: null, leaving: null, rulesGame: null };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -176,7 +177,16 @@ function row(entry, people) {
 function sync(parent, next) {
   const old = [...parent.children];
   if (old.length !== next.length || old.some((el, i) => el.tagName !== next[i].tagName || el.className !== next[i].className)) {
-    parent.replaceChildren(...next);
+    // A node came or went (a game's rules arrived, a line no longer applies). What did not change
+    // stays where it is, in order, so focus on it is not lost; the rest is put in around it.
+    let at = 0;
+    for (const node of next) {
+      const found = old.findIndex((el, i) => i >= at && el.isEqualNode(node));
+      if (found < 0) { parent.insertBefore(node, old[at] || null); continue; }
+      for (let i = at; i < found; i++) old[i].remove();
+      at = found + 1;
+    }
+    for (let i = at; i < old.length; i++) old[i].remove();
     return;
   }
   next.forEach((node, i) => {
@@ -236,11 +246,12 @@ function detailNodes(entry, people) {
   const screen = screenText(game);
   const how = howText(game);
   const fit = view && view.me ? fitLine(game, people) : null;
-  const premise = (ob && ob.premise) || game.summary || '';
+  const about = ob && ob.premise && ob.premise !== game.summary ? ob.premise : '';
   return [
     tileCover(game, null, 'wide'),
     h('h1', { id: 'game-title', tabindex: '-1', text: game.name }),
-    premise ? h('p', { class: 'avrana-premise', text: premise }) : null,
+    game.summary ? h('p', { class: 'avrana-premise', text: game.summary }) : null,
+    about ? h('p', { class: 'avrana-about', text: about }) : null,
     h('p', { class: 'avrana-game-facts m-0' },
       h('span', {}, icon('users'), playersText(game.players)),
       h('span', {}, icon(screen.icon), screen.text)),
@@ -252,7 +263,7 @@ function detailNodes(entry, people) {
     mode && note && note.kind === 'off' ? h('p', { class: 'avrana-line warn', 'data-note': note.kind }, icon(note.icon), h('span', { text: note.text })) : null,
     installed ? h('div', { class: 'grid gap-1' }, chipFor(result), why ? h('p', { class: 'why m-0', text: why }) : null) : null,
     live ? h('p', { class: 'avrana-line quiet', text: live }) : null,
-    h('div', { class: 'avrana-act' }, action, favButton(game)),
+    h('div', { class: 'avrana-act', 'data-sync': 'list' }, action, favButton(game)),
     helper ? h('p', { class: 'avrana-helper', text: helper }) : null,
     ob ? h('ul', { class: 'avrana-list' }, h('li', {}, h('button', { type: 'button', 'data-rules': game.id, 'aria-haspopup': 'dialog',
       onclick: () => openRules(game, ob) }, icon('book-open'), h('span', { text: 'How to play' }), h('span', { class: 'val' }, icon('chevron-right'))))) : null,
@@ -269,7 +280,9 @@ function partyAction(game, mode, host) {
       onclick: () => openProfile() });
   }
   if (mode.kind === 'start') {
-    return h('button', { type: 'button', class: 'btn btn-primary', disabled: state.partyBusy,
+    // Busy is said, not enforced by removing the button from reach: it keeps its place and the
+    // focus while the start is on its way (hostStart ignores a second press).
+    return h('button', { type: 'button', class: 'btn btn-primary', 'data-sync': 'list', 'aria-disabled': String(Boolean(state.partyBusy)),
       onclick: () => hostStart(game, mode.game) }, icon('play'), 'Start for everyone');
   }
   if (mode.kind === 'wait') {
@@ -290,7 +303,15 @@ async function hostStart(game, id) {
     $('party-note').textContent = res.message || `${game.name} didn’t start. Please try again.`;
     $('content').scrollTop = 0;                  // the reason is at the top of the page, in sight
   }
-  renderGames(false);
+  await renderGames(false);
+  if (!res.ok) refocusStart();
+}
+
+/** The Host's button was redrawn while a start was on its way. When the start came to nothing and
+ * the Party did not move, focus goes back to the button and is not left nowhere. */
+function refocusStart() {
+  if (state.screen !== 'main' || state.page !== 'game' || document.activeElement !== document.body) return;
+  $('game-detail').querySelector('.avrana-act .btn:not(:disabled)')?.focus({ preventScroll: true });
 }
 
 /** This phone's profile, as Party Core takes it (16 characters, a bundled avatar). */
@@ -352,11 +373,11 @@ function renderLimited() {
 
 /** Show one of the shell's places. The party's own location is not this function's business:
  * show() hides the whole frame while the party is anywhere but home. */
-function showPage(page, focus = false, game = null) {
+function showPage(page, focus = false, game = null, back = null) {
   state.page = page;
   state.game = page === 'game' ? game : null;
+  state.back = page === 'game' ? back : null;
   if (page !== 'game') {                       // nothing of the last game's page is kept behind
-    state.back = null;
     $('game-detail').replaceChildren();
     for (const key of ['id', 'outcome', 'party']) delete $('game-detail').dataset[key];
   }
@@ -367,7 +388,6 @@ function showPage(page, focus = false, game = null) {
     if (link.dataset.go === under) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   }
   document.documentElement.dataset.place = page;
-  if (page === 'game') document.documentElement.dataset.game = game; else delete document.documentElement.dataset.game;
   renderTop();
   renderLimited();
   if (page === 'game') renderGames(false);
@@ -395,15 +415,31 @@ function renderTop() {
 
 /** A cover was tapped: note where, so the way back lands on the same cover at the same scroll. */
 function leaveFor(id, cover) {
-  state.back = { page: state.page === 'game' ? 'library' : state.page, scroll: $('content').scrollTop, id,
+  state.leaving = { page: state.page === 'game' ? 'library' : state.page, scroll: $('content').scrollTop, id,
     within: cover.closest('#games, #home-games')?.id || null };
+}
+
+/** Where the game's page on screen was opened from: the cover just tapped, else what this
+ * history entry remembers (the phone's Forward, a reload), else nothing (a typed address). It is
+ * kept with the entry, so the way back is right however the page was reached. */
+function origin(id) {
+  const left = state.leaving;
+  state.leaving = null;
+  if (left && left.id === id) {
+    try { history.replaceState({ avranaFrom: left }, ''); } catch { /* the page still works without it */ }
+    return left;
+  }
+  const kept = history.state && history.state.avranaFrom;
+  return kept && kept.id === id && PAGES.includes(kept.page) ? { page: kept.page, scroll: Number(kept.scroll) || 0, id,
+    within: ['games', 'home-games'].includes(kept.within) ? kept.within : null } : null;
 }
 
 /** Show what the address names: a game's page, or one of the four places. Coming back from a
  * game's page to the place it was opened from restores that place as it was. */
 function go(focus = true) {
   const id = gameOf(location.hash);
-  if (id) { showPage('game', focus, id); return; }
+  if (id) { showPage('game', focus, id, origin(id)); return; }
+  state.leaving = null;
   const page = pageOf(location.hash), back = state.back;
   const returning = Boolean(back && back.page === page);
   showPage(page, focus && !returning);
@@ -511,6 +547,7 @@ function renderParty(view) {
     $('party-note').textContent = `${g ? g.name : s.game} didn’t start.` + (s.detail ? ` ${s.detail}` : '');
     closeSheets();
     $('content').scrollTop = 0;                  // the reason is at the top of the page, in sight
+    state.refocus = true;                        // once the page is redrawn (onPartyView)
   }
 }
 
@@ -598,14 +635,15 @@ async function renderScene(view) {
   $('scene-start').disabled = !panel.canStart || state.partyBusy;
   $('scene-status').textContent = panel.starting ? 'Starting…'
     : panel.host ? panel.blocker || ''
-      : `Waiting for ${panel.hostName || 'the host'} to start`;
+      : panel.hostName ? `Waiting for ${panel.hostName} to start` : 'Nobody is hosting right now.';
 }
 
 /** Which screen has the phone: a place of the frame (main), the briefing (scene) or the way to a
  * game (going). Where the Party is decides, never the address. The briefing keeps the frame's top
  * bar (who is here, the Limited mark) and nothing else of it. */
-function show(which) {
-  const moved = which !== state.screen;
+function show(which, round = null) {
+  const moved = which !== state.screen || round !== state.round;
+  state.round = round;
   // Whatever was open belonged to the screen that was there: an authoritative move closes it, so
   // nothing stands between a person and where the Party now is. (While the screen stays, the
   // drawer and the sheet stay open over it: a briefing keeps its place under them.)
@@ -639,14 +677,18 @@ function onPartyView(view) {
     return;
   }
   if (view.me && locationOf(view).at === 'setup') {
-    show('scene');
+    show('scene', locationOf(view).session || locationOf(view).game || null);
     renderHud();                              // who is here, over the briefing too
     renderScene(view);
     return;
   }
   show('main');
   renderParty(view);
-  renderGames(false);
+  renderGames(false).then(() => {
+    if (!state.refocus) return;
+    state.refocus = false;
+    refocusStart();
+  });
 }
 
 async function renderGames(refresh = true) {
@@ -797,7 +839,9 @@ function renderDetail(entries, people) {
   if (mode) root.dataset.party = mode.kind; else delete root.dataset.party;
   sync(root, detailNodes(entry, people));
   document.title = `${game.name} · Avrana Party`;
-  if (game.installed && game.entry && !ONBOARDING.has(game.id)) {
+  // (asked only of a game served from /games/<slug>/, where onboarding lives; never of another service)
+  const own = game.installed && game.entry && new URL(launchTarget(game), location.href).pathname.startsWith('/games/');
+  if (own && !ONBOARDING.has(game.id)) {
     onboardingFor(game).then((ob) => { if (ob && state.game === game.id) renderGames(false); });
   }
 }

@@ -187,11 +187,11 @@ that is also their order of visual weight.
 
 | Slot | Supplied by | Today |
 |---|---|---|
-| Title, art, accent | game (catalog: `name`, `artwork`, `accent`) | **[Implemented]** `scene-title`, `scene-art`, `--game-accent` on the cover only |
+| Title, art, accent | game (catalog: `name`, `artwork`, `accent`) | **[Implemented]** `scene-title`, `scene-cover`, `--game-accent` on the cover only |
 | Premise | game (`onboarding.json` `premise`, else catalog `summary`) | **[Implemented]** |
 | Rules entry "How to play" | shell; content from the game | **[Implemented]** `#rules` dialog, `openRules` |
 | Roster with state | platform | **[Implemented]** `avrana-lineup` (AVR-286): Gaze avatar, the name, the visible word "Host", and Playing / Watching / Choosing as a differently shaped icon with the visible word; away is the visible word "Away" and a greyed avatar |
-| Ready / Watch | platform | **[Implemented]**, as ADR 0011 decision 4 specifies: two large choices "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`) |
+| Ready / Watch | platform | **[Implemented]**, as ADR 0011 decision 4 specifies: two choices "Play this round" / "Watch this round" (`avrana-choice`, `aria-pressed`). Since AVR-286 they are 56 px tall, side by side in the dock (they were 76 px) |
 | Host Start, or the waiting line | platform | **[Implemented]** `scene-start`, disabled with Party Core's `blocker` sentence as text |
 | Host: choose another game | platform | **[Implemented]** `scene-cancel` |
 | Host settings | deferred by the owner as a platform concern (Q3). EXPO's own setup stays inside EXPO for now (Rule 4.11a) | **not built** ([§4.4](#44-settings)) |
@@ -542,8 +542,9 @@ never markup. System text is never rendered as if a player said it.
 
 **Rule 6.4 [Proposed].** "You", the Host and away are each marked with a visible word or a
 distinct icon, never by colour or opacity alone. **Today, partly:** "You" is a visible word
-(`You` in `avrana-lineup`, `(you)` on the Party page and in the drawer). **Since the shell
-redesign (PR 1.1 and AVR-286)** the Host is the visible word "Host" and away is the visible word
+(`You` in `avrana-lineup`, `(you)` on the Party page and in the drawer). **Built ahead of this
+rule's acceptance by the shell redesign (PR 1.1 for the frame, where the owner accepted the word
+"Host"; AVR-286 for the briefing, which the owner has not yet reviewed):** the Host is the visible word "Host" and away is the visible word
 "Away" with a greyed avatar, in the briefing's line-up, on the Party page and in the drawer
 (`personItem` and `renderScene` in `web/party/app.js`); observation P-10 described the crown and
 the opacity that these replaced.

@@ -85,7 +85,7 @@ repeat:
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
 | `avrana-screen` | page container with safe-area padding, for diagnostics |
 | `avrana-scene` | one full screen with one thing on it: the way to a game, and the doorway |
-| `avrana-brief`, `avrana-dock` | the briefing (a round's setup) under the frame's top bar: what and who scroll, the decision stays at the bottom. On a short screen or with enlarged text the dock un-pins and the whole briefing scrolls |
+| `avrana-brief`, `avrana-dock` | the briefing (a round's setup) under the frame's top bar: what and who scroll, the decision stays at the bottom. Under 32rem of height (512 px, or 1024 px at 200% text) the dock un-pins and the whole briefing scrolls |
 | `avrana-lineup` | the briefing's people: a face, the name, the word "Host", and the answer as an icon and a word (Playing, Watching, Choosing) |
 | `avrana-choice` | Play this round / Watch this round: two equal buttons; the chosen one has a tick, a fill and a stronger edge (`aria-pressed`), and its words do not change |
 | `avrana-back` | the way back in the top bar of a game's page: a chevron and the name of the place it returns to |
@@ -117,8 +117,8 @@ sets the document title. A game's own page is a fifth view (`#game/<id>`, below)
 place in the bar. **Where the Party is always wins over the frame**: when the Host takes everyone
 to a briefing, the middle of the frame and the bar of places give way to it and only the top bar
 stays; on the way to a game the whole frame leaves the screen. Whatever was open (drawer, sheet,
-rules) closes when the Party moves, and the frame comes back in the same place, a game's page
-included.
+rules) closes when the Party moves (to a briefing, to another round's briefing, to a game, or
+home), and the frame comes back in the same place, a game's page included.
 
 - **Home**: who is here, in a sentence; the connection line; the Limited Mode notice in full when
   it applies; a nameless phone's first step; then the games: a lead cover (the last title played
@@ -181,12 +181,16 @@ all"). Nothing to show always says why and offers the way back.
 
 **A game's page** (AVR-286; `detailNodes`, `renderDetail`, `gameOf` in `lib/frame.js`). Browsing
 only: the Party stays where it is. The top bar holds the way back, named for the place the page
-was opened from ("Library", "Home"); the bar of places keeps that place current; the game's name
-is the page's one heading and takes focus. Back (the bar's link, the phone's Back or the bar of
-places) returns to the same cover at the same scroll. A reload stays on the page; an address that
-names no title on the shelf is the Library. The page shows only what the catalog and the game
-supply: the title's artwork, name, the game's own premise (its `onboarding.json`, else the
-catalog's summary), players, screen (`Phone only` / `TV optional` / `Needs the TV`), how you play
+was opened from ("Library", "Home"); the bar of places keeps that place marked
+(`aria-current="page"` on a place the page belongs to, not on the page itself); the game's name
+is the page's one heading and takes focus. Where it was opened from is kept with its history
+entry, so the phone's Forward and a reload still know. Back (the bar's link, the phone's Back or the bar of
+places) returns to the same cover at the same scroll. A reload stays on the page; a typed
+address has nowhere to return to and its Back is a link to the Library; an address that names no
+title on the shelf is the Library. The page shows only what the catalog and the game
+supply: the title's artwork, name, the catalog's summary, under it the game's own premise when
+its `onboarding.json` has one (asked only of a game served from `/games/<slug>/`; it arrives a
+moment after the page and replaces nothing), players, screen (`Phone only` / `TV optional` / `Needs the TV`), how you play
 when it adds something, a device-check line where the catalog asks for one, fit for this phone
 with its reason, and live state. With a party of two or more it adds one sentence on whether the
 game suits them (`fitLine` in `lib/library.js`): "Room for all four of you.", or what happens to
@@ -196,7 +200,8 @@ because no title carries that data.
 
 - **One button, and only the Host's moves the Party.** The Host's button keeps its accepted
   words, "Start for everyone" (ADR 0007), and a line under it says what it does: "Moves everyone
-  to this game." A guest has no button: a sentence says "The host starts it. {Host} chooses what
+  to this game." While a start is on its way the button says it is busy (`aria-disabled`) and
+  keeps its place and the focus. A guest has no button: a sentence says "The host starts it. {Host} chooses what
   the Party plays." (ADR 0009's words first). Outside a party the button is Play, Watch or "Try
   anyway", as it has always been.
 - **How to play** is a row on the page when the game ships onboarding; it opens the same rules
@@ -211,7 +216,9 @@ Limited phone, the Party control): the game's wide art, its name, its premise, t
 row, then the line-up. A dock at the bottom holds the two choices, the Host's "Start game", one
 status line (Party Core's reason for the Host, "Waiting for {Host} to start" for a guest) and the
 Host's "Choose another game". There is no bar of places, no Library, no chat and no "This phone"
-on it, and no link that leaves it.
+on it, and no link that leaves it. Who hosts is the word "Host" in the line-up and, for a guest,
+the status line; with no Host the line says "Nobody is hosting right now." The separate "You're
+the host / Hosted by Ana" line of the older scene is gone.
 
 - **Over it**, the Party control opens the drawer with the people only (no tabs, no chat, a line
   "Getting ready for {game}."), and the Limited mark opens the explanation without its "Check for

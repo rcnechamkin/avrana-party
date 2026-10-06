@@ -126,7 +126,8 @@ test('the host starts BLUFF once and every phone is in the same game, with no Jo
   }
   // BLUFF's own page, from the real game: its premise and its rules, read without moving anyone
   const bluff = await openGame(ben.page, 'bluff');
-  await expect(bluff.locator('.avrana-premise')).toContainText('secret roles');
+  await expect(bluff.locator('.avrana-about')).toContainText('secret roles');
+  await expect(bluff.locator('#game-title')).toBeFocused();                     // the rules arriving did not take the focus
   await expect(bluff.locator('.avrana-game-facts')).toContainText('2–6 players');
   await expect(bluff.locator('[data-suits="true"]')).toHaveText('Room for all three of you.');
   await bluff.getByRole('button', { name: 'How to play' }).click();

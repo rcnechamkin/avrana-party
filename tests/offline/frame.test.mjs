@@ -89,7 +89,8 @@ test('a game’s page is named by its address, and only by a well-formed one', (
   assert.equal(gameOf('#game/bluff'), 'bluff');
   assert.equal(gameOf('game/arcade-gauntlet2'), 'arcade-gauntlet2');
   assert.equal(gameOf('#game/ps1-worms'), 'ps1-worms');
-  for (const bad of ['', '#', '#game', '#game/', '#game/Bluff', '#game/bluff/extra', '#game/../x', '#game/-x', '#game/a b',
+  assert.equal(gameOf('#game/Some_Title-2'), 'Some_Title-2');     // whatever shape a catalog id may take, short of a path
+  for (const bad of ['', '#', '#game', '#game/', '#game/bluff/extra', '#game/../x', '#game/-x', '#game/_x', '#game/a b', '#game/a.b', '#game/a%2Fb',
     '#games/bluff', '#library', '#game/' + 'a'.repeat(65), '#game/<img>', null, undefined, 7])
     assert.equal(gameOf(bad), null, String(bad));
   // it is never one of the four places: an address that names a game is not a place in the bar

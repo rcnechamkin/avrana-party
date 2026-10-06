@@ -146,7 +146,7 @@ test('one party in two modes: each phone sees who is in Limited Mode, and only t
 
 test('on a briefing the mark opens the explanation over it, with no way off the page, and gives the briefing back', async ({ page, context, browser }) => {
   await named(context, 'Lena');
-  await page.setViewportSize({ width: 360, height: 560 });                    // short: the briefing scrolls
+  await page.setViewportSize({ width: 360, height: 500 });                    // short: the dock un-pins and the whole briefing scrolls
   await home(page, LIMITED);
   await expect(page.locator('#party-members')).toContainText('Lena (you)');
   const fay = await secondPhone(browser, 'Fay');

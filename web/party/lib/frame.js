@@ -21,7 +21,7 @@ export const pageTitle = (page) => TITLES[page] || TITLES.home;
  * document. It is browsing: it is not a place in the bar, and nothing on it moves the Party but
  * the Host's own button. */
 export function gameOf(hash) {
-  const found = /^#?game\/([a-z0-9][a-z0-9-]{0,63})$/.exec(String(hash || ''));
+  const found = /^#?game\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})$/.exec(String(hash || ''));
   return found ? found[1] : null;
 }
 

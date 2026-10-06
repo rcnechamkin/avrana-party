@@ -258,7 +258,8 @@ test.describe('three phones at one party', () => {
     // the game's page shows the game's own premise and offers its rules
     await place(host.page, 'library');
     const card = await openGame(host.page, 'bluff');
-    await expect(card.locator('.avrana-premise')).toHaveText(ONBOARDING.premise);
+    await expect(card.locator('.avrana-premise')).toHaveText('Claim anything. Get caught, lose a card.');   // the catalog's sentence stays
+    await expect(card.locator('.avrana-about')).toHaveText(ONBOARDING.premise);                            // the game's own, under it
     const row = card.getByRole('button', { name: 'How to play' });
     const rules = host.page.locator('#rules');
     for (const [how, close] of CLOSERS(host.page, '#rules-close', [200, 30])) {
@@ -282,6 +283,7 @@ test.describe('three phones at one party', () => {
     // a game with no onboarding offers no rules row and keeps the catalog's own sentence
     const expo = await openGame(host.page, 'expo');
     await expect(expo.locator('.avrana-premise')).toHaveText('One crew. Every card matters.');
+    await expect(expo.locator('.avrana-about')).toHaveCount(0);
     await expect(expo.getByRole('button', { name: 'How to play' })).toHaveCount(0);
 
     await startForEveryone(host.page, 'bluff');
@@ -304,11 +306,12 @@ test.describe('three phones at one party', () => {
       expect((await view(bob)).session.setup.mine ?? null, how).toBeNull();           // Party Core was not told anything
       await expect(bob.page.locator('#scene'), how).toBeVisible();
     }
-    // reading them from the row does not choose either; "Got it" there is the acknowledgement
+    // reading them from the row does not choose either, and closing them is not agreeing
     await bob.page.locator('#scene-rules').click();
     await expect(bob.page.locator('#rules-ok')).toHaveText('Got it');
     await bob.page.keyboard.press('Escape');
     await expect(bob.page.locator('#scene-rules')).toBeFocused();
+    expect(await bob.page.evaluate(() => localStorage.getItem('test-bluff-rules'))).toBeNull();
     await play.click();
     await bob.page.locator('#rules-ok').click();                             // Got it, I’ll play
     await expect(sheet).toBeHidden();
@@ -320,6 +323,12 @@ test.describe('three phones at one party', () => {
     await play.click();
     await expect(play).toHaveAttribute('aria-pressed', 'true');
     await expect(sheet).toBeHidden();
+    // "Got it" from the briefing's own row records that Cleo read them, and chooses nothing
+    await cleo.page.locator('#scene-rules').click();
+    await cleo.page.locator('#rules-ok').click();
+    await expect(cleo.page.locator('#rules')).toBeHidden();
+    expect(await cleo.page.evaluate(() => localStorage.getItem('test-bluff-rules'))).toBe('2');
+    expect((await view(cleo)).session.setup.mine ?? null).toBeNull();
     // watching never needs the rules
     await cleo.page.locator('#choose-watch').click();
     await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
@@ -327,9 +336,11 @@ test.describe('three phones at one party', () => {
     // the rules are open when the Party moves: they close, and the phone goes with the Party
     await cleo.page.locator('#scene-rules').click();
     await expect(cleo.page.locator('#rules')).toBeVisible();
-    await host.page.locator('#scene-start').click();
-    for (const p of [host, bob, cleo]) await expect(p.page).toHaveURL(/\/games\/bluff\//);
-    await endForEveryone(host);
+    await host.page.locator('#scene-cancel').click();
+    await expect(cleo.page.locator('#rules')).toBeHidden();
+    await expect(cleo.page.locator('#scene')).toBeHidden();
+    await expect(cleo.page.locator('#nav')).toBeVisible();
+    expect(await cleo.page.evaluate(() => document.querySelectorAll('dialog[open]').length)).toBe(0);
   });
 
   test('the briefing on a small phone: thumb-sized targets, nothing sideways, and everything reachable at 200% text', async () => {
@@ -579,6 +590,28 @@ test.describe('three phones at one party', () => {
     await endForEveryone(host);
   });
 
+  test('a start that is refused says why at the top of the page, and the Host’s button keeps the focus', async () => {
+    await host.page.route('**/party/api/session/launch', (route) => route.fulfill({ status: 503, json: { error: 'unavailable' } }));
+    await place(host.page, 'library');
+    const card = await openGame(host.page, 'bluff');
+    const start = card.getByRole('button', { name: 'Start for everyone' });
+    await start.focus();
+    await host.page.keyboard.press('Enter');
+    await expect(host.page.locator('#party-note')).not.toBeEmpty();
+    await expect(host.page.locator('#party-note')).toBeInViewport();
+    await expect(start).toBeFocused();                                       // not dropped by the redraw
+    await expect(start).toBeEnabled();                                       // and it can be pressed again
+    await expect(host.page.locator('#scene')).toBeHidden();
+    expect((await view(host)).location.at).toBe('home');
+    for (const p of [bob, cleo]) await expect(p.page.locator('#scene')).toBeHidden();
+    // pressed again once the Party answers: the same button starts it
+    await host.page.unroute('**/party/api/session/launch');
+    await host.page.keyboard.press('Enter');
+    for (const p of [host, bob, cleo]) await expect(p.page.locator('#scene')).toBeVisible();
+    await expect(host.page.locator('#party-note')).toBeEmpty();
+    await endForEveryone(host);
+  });
+
   test('Choose another game: the Host takes everyone back, each to the page they were on', async () => {
     await place(bob.page, 'party');
     await startForEveryone(host.page, 'bluff');                              // Ada starts it from BLUFF's own page
@@ -591,6 +624,7 @@ test.describe('three phones at one party', () => {
     }
     await expect(host.page.locator('#game-detail[data-id="bluff"]')).toBeVisible();   // where she was: she can pick again, or go back
     await expect(host.page.locator('#game-title')).toBeFocused();
+    await expect(host.page.locator('#top-back')).toHaveAccessibleName('Library');
     await expect(host.page.getByRole('button', { name: 'Start for everyone' })).toBeEnabled();
     await host.page.locator('#top-back').click();
     await expect(host.page.locator('html')).toHaveAttribute('data-place', 'library');

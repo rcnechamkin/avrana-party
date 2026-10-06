@@ -364,6 +364,35 @@ test('a cover is a link to the game’s own page: its facts, one heading, and it
   expect(order.indexOf('avrana-act')).toBeGreaterThan(order.indexOf('avrana-game-facts'));
 });
 
+test('a game’s rules arriving after its page opened do not take the focus or replace its sentence', async ({ page }) => {
+  let answer: () => void = () => {};
+  const held = new Promise<void>((resolve) => { answer = resolve; });
+  await page.route('**/games/bluff/onboarding.json', async (route) => {
+    await held;                                                                     // the game answers late
+    await route.fulfill({ json: { schema: 'avrana.onboarding/v0', premise: 'A premise from the game.', rules: [{ title: 'Turns', points: ['Play a card.'] }] } });
+  });
+  let asked = 0;
+  await page.route('**/arcade/onboarding.json', (route) => { asked += 1; return route.fulfill({ status: 404, body: '' }); });
+  await open(page);
+  const card = await openGame(page, 'bluff');
+  await expect(page.locator('#game-title')).toBeFocused();
+  await expect(card.locator('.avrana-premise')).toHaveText('Claim anything. Get caught, lose a card.');
+  await expect(card.getByRole('button', { name: 'How to play' })).toHaveCount(0);
+  answer();
+  await expect(card.getByRole('button', { name: 'How to play' })).toBeVisible();
+  await expect(page.locator('#game-title')).toBeFocused();                          // still on the name
+  await expect(card.locator('.avrana-premise')).toHaveText('Claim anything. Get caught, lose a card.');   // the catalog's sentence stays
+  await expect(card.locator('.avrana-about')).toHaveText('A premise from the game.');
+  // the heart keeps focus too when a line comes and goes around it
+  const heart = card.getByRole('button', { name: 'Add BLUFF to favorites' });
+  await heart.click();
+  await expect(card.getByRole('button', { name: 'Remove BLUFF from favorites' })).toBeFocused();
+  // a title that is not served from /games/ is never asked for rules: nothing is sent to another service
+  await openGame(page, 'arcade-gauntlet2');
+  await page.waitForTimeout(300);
+  expect(asked).toBe(0);
+});
+
 test('back from a game’s page returns to the same cover at the same scroll, however it is done', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 480 });                           // short enough for the list to scroll
   await open(page);
@@ -389,14 +418,30 @@ test('back from a game’s page returns to the same cover at the same scroll, ho
     expect(Math.abs((await top()) - was), how).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => location.hash), how).toBe('#library');
   }
-  // a reload stays on the game's page; with nothing to return to, Back is a plain link to the Library
+  // the phone's Forward returns to the game's page, which still knows where it came from
   await tile.click();
+  await page.goBack();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  await page.goForward();
+  await expect(page.locator('#game-detail[data-id="ps1-worms"]')).toBeVisible();
+  await expect(page.locator('#top-back')).toHaveAccessibleName('Library');
+  // a reload stays on the game's page, and Back still lands on its cover
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('#game-detail[data-id="ps1-worms"]')).toBeVisible();
+  await page.locator('#top-back').click();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  await expect(tile).toBeFocused();
+  // an address typed by hand has nowhere to return to: Back is a plain link to the Library
+  await page.goto('/party/#game/expo');
+  await expect(page.locator('#game-detail[data-id="expo"]')).toBeVisible();
+  await page.evaluate(() => { location.hash = '#game/bluff'; });                     // and typed again, over another game
+  await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
+  await expect(page.locator('#game-title')).toHaveText('BLUFF');
   await expect(page.locator('#top-back')).toHaveAttribute('href', '#library');
   await page.locator('#top-back').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
+  expect(await page.evaluate(() => location.hash)).toBe('#library');
   await expect(page.locator('#top-title')).toBeFocused();
   // a title that is not on the shelf is the Library, and the address says so
   await page.goto('/party/#game/no-such-game');
@@ -430,6 +475,11 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await lead.click();
   await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
   await expect(page.locator('#top-back')).toHaveAccessibleName('Home');             // back to where it was opened from
+  await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
+  await page.goBack();                                                              // and Back then Forward still says Home
+  await page.goForward();
+  await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
+  await expect(page.locator('#top-back')).toHaveAccessibleName('Home');
   await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
   await page.locator('#top-back').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
