@@ -93,7 +93,30 @@ in a word or two. The questions are as they were put; the answers are the owner'
 Decisions 9 (recents per phone) and 15 ("Off for now" shown to everyone) were not among the
 four. The issue for PR 1.2 (AVR-285) says to build them as the plan has them and to disclose
 that in the pull request, which is what PR 1.2 does; they can still be changed at its review.
-Decision 18 (the reconnecting timer) is still not answered and is PR 1.4's to raise.
+Decision 18 (the reconnecting timer) was not answered then and was PR 1.4's to raise; it is
+answered below.
+
+### Owner answers of 2026-10-06, before PR 1.4
+
+Before PR 1.4 was built, what was still open was put to the owner again, one point at a time,
+in plain words, each with its choices. The questions are as they were put. The answer is the
+choice the owner picked, in the words it was offered in ("Recommended" was part of a label where
+it is shown).
+
+| Asked | Choices offered | The owner | What it changes |
+|---|---|---|---|
+| "When the app says a game is "Great for four", who should it count as being in the Party?" | "Everyone in the Party (Recommended)"; "Only people here right now" | "Everyone in the Party (Recommended)" | Decision 21 is settled as built. Nothing changes |
+| "After a round, whose "Recently played" list should that game show up in?" | "Everyone who was there (Recommended)"; "Only people who played" | "Only people who played" | Decision 22 is settled, and not as built: PR 1.4 changes it. A phone that watched a round no longer records it |
+| "The getting-ready screen used to have its own line saying "You're the host" or "Hosted by Ana". I removed it: the word "Host" now sits beside that person's name in the list, and guests see "Waiting for Ana to start". Keep it that way?" | "Keep it removed (Recommended)"; "Bring the line back" | "Keep it removed (Recommended)" | PR 1.3's briefing stays as built |
+| "The "Play this round" and "Watch this round" buttons are now shorter and sit side by side at the bottom, to leave room for the list of people. They used to be two big buttons. Which do you want?" | "Keep the smaller ones (Recommended)"; "Go back to the big ones"; "Decide after I try my phone" | "Keep the smaller ones (Recommended)" | PR 1.3's buttons stay as built |
+| "On a very short screen (a small phone, or with text set very large), the Play/Watch buttons stop sticking to the bottom and scroll with the rest of the page, so they don't cover everything else. Is that what you want?" | "Decide after I try my phone (Recommended)"; "Keep it as built"; "Always stick to the bottom" | "Keep it as built" | PR 1.3's short-screen rule stays as built |
+| "On a phone in Limited Mode, Home shows a full notice explaining it. May people tuck that notice away? Once tucked, Home shows the small "Limited" tag at the top instead (the same tag every other page already has), and tapping it brings the explanation back." | "Yes, let them tuck it away (Recommended)"; "No, keep it always open" | "Yes, let them tuck it away (Recommended)" | The rest of decision 4. PR 1.4 builds the fold |
+| "When part of the Party box stops working in a way that changes what can be played (for example, arcade games are off), should the Host get a short heads-up on Home? Example: "Arcade games are off right now. Card and party games play as usual." The Host can dismiss it. Guests don't see it; they just see "Off for now" on the affected game, as they do today." | "Yes, Host only (Recommended)"; "No heads-up"; "Tell everyone" | "Yes, Host only (Recommended)" | The rest of decision 4. PR 1.4 builds the Host's notice and System's line |
+| "When a phone loses touch with the Party box, it first shows a quiet "Reconnecting…" line and keeps trying. How long should it keep saying that before it gives up and says "This phone lost the Party box" with a Try again button? (It keeps trying in the background either way.)" | "About 10 seconds (Recommended)"; "About 20 seconds"; "About 45 seconds" | "About 10 seconds (Recommended)" | Decision 18 is settled: 10 seconds, in PR 1.4 |
+
+Not asked, and so chosen by PR 1.4 and disclosed in its pull request: how long a tucked-away
+notice and a dismissed heads-up stay away (for the visit: until the tab is closed), and the new
+sentences themselves.
 
 ### Today's chat and the runtime it depends on
 
@@ -242,10 +265,10 @@ Delivery as four PRs, each leaving `main` deployable, so no flag is needed:
 | 1.1 | Tokens, Geist and compiled CSS; the frame (top bar with the Limited mark and the Party control, bottom bar, view router); the Party drawer (people, and today's chat while its hub answers) and the Limited sheet on the four ordinary pages; Home (who is here, and one row to the Library), Party and System; today's game list moved under Library unchanged; today's setup scene untouched |
 | 1.2 | Library: covers, four views, search, the two filters, favorites, recents, consequence lines; Home's lead tile and its "Great for N" and "Recently played" rows, which are made of the same tiles. **As built (AVR-285):** a cover opens a sheet that holds today's tile and today's button, so nothing about starting a game changes before 1.3 draws the detail page |
 | 1.3 | Game detail; the briefing redrawn; the drawer (people only) and the Limited sheet over it (needs slice 0 merged). **As built (AVR-286):** a cover is a link to the game's own page (`#game/<id>`), which replaces PR 1.2's sheet; the briefing sits under the frame's top bar. Kept from today and not from the drawings, for the owner to change: the Host's button still says "Start for everyone" (ADR 0007; the drawn "Bring the Party in" is not adopted), the two choices keep the words "Play this round" and "Watch this round" whether or not they are chosen, and "How to play" sits above the line-up so it is on screen however many people there are. No length, "quick start" or suggestion is shown |
-| 1.4 | States (reconnecting, Host away and passed, the Host's notice and System's health line, the folded Limited notice, empty states), the accessibility pass, the phone findings |
+| 1.4 | States (reconnecting, Host away and passed, the Host's notice and System's health line, the folded Limited notice, empty states), the accessibility pass, the phone findings. **As built (AVR-287):** a phone that cannot reach the box says "Reconnecting" at once and "This phone lost the Party box" with "Try again" after 10 seconds (the owner's number), keeps trying throughout, and recovers by itself; on a briefing the choices give way to that sentence and come back. The Host away and hosting passed on are said on Home, the Party page and the briefing, from Party Core's view alone: no countdown and no named successor, and nothing during a round. The Host, and only the Host, gets a dismissible heads-up when part of the box is off; System opens with one line on how things are. The Limited notice folds into the mark. Recently played is recorded only on a phone that played (decision 22). The accessibility pass is automated in Chromium and found three things, fixed here. **No real phone was used**: the phone and screen-reader checks of section 4 are not done and stay with AVR-295; what was run, on which builds, is in the [finding](../../findings/2026-10-06-ux-redesign-slice-1-acceptance.md) |
 
 Pictures of each pull request as built (before and after, and each state it adds) are in
-[`slice-1/`](slice-1/), named for the pull request: `pr-1.1-*.png`, `pr-1.2-*.png`, `pr-1.3-*.png`. They are
+[`slice-1/`](slice-1/), named for the pull request: `pr-1.1-*.png`, `pr-1.2-*.png`, `pr-1.3-*.png`, `pr-1.4-*.png`. They are
 Chromium at phone sizes, not phones.
 
 ### Rules for every PR of slice 1
@@ -298,6 +321,16 @@ rollback: a page that is already open keeps running the scripts it loaded.
 Nothing on the server changed. `lg-favorites` and `lg-recent` are reused and the new keys are
 additive, so going back loses no one's favorites. Game pages keep the palette they have in
 either direction (their copy of it lives in Games).
+
+**Rehearsed on a laptop (PR 1.4).** `npm run test:rollback` builds two releases with the real
+build step, flips a `current` link between them under a running dev server with a real Party
+Core, and walks one phone through the three steps above and forward again: the restored build
+is the one served and the one running, the newer offline copy is gone, "Shell build" names the
+restored build, favorites, recently played, the name and the Library view are byte for byte
+what they were, and the same person is still in the same Party. It does not run the install
+script, nginx, the Pi, Safari or a real phone's cache: the flip on the appliance is still the
+owner's to do and verify. Results, with the builds used, are in the
+[finding](../../findings/2026-10-06-ux-redesign-slice-1-acceptance.md).
 
 ## Slice 2: EXPO presentation
 
@@ -541,8 +574,8 @@ together.
 
 ## Follow-up work
 
-Named so that it is not lost. None has a Linear issue yet (see the top of this file); each
-needs one before it starts.
+Named so that it is not lost. When this list was written none had a Linear issue. F1 is now
+AVR-290 and F4 is AVR-295; each of the others needs one before it starts.
 
 | # | Work | Why it is separate | Where it is described |
 |---|---|---|---|

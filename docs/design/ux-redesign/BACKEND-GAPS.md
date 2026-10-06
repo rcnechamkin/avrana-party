@@ -139,7 +139,18 @@ wants an explicit yes before PR 1.4 folds the notice. Everything else below is o
 edge. Decision 4's reading, "notice on Home, small mark everywhere else", is "Correct"; the
 folded notice and the Host's notice were asked in the same breath, so PR 1.4 states them again
 before building them. Decisions 9 and 15 are built in PR 1.2 as its issue (AVR-285) directs,
-per phone and shown to everyone, and are disclosed there. Decision 18 is still not answered.
+per phone and shown to everyone, and are disclosed there. Decision 18 was still not answered
+then; the next paragraph answers it.
+
+**Owner answers of 2026-10-06, before PR 1.4** (each point was put again in plain words with
+its choices; the questions and the choices are in the plan's
+[slice 0](IMPLEMENTATION-PLAN.md#owner-answers-of-2026-10-06-before-pr-14)): decision 4 is
+settled in full (the notice may be tucked away; the Host, and only the Host, gets a heads-up
+when part of the box is off); decision 18 is settled, "About 10 seconds"; decision 21 is settled
+as built, "Everyone in the Party"; decision 22 is settled the other way, "Only people who
+played", which PR 1.4 builds. Three presentation choices of PR 1.3 were confirmed in the same
+sitting: the separate Host line on the briefing stays removed, the smaller Play and Watch
+buttons stay, and the dock un-pins on a short screen as built.
 
 1. **The Party control on the briefing** (X1). Owner direction (revision 2): keep it, and it
    opens over the briefing. The wording change in GAME-UX-CONTRACT Rule 3.2 and the dated note on
@@ -148,7 +159,7 @@ per phone and shown to everyone, and are disclosed there. Decision 18 is still n
    needs an ADR amendment either way, and its geometry is a brief §29 item.
 3. **Does every game get a briefing** (X3, C2), or do games without a pregame keep going
    straight from the detail page into play?
-4. **Limited Mode visibility** (X4, audit PS-34). *Owner, 2026-10-06: "Correct", to "notice on Home, small mark everywhere else"; the fold and the Host's notice are restated in PR 1.4.* Is "always marked on the affected phone,
+4. **Limited Mode visibility** (X4, audit PS-34). *Owner, 2026-10-06: "Correct", to "notice on Home, small mark everywhere else"; the fold and the Host's notice are restated in PR 1.4.* *Settled the same day, before PR 1.4: "Yes, let them tuck it away" and "Yes, Host only"; built in PR 1.4.* Is "always marked on the affected phone,
    foldable, with the three required facts in plain words; appliance trouble Host-only and
    dismissible" the right reading of both the brief and ADR 0012? The "Limited" tag is drawn
    under your own face on the Party page; beside other members' names (PS-35, ADR 0012 D4) it is
@@ -208,7 +219,7 @@ per phone and shown to everyone, and are disclosed there. Decision 18 is still n
     questions, not changes: should the view carry the countdown and the successor (D9), and is
     the in-round exception the behaviour wanted when a Host leaves for good? Related to
     decision 11.
-18. **Reconnecting.** *Not answered; provisional in slice 1.* How long before "Reconnecting" becomes "This phone lost the Party box" is
+18. **Reconnecting.** *Settled, 2026-10-06: the owner, "About 10 seconds". Built in PR 1.4 (`LOST_AFTER_MS` in `web/party/lib/states.js`); the phone keeps trying after it.* How long before "Reconnecting" becomes "This phone lost the Party box" is
     a client timer the concept invented (F10).
 19. **EXPO revision choices.** The objectives sheet does not block the tray; an open objective
     reads "In play" (today "Active"); with two players on a short screen no objective rows stay
@@ -221,14 +232,16 @@ per phone and shown to everyone, and are disclosed there. Decision 18 is still n
     not capped. The layout was rebuilt as one scrolling column with only the keys pinned, which
     satisfies ACCESSIBILITY MUST 4 ("the layout must scroll rather than clip at 200 % text").
     What remains poor at 200% on the smallest screen is listed in REVISION-2.
-21. **Who counts toward "Great for four".** *Not asked before PR 1.2; built one way, open.* The
+21. **Who counts toward "Great for four".** *Settled, 2026-10-06: the owner, "Everyone in the Party", which is what was built.* The
     Library and Home use the number of people in the Party, which is the number the Party page
     shows and includes a member whose phone has gone quiet but who has not left (Party Core
     keeps a member until an explicit Leave). The alternative is to count only members who are
     present. It changes order, headings and the "Max 2" marks; it never hides a game.
-22. **Whose phone a round is "recently played" on.** *Not asked before PR 1.2; built one way,
-    open.* Every phone the Party took to the round records it, a watcher's as well as a
-    player's. The alternative is players only.
+22. **Whose phone a round is "recently played" on.** *Settled, 2026-10-06: the owner, "Only people who played". Changed in PR 1.4.* Until PR 1.4
+    every phone the Party took to the round recorded it, a watcher's as well as a player's. Now
+    only a phone that held a player's place does (`session.my_role` in Party Core's view; for a
+    game started without a briefing Party Core counts the first players by join order, and so
+    does this).
 
 Where the other audit questions went: LIB-23 is decision 9 and LIB-24 is decision 6. EXPO's
 share card (EX-43) and standalone lobby (EX-47) are not touched by this package and stay open

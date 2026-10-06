@@ -9,7 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
  *   npx playwright test -c playwright.rollback.config.ts
  *
  * It needs that ref in the local repository, so it is not part of CI's shallow checkout: it is
- * run by hand before a release and its result recorded (docs/design/ux-redesign/ACCEPTANCE.md).
+ * run by hand before a release and its result recorded (docs/findings/2026-10-06-ux-redesign-slice-1-acceptance.md).
  * Chromium on a laptop: it does not prove the flip on the Pi, nginx, or a real phone's cache.
  */
 export default defineConfig({

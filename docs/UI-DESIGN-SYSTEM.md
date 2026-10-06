@@ -92,6 +92,9 @@ repeat:
 | `avrana-surface` | one raised, bordered surface level |
 | `avrana-section-title` | section heading with quiet meta on the right |
 | `avrana-status` | connection line: spinner while checking, dot + words after (text first, colour never the only cue) |
+| `avrana-notice` (`warn`, `quiet`) | something a person should know now, at the top of a page: an icon, a title, one sentence, and at most one action or a Dismiss. `warn` has the amber edge; `quiet` is one line with no surface (Reconnecting) |
+| `avrana-state` | one quiet line under a page's lede that says a state in words with an icon (the Host is away; hosting passed on) |
+| `avrana-health` (`warn`) | System's opening block: how the Party box and this phone are, in a title and a sentence |
 | `avrana-avatar` (`sm`, `lg`) | a person's photo or Gaze avatar (older chat entries: their emoji) |
 | `avrana-avatar-choice` | avatar picker cell: ring **and** check badge when chosen, `aria-pressed` |
 | `avrana-detail`, `avrana-premise`, `avrana-game-facts`, `avrana-line` (`quiet`, `warn`), `avrana-act`, `avrana-helper` | a game's own page: wide cover, name, what it is, facts as icon and words, whether it suits the people here and this phone, its one button with the heart, and a line saying what the button does |
@@ -121,14 +124,15 @@ rules) closes when the Party moves (to a briefing, to another round's briefing, 
 home), and the frame comes back in the same place, a game's page included.
 
 - **Home**: who is here, in a sentence; the connection line; the Limited Mode notice in full when
-  it applies; a nameless phone's first step; then the games: a lead cover (the last title played
+  it applies, until it is folded away (below); a nameless phone's first step; then the games: a lead cover (the last title played
   on this phone, else the first that suits the party), a shelf of the rest that suit it
   ("Great for four", or "Games" when there is no party to suit), and "Recently played" once
   something has been.
 - **Party**: you (the identity button and its form), everyone here as faces, chat's row.
 - **Library**: the games (the centre of gravity): search, two filters, four views, and the
   All / Favorites / Recent tabs (below).
-- **System**: this phone's checklist, and the way to diagnostics.
+- **System**: how things are, in one block (below); this phone's checklist; the way to
+  diagnostics.
 
 The Party drawer (People, and Chat while today's chat exists) opens from the Party control on
 any of the four. Today's chat is served by the old games runtime that ADR 0014 retires: it is
@@ -170,10 +174,10 @@ all"). Nothing to show always says why and offers the way back.
 - **Favorites and Recent** are this phone's own lists, the ones the games have always written
   (`lg-favorites`, `lg-recent`). A Party round that takes this phone to a game is added to
   Recent once per round (`localStorage['avrana-recent-round']` holds the last round recorded),
-  for a player and a watcher alike; held results are not a round.
+  on a phone that played in it and not on one that watched (the owner, 2026-10-06; Party Core's
+  `session.my_role`); held results are not a round.
 - **"The party" is everyone in it**, the same number the Party page shows, including someone
-  whose phone has gone quiet but who has not left. Built so; the owner has not been asked
-  (redesign open decision 21), nor whether a watcher's phone should record a round (22).
+  whose phone has gone quiet but who has not left (the owner, 2026-10-06: redesign decision 21).
 - **Home never repeats a title**: the lead is not listed again under "Recently played", and a
   shelf with nothing on it has no heading.
 - **A cover is a link to the game's own page** (`#game/<id>`, PR 1.3). Nothing on a shelf starts
@@ -230,6 +234,58 @@ the host / Hosted by Ana" line of the older scene is gone.
   rules any other way chooses nothing.
 - After "Choose another game" each phone is back in the place it was in; the Host is on the
   game's page they started from.
+**States** (AVR-287; `lib/states.js`, pure and tested, and `renderLink`, `renderHostNote`,
+`renderBox` in `app.js`). Every sentence here is made from what Party Core and the status
+endpoint already say; the phone invents one number, and it is the owner's.
+
+- **This phone and the Party box.** A question to the box that fails puts a quiet line at the
+  top of the page at once: "Reconnecting. What you see may be out of date." After
+  **10 seconds** without an answer (`LOST_AFTER_MS`; the owner, 2026-10-06) it becomes a notice:
+  "This phone lost the Party box / Check it’s on the Avrana Party Wi-Fi." with "Try again"; a
+  box that answers but refuses says "The Party box isn’t answering / It may be restarting."
+  The Host's phone adds "Hosting passes on if it stays away." The phone keeps asking the whole
+  time, asks at once when the page is shown again or the network returns, and after a failed
+  try does not wait on the box before the next. When an answer comes the notice goes and the
+  page is where the Party is, wherever that moved meanwhile. The connection line is not shown
+  while the phone is out of touch, so nothing says "Connected" over a stale page.
+- **On a briefing** the same two steps are in the dock: "Reconnecting. Your answer stays as it
+  is for now." under the choices, then the choices and Start give way to the sentence and "Try
+  again", which takes focus. On recovery the choices return and focus goes to the title.
+- **The Host is away** (Party Core marks them so after 45 s of silence): the host line says "Ada
+  is the host, and is away." and a line under it "Hosting passes to someone here if Ada isn’t
+  back soon." on Home and the Party page; the briefing's status line says "Ada, the Host, is
+  away, so the game can’t start yet. Hosting passes to someone here if Ada isn’t back soon."
+  No countdown and no name for who is next: the view carries neither.
+- **Hosting passed on.** The new Host gets a notice with Dismiss, "You’re hosting now / Ada has
+  been away, so you pick what the Party plays."; everyone else reads "Bob is hosting now. Ada
+  has been away." It is said once and cleared when the Party next moves. On a briefing it leads
+  the status line ("You’re hosting now. …") and the Host's buttons appear.
+- **Never during a round**: a Host who holds a place in the round that is on keeps the role and
+  is not shown as away (Party Core's rule), so none of the above appears.
+- **Trouble on the box, for the Host only** (ADR 0012; the owner, 2026-10-06). When the status
+  endpoint says a part that changes what can be played is off, the Host's Home carries one
+  notice, the most serious only: "Arcade games are off right now / Card and party games play as
+  usual.", a link "What changed" to System, and Dismiss. Dismissed, it stays away for the visit
+  and comes back if the trouble does after a spell of health. Guests never see it: they see
+  "Off for now" on the title, as before.
+- **System opens with how things are**: "Everything’s working / The Party box and this phone
+  are fine.", or what is off. The Host reads the box's own account ("The arcade part of the
+  Party box isn’t answering. Gauntlet II can’t be played. Card and party games are not
+  affected."); a guest reads only what their shelf already shows ("Gauntlet II is off for now /
+  Every other game plays as usual."); a Limited phone reads the three Limited facts.
+- **The Limited notice folds** (ADR 0012; the owner, 2026-10-06). Its corner button "Fold this
+  notice away" hides it for the visit; Home then carries the mark in the top bar like every
+  other page, and the mark opens the same explanation. A new visit shows the notice in full
+  again. A phone that cannot keep the choice simply shows the notice.
+
+**Accessibility, checked by the suite** (`tests/lib/a11y.ts`, `tests/offline/a11y.spec.ts`,
+`tests/party/a11y.spec.ts`): on every page and every state above, text contrast (4.5:1, and 7:1
+when the phone asks for more), the edges of fields (3:1), a name on every control, one top
+heading and no skipped level, reading order against visual order, a visible focus ring on every
+stop of a Tab walk, nothing moving when the phone asks for less motion, 44 px targets and no
+sideways scroll. The checks test themselves first against planted faults. This is Chromium: no
+screen reader, no Safari and no phone setting has been tried (AVR-295).
+
 - ADR 0011 source uses automatic profile-backed presence and authoritative location; there are no
   normal Join/Leave or Rejoin offers. Game/results own the viewport; host End, Play again and
   Party Home live in game chrome. These console changes await AVR-212 deployment/phone proof.

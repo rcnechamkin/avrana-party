@@ -93,5 +93,10 @@ raised to ≥ 4.5:1 with an 11–12 px floor, one shared reduced-motion rule.
 - **Automated (per page):** the Party Home Playwright smoke test (`experiments/party-service/
   party.spec.ts`) checks that every visible control has a name, targets are ≥ 44 px, `lang` is set
   and there is no sideways scroll at 375 px, in Chromium and WebKit. Copy the pattern for new pages.
+- **Automated (the Party shell, since UX/UI redesign PR 1.4):** `tests/offline/a11y.spec.ts`
+  and `tests/party/a11y.spec.ts` run the helpers in `tests/lib/a11y.ts` over every shell page
+  and state: contrast, names, headings, reading order, the focus ring on a Tab walk, reduced
+  motion, more contrast, targets and sideways scroll. Chromium only; it replaces none of the
+  manual pass below.
 - **Manual (per release, 10 minutes):** VoiceOver on an iPhone or TalkBack on Android through one
   full round; the largest system text size; reduced motion on; one colour-blindness simulator pass.
