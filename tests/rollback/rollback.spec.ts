@@ -110,7 +110,7 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   const end = await page.request.post(`${BASE}/party/api/session/end`, { data: { if_version: (await (await page.request.get(`${BASE}/party/api/state`)).json()).version },
     headers: { 'Content-Type': 'application/json', Origin: BASE } });
   expect(end.status()).toBe(200);
-  await page.goto(`${BASE}/party/`);
+  await expect(page).toHaveURL(/\/party\/$/);                              // the round's page brings the phone home by itself
   await ready(page);
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);   // the offline copy is in play
   await expect.poll(() => caches(page)).toEqual([`avrana-party-shell-${releases.new.build}`]);
@@ -140,19 +140,27 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   await ready(page);
   // nothing a person kept is lost, and the same person is still in the same Party
   expect(await kept(page)).toEqual(before);
-  await expect(page.locator('#party-lede')).toBeVisible();
-  await page.locator('#nav a[data-go="party"]').click();
-  await expect(page.locator('#party-members')).toContainText('Rae (you)');
-  // then walk it: Home, the Library, a briefing (what the restored build's own pages look like is
-  // that build's business; these are the parts every build of the frame has)
-  await page.locator('#nav a[data-go="library"]').click();
-  await expect(page.locator('#games [data-game="bluff"]')).toBeVisible();
-  await page.locator('#game-views [data-view="favorites"]').click();
-  await expect(page.locator('#games [data-game]')).toHaveCount(1);         // the favorite, shown by the restored build
-  await expect(page.locator('#games [data-game="bluff"]')).toBeVisible();
-  await page.locator('#game-views [data-view="recent"]').click();
-  await expect(page.locator('#games [data-game="expo"]')).toBeVisible();   // and what was played
-  await page.locator('#game-views [data-view="all"]').click();
+  expect((await (await page.request.get(`${BASE}/party/api/state`)).json()).me).toMatchObject({ name: 'Rae', host: true });
+  // then walk it: Home, the Library, a briefing. What the restored build's own pages look like
+  // is that build's business: a build with the frame (slice 1) is walked through its bar and its
+  // shelves; an older one, which has neither, is only asked for its games and a briefing.
+  const framed = (await page.locator('#nav a[data-go="library"]').count()) > 0;
+  if (framed) {
+    await expect(page.locator('#party-lede')).toBeVisible();
+    await page.locator('#nav a[data-go="party"]').click();
+    await expect(page.locator('#party-members')).toContainText('Rae (you)');
+    await page.locator('#nav a[data-go="library"]').click();
+    await expect(page.locator('#games [data-game="bluff"]')).toBeVisible();
+    await page.locator('#game-views [data-view="favorites"]').click();
+    await expect(page.locator('#games [data-game]')).toHaveCount(1);       // the favorite, shown by the restored build
+    await expect(page.locator('#games [data-game="bluff"]')).toBeVisible();
+    await page.locator('#game-views [data-view="recent"]').click();
+    await expect(page.locator('#games [data-game="expo"]')).toBeVisible(); // and what was played
+    await page.locator('#game-views [data-view="all"]').click();
+  } else {
+    console.log('rollback rehearsal: the restored build has no frame; its shelves are not walked');
+    await expect(page.locator('#games [data-id="bluff"]')).toBeVisible();   // (how that build marks a title)
+  }
   const briefing = await page.request.post(`${BASE}/party/api/session/launch`, { data: { game: 'bluff', if_version: (await (await page.request.get(`${BASE}/party/api/state`)).json()).version },
     headers: { 'Content-Type': 'application/json', Origin: BASE } });
   expect(briefing.status()).toBe(200);
@@ -160,7 +168,7 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   await expect(page.locator('#scene-title')).toHaveText('BLUFF');
   expect((await page.request.post(`${BASE}/party/api/session/end`, { data: { if_version: (await (await page.request.get(`${BASE}/party/api/state`)).json()).version },
     headers: { 'Content-Type': 'application/json', Origin: BASE } })).status()).toBe(200);
-  await expect(page.locator('#nav')).toBeVisible();
+  await expect(page.locator('#scene')).toBeHidden();
 
   // ---- and forward again: going back was not a one-way door -------------------------------------
   flip('new');
