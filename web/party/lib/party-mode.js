@@ -46,6 +46,14 @@ export function locationOf(view) {
   return loc && typeof loc.at === 'string' ? loc : { at: HOME, game: null, session: null };
 }
 
+/** The round this phone remembers having been taken to ({ game, session }), or null. Only a
+ * member, and only while the round is on: not its setup, and not its held results, which a phone
+ * can arrive at without having been in the round. */
+export function roundToRemember(view) {
+  const loc = locationOf(view);
+  return view && view.me && loc.at === 'game' && loc.game ? { game: loc.game, session: loc.session || null } : null;
+}
+
 /** Where this member's page must be, or null when it is already there.
  *   here: HOME on Party Home; the page's Party Core game id on a game page; for a page that is
  *         not a party game (a standalone title) its own slug, which is never a party game.

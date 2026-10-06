@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { place, smallTargets, startForEveryone } from '../lib/frame';
+import { openGame, place, smallTargets, startForEveryone } from '../lib/frame';
 
 /**
  * Several phones at one party (ADR 0011 console model) against a real Party Core behind the dev
@@ -71,10 +71,9 @@ test.describe('three phones at one party', () => {
     await expect(host.page.locator('#party-host')).toContainText('You’re the host');
     await expect(bob.page.locator('#party-host')).toContainText('Ada is the host');
     await expect(cleo.page.locator('#party-members li')).toHaveCount(3);
-    const tile = (p: Phone) => p.page.locator('[data-id="expo"]');
     for (const p of [host, bob]) await place(p.page, 'library');
-    await expect(tile(host).getByRole('button', { name: 'Start for everyone' })).toBeEnabled();
-    await expect(tile(bob).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
+    await expect((await openGame(host.page, 'expo')).getByRole('button', { name: 'Start for everyone' })).toBeEnabled();
+    await expect((await openGame(bob.page, 'expo')).getByRole('button', { name: 'The host starts it' })).toBeDisabled();
     // The API refuses a follower who tries anyway, and a stale host tab too.
     const refused = await post(bob, 'session/launch', { game: 'expo', if_version: await version(bob) });
     expect(refused.status()).toBe(403);
@@ -95,8 +94,12 @@ test.describe('three phones at one party', () => {
     await expect(host.page.locator('#party-lede')).toHaveText('Three of you are here.');
     await expect(host.page.locator('#party-names')).toHaveText('Ada (you), Bob and Cleo.');
     await expect(bob.page.locator('#party-names')).toHaveText('Bob (you), Ada and Cleo.');
-    await expect(host.page.locator('#home-library')).toHaveText('Pick a game');
-    await expect(bob.page.locator('#home-library')).toHaveText('Open the Library');
+    // Home's shelves are the same for the Host and a guest: what suits three, never a different list
+    for (const p of [host, bob]) {
+      await expect(p.page.locator('#home-great-h')).toHaveText('Great for three');
+      await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
+      await expect(p.page.locator('#home-recent-sec')).toBeHidden();        // nothing played on these phones yet
+    }
     await hud.click();
     await expect(drawer).toBeVisible();
     await host.page.getByRole('button', { name: 'People', exact: true }).click();
@@ -125,9 +128,12 @@ test.describe('three phones at one party', () => {
     await place(bob.page, 'system');
     await bob.page.locator('#hud').click();
     await expect(bob.page.locator('#social')).toBeVisible();
+    await place(cleo.page, 'library');
+    await openGame(cleo.page, 'expo');                                       // Cleo is reading about another game
     await startForEveryone(host.page, 'bluff');
     for (const p of [host, bob, cleo]) await expect(p.page.locator('#scene')).toBeVisible();
     await expect(bob.page.locator('#social')).toBeHidden();                  // nothing stands between Bob and his answer
+    for (const p of [host, cleo]) await expect(p.page.locator('#game-sheet')).toBeHidden();
     await expect(bob.page.locator('#nav')).toBeHidden();
     await expect(bob.page.locator('#top')).toBeHidden();
     await bob.page.locator('#choose-watch').click();
@@ -136,6 +142,83 @@ test.describe('three phones at one party', () => {
     // everyone is home again, in the frame, in the place they were in
     await expect(bob.page.locator('#nav')).toBeVisible();
     await expect(bob.page.locator('html')).toHaveAttribute('data-place', 'system');
+  });
+
+  test('the Library for three: the size of the party orders the shelf and never empties it', async () => {
+    const page = host.page;
+    await place(page, 'library');
+    const order = () => page.locator('#games [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game));
+    await expect(page.locator('#games h3')).toHaveText(['Great for three', 'Not for three']);
+    await expect(page.locator('#games .avrana-sec .meta')).toHaveText(['4', '1']);
+    expect(await order()).toEqual(['bluff', 'expo', 'ps1-bomberman', 'ps1-worms', 'arcade-gauntlet2']);   // all five, best fit first
+    await expect(page.locator('#game-count')).toHaveText('5 games');
+    const two = page.locator('#games [data-game="arcade-gauntlet2"]');
+    await expect(two.locator('.seats')).toHaveText('Max 2');
+    await expect(two).toHaveAccessibleName(/^Gauntlet II\. Max 2, you’re 3\. TV optional/);
+    await expect(page.locator('#games [data-game="bluff"] .seats')).toHaveText('2–6');
+    // the sheet says how many are here; it does not filter for them
+    await page.locator('#lib-filter').click();
+    await expect(page.locator('#filters-party')).toHaveText('Your Party is 3');
+    await expect(page.locator('#filter-players').getByRole('button', { pressed: true })).toHaveText('Any');
+    await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
+    await page.keyboard.press('Escape');
+    // a guest sees the same shelf as the Host
+    await place(bob.page, 'library');
+    await expect(bob.page.locator('#games h3')).toHaveText(['Great for three', 'Not for three']);
+    // the smallest covers drop the plain range and keep the warning
+    await page.locator('#lib-view').click();
+    await page.locator('#view-choices [data-v="compact"]').click();
+    await expect(two.locator('.seats')).toBeVisible();
+    await expect(page.locator('#games [data-game="bluff"] .seats')).toBeHidden();
+    // the list is one list, in the same order, and says why a title is last
+    await page.locator('#lib-view').click();
+    await page.locator('#view-choices [data-v="list"]').click();
+    await expect(page.locator('#games h3')).toHaveText(['All games']);
+    await expect(page.locator('#games .avrana-sec .meta')).toHaveText('5, best fit first');
+    expect(await order()).toEqual(['bluff', 'expo', 'ps1-bomberman', 'ps1-worms', 'arcade-gauntlet2']);
+    await expect(page.locator('#games .avrana-row').last()).toContainText('Max 2, you’re 3');
+    // Home says the same thing
+    await place(page, 'home');
+    await expect(page.locator('#home-lead [data-game="bluff"]')).toContainText('Room for all three of you.');
+    await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(0);
+    // someone goes home: the shelf follows the party without being asked
+    // (her page is closed first: an open Party page puts its phone straight back in the party)
+    const origin = new URL(cleo.page.url()).origin;
+    await cleo.page.close();
+    const left = await cleo.context.request.post('/party/api/leave', { data: {}, headers: { 'Content-Type': 'application/json', Origin: origin } });
+    expect(left.status()).toBe(200);
+    await expect(page.locator('#home-great-h')).toHaveText('Great for two');
+    await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(1);
+    await place(page, 'library');
+    await expect(page.locator('#games h3')).toHaveText(['Great for two']);
+    await expect(page.locator('#games [data-game]')).toHaveCount(5);
+  });
+
+  test('a round that starts is remembered on every phone it took there, and only once', async () => {
+    await startForEveryone(host.page, 'expo');
+    for (const p of [host, bob, cleo]) await expect(p.page).toHaveURL(/\/games\/expo\//);
+    await bob.page.goto('/party/');                                          // wanders back mid-round; sent in again
+    await expect(bob.page).toHaveURL(/\/games\/expo\//);
+    await endForEveryone(host);
+    for (const p of [host, bob, cleo]) {
+      await expect(p.page, p.name).toHaveURL(/\/party\/$/);
+      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toContainText('You played this last.');
+      await expect(p.page.locator('#home-recent-sec'), p.name).toBeHidden();   // it leads; it is not listed twice
+      // per phone, in the list the games have always written (decision 9: nothing Party-wide)
+      expect(await p.page.evaluate(() => localStorage.getItem('lg-recent')), p.name).toBe('["avrana:expo"]');
+      // once: Bob came back to the page mid-round, and the round still counts as one game opened
+      expect(await p.page.evaluate(() => localStorage.getItem('lg-play-total')), p.name).toBe('1');
+    }
+    // a second round is a second game opened; held results are not a round
+    await startForEveryone(host.page, 'expo');
+    for (const p of [host, bob]) await expect(p.page).toHaveURL(/\/games\/expo\//);
+    await endForEveryone(host);
+    await expect(bob.page).toHaveURL(/\/party\/$/);
+    expect(await bob.page.evaluate(() => localStorage.getItem('lg-play-total'))).toBe('2');
+    await place(cleo.page, 'library');                                       // Cleo watched; it is still what her phone was at
+    await cleo.page.locator('#game-views').getByRole('button', { name: 'Recent', exact: true }).click();
+    await expect(cleo.page.locator('#games [data-game]')).toHaveCount(1);
+    await expect(cleo.page.locator('#games h3')).toHaveText(['Recently played']);
   });
 
   test('the host starts a game and everyone goes there; ending it brings everyone home', async () => {

@@ -234,8 +234,9 @@ scaling the root font size in a desktop browser.
 The owner's decision (2026-10-05): "Commit documents, prototypes, overview sheets and essential
 referenced evidence. Keep bulk screenshots and ZIP archives out of Git, with their location
 documented." The committed set is the documents, the prototypes, the ten overview sheets and the
-capture scripts; no loose picture was judged essential, which the plan's row 0.7 asks the owner
-to confirm. About 34 MB of
+capture scripts; no loose picture was judged essential. Asked on 2026-10-06 whether a few
+pictures of the old shell should go into Git after all, the owner said "Nah." Separately, each
+pull request of slice 1 commits a few sheets of what it built, under [`slice-1/`](slice-1/). About 34 MB of
 pictures and a 35 MB archive would otherwise sit beside about 4 MB of tracked files.
 
 | What | Where |

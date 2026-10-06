@@ -89,7 +89,15 @@ repeat:
 | `avrana-status` | connection line: spinner while checking, dot + words after (text first, colour never the only cue) |
 | `avrana-avatar` (`sm`, `lg`) | a person's photo or Gaze avatar (older chat entries: their emoji) |
 | `avrana-avatar-choice` | avatar picker cell: ring **and** check badge when chosen, `aria-pressed` |
-| `avrana-game-card`, `-cover`, `-title`, `-facts` | game library tile |
+| `avrana-game-card`, `-cover`, `-title`, `-facts` | a game, opened: its facts, what it means on this phone, and its one button (in the game sheet) |
+| `avrana-tools` | the Library's top row: search, the Filters button (with a count of filters that are on) and the View button |
+| `avrana-shelf`, `avrana-sec` | the Library's shelves and a shelf's heading (its count, or Reset while a filter is on) |
+| `avrana-grid` (`large`, `medium`, `compact`), `avrana-rows` | the four Library views: three grids of covers, and a list of rows |
+| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A button that opens the game; it never starts one |
+| `avrana-hero`, `avrana-rail` | Home's lead cover, and Home's shelves that scroll sideways inside themselves |
+| `avrana-fav` | the heart: keep or drop a favourite (`aria-pressed`, a name per game) |
+| `avrana-blank`, `avrana-hid` | the Library with nothing to show (why, and the way back), and the line that says how many titles a filter left out |
+| `avrana-seg`, `avrana-choices` | a sheet's choices: segments (one of a few, `aria-pressed`) and a list with a tick |
 | `avrana-fit` | what a game means for this phone: icon + words |
 | `avrana-empty` | empty state: icon, one sentence |
 | `avrana-checks` | checklist rows (this phone) |
@@ -105,9 +113,13 @@ everyone to a setup scene or a game, the frame (bars, drawer, sheet) leaves the 
 comes back in the same place.
 
 - **Home**: who is here, in a sentence; the connection line; the Limited Mode notice in full when
-  it applies; a nameless phone's first step; the way to the Library.
+  it applies; a nameless phone's first step; then the games: a lead cover (the last title played
+  on this phone, else the first that suits the party), a shelf of the rest that suit it
+  ("Great for four", or "Games" when there is no party to suit), and "Recently played" once
+  something has been.
 - **Party**: you (the identity button and its form), everyone here as faces, chat's row.
-- **Library**: the games (the centre of gravity), search, group size, favourites.
+- **Library**: the games (the centre of gravity): search, two filters, four views, and the
+  All / Favorites / Recent tabs (below).
 - **System**: this phone's checklist, and the way to diagnostics.
 
 The Party drawer (People, and Chat while today's chat exists) opens from the Party control on
@@ -122,14 +134,50 @@ A phone in Limited Mode has the full notice on Home and the mark in the top bar 
 Send, Try again, Copy report. Secondary (`btn-outline` / `btn-ghost`): Try anyway, Cancel, view
 switches, diagnostics tools. Destructive (`btn-ghost text-error` or `btn-outline btn-error`):
 Remove photo, Remove offline copy; never filled, so it never competes with a primary action.
-Icon-only buttons (the favourite star) always carry an `aria-label`.
+Icon-only buttons (the favourite heart, Filters, View, Close) always carry an `aria-label`.
 
-**Game tiles.** Only catalog metadata: title; the title's artwork (below); players; screen
+**The Library** (`lib/library.js`, pure and tested; AVR-285). **Recommending is not filtering.**
+The number of people at the party orders and groups the shelf ("Great for four", then "Not for
+four") and never leaves a title out; only a search, a filter, Favorites or Recent does, and then
+the page says so: the heading counts what is shown ("4 games for 4 players") with Reset beside
+it, the Filters button carries the number of filters that are on and names them to a screen
+reader, and a line under the shelf counts what was left out ("1 game hidden by this filter. Show
+all"). Nothing to show always says why and offers the way back.
+
+- **Four views**, chosen in the View sheet and kept on this phone
+  (`localStorage['avrana-library-view']`): large, medium (the default) and compact grids, and a
+  list. A view changes how much is said per title, never which titles are listed. The compact
+  grid drops the plain facts and keeps every warning.
+- **Two filters**, in the Filters sheet, and only because the catalog really says both: Players
+  (Any, 1 to 5, and 6+, which means a title with room for six or more) and Screens (Any, Phone only, TV optional, Needs the TV: the tiles' own
+  words). They are for now, not for ever: a reload starts with every game on the shelf. There is
+  no length, kind or "quick start" filter because no title carries that data.
+- **A cover's corner** carries the player range, or a warning with words when the party does not
+  fit ("Max 2", "Needs 3").
+- **One consequence line per title**, the same words in every view, with an icon (never colour
+  alone), the most decisive first: `Not installed`, `Off for now`, `Not on this phone`,
+  `Watch only on this phone`. A title that is off or not installed stays on the shelf, for
+  everyone. "Off for now" needs an answer that says so: a phone whose question got no answer at
+  all (out of range, a slow box) says nothing about the game on its cover.
+- **Favorites and Recent** are this phone's own lists, the ones the games have always written
+  (`lg-favorites`, `lg-recent`). A Party round that takes this phone to a game is added to
+  Recent once per round (`localStorage['avrana-recent-round']` holds the last round recorded),
+  for a player and a watcher alike; held results are not a round.
+- **"The party" is everyone in it**, the same number the Party page shows, including someone
+  whose phone has gone quiet but who has not left. Built so; the owner has not been asked
+  (redesign open decision 21), nor whether a watcher's phone should record a round (22).
+- **Home never repeats a title**: the lead is not listed again under "Recently played", and a
+  shelf with nothing on it has no heading.
+- **A cover opens the game** in the game sheet (a native `<dialog>`: focus goes in, Escape, the
+  Close button or a tap outside closes it, focus returns to the cover). The sheet holds the game
+  tile below, with the button it has always had. This is the bridge until the game detail page
+  of the redesign plan's PR 1.3 replaces it. The sheet closes when the Host moves the Party.
+
+**The game tile** (in the game sheet). Only catalog metadata: title; the title's artwork (below); players; screen
 (`Phone only` / `TV optional` / `Needs the TV` from the contract's `screen`); how you play when it
-adds something; summary; fit for this phone; live state; Play. One column at every width (the frame
-is a phone-width column). When enlarged text leaves the title no column beside the cover and the
-star, the title takes the row under them (container query). No ratings, prices or store language. Favourites show as a filled
-star. ADR 0011 source uses automatic profile-backed presence and authoritative location;
+adds something; summary; fit for this phone; live state; Play. When enlarged text leaves the title no column beside the cover and the
+heart, the title takes the row under them (container query). No ratings, prices or store language. Favourites show as a filled
+heart. ADR 0011 source uses automatic profile-backed presence and authoritative location;
 there are no normal Join/Leave or Rejoin offers. At home the host chooses a Party game. Setup
 is a full-screen Party scene with roster, Play/Watch, How to play and host-only Start (or a
 follower’s waiting state). Game/results own the viewport; host End, Play again and Party Home

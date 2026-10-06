@@ -24,10 +24,11 @@ import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
 import { loadCatalog } from './lib/catalog-load.js';
-import { donorAvailability, visibleGames, filterGames, launchTarget } from './lib/catalog-view.js';
-import { HOME, destination, locationOf, partyGame, roster, setupPanel, tileMode } from './lib/party-mode.js';
+import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
+import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
+import { VIEW_NAMES, arrange, consequence, filterLabel, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
 import { chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
 
 const $ = (id) => document.getElementById(id);
@@ -38,7 +39,8 @@ const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
-  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0 };
+  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0,
+  polled: false, libView: 'medium', openFrom: 'games', filters: { players: 0, screen: 'any' }, openGame: null };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -68,7 +70,9 @@ async function health(path) {
     const running = !(body && (body.error || body.emulator_running === false));
     return { running, players: count(body && body.players), max: count(body && body.max_players) };
   } catch {
-    return { running: false };
+    // No answer at all (out of range, a slow box): the tile still cannot be played from here, but
+    // nobody knows the game is off, and the shelf does not say so (lib/library.js consequence).
+    return { running: false, unknown: true };
   }
 }
 
@@ -108,8 +112,84 @@ function cover(game) {
   return el;
 }
 
-function emptyState(name, text) {
-  return h('li', { class: 'avrana-empty xl:col-span-2' }, icon(name), h('p', { class: 'm-0', text }));
+/** Keep or drop a favourite: a toggle with a name per game. Focus stays on it after the redraw. */
+function favButton(game, cls = '') {
+  const on = profile.isFavorite(game);
+  return h('button', { type: 'button', class: 'btn btn-ghost btn-square avrana-fav ' + cls, 'data-fav': game.id,
+    'aria-label': (on ? 'Remove ' : 'Add ') + game.name + (on ? ' from favorites' : ' to favorites'),
+    'aria-pressed': String(on), onclick: (event) => {
+      const within = event.currentTarget.closest('dialog, #games');
+      try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
+      catch (err) { $('profile-note').textContent = err.message; }
+      // The redraw replaced this button. When its row has left the shelf (un-kept in Favorites),
+      // focus goes to the tab that is showing, never nowhere.
+      const again = within && within.querySelector(`[data-fav="${CSS.escape(game.id)}"]`);
+      (again || (within && within.id === 'games' ? $('game-views').querySelector('[aria-pressed="true"]') : null))?.focus();
+    } }, icon('heart'));
+}
+
+/** A square cover: the title's own art, else its kind icon on its own colour. `mark` is the
+ * player range for the corner (lib/library.js seatsMark), or null. */
+function tileCover(game, mark) {
+  const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
+  const el = h('span', { class: 'avrana-cover' + (art ? ' has-art' : '') + (art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
+    art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async' }) : icon(kindIcon(game)),
+    mark ? h('span', { class: 'seats' + (mark.ok ? '' : ' no') }, icon(mark.ok ? 'users' : 'triangle-alert'), mark.text) : null);
+  if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
+  return el;
+}
+
+const warnLine = (note, cls) => (note ? h('span', { class: cls }, icon(note.icon), note.text) : null);
+/** What a cover says to a screen reader: the title, who can play, where it is seen, and anything
+ * that stands in the way on this phone. */
+const spoken = ({ game, note }, people) => [game.name,
+  seatsMark(game, people).ok ? playersText(game.players) : seatsPhrase(game, people),
+  screenText(game).text, note && note.text].filter(Boolean).join('. ');
+
+/** A cover on a shelf. It opens the game; it never starts one. */
+function tile(entry, people, { seats = true, meta = true } = {}) {
+  const { game, note } = entry;
+  return h('li', {}, h('button', { type: 'button', class: 'avrana-tile', 'data-game': game.id, 'data-note': note ? note.kind : null,
+    'aria-haspopup': 'dialog', 'aria-label': spoken(entry, people), onclick: () => openGame(game.id) },
+  tileCover(game, seats ? seatsMark(game, people) : null),
+  h('span', { class: 't', text: game.name }),
+  meta ? h('span', { class: 'm', text: screenText(game).text }) : null,
+  warnLine(note, 'm warn')));
+}
+
+/** The same title as a row of the list, with its sentence and its facts in words. */
+function row(entry, people) {
+  const { game, note } = entry;
+  const mark = seatsMark(game, people), screen = screenText(game);
+  return h('li', { class: 'avrana-row' },
+    h('button', { type: 'button', class: 'open', 'data-game': game.id, 'data-note': note ? note.kind : null,
+      'aria-haspopup': 'dialog', 'aria-label': spoken(entry, people), onclick: () => openGame(game.id) },
+    tileCover(game, null),
+    h('span', {}, h('span', { class: 't', text: game.name }),
+      game.summary ? h('span', { class: 'd', text: game.summary }) : null,
+      h('span', { class: 'f' },
+        h('span', { class: mark.ok ? null : 'no' }, icon(mark.ok ? 'users' : 'triangle-alert'), seatsPhrase(game, people)),
+        h('span', {}, icon(screen.icon), screen.text),
+        warnLine(note, 'no')))),
+    favButton(game));
+}
+
+/** Put `next` where `parent`'s children are, touching only what changed, so a periodic refresh
+ * never moves keyboard focus off an unchanged control. A child marked data-sync="list" is kept and
+ * its own children are compared the same way. */
+function sync(parent, next) {
+  const old = [...parent.children];
+  if (old.length !== next.length || old.some((el, i) => el.tagName !== next[i].tagName || el.className !== next[i].className)) {
+    parent.replaceChildren(...next);
+    return;
+  }
+  next.forEach((node, i) => {
+    if (old[i].isEqualNode(node)) return;
+    if (node.dataset.sync !== 'list') { old[i].replaceWith(node); return; }
+    for (const attr of [...old[i].attributes]) if (!node.hasAttribute(attr.name)) old[i].removeAttribute(attr.name);
+    for (const attr of node.attributes) old[i].setAttribute(attr.name, attr.value);
+    sync(old[i], [...node.children]);
+  });
 }
 
 function liveText(hp) {
@@ -146,13 +226,7 @@ function gameCard(game, result, hp) {
     : running
       ? h('a', { class: 'btn btn-outline', href: target, onclick: remember, text: 'Try anyway' })
       : h('button', { type: 'button', class: 'btn', disabled: true, text: installed ? 'Play' : 'Not installed' });
-  const favorite = profile.isFavorite(game);
-  const star = h('button', { type: 'button', class: 'btn btn-ghost btn-square -mr-1 -mt-1 ' + (favorite ? 'text-warning' : 'text-muted'),
-    'aria-label': (favorite ? 'Remove ' : 'Add ') + game.name + (favorite ? ' from favorites' : ' to favorites'),
-    'aria-pressed': favorite, onclick: () => {
-      try { profile.toggleFavorite(game); renderProfile(); renderGames(false); }
-      catch (err) { $('profile-note').textContent = err.message; }
-    } }, icon('star', { cls: favorite ? 'fill-current' : '' }));
+  const star = favButton(game, '-mr-1 -mt-1');
   const live = mode ? 'Everyone plays together: the host starts it'
     : installed && hp?.integration === false ? 'Games update needed before opening here' : installed ? liveText(hp) : 'Experimental · Not installed on this Party box';
   const screen = screenText(game);
@@ -198,7 +272,10 @@ async function hostStart(game, id) {
   renderGames(false);
   const res = await party.launch(id);
   state.partyBusy = false;
-  if (!res.ok) $('party-note').textContent = res.message || `${game.name} didn’t start. Please try again.`;
+  if (!res.ok) {
+    $('party-note').textContent = res.message || `${game.name} didn’t start. Please try again.`;
+    closeSheets();                               // the reason is on the page, not behind the sheet
+  }
   renderGames(false);
 }
 
@@ -274,6 +351,7 @@ function showPage(page, focus = false) {
 
 /** Your name and avatar live on the Party page. */
 function openProfile() {
+  closeSheets();
   if (state.page !== 'party') { history.replaceState(null, '', '#party'); showPage('party'); }
   $('profile').open = true;
   $('profile-name').focus();
@@ -281,13 +359,16 @@ function openProfile() {
 
 const chatOn = () => chatOffered({ reachable: state.reachable, hub: state.donor !== null && state.donor !== undefined, status: state.chatStatus });
 
-/** Home's own words: who you are here, and the way to the games. */
+/** Home's own words: a nameless phone's first step. Its shelves are drawn with the Library. */
 function renderHome() {
-  const view = state.partyMode ? party.view() : null;
   $('home-name').hidden = Boolean(profile.snapshot().name);
-  $('home-library').hidden = state.reachable === false;      // nothing to browse while the Pi is out of reach
-  $('home-library-text').textContent = view && view.me && view.me.host ? 'Pick a game' : 'Open the Library';
-  $('home-library').classList.toggle('btn-primary', Boolean(view && view.me && view.me.host));
+  if (state.reachable === false) $('home-games').hidden = true;   // nothing to browse while the Pi is out of reach
+}
+
+/** Everything open over the frame. None of it may stay over a place that changed underneath. */
+const SHEETS = ['social', 'about-limited', 'game-sheet', 'lib-filters', 'lib-views'];
+function closeSheets() {
+  for (const id of SHEETS) if ($(id).open) $(id).close();
 }
 
 /** The Party control: faces and a count while there is a party; a chat mark when there is only
@@ -354,6 +435,7 @@ function renderParty(view) {
     state.failShown = s.id;
     const g = partyGame(state.catalog, s.game);
     $('party-note').textContent = `${g ? g.name : s.game} didn’t start.` + (s.detail ? ` ${s.detail}` : '');
+    closeSheets();                               // the reason is on the page, not behind the sheet
   }
 }
 
@@ -447,7 +529,7 @@ async function renderScene(view) {
 function show(which) {
   // The drawer and the sheet belong to the frame: they never stay open over a round's setup or
   // the way to a game, where they would stand between a person and their answer.
-  if (which !== 'main') for (const id of ['social', 'about-limited']) if ($(id).open) $(id).close();
+  if (which !== 'main') closeSheets();
   $('main').hidden = which !== 'main';
   $('scene').hidden = which !== 'scene';
   $('going').hidden = which !== 'going';
@@ -460,6 +542,8 @@ function onPartyView(view) {
   const url = destination(view, HOME, state.catalog);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
+    const round = roundToRemember(view);       // a round that is on, not its held results
+    if (g && round) recordRound(g, round);
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
     location.replace(url);
@@ -481,34 +565,158 @@ async function renderGames(refresh = true) {
     const installed = state.catalog.games.filter((g) => g.installed && g.health);
     const [donor, ...healths] = await Promise.all([
       getJSON('/api/games', { cache: 'no-store', signal: AbortSignal.timeout(4000) })
-        .then(donorAvailability).catch(() => null),
+        // an error status, or an answer that is not the list, is an answer; only silence is silence
+        .then(donorAvailability).catch((err) => (err && (err.status || err instanceof SyntaxError) ? null : SILENT)),
       ...installed.map((g) => health(g.health)),
     ]);
-    state.donor = donor;
+    state.donor = donor === SILENT ? null : donor;
+    state.donorSilent = donor === SILENT;       // no answer at all, which is not "off"
     state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));
+    state.polled = true;
     renderHud();                        // the chat is offered only while its own runtime answers
   }
-  if (state.reachable === false) return;
+  if (state.reachable === false || !state.polled) return;      // nothing is "off" before the first answer
   const caps = statuses(state.report);
-  const games = filterGames(visibleGames(state.catalog), {
-    query: $('game-search').value, players: Number($('game-players').value), view: state.view,
-  }, profile);
-  const items = games.map((g) => {
-    const hp = g.legacySlug ? state.donor?.get(g.legacySlug) || { running: false }
-      : state.healths?.get(g.id);
-    return gameCard(g, evaluateSeat(g, caps, 'player'), hp);
-  });
-  $('game-count').textContent = games.length + (games.length === 1 ? ' game' : ' games');
-  if (!items.length) items.push(state.view === 'favorites' ? emptyState('star', 'Tap a star to save a game here.')
-    : state.view === 'recent' ? emptyState('history', 'Games you open will appear here.')
-      : emptyState('search-x', 'No games match. Try another search or group size.'));
-  const list = $('games'), old = [...list.children];
-  if (old.length !== items.length || old.some((el, i) => el.dataset.id !== items[i].dataset.id)) {
-    list.replaceChildren(...items);
-  } else {
-    items.forEach((item, i) => { if (!old[i].isEqualNode(item)) old[i].replaceWith(item); });
+  const entries = new Map();
+  for (const game of visibleGames(state.catalog)) {
+    profile.keyFor(game);
+    const live = game.legacySlug ? state.donor?.get(game.legacySlug) || { running: false, unknown: state.donorSilent }
+      : state.healths?.get(game.id);
+    const result = evaluateSeat(game, caps, 'player');
+    const installed = Boolean(game.installed && game.entry);
+    entries.set(game.id, { game, live, result, note: consequence({ installed, outcome: result.outcome, live }) });
   }
-  list.setAttribute('aria-busy', 'false');
+  const view = state.partyMode ? party.view() : null;
+  const people = view ? view.members.length : 0;
+  const me = profile.snapshot();
+  const all = [...entries.values()].map((entry) => entry.game);
+  renderShelf(entries, arrange({ all, people, tab: state.view, query: $('game-search').value, filters: state.filters,
+    keyOf: profile.keyFor, favorites: me.favorites, recent: me.recent }), people);
+  renderHomeShelves(entries, homeShelves({ all, people, keyOf: profile.keyFor, recent: me.recent }), people);
+  renderGameSheet(entries);
+}
+
+const SILENT = Symbol('no answer');
+const VIEW_ICONS = { large: 'grid-2x2', medium: 'grid-3x3', compact: 'layout-grid', list: 'list' };
+const gamesWord = (n) => (n === 1 ? '1 game' : `${n} games`);
+
+/** The Library: its shelves (or what stands in for them), and controls that say the same thing. */
+function renderShelf(entries, shelf, people) {
+  const of = (game) => entries.get(game.id);
+  const reset = () => { state.filters = { players: 0, screen: 'any' }; renderGames(false); };
+  const nodes = [];
+  if (shelf.empty) {
+    const undo = { search: () => { $('game-search').value = ''; renderGames(false); $('game-search').focus(); },
+      filters: () => { reset(); $('lib-filter').focus(); },
+      favorites: () => seeAll(), recent: () => seeAll() }[shelf.empty.kind];
+    // (#game-count announces the same title; this block is not a second live region)
+    nodes.push(h('div', { class: 'avrana-blank', 'data-empty': shelf.empty.kind }, icon(shelf.empty.icon),
+      h('h3', { text: shelf.empty.title }), h('p', { text: shelf.empty.text }),
+      h('button', { type: 'button', class: 'btn', text: shelf.empty.action, onclick: undo })));
+  } else if (!shelf.total) {
+    // no list at all: #catalog-error says so, and nothing here pretends otherwise
+  } else if (state.libView === 'list') {
+    const group = shelf.groups.length === 1 ? shelf.groups[0] : { title: 'All games', meta: `${shelf.count}, best fit first` };
+    nodes.push(secHead(group, reset),
+      h('ul', { class: 'avrana-rows', 'data-sync': 'list', 'aria-label': group.title }, shelf.flat.map((g) => row(of(g), people))));
+  } else {
+    for (const group of shelf.groups) {
+      nodes.push(secHead(group, reset),
+        h('ul', { class: 'avrana-grid ' + state.libView, 'data-sync': 'list', 'aria-label': group.title },
+          group.games.map((g) => tile(of(g), people))));
+    }
+  }
+  if (!shelf.empty && shelf.hidden) {
+    nodes.push(h('p', { class: 'avrana-hid' }, `${gamesWord(shelf.hidden)} hidden by ${shelf.filtersOn === 1 ? 'this filter' : 'these filters'}. `,
+      h('button', { type: 'button', class: 'avrana-textlink', text: 'Show all', onclick: () => { reset(); $('lib-filter').focus(); } })));
+  }
+  sync($('games'), nodes);
+  $('games').setAttribute('aria-busy', 'false');
+  $('games').dataset.view = state.libView;
+  $('game-count').textContent = !shelf.total ? '' : shelf.empty ? shelf.empty.title : shelf.filtersOn || shelf.count !== shelf.total
+    ? `${gamesWord(shelf.count)} of ${shelf.total}` : gamesWord(shelf.count);
+  // the controls and the sheets agree with the results
+  $('lib-filter').setAttribute('aria-label', filterLabel(state.filters));
+  $('lib-filter-count').textContent = String(shelf.filtersOn);
+  $('lib-filter-count').hidden = !shelf.filtersOn;
+  $('filters-show').textContent = `Show ${gamesWord(shelf.count)}`;
+  $('filters-party').textContent = people >= 1 ? `Your Party is ${people}` : '';
+  for (const b of $('filter-players').querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.players) === state.filters.players));
+  for (const b of $('filter-screens').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.screen === state.filters.screen));
+  for (const b of $('view-choices').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === state.libView));
+  $('lib-view').setAttribute('aria-label', 'View: ' + VIEW_NAMES[state.libView].toLowerCase());
+  if ($('lib-view').dataset.shown !== state.libView) {
+    $('lib-view').dataset.shown = state.libView;
+    $('lib-view').replaceChildren(icon(VIEW_ICONS[state.libView]));
+  }
+}
+
+function secHead(group, reset) {
+  return h('div', { class: 'avrana-sec' }, h('h3', { text: group.title }),
+    group.reset ? h('button', { type: 'button', class: 'avrana-textlink', text: 'Reset', onclick: () => { reset(); $('lib-filter').focus(); } })
+      : h('span', { class: 'meta', text: group.meta }));
+}
+
+function setTab(name) {
+  state.view = name;
+  for (const item of $('game-views').querySelectorAll('button'))
+    item.setAttribute('aria-pressed', String(item.dataset.view === name));
+  renderGames(false);
+}
+
+/** "See all games" from an empty Favorites or Recent: the button goes away, so focus goes to All. */
+function seeAll() {
+  setTab('all');
+  $('game-views').querySelector('[data-view="all"]').focus();
+}
+
+/** Home's shelves, from the same titles and the same words as the Library. */
+function renderHomeShelves(entries, shelves, people) {
+  const of = (game) => entries.get(game.id);
+  $('home-games').hidden = !shelves.lead;
+  if (!shelves.lead) return;
+  const lead = of(shelves.lead);
+  const line = leadLine(lead.game, { people, played: shelves.leadPlayed }) || playersText(lead.game.players);
+  sync($('home-lead'), [h('button', { type: 'button', class: 'avrana-hero', 'data-game': lead.game.id, 'data-note': lead.note ? lead.note.kind : null,
+    'aria-haspopup': 'dialog', 'aria-label': [lead.game.name, line, lead.note && lead.note.text].filter(Boolean).join(' '),
+    onclick: () => openGame(lead.game.id) },
+  tileCover(lead.game, seatsMark(lead.game, people)),
+  h('span', { class: 'row' }, h('span', {}, h('span', { class: 't', text: lead.game.name }), h('span', { class: 'm', text: line }),
+    warnLine(lead.note, 'm warn')), icon('chevron-right')))]);
+  $('home-great-h').textContent = shelves.title;
+  $('home-great-sec').hidden = !shelves.great.length;        // never a heading over nothing
+  sync($('home-great'), shelves.great.map((g) => tile(of(g), people)));
+  $('home-recent-sec').hidden = !shelves.played.length;
+  sync($('home-recent'), shelves.played.map((g) => tile(of(g), people, { seats: false, meta: false })));
+}
+
+/** A game, opened from a cover: today's tile, with its facts and its own button. */
+function openGame(id) {
+  state.openGame = id;
+  state.openFrom = document.activeElement?.closest('#games, #home-games')?.id || 'games';
+  renderGames(false);
+  if (state.openGame && !$('game-sheet').open) $('game-sheet').showModal();
+}
+
+function renderGameSheet(entries) {
+  if (!state.openGame) return;
+  const entry = entries.get(state.openGame);
+  if (!entry) { state.openGame = null; if ($('game-sheet').open) $('game-sheet').close(); return; }
+  $('game-sheet-h').textContent = entry.game.name;
+  sync($('game-card'), [gameCard(entry.game, entry.result, entry.live)]);
+}
+
+/** A round that takes this phone to a game is remembered on this phone (the same list, and the
+ * same count, the Play button has always written), once per round however often, and in however
+ * many tabs, the page is opened during it. Whoever the Party took there is recorded, players
+ * and watchers alike. */
+function recordRound(game, where) {
+  const round = String(where.session || game.id);
+  try {
+    if (localStorage.getItem('avrana-recent-round') === round) return;
+    localStorage.setItem('avrana-recent-round', round);
+  } catch { /* a phone that keeps nothing: remember() below keeps nothing either */ }
+  try { profile.remember(game); } catch { /* this phone keeps nothing */ }
 }
 
 function renderPhone() {
@@ -689,13 +897,13 @@ $('limited-mark').onclick = () => { if (!$('about-limited').open) $('about-limit
 $('about-close').onclick = () => $('about-limited').close();
 $('about-done').onclick = () => $('about-limited').close();
 // A tap outside either one closes it (the dialog element itself is only its backdrop and edge).
-for (const id of ['social', 'about-limited'])
+for (const id of SHEETS)
   $(id).addEventListener('click', (event) => { if (event.target === $(id)) $(id).close(); });
 $('home-name').onclick = () => openProfile();
 window.addEventListener('hashchange', () => {
   if (location.hash === '#diag') { location.replace('diag/'); return; }
   // The phone's Back, or a link: nothing stays open over a place that changed underneath it.
-  for (const id of ['social', 'about-limited']) if ($(id).open) $(id).close();
+  closeSheets();
   showPage(pageOf(location.hash), true);
 });
 $('chat-form').onsubmit = (event) => {
@@ -705,15 +913,48 @@ $('chat-form').onsubmit = (event) => {
   } else $('chat-feedback').textContent = 'Chat is not connected yet. Please try again.';
 };
 $('game-search').oninput = () => renderGames(false);
-$('game-players').onchange = () => renderGames(false);
 $('game-views').onclick = (event) => {
   const button = event.target.closest('button[data-view]');
+  if (button) setTab(button.dataset.view);
+};
+// The Library's two sheets. A choice shows at once behind the sheet; the view is kept on this phone.
+try { state.libView = viewOf(localStorage.getItem('avrana-library-view')); } catch { /* the medium grid */ }
+$('lib-filter').onclick = () => { if (!$('lib-filters').open) $('lib-filters').showModal(); };
+$('lib-view').onclick = () => { if (!$('lib-views').open) $('lib-views').showModal(); };
+$('filter-players').onclick = (event) => {
+  const button = event.target.closest('button[data-players]');
   if (!button) return;
-  state.view = button.dataset.view;
-  for (const item of $('game-views').querySelectorAll('button'))
-    item.setAttribute('aria-pressed', String(item === button));
+  state.filters = { ...state.filters, players: Number(button.dataset.players) };
   renderGames(false);
 };
+$('filter-screens').onclick = (event) => {
+  const button = event.target.closest('button[data-screen]');
+  if (!button) return;
+  state.filters = { ...state.filters, screen: button.dataset.screen };
+  renderGames(false);
+};
+$('filters-reset').onclick = () => { state.filters = { players: 0, screen: 'any' }; renderGames(false); };
+$('filters-show').onclick = () => $('lib-filters').close();
+$('filters-close').onclick = () => $('lib-filters').close();
+$('view-choices').onclick = (event) => {
+  const button = event.target.closest('button[data-v]');
+  if (!button) return;
+  state.libView = viewOf(button.dataset.v);
+  try { localStorage.setItem('avrana-library-view', state.libView); } catch { /* this phone keeps nothing */ }
+  renderGames(false);
+  $('lib-views').close();
+};
+$('views-close').onclick = () => $('lib-views').close();
+$('game-sheet-close').onclick = () => $('game-sheet').close();
+$('game-sheet').addEventListener('close', () => {
+  const id = state.openGame;
+  state.openGame = null;
+  $('game-card').replaceChildren();
+  // The browser hands focus back to the cover that opened it. When that cover was redrawn
+  // meanwhile (a favourite changed its row), the same title's cover takes it instead.
+  if (id && $('main').contains(document.activeElement)) return;
+  if (id && !$('main').hidden) $(state.openFrom)?.querySelector(`[data-game="${CSS.escape(id)}"]`)?.focus();
+});
 window.addEventListener('pagehide', () => { chat.close(); party.stop(); });
 
 $('retry').addEventListener('click', () => { boot(); });
