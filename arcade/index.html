@@ -144,7 +144,7 @@ async function arcadeState(){const ctl=new AbortController(),t=setTimeout(()=>ct
   if(s.party_managed&&s.state==='idle')return 'idle';
   if(s.error||s.emulator_running===false)return 'down';
   return Number.isInteger(s.players)&&Number.isInteger(s.max_players)&&s.players>=s.max_players?'full':null}catch(_){return null}finally{clearTimeout(t)}}
-const WORDS={full:'Both controllers are in use. Try again when one is free.',
+const WORDS={full:'All controllers are in use. Try again when one is free.',
  spectator:'You are a spectator for this Party session. No controller is available for spectators.',
  replaced:'Your controller is open in another tab. Tap Play here to take it back.',
  session:'This Party session has ended. Return to Party Home.',

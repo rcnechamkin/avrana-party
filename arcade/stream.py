@@ -40,7 +40,11 @@ from avrana.providers.uinput_gamepad import UInputGamepadProvider  # noqa: E402
 from avrana.party import managed as party_managed  # noqa: E402
 from avrana.party import protocol  # noqa: E402
 
-MAX_PLAYERS = 2  # P1 verified on a real phone over 5 GHz; raise beyond 2 only after a 2-phone test.
+# The controller seats: one uinput pad each and one RetroArch player each. The same four as the Game
+# Contract's players.max and input.slots and as RetroArch's input_max_users (tests keep them equal).
+# It was 2 while two phones was the most anyone had tried on the Pi. AVR-311 made it 4 before four
+# phones were tried: arcade/README.md ("Four controller seats") lists what that night must prove.
+MAX_PLAYERS = 4
 SEAT_GRACE_S = 60  # docs/design/PARTY-LIFECYCLE.md provisional SEAT_GRACE
 # Must match contracts/games/arcade-gauntlet2.json "input" and index.html's data-key buttons (tested).
 LAYOUT = ControllerLayout(buttons=('fire', 'magic', 'coin', 'start'), directions='dpad')
@@ -475,7 +479,7 @@ class Stream:
         if self.managed is None:
             slot = next((s for s in range(MAX_PLAYERS) if s not in self.reserved), None)
             if slot is None:
-                raise web.HTTPConflict(text='Player slot in use. Close the other controller first.')
+                raise web.HTTPConflict(text='Every player slot is in use. Close a controller you are not using first.')
             self.reserved.add(slot)
         ws = web.WebSocketResponse(max_msg_size=65536, heartbeat=5)
         try:
