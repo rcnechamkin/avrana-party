@@ -586,6 +586,23 @@ class X11Wrapper(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'cannot open PS1 display :99'):
             self.x11()
 
+    def test_a_display_that_is_not_local_is_refused_before_any_library_is_loaded(self):
+        """A name with a host in it makes XOpenDisplay connect to that machine over TCP. X11 is the one place
+        Xlib is called, so it refuses such a name itself and does not rely on the provider that builds it."""
+        loaded = []
+
+        def cdll(name):
+            loaded.append(name)
+            return self.cdll(name)
+        for bad in ('10.0.0.9:0', 'localhost:0', 'unix:0', '[::1]:0', 'tcp/host:6000', ':99;rm', '', ':', ':x',
+                    ':99\n', ':12345', None, b':99', 99):
+            with self.subTest(display=bad), self.assertRaisesRegex(ValueError, 'local X display'):
+                ps1.X11(bad, cdll=cdll)
+        self.assertEqual((loaded, self.calls), ([], []))
+        for good in (':0', ':99', ':99.0'):                           # a local one goes through
+            self.x11(good)
+        self.assertEqual(self.calls, [('XOpenDisplay', b':0'), ('XOpenDisplay', b':99'), ('XOpenDisplay', b':99.0')])
+
     def test_missing_libraries_are_an_error_that_names_them(self):
         del self.libs['libXtst.so.6']
         with self.assertRaisesRegex(RuntimeError, 'libX11.so.6 and libXtst.so.6'):

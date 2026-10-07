@@ -588,14 +588,24 @@ INFO = ProviderInfo(
     isolation='private')
 
 
+def _local_display(display):
+    """`display` if it names a display on this machine (":99"). A name with a host in it makes Xlib connect
+    to that machine over TCP, which no seat's keys are ever for."""
+    if not isinstance(display, str) or not DISPLAY_RE.fullmatch(display):
+        raise ValueError('display must be a local X display such as ":99"')
+    return display
+
+
 class X11:
     """One XTest connection to one display, by ctypes. The display is the PS1 instance's private
-    Xvfb and nothing else: the launcher that starts it knows its name and its cookie file.
+    Xvfb and nothing else: the launcher that starts it knows its name and its cookie file. A name that
+    is not a local display (":99") is refused here, before any library is loaded, whoever calls.
 
     Known limit, as in the donor: Xlib's default I/O error handler ends the whole process when the
     display goes away. Run the provider in the process that owns the display (ps1/README.md)."""
 
     def __init__(self, display, xauthority=None, *, cdll=None):
+        _local_display(display)
         import ctypes  # noqa: PLC0415 - only a machine that is about to press keys needs it
         load = ctypes.CDLL if cdll is None else cdll
         try:
@@ -780,8 +790,7 @@ class XTestKeysProvider:
 
     def __init__(self, display, xauthority=None, *, loop=None, clock=time.monotonic, sleep=time.sleep,
                  connect=None):
-        if not isinstance(display, str) or not DISPLAY_RE.fullmatch(display):
-            raise ValueError('display must be a local X display such as ":99"')
+        _local_display(display)
         self.display, self.xauthority = display, xauthority
         self._loop, self._clock, self._sleep = loop, clock, sleep
         self._connect = X11 if connect is None else connect
