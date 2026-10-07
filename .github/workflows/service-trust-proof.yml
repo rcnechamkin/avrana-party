@@ -1,16 +1,24 @@
-# Non-production proof for ADR 0016 (AVR-227): the systemd primitives the service trust boundary
-# relies on (DynamicUser, LoadCredential, state directories, Unix-socket permissions) behave as the
-# ADR says, and the boundary checker's collector reads a real dynamic-user unit. Runs on a
-# disposable runner, only when the proof, the key reader or the checker changes, or on demand.
-# It is evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md tiers).
+# Non-production proofs for ADR 0016, on disposable runners; each runs only when what it proves
+# changes, or on demand. They are evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md
+# tiers).
+#   proof        (AVR-227) the systemd primitives the service trust boundary relies on (DynamicUser,
+#                LoadCredential, state directories, Unix-socket permissions) behave as the ADR says,
+#                and the boundary checker's collector reads a real dynamic-user unit.
+#   native-game  (AVR-236) `provision-game standin` as root, then Party Core (its real units) launches
+#                and ends a session with the provisioned stand-in game over real socket activation
+#                and a real LoadCredential= key; boundary checker; rotate refused during a session;
+#                remove leaves nothing. Creates and removes users, units and /opt, /etc: runner only.
 name: Service trust proof
 
 on:
   pull_request:
     paths:
-      - 'experiments/service-trust/**'
-      - 'avrana/party/protocol.py'
-      - 'avrana/ops/boundary.py'
+      - 'avrana/**'
+      - 'contracts/**'
+      - 'deploy/**'
+      - 'ops/provision-game'
+      - 'experiments/**'
+      - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
   workflow_dispatch:
 
@@ -27,3 +35,13 @@ jobs:
           persist-credentials: false
       - name: systemd identity, credential and socket-permission checks
         run: sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
+
+  native-game:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: provision-game, a real session, the boundary checker, rotate and remove
+        run: sudo AVRANA_NATIVE_GAME_PROOF=1 bash experiments/native-game/proof.sh
