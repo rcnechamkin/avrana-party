@@ -359,6 +359,25 @@ capture prov standin --appliance "$fixture" --remove
 show 'second remove' "$out"
 check 'remove is repeatable and has nothing left to remove' 0 "$([[ $rc == 0 && $out == *'nothing to remove'* ]] && echo 0 || echo 1)"
 
+# ---- j2. Party Core stopped (maintenance) ----------------------------------------------------------------
+# A stopped Party Core has nothing to reload and reads the registry when it starts: none of the three
+# operations may fail on `systemctl reload` of an inactive unit.
+systemctl stop avrana-party-core.socket avrana-party-core.service
+t 'Party Core is stopped' nonzero systemctl is-active --quiet "$party"
+capture prov standin --appliance "$fixture"
+show 'provision, Party Core stopped' "$out"
+check 'provisioning with Party Core stopped exits 0' 0 "$rc"
+capture prov standin --appliance "$fixture" --rotate
+show 'rotate, Party Core stopped' "$out"
+check 'rotating with Party Core stopped exits 0' 0 "$rc"
+capture prov standin --appliance "$fixture" --remove
+show 'remove, Party Core stopped' "$out"
+check 'removing with Party Core stopped exits 0' 0 "$rc"
+t 'and left nothing: key, registry entry, drop-in' nonzero test -e "$key" -o -e "$entry" -o -e "$dropin_dir"
+t 'none of them started Party Core' nonzero systemctl is-active --quiet "$party"
+systemctl start avrana-party-core.socket avrana-party-core.service
+t 'Party Core starts again afterwards' 0 systemctl is-active --quiet "$party"
+
 # ---- k. summary ----------------------------------------------------------------------------------------
 echo "failed checks: $fails"
 [[ $fails == 0 ]]

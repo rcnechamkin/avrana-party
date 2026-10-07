@@ -42,6 +42,10 @@ reload), and never prints a key.
    and be writable by neither group nor others. Otherwise it refuses and names the path: "a native
    game runs only root-owned code (ADR 0016 section 2)". The grant's paths may not contain `.`,
    `..` or `//`. A dry run does not make this check.
+   What the check does not do: it looks at the path as written and at where it finally leads, not
+   at a link in the middle of a chain of links, and it does not look inside the working directory.
+   A release tree staged by `ops/deploy.sh` (one `current` link, files written by root) satisfies
+   both; anything else is the operator's to keep root-owned.
 4. The appliance profile (`contracts/appliances/avrana-pi4.json`) has a grant for the game with a
    `runtime`: `{"command": ["/usr/bin/python3", "-m", "..."], "working_directory": "/opt/..."}`.
    A grant without `runtime` is refused: there would be nothing to start.
@@ -81,6 +85,9 @@ root to read the key store": run it with `sudo`.
 
 **Maintenance.** To stop Party Core, stop `avrana-party-core.socket` as well as
 `avrana-party-core.service`: a game's report arrives on that socket and starts the service again.
+While Party Core is stopped the command still provisions, rotates and removes: there is nothing to
+reload, and Party Core reads the registry when it starts. A reload that fails while Party Core is
+running is still a failure.
 
 ## Verify
 

@@ -213,6 +213,40 @@ class Provisioning(unittest.TestCase):
         self.assertEqual(pg.remove('checkers', self.layout, self.run_, active=lambda slug: False),
                          ['registry', 'dropin', 'key'])
 
+    def test_a_stopped_party_core_is_not_a_failed_reload_but_a_running_one_that_refuses_is(self):
+        import subprocess
+        for stopped in (True, False):
+            for step in ('provision', 'rotate', 'remove'):
+                with self.subTest(stopped=stopped, step=step):
+                    calls = []
+
+                    def run(argv):
+                        calls.append(argv)
+                        if argv[1] == 'reload' or (argv[1] == 'is-active' and stopped):
+                            raise subprocess.CalledProcessError(3, argv)
+                    if step != 'provision':
+                        self.provision()
+                    do = {'provision': lambda r: pg.provision('checkers', self.layout, CONTRACTS, GRANTS, r, self.own),
+                          'rotate': lambda r: pg.rotate('checkers', self.layout, CONTRACTS, GRANTS, r, self.own, lambda s: False),
+                          'remove': lambda r: pg.remove('checkers', self.layout, r)}[step]
+                    if stopped:
+                        do(run)                              # Party Core reads the registry when it starts
+                        self.assertIn(['systemctl', 'is-active', '--quiet', 'avrana-party-core.service'], calls)
+                    else:
+                        with self.assertRaises(subprocess.CalledProcessError) as caught:
+                            do(run)
+                        self.assertEqual(caught.exception.cmd[:2], ['systemctl', 'reload'])
+                    pg.remove('checkers', self.layout, self.run_)
+
+    def test_party_core_is_asked_directly_never_through_an_environment_proxy(self):
+        import urllib.request
+        from unittest import mock
+        with mock.patch.object(urllib.request, 'build_opener') as build:
+            build.return_value.open.return_value = 'reply'
+            self.assertEqual(pg._direct_open('http://127.0.0.1:8191/x', 3), 'reply')
+        (handler,), _ = build.call_args
+        self.assertEqual((type(handler), handler.proxies), (urllib.request.ProxyHandler, {}))
+
     def test_a_second_remove_still_reloads_party_core_and_tolerates_a_failed_reload(self):
         import subprocess
         self.provision()
