@@ -129,7 +129,10 @@ moves over.
     `provision-game` writes it into the game's unit and refuses a grant without it. The first
     element and the directory are absolute, have no `.` or `..` component and no `//`, and
     contain no control character; the directory does not end in a backslash. Provisioning also
-    requires that code to be root-owned (docs/runbooks/provision-game.md).
+    requires that code to be root-owned (docs/runbooks/provision-game.md). The same drop-in hands
+    the game `AVRANA_PARTY_ORIGIN`, the Party's browser origin, taken from the `origins` of Party
+    Core's own configuration (AVR-303); it is not a grant or contract field, and provisioning
+    refuses when that configuration names no usable origin.
   - The entry is a same-origin path ending in `/`, outside `/party/`, `/admin/` and `/shared/`.
   - A grant can't give a permission its contract didn't request.
   - An installed game must be presentable to players on this box.

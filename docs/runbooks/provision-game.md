@@ -29,6 +29,12 @@ reload), and never prints a key.
    `/etc/avrana-party/party-core.json`. Without the `registry` key Party Core never sees a
    provisioned game, and the command says so and refuses. Rotation asks Party Core on
    loopback whether the game has a session, naming the first entry of Party Core's `hosts`.
+   The same file's `origins` is where a game learns its Party: the command writes the one entry
+   that is a bare `https://host[:port]` or `http://host[:port]` (lower case, no default port) into the game's drop-in as
+   `Environment=AVRANA_PARTY_ORIGIN=<origin>` (ADR 0013, AVR-303), which the game's server hands to
+   its page for the bridge shim. When no entry is usable, or more than one is, it refuses, naming the config file, and
+   writes nothing (a dry run too). Change `origins` and run the command again: the drop-in is
+   rewritten (reported as `dropin`) and a running game keeps its old value until it next stops.
 3. The game's code is under a root-owned path (a release tree, never a home directory), and its
    Game Contract is in `contracts/games/<slug>.json`. The command checks this before it writes
    anything: the grant's `command[0]` and `working_directory`, and every directory above each (a
