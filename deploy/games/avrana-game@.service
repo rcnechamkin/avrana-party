@@ -9,7 +9,7 @@
 # socket in $AVRANA_PARTY_SOCKET (owner decision, AVR-236). A sixth thing, the Party's browser
 # origin in $AVRANA_PARTY_ORIGIN (which a game page hands to the bridge shim, ADR 0013, AVR-303),
 # is NOT here: it is per appliance, so provision-game writes it into the same drop-in as the
-# command, from the `origins` of Party Core's own configuration, and refuses when there is none.
+# command, from the `origins` of Party Core's own configuration, and refuses when there is none or more than one.
 #
 # This file carries no ExecStart, by decision: what a given game runs, and from where, is the
 # `runtime` object of its appliance grant, which provision-game writes as a root-owned drop-in,

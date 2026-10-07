@@ -169,6 +169,7 @@ test('a refresh or retry on its way is waited for: no leaving on the old or fail
   const waiting = go.settled().then(() => { settled = true; });
   await new Promise((r) => setTimeout(r, 5));
   assert.equal(settled, false);                    // not settled while that ask is on its way
+  assert.equal(go.isSettled(), false);             // so the page decides nothing on the old answer
   release();
   await waiting;
   assert.deepEqual(go.get(), { [GAMES]: '*' });
@@ -180,6 +181,13 @@ test('never the Party host on another scheme, nor a host written with a trailing
   assert.equal(at('https://party.example.test.'), null);
   assert.equal(at('https://games.example.test.'), null);
   assert.equal(at('http://games.example.test', 'http://party.example.test'), 'http://games.example.test/games/g/');
+});
+
+test('every ask carries a time limit, so one that never answers cannot hold a phone', async () => {
+  let seen;
+  const go = createGameOrigins({ fetch: async (url, init) => { seen = init; throw new Error('down'); } });
+  await go.settled();
+  assert.ok(seen.signal instanceof AbortSignal);
 });
 
 test('no title is named by the shell code for this behavior', () => {

@@ -9,6 +9,7 @@
 export const BRIDGE_SCHEMA = 'avrana.party-bridge/v1';
 export const BRIDGE_URL = '/party/api/bridge';
 const RETRY_MS = 3000;
+const TIMEOUT_MS = 4000;      // an ask that never answers is a failed ask, not a phone left waiting
 
 /** A game origin as Party Core may register it: `http(s)://host[:port]` and nothing else (one
  * trailing slash is tolerated). Returns the canonical origin, or null. Strict on purpose: the
@@ -76,7 +77,7 @@ export function createGameOrigins({ fetch = globalThis.fetch.bind(globalThis), n
   async function attempt() {
     last = now();
     try {
-      const res = await fetch(BRIDGE_URL, { cache: 'no-store', credentials: 'same-origin' });
+      const res = await fetch(BRIDGE_URL, { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(TIMEOUT_MS) });
       const body = res.ok ? await res.json() : null;
       if (body && body.schema === BRIDGE_SCHEMA && body.origins && typeof body.origins === 'object'
           && !Array.isArray(body.origins)) { origins = body.origins; ok = true; } else { origins = null; ok = false; }
@@ -94,7 +95,8 @@ export function createGameOrigins({ fetch = globalThis.fetch.bind(globalThis), n
     /** Ask again only when the last answer failed (and not in the last few seconds). */
     retry() { if (!ok && !inflight && now() - last >= RETRY_MS) refresh(); },
     settled: () => inflight || (done ? Promise.resolve() : (refresh(), first)),
-    isSettled: () => done,
+    /** An answer is known and no newer one is on its way. */
+    isSettled: () => done && !inflight,
     get: () => origins,
     ok: () => ok,
   };
