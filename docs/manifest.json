@@ -130,8 +130,10 @@
     {"path": "docs/runbooks/party-https.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/party-load-test.md", "class": "runbook", "status": "proposed", "authority": "procedure"},
     {"path": "docs/runbooks/ps1-bomberman-party-test.md", "class": "runbook", "status": "experimental", "authority": "procedure"},
+    {"path": "docs/runbooks/ps1-titles.md", "class": "runbook", "status": "current", "authority": "procedure", "notes": "Owner checklist for the PS1 titles (AVR-309): what remains before anything launches. Not run; owner-only; no step is authorized by it.", "status_marker": "Status: **OWNER CHECKLIST, NOT RUN** (2026-10-07). No step here is authorized by this document."},
     {"path": "experiments/README.md", "class": "canonical", "status": "current", "authority": "reference"},
     {"path": "experiments/archive/diplomacy/README.md", "class": "archived", "status": "archived", "authority": "none"},
+    {"path": "ps1/README.md", "class": "canonical", "status": "current", "authority": "reference", "notes": "PS1 title profiles recovered as data (AVR-309); says what is and is not proven. Nothing launches.", "status_marker": "Status: **data and checks only; nothing here launches an emulator** (2026-10-07)."},
     {"path": "telemetry/README.md", "class": "runbook", "status": "current", "authority": "procedure"}
   ],
   "generated": [

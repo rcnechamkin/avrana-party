@@ -1025,5 +1025,59 @@ class CommandLine(ContentFixture):
         self.assertEqual(done.stderr, '')
 
 
+class Documentation(unittest.TestCase):
+    """The README and the runbook say what the code does and does not do; these keep the claims that can be
+    checked true. Whether the prose is right is for a reviewer."""
+
+    def read(self, path):
+        return (REPO_ROOT / path).read_text(encoding='utf-8')
+
+    def test_the_readme_says_nothing_launches_and_what_is_not_proven(self):
+        text = self.read('ps1/README.md')
+        self.assertIn('nothing here launches an emulator', text.splitlines()[2])
+        self.assertIn('4b8fa60afecb4868be0816f4b908b752bc33296d', text)
+        for unproven in ('Real iPhones', 'Audio', 'The arcade stopped', 'Worms in the Party flow', 'Five players',
+                         'A TV', 'The XTest code against a real X server'):
+            self.assertIn(f'**{unproven}', text)
+        for name in (ps1.ENV_CONTENT, ps1.ENV_CORE, 'AVR-310'):
+            self.assertIn(name, text)
+
+    def test_the_readme_hashes_are_the_hashes_of_the_files_it_lists(self):
+        rows = re.findall(r'^\| `([^`]+)` \| `ps1/[^`]+` \| `([0-9a-f]{64})` \|$', self.read('ps1/README.md'), re.M)
+        self.assertEqual(sorted(name for name, _ in rows),
+                         ['evidence/selected-core.json', 'mode-xvfb.cfg', 'retroarch.cfg', 'titles/bomberman.json',
+                          'titles/worms.json'])
+        for name, digest in rows:
+            self.assertEqual(hashlib.sha256((ps1.PS1_DIR / name).read_bytes()).hexdigest(), digest, name)
+
+    def test_the_runbook_authorizes_nothing_and_covers_every_owner_step(self):
+        text = self.read('docs/runbooks/ps1-titles.md')
+        self.assertIn('No step here is authorized by this document', text.splitlines()[2])
+        headings = [h.lower() for h in re.findall(r'^### \d\. (.*)$', text, re.M)]
+        self.assertEqual(len(headings), 8)
+        for word, heading in zip(('content', 'pin check', 'unit', 'route', 'grant', 'party core', 'arcade stopped',
+                                  'real-phone'), headings):
+            self.assertIn(word, heading)
+        self.assertIn('sha256sum', text)                                   # the core pin verification command
+        for title in ps1.available():
+            self.assertIn(f'python3 -m avrana.providers.ps1 check {title}', text)
+
+    def test_the_runbook_lists_every_failure_code_the_check_can_give(self):
+        text = self.read('docs/runbooks/ps1-titles.md')
+        for code in ps1.FAILURES:
+            self.assertTrue(f'| `{code}` |' in text, f'{code} has no row in the runbook table')
+        listed = re.findall(r'^\| `([a-z_]+)` \|', text, re.M)
+        self.assertEqual(sorted(listed), sorted(ps1.FAILURES))
+
+    def test_the_manifest_classifies_both_documents(self):
+        entries = {e['path']: e for e in json.loads(self.read('docs/manifest.json'))['documents']}
+        runbook = entries['docs/runbooks/ps1-titles.md']
+        self.assertEqual((runbook['class'], runbook['status'], runbook['authority']), ('runbook', 'current', 'procedure'))
+        readme = entries['ps1/README.md']
+        self.assertEqual((readme['class'], readme['status'], readme['authority']), ('canonical', 'current', 'reference'))
+        for entry in (runbook, readme):                                      # the marker pins the "nothing launches" claim
+            self.assertIn(entry['status_marker'], self.read(entry['path']).splitlines()[:20])
+
+
 if __name__ == '__main__':
     unittest.main()
