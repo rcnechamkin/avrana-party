@@ -1,24 +1,24 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from '@playwright/test';
+import { serverMaxPlayers } from './lib/soak-driver';
 
 /**
- * Two-player slot behaviour (Chromium / WebRTC), using two independent browser
- * contexts as stand-ins for two phones.
+ * Controller slot behaviour (Chromium / WebRTC), using independent browser contexts as stand-ins
+ * for phones.
  *
- * LIMITATION: two Chromium clients on this laptop are NOT two real phones on the
- * Wi-Fi — this validates the SERVER's slot logic (distinct assignment, MAX_PLAYERS
- * rejection, slot release/reclaim) and that one shared encode feeds two
- * independent peers. Two real iPhones over 5 GHz remain authoritative before
- * raising MAX_PLAYERS beyond 2.
+ * LIMITATION: Chromium clients on this laptop are NOT real phones on the Wi-Fi. This validates the
+ * SERVER's slot logic (distinct assignment, MAX_PLAYERS rejection, slot release/reclaim) and that
+ * one shared encode feeds independent peers. Real phones over 5 GHz remain authoritative: two were
+ * tried; four, the cap since AVR-311, have not been (arcade/README.md, "Four controller seats").
  *
- * The appliance has MAX_PLAYERS=2, so these run serially and always tear down
- * their contexts to hand slots back.
+ * The number of seats is what the appliance reports at /arcade/stats, not a number written here.
+ * These run serially and always tear down their contexts to hand slots back.
  */
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Arcade multiplayer slots (Chromium)', () => {
   test.skip(
     ({ browserName }) => browserName !== 'chromium',
-    'WebRTC media is Chromium-only here; two real phones are authoritative for the 2-player claim.',
+    'WebRTC media is Chromium-only here; real phones are authoritative for the multi-phone claim.',
   );
 
   async function connect(page: Page): Promise<number> {
@@ -51,65 +51,75 @@ test.describe('Arcade multiplayer slots (Chromium)', () => {
     }
   }
 
-  test('two clients get distinct slots, both stream, and a third is rejected', async ({ browser, page }) => {
-    test.setTimeout(120_000);
-    const ctxB = await browser.newContext();
-    const pageB = await ctxB.newPage();
-    try {
-      const slotA = await connect(page);
-      const slotB = await connect(pageB);
-      // Distinct, valid slots — one Player 1 and one Player 2.
-      expect([slotA, slotB].slice().sort()).toEqual([1, 2]);
+  /** One client too many, while every slot is held: turned away before it has a controller. */
+  async function expectRejected(page: Page) {
+    await page.goto('/arcade/');
+    await page.locator('#connect').click();
+    await expect(page.locator('#status')).toContainText(/slot|in use|free/i, { timeout: 20_000 });
+    await expect(page.locator('[data-key="coin"]')).toBeDisabled();
+  }
 
-      // One shared encode feeds both peers: both video surfaces actually decode.
-      await expect.soft(page.locator('#start-overlay'), 'client A video').toBeHidden({ timeout: 20_000 });
-      await expect.soft(pageB.locator('#start-overlay'), 'client B video').toBeHidden({ timeout: 20_000 });
+  /** The page the fixture gives, and one more context and page for each other seat. */
+  async function clients(browser: Browser, page: Page, seats: number) {
+    const contexts = await Promise.all(Array.from({ length: seats - 1 }, () => browser.newContext()));
+    const pages = [page, ...(await Promise.all(contexts.map((ctx) => ctx.newPage())))];
+    return { contexts, pages };
+  }
+
+  const oneToN = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+
+  test('every seat gets a distinct slot, all stream, and one more client is rejected', async ({ browser, page, request }) => {
+    test.setTimeout(240_000);
+    const seats = await serverMaxPlayers(request);
+    const { contexts, pages } = await clients(browser, page, seats);
+    try {
+      const slots: number[] = [];
+      for (const p of pages) slots.push(await connect(p));
+      // Distinct, valid slots: Player 1 to Player N, one each.
+      expect(slots.slice().sort((a, b) => a - b)).toEqual(oneToN(seats));
+
+      // One shared encode feeds every peer: every video surface actually decodes.
+      for (const [i, p] of pages.entries()) {
+        await expect.soft(p.locator('#start-overlay'), `client ${i + 1} video`).toBeHidden({ timeout: 20_000 });
+      }
 
       // Independent control paths.
-      await inputAckBestEffort(page, 'A');
-      await inputAckBestEffort(pageB, 'B');
+      for (const [i, p] of pages.entries()) await inputAckBestEffort(p, String(i + 1));
 
-      // Third client while both slots are held -> rejected before the WS opens.
-      const ctxC = await browser.newContext();
-      const pageC = await ctxC.newPage();
+      const extra = await browser.newContext();
       try {
-        await pageC.goto('/arcade/');
-        await pageC.locator('#connect').click();
-        await expect(pageC.locator('#status')).toContainText(/slot|in use|free/i, { timeout: 20_000 });
-        await expect(pageC.locator('[data-key="coin"]')).toBeDisabled();
+        await expectRejected(await extra.newPage());
       } finally {
-        await ctxC.close();
+        await extra.close();
       }
     } finally {
-      await ctxB.close();
+      for (const ctx of contexts) await ctx.close();
       await page.locator('#leave').click().catch(() => {});
     }
   });
 
-  test('a freed slot is reclaimed by a new client', async ({ browser, page }) => {
-    test.setTimeout(120_000);
-    const ctxB = await browser.newContext();
-    const pageB = await ctxB.newPage();
+  test('a freed slot is reclaimed by a new client', async ({ browser, page, request }) => {
+    test.setTimeout(240_000);
+    const seats = await serverMaxPlayers(request);
+    const { contexts, pages } = await clients(browser, page, seats);
     try {
-      const slotA = await connect(page);
-      const slotB = await connect(pageB);
-      expect([slotA, slotB].slice().sort()).toEqual([1, 2]);
+      const slots: number[] = [];
+      for (const p of pages) slots.push(await connect(p));
+      expect(slots.slice().sort((a, b) => a - b)).toEqual(oneToN(seats));
 
       // Client A leaves, freeing its slot.
       await page.locator('#leave').click();
       await expect(page.locator('#connect')).toBeEnabled();
 
-      // A fresh client reclaims exactly the freed slot (B still holds the other).
-      const ctxC = await browser.newContext();
-      const pageC = await ctxC.newPage();
+      // A fresh client reclaims exactly the freed slot (every other client still holds its own).
+      const fresh = await browser.newContext();
       try {
-        const slotC = await connect(pageC);
-        expect(slotC).toBe(slotA);
+        expect(await connect(await fresh.newPage())).toBe(slots[0]);
       } finally {
-        await ctxC.close();
+        await fresh.close();
       }
     } finally {
-      await ctxB.close();
+      for (const ctx of contexts) await ctx.close();
     }
   });
 });

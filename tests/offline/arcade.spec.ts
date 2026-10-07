@@ -41,7 +41,9 @@ async function fakeTransport(page: Page) {
     (window as any).__sockets = sockets;
     // Knobs for tests: delay the remote description (a slow signalling step), make every new
     // socket fail at once (the arcade is gone), have the arcade refuse because its video is not
-    // flowing (stream.py's "no-media"), or leave ICE hanging so the peer never connects.
+    // flowing (stream.py's "no-media"), leave ICE hanging so the peer never connects, or hand this
+    // phone another of the arcade's controller slots (1 to 4: the arcade chooses, the page shows).
+    (window as any).__slot = 1;
     (window as any).__slowOfferMs = 0;
     (window as any).__refuseSockets = false;
     (window as any).__noMedia = false;
@@ -70,7 +72,7 @@ async function fakeTransport(page: Page) {
             this.onclose?.({ code: 1000 });
             return;
           }
-          this.onmessage?.({ data: JSON.stringify({ type: 'player', slot: 1 }) });
+          this.onmessage?.({ data: JSON.stringify({ type: 'player', slot: (window as any).__slot }) });
           this.onmessage?.({ data: JSON.stringify({ type: 'offer', sdp: 'v=0 fake' }) });
         }, 20);
       }
@@ -120,7 +122,7 @@ test('Party admission fetches a fresh authenticated game ticket before each sock
   await fakeTransport(page);
   let tickets = 0;
   await page.route('**/arcade/stats', route => route.fulfill({ json: {
-    party_managed: true, state: 'running', players: 0, max_players: 2, emulator_running: true,
+    party_managed: true, state: 'running', players: 0, max_players: 4, emulator_running: true,
   } }));
   await page.route('**/party/api/session/ticket', async route => {
     expect(route.request().method()).toBe('POST');
@@ -193,11 +195,43 @@ test('a full game says so, and the screen lock is let go', async ({ page }) => {
   await arcade(page, 'full');
   await open(page);
   await page.locator('#connect').click();   // no fake transport: the real socket fails like a 409
-  await expect(page.locator('#status')).toHaveText('Both controllers are in use. Try again when one is free.');
+  await expect(page.locator('#status')).toHaveText('All controllers are in use. Try again when one is free.');
   await expect(page.locator('#status')).toContainText(/slot|in use|free/i);  // the live harness's rejection check
   await expect(page.locator('[data-key="coin"]')).toBeDisabled();
   await expect(page.locator('#connect')).toBeEnabled();
   expect(await page.evaluate(() => (window as any).__wake)).toMatchObject({ requests: 1, held: 0 });
+});
+
+test('full is the arcade’s own count of its own controllers, whatever that number is', async ({ page }) => {
+  // three of four in use is not full; four of four is; the page never knew either number
+  for (const [players, max, full] of [[3, 4, false], [4, 4, true], [2, 2, true]] as const) {
+    await page.route('**/arcade/stats', (route) => route.fulfill({ json: { players, max_players: max, error: null, emulator_running: true } }));
+    await open(page);
+    await page.locator('#connect').click();   // no fake transport: the real socket fails like a refused one
+    await expect(page.locator('#status'), `${players} of ${max}`).toHaveText(full
+      ? 'All controllers are in use. Try again when one is free.'
+      : 'Can’t connect right now. Stay on the Avrana Party Wi-Fi, then tap Play.');
+    await page.unroute('**/arcade/stats');
+  }
+});
+
+test('each of the four controller slots is shown as its own Player, and Leave puts the title back', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  for (const slot of [1, 2, 3, 4]) {
+    await page.evaluate((n) => { (window as any).__slot = n; }, slot);   // the slot the arcade hands this phone
+    await page.locator('#connect').click();
+    await expect(page.locator('#status')).toHaveText(`Player ${slot} connected. Add a coin to join.`);
+    await expect(page.locator('h1')).toHaveText(`Avrana Party · Player ${slot}`);
+    for (const key of ['up', 'down', 'left', 'right', 'fire', 'magic', 'coin', 'start']) {
+      await expect(page.locator(`[data-key="${key}"]`), `${key} as Player ${slot}`).toBeEnabled();
+    }
+    await page.locator('#leave').click();
+    await expect(page.locator('#status')).toHaveText('You left the game. Tap Play to join again.');
+    await expect(page.locator('h1')).toHaveText('Avrana Party · Gauntlet II');
+    await expect(page.locator('#connect')).toBeEnabled();
+  }
+  expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(4);   // one connection per Play
 });
 
 test('a failed first connection is not called "full"', async ({ page }) => {
@@ -363,7 +397,7 @@ test('a stopped arcade (the Pi answers, the game does not) is named as such', as
 test('a Party-managed arcade that the host has not started says who starts it (AVR-134)', async ({ page }) => {
   await arcade(page, 'down');
   await page.route('**/arcade/stats', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-    body: JSON.stringify({ players: 0, max_players: 2, error: null, emulator_running: false, state: 'idle', party_managed: true }) }));
+    body: JSON.stringify({ players: 0, max_players: 4, error: null, emulator_running: false, state: 'idle', party_managed: true }) }));
   await open(page);
   await page.locator('#connect').click();   // the arcade answers 503: nothing runs until the host starts it
   await expect(page.locator('#status')).toHaveText('Gauntlet II isn’t on right now. The Party Host starts it for everyone from Party Home.');
