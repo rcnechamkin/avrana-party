@@ -618,6 +618,18 @@ test('a phone 641 to 700 px tall needs no scroll: the picture gives way by the p
   expect(m.scrollH, 'nothing to scroll').toBeLessThanOrEqual(m.vh);
 });
 
+test('the bar stays one slim row on the narrowest phone that shows Sound and Leave in words', async ({ page }) => {
+  await page.setViewportSize({ width: 377, height: 700 });       // 376 px and under show icons only
+  await connected(page);
+  const m = await page.evaluate(() => {
+    const r = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
+    return { bar: r('.bar').height, h1: r('h1'), who: r('#who'), leave: r('#leave') };
+  });
+  expect(m.bar, 'one slim row, the heading floor never pushes the actions under it').toBeLessThanOrEqual(56);
+  expect(m.who.right, 'the seat mark is inside the heading').toBeLessThanOrEqual(m.h1.right + 0.5);
+  expect(m.leave.right, 'and Leave inside the phone').toBeLessThanOrEqual(377);
+});
+
 test('with text at 200% the seat mark is not pushed under Sound or cut off, and the Host End stays in the footer', async ({ page }) => {
   await connected(page);
   await page.evaluate(() => {
