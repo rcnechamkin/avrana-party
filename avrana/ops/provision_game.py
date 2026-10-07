@@ -50,6 +50,7 @@ PARTY_USER = 'avrana-party'
 PHASE_1_GROUPS = ('avrana-front', 'avrana-games')
 DEFAULT_PARTY_URL = 'http://127.0.0.1:8191'
 STATUS_PATH = '/party/api/status'
+PARTY_CONFIG = '/etc/avrana-party/party-core.json'
 STATUS_SETTLE_S = 6.0          # longer than Party Core's status cache (avrana.ops.status.CACHE_S)
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 
@@ -328,7 +329,8 @@ def session_game(doc):
     return None if session.get('state') == 'ended' else session['game']
 
 
-def party_session_check(base_url, opener=urllib.request.urlopen, timeout=3, settle=0.0, sleep=time.sleep):
+def party_session_check(base_url, opener=urllib.request.urlopen, timeout=3, settle=0.0, sleep=time.sleep,
+                        host=None):
     """An `active(slug)` for `rotate`. Party Core unreachable means no party and so no session
     (it is memory-only): rotation proceeds. Reachable but unreadable is refused.
 
@@ -336,6 +338,9 @@ def party_session_check(base_url, opener=urllib.request.urlopen, timeout=3, sett
     "no session" can be older than a launch. With `settle` above that cache's age, a "no session"
     is asked again after waiting that long, and only two in a row count."""
     url = base_url.rstrip('/') + STATUS_PATH
+    # Party Core answers only for a Host it is configured with (party-core.json `hosts`), also on
+    # loopback; `host` is that name, as ops.smoke sends it.
+    target = urllib.request.Request(url, headers={'Host': host}) if host else url
 
     def active(slug):
         first = look(slug)
@@ -348,7 +353,7 @@ def party_session_check(base_url, opener=urllib.request.urlopen, timeout=3, sett
         """True: this game has a session. False: Party Core says it has none. None: Party Core
         is not there, so there is no party."""
         try:
-            with opener(url, timeout=timeout) as response:
+            with opener(target, timeout=timeout) as response:
                 doc = json.loads(response.read().decode('utf-8'))
         except urllib.error.HTTPError as e:
             raise Refused(f'Party Core answered HTTP {e.code}; not rotating') from None
@@ -389,6 +394,34 @@ def real_own(path):
     os.chown(path, uid, gid)
 
 
+def check_party_reads(config_path, registry_dir):
+    """Refuse to provision when Party Core would never see the game: its config must name this
+    registry directory (`registry` in party-core.json). Installing that key and Party Core's
+    socket unit is a one-time owner deployment (docs/runbooks/provision-game.md), not this
+    command's: it never edits Party Core's config."""
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            conf = json.load(f)
+    except (OSError, ValueError) as e:
+        raise Refused(f"Party Core's config {config_path} is unreadable ({type(e).__name__})") from None
+    named = conf.get('registry') if isinstance(conf, dict) else None
+    if not isinstance(named, str) or Path(named) != Path(registry_dir):
+        raise Refused(f'the Party Core config {config_path} does not name the registry directory '
+                      f'("registry": "{Path(registry_dir).as_posix()}"); it would never see this game')
+
+
+def party_host(config_path):
+    """The first Host name Party Core answers for (party-core.json `hosts`), or None when the
+    config cannot say: the query then goes out with the loopback address as its Host."""
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            hosts = json.load(f).get('hosts')
+    except (OSError, ValueError, AttributeError):
+        return None
+    ok = isinstance(hosts, list) and hosts and isinstance(hosts[0], str) and re.fullmatch(r'[A-Za-z0-9.:\[\]-]{1,255}', hosts[0])
+    return hosts[0] if ok else None
+
+
 def _default_layout(a):
     tree = Path(__file__).resolve().parent.parent.parent
     d = lambda value, default: Path(value or default)
@@ -419,7 +452,7 @@ def _parser():
     ap.add_argument('--dry-run', action='store_true', help='print what would change; change nothing')
     ap.add_argument('--appliance', help='the appliance grant file (default: contracts/appliances/avrana-pi4.json)')
     ap.add_argument('--party-url', default=DEFAULT_PARTY_URL, help=f'Party Core on loopback (default {DEFAULT_PARTY_URL})')
-    for name in ('key-dir', 'registry-dir', 'socket-dir', 'state-dir', 'unit-dir', 'template-dir'):
+    for name in ('key-dir', 'registry-dir', 'socket-dir', 'state-dir', 'unit-dir', 'template-dir', 'party-config'):
         ap.add_argument(f'--{name}', help=argparse.SUPPRESS)
     return ap
 
@@ -458,10 +491,13 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
         own = own or real_own
         if own is real_own and not a.dry_run:
             _phase_1()                                       # before anything is written
+            if not a.remove and not a.rotate:
+                check_party_reads(a.party_config or PARTY_CONFIG, layout.registry_dir)
         # The real query waits out Party Core's status cache before a rotation; a dry run and an
         # injected opener do not.
         active = party_session_check(a.party_url, opener or urllib.request.urlopen,
-                                     settle=STATUS_SETTLE_S if opener is None and not a.dry_run else 0.0)
+                                     settle=STATUS_SETTLE_S if opener is None and not a.dry_run else 0.0,
+                                     host=party_host(a.party_config or PARTY_CONFIG) if opener is None else None)
         if a.remove:
             changes = (plan_remove(a.slug, layout, a.keep_state) if a.dry_run
                        else remove(a.slug, layout, run or _real_run, a.keep_state))

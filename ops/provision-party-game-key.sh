@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Create the per-game session key that Party Core and that game's server share (ADR 0006 D5).
+# For the legacy LAN Games and arcade keys only. A native game's key, registry entry, socket and
+# unit are made by `ops/provision-game <slug>` (AVR-236, docs/runbooks/provision-game.md); do not
+# use this script for one.
 # Pi only, run by the owner:
 #
 #   sudo bash ops/provision-party-game-key.sh bluff

@@ -269,6 +269,36 @@ class SessionQuery(unittest.TestCase):
         self.assertTrue(active('bluff'))
         self.assertEqual(asked[0], 'http://127.0.0.1:8191/party/api/status')
 
+    def test_provisioning_is_refused_when_party_core_does_not_read_the_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf, registry = Path(tmp) / 'party-core.json', Path(tmp) / 'games.d'
+            with self.assertRaisesRegex(pg.Refused, 'unreadable'):
+                pg.check_party_reads(conf, registry)
+            for doc in ({}, {'registry': None}, {'registry': str(registry) + 'x'}, []):
+                conf.write_text(json.dumps(doc), encoding='utf-8')
+                with self.assertRaisesRegex(pg.Refused, 'does not name the registry'):
+                    pg.check_party_reads(conf, registry)
+            conf.write_text(json.dumps({'registry': str(registry)}), encoding='utf-8')
+            pg.check_party_reads(conf, registry)
+
+    def test_the_query_names_the_host_party_core_answers_for(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / 'party-core.json'
+            self.assertIsNone(pg.party_host(conf))
+            for hosts in (None, [], [7], ['bad host']):
+                conf.write_text(json.dumps({'hosts': hosts}), encoding='utf-8')
+                self.assertIsNone(pg.party_host(conf))
+            conf.write_text(json.dumps({'hosts': ['party.avrana.net', '10.42.0.1']}), encoding='utf-8')
+            self.assertEqual(pg.party_host(conf), 'party.avrana.net')
+        asked = []
+
+        def opener(request, timeout):
+            asked.append(request)
+            return Response(status_with('bluff'))
+        self.assertTrue(pg.party_session_check('http://127.0.0.1:8191', opener, host='party.avrana.net')('bluff'))
+        self.assertEqual(asked[0].full_url, 'http://127.0.0.1:8191/party/api/status')
+        self.assertEqual(asked[0].get_header('Host'), 'party.avrana.net')
+
     def test_a_no_session_answer_is_asked_again_after_the_status_cache(self):
         """Party Core's status is cached for a few seconds: a launch can be newer than the first
         answer. With `settle`, only two "no session" answers in a row let a rotation go on."""
