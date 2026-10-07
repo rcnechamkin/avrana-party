@@ -337,6 +337,37 @@ class ControllerBehaviour(unittest.TestCase):
         self.assertEqual(self.x11.keys(), [('z', False), ('x', False)])
         self.assertEqual(self.loop.pending(), [])
 
+    def test_a_release_that_waits_rides_the_timer_already_pending_late_but_never_early(self):
+        """The limit ps1/README.md states. A seat has one release timer and it is not moved to an earlier time,
+        so a key whose hold ends before that timer goes up when it fires: late, by less than MIN_HOLD, and never
+        before its own hold has ended. If the timer is changed, this test and that README line change together."""
+        start, went_up, key = self.clock.now, {}, self.x11.key
+
+        def noting(code, down):
+            key(code, down)
+            if not down:
+                went_up[self.x11.names[code]] = self.clock.now - start
+        self.x11.key = noting
+        pad = self.seat(0, FULL)
+        went_up.clear()                              # opening a seat releases its whole bank: not what is measured
+        pad.set_state(['cross'])                     # cross goes down at 0 ms: its hold ends at 40 ms
+        self.loop.run(0.039)
+        pad.set_state(['cross', 'circle'])           # circle goes down at 39 ms: its hold ends at 79 ms
+        self.loop.run(0.0005)
+        pad.set_state(['cross'])                     # circle is let go at 39.5 ms: its release waits, on a timer for 79 ms
+        self.loop.run(0.0003)
+        pad.set_state([])                            # cross is let go at 39.8 ms, 0.2 ms short of its own hold
+        (timer,) = self.loop.pending()               # still the one timer, and it did not move to 40 ms
+        self.assertAlmostEqual(timer.when - start, 0.079, places=9)
+        self.loop.run(0.0386)                        # 78.4 ms: cross's hold ended 38 ms ago, and the key is still down
+        self.assertEqual((went_up, self.x11.down_now()), ({}, {'z', 'x'}))
+        self.loop.run(0.0007)                        # 79.1 ms: the timer has fired and both go up
+        self.assertEqual((sorted(went_up), self.x11.down_now(), self.loop.pending()), (['x', 'z'], set(), []))
+        late = went_up['z'] - ps1.MIN_HOLD           # cross was due at 40 ms and went up at 79 ms
+        self.assertAlmostEqual(late, 0.039, places=6)
+        self.assertTrue(0 < late < ps1.MIN_HOLD)     # late, but by less than a whole hold, and never early
+        self.assertGreaterEqual(went_up['x'], 0.079 - 1e-9)
+
     def test_without_an_event_loop_the_caller_waits_out_the_hold_and_no_longer(self):
         provider = ps1.XTestKeysProvider(':99', connect=lambda display, authority: self.x11, clock=self.clock,
                                          sleep=self.clock.advance)
