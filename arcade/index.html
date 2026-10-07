@@ -40,6 +40,7 @@
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   /* Control geometry is in px on purpose: it has to fit a phone whatever the text size is. */
   --cell: 60px; --fire: 80px; --magic: 64px; --gap: 12px;
+  --rest: 440px;   /* what the page needs beside the picture, hint shown (368px with it hidden, below) */
 }
 @media (prefers-contrast: more) {
   :root { --color-muted: #d2cfcb; --color-faint: #b9b6b3; --color-line: rgb(255 255 255 / 0.3);
@@ -110,8 +111,8 @@ html[data-avrana-party="on"] #home { display: none; }
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0.75rem; }
 .stage { position: relative; align-self: center; }
 /* As wide as the phone, less only where the window is too short to keep the controls on screen
-   under it (a small phone, a laptop): 368px is what the rest of the page needs. */
-.stage { width: min(100%, max(200px, calc((100vh - 368px) * 4 / 3))); width: min(100%, max(200px, calc((100dvh - 368px) * 4 / 3))); }
+   under it (a small phone, a laptop, a tablet sideways): --rest is what the rest of the page needs. */
+.stage { width: min(100%, max(200px, calc((100vh - var(--rest)) * 4 / 3))); width: min(100%, max(200px, calc((100dvh - var(--rest)) * 4 / 3))); }
 .screen { position: relative; aspect-ratio: 4 / 3; background: #000; touch-action: none; }
 video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }   /* absolute: WebKit resolves 100% inside an aspect-ratio box less surely */
 .start-overlay {
@@ -193,7 +194,7 @@ body[data-link="idle"] #status { color: var(--color-muted); }
 #details { margin: 0.5rem max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); color: var(--color-muted); }
 #details summary { display: flex; align-items: center; min-height: 2.75rem; cursor: pointer; }
 #metrics { margin: 0; font: 0.75rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
-@media (orientation: portrait) and (max-height: 700px) { .hint { display: none; } main { padding-bottom: 0; } .controls { row-gap: 8px; } }
+@media (orientation: portrait) and (max-height: 700px) { :root { --rest: 368px; } .hint { display: none; } main { padding-bottom: 0; } .controls { row-gap: 8px; } }
 @media (orientation: portrait) and (max-height: 640px) { :root { --cell: 52px; } }
 
 /* Sideways on a phone: the picture takes the whole height under a slim bar, the controls float
