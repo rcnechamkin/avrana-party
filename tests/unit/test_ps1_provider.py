@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -74,6 +75,46 @@ def link_directory(target, link):
         if made.returncode == 0:
             return
     raise unittest.SkipTest('this host can create neither a symbolic link nor a junction')
+
+
+# The audit event `open` is raised by every way Python opens a file: open(), io.open, Path.open,
+# Path.read_bytes and read_text, os.open, io.FileIO (os.stat, os.listdir and os.scandir raise none). Patching
+# builtins.open sees open() alone, so a read through Path.read_bytes() would pass it. Audit hooks cannot be
+# removed: one is installed for good when this module is imported, and it records only for a thread that is
+# inside recording_opens(), on whichever of the blocks are open.
+_RECORDERS = []     # (thread id, list of paths) for each block that is recording; empty the rest of the time
+
+
+def _record_open(event, args):
+    if event == 'open' and _RECORDERS:
+        me = threading.get_ident()
+        for thread, paths in _RECORDERS:
+            if thread == me:
+                paths.append(args[0])
+
+
+sys.addaudithook(_record_open)
+
+
+@contextlib.contextmanager
+def recording_opens():
+    """What this thread opens inside the block, as a list: the first argument of each `open` audit event, which is
+    the path (a str, bytes or path-like object) or the file descriptor."""
+    paths = []
+    entry = (threading.get_ident(), paths)
+    _RECORDERS.append(entry)
+    try:
+        yield paths
+    finally:
+        _RECORDERS.remove(entry)
+
+
+def opened_path(opened):
+    """What an `open` event named, in a form to compare: an absolute, normalized path (the file descriptor of an
+    already open file is kept apart, as a name that no path equals)."""
+    if isinstance(opened, int):
+        return f'<file descriptor {opened}>'
+    return os.path.normcase(os.path.realpath(os.fsdecode(opened)))
 
 
 class FakeX11:
@@ -508,9 +549,13 @@ class ProviderBehaviour(unittest.TestCase):
         self.assertIsNone(provider._x11)
 
     def test_the_module_imports_and_describes_itself_without_x(self):
-        code = 'import avrana.providers.ps1 as ps1; print(ps1.INFO.isolation, len(ps1.BANKS))'
-        done = subprocess.run([sys.executable, '-c', code], cwd=REPO_ROOT, capture_output=True, text=True)
-        self.assertEqual((done.returncode, done.stdout.strip()), (0, 'private 4'), done.stderr)
+        """Importing it loads no foreign-function code: not libX11, and not ctypes either (a top-level import
+        would survive a test that only patches ctypes.CDLL). -S keeps the site customizations of the machine,
+        which may import anything, out of the answer."""
+        code = ('import sys; import avrana.providers.ps1 as ps1; '
+                'print(ps1.INFO.isolation, len(ps1.BANKS), "ctypes" in sys.modules)')
+        done = subprocess.run([sys.executable, '-S', '-c', code], cwd=REPO_ROOT, capture_output=True, text=True)
+        self.assertEqual((done.returncode, done.stdout.strip()), (0, 'private 4 False'), done.stderr)
 
 
 class FakeLib:
@@ -655,6 +700,53 @@ class RunningEventLoop(unittest.IsolatedAsyncioTestCase):
 
 
 # --- the owner's content ----------------------------------------------------------------------
+
+class OpenRecorder(unittest.TestCase):
+    """The recorder the content test relies on: it sees every way of opening a file, and a look is not one."""
+
+    def test_it_sees_every_way_of_opening_a_file_and_not_a_look(self):
+        with tempfile.TemporaryDirectory() as folder:
+            image = Path(folder) / 'game.bin'
+            image.write_bytes(b'x')
+            ways = {
+                'open': lambda: open(image, 'rb').close(),
+                'io.open': lambda: io.open(image, 'rb').close(),
+                'Path.open': lambda: image.open('rb').close(),
+                'Path.read_bytes': image.read_bytes,
+                'Path.read_text': lambda: image.read_text(encoding='utf-8'),
+                'os.open': lambda: os.close(os.open(image, os.O_RDONLY)),
+                'io.FileIO': lambda: io.FileIO(image).close(),
+            }
+            for name, way in ways.items():
+                with self.subTest(way=name), recording_opens() as opened:
+                    way()
+                self.assertEqual({opened_path(path) for path in opened}, {opened_path(image)})
+            with recording_opens() as opened:
+                image.stat()
+                image.exists()
+                image.is_file()
+                os.stat(image)
+                os.path.getsize(image)
+                os.listdir(folder)
+                list(os.scandir(folder))
+                list(Path(folder).iterdir())
+            self.assertEqual(opened, [])
+
+    def test_it_records_only_inside_the_block_and_only_this_thread(self):
+        with tempfile.TemporaryDirectory() as folder:
+            image = Path(folder) / 'game.bin'
+            image.write_bytes(b'x')
+            image.read_bytes()                                            # outside any block: nobody listens
+            with recording_opens() as opened:
+                thread = threading.Thread(target=image.read_bytes)       # another thread's open is not this one's
+                thread.start()
+                thread.join()
+            self.assertEqual(opened, [])
+            with recording_opens() as outer, recording_opens() as inner:
+                image.read_bytes()
+            self.assertEqual((len(outer), len(inner)), (1, 1))
+            self.assertEqual(_RECORDERS, [])                              # and it leaves nothing behind
+
 
 CORE_BYTES = b'synthetic core, not libretro'
 
@@ -888,16 +980,13 @@ class ContentCheck(ContentFixture):
         self.assertEqual(self.failing(self.check()), [('cue', 'cue_outside_root')])
 
     def test_only_the_cue_sheet_and_the_core_are_ever_opened(self):
-        """A content check may not read game data: the disc image and the BIOS are only looked at."""
-        opened, real_open = [], open
-
-        def spy(file, *args, **kwargs):
-            opened.append(Path(os.fspath(file)))
-            return real_open(file, *args, **kwargs)
-        with mock.patch('builtins.open', spy):
+        """A content check may not read game data: the disc image and the BIOS are only looked at, and any way of
+        opening them (Path.read_bytes() and os.open() included) is an `open` event this test sees."""
+        self.check()                         # a first run loads what the code imports lazily, a codec for one
+        with recording_opens() as opened:
             report = self.check()
         self.assertTrue(report.ok)
-        self.assertEqual(sorted(opened), sorted([self.cue, self.core]))
+        self.assertEqual(sorted(map(opened_path, opened)), sorted(map(opened_path, [self.cue, self.core])))
 
     def test_a_file_the_user_may_not_look_at_is_a_failure_not_a_crash(self):
         denied = PermissionError(13, 'Permission denied')
