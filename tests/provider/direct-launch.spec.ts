@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { place } from '../lib/frame';
 import { readFileSync } from 'node:fs';
 // The LAN Games titles Party still routes and offers (ADR 0014, AVR-259): the retiring runtime's
 // two Party games. Its other titles have no route through the front door and no tile.
@@ -47,8 +48,8 @@ test('every title Party still routes has a mounted direct page and explicit inte
 test('no retired LAN Games title is offered by Party Home', async ({ page }) => {
   await seed(page); await home(page);
   expect(shell.games.filter((g: { provider: string }) => g.provider === 'lan-games').map((g: { id: string }) => g.id).sort()).toEqual(PARTY_TITLES);
-  await expect(page.locator('[data-id^="lan-"]')).toHaveCount(0);
-  for (const id of PARTY_TITLES) await expect(page.locator(`[data-id="${id}"]`)).toHaveCount(1);
+  await expect(page.locator('[data-game^="lan-"]')).toHaveCount(0);
+  for (const id of PARTY_TITLES) await expect(page.locator(`#games [data-game="${id}"]`)).toHaveCount(1);
 });
 
 test('a shell profile edit reaches a game page, and the return to Party survives a refresh', async ({ page }) => {
@@ -57,6 +58,7 @@ test('a shell profile edit reaches a game page, and the return to Party survives
   page.on('websocket', (ws) => ws.on('framesent', ({ payload }) => {
     try { const msg = JSON.parse(String(payload)); if (msg.t === 'hello') hellos.push(msg); } catch {}
   }));
+  await place(page, 'party');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Robin Updated');
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -73,7 +75,7 @@ test('one real Party Chat history survives a game visit; game opens no global ch
   await seed(page); await home(page);
   let globalSockets = 0;
   page.on('websocket', (ws) => { if (ws.url().endsWith('/chat/ws')) globalSockets++; });
-  await page.locator('#chat summary').click();
+  await page.locator('#hud').click();                                   // the Party drawer, on its Chat side
   await expect(page.locator('#chat-send')).toBeEnabled();
   const message = 'Across the boundary ' + Date.now();
   await page.locator('#chat-text').fill(message); await page.locator('#chat-send').click();
@@ -83,7 +85,8 @@ test('one real Party Chat history survives a game visit; game opens no global ch
   await expect(page.locator('#edit-profile-btn')).toBeHidden();
   expect(globalSockets).toBe(1);
   await page.locator('#avrana-navigation a').click();
-  await page.locator('#chat summary').click();
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await page.locator('#hud').click();
   await expect(page.locator('#chat-messages')).toContainText(message);
 });
 

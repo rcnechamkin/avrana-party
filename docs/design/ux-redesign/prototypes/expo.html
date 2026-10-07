@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EXPO gameplay · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/expo.css">
+</head>
+<body>
+<!-- Switches (all compose):
+     ?state=waiting | radio | result      default = your turn with a card chosen
+     ?seats=2 | 3 | 5                     default 4. Two players sit with the dummy hand, Tonoja
+     ?hand=10 | 13 | 14                   default 8. 10, 13 and 14 are the real deals (40 cards: 10 each for four,
+                                          13/13/14 for three, 13 each for two with 14 under Tonoja, 8 each for five)
+     ?seats=2&hand=tonoja | mine          which cards the hand shows (the Yours / Tonoja switch sets this)
+     ?seats=2&turn=tonoja                 it is Tonoja's turn, which the captain (you) plays; the hand opens on Tonoja's cards
+     ?sheet=objectives                    the full objectives list, risen over the board above the tray
+     ?goals=7                             a long objectives list
+     ?net=reconnecting | away             this phone lost the table | another seat is away and the table waits
+     ?text=150 | 200                      simulated enlarged text: one scrolling column, only the keys pinned
+                                          (&at=top shows the head of the column instead of the hand)
+     (no switch)                          a portrait screen under 630 px high or 350 px wide gets that column too
+     ?state=result&ok=1                   the success verdict; &role=guest for everyone but the Host
+     Everything shown maps to a field the server already sends (see SCREENS.md, EXPO). The script at the
+     foot is a stand-in for the view: it draws seats, trick, objectives and hand from one small model. -->
+
+<div class="board" id="board">
+  <!-- A. MISSION STAGE -->
+  <header class="stage" aria-label="Mission">
+    <div class="land" aria-hidden="true"><i class="sun"></i><i class="haze"></i><i class="r1"></i><i class="r2"></i><i class="mast"></i><i class="r3"></i><span class="optic"></span></div>
+    <span class="ticks" id="ticks" aria-hidden="true"></span>
+    <div class="stage__in">
+      <p class="stage__id"><b>Mission 7</b><span id="trick-n">Trick 3/10</span><span>Try 2</span></p>
+      <div class="stage__tools">
+        <button class="tool" aria-label="How to play"><i data-i="circle-help"></i></button>
+        <button class="tool" aria-label="Crew, log and table"><i data-i="ellipsis"></i></button>
+      </div>
+      <h1 class="stage__goal" id="mission-goal">Finish all four objectives before the last trick.</h1>
+    </div>
+  </header>
+
+  <!-- B. CREW STRIP: one .seat per seat in table order, drawn by the script -->
+  <ul class="crew" aria-label="Crew" id="crew"></ul>
+
+  <!-- C. SHARED TRICK: one .play per seat in play order from the lead, drawn by the script -->
+  <section class="trick" aria-label="This trick">
+    <ol class="plays" id="plays"></ol>
+    <p class="winning" role="status"><span id="winning"></span></p>
+  </section>
+
+  <!-- Burst Transmission, in place of the trick while it is open -->
+  <section class="radio" aria-labelledby="radio-h">
+    <div class="radio__head"><h2 id="radio-h">Burst Transmission</h2><span>1 burst left</span></div>
+    <div class="radio__say">
+      <span class="card" data-c="pink:5"></span>
+      <div>
+        <p>Pink 5 is my…</p>
+        <div class="opts" role="group" aria-label="What you say about pink 5">
+          <button class="opt" disabled>Highest</button>
+          <button class="opt" aria-pressed="true">Only</button>
+          <button class="opt" disabled>Lowest</button>
+        </div>
+      </div>
+    </div>
+    <p class="radio__why">It is your only pink card, so “only” is the one true thing to say.</p>
+  </section>
+
+  <!-- D. CREW OBJECTIVES: the header is the control that opens the full list -->
+  <section class="goals plate" aria-label="Objectives">
+    <button class="goals__head" data-set="sheet=objectives" aria-haspopup="dialog" aria-controls="sheet">
+      <span class="goals__t">Objectives</span>
+      <span class="goals__n" id="goals-n"></span>
+      <span class="goals__all"><span id="goals-all"></span><i data-i="chevron-up"></i></span>
+    </button>
+    <div class="goals__list" id="goals"></div>
+  </section>
+
+  <!-- The full objectives list. It rises over zones A to D and stops at the tray, so the one live
+       instruction, the hand and the dock stay visible and usable under it. Not a modal: Close, the veil
+       or Escape puts it away; focus goes to its heading on opening and back to the header on closing. -->
+  <button class="veil" data-set="sheet=" aria-label="Close objectives"></button>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="false" aria-labelledby="sheet-h">
+    <div class="sheet__head">
+      <h2 id="sheet-h" tabindex="-1">Objectives</h2>
+      <span id="sheet-n"></span>
+      <button class="tool" data-set="sheet=" aria-label="Close objectives"><i data-i="x"></i></button>
+    </div>
+    <div class="sheet__list" id="sheet-list" tabindex="0" role="group" aria-label="All objectives"></div>
+  </section>
+
+  <!-- E. PRIVATE HAND AND CONTROLS -->
+  <section class="tray" aria-label="Your hand">
+    <p class="status" role="status" id="status"><span class="lampdot" aria-hidden="true"></span><i data-i="wifi-off" class="status__net"></i><span><span id="status-t"></span><small id="why"></small></span></p>
+    <!-- two players only: whose cards the hand shows. Hidden while Burst Transmission is open. -->
+    <div class="handsw" id="handsw" role="group" aria-label="Whose cards are showing" hidden>
+      <button class="handsw__b" id="sw-mine" data-set="hand=mine"><i data-i="check"></i><span>Yours</span><small id="sw-mine-n"></small></button>
+      <button class="handsw__b" id="sw-tonoja" data-set="hand=tonoja"><i data-i="check"></i><span>Tonoja</span><small id="sw-tonoja-n"></small></button>
+    </div>
+    <div class="hand" role="group" aria-label="Your cards" id="hand"></div>
+    <p class="tonote" id="tonote" hidden></p>
+    <div class="dock dock--play">
+      <button class="key" data-set="state=radio" id="radio-key"><i data-i="radio"></i><span>Burst<small>1 left</small></span></button>
+      <button class="key key--go" id="play-key">Play blue 6</button>
+    </div>
+    <div class="dock dock--radio">
+      <button class="key key--quiet" data-set="state=">Cancel</button>
+      <button class="key key--go"><i data-i="radio-tower"></i>Send burst to the crew</button>
+    </div>
+  </section>
+</div>
+
+<!-- RESULT: the word, the cause, then the evidence. Both verdicts are written out; ?ok=1 shows the success. -->
+<div class="result">
+  <header class="verdict" data-fail role="status">
+    <div class="land land--storm" aria-hidden="true"><i class="sun"></i><i class="haze"></i><i class="r1"></i><i class="r2"></i><i class="mast"></i><i class="r3"></i><span class="optic"></span></div>
+    <h1>Mission failed</h1>
+    <p><bdi>Sam</bdi> won trick 4, and it had pink 3 in it. <bdi>Sam</bdi>’s objective was to win no pink cards.</p>
+    <p class="verdict__mark"><i data-i="circle-x"></i>Mission 7, try 2</p>
+  </header>
+  <div class="evidence" data-fail tabindex="0" aria-label="What happened">
+    <h2>The trick that did it</h2>
+    <ol class="plays">
+      <li class="play" data-winning><span class="card" data-c="yellow:4"></span><span class="play__n"><bdi>Sam</bdi><span class="lead">Led, won</span></span></li>
+      <li class="play"><span class="card" data-c="yellow:2"></span><span class="play__n"><bdi>Priya</bdi></span></li>
+      <li class="play" data-trigger><span class="card" data-c="pink:3"></span><span class="play__n">You<span class="lead">Deciding card</span></span></li>
+      <li class="play"><span class="card" data-c="yellow:3"></span><span class="play__n"><bdi>Dana</bdi></span></li>
+    </ol>
+    <h2>The objective</h2>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-21.svg" alt=""><p><b><bdi>Sam</bdi>:</b> win no pink cards.</p><span class="state" data-s="failed"><i data-i="x"></i>Failed</span></div>
+    <h2>The rest</h2>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-12.svg" alt=""><p><b><bdi>Dana</bdi>:</b> win the first trick.</p><span class="state" data-s="done"><i data-i="check"></i>Done</span></div>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-07.svg" alt=""><p><b>You:</b> win a trick that has a 6 in it.</p><span class="state" data-s="done"><i data-i="check"></i>Done</span></div>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-28.svg" alt=""><p><b><bdi>Priya</bdi>:</b> win exactly two tricks.</p><span class="state"><i data-i="minus"></i>Not reached</span></div>
+  </div>
+
+  <!-- success: result.status and result.reason only (a success has no cause); the last trick and each objective's state -->
+  <header class="verdict" data-ok role="status">
+    <div class="land land--clear" aria-hidden="true"><i class="sun"></i><i class="haze"></i><i class="r1"></i><i class="r2"></i><i class="mast"></i><i class="r3"></i><span class="optic"></span></div>
+    <h1>Mission complete</h1>
+    <p>All mission objectives completed.</p>
+    <p class="verdict__mark"><i data-i="circle-check"></i>Mission 7, try 2</p>
+  </header>
+  <div class="evidence" data-ok tabindex="0" aria-label="What happened">
+    <h2>The last trick, 8 of 10</h2>
+    <ol class="plays">
+      <li class="play"><span class="card" data-c="green:3"></span><span class="play__n"><bdi>Dana</bdi><span class="lead">Led</span></span></li>
+      <li class="play"><span class="card" data-c="green:1"></span><span class="play__n"><bdi>Sam</bdi></span></li>
+      <li class="play" data-winning><span class="card" data-c="green:8"></span><span class="play__n"><bdi>Priya</bdi><span class="lead">Won</span></span></li>
+      <li class="play"><span class="card" data-c="green:7"></span><span class="play__n">You</span></li>
+    </ol>
+    <h2>The objectives</h2>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-28.svg" alt=""><p><b><bdi>Priya</bdi>:</b> win exactly two tricks.</p><span class="state" data-s="done"><i data-i="check"></i>Done</span></div>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-07.svg" alt=""><p><b>You:</b> win a trick that has a 6 in it.</p><span class="state" data-s="done"><i data-i="check"></i>Done</span></div>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-21.svg" alt=""><p><b><bdi>Sam</bdi>:</b> win no pink cards.</p><span class="state" data-s="done"><i data-i="check"></i>Done</span></div>
+    <div class="goal"><img src="../../../../web/party/avatars/gaze-12.svg" alt=""><p><b><bdi>Dana</bdi>:</b> win the first trick.</p><span class="state" data-s="done"><i data-i="check"></i>Done</span></div>
+  </div>
+
+  <!-- What happens next is today's lifecycle, unchanged (games client.js drawResult): after a failure the
+       Party Host retries with the same tasks or new ones; after a success the Host picks the next mission
+       from the open ones; ending EXPO is the Host's, with its own confirmation; anyone may look at the table. -->
+  <footer class="after">
+    <div class="after__row host-only" data-fail>
+      <button class="key">Retry same tasks</button>
+      <button class="key key--plain">Retry new tasks</button>
+    </div>
+    <div class="after__row host-only" data-ok>
+      <select class="pick" aria-label="Next mission"><option>Mission 7</option><option selected>Mission 8</option><option>Mission 9</option><option>Mission 10</option></select>
+      <button class="key key--plain">Next mission</button>
+    </div>
+    <p class="guest-only">Waiting for <bdi>Dana</bdi> (Party Host) to choose what’s next.</p>
+    <div class="after__more">
+      <button class="textkey">Look at the table</button>
+      <button class="textkey host-only">End EXPO for everyone</button>
+    </div>
+  </footer>
+</div>
+
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+(function () {
+  var D = document.documentElement.dataset;
+  var $ = function (id) { return document.getElementById(id); };
+  var AV = '../../../../web/party/avatars/';
+
+  // ---- cards: suit marks are drawn shapes, one per suit, so a suit never rests on colour alone ----
+  var MARK = {
+    blue: '<circle cx="8" cy="8" r="6"/>',
+    green: '<path d="M8 2 14.5 14h-13z"/>',
+    pink: '<rect x="2.5" y="2.5" width="11" height="11"/>',
+    yellow: '<path d="M3 3l10 10M13 3 3 13"/>',
+    submarine: '<path d="M8 1.5 14.5 8 8 14.5 1.5 8z"/>'
+  };
+  var NAME = { blue: 'blue', green: 'green', pink: 'pink', yellow: 'yellow', submarine: 'sub' };
+  function suit(c) { return c.split(':')[0]; }
+  function rank(c) { return +c.split(':')[1]; }
+  function words(c) { return (suit(c) === 'submarine' ? 'submarine ' : suit(c) + ' ') + rank(c); }
+  function paintCards(root, why) {
+    root.querySelectorAll('.card[data-c]').forEach(function (c) {
+      var id = c.getAttribute('data-c'), s = suit(id);
+      c.setAttribute('data-s', s);
+      var col = s === 'yellow' ? '#1c1503' : s === 'submarine' ? '#f5a524' : '#fff';
+      c.innerHTML = '<b>' + rank(id) + '</b><svg viewBox="0 0 16 16" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">' + MARK[s] + '</svg><span>' + NAME[s] + '</span>';
+      if (s === 'submarine') c.querySelector('b').style.color = '#f5a524', c.querySelector('span').style.color = '#f5a524';
+      c.setAttribute('aria-label', words(id) + (c.getAttribute('aria-disabled') ? ', ' + (why || 'cannot be played now') : ''));
+    });
+    root.querySelectorAll('[data-chip]').forEach(function (c) {
+      var s = c.getAttribute('data-chip');
+      c.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 16 16" fill="none" stroke="' + (s === 'yellow' ? '#1c1503' : '#fff') + '" stroke-width="2.4" aria-hidden="true">' + MARK[s] + '</svg>');
+    });
+  }
+
+  // ---- the table this page pretends to be at ----
+  var WHO = { you: ['You', 'gaze-07'], dana: ['Dana', 'gaze-12'], sam: ['Sam', 'gaze-21'], priya: ['Priya', 'gaze-28'], jo: ['Jo', 'gaze-03'], tonoja: ['Tonoja', null] };
+  var TABLE = { 2: ['you', 'tonoja', 'dana'], 3: ['you', 'dana', 'sam'], 4: ['you', 'dana', 'sam', 'priya'], 5: ['you', 'dana', 'sam', 'priya', 'jo'] };
+  var TRICKS = { 2: 13, 3: 13, 4: 10, 5: 8 };          // engine: 40 // seats; 13 with Tonoja
+  var FULL = { 2: 13, 3: 13, 4: 10, 5: 8 };            // a hand this size is the first trick of the deal
+  var HANDS = {
+    8: 'blue:6 blue:9 green:2 green:7 pink:5 yellow:1 yellow:8 submarine:2',
+    10: 'blue:6 blue:9 green:2 green:7 pink:5 yellow:1 yellow:4 yellow:8 submarine:2 submarine:3',
+    13: 'blue:1 blue:6 blue:9 green:2 green:4 green:7 pink:5 yellow:1 yellow:4 yellow:6 yellow:8 submarine:2 submarine:3',
+    14: 'blue:1 blue:6 blue:9 green:2 green:4 green:7 green:9 pink:5 yellow:1 yellow:4 yellow:6 yellow:8 submarine:2 submarine:3'
+  };
+  var GOALS = [
+    { who: 'you', text: 'win a trick that has a 6 in it.' },
+    { who: 'sam', text: 'win no pink cards.' },
+    { who: 'priya', text: 'win exactly two tricks.' },
+    { who: 'jo', text: 'capture green 6.', extra: true },
+    { who: 'sam', text: 'win exactly one trick.', extra: true },
+    { who: 'priya', text: 'capture more yellow than blue.', extra: true },
+    { who: 'dana', text: 'win the first trick.', done: true }          // done objectives sort last, as today
+  ];
+  var NUM = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'];
+  function name(k) { return WHO[k][0]; }
+  function bdi(k) { return k === 'you' ? 'You' : '<bdi>' + name(k) + '</bdi>'; }
+  function face(k, cls) { return WHO[k][1] ? '<img src="' + AV + WHO[k][1] + '.svg" alt="">' : '<i data-i="layers"' + (cls ? ' class="' + cls + '"' : '') + '></i>'; }
+
+  function model() {
+    var n = +D.seats || (D.hand === '13' || D.hand === '14' ? 3 : D.hand === 'tonoja' || D.turn === 'tonoja' ? 2 : 4);
+    if (!TABLE[n]) n = 4;
+    var two = n === 2, st = D.state || 'play';
+    var size = HANDS[+D.hand] ? +D.hand : { 2: 13, 3: 13, 4: 8, 5: 8 }[n];
+    var first = size >= FULL[n];
+    var m = { n: n, seats: TABLE[n], st: st, net: D.net || '', captain: two ? 'you' : 'dana', away: null };
+    m.hand = HANDS[size].split(' ');
+    var forTonoja = two && D.turn === 'tonoja' && st === 'play';     // the client opens Tonoja's cards on Tonoja's turn
+    m.view = two && st !== 'radio' && (D.hand === 'tonoja' || (forTonoja && D.hand !== 'mine')) ? 'tonoja' : 'mine';
+    // the trick: Dana (captain) led blue and it has come round to you
+    var at = m.seats.indexOf('dana');
+    m.order = m.seats.slice(at).concat(m.seats.slice(0, at));
+    m.plays = { dana: 'blue:4', sam: 'blue:8', priya: 'blue:2', jo: 'blue:5' };
+    m.turn = 'you'; m.leading = 'sam'; m.trick = first ? 1 : 3;
+    m.won = first ? {} : { you: 1, dana: 1 };
+    m.legal = function (c) { return suit(c) === 'blue'; };              // me.legal_cards
+    m.chosen = 'blue:6';
+    m.status = 'Your turn.'; m.why = 'Blue was led and you hold blue, so play a blue card.';
+    m.play = 'Play blue 6'; m.playOff = false; m.idle = false;
+
+    if (two) {
+      // you hold submarine 4, so you are captain: you lead the first trick and play Tonoja's cards
+      m.hand = HANDS[13].replace('submarine:3', 'submarine:4').split(' ');
+      m.tops = 'blue:3 blue:7 green:5 green:8 pink:7 yellow:3 submarine:1'.split(' '); m.covered = 7;
+      m.order = ['you', 'tonoja', 'dana']; m.plays = {}; m.leading = null; m.trick = 1; m.won = {};
+      m.legal = function () { return true; };
+      m.status = 'Your turn to lead.'; m.why = 'You are captain, so you lead the first trick. Any card can lead.';
+      if (forTonoja) {
+        // third trick: Dana led, you followed, and it is Tonoja's turn, which is yours to play
+        m.hand = 'blue:1 blue:9 green:2 green:7 pink:5 yellow:1 yellow:6 yellow:8 submarine:2 submarine:4'.split(' ');
+        m.tops = ['blue:3', 'blue:7', 'green:5', null, 'pink:7', 'yellow:3', 'submarine:1']; m.covered = 6;
+        m.order = ['dana', 'you', 'tonoja']; m.plays = { dana: 'blue:4', you: 'blue:6' };
+        m.turn = 'tonoja'; m.leading = 'you'; m.trick = 3; m.won = { you: 1, dana: 1 };
+        m.legal = function (c) { return suit(c) === 'blue'; }; m.chosen = 'blue:7';
+        m.status = 'Your turn: play for Tonoja.'; m.why = 'Blue was led and Tonoja has blue face up, so play a blue card.';
+        m.play = 'Play blue 7 for Tonoja';
+      }
+      // looking at the cards that are not the ones to play from: nothing in them can be chosen, and the line says why
+      if (st === 'play' && (m.view === 'tonoja') !== forTonoja) {
+        m.legal = function () { return false; }; m.chosen = null; m.playOff = true; m.play = 'Choose a card to play';
+        m.why = forTonoja ? 'These are your own cards. Play Tonoja’s turn from Tonoja’s.' : 'These are Tonoja’s cards. On your own turn, play from yours.';
+      }
+    }
+    if (st === 'waiting') {
+      // not your turn is not the same as an unplayable card: the hand stays in full colour so you can plan
+      m.legal = null; m.chosen = null; m.playOff = true; m.idle = true;
+      if (two) {
+        m.hand = m.hand.filter(function (c) { return c !== 'blue:6'; });
+        m.tops[0] = null; m.plays = { you: 'blue:6', tonoja: 'blue:3' }; m.turn = 'dana'; m.leading = 'you';
+        m.status = 'Dana is choosing a card.'; m.why = 'Blue was led.'; m.play = 'Waiting for Dana';
+      } else {
+        m.plays = { dana: 'blue:4' }; m.turn = m.order[1]; m.leading = 'dana';
+        var before = m.order[m.order.indexOf('you') - 1];
+        m.status = name(m.turn) + ' is choosing a card.';
+        m.why = 'Blue was led. ' + (before === m.turn ? 'You play next.' : 'You play after ' + name(before) + '.');
+        m.play = 'Waiting for ' + name(m.turn);
+      }
+    } else if (st === 'radio') {
+      // me.communication_options: the highest, lowest or only card of a colour, never a submarine
+      m.turn = null; m.chosen = 'pink:5';
+      m.legal = function (c) {
+        var same = m.hand.filter(function (x) { return suit(x) === suit(c); }).map(rank);
+        return suit(c) !== 'submarine' && (rank(c) === Math.max.apply(null, same) || rank(c) === Math.min.apply(null, same));
+      };
+      m.status = 'Between tricks: one burst to the crew.';
+      m.why = 'Tap a card to send it: your highest, lowest or only of a colour, never a submarine.';
+    }
+    if (m.net === 'reconnecting') {
+      // this phone lost the table: the last view stays up, nothing can be sent, and nothing claims to be live
+      m.legal = null; m.chosen = null; m.playOff = true; m.burstOff = true; m.idle = true;
+      m.status = 'Reconnecting…'; m.why = 'You can play again when this phone reconnects.';
+      m.play = 'Waiting to reconnect';
+    } else if (m.net === 'away') {
+      // view.away: the server refuses every command with "Waiting for the crew to reconnect."
+      m.away = two ? 'dana' : 'sam';
+      m.legal = null; m.chosen = null; m.playOff = true; m.burstOff = true; m.idle = true;
+      m.status = 'Waiting for ' + name(m.away) + ' to reconnect.'; m.why = 'The table waits. Nothing is played for ' + name(m.away) + '.';
+      m.play = 'Waiting for ' + name(m.away);
+    }
+    // objectives: owners who are not at this table hand theirs on (Tonoja can own one; the captain plays it)
+    var swap = two ? { sam: 'tonoja', priya: 'dana', jo: 'you' } : n === 3 ? { priya: 'dana', jo: 'you' } : n === 4 ? { jo: 'you' } : {};
+    m.goals = GOALS.filter(function (g) { return !g.extra || D.goals === '7'; }).map(function (g) {
+      return { who: swap[g.who] || g.who, text: g.text, done: g.done && m.trick > 1 };
+    });
+    return m;
+  }
+
+  // ---- drawing ----
+  function seat(m, k) {
+    var me = k === 'you', won = m.won[k] || 0, turn = m.turn === k, cap = m.captain === k;
+    var say = (me ? 'You' : name(k)) + (cap ? ', captain' : '') + ': ' + (won ? won + (won === 1 ? ' trick' : ' tricks') + ' won' : 'no tricks won');
+    var meta = (cap ? '<span class="seat__tag">Capt</span>' : '') + '<span><i data-i="flag"></i>' + won + '</span>', sig;
+    if (k === 'tonoja') {
+      var up = m.tops.filter(Boolean).length, by = m.captain === 'you' ? 'You play it' : name(m.captain) + ' plays it';
+      meta = '<span class="seat__by">' + by + '</span><span><i data-i="flag"></i>' + won + '</span>';
+      sig = up + ' up, ' + m.covered + ' covered';
+      say = 'Tonoja, a hand with no player. ' + by + ': ' + sig + ', ' + (won ? won + ' won' : 'no tricks won');
+    } else if (m.away === k) { sig = '<i data-i="unplug"></i>Away'; say += ', away'; }
+    else if (k === 'dana') { sig = '<span class="chip" data-s="pink" data-chip="pink">9</span>high'; say += ', sent pink 9 as her highest pink'; }
+    else if (k === 'priya') { sig = '<i data-i="ban"></i>Used'; say += ', burst used'; }
+    else { sig = '<i data-i="radio"></i>Ready'; say += ', burst ready'; }
+    return '<li class="seat plate" id="seat-' + k + '"' + (turn ? ' data-turn' : '') + (k === 'tonoja' ? ' data-kind="tonoja"' : '') + (m.away === k ? ' data-away' : '') +
+      ' aria-label="' + say + (turn ? ', turn' : '') + '"><span class="seat__turn">Turn</span>' +
+      '<p class="seat__who">' + face(k) + '<b>' + bdi(k) + '</b></p><p class="seat__meta">' + meta + '</p><p class="seat__sig">' + sig + '</p></li>';
+  }
+  function play(m, k, i) {
+    var c = m.plays[k], next = m.turn === k && !c, mine = k === 'you' ? 'Your' : name(k) + '’s';
+    var body = c ? '<span class="card" data-c="' + c + '"></span>' : '<span class="slot">' + (next ? mine + '<br>card' : '') + '</span>';
+    return '<li class="play"' + (m.leading === k ? ' data-winning' : '') + (next ? ' data-next' : '') + (k === 'you' && next ? ' id="your-slot"' : '') + '>' + body +
+      '<span class="play__n">' + bdi(k) + (i === 0 ? '<span class="lead">Lead</span>' : '') + '</span></li>';
+  }
+  function goal(g, always) {
+    var state = g.done ? '<span class="state" data-s="done"><i data-i="check"></i>Done</span>' : always ? '<span class="state" data-s="active">In play</span>' : '';
+    return '<div class="goal">' + face(g.who, 'goal__ic') + '<p><b>' + bdi(g.who) + ':</b> ' + g.text + '</p>' + state + '</div>';
+  }
+  function handCard(m, c) {
+    if (!c) return '<span class="gap" role="img" aria-label="Empty place">Empty</span>';
+    var off = m.legal && !m.legal(c);
+    return '<button class="card" data-c="' + c + '"' + (m.chosen === c ? ' aria-pressed="true"' : '') + (off ? ' aria-disabled="true"' : '') + '></button>';
+  }
+
+  function render() {
+    var m = model(), board = $('board'), tonoja = m.view === 'tonoja';
+    board.setAttribute('data-n', m.n);
+    $('trick-n').textContent = 'Trick ' + m.trick + '/' + TRICKS[m.n];
+    // the same count as a strip along the window's sill: tricks done, the one in play, tricks to come
+    var tk = ''; for (var ti = 1; ti <= TRICKS[m.n]; ti++) tk += '<i' + (ti < m.trick ? ' data-done' : ti === m.trick ? ' data-now' : '') + '></i>';
+    $('ticks').innerHTML = tk;
+    $('mission-goal').textContent = 'Finish all ' + NUM[m.goals.length] + ' objectives before the last trick.';
+
+    var crew = $('crew'); crew.setAttribute('data-n', m.n);
+    crew.innerHTML = m.seats.map(function (k) { return seat(m, k); }).join('');
+
+    $('plays').innerHTML = m.order.map(function (k, i) { return play(m, k, i); }).join('');
+    // the winner so far is the view's trick_leading, said in the same place every time
+    $('winning').innerHTML = !m.leading ? 'No card played yet' :
+      (m.net === 'reconnecting' ? 'Last seen winning: ' : 'Winning now: ') + '<b>' + bdi(m.leading) + ', ' + words(m.plays[m.leading]) + '</b>';
+
+    var done = m.goals.filter(function (g) { return g.done; }).length, count = done + ' of ' + m.goals.length + ' done';
+    $('goals-n').textContent = count; $('sheet-n').textContent = count;
+    $('goals-all').textContent = 'See all ' + m.goals.length;
+    document.querySelector('.goals__head').setAttribute('aria-expanded', String(D.sheet === 'objectives'));
+    $('goals').innerHTML = m.goals.map(function (g) { return goal(g, false); }).join('');
+    $('sheet-list').innerHTML = m.goals.map(function (g) { return goal(g, true); }).join('');
+
+    // the tray
+    var status = $('status');
+    if (m.idle) status.setAttribute('data-idle', ''); else status.removeAttribute('data-idle');
+    $('status-t').textContent = m.status; $('why').textContent = m.why;
+    var sw = $('handsw'); sw.hidden = m.n !== 2 || m.st === 'radio';
+    if (!sw.hidden) {
+      $('sw-mine').setAttribute('aria-pressed', String(!tonoja)); $('sw-tonoja').setAttribute('aria-pressed', String(tonoja));
+      $('sw-mine-n').textContent = m.hand.length + ' cards'; $('sw-tonoja-n').textContent = m.tops.filter(Boolean).length + ' face up';
+    }
+    var cards = tonoja ? m.tops : m.hand, hand = $('hand');
+    hand.setAttribute('data-n', cards.length);
+    hand.setAttribute('data-cols', cards.length > 10 || tonoja ? 7 : 5);        // rows of five, or of seven for a big hand
+    hand.setAttribute('data-rows', cards.length > 8 ? 2 : 1);                   // landscape: one row up to eight cards
+    hand.style.setProperty('--lcols', Math.ceil(cards.length / 2));
+    hand.setAttribute('aria-label', tonoja ? 'Tonoja’s face-up cards' : 'Your cards');
+    hand.innerHTML = cards.map(function (c) { return handCard(m, c); }).join('');
+    var note = $('tonote'); note.hidden = !tonoja;
+    // enlarged text keeps the count and leaves the rule to How to play
+    note.textContent = tonoja ? m.tops.filter(Boolean).length + ' face up, ' + m.covered + ' covered.' + (D.text === '150' || D.text === '200' ? '' : ' A covered card turns over when the trick ends.') : '';
+    var key = $('play-key'); key.textContent = m.play; key.disabled = m.playOff; key.className = m.playOff ? 'key' : 'key key--go';
+    $('radio-key').disabled = Boolean(m.burstOff);
+
+    paintCards(board, m.st === 'radio' ? 'cannot be sent' : 'cannot be played now');
+    window.paintIcons();
+    // enlarged text: one scrolling column with only the keys pinned. It opens at its end: the hand just above
+    // the keys, the trick above the hand.
+    column(Boolean(D.text) && m.st !== 'result');
+    // A burst is read from the top: the instruction, your cards, then what to say about the chosen one.
+    if (D.text && m.st !== 'result' && D.at !== 'top') board.scrollTop = m.st === 'radio' ? document.querySelector('.tray').offsetTop - 6 : board.scrollHeight;
+    // enlarged text, result: only the Host's choice stays pinned; the two quiet controls follow the evidence
+    var more = document.querySelector('.after__more'), after = document.querySelector('.after');
+    if (D.text && more.parentNode === after) after.before(more); else if (!D.text && more.parentNode !== after) after.appendChild(more);
+  }
+
+  // The column's order is set in the document, so reading order and focus order match what is seen:
+  // mission, crew, objectives, trick, status and hand, (burst choices), then the pinned keys.
+  function column(on) {
+    var board = $('board'), tray = document.querySelector('.tray'), pin = $('pin');
+    var goals = document.querySelector('.goals'), trick = document.querySelector('.trick'), radio = document.querySelector('.radio');
+    if (on && !pin) {
+      pin = document.createElement('div'); pin.id = 'pin'; pin.className = 'pin';
+      board.insertBefore(goals, trick);
+      board.appendChild(radio); board.appendChild(pin);
+      document.querySelectorAll('.dock').forEach(function (k) { pin.appendChild(k); });
+    } else if (!on && pin) {
+      document.querySelectorAll('.dock').forEach(function (k) { tray.appendChild(k); });
+      pin.remove();
+      board.insertBefore(radio, trick.nextSibling); board.insertBefore(goals, radio.nextSibling);
+    }
+  }
+
+  // Under the floor (a portrait screen shorter than 630 px or narrower than 350 px) the fixed board would
+  // collide, so it becomes the same scrolling column as for enlarged text, at normal text size.
+  // A script in this prototype; a media query in the product.
+  function fit() {
+    if (new URLSearchParams(location.search).has('text')) return;
+    if (innerHeight > innerWidth && (innerHeight < 630 || innerWidth < 350)) D.text = '100'; else delete D.text;
+  }
+  fit();
+  addEventListener('resize', function () { fit(); render(); });
+
+  paintCards(document.querySelector('.result'));
+  render();
+  // the page's own switches (Burst, Cancel, Yours / Tonoja, the objectives sheet) redraw from the address state
+  document.addEventListener('click', function (e) { if (e.target.closest('[data-set]')) render(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') render(); });
+})();
+</script>
+</body>
+</html>

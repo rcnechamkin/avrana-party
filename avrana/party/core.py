@@ -39,6 +39,14 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   run at once. If the old game does not confirm its end, the switch stops there: nothing new starts
   on top of a game that may still be running.
 
+* **Two modes, one party** (ADR 0012, AVR-225). A member reached over trusted HTTPS is in
+  `full` mode; one reached over the plain-HTTP fallback is in `limited` mode. The service says
+  which when the member joins (it knows which listener the request arrived on); the mode is
+  shown beside each member and never changes for that member, because a phone that changes
+  mode is a new device. A Limited member has every party right, the host role included. When
+  the role moves by succession, a Full Mode member who is here is preferred; a host who is
+  here is never displaced, whatever their mode.
+
 Not here (deliberately): persistence across reboot (the party is memory-only; OPEN), kicks, votes,
 profiles, teams, seat assignment (the game seats its roster), results and scores.
 """
@@ -64,6 +72,8 @@ SETUP = 'setup'                 # pregame (AVR-129): members choose to play or w
 CHOICES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned', 'ended_by_host', 'launch_failed')
 ROLES = ('player', 'spectator')
+FULL, LIMITED = 'full', 'limited'    # how a member's phone reaches the party (ADR 0012)
+MODES = (FULL, LIMITED)
 
 
 class Refused(Exception):
@@ -107,13 +117,14 @@ def clean_avatar(raw):
 
 
 class Member:
-    __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left')
+    __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left', 'mode')
 
-    def __init__(self, device_id, name, now, avatar=None):
+    def __init__(self, device_id, name, now, avatar=None, mode=FULL):
         self.id = new_id('member')
         self.device_id = device_id
         self.name = name
         self.avatar = avatar
+        self.mode = mode
         self.joined_at = now
         self.last_seen = now
         self.left = False
@@ -232,9 +243,12 @@ class PartyCore:
 
     def _successor(self, now, exclude):
         """The earliest-joined member who is present. Playing counts as present: a player in the
-        active game can take over (AVR-127), so a host leaving mid-game never leaves it vacant."""
-        return next((m for m in self.party.members.values()
-                     if not m.left and m.id != exclude and self._here(m, now)), None)
+        active game can take over (AVR-127), so a host leaving mid-game never leaves it vacant.
+        A Full Mode member is preferred over a Limited Mode one (ADR 0012 D4): the role is safer
+        on a connection other guests cannot read. With nobody in Full Mode, Limited serves."""
+        here = [m for m in self.party.members.values()
+                if not m.left and m.id != exclude and self._here(m, now)]
+        return next((m for m in here if m.mode == FULL), here[0] if here else None)
 
     def _set_host(self, member_id):
         self.party.host_id = member_id
@@ -290,16 +304,19 @@ class PartyCore:
             self._shown = {}
 
     # ---- membership ----------------------------------------------------------------------------
-    def join(self, device_id, name, avatar=None):
+    def join(self, device_id, name, avatar=None, mode=FULL):
         """Become present. Phones call this on their own as soon as they have a profile (ADR
         0011: no Join ceremony); it is idempotent for a device that is already in, and a device
-        that left comes back as the same member."""
+        that left comes back as the same member. `mode` is the service's word for how this
+        device reaches the party; it is set when the member is created and kept."""
+        if mode not in MODES:
+            raise ValueError(f'unknown mode {mode!r}')
         self._timed()
         clean = clean_name(name)
         now = self.clock()
         m = self._member_of(device_id)
         if m is None:
-            m = Member(device_id, self._unique(clean, None), now, clean_avatar(avatar))
+            m = Member(device_id, self._unique(clean, None), now, clean_avatar(avatar), mode)
             self.party.members[m.id] = m
         else:
             if m.left:
@@ -688,6 +705,19 @@ class PartyCore:
             self._commit()
         return s, p
 
+    def is_host(self, session_id, participant_id):
+        """Whether that participant of the active session is the party's host at this moment:
+        True or False, or None when that session is not the one running (or has no such
+        participant). For a game that is about to act on a ticket's host claim."""
+        self._timed()
+        s = self._live_session()
+        if s is None or s.state != ACTIVE or s.id != session_id:
+            return None
+        p = next((p for p in s.participants.values() if p.id == participant_id), None)
+        if p is None:
+            return None
+        return self.party.host_id is not None and p.member_id == self.party.host_id
+
     def _late_admit(self, m):
         """Party admission after launch. v0 admits late members as spectators only; a game that
         wants more says so in its contract (late_join) and a later version honours it."""
@@ -706,7 +736,7 @@ class PartyCore:
         me = self._member_of(device_id) if device_id else None
         if me is not None and me.left:
             me = None
-        members = [{'id': m.id, 'name': m.name, 'avatar': m.avatar,
+        members = [{'id': m.id, 'name': m.name, 'avatar': m.avatar, 'mode': m.mode,
                     'presence': self.presence(m, now), 'host': m.id == party.host_id}
                    for m in party.members.values() if not m.left]
         s = party.session
@@ -730,7 +760,8 @@ class PartyCore:
         return {'party': party.id, 'version': party.version,
                 'state': s.state if s is not None and s.state != ENDED else 'lobby',
                 'members': members, 'host': party.host_id,
-                'me': ({'id': me.id, 'name': me.name, 'host': me.id == party.host_id}
+                'me': ({'id': me.id, 'name': me.name, 'host': me.id == party.host_id,
+                        'mode': me.mode}
                        if me else None),
                 'session': session,
                 'nav': dict(party.nav),

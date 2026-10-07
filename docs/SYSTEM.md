@@ -50,7 +50,10 @@ sequencing. Do not silently substitute a newer main SHA for a deployed revision.
 | **Pi `party`** (Raspberry Pi 4, Debian 13, user `cody`) | the appliance: production services + a dev/test area | `ssh party` → `10.0.0.142` (eth0) | **no** (deploy/test target) |
 | **Mini-PC `avrana`** (`10.0.0.218`) | home infrastructure: BookStack (stale docs), Beszel telemetry hub | `ssh avrana` | no (not part of this project's code) |
 
-Networking of the Pi: `docs/runbooks/network.md`.
+Networking of the Pi: `docs/runbooks/network.md`. What a clean target would need to become this
+appliance is enumerated in `deploy/appliance-inventory.json` and
+[the rebuild runbook](runbooks/rebuild.md) (AVR-32): a proposed procedure that has not been run
+on any device, with the facts this file does not record listed there as unknown.
 
 ## Repositories and checkouts
 

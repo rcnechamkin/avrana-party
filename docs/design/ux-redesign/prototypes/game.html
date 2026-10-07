@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Game detail and briefing · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  /* One surface, two moments.
+     Browsing (default): this phone only, anyone, the Party stays at Home.
+     ?state=briefing:   the Host brought everyone here; Ready/Watch, then Host Start.
+     Composable on both: ?phone=limited, ?box=degraded, ?net=reconnecting|offline, ?host=away|moved. */
+  .main { padding-top: 0; }
+  .art { margin: 0 calc(var(--gutter) * -1); width: auto; border-radius: 0; aspect-ratio: 16 / 9; }
+  .art .ph { font-size: 1.6rem; padding: 14px var(--gutter); }
+  .title { font-size: var(--t-2xl); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin-top: 14px; }
+  .act { display: flex; gap: 8px; margin-top: 14px; }
+  .act .btn { flex: 1; }
+  .act .iconbtn { border: 1px solid var(--line-strong); width: 48px; height: 48px; }
+  .act .iconbtn[aria-pressed="true"] svg { fill: currentColor; }
+  .who { font-size: var(--t-sm); color: var(--ink-2); margin-top: 8px; }
+  .who a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); display: inline-block; padding: 13px 0; margin: -13px 0; }
+  .steps { counter-reset: s; display: grid; gap: 8px; }
+  .steps li { counter-increment: s; display: grid; grid-template-columns: 20px 1fr; gap: 8px; font-size: var(--t-md); }
+  .steps li::before { content: counter(s); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .rules { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-top: 10px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .rules i:last-child { margin-left: auto; color: var(--ink-2); }
+
+  .lineup { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin-top: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .brief .sec { margin-top: 18px; }
+  .lineup li { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+  .lineup img { width: 52px; height: 52px; border-radius: 50%; background: var(--well); }
+  .lineup b { font-weight: 550; font-size: var(--t-sm); margin-top: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lineup b .tag { font-style: normal; margin-left: 4px; }
+  .lineup span { font-size: var(--t-xs); color: var(--ink-2); display: inline-flex; align-items: center; gap: 3px; }
+  .lineup span i { width: 0.75rem; height: 0.75rem; }
+  .lineup [data-s="choosing"] img { outline: 1px dashed var(--line-strong); outline-offset: 3px; }
+  .lineup [data-s="ready"] span { color: var(--ink); }
+  .another { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); display: inline-block; padding: 13px 0; margin: -13px 0; }
+  .why { font-size: var(--t-sm); color: var(--ink-2); display: flex; gap: 6px; align-items: flex-start; }
+  .why i { width: 0.9375rem; height: 0.9375rem; margin-top: 1px; color: var(--warn); }
+  .dock__line b { color: var(--ink); font-weight: 550; }
+
+  html[data-state="briefing"] .browse, html:not([data-state="briefing"]) .brief { display: none !important; }
+  html[data-state="briefing"] .art { aspect-ratio: 5 / 2; }
+  html:not([data-limited]) .limited-only, html[data-limited] .full-only { display: none !important; }
+  html[data-state="briefing"] .app { grid-template-rows: auto minmax(0, 1fr) auto; }
+  @media (max-height: 620px) { .art { aspect-ratio: 5 / 2; } html[data-state="briefing"] .art { aspect-ratio: 3 / 1; } .title { font-size: 1.5rem; margin-top: 10px; } }
+  /* larger text: the line-up goes two across so a name and its "Host" mark are never cut */
+  html[data-text] .lineup { grid-auto-flow: row; grid-template-columns: 1fr 1fr; gap: 14px 4px; }
+  html[data-text] .lineup b { white-space: normal; overflow: visible; }
+  html[data-text] .art { aspect-ratio: 3 / 1; }
+  html[data-text] .title { hyphens: auto; overflow-wrap: anywhere; }
+  html[data-text] .lineup { border-bottom: 0; padding-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <a class="top__back browse" href="library.html" aria-label="Back to Library"><i data-i="chevron-left"></i></a>
+    <span class="top__title top__title--quiet"><span class="brief">Getting ready</span></span>
+    <button class="limmark lim-only" data-set="about=limited" aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><i data-i="triangle-alert"></i><span>Limited</span></button>
+    <button class="hud" data-set="drawer=chat" aria-haspopup="dialog" aria-label="Your Party: 4 people here, 2 new messages. Open people and chat">
+      <span class="hud__faces">
+        <img src="../../../../web/party/avatars/gaze-07.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-12.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-21.svg" alt="">
+      </span>
+      <span class="hud__n">+1</span>
+      <span class="hud__new">2</span>
+    </button>
+  </header>
+
+  <main class="main"><div class="wrap">
+    <p class="netline net-re" role="status"><i data-i="loader"></i><span>Reconnecting. What you see may be out of date.</span></p>
+    <p class="netline net-off browse" role="status"><i data-i="wifi-off"></i><span>Not connected. Check this phone is on the Wi-Fi “Avrana Party”. <button class="textlink" data-set="net=reconnecting">Try again</button></span></p>
+    <div class="cover art" id="art"></div>
+    <h1 class="title" id="title"></h1>
+    <p class="sub" id="summary"></p>
+
+    <!-- BROWSING -->
+    <div class="browse">
+      <div class="facts">
+        <div><b id="f-players"></b><span>players</span></div>
+        <div><b id="f-length"></b><span>a round</span></div>
+        <div><b id="f-screen"></b><span id="f-screen-l"></span></div>
+      </div>
+      <p class="fit" id="fit"><i data-i="check"></i><span></span></p>
+      <!-- what this phone can do with this game in Limited Mode; and a game that is off for everyone -->
+      <p class="fit fit--no lim-only" id="phoneline"><i data-i="eye"></i><span></span></p>
+      <p class="fit fit--no deg-only" id="boxline"><i data-i="triangle-alert"></i><span><span data-name></span> is off for now.</span></p>
+
+      <div class="act">
+        <a class="btn btn--primary host-only needs-box" href="?state=briefing" id="bring">Bring the Party in</a>
+        <button class="btn guest-only needs-box" id="suggest">Suggest to the Party</button>
+        <button class="iconbtn" aria-pressed="true" aria-label="Favorite"><i data-i="heart"></i></button>
+      </div>
+      <p class="who host-only" id="who-host">Moves everyone to the briefing. Nothing starts yet.</p>
+      <p class="who guest-only" id="who-guest"><bdi class="hn">Dana</bdi> chooses what the Party plays.</p>
+
+      <div class="sec"><h2>Quick start</h2></div>
+      <ol class="steps" data-steps></ol>
+      <a class="rules" href="#"><i data-i="book-open"></i>How to play<i data-i="chevron-right"></i></a>
+    </div>
+
+    <!-- BRIEFING: same art, same title, same words. The facts and the button give way to the round's line-up. -->
+    <div class="brief">
+      <ul class="lineup" aria-label="Who is playing this round">
+        <li data-s="ready" class="full-only"><img src="../../../../web/party/avatars/gaze-07.svg" alt=""><b><bdi>Cody</bdi><em class="tag host-only">Host</em></b><span><i data-i="check"></i>Playing</span></li>
+        <li data-s="watch" class="limited-only"><img src="../../../../web/party/avatars/gaze-07.svg" alt=""><b><bdi>Cody</bdi><em class="tag host-only">Host</em></b><span id="me-limited"><i data-i="eye"></i>Watching</span></li>
+        <li data-s="ready" data-was-host><img src="../../../../web/party/avatars/gaze-12.svg" alt=""><b><bdi>Dana</bdi><em class="tag guest-only n-h-moved">Host</em></b><span class="n-h"><i data-i="check"></i>Playing</span><span class="h-only"><i data-i="moon-star"></i>Away</span></li>
+        <li data-s="choosing"><img src="../../../../web/party/avatars/gaze-21.svg" alt=""><b><bdi>Sam</bdi><em class="tag guest-only h-moved">Host</em></b><span><i data-i="hourglass"></i>Choosing</span></li>
+        <li data-s="watch"><img src="../../../../web/party/avatars/gaze-28.svg" alt=""><b><bdi>Priya</bdi></b><span id="priya-s"><i data-i="eye"></i>Watching</span></li>
+      </ul>
+      <div class="sec"><h2>Quick start</h2></div>
+      <ol class="steps" data-steps></ol>
+      <a class="rules" href="#"><i data-i="book-open"></i>How to play<i data-i="chevron-right"></i></a>
+    </div>
+  </div></main>
+
+  <nav class="nav browse" aria-label="Avrana">
+    <a href="home.html"><i data-i="house"></i>Home</a>
+    <a href="party.html"><i data-i="users"></i>Party</a>
+    <a href="library.html" aria-current="page"><i data-i="library-big"></i>Library</a>
+    <a href="system.html"><i data-i="settings"></i>System</a>
+  </nav>
+
+  <div class="dock brief">
+    <!-- Not back after a while: the round's choices give way to the one thing a person can do -->
+    <div class="net-off">
+      <p class="why"><i data-i="wifi-off"></i><span>This phone lost the Party box. Check it’s on the Wi-Fi “Avrana Party”. <span class="host-only">Hosting passes on if it stays away.</span></span></p>
+      <button class="btn btn--wide" data-set="net=reconnecting" style="margin-top:8px">Try again</button>
+    </div>
+    <div class="pair full-only n-off" role="group" aria-label="This round">
+      <button class="btn needs-box" aria-pressed="true"><i data-i="check"></i>Playing this round</button>
+      <button class="btn needs-box" aria-pressed="false">Watch this round</button>
+    </div>
+    <div class="limited-only n-off">
+      <div class="pair" role="group" aria-label="This round">
+        <button class="btn" disabled>Play this round</button>
+        <button class="btn needs-box" aria-pressed="true" id="watch-limited"><i data-i="eye"></i>Watching this round</button>
+      </div>
+      <p class="why" style="margin-top:8px"><i data-i="triangle-alert"></i><span id="why-limited">This phone can’t play <span data-name></span> in Limited Mode, so it watches. Nobody else is affected.</span></p>
+    </div>
+    <button class="btn btn--wide host-only n-off" disabled>Start game</button>
+    <p class="dock__line net-re">Reconnecting. Your answer stays as it is for now.</p>
+    <p class="dock__line host-only n-net"><b class="h-moved">You’re hosting now. </b>Waiting for <bdi>Sam</bdi> to choose. <a href="library.html" class="another">Choose another game</a></p>
+    <p class="dock__line guest-only n-net n-h-away"><b class="h-moved"><bdi>Sam</bdi> is hosting now. </b>Waiting for <bdi class="hn">Dana</bdi> to start.</p>
+    <!-- The Host stopped answering: Start cannot happen; say who everyone is waiting for and what happens next -->
+    <p class="why h-away n-net"><i data-i="moon-star"></i><span><bdi>Dana</bdi>, the Host, is away, so the game can’t start yet. Hosting passes to someone here if <bdi>Dana</bdi> isn’t back soon.</span></p>
+  </div>
+</div>
+
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+  // lim: what a Limited Mode phone can do with a streamed title. off: stops when the arcade part of the box does.
+  var G = {
+    bluff: { title: 'BLUFF', art: '<img src="../../../../web/party/art/lan-bluff.svg" alt="">', summary: 'Claim anything. Get caught, lose a card.',
+      players: '2–6', length: '15 min', screen: 'Phones', screenL: 'no TV needed', fit: 'Seats all four of you.',
+      steps: ['Everyone holds two hidden roles.', 'On your turn, claim any role’s power. You don’t need to have it.', 'Anyone can call the bluff. Whoever is wrong loses a card. Last one holding a card wins.'] },
+    expo: { title: 'EXPO', art: '<span class="ph ph--expo"></span>', summary: 'One crew. Every card matters.',
+      players: '2–5', length: '20 min', screen: 'Phones', screenL: 'no TV needed', fit: 'Seats all four of you.',
+      steps: ['You win or lose together, one mission at a time.', 'A mission hands out objectives, like winning the trick that holds a certain card.', 'Nobody may talk about their hand. Each of you gets one burst per mission.'] },
+    gauntlet: { title: 'Gauntlet II', art: '<img src="../../../../web/party/art/kenney-sword.svg" alt="">', summary: 'Two heroes, one dungeon. Every phone is a controller and a screen.',
+      players: '1–2', length: 'Open', screen: 'TV', screenL: 'optional', fit: 'Seats two, and it can’t be watched. With four of you here, two sit this one out.', no: true,
+      lim: { watch: false, line: 'This phone can’t play or watch Gauntlet II in Limited Mode.', host: 'This phone would sit out.' }, off: true,
+      steps: ['Pick a hero. Your phone shows the dungeon and the controls.', 'Food is health. Keys open doors. Leave some for your partner.', 'Find the exit before your health runs out.'] }
+    ,
+    bomberman: { title: 'Bomberman Party Edition', art: '<img src="../../../../web/party/art/kenney-exploding.svg" alt="">', summary: 'Up to four bombers on one arena. Phones are the controllers.',
+      players: '1–4', length: '10 min', screen: 'TV', screenL: 'optional', fit: 'Seats all four of you.',
+      steps: ['The arena is on the TV. Your phone is the controller.', 'Drop a bomb, get clear, trap someone else.', 'Last bomber standing takes the round.'] },
+    worms: { title: 'Worms Armageddon', art: '<span class="ph ph--worms"></span>', summary: 'One controller, up to four players taking turns.',
+      players: '1–4', length: '25 min', screen: 'TV', screenL: 'optional', fit: 'Seats all four of you.',
+      lim: { watch: true, line: 'This phone can watch Worms Armageddon but can’t play it in Limited Mode.', host: 'This phone would watch.' },
+      steps: ['Teams take turns. Each turn you move one worm and use one weapon.', 'Wind pushes anything you fire. Water ends a worm at once.', 'The last team with a worm standing wins.'] }
+  };
+  var d = document.documentElement.dataset, g = G[d.game] || G.bluff;
+  var $ = function (id) { return document.getElementById(id); };
+  if (d.state === 'mismatch') d.state = '';
+  if (d.state === 'limited') { d.state = 'briefing'; d.phone = 'limited'; }
+  if (d.host === 'away') d.role = 'guest';
+  var limited = /^limited/.test(d.phone || '') && g.lim, off = d.box === 'degraded' && g.off;
+  // a game with no watch view: nobody is "Watching"
+  if (g.lim && !g.lim.watch) $('priya-s').innerHTML = '<i data-i="minus"></i>Sitting out';
+  // the game went off while the Party was getting ready: say so where Start would be
+  if (off && d.state === 'briefing') document.querySelector('.dock').insertAdjacentHTML('afterbegin', '<p class="why"><i data-i="triangle-alert"></i><span>' + g.title + ' is off for now, so this round can\u2019t start.</span></p>');
+  if (limited) d.limited = '1';
+
+  $('art').innerHTML = g.art;
+  $('title').textContent = g.title;
+  $('summary').textContent = g.summary;
+  $('f-players').textContent = g.players;
+  $('f-length').textContent = g.length;
+  $('f-screen').textContent = g.screen;
+  $('f-screen-l').textContent = g.screenL;
+  var fit = $('fit');
+  fit.lastElementChild.textContent = g.fit;
+  if (g.no) { fit.classList.add('fit--no'); fit.firstElementChild.setAttribute('data-i', 'triangle-alert'); }
+  document.querySelectorAll('[data-steps]').forEach(function (o) { o.innerHTML = g.steps.map(function (s) { return '<li>' + s + '</li>'; }).join(''); });
+  document.querySelectorAll('[data-name]').forEach(function (n) { n.textContent = g.title; });
+  if (g !== G.bluff && g !== G.expo) document.querySelector('.act .iconbtn').setAttribute('aria-pressed', 'false');
+  $('bring').setAttribute('href', '?state=briefing&game=' + (d.game || 'bluff'));
+
+  // This phone in Limited Mode: one line says what it can do with this game. The Host can still bring the Party in.
+  $('phoneline').hidden = !limited;
+  if (limited) {
+    $('phoneline').lastElementChild.textContent = g.lim.line;
+    if (!g.lim.watch) $('phoneline').firstElementChild.setAttribute('data-i', 'triangle-alert');
+    $('who-host').textContent = 'Moves everyone to the briefing. ' + g.lim.host;
+    if (!g.lim.watch) {   // no watch view at all: this phone sits the round out
+      $('me-limited').innerHTML = '<i data-i="minus"></i>Sitting out';
+      $('watch-limited').outerHTML = '<button class="btn" disabled>Watch this round</button>';
+      $('why-limited').textContent = 'This phone can’t play or watch ' + g.title + ' in Limited Mode, so it sits this round out. Nobody else is affected.';
+    }
+  }
+  // The game is off for everyone: nobody can start it. Only the Host is told why, next to the button.
+  $('boxline').hidden = !off;
+  if (off) {
+    ['bring', 'suggest'].forEach(function (id) { $(id).setAttribute('aria-disabled', 'true'); $(id).removeAttribute('href'); });
+    $('who-host').innerHTML = 'Arcade games are off right now. <a href="system.html">What changed</a>';
+  }
+  // This phone is not connected: anything that needs the Party box waits.
+  if (d.net) {
+    document.querySelectorAll('.needs-box').forEach(function (b) { b.setAttribute('aria-disabled', 'true'); b.removeAttribute('href'); });
+    $('who-host').textContent = 'You can bring the Party in when this phone is back.';
+    $('who-guest').textContent = 'You can suggest it when this phone is back.';
+  }
+  if (d.host === 'moved' && d.role === 'guest') document.querySelectorAll('.hn').forEach(function (n) { n.textContent = 'Sam'; });
+
+  // Larger text: the answer controls stop docking and follow the line-up in the page (in the product, a
+  // dock that only sticks when an em-based height query says there is room for it)
+  if (d.text && d.state === 'briefing') { var dock = document.querySelector('.dock'); document.querySelector('.lineup').after(dock); dock.classList.add('dock--flow'); }
+
+  // Prototype only: composable switches travel with the prototype's own links (see home.html)
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href]'), u = a && a.getAttribute('href');
+    if (!u || !/^([a-z-]+\.html|\?)/.test(u)) return;
+    ['phone', 'box', 'net', 'host', 'text'].forEach(function (k) { if (d[k] && u.indexOf(k + '=') < 0) u += (u.indexOf('?') < 0 ? '?' : '&') + k + '=' + d[k]; });
+    a.setAttribute('href', u);
+  }, true);
+</script>
+<script src="shared/proto.js"></script>
+<script src="shared/social.js"></script>
+</html>

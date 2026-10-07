@@ -20,7 +20,11 @@ class ShellFiles(unittest.TestCase):
     def test_every_shell_file_is_precached(self):
         precached = set(build.shell_list((WEB_DIR / 'sw.js').read_text(encoding='utf-8')))
         files = {p.relative_to(WEB_DIR).as_posix() for p in WEB_DIR.rglob('*') if p.is_file()}
-        self.assertEqual(files - precached - {'sw.js'}, set(), 'add new shell files to SHELL in sw.js')
+        # The HTTP doorway (ADR 0012) is never in the offline copy: it exists for plain HTTP, where
+        # there is no service worker, and its one job is to ask the network.
+        doorway = {'doorway/index.html', 'doorway/doorway.js', 'lib/doorway.js'}
+        self.assertEqual(files - precached - {'sw.js'} - doorway, set(), 'add new shell files to SHELL in sw.js')
+        self.assertEqual(precached & doorway, set())
         self.assertNotIn('sw.js', precached)
         self.assertFalse(any(p.startswith('api/') for p in precached))
 
@@ -35,10 +39,14 @@ class ShellFiles(unittest.TestCase):
     def test_guest_page_has_no_machinery_words(self):
         text = re.sub(r'<[^>]+>', ' ', (WEB_DIR / 'index.html').read_text(encoding='utf-8'))
         self.assertIsNone(JARGON.search(text))
-        app = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
-        for literal in re.findall(r"'([^'\n]{12,})'", app):
-            if ' ' in literal:  # sentences only, not identifiers or selectors
-                self.assertIsNone(JARGON.search(literal), literal)
+        # app.js, the frame's sentences (lib/frame.js: who is here, the Party control's name) and
+        # the Library's (lib/library.js: headings, filter words, what a title means on this phone)
+        for name, quotes in (('app.js', "'"), ('lib/frame.js', "'`"), ('lib/library.js', "'`")):
+            source = (WEB_DIR / name).read_text(encoding='utf-8')
+            for quote in quotes:
+                for literal in re.findall(quote + '([^' + quote + '\\n]{12,})' + quote, source):
+                    if ' ' in literal:  # sentences only, not identifiers or selectors
+                        self.assertIsNone(JARGON.search(literal), f'{name}: {literal}')
 
 
 class NoCredentialsInUrls(unittest.TestCase):

@@ -47,17 +47,18 @@ export default defineConfig({
     },
   ],
   projects: [
-    { name: 'android-chromium', testIgnore: /bridge\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    { name: 'android-chromium', testIgnore: /(bridge|limited)\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
     {
       name: 'iphone-size-chromium',
-      testIgnore: /bridge\.spec\.ts$/,
+      testIgnore: /(bridge|limited)\.spec\.ts$/,
       use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: { executablePath } },
     },
     {
       // ADR 0013: a game page on another origin of the same site. Chromium resolves the two test
       // host names to the dev server; nothing here proves real Safari (Tier 3, the owner).
       name: 'two-origins-chromium',
-      testMatch: /bridge\.spec\.ts$/,
+      // limited.spec.ts (ADR 0012) uses the same trick for a real non-secure origin.
+      testMatch: /(bridge|limited)\.spec\.ts$/,
       use: { ...devices['Pixel 7'], launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] } },
     },
   ],

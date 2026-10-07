@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Home · Avrana Party concept</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  .hero { display: block; margin-top: 18px; }
+  .hero .cover { aspect-ratio: 2 / 1; }
+  .hero__row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .hero__row > span { flex: 1; min-width: 0; }
+  .hero__t { display: block; font-size: var(--t-xl); font-weight: 550; letter-spacing: -0.01em; line-height: 1.15; }
+  .hero__row i { color: var(--ink-2); }
+  .who { margin-top: 6px; }
+  .notice { margin-top: 14px; }
+  /* the open notice and the folded mark are never shown together */
+  html:not([data-phone="limited"]) #limited, html[data-phone="limited"] #limited-tag { display: none; }
+  html:not([data-ping]) #ping { display: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="top__title brand">Avrana Party</h1>
+    <button class="limmark lim-only" id="limited-tag" data-set="about=limited" aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><i data-i="triangle-alert"></i><span>Limited</span></button>
+    <button class="hud" data-set="drawer=chat" aria-haspopup="dialog" aria-label="Your Party: 4 people here, 2 new messages. Open people and chat">
+      <span class="hud__faces">
+        <img src="../../../../web/party/avatars/gaze-07.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-12.svg" alt="">
+        <img src="../../../../web/party/avatars/gaze-21.svg" alt="">
+      </span>
+      <span class="hud__n">+1</span>
+      <span class="hud__new">2</span>
+    </button>
+  </header>
+
+  <main class="main"><div class="wrap">
+    <!-- This phone lost the Party box: the last known Party stays; one quiet line says so -->
+    <p class="netline net-re" role="status"><i data-i="loader"></i><span>Reconnecting. What you see may be out of date.</span></p>
+
+    <section class="who" aria-label="Who is here">
+      <p class="lede">Four of you are here.</p>
+      <p class="sub host-only"><bdi>Cody</bdi> (you), <bdi>Dana</bdi>, <bdi>Sam</bdi> and <bdi>Priya</bdi>. You’re hosting.</p>
+      <p class="sub guest-only n-h-away"><bdi>Cody</bdi> (you), <bdi>Dana</bdi>, <bdi>Sam</bdi> and <bdi>Priya</bdi>. <bdi class="hn">Dana</bdi> is hosting.</p>
+      <p class="sub guest-only h-away"><bdi>Cody</bdi> (you), <bdi>Dana</bdi>, <bdi>Sam</bdi> and <bdi>Priya</bdi>. <bdi>Dana</bdi> is hosting, and is away.</p>
+      <!-- The Host stopped answering. Party Core passes the role on by itself; nobody has anything to press -->
+      <p class="status h-away" role="status"><i data-i="moon-star"></i><span>Hosting passes to someone here if <bdi>Dana</bdi> isn’t back soon.</span></p>
+      <p class="status h-moved guest-only" role="status"><i data-i="arrow-up-down"></i><span><bdi>Sam</bdi> is hosting now. <bdi>Dana</bdi> has been away.</span></p>
+    </section>
+
+    <!-- Not back after a while: what happened and the two things a person can do -->
+    <div class="notice net-off" role="status">
+      <i data-i="wifi-off"></i>
+      <p><b>This phone lost the Party box</b>Check it’s on the Wi-Fi “Avrana Party”. <span class="host-only">Hosting passes on if it stays away.</span></p>
+      <button class="btn" data-set="net=reconnecting">Try again</button>
+    </div>
+    <!-- Hosting passed to this phone -->
+    <div class="notice notice--quiet h-moved host-only" role="status">
+      <i data-i="arrow-up-down"></i>
+      <p><b>You’re hosting now</b><bdi>Dana</bdi> has been away, so you pick what the Party plays.</p>
+      <button class="iconbtn" data-set="host=" aria-label="Dismiss"><i data-i="x"></i></button>
+    </div>
+    <!-- Appliance trouble that changes what can be played: the Host sees it, and may dismiss it -->
+    <div class="notice host-only deg-only" id="degraded" role="status">
+      <i data-i="triangle-alert"></i>
+      <p><b>Arcade games are off right now</b>Card and party games play as usual. <a href="system.html">What changed</a></p>
+      <button class="iconbtn" aria-label="Dismiss"><i data-i="x"></i></button>
+    </div>
+    <!-- Limited Mode on this phone: said once in full, then it folds into the mark in the top bar (never hidden: ADR 0012) -->
+    <div class="notice notice--run" id="limited" role="status">
+      <i data-i="triangle-alert"></i>
+      <p><b>Limited Mode.</b> This connection isn’t private. This phone can’t play Gauntlet II or Worms. The owner restores Full Mode by renewing the certificate.</p>
+      <p class="notice__foot"><button class="textlink" data-set="about=limited" aria-haspopup="dialog">What this means</button><button class="iconbtn" data-set="phone=limited-folded" aria-label="Fold this notice away"><i data-i="chevron-up"></i></button></p>
+    </div>
+
+    <a class="hero" href="game.html">
+      <span class="cover"><img src="../../../../web/party/art/lan-bluff.svg" alt=""><span class="seats"><i data-i="users"></i>2–6</span></span>
+      <span class="hero__row">
+        <span><b class="hero__t">BLUFF</b><span class="meta">You played 25 minutes ago. Seats all four of you.</span></span>
+        <i data-i="chevron-right"></i>
+      </span>
+    </a>
+
+    <div class="sec"><h2>Great for four</h2><a href="library.html">Library</a></div>
+    <ul class="rail">
+      <li><a class="tile" href="game.html?game=expo"><span class="cover"><span class="ph ph--expo"><b>EXPO</b></span><span class="seats"><i data-i="users"></i>2–5</span></span><span class="tile__t">EXPO</span><span class="tile__m">Co-op, 20 min</span></a></li>
+      <li><a class="tile" href="game.html?game=bomberman"><span class="cover"><img src="../../../../web/party/art/kenney-exploding.svg" alt=""><span class="seats"><i data-i="users"></i>1–4</span></span><span class="tile__t">Bomberman Party Edition</span><span class="tile__m">Versus, 10 min</span></a></li>
+      <li><a class="tile" href="game.html"><span class="cover"><span class="ph ph--spades"><b>Spades</b></span><span class="seats"><i data-i="users"></i>4</span></span><span class="tile__t">Spades</span><span class="tile__m">Teams, 30 min</span></a></li>
+      <li><a class="tile" href="game.html?game=worms"><span class="cover"><span class="ph ph--worms"><b>Worms</b></span><span class="seats"><i data-i="users"></i>1–4</span></span><span class="tile__t">Worms Armageddon</span><span class="tile__m n-lim">Versus, 25 min</span><span class="tile__m tile__m--warn lim-only"><i data-i="eye"></i>Watch only on this phone</span></a></li>
+    </ul>
+
+    <div class="sec"><h2>Recently played</h2></div>
+    <ul class="rail rail--s">
+      <li><a class="tile" href="game.html"><span class="cover"><img src="../../../../web/party/art/lan-bluff.svg" alt=""></span><span class="tile__t">BLUFF</span></a></li>
+      <li><a class="tile" href="game.html?game=expo"><span class="cover"><span class="ph ph--expo"></span></span><span class="tile__t">EXPO</span></a></li>
+      <li><a class="tile" href="game.html?game=gauntlet"><span class="cover"><img src="../../../../web/party/art/kenney-sword.svg" alt=""></span><span class="tile__t">Gauntlet II</span><span class="tile__m tile__m--warn lim-only n-deg"><i data-i="triangle-alert"></i>Not on this phone</span><span class="tile__m tile__m--warn deg-only"><i data-i="triangle-alert"></i>Off for now</span></a></li>
+      <li><a class="tile" href="game.html"><span class="cover"><span class="ph ph--checkers"></span></span><span class="tile__t">Checkers</span></a></li>
+    </ul>
+  </div></main>
+
+  <nav class="nav" aria-label="Avrana">
+    <a href="home.html" aria-current="page"><i data-i="house"></i>Home</a>
+    <a href="party.html"><i data-i="users"></i>Party</a>
+    <a href="library.html"><i data-i="library-big"></i>Library</a>
+    <a href="system.html"><i data-i="settings"></i>System</a>
+  </nav>
+</div>
+
+<!-- A suggestion arrives through the social layer (proposal; the voting model is undecided) -->
+<div class="ping" id="ping" role="status">
+  <img src="../../../../web/party/avatars/gaze-21.svg" alt="">
+  <p><b><bdi>Sam</bdi> wants to play EXPO</b><br><span class="meta host-only">You choose what the Party plays.</span><span class="meta guest-only"><bdi class="hn">Dana</bdi> chooses what the Party plays.</span></p>
+  <a class="btn" href="game.html?game=expo">View</a>
+  <button class="iconbtn" data-set="ping=" aria-label="Dismiss"><i data-i="x"></i></button>
+</div>
+
+
+<script src="shared/icons.js"></script>
+<script src="shared/proto.js"></script>
+<script>
+  // Prototype only. The older ?state= values map onto the composable switches; the switches travel with
+  // the prototype's own links; anything that needs the Party box is marked unavailable while it is out of reach.
+  (function (d) {
+    if (/^limited/.test(d.state)) { d.phone = d.state; delete d.state; }
+    if (d.state === 'degraded') { d.box = 'degraded'; delete d.state; }
+    if (d.host === 'away') d.role = 'guest';
+    if (d.host === 'moved' && d.role === 'guest') document.querySelectorAll('.hn').forEach(function (n) { n.textContent = 'Sam'; });
+    if (d.net) document.querySelectorAll('.needs-box').forEach(function (b) { b.setAttribute('aria-disabled', 'true'); });
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest('a[href]'), u = a && a.getAttribute('href');
+      if (!u || !/^([a-z-]+\.html|\?)/.test(u)) return;
+      ['phone', 'box', 'net', 'host', 'text'].forEach(function (k) { if (d[k] && u.indexOf(k + '=') < 0) u += (u.indexOf('?') < 0 ? '?' : '&') + k + '=' + d[k]; });
+      a.setAttribute('href', u);
+    }, true);
+  })(document.documentElement.dataset);
+
+</script>
+<script src="shared/proto.js"></script>
+<script src="shared/social.js"></script>
+</html>

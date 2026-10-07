@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avrana UX/UI concepts · review board</title>
+<style>
+  @font-face { font-family: "Geist"; src: url("shared/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+  :root { color-scheme: dark; --w: 390px; --h: 844px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #09090a; color: #edeae4; font: 400 15px/1.45 "Geist", system-ui, sans-serif; }
+  header { padding: 28px 24px 8px; max-width: 1320px; margin: 0 auto; }
+  h1 { font-family: "Helvetica Neue", Helvetica, "Geist", Arial, sans-serif; font-weight: 300; font-size: 30px; margin: 0; }
+  header p { color: #aeaba7; max-width: 70ch; margin: 8px 0 0; }
+  .bar { position: sticky; top: 0; z-index: 2; background: rgba(9, 9, 10, 0.92); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255, 255, 255, 0.09); }
+  .bar div { max-width: 1320px; margin: 0 auto; padding: 10px 24px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+  .bar span { color: #aeaba7; font-size: 13px; }
+  .bar button { font: inherit; font-size: 13px; color: #aeaba7; background: none; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; height: 32px; padding: 0 10px; cursor: pointer; }
+  .bar button[aria-pressed="true"] { background: #edeae4; color: #121214; border-color: transparent; font-weight: 600; }
+  main { max-width: 1320px; margin: 0 auto; padding: 8px 24px 80px; }
+  h2 { font-size: 20px; font-weight: 550; margin: 36px 0 4px; }
+  h2 + p { color: #aeaba7; margin: 0 0 18px; max-width: 80ch; }
+  .wall { display: grid; grid-template-columns: repeat(auto-fill, var(--w)); gap: 34px 28px; }
+  figure { margin: 0; width: var(--w); }
+  figcaption { margin-bottom: 10px; min-height: 62px; }
+  figcaption b { font-weight: 550; display: block; }
+  figcaption span { color: #aeaba7; font-size: 13px; display: block; }
+  figcaption a { color: #b9a9e8; font-size: 13px; }
+  iframe { display: block; width: var(--w); height: var(--h); border: 0; border-radius: 14px; outline: 1px solid rgba(255, 255, 255, 0.16); background: #0d0d0f; }
+  figure.wide { width: 844px; grid-column: span 2; } figure.wide iframe { width: 844px; height: 390px; }
+  @media (max-width: 480px) { iframe { display: none; } figcaption { min-height: 0; } .wall { grid-template-columns: 1fr; gap: 14px; } figure, figure.wide { width: auto; } .bar { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Avrana Party</h1>
+  <p>UX/UI redesign, design phase: concepts for owner review, 5 October 2026. Static HTML and CSS at phone size. Nothing here is product code, and every value is a proposal. On a phone, tap a screen's link to see it full size.</p>
+</header>
+<div class="bar"><div>
+  <span>Phone</span>
+  <button data-size="390x844" aria-pressed="true">390 × 844 · tall, installed</button>
+  <button data-size="390x664">390 × 664 · iPhone in Safari</button>
+  <button data-size="360x640">360 × 640 · small Android</button>
+  <span>Seen by</span>
+  <button data-role="host" aria-pressed="true">Host</button>
+  <button data-role="guest">Everyone else</button>
+</div></div>
+
+<main>
+  <h2>The seven required screens</h2>
+  <p>The shell is four modules along the bottom and one Party control at the top. People come down from the top; things about the game on screen come up from the bottom.</p>
+  <div class="wall" id="req"></div>
+
+  <h2>EXPO</h2>
+  <p>A different visual world from the shell on purpose: the game owns its look, the platform owns behaviour. Five zones, one viewport, cards brightest.</p>
+  <div class="wall" id="expo"></div>
+
+  <h2>Revision 1: the demanding cases</h2>
+  <p>Added after the first owner review: larger hands, two players with Tonoja, short-screen results, the full objectives list, filtered and empty Library, unavailable games carried through, reconnecting, an absent Host, and enlarged text.</p>
+  <div class="wall" id="rev"></div>
+
+  <h2>Revision 2: the cleanup pass</h2>
+  <p>After the owner approved revision 1’s direction: Party access and the Limited explanation open over the briefing, the compact grid marks unavailable games, EXPO’s enlarged-text layout is one column with pinned keys, and the EXPO result keeps today’s mission lifecycle.</p>
+  <div class="wall" id="rev2"></div>
+
+  <h2>Supporting concepts</h2>
+  <p>First run, the social drawer, filters, a suggestion arriving, System, and a lower-priority sketch of the Arcade shell.</p>
+  <div class="wall" id="more"></div>
+</main>
+
+<script>
+  var S = {
+    req: [
+      ['1 · Home / Play', 'Who is here, who hosts, what to play next.', 'home.html'],
+      ['2 · Party', 'The people in the room. Your own face opens your profile.', 'party.html'],
+      ['3 · Library, medium grid', 'Artwork first. Games that do not fit stay visible and say why.', 'library.html'],
+      ['4 · Library, list', 'Same shelf with descriptions, facts and favorites.', 'library.html?view=list'],
+      ['5a · Game detail (browsing)', 'This phone only. Nothing launches from here.', 'game.html'],
+      ['5b · Briefing (the Party is here)', 'Same surface after the Host brings everyone in: Play this round or Watch, then Host Start.', 'game.html?state=briefing'],
+      ['6a · Limited Mode on this phone', 'Said once in plain words, then folded into the tag in the top bar.', 'home.html?state=limited'],
+      ['6b · Degraded, Host only', 'What changed for play. Dismissible. Detail lives in System.', 'home.html?state=degraded']
+    ],
+    expo: [
+      ['7a · EXPO, your turn', 'Stage, crew, trick with the current winner named, objectives, hand.', 'expo.html'],
+      ['7b · EXPO, waiting', 'Not your turn: the tray says who is choosing.', 'expo.html?state=waiting'],
+      ['7c · Burst Transmission', 'The helmet radio opens in place of the trick.', 'expo.html?state=radio'],
+      ['7d · Result', 'The word, the cause, then the evidence.', 'expo.html?state=result'],
+      ['EXPO, five at the table', 'Names before faces when the crew strip gets tight.', 'expo.html?seats=5'],
+      ['EXPO, landscape (sketch)', 'Whether landscape is supported is an owner question.', 'expo.html', 'wide']
+    ],
+    rev: [
+      ['EXPO result, short screen', 'Every outcome is kept; the evidence scrolls, the actions stay.', 'expo.html?state=result'],
+      ['EXPO result, success', '', 'expo.html?state=result&ok=1'],
+      ['EXPO, 13 cards (three players)', 'Rows of seven; each card at least 44 px wide.', 'expo.html?hand=13'],
+      ['EXPO, 14 cards', '', 'expo.html?hand=14'],
+      ['EXPO, 14 cards, burst open', '', 'expo.html?hand=14&state=radio'],
+      ['EXPO, two players: your hand', 'Tonoja sits in the crew strip, marked as not a person.', 'expo.html?seats=2'],
+      ['EXPO, two players: playing for Tonoja', 'The Yours / Tonoja switch, face-up cards and gaps.', 'expo.html?seats=2&turn=tonoja'],
+      ['EXPO, all objectives', 'The sheet rises over the board and stops at the tray.', 'expo.html?sheet=objectives'],
+      ['EXPO, all objectives during a burst', '', 'expo.html?sheet=objectives&state=radio'],
+      ['EXPO, long objectives list', '', 'expo.html?sheet=objectives&seats=5&goals=7'],
+      ['EXPO, reconnecting', '', 'expo.html?net=reconnecting'],
+      ['EXPO, text at 200%', 'A simulated rem scale: the board scrolls, the tray stays.', 'expo.html?text=200'],
+      ['EXPO, landscape with 13 cards (sketch)', '', 'expo.html?hand=13', 'wide'],
+      ['Library, explicitly filtered', 'Badge, selection, count and results agree; hidden titles stay one tap away.', 'library.html?filter=players4'],
+      ['Library, filtered: the sheet', '', 'library.html?filter=players4&sheet=filters'],
+      ['Library, nothing matches the search', '', 'library.html?q=catan'],
+      ['Library, filters hide everything', '', 'library.html?filter=none'],
+      ['Library on a Limited phone', 'The consequence sits under the titles it affects.', 'library.html?phone=limited-folded'],
+      ['Library, arcade off (Host)', '', 'library.html?box=degraded'],
+      ['Game detail on a Limited phone', '', 'game.html?game=worms&phone=limited-folded'],
+      ['Game detail, arcade off (Host)', '', 'game.html?game=gauntlet&box=degraded'],
+      ['Home, reconnecting', '', 'home.html?net=reconnecting'],
+      ['Home, the Party box is out of reach', '', 'home.html?net=offline'],
+      ['Briefing, the Host is away', '', 'game.html?state=briefing&host=away'],
+      ['Home, hosting has passed to you', '', 'home.html?host=moved'],
+      ['Briefing, text at 200%', 'A simulated rem scale.', 'game.html?text=200&state=briefing'],
+      ['Library, text at 200%', '', 'library.html?text=200']
+    ],
+    rev2: [
+      ['Briefing: Party access, in place', 'The Party control opens people over the briefing; closing it is the way back. First slice: people only.', 'game.html?state=briefing&drawer=people&chat=off'],
+      ['Briefing: Party access with chat', 'The same drawer once the Party owns chat (a later slice).', 'game.html?state=briefing&drawer=chat'],
+      ['Briefing: what Limited Mode means, in place', 'The mark opens a sheet over the briefing: this round first, then the three facts.', 'game.html?state=briefing&game=worms&phone=limited-folded&about=limited'],
+      ['Home: the same Limited sheet', '', 'home.html?phone=limited-folded&about=limited'],
+      ['Library, compact grid on a Limited phone', 'Compact keeps the consequence line.', 'library.html?view=compact&phone=limited-folded'],
+      ['Library, compact grid, arcade off', '', 'library.html?view=compact&box=degraded'],
+      ['EXPO at 200% text: your turn', 'One scrolling column; only the keys are pinned. It opens at the hand.', 'expo.html?text=200'],
+      ['EXPO at 200% text: 14 cards', 'Rows of seven at any text size.', 'expo.html?text=200&hand=14'],
+      ['EXPO at 200% text: a burst', 'A step in the same column; Cancel and Send pinned.', 'expo.html?text=200&state=radio'],
+      ['EXPO at 200% text: playing for Tonoja', '', 'expo.html?text=200&seats=2&turn=tonoja'],
+      ['EXPO result: today’s controls', 'Retry same tasks or new tasks; ending EXPO is the Host’s.', 'expo.html?state=result'],
+      ['EXPO result, success: today’s mission picker', '', 'expo.html?state=result&ok=1']
+    ],
+    more: [
+      ['First run', 'Name and a face, then you are in.', 'welcome.html'],
+      ['Social drawer: chat', 'Comes down from the Party control.', 'home.html?drawer=chat'],
+      ['Social drawer: people', '', 'home.html?drawer=people'],
+      ['A suggestion arrives', 'Voting model undecided; this shows only where it would land.', 'home.html?ping=1'],
+      ['Limited Mode, folded', 'After the notice is folded: a mark in the top bar that leads to System.', 'home.html?state=limited-folded'],
+      ['Library filters', 'Players, length, how you play, kind, screens.', 'library.html?sheet=filters'],
+      ['Library view menu', 'Large, medium, compact, list.', 'library.html?sheet=view'],
+      ['Library, large grid', '', 'library.html?view=large'],
+      ['Library, compact grid', '', 'library.html?view=compact'],
+      ['A game that does not fit', 'Visible, explained, not hidden.', 'game.html?game=gauntlet&state=mismatch'],
+      ['Briefing on a Limited phone', 'Play is unavailable here, with the reason. Watch always is.', 'game.html?state=briefing&game=worms&phone=limited-folded'],
+      ['Profile (opened on purpose)', '', 'party.html?sheet=profile'],
+      ['System', 'Healthy state is one quiet line.', 'system.html'],
+      ['System, Limited Mode explained', '', 'system.html?state=limited'],
+      ['Arcade shell, portrait (sketch)', 'Lower priority.', 'arcade.html'],
+      ['Arcade shell, landscape (sketch)', '', 'arcade.html', 'wide']
+    ]
+  };
+  var role = 'host';
+  function url(u) { return role === 'guest' ? u + (u.indexOf('?') < 0 ? '?' : '&') + 'role=guest' : u; }
+  function draw() {
+    Object.keys(S).forEach(function (k) {
+      document.getElementById(k).innerHTML = S[k].map(function (x) {
+        return '<figure class="' + (x[3] || '') + '"><figcaption><b>' + x[0] + '</b><span>' + x[1] + '</span><a href="' + url(x[2]) + '">Open full size</a></figcaption><iframe loading="lazy" title="' + x[0] + '" src="' + url(x[2]) + '"></iframe></figure>';
+      }).join('');
+    });
+  }
+  document.querySelectorAll('[data-size]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var p = b.dataset.size.split('x');
+      document.documentElement.style.setProperty('--w', p[0] + 'px');
+      document.documentElement.style.setProperty('--h', p[1] + 'px');
+      document.querySelectorAll('[data-size]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+    });
+  });
+  document.querySelectorAll('[data-role]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      role = b.dataset.role;
+      document.querySelectorAll('[data-role]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+      draw();
+    });
+  });
+  draw();
+</script>
+</body>
+</html>

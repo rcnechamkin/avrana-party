@@ -25,7 +25,9 @@ const SHELL = [
   '', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg', 'catalog.json', 'version.json',
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
   'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/catalog-load.js', 'lib/icons.js', 'lib/avatars.js',
-  'lib/party-mode.js', 'lib/party-client.js', 'lib/party-follow.js',
+  'lib/party-mode.js', 'lib/party-client.js', 'lib/party-follow.js', 'lib/limited.js',
+  // The module of the frame, and the one bundled font with its licence (Geist, SIL OFL 1.1).
+  'lib/frame.js', 'lib/library.js', 'lib/states.js', 'fonts/Geist-Variable.woff2', 'fonts/OFL.txt',
   // The bridge frame for game pages on another origin, and the reference shim (ADR 0013).
   'bridge.html', 'lib/bridge.js', 'lib/bridge-frame.js', 'bridge/shim.js',
   'diag/', 'diag/index.html', 'diag/diag.js',

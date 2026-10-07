@@ -11,8 +11,8 @@ Decisions: ADRs 0004 and 0006–0011. Deployment procedure: `docs/runbooks/party
 - **Deployed/current behaviour** — everything from "What it is" through "Open" below. `/party/`
   is HTTPS-only; without the trusted origin a phone sees "Can't reach the party" and a link to
   the legacy HTTP hub. Nothing in this document claims otherwise.
-- **Accepted architectural target** — the [Full Mode / Limited Mode contract](#accepted-target-full-mode--limited-mode-contract-adr-0012-not-implemented)
-  at the end, decided in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md). It is not implemented or deployed; AVR-225 owns it.
+- **Accepted architectural target** — the [Full Mode / Limited Mode contract](#accepted-target-full-mode--limited-mode-contract-adr-0012-not-deployed)
+  at the end, decided in [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md). Rollout steps 1 and 2 are in source (ADR 0012 amendment); it is not deployed; AVR-225 owns it.
 
 ## What it is
 
@@ -35,7 +35,7 @@ and authoritative Party follow. PS1 adoption remains experiment work, not runtim
 
 | File | Role |
 |---|---|
-| `web/party/index.html`, `app.js`, `styles.css` | the guest page; `styles.css` is **generated** from `web/src/party.css` (Tailwind CSS 4 + daisyUI 5 at build time; `npm run check:ui`), the prototype-era `avrana` theme in [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md): dark only, rem type, 48 px targets, no web fonts, no machinery words (tested) |
+| `web/party/index.html`, `app.js`, `styles.css` | the guest page; `styles.css` is **generated** from `web/src/party.css` (Tailwind CSS 4 + daisyUI 5 at build time; `npm run check:ui`), the prototype-era `avrana` theme in [UI-DESIGN-SYSTEM](../UI-DESIGN-SYSTEM.md): dark only, rem type, 48 px targets, one bundled font and no remote ones, no machinery words (tested) |
 | `web/party/lib/icons.js` | **generated** Lucide subset (`npm run build:icons`) |
 | `web/party/lib/party-mode.js`, `party-client.js` | Party mode (ADR 0011): pure decisions from the Party Core view (`destination`, `roster`, `setupPanel`); the `/party/api/state` long poll, automatic presence and the host's moves. Party Home renders home and a round's full-screen setup scene |
 | `web/party/lib/party-follow.js` | The Party under a game page (ADR 0011): keeps a member's page where the party is, keeps the phone present, and lends the game shell the host's controls (`window.AvranaParty`); no Party UI on the game |
@@ -157,7 +157,7 @@ used as evidence.
   (`players`, `max_players`, `running`) first. Live `tests/multiplayer.spec.ts` depends on the
   "full" wording.
 
-## Accepted target: Full Mode / Limited Mode contract (ADR 0012; not implemented)
+## Accepted target: Full Mode / Limited Mode contract (ADR 0012; not deployed)
 
 The deployed behaviour above treats trusted HTTPS as a precondition for Party Home. [ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md)
 changes the target: **trusted HTTPS is the preferred Full Mode, and its loss must not disable the

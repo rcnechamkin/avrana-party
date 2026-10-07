@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="avrana" data-full="https://party.avrana.net/party/" data-limited="http://10.42.0.1/party/">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0f">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>Avrana Party</title>
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../styles.css">
+<script type="module" src="doorway.js"></script>
+</head>
+<body>
+<!-- The HTTP doorway (ADR 0012): every phone starts here. It opens the full version when the
+     secure address works on this phone, and Limited Mode when it does not. -->
+<main class="avrana-scene place-content-center text-center" aria-label="Finding your party">
+  <span class="loading loading-spinner loading-lg mx-auto text-secondary" aria-hidden="true"></span>
+  <p id="doorway-text" class="m-0 text-lg font-semibold" role="status">Finding your party…</p>
+</main>
+<noscript><p class="p-4 text-center">Avrana Party needs JavaScript. Try <a href="https://party.avrana.net/party/">the full version</a>, or <a href="http://10.42.0.1/party/">Limited Mode</a> if that shows a warning.</p></noscript>
+</body>
+</html>
