@@ -111,6 +111,10 @@ Two names, **provisional until AVR-310 decides the locations and their names**:
 | `AVRANA_PS1_CONTENT` | the content root: the BIOS image, and the disc folders laid out as each profile's `cue` path says |
 | `AVRANA_PS1_CORE` | the pinned core, `pcsx_rearmed_libretro.so` |
 
+`install_to` in `evidence/selected-core.json` (`$AVRANA_PS1_HOME/cores/`, with a default under a home
+directory) is where the donor kept its core: evidence of that run, not a default here. Nothing reads it,
+and the core path is only ever `AVRANA_PS1_CORE` or `--core`.
+
 An argument beats the environment; neither falls back to a default path. The check reports that: the
 cue sheet is there; every file a `FILE` line of the cue names is there (a name that is absolute or
 climbs out of the disc folder is refused, not probed); the BIOS (`SCPH1001.BIN`, the name the donor's
@@ -188,6 +192,15 @@ slots in a real match. With the arcade running the emulator was CPU-bound: about
 - **An XTest seat needs its display**, so it is opened after the private Xvfb is up, the other way round
   from the order `base.py` describes for uinput. The provider is not thread-safe: use it from the one
   thread that owns the seats.
+- **The donor's comments cite donor files.** `retroarch.cfg` (its first lines) and `mode-xvfb.cfg` (its
+  comment on the key banks), and a note in `titles/bomberman.json`, name `run-ps1.sh`, `stream_ps1.py` and
+  `tools/xkeys.py`, which were `ps1/run-ps1.sh`, `ps1/stream_ps1.py` and `ps1/tools/xkeys.py` on the
+  donor branch and are not in this repository. The text is the donor's, kept byte for byte; it describes
+  the donor's launcher, not anything here.
+- **A release timer is not re-armed earlier.** A key's release can come up to 40 ms after its minimum
+  hold has ended, never before it: a release that has to wait rides the one timer its seat already has
+  pending, and that timer is not moved to an earlier time (only on the event-loop path; with no loop the
+  controller sleeps exactly as long as the hold needs).
 - Opposing directions are not cancelled (both keys go down), as in the donor, and an X server that dies
   takes its client process with it (Xlib's default I/O error handler): the supervisor has to restart
   the service.

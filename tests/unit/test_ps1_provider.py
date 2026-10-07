@@ -1225,10 +1225,27 @@ class Documentation(unittest.TestCase):
         listed = re.findall(r'^\| `([a-z_]+)` \|', text, re.M)
         self.assertEqual(sorted(listed), sorted(ps1.FAILURES))
 
+    def test_the_donor_files_the_data_cites_are_not_here_and_install_to_is_only_evidence(self):
+        """Two things the README says about the donor's data, true now: its comments cite files that were never
+        brought over, and `install_to` in the core pin is read by nothing. If either changes, so must the README."""
+        readme = self.read('ps1/README.md')
+        cited = {'run-ps1.sh': 'retroarch.cfg', 'stream_ps1.py': 'mode-xvfb.cfg', 'tools/xkeys.py': 'mode-xvfb.cfg'}
+        for name, where in cited.items():
+            with self.subTest(name):
+                self.assertIn(name, (ps1.PS1_DIR / where).read_text(encoding='utf-8'))     # still cited there
+                self.assertIn(f'`{name}`', readme)
+                self.assertFalse((ps1.PS1_DIR / name).exists())
+                self.assertFalse((REPO_ROOT / name).exists())
+        pin = json.loads((ps1.PS1_DIR / 'evidence/selected-core.json').read_text(encoding='utf-8'))
+        self.assertIn('install_to', pin)
+        self.assertNotIn('install_to', (REPO_ROOT / 'avrana/providers/ps1.py').read_text(encoding='utf-8'))
+        self.assertIn('`install_to`', readme)
+        self.assertIn('is not re-armed earlier', readme)                                  # the timer limit, said once
+
     def test_the_manifest_classifies_both_documents(self):
         entries = {e['path']: e for e in json.loads(self.read('docs/manifest.json'))['documents']}
         runbook = entries['docs/runbooks/ps1-titles.md']
-        self.assertEqual((runbook['class'], runbook['status'], runbook['authority']), ('runbook', 'current', 'procedure'))
+        self.assertEqual((runbook['class'], runbook['status'], runbook['authority']), ('runbook', 'proposed', 'procedure'))
         readme = entries['ps1/README.md']
         self.assertEqual((readme['class'], readme['status'], readme['authority']), ('canonical', 'current', 'reference'))
         for entry in (runbook, readme):                                      # the marker pins the "nothing launches" claim
