@@ -296,7 +296,7 @@ def provision(slug, layout, contracts, grants, run, own, timeout=None, trusted=N
     if changed:
         run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'enable', '--now', socket_unit])       # a no-op when already enabled and listening
-    run(['systemctl', 'reload', PARTY_UNIT])                 # every run: see the docstring
+    reload_party(run)                                        # every run: see the docstring
     return changed
 
 
@@ -311,7 +311,7 @@ def rotate(slug, layout, contracts, grants, run, own, active):
     _write_key(layout.key(slug), own)
     _, service_unit = units(slug)
     run(['systemctl', 'stop', service_unit])                 # the next connection starts it with the new key
-    run(['systemctl', 'reload', PARTY_UNIT])
+    reload_party(run)
     return ['key']
 
 
@@ -373,7 +373,7 @@ def remove(slug, layout, run, keep_state=False, active=None):
     if layout.entry(slug).exists():
         layout.entry(slug).unlink()
         removed.append('registry')
-        run(['systemctl', 'reload', PARTY_UNIT])
+        reload_party(run)
     if layout.dropin_dir(slug).exists():
         shutil.rmtree(layout.dropin_dir(slug))
         removed.append('dropin')
@@ -419,7 +419,7 @@ def session_game(doc):
     return None if session.get('state') == 'ended' else session['game']
 
 
-def party_session_check(base_url, opener=urllib.request.urlopen, timeout=QUERY_TIMEOUT_S, settle=0.0, sleep=time.sleep,
+def party_session_check(base_url, opener=None, timeout=QUERY_TIMEOUT_S, settle=0.0, sleep=time.sleep,
                         host=None):
     """An `active(slug)` for `rotate` and `remove`. Only "nobody is listening" (connection
     refused) means no party and so no session (it is memory-only): the operation proceeds. Any
@@ -445,7 +445,7 @@ def party_session_check(base_url, opener=urllib.request.urlopen, timeout=QUERY_T
         """True: this game has a session. False: Party Core says it has none. None: Party Core
         is not there, so there is no party."""
         try:
-            with opener(target, timeout=timeout) as response:
+            with (opener or _direct_open)(target, timeout=timeout) as response:
                 doc = json.loads(response.read().decode('utf-8'))
         except urllib.error.HTTPError as e:
             raise Refused(f'Party Core answered HTTP {e.code}; not rotating') from None
@@ -465,6 +465,27 @@ def party_session_check(base_url, opener=urllib.request.urlopen, timeout=QUERY_T
             raise Refused('Party Core answered something that is not JSON; not rotating') from None
         return session_game(doc) == slug
     return active
+
+
+def reload_party(run):
+    """Have Party Core read the registry again. A Party Core that is not running has nothing to
+    reload and reads the registry when it starts, so a reload that fails while the unit is not
+    active is not a failure; one that fails while it is active is."""
+    try:
+        run(['systemctl', 'reload', PARTY_UNIT])
+    except subprocess.CalledProcessError:
+        try:
+            run(['systemctl', 'is-active', '--quiet', PARTY_UNIT])
+        except subprocess.CalledProcessError:
+            return False                                     # stopped: it reads the registry at its next start
+        raise
+    return True
+
+
+def _direct_open(target, timeout):
+    """Party Core is asked on loopback, never through a proxy named in the environment: a dead
+    proxy refuses the connection, and that would read as 'no Party Core'."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(target, timeout=timeout)
 
 
 # ---- the command line --------------------------------------------------------------------------
@@ -593,7 +614,7 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
         own = own or real_own
         # The real query waits out Party Core's status cache before a rotation or a removal; a
         # dry run and an injected opener do not.
-        active = party_session_check(a.party_url, opener or urllib.request.urlopen,
+        active = party_session_check(a.party_url, opener or _direct_open,
                                      settle=STATUS_SETTLE_S if opener is None and not a.dry_run else 0.0,
                                      host=party_host(a.party_config or PARTY_CONFIG) if opener is None else None)
         if a.remove:
