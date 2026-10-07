@@ -295,8 +295,11 @@ def remove(slug, layout, run, keep_state=False):
     if not isinstance(slug, str) or not GAME_ID.match(slug):
         raise Refused(f'{slug!r} is not a game id')
     socket_unit, service_unit = units(slug)
-    run(['systemctl', 'disable', '--now', socket_unit])
-    run(['systemctl', 'stop', service_unit])
+    for argv in (['systemctl', 'disable', '--now', socket_unit], ['systemctl', 'stop', service_unit]):
+        try:
+            run(argv)
+        except subprocess.CalledProcessError:
+            pass          # already gone (a second remove, or a half-removed game): the rest still goes
     removed = []
     if layout.entry(slug).exists():
         layout.entry(slug).unlink()

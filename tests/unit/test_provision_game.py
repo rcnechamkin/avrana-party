@@ -269,6 +269,27 @@ class SessionQuery(unittest.TestCase):
         self.assertTrue(active('bluff'))
         self.assertEqual(asked[0], 'http://127.0.0.1:8191/party/api/status')
 
+    def test_remove_goes_on_when_systemd_no_longer_knows_the_units(self):
+        """A second remove, or one after a half-finished one: systemctl fails on units that are
+        gone, and what is left must still be taken away (the real-systemd proof found exit 1)."""
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            layout = pg.Layout(key_dir=root / 'keys', registry_dir=root / 'games.d', socket_dir=root / 'run',
+                               state_dir=root / 'lib' / 'avrana-games', unit_dir=root / 'units',
+                               template_dir=REPO_ROOT / 'deploy' / 'games')
+            layout.key('checkers').parent.mkdir(parents=True)
+            layout.key('checkers').write_text('k', encoding='utf-8')
+            calls = []
+
+            def run(argv):
+                calls.append(argv)
+                if argv[1] in ('disable', 'stop'):
+                    raise subprocess.CalledProcessError(5, argv)
+            self.assertEqual(pg.remove('checkers', layout, run), ['key'])
+            self.assertEqual(pg.remove('checkers', layout, run), [])
+            self.assertEqual(calls[-1], ['systemctl', 'daemon-reload'])
+
     def test_remove_takes_a_dynamic_user_state_directory_and_its_link(self):
         """systemd keeps a DynamicUser= unit's state under private/ and links to it (the first run
         on real systemd found rmtree refusing the link)."""

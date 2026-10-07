@@ -308,6 +308,7 @@ t 'Party Core was never restarted (same main PID and activation time as before p
 s=$(status driver --absent)
 check 'Party Core no longer offers the game (/party/api/state)' 0 "$s"
 capture prov standin --appliance "$fixture" --remove
+show 'second remove' "$out"
 check 'remove is repeatable and has nothing left to remove' 0 "$([[ $rc == 0 && $out == *'nothing to remove'* ]] && echo 0 || echo 1)"
 
 # ---- k. summary ----------------------------------------------------------------------------------------
