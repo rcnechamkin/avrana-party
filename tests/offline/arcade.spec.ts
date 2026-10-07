@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { faintEdges } from '../lib/a11y';
 
 /**
  * The arcade phone page (arcade/index.html) against the simulated Party (Tier 2).
@@ -563,6 +564,101 @@ test('a tablet sideways or a laptop window holds the whole page: the picture giv
   }));
   expect(m.scrollH, 'nothing to scroll').toBeLessThanOrEqual(m.vh);
   expect(m.picture, 'the picture is still the main thing').toBeGreaterThan(300);
+});
+
+// A control under a thumb must look held in every layout, and every edge you can press is the 3:1
+// `control` edge (more contrast raises it), sideways as upright. Colours are read where they are
+// drawn, so a rule that out-ranks the held look, or recolours a control sideways, fails here.
+const CONTROL = 'rgb(110, 108, 114)', INK = 'rgb(237, 234, 228)', ON_INK = 'rgb(18, 18, 20)', ACCENT = 'rgb(185, 169, 232)';
+const KEYS = ['up', 'down', 'left', 'right', 'coin', 'start', 'magic', 'fire'];
+const look = (page: Page, key: string) => page.locator(`[data-key="${key}"]`).evaluate((e) => {
+  const s = getComputedStyle(e);
+  return { fill: s.backgroundColor, ink: s.color, edge: s.borderTopColor };
+});
+
+async function connected(page: Page) {
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+}
+
+async function everyControlLooksRight(page: Page) {
+  for (const key of KEYS) {
+    const fire = key === 'fire';
+    const rest = await look(page, key);
+    expect(rest.edge, `${key} rests on its own edge`).toBe(fire ? INK : CONTROL);
+    expect(rest.fill, `${key} at rest is not filled like a held one`).not.toBe(fire ? ACCENT : INK);
+    await page.locator(`[data-key="${key}"]`).hover();
+    await page.mouse.down();      // a real pointer, as a thumb is
+    await expect.poll(() => look(page, key), { message: `${key} held` })
+      .toEqual({ fill: fire ? ACCENT : INK, ink: ON_INK, edge: fire ? ACCENT : INK });
+    await page.mouse.up();
+    await expect.poll(() => look(page, key), { message: `${key} let go` }).toEqual(rest);
+  }
+  expect(await faintEdges(page, '.dpad button, .act, .pill'), 'every edge you can press is 3:1').toEqual([]);
+}
+
+test('upright, a held control looks held and every edge is the control edge', async ({ page }) => {
+  await connected(page);
+  await everyControlLooksRight(page);
+});
+
+test('sideways, the same: a held Magic is not left smoky, and no edge is faint', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await connected(page);
+  await everyControlLooksRight(page);
+});
+
+test('a phone 641 to 700 px tall needs no scroll: the picture gives way by the pixel it has to', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 659 });
+  await connected(page);
+  const m = await page.evaluate(() => ({ vh: innerHeight, scrollH: document.documentElement.scrollHeight }));
+  expect(m.scrollH, 'nothing to scroll').toBeLessThanOrEqual(m.vh);
+});
+
+test('with text at 200% the seat mark is not pushed under Sound or cut off, and the Host End stays in the footer', async ({ page }) => {
+  await connected(page);
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+    const end = document.createElement('button');       // what the page's own Party code adds for the Host
+    end.type = 'button'; end.id = 'avrana-party-end'; end.textContent = 'End game for everyone';
+    document.querySelector('.foot')!.append(end);
+  });
+  const m = await page.evaluate(() => {
+    const r = (sel: string) => { const b = document.querySelector(sel)!.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+    return { h1: r('h1'), who: r('#who'), sound: r('#sound'), leave: r('#leave'), foot: r('.foot'), end: r('#avrana-party-end') };
+  });
+  const apart = (a: { l: number; r: number; t: number; b: number }, b: { l: number; r: number; t: number; b: number }) =>
+    a.r <= b.l + 0.5 || b.r <= a.l + 0.5 || a.b <= b.t + 0.5 || b.b <= a.t + 0.5;
+  expect(m.who.l, 'the seat mark starts inside the heading').toBeGreaterThanOrEqual(m.h1.l - 0.5);
+  expect(m.who.r, 'and ends inside it').toBeLessThanOrEqual(m.h1.r + 0.5);
+  expect(apart(m.who, m.sound), 'not under Sound').toBe(true);
+  expect(apart(m.who, m.leave), 'not under Leave').toBe(true);
+  expect(m.end.l, 'End starts inside the footer').toBeGreaterThanOrEqual(m.foot.l - 0.5);
+  expect(m.end.r, 'and ends inside it').toBeLessThanOrEqual(m.foot.r + 0.5);
+  await expect(page.locator('#who')).toHaveText('Player 1');
+});
+
+test('a prompt to tap Sound goes when the picture plays, as the no-picture words do', async ({ page }) => {
+  await connected(page);
+  await page.evaluate(() => { HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException('blocked', 'NotAllowedError')); });
+  await page.locator('#sound').click();
+  await expect(page.locator('#status')).toHaveText('Tap Sound again to start playback.');
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+});
+
+test('Fire shows a dark focus ring: the accent ring is not visible on its ink', async ({ page }) => {
+  await connected(page);
+  await page.locator('[data-key="magic"]').focus();
+  await page.keyboard.press('Tab');                       // the keyboard moves focus to Fire, so :focus-visible applies
+  const ring = await page.evaluate(() => {
+    const e = document.activeElement as HTMLElement; const s = getComputedStyle(e);
+    return { key: e.dataset.key, style: s.outlineStyle, width: s.outlineWidth, color: s.outlineColor };
+  });
+  expect(ring).toEqual({ key: 'fire', style: 'solid', width: '2px', color: ON_INK });
 });
 
 test('the seat and the connection state are said in an icon and in words', async ({ page }) => {

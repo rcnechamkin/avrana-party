@@ -40,7 +40,7 @@
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   /* Control geometry is in px on purpose: it has to fit a phone whatever the text size is. */
   --cell: 60px; --fire: 80px; --magic: 64px; --gap: 12px;
-  --rest: 440px;   /* what the page needs beside the picture, hint shown (368px with it hidden, below) */
+  --rest: 440px;   /* what the page needs beside the picture, hint shown (370px with it hidden, below) */
 }
 @media (prefers-contrast: more) {
   :root { --color-muted: #d2cfcb; --color-faint: #b9b6b3; --color-line: rgb(255 255 255 / 0.3);
@@ -76,7 +76,7 @@ button { font: inherit; color: inherit; margin: 0; touch-action: none; -webkit-u
   background: var(--color-material-solid); border-bottom: 1px solid var(--color-material-edge);
 }
 h1 {
-  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.5rem; min-height: 3rem; margin: 0;   /* the title gives way (an ellipsis) before the bar wraps */
+  flex: 1 1 0; min-width: min(100%, 10rem); display: flex; align-items: center; gap: 0.5rem; min-height: 3rem; margin: 0;   /* the title gives way (an ellipsis) to 10rem; below that the actions wrap under it */
   font-size: 1.0625rem; font-weight: 550; line-height: 1.15; letter-spacing: -0.01em;
 }
 .game { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -91,6 +91,7 @@ h1 {
   min-width: 2.75rem; min-height: 2.75rem; padding: 0 0.625rem; background: transparent;
   border: 1px solid var(--color-control); border-radius: var(--radius-field); font-size: 0.875rem; font-weight: 550;
 }
+.tools { flex: none; display: flex; gap: 0.5rem; margin-left: auto; }   /* one unit, so they wrap together and sit at the end of their row */
 .tool:disabled { visibility: hidden; }          /* nothing to turn up or leave before a seat is held; the space stays */
 #sound[aria-pressed="true"] .off, #sound[aria-pressed="false"] .on { display: none; }
 @media (max-width: 376px) { .tool .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
@@ -98,11 +99,11 @@ h1 {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 0 0.75rem;
   padding: 0 max(0.75rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(0.75rem, env(safe-area-inset-left));
 }
-.back, #avrana-party-end { flex: none; display: inline-flex; align-items: center; min-height: 2.75rem; font-size: 0.9375rem; font-weight: 500; }
+.back, #avrana-party-end { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; min-height: 2.75rem; font-size: 0.9375rem; font-weight: 500; }
 .back { gap: 0.125rem; padding: 0 0.5rem; color: var(--color-base-content); text-decoration: none; }
 html[data-avrana-party="on"] #home { display: none; }
 #avrana-party-end {
-  padding: 0 0.875rem; background: transparent; color: var(--color-error); font-weight: 550;
+  padding: 0.375rem 0.875rem; background: transparent; color: var(--color-error); font-weight: 550; text-align: center;   /* with large text it wraps instead of leaving the footer */
   border: 1px solid var(--color-error); border-radius: var(--radius-field);
 }
 #avrana-party-end:disabled { color: var(--color-faint); border-color: var(--color-line-strong); }
@@ -167,12 +168,12 @@ body[data-link="idle"] #status { color: var(--color-muted); }
 }
 .sys { grid-area: sys; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 0.75rem; }
 .pill {
-  min-width: 6.5rem; min-height: 2.75rem; padding: 0 1rem; background: transparent;
+  min-width: 6.5rem; min-height: 2.75rem; padding: 0 1rem; background: var(--fill, transparent);
   border: 1px solid var(--color-control); border-radius: var(--radius-field); font-size: 0.9375rem; font-weight: 550;
 }
 .dpad { grid-area: dpad; display: grid; grid-template-columns: repeat(3, var(--cell)); grid-template-rows: repeat(3, var(--cell)); }
 .dpad button {
-  display: grid; place-items: center; padding: 0; background: var(--color-base-200); border: 1px solid var(--color-control);
+  display: grid; place-items: center; padding: 0; background: var(--fill, var(--color-base-200)); border: 1px solid var(--color-control);
 }
 .dpad .ic { width: 1.75rem; height: 1.75rem; stroke-width: 2.25; }
 .dpad .up { grid-area: 1 / 2; border-radius: var(--radius-field) var(--radius-field) 0 0; border-bottom-width: 0; }
@@ -182,7 +183,7 @@ body[data-link="idle"] #status { color: var(--color-muted); }
 .dpad .hub { grid-area: 2 / 2; background: var(--color-base-200) radial-gradient(circle, var(--color-line-strong) 0 3px, transparent 3.5px); }
 .acts { grid-area: acts; justify-self: end; display: grid; grid-template-columns: var(--magic) var(--fire); align-items: end; gap: var(--gap); }
 .act {
-  display: grid; place-items: center; padding: 0; border-radius: 50%; background: var(--color-base-200);
+  display: grid; place-items: center; padding: 0; border-radius: 50%; background: var(--fill, var(--color-base-200));
   border: 1px solid var(--color-control); font-size: 1rem; font-weight: 600;
 }
 .magic { width: var(--magic); height: var(--magic); margin-bottom: calc(var(--fire) * 0.55); }
@@ -190,11 +191,12 @@ body[data-link="idle"] #status { color: var(--color-muted); }
         color: var(--color-primary-content); font-size: 1.125rem; }
 .controls button:disabled { background: var(--color-base-200); border-color: var(--color-line-strong); color: var(--color-faint); }
 .controls :focus-visible { outline-offset: -4px; }
+.fire:focus-visible, .controls .held:focus-visible { outline-color: var(--color-primary-content); }   /* the accent ring is 1.8:1 on the ink */
 .hint { margin: 0.75rem max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); color: var(--color-muted); font-size: 0.8125rem; text-align: center; text-wrap: balance; }
 #details { margin: 0.5rem max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); color: var(--color-muted); }
 #details summary { display: flex; align-items: center; min-height: 2.75rem; cursor: pointer; }
 #metrics { margin: 0; font: 0.75rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
-@media (orientation: portrait) and (max-height: 700px) { :root { --rest: 368px; } .hint { display: none; } main { padding-bottom: 0; } .controls { row-gap: 8px; } }
+@media (orientation: portrait) and (max-height: 700px) { :root { --rest: 370px; } .hint { display: none; } main { padding-bottom: 0; } .controls { row-gap: 8px; } }
 @media (orientation: portrait) and (max-height: 640px) { :root { --cell: 52px; } }
 
 /* Sideways on a phone: the picture takes the whole height under a slim bar, the controls float
@@ -205,7 +207,7 @@ body[data-link="idle"] #status { color: var(--color-muted); }
   .bar { grid-area: 1 / 1; padding: 0 0 0 max(0.75rem, env(safe-area-inset-left)); }
   .foot { grid-area: 1 / 2; flex-wrap: nowrap; align-items: center; padding: 0 max(0.75rem, env(safe-area-inset-right)) 0 0.5rem;
           background: var(--color-material-solid); border-bottom: 1px solid var(--color-material-edge); }
-  .bar > .tool:last-child { margin-right: 0.25rem; }
+  .tools { margin-right: 0.25rem; }
   h1 { min-height: 2.75rem; }
   main { grid-area: 2 / 1 / 3 / 3; position: relative; align-items: center; padding-bottom: 0; }
   .stage { height: 100%; width: auto; max-width: 100%; aspect-ratio: 4 / 3; }
@@ -215,13 +217,12 @@ body[data-link="idle"] #status { color: var(--color-muted); }
     left: auto; right: auto; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; background: none;
   }
   .notice { position: absolute; top: 0.5rem; left: 0.5rem; right: 0.5rem; z-index: 2; margin: 0; }
-  .controls { display: contents; }
+  .controls { display: contents; --fill: var(--color-material); }   /* the smoky fill is all that changes: the edge and the pressed look are the upright ones */
   .dpad, .acts, .sys { position: fixed; z-index: 3; }
   .dpad { left: max(0.75rem, env(safe-area-inset-left)); bottom: var(--edge); }
   .acts { right: max(0.75rem, env(safe-area-inset-right)); bottom: var(--edge); }
   .sys { right: max(0.75rem, env(safe-area-inset-right)); bottom: calc(var(--edge) + var(--magic) + var(--fire) * 0.55 + 0.5rem);
          flex-direction: column; align-items: flex-end; gap: 0.5rem; }
-  .dpad button:not(:disabled), .act:not(.fire):not(:disabled), .pill:not(:disabled) { background: var(--color-material); border-color: var(--color-material-edge); }
   .hint { display: none; }
 }
 
@@ -253,8 +254,10 @@ body[data-link="idle"] #status { color: var(--color-muted); }
 </svg>
 <header class="bar">
  <h1><span class="game" id="game-name">Gauntlet II</span> <span class="who" id="who" hidden><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-circle-check"/></svg><span id="who-label"></span></span></h1>
- <button class="tool" id="sound" type="button" disabled aria-pressed="false"><svg class="ic on" aria-hidden="true" focusable="false"><use href="#i-volume-2"/></svg><svg class="ic off" aria-hidden="true" focusable="false"><use href="#i-volume-x"/></svg><span class="lbl">Sound</span></button>
- <button class="tool" id="leave" type="button" disabled><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-log-out"/></svg><span class="lbl">Leave</span></button>
+ <div class="tools">
+  <button class="tool" id="sound" type="button" disabled aria-pressed="false"><svg class="ic on" aria-hidden="true" focusable="false"><use href="#i-volume-2"/></svg><svg class="ic off" aria-hidden="true" focusable="false"><use href="#i-volume-x"/></svg><span class="lbl">Sound</span></button>
+  <button class="tool" id="leave" type="button" disabled><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-log-out"/></svg><span class="lbl">Leave</span></button>
+ </div>
 </header>
 <main>
  <div class="stage">
@@ -314,7 +317,11 @@ if(!window.isSecureContext)document.querySelector('#home').setAttribute('href','
 const CONNECT_MS=20000,PICTURE_MS=10000;let connectTimer=null,pictureTimer=null,serverReason=null;
 function busy(text){connect.disabled=true;connect.setAttribute('aria-busy','true');connectLabel.textContent=text;link('wait')}
 function idle(){connect.removeAttribute('aria-busy');connect.disabled=false;connectLabel.textContent='Play '+GAME.name}
-video.addEventListener('playing',()=>{overlay.hidden=true;connect.removeAttribute('aria-busy');clearTimeout(pictureTimer);pictureTimer=null; if(document.body.dataset.link==='live'){link('playing');if(status.textContent.startsWith('Connected, but no picture'))status.textContent=`Player ${myPlayer} connected. Add a coin to join.`}});
+// The words that wait for a picture or for a tap on Sound are stale once it plays.
+const PROMPTS=/^(Connected, but no picture|Tap Sound)/;
+video.addEventListener('playing',()=>{overlay.hidden=true;connect.removeAttribute('aria-busy');clearTimeout(pictureTimer);pictureTimer=null;
+ if(document.body.dataset.link==='live')link('playing');
+ if(PROMPTS.test(status.textContent))status.textContent=`Player ${myPlayer} connected. Add a coin to join.`});
 // Raw connection stats are for testers only: add #diag to the address to see them.
 document.querySelector('#details').hidden=location.hash!=='#diag';
 let ws=null,pc=null,ready=false,heartbeat=null,statsTimer=null,pendingIce=[],signalChain=Promise.resolve(),myPlayer=null;
