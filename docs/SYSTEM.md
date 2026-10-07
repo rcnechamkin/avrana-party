@@ -124,6 +124,7 @@ inventory; the source revision table above governs current main observations.
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
 | 127.0.0.1:8098 | arcade control (**LIVE** since 2026-09-29, AVR-134): the Party's signed launch/end start and stop RetroArch + the encode (ADR 0009); drop-in `/etc/systemd/system/avranaparty-arcade.service.d/avrana-party-session.conf`; never proxied. The arcade idles (no RetroArch) until the Party Host starts Gauntlet II | `arcade/stream.py`, `avrana/party/managed.py` |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
+| wlan0 (radio) | Party AP "Avrana Party", 5 GHz **channel 36**, 20 MHz, read on the Pi 2026-10-07 (the owner changed it from 149 on 2026-10-06 after a measured comparison; policy and evidence are in the network runbook) | NM profile "Avrana Party Internal"; `docs/runbooks/network.md` (Channel policy) |
 | 5353 | avahi (`party.local`) | system |
 | 5201 | iperf3 | system |
 | 45876 | beszel-agent | `telemetry/` |

@@ -41,22 +41,52 @@ VCG="$(command -v vcgencmd || echo /usr/bin/vcgencmd)"
 
 b() { if (( $1 )); then echo true; else echo false; fi; }
 
+# AVR-296: when the VideoCore firmware mailbox wedges (seen 2026-10-06) vcgencmd hangs in
+# uninterruptible sleep and cannot be killed. Bound every call and never start another while one is
+# stuck, so this sampler cannot pile up D-state processes (which also inflate the load average).
+# `timeout` would still wait on a child in D state, so the call runs in the background writing to a
+# file and is abandoned after 5 s (rc 124); nothing here ever blocks on it.
+vcg() {
+  local out pid i=0 rc
+  out="$(mktemp)"
+  "$VCG" "$@" >"$out" 2>/dev/null &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt 50 ]; then rm -f "$out"; return 124; fi
+    sleep 0.1
+  done
+  rc=0; wait "$pid" || rc=$?
+  cat "$out"; rm -f "$out"
+  return "$rc"
+}
+stuck_vcgencmd() { ps -eo stat,comm | awk '$1 ~ /^D/ && $2 == "vcgencmd" { n++ } END { print n + 0 }'; }
+
 sample() {
-  local thr temp arm v3d volt t ts
-  thr="$("$VCG" get_throttled | cut -d= -f2)"                        # e.g. 0x50000
-  temp="$("$VCG" measure_temp | sed -E "s/temp=([0-9.]+).*/\1/")"    # degC
-  arm="$("$VCG" measure_clock arm | cut -d= -f2)"                    # Hz
-  v3d="$("$VCG" measure_clock v3d | cut -d= -f2)"                    # Hz
-  volt="$("$VCG" measure_volts core | sed -E "s/volt=([0-9.]+)V/\1/")"
-  t=$(( thr ))
+  local thr temp arm v3d volt t ts stuck
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  stuck="$(stuck_vcgencmd)"
+  if [ "$stuck" -gt 0 ]; then
+    printf '{"ts":"%s","label":"%s","error":"vcgencmd_stuck","stuck_vcgencmd":%s}\n' "$ts" "$LABEL" "$stuck"
+    return 0
+  fi
+  thr="$(vcg get_throttled | cut -d= -f2 || true)"                   # e.g. 0x50000
+  if [ -z "$thr" ]; then
+    printf '{"ts":"%s","label":"%s","error":"vcgencmd_timeout_or_failed"}\n' "$ts" "$LABEL"
+    return 0
+  fi
+  temp="$(vcg measure_temp | sed -E "s/temp=([0-9.]+).*/\1/" || true)"    # degC
+  arm="$(vcg measure_clock arm | cut -d= -f2 || true)"                    # Hz
+  v3d="$(vcg measure_clock v3d | cut -d= -f2 || true)"                    # Hz
+  volt="$(vcg measure_volts core | sed -E "s/volt=([0-9.]+)V/\1/" || true)"
+  t=$(( thr ))
   printf '{"ts":"%s","label":"%s","throttled":"%s",' "$ts" "$LABEL" "$thr"
   printf '"undervolt_now":%s,"freqcap_now":%s,"throttled_now":%s,"softtemp_now":%s,' \
     "$(b $(( t & 0x1 )))" "$(b $(( t & 0x2 )))" "$(b $(( t & 0x4 )))" "$(b $(( t & 0x8 )))"
   printf '"undervolt_occurred":%s,"freqcap_occurred":%s,"throttled_occurred":%s,"softtemp_occurred":%s,' \
     "$(b $(( t & 0x10000 )))" "$(b $(( t & 0x20000 )))" "$(b $(( t & 0x40000 )))" "$(b $(( t & 0x80000 )))"
   printf '"temp_c":%s,"arm_hz":%s,"v3d_hz":%s,"core_v":%s}\n' \
-    "$temp" "$arm" "$v3d" "$volt"
+    "${temp:-null}" "${arm:-null}" "${v3d:-null}" "${volt:-null}"
 }
 
 emit() { if [ -n "$OUT" ]; then sample >>"$OUT"; else sample; fi; }

@@ -1,0 +1,13 @@
+[Unit]
+Description=Avrana Pi network-hardware health check (observe only; never restarts anything)
+
+[Service]
+Type=oneshot
+# Unprivileged: vcgencmd needs the video group, the kernel journal needs adm.
+DynamicUser=yes
+SupplementaryGroups=video adm
+RuntimeDirectory=avrana
+RuntimeDirectoryPreserve=yes
+# Hard ceiling in addition to the check's own per-command limits.
+TimeoutStartSec=45
+ExecStart=/opt/avrana-telemetry/pi-health-check.py --journal --state-file /run/avrana/pi-health.json
