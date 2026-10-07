@@ -19,7 +19,7 @@
 >   `avrana.providers.retroarch` (ADR 0004). The behaviour is identical, and a test pins it.
 > - `/stats` gains a `providers` block.
 > - The phone page keeps the screen on (via the Full Mode shell's `/party/lib/keep-awake.js`, HTTPS
->   only), says "Both controllers are in use" only when `/stats` says the game is full, and
+>   only), says "All controllers are in use" only when `/stats` says the game is full, and
 >   reconnects quietly after a drop or lock.
 > - Raw stats are visible only with `#diag`.
 > - The page is served from the checkout on every request, so it goes live with the production
@@ -57,15 +57,43 @@ binding on the same slot. Session end, switch and relaunch clear old reservation
 receive a non-player response. Standalone mode retains first-free slots freed on disconnect.
 See `docs/runbooks/arcade-party-provider.md` for security and remaining real-phone checks.
 
+## Four controller seats (AVR-311, 2026-10-07)
+
+Gauntlet II takes four phones. `MAX_PLAYERS = 4` in `stream.py` is the number of virtual pads
+("Avrana Player 1" to "Avrana Player 4"), of Party seats and of always-on slots. It is the same four
+as `players.max` and `input.slots` in `contracts/games/arcade-gauntlet2.json`, and as
+`input_playerN_joypad_index` (N = 1 to 4) and `input_max_users` in `retroarch.cfg`; unit tests fail
+if one of them moves alone (`tests/unit/test_arcade_stream.py`). A fifth phone is refused as "full",
+a seat frees when its player leaves or the 60-second grace ends, and the same ticket keeps its seat.
+The phone page names no number of controllers: "full" is the arcade's own `/stats` count.
+
+**Not yet proven on the Pi.** The cap was 2 because two phones was the most that had been tried (the
+baseline below). Four phones at once have not, so four seats are the contract and the code, not a
+measurement. The first four-phone night must show:
+
+- **Pad order under udev.** `input_playerN_joypad_index` is a position in the order the pads are
+  enumerated, not a name. Player 3 and Player 4 must move the third and fourth hero, after a cold
+  start and after a restart of the arcade.
+- **Coin and Start on slots 3 and 4.** Only P1's coin and a short two-phone session are on record.
+- **CPU and Wi-Fi headroom.** One encode, four WebRTC sends and a four-player emulation: frame rate,
+  `/stats` capture ages, CPU, temperature and `vcgencmd get_throttled` (sample on the Pi, read once at
+  the end), and whether a join's forced keyframe disturbs the other three.
+
+Deploying: a hand-typed `"max_players": 2` for `arcade-gauntlet2` in
+`/etc/avrana-party/party-core.json` would make Party Core refuse to start
+(`docs/runbooks/arcade-party-provider.md`, "Four controller seats").
+
 ## Historical prototype baseline (2026-09-19/20)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.
 
-- **Players:** `MAX_PLAYERS = 2` in `stream.py`, so two slots are enabled. P1 is
+- **Players (as of 2026-09-20; four since 2026-10-07, see "Four controller seats" above):**
+  `MAX_PLAYERS = 2` in `stream.py`, so two slots were enabled. P1 was
   verified for basic gameplay and streaming on a real iPhone. Two-phone play was **verified on two
-  real iPhones on 2026-09-20** (a 3-minute session; see `docs/archive/handoffs/2026-09-25-claude-log.md`). Do not raise beyond 2
-  without a longer multi-phone soak.
+  real iPhones on 2026-09-20** (a 3-minute session; see `docs/archive/handoffs/2026-09-25-claude-log.md`). The
+  note then was "do not raise beyond 2 without a longer multi-phone soak"; AVR-311 raised it to 4
+  ahead of that soak, which is still open.
 - **Measurement:** input-to-photon latency and performance under real gameplay
   have **not** been formally measured.
 - **Boot:** service startup after a reboot is verified (all services active,
@@ -137,9 +165,10 @@ the downloaded core. No ROMs were downloaded, padded, patched or renamed.
 - **Latency and performance:** measure input-to-photon latency during real
   gameplay (high-frame-rate filming of touch and screen; report median/p95). RTT
   and jitter-buffer stats are not input-to-photon latency.
-- **Two phones:** verify independent slots, coin/start, reconnect and screen lock
-  with two real phones before raising `MAX_PLAYERS`; then four phones and
-  CPU/RAM/Wi-Fi/encoder-count scaling.
+- **Four phones:** the cap is four (AVR-311) but the Pi has not run it. With four real
+  phones: independent slots and pad order, coin/start on all four, reconnect and screen
+  lock, then CPU/RAM/Wi-Fi/encoder-count scaling (one encoder context must stay open).
+  The checklist is under "Four controller seats".
 - **Boot and offline:** phone-side behavior after a reboot; a true offline test
   (wlan0 provides internet, so Ethernet being idle is not an offline test).
 - **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot

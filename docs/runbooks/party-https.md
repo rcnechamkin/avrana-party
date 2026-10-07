@@ -261,6 +261,7 @@ To remove the feature, restore the backed-up site, run `nginx -t` and reload. Re
    Party: the page should recover by itself.
 6. If the arcade runs on the new code: Play, lock the phone for 20 s, unlock. Expect
    "Reconnecting…" and then "Player N connected", with the screen staying on while playing. With
-   two controllers in use, a third phone should read "Both controllers are in use".
+   every controller in use (two until AVR-311 is deployed, four after), the next phone should read
+   "All controllers are in use".
 7. Confirm the captive behaviour is unchanged: forget and rejoin the Wi-Fi on the iPhone, and expect
    no popup.
