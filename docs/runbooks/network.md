@@ -19,7 +19,7 @@ describe `wlan1` as the party AP are historical (the USB adapter was removed on 
  Raspberry Pi 4 "party"
      │
    wlan0  internal Broadcom radio (brcmfmac) as an ACCESS POINT
-     │    SSID "Avrana Party", WPA2-Personal, 5 GHz channel 149, 20 MHz
+     │    SSID "Avrana Party", WPA2-Personal, 5 GHz channel 36 (since 2026-10-06; see Channel policy), 20 MHz
      │    10.42.0.1/24 — NetworkManager profile "Avrana Party Internal" (ipv4.method shared)
      │
  phones (DHCP 10.42.0.10–254 from NetworkManager's dnsmasq)
@@ -39,8 +39,8 @@ describe `wlan1` as the party AP are historical (the USB adapter was removed on 
 | Fact | Value |
 |---|---|
 | Default route | `default via 10.0.0.1 dev eth0` (metric 100); the party subnet is on `wlan0` (metric 600) |
-| AP | `wlan0` type AP, ssid "Avrana Party", channel 149 (5745 MHz), 20 MHz |
-| AP profile | "Avrana Party Internal": interface `wlan0`, mode `ap`, band `a`, channel 149, `wpa-psk`/`rsn`, PMF default, `ipv4.method shared`, `ipv4.addresses 10.42.0.1/24`, `ipv6.method ignore`, autoconnect **yes**, priority **0** |
+| AP | `wlan0` type AP, ssid "Avrana Party", channel **149** (5745 MHz), 20 MHz (as read 2026-09-24; **changed to channel 36 on 2026-10-06**, see Channel policy) |
+| AP profile | "Avrana Party Internal": interface `wlan0`, mode `ap`, band `a`, channel 149 on 2026-09-24 (36 since 2026-10-06), `wpa-psk`/`rsn`, PMF default, `ipv4.method shared`, `ipv4.addresses 10.42.0.1/24`, `ipv6.method ignore`, autoconnect **yes**, priority **0** |
 | DHCP/DNS | NM's dnsmasq: `--listen-address=10.42.0.1 --dhcp-range=10.42.0.10,10.42.0.254,3600`, lease file `/var/lib/NetworkManager/dnsmasq-wlan0.leases`, drop-in dir holds only `avrana-captive.conf` |
 | Listeners | nginx :80, LAN Games :8096, arcade 127.0.0.1:8097, dnsmasq 10.42.0.1:53 + DHCP :67, mDNS :5353, sshd :22, iperf3 :5201, beszel-agent :45876 |
 | Clients | 2 phones associated during the power runs |
@@ -51,6 +51,25 @@ The captive-portal answers, nginx routes and the `.local` leak behave as before;
 the old-topology audit are in `docs/findings/2026-09-24-party-network-and-offline-mode.md`
 (historical for interface names: read `wlan1` there as today's `wlan0`, and "Pi's own `wlan0`" as
 today's `eth0`).
+
+## Channel policy (measured 2026-10-06; read before changing the channel)
+
+- **Current baseline: 5 GHz channel 36 (5180 MHz), 20 MHz.** It is the empirically preferred baseline on this
+  hardware (this Pi 4 and the tested Samsung SM-T510): idle RTT p99 64-99 ms, 0 % loss, ~0.6 TX retries per
+  success, ~49 Mbps each way. The Pi AP was changed to 36 by the owner on 2026-10-06.
+- **Channel 149 performed badly in that test** (p99 140-211 ms, ~30 TX retries per success, ~1.75 Mbps uplink)
+  although a tablet-side scan showed no neighbouring network on it. **That does not establish that 149 is
+  universally bad.** The mechanism is unknown (tablet, this Pi, or the channel at that place); the second-device
+  A/B is tracked as AVR-300. Evidence: `tools/wifi-lab/FINDINGS-2026-10-06.md` (historical).
+- **Selection must eventually be based on measurement, not on counting neighbouring SSIDs** (an empty-looking
+  channel is not automatically good): AVR-299. Until then 36 is the default, and 2.4 GHz is not offered.
+- **Never switch channels while a party is in play.** A channel change drops every client. Automatic
+  mid-game switching is forbidden. Re-optimisation may happen only (a) before a party, (b) at boot, or
+  (c) as an explicit owner/Host action between games.
+- Changing the channel needs the owner's `sudo` today (polkit refuses the SSH user). A restricted helper is
+  prepared in `ops/ap-control/` (AVR-298, not installed); see `docs/runbooks/wifi-qualification.md`.
+- Before a party, run the pre-event gate (`docs/runbooks/wifi-qualification.md`): PASS / WARN / FAIL for the
+  Wi-Fi link and the Pi's firmware/power health.
 
 ## Check it (read-only, no sudo, ~2 s)
 
@@ -131,8 +150,8 @@ locally); Android shows "no internet" but no sign-in popup (its probe gets a 404
   firmware (a "minimal" firmware is reported to allow ~19). Check which is active without sudo:
   `update-alternatives --display cyfmac43455-sdio.bin`. The 4/6/8-phone test is in
   `docs/runbooks/party-load-test.md`.
-- 5 GHz only: 2.4 GHz-only devices can't join. Channel 149 is legal in the US/Canada, not in most of
-  Europe/UK/Japan (a travel issue). If a phone fails to join, PMF on the AP is a reported culprit.
+- 5 GHz only: 2.4 GHz-only devices can't join. Channels 149-165 are legal in the US/Canada, not in most of
+  Europe/UK/Japan (a travel issue); channels 36-48 are broadly allowed but the regulatory domain must match where the box is used. If a phone fails to join, PMF on the AP is a reported culprit.
 - Under-voltage now threatens the **AP itself** (it runs on the board). Power without the USB adapter:
   `docs/findings/` (2026-09-24 no-USB baseline).
 

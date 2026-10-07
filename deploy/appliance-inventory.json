@@ -205,7 +205,7 @@
     {"what": "/etc/avrana-party/tls/{releases,current}", "by": "ops/install-party-certificate.sh"},
     {"what": "/var/www/avrana-party/web/{releases,current}", "by": "ops/install-party-web.sh"},
     {"what": "/opt/avrana-party and /opt/avrana-party-games releases, /var/lib/avrana-party/deployment.json", "by": "ops/deploy.sh"},
-    {"what": "telemetry: /opt/avrana-telemetry, /var/log/avrana, pi-throttle-check.timer, /etc/logrotate.d/avrana-telemetry, the Beszel agent", "by": "telemetry/install-pi-throttle-check.sh and telemetry/install-beszel-agent.sh (optional; not needed to play)"},
+    {"what": "telemetry: /opt/avrana-telemetry, /var/log/avrana, pi-throttle-check.timer, pi-health-check.timer (AVR-297, not installed yet), /etc/logrotate.d/avrana-telemetry, the Beszel agent", "by": "telemetry/install-pi-throttle-check.sh, telemetry/install-pi-health-check.sh and telemetry/install-beszel-agent.sh (optional; not needed to play)"},
     {"what": "the access point profile and every other NetworkManager connection", "by": "the owner, with nmcli"}
   ],
   "hardware_checks": [

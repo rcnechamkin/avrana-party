@@ -1,0 +1,3 @@
+# Raw evidence contains MACs, IPs and device names: keep it local (AGENTS.md: no raw telemetry in git).
+results/
+__pycache__/

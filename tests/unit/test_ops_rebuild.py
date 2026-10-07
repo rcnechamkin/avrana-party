@@ -146,7 +146,8 @@ class Inventory(unittest.TestCase):
         sources = {f['source'].partition(':')[2] for f in INV['files'] if f['source'].startswith('party:')}
         telemetry = 'installed by the telemetry scripts, optional (inventory not_managed)'
         elsewhere = {'telemetry/beszel-agent.service': telemetry, 'telemetry/pi-throttle-check.service': telemetry,
-                     'telemetry/pi-throttle-check.timer': telemetry}
+                     'telemetry/pi-throttle-check.timer': telemetry, 'telemetry/pi-health-check.service': telemetry,
+                     'telemetry/pi-health-check.timer': telemetry}
         self.assertTrue(any('telemetry' in n['what'] for n in INV['not_managed']))
         found = set()
         for pattern in ('**/*.service', '**/*.timer', '**/*.socket', 'deploy/**/*.conf', 'arcade/*.rules',

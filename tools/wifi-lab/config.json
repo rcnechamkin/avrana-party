@@ -1,0 +1,62 @@
+{
+  "_comment": "Defaults for the Avrana Wi-Fi lab. Override any key with --set key=value (JSON) or edit here. Gate thresholds are PROVISIONAL (see gate._status).",
+  "adb_path": null,
+  "adb_search": ["~/Downloads/platform-tools-latest-windows/platform-tools", "~/platform-tools", "C:/platform-tools"],
+  "android_serial": null,
+  "pi_ssh_host": "party",
+  "ap_ssid": "Avrana Party",
+  "ap_ip": "10.42.0.1",
+  "ap_subnet_prefix": "10.42.0.",
+  "ap_connection": "Avrana Party Internal",
+  "pi_wifi_iface": "wlan0",
+  "ap_helper_path": "/usr/local/sbin/avrana-ap-control",
+  "default_channel": 36,
+  "ping_count": 400,
+  "ping_interval_s": 0.2,
+  "ping_payload_bytes": 56,
+  "ping_reply_timeout_s": 2,
+  "spike_thresholds_ms": [50, 100, 250],
+  "load_rates_mbps": [5, 10, 20, 30, 50],
+  "load_duration_s": 60,
+  "ssh_timeout_s": 40,
+  "health_timeout_s": 45,
+
+  "gate": {
+    "_status": "PROVISIONAL. Derived from the healthy channel-36 runs of 2026-10-06 (3 idle trials, one 20 Mbps downlink run, one Samsung SM-T510, one Pi). Re-derive after the second-device A/B (AVR-300) and on real phones.",
+    "idle_count": 150,
+    "loaded_mbps": 20,
+    "loaded_count": 100,
+    "idle": {
+      "p95_ms": {"warn": 80, "fail": 200},
+      "p99_ms": {"warn": 150, "fail": 300},
+      "loss_pct": {"warn": 0.5, "fail": 2.0},
+      "retry_ratio": {"warn": 3.0, "fail": 10.0}
+    },
+    "loaded": {
+      "p95_ms": {"warn": 250, "fail": 600},
+      "p99_ms": {"warn": 400, "fail": 1000},
+      "loss_pct": {"warn": 1.0, "fail": 3.0},
+      "retry_ratio": {"warn": 10.0, "fail": 30.0},
+      "delivered_fraction": {"warn": 0.8, "fail": 0.5}
+    },
+    "min_tx_samples_for_retry_ratio": 20
+  },
+
+  "qualify": {
+    "candidates": [36, 40, 44, 48, 149, 153, 157, 161],
+    "idle_count": 150,
+    "loaded_mbps": 20,
+    "loaded_count": 100,
+    "uplink_count": 60,
+    "uplink_mbps": {"warn": 15, "fail": 5},
+    "_scoring": "see docs/runbooks/wifi-qualification.md (heuristic, not universal)"
+  },
+
+  "multi": {
+    "echo_port": 5301,
+    "send_hz": 20,
+    "reply_timeout_s": 2.0,
+    "step_seconds": 30,
+    "counts": [1, 2, 4, 6, 8, 10]
+  }
+}
