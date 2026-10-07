@@ -48,6 +48,11 @@ def load_artwork(path=DEFAULT_ARTWORK, web=WEB_DIR):
     return out
 
 
+# A contract that exists to prove the platform (the AVR-236 stand-in). It has no grant on a
+# product appliance, so it is left out of that appliance's catalog entirely, not listed as
+# "not installed". Party Core and provisioning still read it like any other contract.
+TEST_EXTENSION = 'net.avrana.test'
+
 def load_contracts(directory, vocab):
     contracts = {}
     for path in sorted(Path(directory).glob('*.json')):
@@ -88,6 +93,8 @@ def build(vocab, appliance, contracts, include=('live',), artwork=None):
     games = []
     for cid, c in contracts.items():
         grant = grants.get(cid)
+        if grant is None and c.get('extensions', {}).get(TEST_EXTENSION, {}).get('test_only') is True:
+            continue                                  # a test-only contract is offered nowhere it is not granted
         presentations = compile_presentations(c, runtime)
         playable = any(p['available'] and 'player' in p['roles'] for p in presentations)
         if grant and not playable:

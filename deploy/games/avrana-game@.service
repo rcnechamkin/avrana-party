@@ -5,11 +5,13 @@
 #
 # What the process is handed (a field-test runtime convention, not an SDK): its listening socket
 # as file descriptor 3 (LISTEN_FDS), its own key and no other in $CREDENTIALS_DIRECTORY
-# (AVRANA_PARTY_KEYS points there), its state in $STATE_DIRECTORY.
+# (AVRANA_PARTY_KEYS points there), its state in $STATE_DIRECTORY, and Party Core's internal
+# socket in $AVRANA_PARTY_SOCKET (owner decision, AVR-236).
 #
-# This file carries no ExecStart: what a given game runs, and from where, is written per
-# instance by provision-game (pending the owner's decision recorded on AVR-236). Without that
-# the unit does not start, which is the intended failure for a slug nobody provisioned.
+# This file carries no ExecStart, by decision: what a given game runs, and from where, is the
+# `runtime` object of its appliance grant, which provision-game writes as a root-owned drop-in,
+# /etc/systemd/system/avrana-game@<slug>.service.d/exec.conf. Without that drop-in the unit does
+# not start, which is the intended failure for a slug nobody provisioned.
 # Resource ceilings (MemoryMax, TasksMax, CPUQuota) come from measuring a real game (AVR-238).
 [Unit]
 Description=Avrana native game (%i)
@@ -23,6 +25,7 @@ StateDirectory=avrana-games/%i
 StateDirectoryMode=0700
 LoadCredential=%i.key:/etc/avrana-party/game-keys/%i.key
 Environment=AVRANA_PARTY_KEYS=%d
+Environment=AVRANA_PARTY_SOCKET=/run/avrana-party/internal.sock
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 RestrictAddressFamilies=AF_UNIX

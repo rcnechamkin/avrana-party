@@ -61,6 +61,14 @@ class GameTemplate(unittest.TestCase):
             self.assertEqual(self.service.get(key), [value], key)
         self.assertIn('AVRANA_PARTY_KEYS=%d', self.service['Environment'])
 
+    def test_a_game_is_handed_party_cores_internal_socket(self):
+        want = SPEC['sockets']['party_internal']['path']
+        self.assertEqual(want, '/run/avrana-party/internal.sock')
+        self.assertIn(f'AVRANA_PARTY_SOCKET={want}', self.service['Environment'])
+        head = (GAMES / 'avrana-game@.service').read_text(encoding='utf-8').split('[Unit]')[0]
+        self.assertIn('drop-in', head)                                    # the ExecStart decision is recorded
+        self.assertNotIn('pending', head)
+
     def test_a_game_gets_one_key_one_group_no_user_and_no_ip(self):
         self.assertEqual(len(self.service['LoadCredential']), 1)         # its own key, no other
         self.assertNotIn('User', self.service)                            # the instance is the identity

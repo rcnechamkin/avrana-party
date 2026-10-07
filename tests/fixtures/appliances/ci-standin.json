@@ -1,0 +1,27 @@
+{
+  "schema": "avrana.appliance/v0",
+  "id": "ci-standin",
+  "name": "CI appliance fixture with the stand-in native game",
+  "providers": [
+    {
+      "id": "lan-games",
+      "kind": "runtime",
+      "offers": ["runtime.lan_games"],
+      "status": "live",
+      "adapter": null,
+      "implementation": "placeholder: the schema needs one provider; the stand-in uses none"
+    }
+  ],
+  "installed": [
+    {
+      "game": "standin",
+      "entry": "/games/standin/",
+      "tier": "builtin",
+      "runtime": {
+        "command": ["/usr/bin/python3", "-m", "avrana.games.standin"],
+        "working_directory": "/opt/avrana-party/current"
+      }
+    }
+  ],
+  "collections": []
+}

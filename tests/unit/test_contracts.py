@@ -260,6 +260,15 @@ class ApplianceAndCatalog(unittest.TestCase):
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
 
+    def test_a_test_only_contract_is_in_no_product_catalog(self):
+        self.assertIs(self.contracts['standin']['extensions'][catalog.TEST_EXTENSION]['test_only'], True)
+        built = catalog.build(VOCAB, self.appliance, self.contracts)
+        self.assertNotIn('standin', [g['id'] for g in built['games']])
+        self.assertIn('ps1-bomberman', [g['id'] for g in built['games']])       # ungranted product games stay listed
+        granted = appliance.load(REPO_ROOT / 'tests' / 'fixtures' / 'appliances' / 'ci-standin.json', VOCAB)
+        only = {'standin': self.contracts['standin']}
+        self.assertEqual([g['id'] for g in catalog.build(VOCAB, granted, only)['games']], ['standin'])
+
     def test_catalog_shape(self):
         built = catalog.build(VOCAB, self.appliance, self.contracts)
         self.assertEqual(built['schema'], 'avrana.catalog/v0')
@@ -317,6 +326,27 @@ class ApplianceAndCatalog(unittest.TestCase):
             doc['installed'][0].update(bad)
             with self.assertRaises(ValueError):
                 appliance.validate(doc, VOCAB)
+
+    def test_a_grant_may_carry_a_strict_runtime(self):
+        good = {'command': ['/usr/bin/python3', '-m', 'game', 'a b'], 'working_directory': '/opt/games/checkers'}
+        doc = copy.deepcopy(self.appliance)
+        doc['installed'][0]['runtime'] = good
+        appliance.validate(doc, VOCAB)
+        self.assertEqual(appliance.grants(doc)[doc['installed'][0]['game']]['runtime'], good)
+        bad = [None, [], 'x', {}, {'command': good['command']}, dict(good, extra=1),
+               dict(good, command=[]), dict(good, command='/bin/x'), dict(good, command=['bin/x']),
+               dict(good, command=['/bin/x', '']), dict(good, command=['/bin/x', 1]),
+               dict(good, command=['/bin/x', 'a\nExecStart=/bin/sh']), dict(good, command=['/bin/x\r']),
+               dict(good, command=['/bin/x', 'a\x00']), dict(good, working_directory='rel'),
+               dict(good, working_directory='/a\nb'), dict(good, working_directory=None)]
+        for runtime in bad:
+            doc = copy.deepcopy(self.appliance)
+            doc['installed'][0]['runtime'] = runtime
+            with self.assertRaises(ValueError, msg=repr(runtime)):
+                appliance.validate(doc, VOCAB)
+
+    def test_the_shipped_appliance_grants_no_runtime_yet(self):
+        self.assertFalse([i['game'] for i in self.appliance['installed'] if 'runtime' in i])
 
     def test_malformed_appliance_values_are_reported_not_raised(self):
         junk = [None, 1, [], [1], {}, {'a': 1}, 'x']
