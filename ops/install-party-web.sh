@@ -20,6 +20,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 dest=${AVRANA_WEB_ROOT:-/var/www/avrana-party/web}
 covers=${AVRANA_COVERS_DIR:-/srv/avrana/covers}
+[[ $covers == /* ]] || covers=$PWD/$covers      # the build runs in another directory
 keep=5
 mode=install
 kill_flag=()

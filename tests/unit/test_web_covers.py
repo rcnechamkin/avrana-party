@@ -1,11 +1,13 @@
 """Owner-supplied game covers (AVR-306): what may pass from the covers folder into a release,
 and what the dev server serves of it."""
 import json
+import subprocess
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 import threading
 
@@ -82,6 +84,39 @@ class Folder(unittest.TestCase):
         self.assertIn('big.png: it is larger than 1024 KB', skipped)
         self.assertIn('bluff.png: bluff.jpg is already the cover for bluff', skipped)
 
+    def test_the_whole_name_is_checked_and_a_strange_one_is_shown_quoted(self):
+        self.assertIsNone(covers.NAME.fullmatch('bluff.png\n'))
+        with self.assertRaisesRegex(covers.CoverError, 'its name is not'):
+            covers.read(self.folder / 'bluff.png\n')          # refused by name, before the disk is asked
+        self.assertEqual(covers.shown('bluff.png'), 'bluff.png')
+        self.assertEqual(covers.shown('a\x1b[2Jb.png\n'), "'a\\x1b[2Jb.png\\n'")
+
+    def test_a_file_that_cannot_be_read_is_left_out_and_never_fails_the_scan(self):
+        self.put('bluff.png', PNG)
+        self.put('expo.png', PNG)
+        real = covers.os.fstat
+
+        def fstat(fd):
+            raise OSError(5, 'Input/output error')
+        with mock.patch.object(covers.os, 'fstat', fstat):
+            found, skipped = covers.scan(self.folder)
+        self.assertEqual(found, {})
+        self.assertEqual(skipped, ['bluff.png: it cannot be read (Input/output error)', 'expo.png: it cannot be read (Input/output error)'])
+        self.assertIs(covers.os.fstat, real)
+
+    def test_past_the_limit_a_file_is_not_opened(self):
+        for i in range(covers.MAX_FILES + 3):
+            self.put(f'game{i:03d}.png', PNG)
+        opened = []
+        real = covers.os.open
+
+        def counting(path, *a, **kw):
+            opened.append(Path(path).name)
+            return real(path, *a, **kw)
+        with mock.patch.object(covers.os, 'open', counting):
+            found, skipped = covers.scan(self.folder)
+        self.assertEqual((len(found), len(skipped), len(opened)), (covers.MAX_FILES, 3, covers.MAX_FILES))
+
     def test_a_link_is_never_followed(self):
         secret = Path(self.tmp.name) / 'secret.png'
         secret.write_bytes(PNG)
@@ -142,6 +177,17 @@ class Build(unittest.TestCase):
             build.build(out, 'b1', covers=Path(tmp) / 'nowhere')
             self.assertEqual([p.name for p in (out / 'covers').iterdir()], ['index.json'])
             self.assertEqual(json.loads((out / 'covers' / 'index.json').read_text())['covers'], {})
+
+    def test_git_holds_no_cover_only_the_empty_index(self):
+        # the folder is ignored, but `git add -f` would still take a picture: this says no
+        try:
+            listed = subprocess.run(['git', '-C', str(WEB_DIR.parents[1]), 'ls-files', '--', 'web/party/covers'],
+                                    capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            self.skipTest('git is not here')
+        if listed.returncode != 0:
+            self.skipTest('this is not a Git checkout')
+        self.assertEqual(listed.stdout.split(), ['web/party/covers/index.json'])
 
     def test_the_tracked_index_is_empty(self):
         # what Git holds names no cover: covers reach a release only through the covers folder

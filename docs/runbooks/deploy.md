@@ -115,7 +115,15 @@ sudo bash /home/cody/avrana-party/ops/install-party-web.sh /home/cody/avrana-par
   static files only, no service restarts, safe during a round. `ops/deploy.sh` does the same
   whenever it builds a web release, so covers already in the folder ride along with every Party
   deploy; a changed cover alone needs only that third command. Then reload the phones.
-- Each release keeps the covers it was built with, so a rollback also goes back to those.
+- Each release keeps the covers it was built with. `install-party-web.sh --rollback`, and the
+  deploy putting things back by itself when a step fails, return to the release before as it was
+  built, its covers included. Rolling back by deploying an earlier commit (below) builds a new
+  release from that commit and the folder as it is now, so the covers stay as they are now. A
+  covers-only install is one of the five releases kept.
+- For another folder, name it on the command: `sudo AVRANA_COVERS_DIR=/some/folder bash …`
+  (plain `sudo` does not pass your shell's variables on).
+- JPEG, PNG and WebP always work. An AVIF cover is only sure to be drawn if nginx sends its
+  type: `grep avif /etc/nginx/mime.types` (not checked on the Pi).
 - nginx is not involved: covers are files of the release, under `/party/covers/`.
 
 ## When it fails

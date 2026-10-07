@@ -334,7 +334,8 @@ depicts it → a generic icon.**
   a page never guesses at a file (`avrana/web/covers.py`, `loadCovers` in
   `lib/catalog-load.js`). A cover fills a square tile, is shown whole in a wide frame
   (`own-art`), and is decoration (`alt=""`): the name beside it stays text. A cover that does
-  not load gives way to the art below, and is not asked for again until the page next starts.
+  not load gives way to the art below, and is not asked for again until the page next starts
+  or the Party box answers again after a break.
   Covers are not in the offline copy. How they reach the Pi:
   [deploy runbook](runbooks/deploy.md#game-covers-the-owners-never-committed).
 

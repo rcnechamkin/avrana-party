@@ -616,6 +616,7 @@ function onLink({ ok, answered }) {
     state.failingSince = null;
     clearTimeout(state.lostTimer);
     renderLink();
+    state.badCovers = new Set();                // a cover that did not load while the box was away is tried again
     refreshHealth();                            // what was off may be on again, and the other way
     return;
   }

@@ -50,11 +50,16 @@ def kind(head):
     return None
 
 
+def shown(name):
+    """A file name as it is safe to print: one with anything but plain characters is quoted."""
+    return name if name.isprintable() else ascii(name)
+
+
 def read(path):
     """One cover, checked as it is read: (its bytes, the name it is published under).
     CoverError says why it is not one."""
     path = Path(path)
-    match = NAME.match(path.name)
+    match = NAME.fullmatch(path.name)
     if not match:
         raise CoverError('its name is not <game id>.jpg, .jpeg, .png, .webp or .avif')
     try:
@@ -64,10 +69,13 @@ def read(path):
         fd = os.open(path, flags)
     except OSError as exc:
         raise CoverError(f'it cannot be read ({exc.strerror or exc})') from None
-    with os.fdopen(fd, 'rb') as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-            raise CoverError('it is not a plain file (links are never followed)')
-        data = handle.read(MAX_BYTES + 1)
+    try:
+        with os.fdopen(fd, 'rb') as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise CoverError('it is not a plain file (links are never followed)')
+            data = handle.read(MAX_BYTES + 1)
+    except OSError as exc:
+        raise CoverError(f'it cannot be read ({exc.strerror or exc})') from None
     if len(data) > MAX_BYTES:
         raise CoverError(f'it is larger than {MAX_BYTES // 1024} KB')
     what = kind(data)
@@ -91,18 +99,21 @@ def scan(folder):
     for path in entries:
         if path.name == 'index.json' or (path.is_dir() and not path.is_symlink()):
             continue
+        match = NAME.fullmatch(path.name)
+        game = match.group(1) if match else None
+        # decided by the name alone, so a file past the limit is never opened
+        if game in found:
+            skipped.append(f'{shown(path.name)}: {found[game][0]} is already the cover for {game}')
+            continue
+        if match and len(found) >= MAX_FILES:
+            skipped.append(f'{shown(path.name)}: there are already {MAX_FILES} covers')
+            continue
         try:
             _, published = read(path)
         except CoverError as exc:
-            skipped.append(f'{path.name}: {exc}')
+            skipped.append(f'{shown(path.name)}: {exc}')
             continue
-        game = NAME.match(path.name).group(1)
-        if game in found:
-            skipped.append(f'{path.name}: {found[game][0]} is already the cover for {game}')
-        elif len(found) >= MAX_FILES:
-            skipped.append(f'{path.name}: there are already {MAX_FILES} covers')
-        else:
-            found[game] = (path.name, published)
+        found[game] = (path.name, published)
     return found, skipped
 
 

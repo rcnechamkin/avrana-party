@@ -101,23 +101,26 @@ test('a cover that will not load, or is not a picture, gives way to the art the 
   expect(await broken(page)).toEqual([]);
 });
 
-test('with no covers, or an index that cannot be read, the shell is as it was', async ({ page }) => {
+test('with no covers, or an index that cannot be read, the shell is as it was', async ({ browser, request }) => {
   // the dev server under test controls serves an empty index: nothing a developer keeps is shown
-  expect((await (await page.request.get('/party/covers/index.json')).json())).toEqual({ schema: 'avrana.covers/v0', covers: {} });
+  expect(await (await request.get('/party/covers/index.json')).json()).toEqual({ schema: 'avrana.covers/v0', covers: {} });
   for (const answer of ['empty', 'missing', 'corrupt'] as const) {
-    await page.unroute('**/party/covers/index.json');
-    if (answer === 'missing') await page.route('**/party/covers/index.json', (route) => route.fulfill({ status: 404, body: 'not found' }));
-    if (answer === 'corrupt') await page.route('**/party/covers/index.json', (route) => route.fulfill({ body: '{nope', contentType: 'application/json' }));
-    let asked = 0;
-    const count = (request: { url(): string }) => { if (/\/covers\/.*\.(png|jpg|jpeg|webp|avif)$/.test(request.url())) asked += 1; };
-    page.on('request', count);
+    // a phone of its own each time: once a page has a service worker, the worker asks for the
+    // index itself, and an answer given to the page would never be used
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    let answered = 0, asked = 0;
+    if (answer === 'missing') await page.route('**/party/covers/index.json', (route) => { answered += 1; return route.fulfill({ status: 404, body: 'not found' }); });
+    if (answer === 'corrupt') await page.route('**/party/covers/index.json', (route) => { answered += 1; return route.fulfill({ body: '{nope', contentType: 'application/json' }); });
+    page.on('request', (req) => { if (/\/covers\/.*\.(png|jpg|jpeg|webp|avif)$/.test(req.url())) asked += 1; });
     await open(page);
+    if (answer !== 'empty') expect(answered, `${answer}: the page was given this answer`).toBeGreaterThan(0);
     await place(page, 'library');
     await expect(cover(page, '#games', 'arcade-gauntlet2').locator('img'), answer).toHaveAttribute('src', 'art/kenney-sword.svg');
     await expect(cover(page, '#games', 'ps1-worms').locator('img'), answer).toHaveCount(0);
     await expect(page.locator('#games .own-art'), answer).toHaveCount(0);
     await expect(page.locator('#catalog-error'), answer).toBeHidden();      // covers are never a reason to complain
     expect(asked, answer).toBe(0);                                          // no picture is guessed at
-    page.off('request', count);
+    await context.close();
   }
 });
