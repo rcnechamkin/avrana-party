@@ -29,8 +29,9 @@ waits for its decision.
 ### 1. Where the owner's content and the core live (AVR-310, decision 1)
 
 - [ ] Content root: a read-only folder outside every repository and every release tree. The BIOS image
-  `SCPH1001.BIN` (exactly 524288 bytes) sits directly in it, and each disc folder is laid out as its
-  profile's `cue` says (`ps1/titles/<id>.json`, relative to the root). The images are the owner's own.
+  `SCPH1001.BIN` (exactly 524288 bytes, under exactly that name, capital letters included: the Pi's
+  filesystem is case-sensitive) sits directly in it, and each disc folder is laid out as its profile's
+  `cue` says (`ps1/titles/<id>.json`, relative to the root). The images are the owner's own.
 - [ ] The core: the pinned `pcsx_rearmed_libretro.so` build for the machine that will run it (aarch64 on
   the Pi), also outside every repository.
 - [ ] The configuration names. This repository reads `AVRANA_PS1_CONTENT` and `AVRANA_PS1_CORE`; they are
@@ -63,7 +64,7 @@ and never prints an absolute path. Each failure has its own code, so the line sa
 | `cue_no_files` | the cue sheet has no `FILE` line | use the disc's own cue sheet |
 | `bin_unsafe` | a `FILE` line is absolute or climbs out of the disc folder | fix the cue sheet so the images sit in its folder |
 | `bin_missing` | a file the cue sheet names is not there | put the image next to the cue sheet under exactly the name it states |
-| `bios_missing` | `SCPH1001.BIN` is not in the content root | place the BIOS image there |
+| `bios_missing` | `SCPH1001.BIN` is not in the content root under exactly that name (a `scph1001.bin` does not count; the line names it when it finds one) | place the BIOS image there under that name, renaming a lower-case one |
 | `bios_wrong_size` | the BIOS image is not 524288 bytes | a PS1 BIOS image is 512 KiB; replace it |
 | `core_unset` | no core was given | set `AVRANA_PS1_CORE` or pass `--core` |
 | `core_missing` | there is no file at the core path | correct the path |

@@ -322,7 +322,7 @@ def cue_path(p, root):
 ENV_CONTENT = 'AVRANA_PS1_CONTENT'
 ENV_CORE = 'AVRANA_PS1_CORE'
 CORE_PIN = PS1_DIR / 'evidence' / 'selected-core.json'
-BIOS_NAME = 'SCPH1001.BIN'   # the US BIOS the hardware runs used (SCPH-1001 v2.2); found ignoring case
+BIOS_NAME = 'SCPH1001.BIN'   # the US BIOS the hardware runs used (SCPH-1001 v2.2), by exactly this name
 BIOS_SIZE = 524288           # a PS1 BIOS image is 512 KiB
 MAX_CUE_BYTES = 1 << 20      # a cue sheet is a few hundred bytes: anything larger is not one
 MAX_CUE_FILES = 99           # a disc has at most 99 tracks, so a cue sheet names at most that many files
@@ -339,7 +339,7 @@ FAILURES = {
     'cue_no_files': 'the cue sheet names no file',
     'bin_unsafe': 'the cue sheet names a file outside its own folder',
     'bin_missing': 'a file the cue sheet names is not there',
-    'bios_missing': 'the BIOS image is not in the content root',
+    'bios_missing': 'the BIOS image is not in the content root under its exact name',
     'bios_wrong_size': f'the BIOS image is not {BIOS_SIZE} bytes',
     'core_unset': 'no core was given',
     'core_missing': 'the core file is not there',
@@ -497,16 +497,21 @@ def _check_disc(profile, base, add):
 
 
 def _check_bios(base, add):
-    found = next((entry for entry in sorted(os.listdir(base))
-                  if entry.lower() == BIOS_NAME.lower() and _is_file(base / entry)), None)
-    if found is None:
-        add('bios', BIOS_NAME, 'bios_missing', f'{BIOS_NAME} is not in the content root')
+    # The exact name: the Pi's filesystem is case-sensitive and the launcher asks for SCPH1001.BIN. A
+    # listing gives the names as they are stored, so this holds on a case-insensitive host too, where
+    # stat() would find scph1001.bin under the other name.
+    names = os.listdir(base)
+    if BIOS_NAME not in names or not _is_file(base / BIOS_NAME):
+        other = next((n for n in sorted(names) if n != BIOS_NAME and n.lower() == BIOS_NAME.lower()), None)
+        hint = f'; the content root has {_shown(other)!r} instead, and the name must match exactly' if other else ''
+        add('bios', BIOS_NAME, 'bios_missing', f'{BIOS_NAME} is not in the content root{hint}')
         return
-    size = (base / found).stat().st_size
+    size = (base / BIOS_NAME).stat().st_size
     if size != BIOS_SIZE:
-        add('bios', found, 'bios_wrong_size', f'{found} is {size} bytes; a PS1 BIOS image is exactly {BIOS_SIZE} bytes')
+        add('bios', BIOS_NAME, 'bios_wrong_size',
+            f'{BIOS_NAME} is {size} bytes; a PS1 BIOS image is exactly {BIOS_SIZE} bytes')
     else:
-        add('bios', found, 'ok', f'{found} is {BIOS_SIZE} bytes')
+        add('bios', BIOS_NAME, 'ok', f'{BIOS_NAME} is {BIOS_SIZE} bytes')
 
 
 def _check_core(core_path, env, pin, add):

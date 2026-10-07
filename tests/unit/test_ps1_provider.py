@@ -757,12 +757,33 @@ class ContentCheck(ContentFixture):
         self.assertEqual(ps1.BIOS_SIZE, 524288)
 
     def test_bios_missing_or_named_in_another_case(self):
+        """The name must match exactly: the Pi's filesystem is case-sensitive and the launcher asks for
+        SCPH1001.BIN, so a BIOS that is there as scph1001.bin is not ready. The check lists the folder, so it
+        says the same on a case-insensitive host (Windows, macOS), where stat() would find either name."""
         self.bios.rename(self.root / 'scph1001.bin')
-        self.assertEqual(self.failing(self.check()), [])           # case does not matter
-        (self.root / 'scph1001.bin').unlink()
+        report = self.check()
+        self.assertEqual(self.failing(report), [('bios', 'bios_missing')])
+        self.assertEqual(report.failures[0].subject, ps1.BIOS_NAME)
+        self.assertIn("'scph1001.bin'", report.failures[0].detail)           # what is there instead is named
+        self.assertIn('must match exactly', report.failures[0].detail)
+        (self.root / 'scph1001.bin').rename(self.root / 'Scph1001.Bin')       # any other spelling is the same
         self.assertEqual(self.failing(self.check()), [('bios', 'bios_missing')])
-        (self.root / ps1.BIOS_NAME).mkdir()                        # a folder is not an image
+        (self.root / 'Scph1001.Bin').unlink()
+        report = self.check()
+        self.assertEqual(self.failing(report), [('bios', 'bios_missing')])
+        self.assertNotIn('instead', report.failures[0].detail)               # nothing like it is there
+        (self.root / ps1.BIOS_NAME).mkdir()                                  # a folder is not an image
         self.assertEqual(self.failing(self.check()), [('bios', 'bios_missing')])
+        (self.root / ps1.BIOS_NAME).rmdir()
+        self.bios.write_bytes(b'\0' * ps1.BIOS_SIZE)                     # exactly the right name is ready again
+        self.assertEqual(self.failing(self.check()), [])
+
+    def test_a_listing_with_both_spellings_takes_the_exact_one(self):
+        """A case-sensitive filesystem can hold both files: the one named exactly is the BIOS."""
+        with mock.patch.object(ps1.os, 'listdir', return_value=['scph1001.bin', ps1.BIOS_NAME]):
+            report = self.check()
+        self.assertEqual(self.failing(report), [])
+        self.assertEqual([c.subject for c in report.checks if c.name == 'bios'], [ps1.BIOS_NAME])
 
     def test_core_hash_mismatch(self):
         self.core.write_bytes(CORE_BYTES + b'!')

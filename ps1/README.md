@@ -113,8 +113,9 @@ Two names, **provisional until AVR-310 decides the locations and their names**:
 
 An argument beats the environment; neither falls back to a default path. The check reports that: the
 cue sheet is there; every file a `FILE` line of the cue names is there (a name that is absolute or
-climbs out of the disc folder is refused, not probed); the BIOS (`SCPH1001.BIN`, matched ignoring case,
-the one the donor's runs used) is exactly 524288 bytes; and the core's SHA-256 equals `so_sha256` in
+climbs out of the disc folder is refused, not probed); the BIOS (`SCPH1001.BIN`, the name the donor's
+runs used, matched exactly because the Pi's filesystem is case-sensitive: `scph1001.bin` is refused and
+the report names it) is exactly 524288 bytes; and the core's SHA-256 equals `so_sha256` in
 `evidence/selected-core.json`. It opens the cue sheet and the core; the disc images and the BIOS are
 only looked at (that they exist, and how big the BIOS is). Each of the fifteen failures has its own
 code and sentence (the [runbook](../docs/runbooks/ps1-titles.md) lists them), and a report names files
