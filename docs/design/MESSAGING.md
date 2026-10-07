@@ -1,4 +1,4 @@
-# ADR 0017 — Party-owned messaging
+# Party-owned messaging (proposal)
 
 Status: **PROPOSED (2026-10-06) · not accepted · not implemented · not deployed**
 This is the [AVR-53](https://linear.app/avranakern/issue/AVR-53/define-avrana-platform-messaging-architecture-and-ownership)
@@ -7,13 +7,14 @@ proposal. The owner allowed it to be drafted before the
 night; it may not be accepted, and
 [AVR-54](https://linear.app/avranakern/issue/AVR-54/build-party-owned-messaging-service-and-shared-player-surfaces)
 may not start, until the AVR-27 findings are reconciled with it in writing (the section
-"Reconciliation with AVR-27" below is empty on purpose) and the owner accepts it. Context:
-[ADR 0006](0006-party-session-protocol.md), [ADR 0011](0011-party-console-model.md),
-[ADR 0012](0012-limited-mode-party-survives-https-loss.md),
-[ADR 0013](0013-party-and-game-browser-origins.md),
-[ADR 0014](0014-native-games-isolated-lan-games-retired.md), the
+"Reconciliation with AVR-27" below is empty on purpose) and the owner accepts it. On
+acceptance it becomes ADR 0017; until then it is a design proposal with no authority. Context:
+[ADR 0006](../adr/0006-party-session-protocol.md), [ADR 0011](../adr/0011-party-console-model.md),
+[ADR 0012](../adr/0012-limited-mode-party-survives-https-loss.md),
+[ADR 0013](../adr/0013-party-and-game-browser-origins.md),
+[ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md), the
 [2026-10-02 review](../findings/2026-10-02-architecture-review.md) and
-[COMMUNICATION](../design/COMMUNICATION.md), whose transport section this would replace.
+[COMMUNICATION](COMMUNICATION.md), whose transport section this would replace.
 
 ## Context: what is true today
 
@@ -31,7 +32,7 @@ Checked in source on `main` and in Games `origin/main` on 2026-10-06.
   ([Review](../findings/2026-10-02-architecture-review.md): "any client can clear chat",
   "client-declared name and an unauthenticated clear".)
 - **The Chat tab depends on the runtime that is retiring.** It is offered only while the Games
-  runtime answers `/api/games`. [ADR 0014](0014-native-games-isolated-lan-games-retired.md) says
+  runtime answers `/api/games`. [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) says
   chat needs a Party-owned replacement or a decision to drop it before that runtime can stop.
 - **Identity is already strong in Party Core.** A server-issued device credential resolves to a
   member (`member-…`) whose name Core cleans, de-duplicates and never uses to authorize.
@@ -40,7 +41,7 @@ Checked in source on `main` and in Games `origin/main` on 2026-10-06.
 - **The review warned about the obvious shortcut.** Putting messages in the view makes every
   message re-send every member's whole view: traffic grows with members squared.
 - **A game page has no Party credential.** It sees a closed, pinned bridge view with no roster
-  and no messages ([ADR 0013](0013-party-and-game-browser-origins.md)).
+  and no messages ([ADR 0013](../adr/0013-party-and-game-browser-origins.md)).
 
 ## Decision (proposed)
 
@@ -173,7 +174,7 @@ The text is always rendered as text, inside its own direction-isolated element, 
 
 A member cap for a Party does not exist today and messaging makes its absence matter more (a
 script can mint members, each with its own budget). The per-Party ceiling bounds the damage
-here; the cap itself belongs to Party Core hardening, not to this ADR.
+here; the cap itself belongs to Party Core hardening, not to this proposal.
 
 ### 8. Limited Mode
 
@@ -193,16 +194,16 @@ Full phones are told that the room is no longer private is a product decision (b
 
 ### 9. Where it is drawn, and games
 
-This ADR decides the service. It does not decide screens:
+This proposal decides the service. It does not decide screens:
 
 - **Party pages.** The drawer's Chat tab reads the Party room instead of the legacy socket.
 - **Over a briefing.** The accepted rule today is people only
-  ([Game UX contract](../design/GAME-UX-CONTRACT.md) rule 3.2, ADR 0011). The service delivers
+  ([Game UX contract](GAME-UX-CONTRACT.md) rule 3.2, ADR 0011). The service delivers
   regardless; drawing chat there is a separate owner decision.
 - **During a game.** Not in v1. A game page has no credential and the bridge carries no roster
   or messages. Whether the trusted Party layer draws the room over a game, and where, belongs to
   [AVR-83](https://linear.app/avranakern/issue/AVR-83) and
-  [AVR-292](https://linear.app/avranakern/issue/AVR-292). This ADR requires only that message
+  [AVR-292](https://linear.app/avranakern/issue/AVR-292). This proposal requires only that message
   text and other members' names never reach a game origin through the bridge without that
   decision.
 - **Game policy.** A game declaring "no chat in this phase", "teams only" or "spectators
@@ -285,6 +286,6 @@ because of it.
 - Each phone holds a second request while a Party page is open.
 - The shell's Chat tab stops depending on the Games runtime, which unblocks its retirement.
 - COMMUNICATION's layers 2 to 4 stay as proposed direction; its transport section and its
-  account of what exists are replaced by this ADR if it is accepted.
+  account of what exists are replaced by this proposal if it is accepted.
 - Team play with private channels, chat during a game and game policy remain undecided and are
   not made easier or harder by v1 beyond the `scope` field.

@@ -69,6 +69,8 @@ Read in this order:
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)
    - `STATUS-ENDPOINT.md` — `GET /party/api/status`: the running build and its health
      (`avrana.status/v0`)
+   - `MESSAGING.md` — proposed Party-owned messaging service (AVR-53): identity, one room,
+     history, limits, delivery; not accepted.
    - `COMMUNICATION.md` — chat as a platform capability: transport, policy, presentation and
      game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
 
