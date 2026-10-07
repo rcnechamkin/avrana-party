@@ -269,6 +269,30 @@ class SessionQuery(unittest.TestCase):
         self.assertTrue(active('bluff'))
         self.assertEqual(asked[0], 'http://127.0.0.1:8191/party/api/status')
 
+    def test_remove_takes_a_dynamic_user_state_directory_and_its_link(self):
+        """systemd keeps a DynamicUser= unit's state under private/ and links to it (the first run
+        on real systemd found rmtree refusing the link)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            layout = pg.Layout(key_dir=root / 'keys', registry_dir=root / 'games.d', socket_dir=root / 'run',
+                               state_dir=root / 'lib' / 'avrana-games', unit_dir=root / 'units',
+                               template_dir=REPO_ROOT / 'deploy' / 'games')
+            public, private = layout.state_paths('checkers')
+            self.assertEqual(private, root / 'lib' / 'private' / 'avrana-games' / 'checkers')
+            private.mkdir(parents=True)
+            (private / 'save').write_text('x', encoding='utf-8')
+            public.parent.mkdir(parents=True)
+            try:
+                public.symlink_to(private, target_is_directory=True)
+            except OSError:
+                self.skipTest('this account cannot create symbolic links')
+            self.assertEqual(pg.plan_remove('checkers', layout, keep_state=True), [])
+            self.assertEqual(pg.remove('checkers', layout, lambda argv: None, keep_state=True), [])
+            self.assertTrue(private.exists())
+            self.assertEqual(pg.plan_remove('checkers', layout), ['state'])
+            self.assertEqual(pg.remove('checkers', layout, lambda argv: None), ['state'])
+            self.assertFalse(public.is_symlink() or public.exists() or private.exists())
+
     def test_provisioning_is_refused_when_party_core_does_not_read_the_registry(self):
         with tempfile.TemporaryDirectory() as tmp:
             conf, registry = Path(tmp) / 'party-core.json', Path(tmp) / 'games.d'

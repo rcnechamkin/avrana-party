@@ -81,6 +81,12 @@ class Layout:
     def state(self, slug):
         return Path(self.state_dir) / slug
 
+    def state_paths(self, slug):
+        """Everything that is this game's state. With DynamicUser= systemd keeps the directory
+        under <parent>/private/ and leaves a symbolic link at the public path, so both are named."""
+        root = Path(self.state_dir)
+        return [root / slug, root.parent / 'private' / root.name / slug]
+
     def dropin_dir(self, slug):
         return Path(self.unit_dir) / f'avrana-game@{slug}.service.d'
 
@@ -269,7 +275,7 @@ def _leftovers(slug, layout, keep_state):
     for name, path in (('key', layout.key(slug)), ('socket', layout.socket(slug))):
         if path.exists() or path.is_symlink():
             found.append(name)
-    if layout.state(slug).exists() and not keep_state:
+    if not keep_state and any(p.exists() or p.is_symlink() for p in layout.state_paths(slug)):
         found.append('state')
     return found
 
@@ -303,10 +309,18 @@ def remove(slug, layout, run, keep_state=False):
         if path.exists() or path.is_symlink():
             path.unlink()
             removed.append(name)
-    state = layout.state(slug)
-    if state.exists() and not keep_state:
-        shutil.rmtree(state)
-        removed.append('state')
+    if not keep_state:
+        gone = False
+        for path in layout.state_paths(slug):                # the link first, then what it pointed at
+            if path.is_symlink():
+                path.unlink()
+            elif path.exists():
+                shutil.rmtree(path)
+            else:
+                continue
+            gone = True
+        if gone:
+            removed.append('state')
     run(['systemctl', 'daemon-reload'])                      # the drop-in is gone; systemd forgets it
     return removed
 
