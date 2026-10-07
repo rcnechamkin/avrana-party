@@ -120,4 +120,6 @@ Update [SYSTEM](../SYSTEM.md) ("Who the services run as"), the key-owner lines o
 the log paths in [logs-and-retention](logs-and-retention.md) (the arcade's move to
 `/var/lib/avrana-arcade`), and write a dated finding with the checker output, the core's sha256
 and the phone checks. `ops/provision-party-game-key.sh` then creates keys for `avrana-party`
-without an override. The first native game is provisioned only after this (AVR-236).
+without an override. The first native game is provisioned only after this (AVR-236) and after
+[prepare-native-games](prepare-native-games.md), the one-time step that gives Party Core its socket
+unit, its reload and its registry key.
