@@ -69,6 +69,12 @@ class GameTemplate(unittest.TestCase):
         self.assertIn('drop-in', head)                                    # the ExecStart decision is recorded
         self.assertNotIn('pending', head)
 
+    def test_the_party_origin_is_per_appliance_so_the_template_says_so_and_does_not_carry_it(self):
+        head = (GAMES / 'avrana-game@.service').read_text(encoding='utf-8').split('[Unit]')[0]
+        self.assertIn('AVRANA_PARTY_ORIGIN', head)                        # what a game is handed is all in one place
+        self.assertIn('provision-game writes it', head.replace('\n# ', ' '))
+        self.assertFalse([e for e in self.service['Environment'] if e.startswith('AVRANA_PARTY_ORIGIN')])
+
     def test_a_game_gets_one_key_one_group_no_user_and_no_ip(self):
         self.assertEqual(len(self.service['LoadCredential']), 1)         # its own key, no other
         self.assertNotIn('User', self.service)                            # the instance is the identity

@@ -63,8 +63,12 @@ export function roundToRemember(view) {
  *         not a party game (a standalone title) its own slug, which is never a party game.
  * Home and setup are Party Home's (the setup scene is the Party's). A round, and its results, are
  * the game's page. A standalone title may stay open while the party is home (a personal game),
- * never once the host takes the party somewhere. Nobody without a profile is moved. */
-export function destination(view, here, catalog) {
+ * never once the host takes the party somewhere. Nobody without a profile is moved.
+ * `address(gameId, entry)` (optional, lib/game-origins.js) says where the game's entry opens when
+ * Party Core registers it to a game origin: an absolute URL, the entry itself, or null for an
+ * answer this shell will not follow (then the page stays on Party Home). Without it, as today,
+ * a game is its same-origin entry path. */
+export function destination(view, here, catalog, address = null) {
   if (!view || !view.me || !view.location) return null;
   const loc = locationOf(view);
   if (loc.at === HOME || loc.at === 'setup') {
@@ -74,7 +78,8 @@ export function destination(view, here, catalog) {
   }
   if (here === loc.game) return null;
   const game = partyGame(catalog, loc.game);
-  return game ? launchTarget(game) : here === HOME ? null : '/party/';
+  const to = game ? (address ? address(loc.game, launchTarget(game)) : launchTarget(game)) : null;
+  return to || (here === HOME ? null : '/party/');
 }
 
 /** How a catalog tile behaves while the party is home, or null when it is not a party game (then

@@ -22,6 +22,7 @@ TEMPLATES = REPO_ROOT / 'deploy' / 'games'
 FIRST = ['key', 'registry', 'unit avrana-game@.socket', 'unit avrana-game@.service', 'dropin']
 PROVISIONED = ['etc/game-keys/checkers.key', 'etc/games.d/checkers.json', 'etc/systemd/avrana-game@.service',
                'etc/systemd/avrana-game@.socket', 'etc/systemd/avrana-game@checkers.service.d/exec.conf']
+ORIGIN = 'https://party.example.test'
 STATUS_IDLE ={'party_core': {'ok': True, 'uptime_s': 3, 'members': 0, 'session': None}}
 
 
@@ -63,7 +64,7 @@ class Provisioning(unittest.TestCase):
         self.owned.append(('fd', os.fstat(target).st_ino) if isinstance(target, int) else Path(target))
 
     def provision(self, slug='checkers', **kw):
-        return pg.provision(slug, self.layout, CONTRACTS, GRANTS, self.run_, self.own, **kw)
+        return pg.provision(slug, self.layout, CONTRACTS, GRANTS, self.run_, self.own, ORIGIN, **kw)
 
     def tree(self):
         return sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob('*') if p.is_file())
@@ -114,7 +115,7 @@ class Provisioning(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, argv)
             self.calls.append(argv)
         with self.assertRaises(subprocess.CalledProcessError):
-            pg.provision('checkers', self.layout, CONTRACTS, GRANTS, failing, self.own)
+            pg.provision('checkers', self.layout, CONTRACTS, GRANTS, failing, self.own, ORIGIN)
         self.assertEqual(self.tree(), PROVISIONED)                      # everything was written, nothing reloaded
         self.assertNotIn(['systemctl', 'reload', 'avrana-party-core.service'], self.calls)
         self.calls.clear()
@@ -167,7 +168,7 @@ class Provisioning(unittest.TestCase):
 
     def test_remove_leaves_nothing_for_the_slug_and_nothing_else_is_touched(self):
         self.provision()
-        pg.provision('bluff', self.layout, CONTRACTS, BLUFF, self.run_, self.own)
+        pg.provision('bluff', self.layout, CONTRACTS, BLUFF, self.run_, self.own, ORIGIN)
         for slug in ('checkers', 'bluff'):
             self.layout.state(slug).mkdir(parents=True)
             (self.layout.state(slug) / 'save.json').write_text('{}', encoding='utf-8')
@@ -277,7 +278,7 @@ class Provisioning(unittest.TestCase):
         self.provision()
         self.calls.clear()
         grants = {'checkers': {'game': 'checkers', 'runtime': dict(RUNTIME, working_directory='/srv/checkers')}}
-        self.assertEqual(pg.provision('checkers', self.layout, CONTRACTS, grants, self.run_, self.own), ['dropin'])
+        self.assertEqual(pg.provision('checkers', self.layout, CONTRACTS, grants, self.run_, self.own, ORIGIN), ['dropin'])
         self.assertIn('WorkingDirectory=/srv/checkers\n', self.layout.dropin('checkers').read_text(encoding='utf-8'))
         self.assertEqual(self.calls, [['systemctl', 'daemon-reload'],
                                       ['systemctl', 'enable', '--now', 'avrana-game@checkers.socket'],
@@ -288,7 +289,7 @@ class Provisioning(unittest.TestCase):
         for grants in ({'checkers': {'game': 'checkers'}}, {'checkers': {'runtime': {'command': ['x'], 'working_directory': '/'}}},
                        {'checkers': {'runtime': dict(RUNTIME, command=['/bin/x', 'a\nExecStart=/bin/sh'])}}):
             with self.assertRaises(pg.Refused):
-                pg.provision('checkers', self.layout, CONTRACTS, grants, self.run_, self.own)
+                pg.provision('checkers', self.layout, CONTRACTS, grants, self.run_, self.own, ORIGIN)
         self.assertEqual((self.tree(), self.calls, self.owned), ([], [], []))
 
     def test_the_dropin_text_for_an_example(self):
@@ -297,22 +298,66 @@ class Provisioning(unittest.TestCase):
                          '# Written by provision-game from the appliance grant (AVR-236). Edits are overwritten.\n'
                          '[Service]\n'
                          'ExecStart="/opt/games/checkers/run" "--port" "x y"\n'
-                         'WorkingDirectory=/opt/games/checkers\n')
+                         'WorkingDirectory=/opt/games/checkers\n'
+                         'Environment=AVRANA_PARTY_ORIGIN=https://party.example.test\n')
 
     def test_the_dropin_quotes_for_systemd(self):
         text = pg.dropin_text({'command': ['/bin/g', 'a b', '100%', 'cost $HOME', 'say "hi"', 'back\\slash'],
-                               'working_directory': '/srv/50%'})
+                               'working_directory': '/srv/50%'}, ORIGIN)
         self.assertIn('ExecStart="/bin/g" "a b" "100%%" "cost $$HOME" "say \\"hi\\"" "back\\\\slash"\n', text)
         self.assertIn('WorkingDirectory=/srv/50%%\n', text)
         for bad in ('a\nb', 'a\rb', 'a\x00b', 'a\tb'):
             with self.assertRaises(pg.Refused):
-                pg.dropin_text({'command': ['/bin/g', bad], 'working_directory': '/'})
+                pg.dropin_text({'command': ['/bin/g', bad], 'working_directory': '/'}, ORIGIN)
+
+    def test_the_party_origin_is_in_the_dropin_a_change_rewrites_it_and_nothing_else_changes(self):
+        self.provision()
+        self.calls.clear()
+        other = 'http://10.0.0.142:8080'
+        self.assertEqual(pg.plan_provision('checkers', self.layout, CONTRACTS, GRANTS, other), ['dropin'])
+        self.assertEqual(pg.provision('checkers', self.layout, CONTRACTS, GRANTS, self.run_, self.own, other), ['dropin'])
+        self.assertIn(f'\nEnvironment=AVRANA_PARTY_ORIGIN={other}\n', self.layout.dropin('checkers').read_text(encoding='utf-8'))
+        self.assertNotRegex(' '.join(' '.join(c) for c in self.calls), r'restart|stop|start ')
+        self.calls.clear()
+        self.assertEqual(pg.provision('checkers', self.layout, CONTRACTS, GRANTS, self.run_, self.own, other), [])
+
+    def test_an_origin_that_is_not_bare_is_refused_before_anything_is_written(self):
+        for bad in ('', 'party.example.test', 'ftp://party.example.test', 'https://party.example.test/', 'https://party.example.test/x',
+                    'https://party.example.test?a=1', 'https://party.example.test#f', 'https://u@party.example.test',
+                    'https://party.example.test:99999', 'https://party.example.test:0', 'https://party.example.test\n',
+                    'https://party.example.test\nExecStart=/bin/sh', 'https://party .example.test', 'https://par%ty.test',
+                    'https://pa$ty.test', 'https://party.example.test"', 'https://', None, 7):
+            with self.assertRaises(pg.Refused, msg=repr(bad)):
+                pg.provision('checkers', self.layout, CONTRACTS, GRANTS, self.run_, self.own, bad)
+            with self.assertRaises(pg.Refused, msg=repr(bad)):
+                pg.plan_provision('checkers', self.layout, CONTRACTS, GRANTS, bad)
+        self.assertEqual((self.tree(), self.calls, self.owned), ([], [], []))
+        for good in ('https://party.avrana.net', 'http://10.0.0.142', 'https://p.example.test:8443'):
+            self.assertEqual(pg.bare_origin(good), good)
+
+    def test_the_party_origin_comes_from_the_first_usable_entry_of_the_core_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / 'party-core.json'
+            conf.write_text(json.dumps({'origins': ['https://party.avrana.net', 'http://10.0.0.142']}), encoding='utf-8')
+            self.assertEqual(pg.party_origin(conf), 'https://party.avrana.net')
+            conf.write_text(json.dumps({'origins': ['https://x.test/y', 7, 'junk', 'http://10.0.0.142:8080/', 'http://10.0.0.142']}),
+                            encoding='utf-8')
+            self.assertEqual(pg.party_origin(conf), 'http://10.0.0.142')
+            for doc in ({}, {'origins': []}, {'origins': 'https://party.avrana.net'}, {'origins': ['x', 'https://a.test/p']}, [], 'x'):
+                conf.write_text(json.dumps(doc), encoding='utf-8')
+                with self.assertRaisesRegex(pg.Refused, 'party-core.json.*no usable "origins"'):
+                    pg.party_origin(conf)
+            conf.write_text('{', encoding='utf-8')
+            with self.assertRaisesRegex(pg.Refused, 'unreadable'):
+                pg.party_origin(conf)
+            with self.assertRaisesRegex(pg.Refused, 'unreadable'):
+                pg.party_origin(Path(tmp) / 'absent.json')
 
     def test_dry_run_plans_the_same_changes_and_changes_nothing(self):
-        self.assertEqual(pg.plan_provision('checkers', self.layout, CONTRACTS, GRANTS), FIRST)
+        self.assertEqual(pg.plan_provision('checkers', self.layout, CONTRACTS, GRANTS, ORIGIN), FIRST)
         self.assertEqual((self.tree(), self.calls), ([], []))
         self.provision()
-        self.assertEqual(pg.plan_provision('checkers', self.layout, CONTRACTS, GRANTS), [])
+        self.assertEqual(pg.plan_provision('checkers', self.layout, CONTRACTS, GRANTS, ORIGIN), [])
         self.assertEqual(pg.plan_remove('checkers', self.layout), ['registry', 'dropin', 'key'])
         self.assertEqual(pg.plan_remove('checkers', self.layout, keep_state=True), ['registry', 'dropin', 'key'])
         self.assertEqual(len(self.tree()), len(PROVISIONED))
@@ -602,10 +647,10 @@ class Hardening(unittest.TestCase):
             asked.append(path)
             raise pg.Refused(f'{path}: not root-owned')
         with self.assertRaisesRegex(pg.Refused, 'not root-owned'):
-            pg.provision('checkers', layout, CONTRACTS, GRANTS, calls.append, lambda t: None, trusted=distrust)
+            pg.provision('checkers', layout, CONTRACTS, GRANTS, calls.append, lambda t: None, ORIGIN, trusted=distrust)
         self.assertEqual((asked, calls, list(self.root.rglob('*'))), (['/opt/games/checkers/run'], [], []))
         asked.clear()
-        pg.provision('checkers', layout, CONTRACTS, GRANTS, calls.append, lambda t: None, trusted=asked.append)
+        pg.provision('checkers', layout, CONTRACTS, GRANTS, calls.append, lambda t: None, ORIGIN, trusted=asked.append)
         self.assertEqual(asked, ['/opt/games/checkers/run', '/opt/games/checkers'])      # command, then working directory
 
     def test_a_game_id_is_matched_in_full(self):
@@ -628,6 +673,10 @@ class CommandLine(unittest.TestCase):
         self.calls, self.owned = [], []
         self.doc = {'installed': [{'game': 'checkers', 'runtime': RUNTIME}, {'game': 'bluff'}]}
         self.status = STATUS_IDLE
+        conf_dir = tempfile.TemporaryDirectory()          # outside the scratch tree: it is Party Core's, not ours
+        self.addCleanup(conf_dir.cleanup)
+        self.config = Path(conf_dir.name) / 'party-core.json'
+        self.config.write_text(json.dumps({'origins': [ORIGIN]}), encoding='utf-8')
 
     def main(self, *args, root=True, doc=None, status=None):
         out, err = io.StringIO(), io.StringIO()
@@ -635,6 +684,7 @@ class CommandLine(unittest.TestCase):
         for flag, sub in (('key-dir', 'keys'), ('registry-dir', 'games.d'), ('socket-dir', 'run'), ('state-dir', 'var'),
                           ('unit-dir', 'units'), ('template-dir', None)):
             paths += [f'--{flag}', str(TEMPLATES if sub is None else self.root / sub)]
+        paths += ['--party-config', str(self.config)]
         code = pg.main([*args, *paths], run=self.calls.append, own=self.owned.append, is_root=root,
                        opener=lambda url, timeout: Response(status or self.status),
                        contracts=CONTRACTS, appliance_doc=doc or self.doc, out=out, err=err)
@@ -655,6 +705,29 @@ class CommandLine(unittest.TestCase):
         self.assertEqual((code, out.splitlines()), (0, ['checkers: removed registry', 'checkers: removed dropin',
                                                          'checkers: removed key']))
         self.assertEqual(len(self.files()), 2)                                        # the two shared templates
+
+    def test_the_origin_is_read_from_the_core_config_a_change_rewrites_the_dropin_and_dry_run_says_so(self):
+        self.main('checkers')
+        dropin = self.root / 'units' / 'avrana-game@checkers.service.d' / 'exec.conf'
+        self.assertIn(f'Environment=AVRANA_PARTY_ORIGIN={ORIGIN}\n', dropin.read_text(encoding='utf-8'))
+        self.config.write_text(json.dumps({'origins': ['http://10.0.0.142:8080', ORIGIN]}), encoding='utf-8')
+        code, out, _ = self.main('checkers', '--dry-run', root=False)
+        self.assertEqual((code, out), (0, 'checkers: would change dropin\n'))
+        self.assertEqual(self.main('checkers')[1], 'checkers: changed dropin\n')
+        self.assertIn('AVRANA_PARTY_ORIGIN=http://10.0.0.142:8080\n', dropin.read_text(encoding='utf-8'))
+
+    def test_a_config_with_no_usable_origin_refuses_naming_the_file_and_writes_nothing(self):
+        for doc in ({}, {'origins': ['https://x.test/path']}, {'origins': []}):
+            self.config.write_text(json.dumps(doc), encoding='utf-8')
+            for extra in ((), ('--dry-run',)):
+                code, out, err = self.main('checkers', *extra)
+                self.assertEqual((code, out), (1, ''), (doc, extra))
+                self.assertIn(str(self.config), err)
+                self.assertIn('no usable "origins"', err)
+        self.assertEqual((self.files(), self.calls, self.owned), ([], [], []))
+        self.config.unlink()
+        self.assertEqual(self.main('checkers')[0], 1)                         # no config at all
+        self.assertEqual(self.main('checkers', '--remove')[0], 0)               # a removal reads no origin
 
     def test_refusals_exit_1_with_the_reason_on_stderr(self):
         for args, doc, why in ((('Nope!',), None, 'not a game id'), (('nosuch',), None, 'no Game Contract'),
@@ -732,7 +805,8 @@ class CommandLine(unittest.TestCase):
             if argv[1] == 'reload':
                 raise subprocess.CalledProcessError(1, argv)
         paths = ['--key-dir', str(self.root / 'keys'), '--registry-dir', str(self.root / 'games.d'),
-                 '--unit-dir', str(self.root / 'units'), '--template-dir', str(TEMPLATES)]
+                 '--unit-dir', str(self.root / 'units'), '--template-dir', str(TEMPLATES),
+                 '--party-config', str(self.config)]
         code = pg.main(['checkers', *paths], run=run, own=self.owned.append, is_root=True,
                        opener=lambda url, timeout: Response(STATUS_IDLE), contracts=CONTRACTS,
                        appliance_doc=self.doc, out=out, err=err)

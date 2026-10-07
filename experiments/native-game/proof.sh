@@ -225,6 +225,8 @@ check 'provision standin exits 0' 0 "$rc"
 t 'the key exists, 0600, owned by avrana-party' 0 test "$(stat -c '%a %U:%G' "$key")" = '600 avrana-party:avrana-party'
 t 'the registry entry exists' 0 test -s "$entry"
 t 'the exec drop-in exists' 0 test -s "$dropin_dir/exec.conf"
+t 'the drop-in hands the game the Party origin from party-core.json (AVR-303)' 0 \
+    grep -qxF 'Environment=AVRANA_PARTY_ORIGIN=http://party.ci.test' "$dropin_dir/exec.conf"
 t 'the socket unit is enabled and active' 0 bash -c 'systemctl is-enabled --quiet avrana-game@standin.socket && systemctl is-active --quiet avrana-game@standin.socket'
 t 'the game socket is root:avrana-front 0660' 0 test "$(stat -c '%a %U:%G' "$sock")" = '660 root:avrana-front'
 sha1=$(sha_of "$key")
@@ -248,12 +250,21 @@ refused 'a game with a contract but no grant in the profile is refused (exit 1) 
 capture prov standin --appliance "$tree/contracts/appliances/avrana-pi4.json"
 show 'product profile' "$out"
 refused 'the stand-in against the real product appliance profile is refused (exit 1) with "no grant"' 'no grant'
+echo '{"hosts": ["party.ci.test"], "origins": ["party.ci.test", "http://party.ci.test/path"]}' > "$work/no-origin.json"
+capture prov standin --appliance "$fixture" --dry-run --party-config "$work/no-origin.json"
+show 'no usable Party origin' "$out"
+refused 'a Party Core config with no usable origin refuses provisioning, naming the config file (AVR-303)' "$work/no-origin.json"
+check 'and says why: no usable "origins" entry' 0 "$([[ $out == *'no usable "origins"'* ]] && echo 0 || echo 1)"
 t 'refusals created nothing' 0 test "$(ls /etc/avrana-party/games.d | paste -sd,)" = standin.json -a "$(ls "$keydir" | paste -sd,)" = standin.key
 
 # ---- h. the full session over real socket activation, then the boundary checker ------------------------
 s=$(status driver)
 check 'a full session: two phones, launch, tickets, redeems, strangers refused, finish with a result, results, home' 0 "$s"
 t 'the game (a DynamicUser instance, socket-activated) is running' 0 systemctl is-active --quiet "$game"
+t 'the running game was handed the Party origin in its environment (systemctl show)' 0 \
+    bash -c 'systemctl show -p Environment --value "$1" | tr " " "\n" | grep -qxF AVRANA_PARTY_ORIGIN=http://party.ci.test' _ "$game"
+t 'the running game answers with the configured Party origin (what a game page is told, AVR-303)' 0 \
+    bash -c 'test "$(curl -fsS --max-time 10 --unix-socket "$1" http://localhost/games/standin/api/party)" = "{\"partyOrigin\": \"http://party.ci.test\"}"' _ "$sock"
 t 'the game received the signed launch (journal)' 0 journal_has "$game" 'launched ('
 t 'the game reported its signed ended and the party answered 200 (journal)' 0 journal_has "$game" 'finished; the party answered 200'
 check 'Party Core accepted the result of session 1 (the game logged: finished; the party answered 200 (result accepted))' 0 \

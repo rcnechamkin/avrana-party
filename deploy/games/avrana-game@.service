@@ -6,7 +6,10 @@
 # What the process is handed (a field-test runtime convention, not an SDK): its listening socket
 # as file descriptor 3 (LISTEN_FDS), its own key and no other in $CREDENTIALS_DIRECTORY
 # (AVRANA_PARTY_KEYS points there), its state in $STATE_DIRECTORY, and Party Core's internal
-# socket in $AVRANA_PARTY_SOCKET (owner decision, AVR-236).
+# socket in $AVRANA_PARTY_SOCKET (owner decision, AVR-236). A sixth thing, the Party's browser
+# origin in $AVRANA_PARTY_ORIGIN (which a game page hands to the bridge shim, ADR 0013, AVR-303),
+# is NOT here: it is per appliance, so provision-game writes it into the same drop-in as the
+# command, from the `origins` of Party Core's own configuration, and refuses when there is none.
 #
 # This file carries no ExecStart, by decision: what a given game runs, and from where, is the
 # `runtime` object of its appliance grant, which provision-game writes as a root-owned drop-in,
