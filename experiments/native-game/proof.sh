@@ -67,6 +67,7 @@ fi
 
 cleanup() {
     set +e
+    [[ -s "$marker.opt-mode" ]] && chmod "$(cat "$marker.opt-mode")" /opt && rm -f "$marker.opt-mode"
     systemctl stop avrana-game@standin.socket avrana-party-core.socket 2>/dev/null
     systemctl stop avrana-game@standin.service avrana-party-core.service 2>/dev/null
     systemctl disable avrana-game@standin.socket avrana-party-core.socket 2>/dev/null
@@ -147,6 +148,11 @@ t '/etc/avrana-party and games.d are 0755 root' 0 \
 t 'game-keys is 0700 avrana-party:avrana-party' 0 test "$(stat -c '%a %U:%G' "$keydir")" = '700 avrana-party:avrana-party'
 
 # ---- d. the release tree: root-owned, read-only to every service -----------------------------------
+# A hosted runner's /opt can be group- or world-writable; an appliance's is not, and provision-game
+# refuses code under a directory anyone but root can write. Tighten it for the run, put it back after.
+opt_mode=$(stat -c %a /opt); echo "$opt_mode" > "$marker.opt-mode"
+echo "OBSERVE     /opt is $(stat -c '%U:%G %a' /opt) on this machine; set to 0755 for the run"
+chmod 0755 /opt
 install -d -m 0755 /opt/avrana-party /opt/avrana-party/releases "$rel" "$rel/deploy" "$rel/tests/fixtures/appliances"
 cp -r "$repo/avrana" "$repo/contracts" "$rel/"
 cp -r "$repo/deploy/games" "$rel/deploy/games"
