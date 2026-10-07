@@ -183,6 +183,9 @@ test('the page contract the live suite relies on is unchanged', async ({ page })
   // Full Mode (a secure context, as here and on https://party.avrana.net): back to Party Home.
   await expect(page.getByRole('link', { name: 'Other games' })).toHaveAttribute('href', '/party/');
   await expect(page.locator('#leave')).toBeDisabled();
+  await expect(page.locator('#sound')).toBeDisabled();
+  await expect(page.locator('#leave')).toBeHidden();             // nothing to leave until a seat is held
+  await expect(page.locator('#who')).toBeHidden();
   await expect(page.locator('#details')).toBeHidden();           // raw stats only with #diag
   expect(await page.locator('#metrics').textContent()).toBe('Not connected');
   await page.goto('/arcade/#diag');
@@ -222,13 +225,15 @@ test('each of the four controller slots is shown as its own Player, and Leave pu
     await page.evaluate((n) => { (window as any).__slot = n; }, slot);   // the slot the arcade hands this phone
     await page.locator('#connect').click();
     await expect(page.locator('#status')).toHaveText(`Player ${slot} connected. Add a coin to join.`);
-    await expect(page.locator('h1')).toHaveText(`Avrana Party · Player ${slot}`);
+    await expect(page.locator('h1')).toHaveText(`Gauntlet II Player ${slot}`);
+    await expect(page.locator('#who')).toHaveText(`Player ${slot}`);
     for (const key of ['up', 'down', 'left', 'right', 'fire', 'magic', 'coin', 'start']) {
       await expect(page.locator(`[data-key="${key}"]`), `${key} as Player ${slot}`).toBeEnabled();
     }
     await page.locator('#leave').click();
     await expect(page.locator('#status')).toHaveText('You left the game. Tap Play to join again.');
-    await expect(page.locator('h1')).toHaveText('Avrana Party · Gauntlet II');
+    await expect(page.locator('h1')).toHaveText('Gauntlet II');
+    await expect(page.locator('#who')).toBeHidden();
     await expect(page.locator('#connect')).toBeEnabled();
   }
   expect(await page.evaluate(() => (window as any).__sockets.length)).toBe(4);   // one connection per Play
@@ -423,8 +428,12 @@ test('connected without a picture tells the player what to do', async ({ page })
   await page.locator('#connect').click();
   await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
   await page.clock.fastForward(11_000);
-  await expect(page.locator('#status')).toHaveText('Connected, but no picture yet. Tap Enable sound; if it stays dark, tap Leave, then Play.');
+  await expect(page.locator('#status')).toHaveText('Connected, but no picture yet. Tap Sound; if it stays dark, tap Leave, then Play.');
   await expect(page.locator('#leave')).toBeEnabled();
+  // the picture arriving late takes the stale words away
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await expect(page.locator('body')).toHaveAttribute('data-link', 'playing');
 });
 
 test('controls and sound work once connected', async ({ page }) => {
@@ -440,6 +449,173 @@ test('controls and sound work once connected', async ({ page }) => {
     .map((m: string) => JSON.parse(m)).some((m: any) => m.type === 'input' && m.buttons.includes('coin')))).toBe(true);
   await page.mouse.up();
   await expect(page.locator('#sound')).toBeEnabled();
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false');
   await page.locator('#sound').click();
   expect(await page.evaluate(() => document.querySelector('video')!.muted)).toBe(false);
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true');   // the button says whether it is on
+  await page.locator('#sound').click();
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false');
+});
+
+// AVR-133: the Avrana game surface. What a layout engine can prove (target sizes, nothing off
+// screen, portrait and landscape); the token and icon copies, the viewport meta and the words
+// are held by tests/unit/test_arcade_page.py. Comfort under a thumb is on the pull request's
+// "Needs real phones" list.
+
+/** Problems with the page's controls and layout as it stands now: [] is a good page. */
+async function layoutProblems(page: Page) {
+  return page.evaluate(() => {
+    const visible = (e: Element) => {
+      const s = getComputedStyle(e); const b = e.getBoundingClientRect();
+      return s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0 && b.height > 0;
+    };
+    const out: string[] = [];
+    for (const e of document.querySelectorAll('button, a[href]')) {
+      if (!visible(e)) continue;
+      const b = e.getBoundingClientRect();
+      const name = e.id || (e as HTMLElement).dataset.key || e.className;
+      if (b.width < 43.5 || b.height < 43.5) out.push(`${name} is ${Math.round(b.width)}x${Math.round(b.height)}`);
+      if (b.left < -0.5 || b.right > innerWidth + 0.5) out.push(`${name} leaves the screen sideways`);
+    }
+    if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
+    return out;
+  });
+}
+
+test('every control is a comfortable target and on screen: before Play, connected and playing', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  const controlsEnd = () => page.evaluate(() => Math.round(document.querySelector('.controls')!.getBoundingClientRect().bottom) - innerHeight);
+  expect(await layoutProblems(page), 'before Play').toEqual([]);
+  expect(await controlsEnd(), 'the controls end on screen before Play').toBeLessThanOrEqual(0);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  expect(await layoutProblems(page), 'connected').toEqual([]);
+  expect(await controlsEnd(), 'the controls end on screen when connected').toBeLessThanOrEqual(0);
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  expect(await layoutProblems(page), 'playing').toEqual([]);
+});
+
+test('the picture is dominant and the controls are in the thumbs’ half of a portrait phone', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  const m = await page.evaluate(() => {
+    const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+    return { vw: innerWidth, vh: innerHeight, bar: r('.bar').height, screen: r('.screen'), dpad: r('.dpad'), acts: r('.acts'), status: r('.statusrow') };
+  });
+  expect(m.bar, 'one slim bar').toBeLessThanOrEqual(56);
+  expect(m.screen.width, 'the picture is edge to edge').toBeGreaterThanOrEqual(m.vw - 1);
+  expect(m.screen.width / m.screen.height).toBeCloseTo(4 / 3, 1);
+  expect(m.status.top, 'the words sit under the picture').toBeGreaterThanOrEqual(m.screen.bottom - 2);
+  expect(m.dpad.top, 'movement is in the lower half').toBeGreaterThan(m.vh / 2);
+  expect(m.dpad.right, 'movement is left of the actions').toBeLessThan(m.acts.left);
+  expect(m.acts.top, 'the actions are in the lower half').toBeGreaterThan(m.vh / 2);
+});
+
+test('sideways, the picture takes the height and the controls sit over its two ends', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await fakeTransport(page);
+  await open(page);
+  expect(await layoutProblems(page), 'before Play').toEqual([]);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  expect(await layoutProblems(page), 'playing').toEqual([]);
+  const m = await page.evaluate(() => {
+    const rect = (e: Element) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, w: b.width, h: b.height }; };
+    return {
+      vw: innerWidth, vh: innerHeight, scrollH: document.documentElement.scrollHeight,
+      screen: rect(document.querySelector('.screen')!), status: rect(document.querySelector('.statusrow')!),
+      keys: Object.fromEntries([...document.querySelectorAll('[data-key]')].map((e) => [(e as HTMLElement).dataset.key!, rect(e)])),
+      sound: rect(document.querySelector('#sound')!), leave: rect(document.querySelector('#leave')!),
+    };
+  });
+  expect(m.scrollH, 'nothing to scroll').toBeLessThanOrEqual(m.vh);
+  expect(m.screen.b).toBeLessThanOrEqual(m.vh + 0.5);
+  expect(m.screen.h, 'the picture takes the height under the bar').toBeGreaterThan(m.vh * 0.8);
+  const mid = m.vw / 2;
+  for (const k of ['up', 'down', 'left', 'right']) expect(m.keys[k].r, `${k} is on the left`).toBeLessThan(mid);
+  for (const k of ['fire', 'magic', 'coin', 'start']) expect(m.keys[k].l, `${k} is on the right`).toBeGreaterThan(mid);
+  const names = Object.keys(m.keys);
+  for (const a of names) for (const b of names) {
+    if (a < b) {
+      const x = m.keys[a], y = m.keys[b];
+      expect(x.l < y.r - 1 && y.l < x.r - 1 && x.t < y.b - 1 && y.t < x.b - 1, `${a} and ${b} overlap`).toBe(false);
+    }
+  }
+  expect(m.sound.b, 'sound and leave stay in the slim bar').toBeLessThan(60);
+  expect(m.leave.b).toBeLessThan(60);
+  expect(m.status.w, 'the status words are quiet while the picture plays').toBeLessThanOrEqual(2);
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');   // still there for a screen reader
+});
+
+test('the seat and the connection state are said in an icon and in words', async ({ page }) => {
+  await fakeTransport(page);
+  await open(page);
+  const body = page.locator('body');
+  await expect(body).toHaveAttribute('data-link', 'idle');
+  await expect(page.locator('.i-idle')).toBeVisible();
+  await expect(page.locator('#who')).toBeHidden();
+  await page.evaluate(() => { (window as any).__slot = 3; (window as any).__slowOfferMs = 1200; });
+  await page.locator('#connect').click();
+  await expect(body).toHaveAttribute('data-link', 'wait');
+  await expect(page.locator('.i-wait')).toBeVisible();
+  await expect(page.locator('#status')).toHaveText('You are Player 3. Connecting video…');
+  await expect(body).toHaveAttribute('data-link', 'live');
+  await expect(page.locator('.i-live')).toBeVisible();
+  await expect(page.locator('#who')).toHaveText('Player 3');
+  await expect(page.locator('#status')).toHaveText('Player 3 connected. Add a coin to join.');
+  await page.evaluate(() => document.querySelector('video')!.dispatchEvent(new Event('playing')));
+  await expect(body).toHaveAttribute('data-link', 'playing');
+  await page.locator('#leave').click();
+  await expect(body).toHaveAttribute('data-link', 'idle');
+  await expect(page.locator('#who')).toBeHidden();
+  // a failure is a problem with its own icon, beside the words that say what to do
+  await page.evaluate(() => { (window as any).__refuseSockets = true; });
+  await page.locator('#connect').click();
+  await expect(body).toHaveAttribute('data-link', 'problem');
+  await expect(page.locator('.i-problem')).toBeVisible();
+  await expect(page.locator('#status')).toHaveText('Can’t connect right now. Stay on the Avrana Party Wi-Fi, then tap Play.');
+});
+
+test('with less motion asked for, nothing spins', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await fakeTransport(page);
+  await open(page);
+  await page.evaluate(() => { (window as any).__slowOfferMs = 3000; });
+  await page.locator('#connect').click();
+  await expect(page.locator('#connect')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('body')).toHaveAttribute('data-link', 'wait');
+  expect(await page.locator('#connect').evaluate((b) => getComputedStyle(b, '::after').animationName)).toBe('none');
+  expect(await page.locator('.i-wait').evaluate((e) => getComputedStyle(e).animationName)).toBe('none');
+});
+
+test('with more contrast asked for, the quiet words and the control edges are raised', async ({ page }) => {
+  await open(page);
+  const token = (name: string) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
+  expect([await token('--color-muted'), await token('--color-control')]).toEqual(['#aeaba7', '#6e6c72']);
+  await page.emulateMedia({ contrast: 'more' });
+  expect([await token('--color-muted'), await token('--color-control')]).toEqual(['#d2cfcb', '#a5a3a8']);
+});
+
+test('a keyboard or switch user can see where focus is', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('Tab');
+  const ring = await page.evaluate(() => {
+    const e = document.activeElement as HTMLElement; const s = getComputedStyle(e);
+    return { id: e.id, style: s.outlineStyle, width: s.outlineWidth, color: s.outlineColor };
+  });
+  expect(ring).toEqual({ id: 'connect', style: 'solid', width: '2px', color: 'rgb(185, 169, 232)' });
+});
+
+test('the page asks for nothing from any other origin', async ({ page }) => {
+  const origins = new Set<string>();
+  page.on('request', (r) => { if (r.url().startsWith('http')) origins.add(new URL(r.url()).origin); });
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  expect([...origins]).toEqual([new URL(page.url()).origin]);
 });
