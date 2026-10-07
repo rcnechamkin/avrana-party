@@ -12,6 +12,10 @@ web/party/art/*.svg text eol=lf
 tools/build-art.mjs text eol=lf
 assets/vendor/lan-games-art/*.svg text eol=lf
 
+# PS1 golden files (AVR-309) are compared byte for byte with generated text (tests/unit/test_ps1_profiles.py):
+# keep them LF in every checkout, as the generated assets above.
+tests/fixtures/ps1/golden/* text eol=lf
+
 # GitHub presentation only; existing text/eol policy above remains unchanged.
 web/party/styles.css linguist-generated=true
 web/party/lib/icons.js linguist-generated=true
