@@ -1,58 +1,319 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#15132b">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0f">
+<meta name="color-scheme" content="dark">
 <title>Avrana Party · Gauntlet II</title>
 <style>
-*{box-sizing:border-box;touch-action:manipulation}
-html{overscroll-behavior:none}
-body{margin:0;background:#15132b;color:#eee;font-family:system-ui,sans-serif;padding:12px;padding-bottom:env(safe-area-inset-bottom);overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 12px}html[data-avrana-party=on] #home{display:none}#avrana-party-end[hidden]{display:none}#avrana-party-end{min-height:44px;padding:8px 12px;background:transparent;color:#eee;border:1px solid #e2837b}h1{font-size:18px;margin:8px 0}p{font-size:14px;color:#cbc5e0}a{color:#c7b8ff}
-video{display:block;width:100%;max-height:60vh;aspect-ratio:4/3;background:#000;object-fit:contain;margin:10px auto}
-.stage,.controls,.controls *{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-.stage{position:relative}.start-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#15132bcc}.start-overlay[hidden]{display:none}.start-overlay button{font-size:22px;padding:20px 32px;box-shadow:0 0 0 8px #c7b8ff22}
-button{font:inherit;font-weight:700;background:#c7b8ff;color:#15132b;border:0;border-radius:12px;min-height:48px;padding:12px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-button:active,button.held{background:#fff}button:disabled{opacity:.45}.controls{display:flex;justify-content:space-between;gap:16px;max-width:720px;margin:auto}.dpad{display:grid;grid-template-columns:repeat(3,52px);gap:4px}.dpad button{height:52px}.actions{display:grid;grid-template-columns:repeat(2,minmax(64px,100px));gap:8px}#status{min-height:22px}#metrics{font-family:monospace;font-size:12px}
-.start-overlay button[aria-busy=true]{opacity:1}.start-overlay button[aria-busy=true]::after{content:"";display:inline-block;width:.75em;height:.75em;margin-left:.6em;vertical-align:-.05em;border:3px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .9s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.start-overlay button[aria-busy=true]::after{animation:none;border-right-color:currentColor;opacity:.6}}
-@media(orientation:landscape) and (max-height:600px){video{max-height:64vh}.controls{position:fixed;bottom:12px;left:12px;right:12px;max-width:none;pointer-events:none}.controls button{pointer-events:auto;opacity:.85}.dpad{grid-template-columns:repeat(3,48px)}.dpad button{height:48px}header h1{font-size:15px}}
+/* The Avrana game surface for an emulator title (AVR-133): what a phone shows while it is a
+   controller. A restyle: the connection, input and Party code in the script is unchanged.
+   Picture first, one slim bar, the controls where the thumbs are, nothing to open.
+
+   The tokens are the Party shell's, copied from web/src/party.css: that stylesheet cannot load
+   here (this page may be served from the game's own origin, or over plain HTTP, where /party/
+   does not exist). tests/unit/test_arcade_page.py fails when a value here drifts from it.
+   No remote assets; the shell's face is Geist, which another origin cannot fetch, so this page
+   uses the system stack. */
+:root {
+  color-scheme: dark;
+  --color-base-100: #0d0d0f;
+  --color-base-200: #161618;
+  --color-base-content: #edeae4;
+  --color-primary: #edeae4;
+  --color-primary-content: #121214;
+  --color-accent: #b9a9e8;
+  --color-success: oklch(76% 0.11 158);
+  --color-warning: #e6b862;
+  --color-error: #f08a7e;
+  --color-muted: #aeaba7;
+  --color-faint: #8f8c89;
+  --color-line: rgb(255 255 255 / 0.09);
+  --color-line-strong: rgb(255 255 255 / 0.18);
+  --color-control: #6e6c72;
+  --color-material: rgb(38 33 56 / 0.78);
+  --color-material-solid: #1c1a26;
+  --color-material-edge: rgb(200 186 255 / 0.22);
+  --radius-selector: 0.25rem;
+  --radius-field: 0.625rem;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* Control geometry is in px on purpose: it has to fit a phone whatever the text size is. */
+  --cell: 60px; --fire: 80px; --magic: 64px; --gap: 12px;
+}
+@media (prefers-contrast: more) {
+  :root { --color-muted: #d2cfcb; --color-faint: #b9b6b3; --color-line: rgb(255 255 255 / 0.3);
+          --color-line-strong: rgb(255 255 255 / 0.5); --color-control: #a5a3a8; }
+}
+/* Widths are px on purpose: with large text rem queries would shrink the controls. */
+@media (max-width: 376px) { :root { --cell: 56px; --fire: 72px; --magic: 60px; --gap: 10px; } }
+@media (max-width: 328px) { :root { --cell: 50px; --fire: 64px; --magic: 54px; } }
+
+*, *::before, *::after { box-sizing: border-box; touch-action: manipulation; }
+[hidden] { display: none !important; }
+html { background: var(--color-base-100); overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+  background: var(--color-base-100); color: var(--color-base-content);
+  font: 0.9375rem/1.45 var(--font-sans); -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; margin: 0; touch-action: none; -webkit-user-select: none; user-select: none;
+         -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.ic { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: currentColor; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round; }
+
+/* The bar: the game, who you are in it, sound and leave. What is there only sometimes sits in the
+   footer, out of the way of the picture and the thumbs: the way back to the games hub, or, for
+   the Party Host, End (never both: in a Party the hub link is hidden and only the host has End). */
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.5rem;
+  padding: env(safe-area-inset-top) max(0.75rem, env(safe-area-inset-right)) 0 max(0.75rem, env(safe-area-inset-left));
+  background: var(--color-material-solid); border-bottom: 1px solid var(--color-material-edge);
+}
+h1 {
+  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.5rem; min-height: 3rem; margin: 0;   /* the title gives way (an ellipsis) before the bar wraps */
+  font-size: 1.0625rem; font-weight: 550; line-height: 1.15; letter-spacing: -0.01em;
+}
+.game { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who {
+  flex: none; display: inline-flex; align-items: center; gap: 0.3125rem; padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--color-line-strong); border-radius: var(--radius-selector);
+  font-size: 0.8125rem; font-weight: 550; line-height: 1.2; white-space: nowrap;
+}
+.who .ic { width: 0.875rem; height: 0.875rem; color: var(--color-success); }
+.tool {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem;
+  min-width: 2.75rem; min-height: 2.75rem; padding: 0 0.625rem; background: transparent;
+  border: 1px solid var(--color-control); border-radius: var(--radius-field); font-size: 0.875rem; font-weight: 550;
+}
+.tool:disabled { visibility: hidden; }          /* nothing to turn up or leave before a seat is held; the space stays */
+#sound[aria-pressed="true"] .off, #sound[aria-pressed="false"] .on { display: none; }
+@media (max-width: 376px) { .tool .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
+.foot {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0 0.75rem;
+  padding: 0 max(0.75rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(0.75rem, env(safe-area-inset-left));
+}
+.back, #avrana-party-end { flex: none; display: inline-flex; align-items: center; min-height: 2.75rem; font-size: 0.9375rem; font-weight: 500; }
+.back { gap: 0.125rem; padding: 0 0.5rem; color: var(--color-base-content); text-decoration: none; }
+html[data-avrana-party="on"] #home { display: none; }
+#avrana-party-end {
+  padding: 0 0.875rem; background: transparent; color: var(--color-error); font-weight: 550;
+  border: 1px solid var(--color-error); border-radius: var(--radius-field);
+}
+#avrana-party-end:disabled { color: var(--color-faint); border-color: var(--color-line-strong); }
+
+/* The picture: the dominant element, edge to edge, 4:3. */
+main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0.75rem; }
+.stage { position: relative; align-self: center; }
+/* As wide as the phone, less only where the window is too short to keep the controls on screen
+   under it (a small phone, a laptop): 368px is what the rest of the page needs. */
+.stage { width: min(100%, max(200px, calc((100vh - 368px) * 4 / 3))); width: min(100%, max(200px, calc((100dvh - 368px) * 4 / 3))); }
+.screen { position: relative; aspect-ratio: 4 / 3; background: #000; touch-action: none; }
+video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }   /* absolute: WebKit resolves 100% inside an aspect-ratio box less surely */
+.start-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.75rem; background: rgb(13 13 15 / 0.9);
+}
+.start-overlay .mark { width: 2rem; height: 2rem; color: var(--color-faint); }
+#connect {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3.5rem; padding: 0 1.5rem;
+  background: var(--color-primary); color: var(--color-primary-content); border: 0; border-radius: var(--radius-field);
+  font-size: 1.0625rem; font-weight: 600;
+}
+#connect[aria-busy="true"] { opacity: 1; }
+#connect[aria-busy="true"]::after {
+  content: ""; width: 0.85em; height: 0.85em; border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* The state, always as an icon and words together (never colour alone). */
+.statusrow {
+  display: flex; align-items: center; gap: 0.5rem; min-height: 2.75rem;
+  padding: 0.25rem max(0.75rem, env(safe-area-inset-right)) 0.25rem max(0.75rem, env(safe-area-inset-left));
+}
+.statusrow .ico { flex: none; display: inline-flex; color: var(--color-muted); }
+.ico .ic { display: none; }
+body[data-link="idle"] .i-idle, body[data-link="wait"] .i-wait, body[data-link="live"] .i-live,
+body[data-link="playing"] .i-live, body[data-link="problem"] .i-problem { display: block; }
+body[data-link="wait"] .i-wait { animation: spin 1s linear infinite; }
+body[data-link="live"] .ico, body[data-link="playing"] .ico { color: var(--color-success, var(--color-base-content)); }
+body[data-link="problem"] .ico { color: var(--color-warning); }
+#status { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+body[data-link="idle"] #status { color: var(--color-muted); }
+.notice {
+  display: flex; align-items: flex-start; gap: 0.625rem; margin: 0 max(0.75rem, env(safe-area-inset-right)) 0.5rem max(0.75rem, env(safe-area-inset-left));
+  padding: 0.625rem 0.75rem; background: var(--color-base-200); border: 1px solid var(--color-line); border-radius: var(--radius-field);
+}
+.notice .ic { margin-top: 0.125rem; color: var(--color-warning); }
+.notice p { margin: 0; }
+
+/* The controls, grouped for two thumbs at the bottom: movement left, actions right, the two
+   rare ones (coin, start) above them. Sizes are the least that is comfortable; all are >= 44 px.
+   A thumb on the picture or the controls never scrolls or zooms the page (touch-action: none);
+   the text above and below stays zoomable. */
+.controls {
+  margin-top: auto; align-self: center; width: 100%; max-width: 34rem; display: grid;
+  grid-template-columns: auto 1fr; grid-template-areas: "sys sys" "dpad acts"; align-items: end; gap: var(--gap) 1rem;
+  padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));   /* px, like the controls */
+}
+.controls, .controls * {
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.sys { grid-area: sys; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 0.75rem; }
+.pill {
+  min-width: 6.5rem; min-height: 2.75rem; padding: 0 1rem; background: transparent;
+  border: 1px solid var(--color-control); border-radius: var(--radius-field); font-size: 0.9375rem; font-weight: 550;
+}
+.dpad { grid-area: dpad; display: grid; grid-template-columns: repeat(3, var(--cell)); grid-template-rows: repeat(3, var(--cell)); }
+.dpad button {
+  display: grid; place-items: center; padding: 0; background: var(--color-base-200); border: 1px solid var(--color-control);
+}
+.dpad .ic { width: 1.75rem; height: 1.75rem; stroke-width: 2.25; }
+.dpad .up { grid-area: 1 / 2; border-radius: var(--radius-field) var(--radius-field) 0 0; border-bottom-width: 0; }
+.dpad .left { grid-area: 2 / 1; border-radius: var(--radius-field) 0 0 var(--radius-field); border-right-width: 0; }
+.dpad .right { grid-area: 2 / 3; border-radius: 0 var(--radius-field) var(--radius-field) 0; border-left-width: 0; }
+.dpad .down { grid-area: 3 / 2; border-radius: 0 0 var(--radius-field) var(--radius-field); border-top-width: 0; }
+.dpad .hub { grid-area: 2 / 2; background: var(--color-base-200) radial-gradient(circle, var(--color-line-strong) 0 3px, transparent 3.5px); }
+.acts { grid-area: acts; justify-self: end; display: grid; grid-template-columns: var(--magic) var(--fire); align-items: end; gap: var(--gap); }
+.act {
+  display: grid; place-items: center; padding: 0; border-radius: 50%; background: var(--color-base-200);
+  border: 1px solid var(--color-control); font-size: 1rem; font-weight: 600;
+}
+.magic { width: var(--magic); height: var(--magic); margin-bottom: calc(var(--fire) * 0.55); }
+.fire { width: var(--fire); height: var(--fire); background: var(--color-primary); border-color: var(--color-primary);
+        color: var(--color-primary-content); font-size: 1.125rem; }
+.controls button:disabled { background: var(--color-base-200); border-color: var(--color-line-strong); color: var(--color-faint); }
+.controls :focus-visible { outline-offset: -4px; }
+.hint { margin: 0.75rem max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); color: var(--color-muted); font-size: 0.8125rem; text-align: center; text-wrap: balance; }
+#details { margin: 0.5rem max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); color: var(--color-muted); }
+#details summary { display: flex; align-items: center; min-height: 2.75rem; cursor: pointer; }
+#metrics { margin: 0; font: 0.75rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+@media (orientation: portrait) and (max-height: 700px) { .hint { display: none; } main { padding-bottom: 0; } .controls { row-gap: 8px; } }
+@media (orientation: portrait) and (max-height: 640px) { :root { --cell: 52px; } }
+
+/* Sideways on a phone: the picture takes the whole height under a slim bar, the controls float
+   over the two ends of it, and the status line goes quiet while the picture plays. */
+@media (orientation: landscape) and (max-height: 600px) {
+  :root { --fire: 72px; --magic: 60px; --cell: 52px; --edge: max(0.75rem, env(safe-area-inset-bottom)); }
+  body { height: 100vh; height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); }
+  .bar { grid-area: 1 / 1; padding: 0 0 0 max(0.75rem, env(safe-area-inset-left)); }
+  .foot { grid-area: 1 / 2; flex-wrap: nowrap; align-items: center; padding: 0 max(0.75rem, env(safe-area-inset-right)) 0 0.5rem;
+          background: var(--color-material-solid); border-bottom: 1px solid var(--color-material-edge); }
+  .bar > .tool:last-child { margin-right: 0.25rem; }
+  h1 { min-height: 2.75rem; }
+  main { grid-area: 2 / 1 / 3 / 3; position: relative; align-items: center; padding-bottom: 0; }
+  .stage { height: 100%; width: auto; max-width: 100%; aspect-ratio: 4 / 3; }
+  .screen { height: 100%; width: 100%; aspect-ratio: auto; }
+  .statusrow { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; min-height: 0; padding-block: 0.375rem; background: rgb(13 13 15 / 0.85); }
+  body[data-link="playing"] .statusrow {
+    left: auto; right: auto; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; background: none;
+  }
+  .notice { position: absolute; top: 0.5rem; left: 0.5rem; right: 0.5rem; z-index: 2; margin: 0; }
+  .controls { display: contents; }
+  .dpad, .acts, .sys { position: fixed; z-index: 3; }
+  .dpad { left: max(0.75rem, env(safe-area-inset-left)); bottom: var(--edge); }
+  .acts { right: max(0.75rem, env(safe-area-inset-right)); bottom: var(--edge); }
+  .sys { right: max(0.75rem, env(safe-area-inset-right)); bottom: calc(var(--edge) + var(--magic) + var(--fire) * 0.55 + 0.5rem);
+         flex-direction: column; align-items: flex-end; gap: 0.5rem; }
+  .dpad button:not(:disabled), .act:not(.fire):not(:disabled), .pill:not(:disabled) { background: var(--color-material); border-color: var(--color-material-edge); }
+  .hint { display: none; }
+}
+
+/* Pressed: ink on the ground, and the filled main button turns purple, so each press is seen. */
+.dpad button.held, .dpad button:active, .act.held, .act:active, .pill.held, .pill:active { background: var(--color-primary); color: var(--color-primary-content); border-color: var(--color-primary); }
+.fire.held, .fire:active { background: var(--color-accent); border-color: var(--color-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  #connect[aria-busy="true"]::after { border-right-color: currentColor; opacity: 0.6; }
+}
 </style>
-<header><h1>Avrana Party · Gauntlet II</h1><a id="home" href="/party/">Other games</a></header>
-<p id="status" role="status">Ready to play. Tap Play to connect.</p>
-<p id="path-warning" hidden style="background:#4a2b00;color:#ffd699;padding:8px 10px;border-radius:8px">This phone is connected through your home network, not the Avrana Party Wi-Fi. Join <b>Avrana Party</b> in Wi-Fi settings for the lowest lag.</p>
-<button id="sound" disabled>Enable sound</button> <button id="leave" disabled>Leave</button>
-<div class="stage">
-<video id="screen" autoplay playsinline muted></video>
-<div class="start-overlay" id="start-overlay"><button id="connect">▶ Play Gauntlet II</button></div>
-</div>
-<div class="controls">
- <div class="dpad" aria-label="Movement">
-  <span></span><button data-key="up" aria-label="Up">▲</button><span></span>
-  <button data-key="left" aria-label="Left">◀</button><span></span><button data-key="right" aria-label="Right">▶</button>
-  <span></span><button data-key="down" aria-label="Down">▼</button><span></span>
+</head>
+<body data-link="idle">
+<svg class="sprite" aria-hidden="true" focusable="false">
+ <symbol id="i-gamepad-2" viewBox="0 0 24 24"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
+ <symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 9-5.5 5.5L8 12"/></symbol>
+ <symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+ <symbol id="i-loader-circle" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+ <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/></symbol>
+ <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+ <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+ <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+ <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+ <symbol id="i-volume-2" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></symbol>
+ <symbol id="i-volume-x" viewBox="0 0 24 24"><path d="M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z"/><path d="m16.5 14.5 5-5"/><path d="m16.5 9.5 5 5"/></symbol>
+ <symbol id="i-log-out" viewBox="0 0 24 24"><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></symbol>
+</svg>
+<header class="bar">
+ <h1><span class="game" id="game-name">Gauntlet II</span> <span class="who" id="who" hidden><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-circle-check"/></svg><span id="who-label"></span></span></h1>
+ <button class="tool" id="sound" type="button" disabled aria-pressed="false"><svg class="ic on" aria-hidden="true" focusable="false"><use href="#i-volume-2"/></svg><svg class="ic off" aria-hidden="true" focusable="false"><use href="#i-volume-x"/></svg><span class="lbl">Sound</span></button>
+ <button class="tool" id="leave" type="button" disabled><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-log-out"/></svg><span class="lbl">Leave</span></button>
+</header>
+<main>
+ <div class="stage">
+  <div class="screen">
+   <video id="screen" autoplay playsinline muted aria-label="Game picture"></video>
+   <div class="start-overlay" id="start-overlay">
+    <svg class="ic mark" aria-hidden="true" focusable="false"><use href="#i-gamepad-2"/></svg>
+    <button id="connect" type="button"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-play"/></svg><span id="connect-label">Play Gauntlet II</span></button>
+   </div>
+  </div>
+  <div class="statusrow">
+   <span class="ico" aria-hidden="true"><svg class="ic i-idle" aria-hidden="true" focusable="false"><use href="#i-gamepad-2"/></svg><svg class="ic i-wait" aria-hidden="true" focusable="false"><use href="#i-loader-circle"/></svg><svg class="ic i-live" aria-hidden="true" focusable="false"><use href="#i-circle-check"/></svg><svg class="ic i-problem" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"/></svg></span>
+   <p id="status" role="status">Ready to play. Tap Play to connect.</p>
+  </div>
+  <div class="notice" id="path-warning" hidden><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-wifi-off"/></svg><p>This phone is connected through your home network, not the Avrana Party Wi-Fi. Join <b>Avrana Party</b> in Wi-Fi settings for the lowest lag.</p></div>
  </div>
- <div class="actions">
-  <button data-key="fire">Fire</button><button data-key="magic">Magic</button>
-  <button data-key="coin">Add coin</button><button data-key="start">Start</button>
+ <div class="controls">
+  <div class="sys" role="group" aria-label="Game">
+   <button class="pill" data-key="coin" type="button">Add coin</button>
+   <button class="pill" data-key="start" type="button">Start</button>
+  </div>
+  <div class="dpad" role="group" aria-label="Movement">
+   <button class="up" data-key="up" type="button" aria-label="Up"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
+   <button class="left" data-key="left" type="button" aria-label="Left"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg></button>
+   <span class="hub" aria-hidden="true"></span>
+   <button class="right" data-key="right" type="button" aria-label="Right"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-chevron-right"/></svg></button>
+   <button class="down" data-key="down" type="button" aria-label="Down"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-chevron-down"/></svg></button>
+  </div>
+  <div class="acts" role="group" aria-label="Actions">
+   <button class="act magic" data-key="magic" type="button">Magic</button>
+   <button class="act fire" data-key="fire" type="button">Fire</button>
+  </div>
  </div>
-</div>
-<p>Tap Add coin to join. Hold a direction to move. Turn your phone sideways for a larger view.</p>
-<details id="details" hidden><summary>Connection details</summary><p id="metrics">Not connected</p></details>
+ <p class="hint">Tap Add coin to join. Hold a direction to move. Turn your phone sideways for a larger view.</p>
+ <details id="details" hidden><summary>Connection details</summary><p id="metrics">Not connected</p></details>
+</main>
+<footer class="foot">
+ <a class="back" id="home" href="/party/"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Other games</a>
+</footer>
 <script>
 'use strict';
-// iOS Safari ignores user-scalable=no for pinch; block its non-standard gesture events.
-['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+// Pinch-zoom stays on (ACCESSIBILITY.md rule 4): the picture and the controls opt out in the
+// stylesheet (touch-action:none), so a thumb on them never starts a zoom or a scroll.
+// What belongs to this title. The chrome around it is the same for any emulator title: another
+// one changes this, the four labels in the markup and the arcade's own button names.
+const GAME={id:'arcade-gauntlet2',name:'Gauntlet II'};
 const status=document.querySelector('#status'), video=document.querySelector('video'), connect=document.querySelector('#connect'), sound=document.querySelector('#sound'), leave=document.querySelector('#leave');
-const overlay=document.querySelector('#start-overlay');
+const overlay=document.querySelector('#start-overlay'), connectLabel=document.querySelector('#connect-label'), who=document.querySelector('#who'), whoLabel=document.querySelector('#who-label');
+// What the page shows of the connection (body[data-link]): idle, wait (connecting, reconnecting,
+// checking), live (connected, no picture yet), playing, problem. Always with words in #status.
+const link=state=>{document.body.dataset.link=state};
+const showPlayer=n=>{who.hidden=!n;whoLabel.textContent=n?'Player '+n:''};
 // Other games goes back to Party Home (/party/, HTTPS Full Mode only). Plain HTTP (the captive and
 // legacy path, e.g. http://party.local/arcade/) has no /party/, so it goes to / (a link to the Party).
 if(!window.isSecureContext)document.querySelector('#home').setAttribute('href','/');
 // Tapping Play shows progress until the picture arrives, and a failure names its likely cause.
 const CONNECT_MS=20000,PICTURE_MS=10000;let connectTimer=null,pictureTimer=null,serverReason=null;
-function busy(text){connect.disabled=true;connect.setAttribute('aria-busy','true');connect.textContent=text}
-function idle(){connect.removeAttribute('aria-busy');connect.disabled=false;connect.textContent='▶ Play Gauntlet II'}
-video.addEventListener('playing',()=>{overlay.hidden=true;connect.removeAttribute('aria-busy');clearTimeout(pictureTimer);pictureTimer=null});
+function busy(text){connect.disabled=true;connect.setAttribute('aria-busy','true');connectLabel.textContent=text;link('wait')}
+function idle(){connect.removeAttribute('aria-busy');connect.disabled=false;connectLabel.textContent='Play '+GAME.name}
+video.addEventListener('playing',()=>{overlay.hidden=true;connect.removeAttribute('aria-busy');clearTimeout(pictureTimer);pictureTimer=null; if(document.body.dataset.link==='live'){link('playing');if(status.textContent.startsWith('Connected, but no picture'))status.textContent=`Player ${myPlayer} connected. Add a coin to join.`}});
 // Raw connection stats are for testers only: add #diag to the address to see them.
 document.querySelector('#details').hidden=location.hash!=='#diag';
 let ws=null,pc=null,ready=false,heartbeat=null,statsTimer=null,pendingIce=[],signalChain=Promise.resolve(),myPlayer=null;
@@ -67,7 +328,7 @@ let wasConnected=false,reconnecting=false,leaving=false,retries=0,retryTimer=nul
 //                the arcade's own origin, and its ticket, its place in the party and the host's
 //                End come from there.
 // `bridge` resolves to the shim's connection on the game origin, and to null otherwise.
-const PARTY_GAME='arcade-gauntlet2';
+const PARTY_GAME=GAME.id;
 const BRIDGE_TRANSIENT=['timeout','offline','unavailable','stopped'];
 // Only an answer from the arcade decides: no answer (a timeout, an error, a 5xx) is not "same
 // origin", so the page asks again until it is told, and starts neither path before then. The
@@ -89,7 +350,7 @@ function sameOrigin(){
  // goes there too, like Party Home. Full Mode only; with no Party Core it does nothing. Never fatal.
  // Gauntlet II is itself a Party game (AVR-134). In a Party (ADR 0011) the page stays where the party
  // is, "Other games" is hidden (only the Party Host moves the party) and the host gets End here.
- import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:PARTY_GAME,container:document.querySelector('header')})).catch(()=>{});
+ import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:PARTY_GAME,container:document.querySelector('.foot')})).catch(()=>{});
 }
 const bridge=partyOrigin.then(async origin=>{
  if(!origin){sameOrigin();return null}
@@ -100,8 +361,8 @@ const bridge=partyOrigin.then(async origin=>{
   try{({connectParty}=await import(new URL('party-bridge.js',location.href).href+(i?'?retry='+i:'')))}
   catch(_){await new Promise(r=>setTimeout(r,CONFIG_RETRY[Math.min(i,CONFIG_RETRY.length-1)]))}}
  const party=connectParty({partyOrigin:origin,game:PARTY_GAME});
- // The host's one End for everyone, in the page's own header; a second tap within 4 s ends it.
- const header=document.querySelector('header'),LABEL='End game for everyone';let end=null,armed=null;
+ // The host's one End for everyone, in the page's own footer; a second tap within 4 s ends it.
+ const foot=document.querySelector('.foot'),LABEL='End game for everyone';let end=null,armed=null;
  party.onChange(view=>{
   if(!(view.party&&view.member))return;
   document.documentElement.dataset.avranaParty='on';
@@ -110,9 +371,9 @@ const bridge=partyOrigin.then(async origin=>{
    end.addEventListener('click',async()=>{if(!party.isHost())return;
     if(!armed){end.textContent='Tap again to end it';armed=setTimeout(()=>{armed=null;end.textContent=LABEL},4000);return}
     clearTimeout(armed);armed=null;end.disabled=true;await party.end();end.disabled=false;end.textContent=LABEL});
-   header.append(end)}
+   foot.append(end)}
   if(end)end.hidden=!show;
-  header.toggleAttribute('data-avrana-host',show);
+  foot.toggleAttribute('data-avrana-host',show);
  });
  return party;
 }).catch(()=>null);
@@ -128,13 +389,13 @@ function releaseAll(){held.clear();controls.forEach(b=>b.classList.remove('held'
 function teardown(){
  attempt++; // late failures of the attempt being torn down are ignored from here on
  clearTimeout(connectTimer);clearTimeout(pictureTimer);connectTimer=pictureTimer=null;
- releaseAll();ready=false;myPlayer=null;document.querySelector('h1').textContent='Avrana Party · Gauntlet II';clearInterval(heartbeat);clearInterval(statsTimer);enableControls(false);
+ releaseAll();ready=false;myPlayer=null;showPlayer(null);clearInterval(heartbeat);clearInterval(statsTimer);enableControls(false);
  if(ws){ws.onclose=null;ws.onerror=null;ws.close();ws=null}if(pc){pc.onconnectionstatechange=null;pc.close();pc=null}video.srcObject=null;
  leave.disabled=true;sound.disabled=true;
 }
-function disconnect(message='Disconnected. Tap Play to reconnect.'){
+function disconnect(message='Disconnected. Tap Play to reconnect.',calm=false){
  clearTimeout(retryTimer);retryTimer=null;wasConnected=false;reconnecting=false;retries=0;awake?.release();teardown();
- idle();overlay.hidden=false;status.textContent=message;
+ idle();link(calm?'idle':'problem');overlay.hidden=false;status.textContent=message;
 }
 // Full is not the same as lost, and neither is a stopped game: ask the arcade (briefly) before
 // choosing the words. 'full', 'idle' (Party-managed and not started by the Party Host), 'down'
@@ -149,9 +410,9 @@ const WORDS={full:'All controllers are in use. Try again when one is free.',
  replaced:'Your controller is open in another tab. Tap Play here to take it back.',
  session:'This Party session has ended. Return to Party Home.',
  ticket:'Could not join this Party session. Join the party from Party Home, then try again.',
- idle:'Gauntlet II isn’t on right now. The Party Host starts it for everyone from Party Home.',
- down:'Gauntlet II isn’t running right now. Wait a minute, then tap Play, or pick another game.',
- 'no-media':'Gauntlet II isn’t sending a picture right now. Wait a minute, then tap Play.'};
+ idle:`${GAME.name} isn’t on right now. The Party Host starts it for everyone from Party Home.`,
+ down:`${GAME.name} isn’t running right now. Wait a minute, then tap Play, or pick another game.`,
+ 'no-media':`${GAME.name} isn’t sending a picture right now. Wait a minute, then tap Play.`};
 async function refused(fallback){
  busy('Checking…');overlay.hidden=false;status.textContent='Checking…';const mine=attempt;
  const state=await arcadeState();if(mine!==attempt||leaving)return;
@@ -182,8 +443,9 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){releaseAll
  if(reconnecting&&!ws&&!retryTimer){retries=0;scheduleRetry()}});
 window.addEventListener('blur',releaseAll);window.addEventListener('pagehide',()=>{leaving=true;disconnect()});
 window.addEventListener('pageshow',()=>{leaving=false});
-leave.onclick=()=>{if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'leave'}));disconnect('You left the game. Tap Play to join again.')};
-sound.onclick=async()=>{video.muted=!video.muted;try{await video.play();sound.textContent=video.muted?'Enable sound':'Mute sound'}catch(e){status.textContent='Tap Enable sound again to start playback.'}};
+leave.onclick=()=>{if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'leave'}));disconnect('You left the game. Tap Play to join again.',true)};
+sound.onclick=async()=>{video.muted=!video.muted;try{await video.play()}catch(e){status.textContent='Tap Sound again to start playback.'}};
+video.addEventListener('volumechange',()=>sound.setAttribute('aria-pressed',String(!video.muted)));
 let vf=null,prev=null,pingId=0;const pingAt=new Map(),pingRtts=[];
 const pct=(a,q)=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);return +b[Math.min(b.length-1,Math.floor(q*b.length))].toFixed(1)};
 const per=(a,b)=>b?+(a/b*1000).toFixed(1):null;
@@ -245,10 +507,10 @@ async function start(){
  if(mine!==attempt)return;
  pc=new RTCPeerConnection({iceServers:[]});
  const media=new MediaStream();video.srcObject=media;
- pc.ontrack=e=>{media.addTrack(e.track);try{e.receiver.jitterBufferTarget=+(new URLSearchParams(location.search).get('jb')||0)}catch(_){}try{e.receiver.playoutDelayHint=0}catch(_){}video.play().catch(()=>{status.textContent='Tap Enable sound to start playback.'})};
+ pc.ontrack=e=>{media.addTrack(e.track);try{e.receiver.jitterBufferTarget=+(new URLSearchParams(location.search).get('jb')||0)}catch(_){}try{e.receiver.playoutDelayHint=0}catch(_){}video.play().catch(()=>{status.textContent='Tap Sound to start playback.'})};
  pc.onicecandidate=e=>{if(e.candidate && ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ice',candidate:e.candidate.candidate,sdpMLineIndex:e.candidate.sdpMLineIndex}))};
- pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;wasConnected=true;reconnecting=false;retries=0;clearTimeout(connectTimer);connectTimer=null;awake?.want();enableControls(true);leave.disabled=false;sound.disabled=false;status.textContent=`Player ${myPlayer} connected. Add a coin to join.`;
-  if(overlay.hidden)connect.removeAttribute('aria-busy');else{connect.textContent='Starting video…';clearTimeout(pictureTimer);pictureTimer=setTimeout(()=>{pictureTimer=null;if(ready&&!overlay.hidden)status.textContent='Connected, but no picture yet. Tap Enable sound; if it stays dark, tap Leave, then Play.'},PICTURE_MS)}}else if(['failed','closed'].includes(pc.connectionState))failed()};
+ pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==='connected'){ready=true;wasConnected=true;reconnecting=false;retries=0;clearTimeout(connectTimer);connectTimer=null;awake?.want();enableControls(true);leave.disabled=false;sound.disabled=false;link(overlay.hidden?'playing':'live');status.textContent=`Player ${myPlayer} connected. Add a coin to join.`;
+  if(overlay.hidden)connect.removeAttribute('aria-busy');else{connectLabel.textContent='Starting video…';clearTimeout(pictureTimer);pictureTimer=setTimeout(()=>{pictureTimer=null;if(ready&&!overlay.hidden)status.textContent='Connected, but no picture yet. Tap Sound; if it stays dark, tap Leave, then Play.'},PICTURE_MS)}}else if(['failed','closed'].includes(pc.connectionState))failed()};
  const socketUrl=new URL('ws',location.href);
  // Forward only the existing audio diagnostic; credentials always travel in the hello body.
  if(new URLSearchParams(location.search).get('audio')==='0')socketUrl.searchParams.set('audio','0');
@@ -261,7 +523,7 @@ async function start(){
   if(message.type==='ack'){const t=sentAt.get(message.seq);if(t!==undefined){ackRtts.push(performance.now()-t);sentAt.delete(message.seq)}return}
   if(message.type==='pong'){const t=pingAt.get(message.id);if(t!==undefined){pingRtts.push(performance.now()-t);pingAt.delete(message.id)}return}
   if(message.type==='path'){document.querySelector('#path-warning').hidden=message.network==='avrana';return}
-  if(message.type==='player'){myPlayer=message.slot;document.querySelector('h1').textContent=`Avrana Party · Player ${myPlayer}`;status.textContent=`You are Player ${myPlayer}. Connecting video…`;return}
+  if(message.type==='player'){myPlayer=message.slot;showPlayer(myPlayer);status.textContent=`You are Player ${myPlayer}. Connecting video…`;return}
   if(!pc)return;
   if(message.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:message.sdp});for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];await pc.setLocalDescription(await pc.createAnswer());ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription.sdp}))}
   else if(message.type==='ice'){const c={candidate:message.candidate,sdpMLineIndex:message.sdpMLineIndex};if(pc.remoteDescription)await pc.addIceCandidate(c);else pendingIce.push(c)}
@@ -274,4 +536,5 @@ async function start(){
  if(video.requestVideoFrameCallback){vf={n:0,last:0,gaps:[]};const tick=(now)=>{if(vf.last)vf.gaps.push(now-vf.last);vf.last=now;vf.n++;if(pc)video.requestVideoFrameCallback(tick)};video.requestVideoFrameCallback(tick)}
 }
 </script>
+</body>
 </html>
