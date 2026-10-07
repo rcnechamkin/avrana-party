@@ -1,0 +1,27 @@
+{
+  "contract": "avrana.game/v0",
+  "id": "standin",
+  "name": "Stand-in (test only)",
+  "summary": "A test game that proves the native-game path. Never installed on a product appliance.",
+  "kind": "native",
+  "players": {"min": 2, "max": 4},
+  "screen": "no_tv_needed",
+  "input": {"model": "browser_native"},
+  "late_join": "spectator_only",
+  "spectators": "watch",
+  "private_player_ui": true,
+  "runtime": {"type": "external", "start": "service"},
+  "presentations": [
+    {
+      "id": "phone_table",
+      "method": "browser_native",
+      "roles": ["player", "spectator"],
+      "requires": {"device": ["websocket"]}
+    }
+  ],
+  "fallback": "explain",
+  "package": {"version": "0.1.0", "publisher": "avrana.net", "license": "MIT", "platforms": ["any"]},
+  "extensions": {
+    "net.avrana.test": {"test_only": true}
+  }
+}

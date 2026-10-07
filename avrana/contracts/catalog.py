@@ -48,6 +48,11 @@ def load_artwork(path=DEFAULT_ARTWORK, web=WEB_DIR):
     return out
 
 
+# A contract that exists to prove the platform (the AVR-236 stand-in). It has no grant on a
+# product appliance, so it is left out of that appliance's catalog entirely, not listed as
+# "not installed". Party Core and provisioning still read it like any other contract.
+TEST_EXTENSION = 'net.avrana.test'
+
 def load_contracts(directory, vocab):
     contracts = {}
     for path in sorted(Path(directory).glob('*.json')):
@@ -72,6 +77,14 @@ def load_contracts(directory, vocab):
     return contracts
 
 
+def _test_only(contract):
+    """True only for an extension object that says `"test_only": true`; anything else (absent,
+    not an object) is a product game."""
+    extensions = contract.get('extensions')
+    extension = extensions.get(TEST_EXTENSION) if isinstance(extensions, dict) else None
+    return isinstance(extension, dict) and extension.get('test_only') is True
+
+
 def build(vocab, appliance, contracts, include=('live',), artwork=None):
     runtime = appliance_mod.runtime_capabilities(appliance, include)
     grants = appliance_mod.grants(appliance)
@@ -88,6 +101,8 @@ def build(vocab, appliance, contracts, include=('live',), artwork=None):
     games = []
     for cid, c in contracts.items():
         grant = grants.get(cid)
+        if grant is None and _test_only(c):
+            continue                                  # a test-only contract is offered nowhere it is not granted
         presentations = compile_presentations(c, runtime)
         playable = any(p['available'] and 'player' in p['roles'] for p in presentations)
         if grant and not playable:

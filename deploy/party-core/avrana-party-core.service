@@ -15,13 +15,21 @@
 # (User=cody, the checkout): docs/SYSTEM.md says which is deployed.
 [Unit]
 Description=Avrana Party Core (/party/api/)
-After=network.target
+After=network.target avrana-party-core.socket
+# The game-facing socket (avrana-party-core.socket) is listening before this starts, so it is
+# inherited rather than found busy. Wants, not Requires: an appliance with no native game has
+# no socket unit installed and must still start.
+Wants=avrana-party-core.socket
 
 [Service]
 User=avrana-party
 Group=avrana-party
 WorkingDirectory=/opt/avrana-party/current
 ExecStart=/usr/bin/python3 -m avrana.party.service --config /etc/avrana-party/party-core.json --port 8191
+# `systemctl reload avrana-party-core`: read the game registry again without ending the party
+# (avrana.party.registry.reload on SIGHUP, AVR-258). Provisioning a game uses this; it never
+# restarts Party Core.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

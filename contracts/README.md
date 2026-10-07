@@ -78,7 +78,10 @@ appliance, and the validator rejects them by name.
 **What Party Core reads (AVR-229).** Party Core takes its per-game facts from the contract, not
 from its own config: `players.min`/`players.max`, `late_join`, and
 `extensions["net.avrana.party"].pregame` (boolean, default `false`; ADR 0010). That extension
-allows no other key. `/etc/avrana-party/party-core.json` names only what the appliance owns (`url`,
+allows no other key. The catalog build also reads `extensions["net.avrana.test"].test_only`
+(boolean; AVR-236): a contract that sets it to `true` and has no grant in the appliance profile
+is left out of the catalog, so a test game is never offered on a product appliance. Anything
+other than that exact object (a missing key, a value that is not an object) means a product game. `/etc/avrana-party/party-core.json` names only what the appliance owns (`url`,
 `key_file`, `timeout`); a config that still repeats a contract field must agree with it or the
 service refuses to start. `python3 -m avrana.contracts.party_config --check <config>` runs the
 same comparison; `--show` prints the result. `pregame` is an extension only because v0 is frozen
@@ -120,7 +123,13 @@ moves over.
     `--include-experiments` also counts `experiment` providers, but only for a lab catalog.
   - An `adapter` must import, and its `info` must match (tested).
 - **`installed[]`:** the grants, `{game, entry, health?, tier: builtin|trusted|community,
-  permissions_granted[]}`.
+  permissions_granted[], runtime?}`.
+  - `runtime` (optional; AVR-236) is what a native game runs:
+    `{"command": ["/abs/path", args...], "working_directory": "/abs"}`, exactly those two keys.
+    `provision-game` writes it into the game's unit and refuses a grant without it. The first
+    element and the directory are absolute, have no `.` or `..` component and no `//`, and
+    contain no control character; the directory does not end in a backslash. Provisioning also
+    requires that code to be root-owned (docs/runbooks/provision-game.md).
   - The entry is a same-origin path ending in `/`, outside `/party/`, `/admin/` and `/shared/`.
   - A grant can't give a permission its contract didn't request.
   - An installed game must be presentable to players on this box.
