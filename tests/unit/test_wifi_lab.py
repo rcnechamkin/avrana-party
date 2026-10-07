@@ -232,6 +232,23 @@ class Gate(unittest.TestCase):
             self.assertEqual(gate.verdict(gate.evaluate_health([("before", {"state": bad, "reasons": []})])), "FAIL")
         self.assertEqual(gate.verdict(gate.evaluate_health([("before", {})])), "FAIL")
 
+    def test_refused_trial_becomes_a_fail_not_a_traceback(self):
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        wl = mock.MagicMock()
+        wl.CFG = json.loads((LAB / "config.json").read_text())
+        wl.pi_health.return_value = {"state": "HEALTHY", "reasons": []}
+        wl.preflight.return_value = {"ok": True, "path": {"route_dev": "wlan0", "tablet_ip": "10.42.0.9"}}
+        wl.run_trial.side_effect = wifilab.TrialRefused("AP is on channel 149, expected 36")
+        wl.RESULTS = Path(tmp)
+        wl.for_each_device.side_effect = lambda args, fn: fn()
+        with mock.patch.dict(sys.modules, {"loadtest": mock.MagicMock()}):
+            with self.assertRaises(SystemExit) as cm:
+                gate.run_gate(mock.MagicMock(all_devices=False), wl)
+        self.assertEqual(cm.exception.code, 2)
+        self.assertEqual(wl.GATE_VERDICTS, ["FAIL"])
+
     def test_render_lists_failures_first(self):
         text = gate.render("FAIL", [("PASS", "a ok"), ("FAIL", "b bad"), ("WARN", "c meh")])
         self.assertEqual(text.splitlines()[0], "FAIL")
@@ -326,6 +343,44 @@ class ApHelper(unittest.TestCase):
         with mock.patch.object(helper, "party_session_active", return_value=False), mock.patch.object(helper, "stations", return_value=2):
             with self.assertRaises(helper.Refused):
                 helper.cmd_set(40, False)
+
+    def test_restore_lab_vector_and_guards(self):
+        self.assertEqual(helper.parse_args(["restore", "--lab"]), ("restore", None, True))
+        with mock.patch.object(helper, "party_session_active", return_value=None), mock.patch.object(helper, "stations", return_value=0):
+            with self.assertRaises(helper.Refused):  # cannot confirm no session: fail closed without --lab
+                helper.cmd_restore(False)
+        with mock.patch.object(helper, "party_session_active", return_value=False), mock.patch.object(helper, "stations", return_value=None):
+            with self.assertRaises(helper.Refused):  # unreadable station list
+                helper.cmd_restore(True)
+
+    def test_party_session_unknown_fails_closed(self):
+        class R:
+            def __init__(self, doc):
+                self.doc = doc
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self, *a):
+                return json.dumps(self.doc).encode()
+        for doc, want in (({"party_core": {"ok": True, "session": None}}, False),
+                          ({"party_core": {"ok": True, "session": {"id": 1}}}, True),
+                          ({"party_core": {"ok": False}}, None),
+                          ({"party_core": {"ok": True}}, None),
+                          ({}, None)):
+            with mock.patch.object(helper.urllib.request, "urlopen", return_value=R(doc)):
+                self.assertIs(helper.party_session_active(), want, doc)
+        with mock.patch.object(helper.urllib.request, "urlopen", side_effect=OSError("down")):
+            self.assertIsNone(helper.party_session_active())
+
+    def test_saved_original_must_be_a_channel_the_helper_could_set(self):
+        for band, ch in (("a", "36"), ("a", "161"), ("bg", "6")):
+            self.assertTrue(helper.saved_is_valid(band, ch), (band, ch))
+        for band, ch in (("a", "52"), ("a", "36;id"), ("bg", "14"), ("x", "36"), ("a", ""), ("a", None), ("bg", "-1")):
+            self.assertFalse(helper.saved_is_valid(band, ch), (band, ch))
 
     def test_helper_never_uses_a_shell(self):
         src = (REPO / "ops" / "ap-control" / "avrana-ap-control").read_text()

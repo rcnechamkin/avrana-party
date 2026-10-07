@@ -40,7 +40,8 @@ class Traffic:
         self.wl, self.mode, self.dur = wl, mode, int(dur)
 
     def _adb_bg(self, cmd):
-        return subprocess.Popen([self.wl.find_adb(), "exec-out", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        serial = self.wl.CFG.get("android_serial")
+        return subprocess.Popen([self.wl.find_adb()] + (["-s", serial] if serial else []) + ["exec-out", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def start(self):
         wl, ip, d = self.wl, self.wl.CFG["ap_ip"], self.dur
@@ -57,12 +58,12 @@ class Traffic:
             p.stdin.write(SENDER.encode()); p.stdin.close()
             procs.append(p)
         elif self.mode == "down-max":
-            procs.append(subprocess.Popen(SSH + [host, f"timeout {d + 5} sh -c 'dd if=/dev/zero bs=64k 2>/dev/null | nc -l 5203'"],
+            procs.append(subprocess.Popen(SSH + [host, f"timeout {d + 5} sh -c 'dd if=/dev/zero bs=64k 2>/dev/null | nc -l {ip} 5203'"],
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             time.sleep(2)
             procs.append(self._adb_bg(f"timeout {d + 3} nc {ip} 5203 > /dev/null"))
         elif self.mode == "up-max":
-            procs.append(subprocess.Popen(SSH + [host, f"timeout {d + 5} nc -l 5202 > /dev/null"],
+            procs.append(subprocess.Popen(SSH + [host, f"timeout {d + 5} nc -l {ip} 5202 > /dev/null"],
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             time.sleep(2)
             procs.append(self._adb_bg(f"timeout {d + 3} sh -c 'dd if=/dev/zero bs=64k 2>/dev/null | nc {ip} 5202'"))

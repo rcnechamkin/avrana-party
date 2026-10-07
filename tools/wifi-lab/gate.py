@@ -118,16 +118,19 @@ def run_gate(args, wl):
                                          + "; ".join(pf.get("path", {}).get("problems", []) or [pf.get("error", "unknown")])))
         idle = loaded = None
         if pf["ok"] and h0.get("state") not in ("FIRMWARE_MAILBOX_SUSPECT", "POWER_THROTTLE_DETECTED"):
-            _, idle = wl.run_trial("idle", "gate", cfg["idle_count"], wl.CFG["ping_interval_s"], parent=parent, quiet=True)
-            mode = f"down-{cfg['loaded_mbps']}M"
-            _, loaded = wl.run_trial("loaded-" + mode, "gate", cfg["loaded_count"], wl.CFG["ping_interval_s"],
-                                     {"mode": mode}, traffic=loadtest.Traffic(wl, mode, cfg["loaded_count"] * wl.CFG["ping_interval_s"] + 12),
-                                     parent=parent, quiet=True)
+            try:
+                _, idle = wl.run_trial("idle", "gate", cfg["idle_count"], wl.CFG["ping_interval_s"], parent=parent, quiet=True)
+                mode = f"down-{cfg['loaded_mbps']}M"
+                _, loaded = wl.run_trial("loaded-" + mode, "gate", cfg["loaded_count"], wl.CFG["ping_interval_s"],
+                                         {"mode": mode}, traffic=loadtest.Traffic(wl, mode, cfg["loaded_count"] * wl.CFG["ping_interval_s"] + 12),
+                                         parent=parent, quiet=True)
+                results += evaluate_phase("idle", idle, cfg["idle"], cfg["min_tx_samples_for_retry_ratio"])
+                results += evaluate_phase("loaded", loaded, cfg["loaded"], cfg["min_tx_samples_for_retry_ratio"], cfg["loaded_mbps"])
+                ap = idle["ap"]
+                results.append(("PASS", f"AP band/channel recorded: {ap['band']} ch{ap['channel']} {ap['width_mhz']} MHz"))
+            except Exception as e:  # a link that drops mid-gate is a FAIL with a reason, never a traceback
+                results.append(("FAIL", f"test aborted: {type(e).__name__}: {e}"))
             health_docs.append(("after", wl.pi_health()))
-            results += evaluate_phase("idle", idle, cfg["idle"], cfg["min_tx_samples_for_retry_ratio"])
-            results += evaluate_phase("loaded", loaded, cfg["loaded"], cfg["min_tx_samples_for_retry_ratio"], cfg["loaded_mbps"])
-            ap = idle["ap"]
-            results.append(("PASS", f"AP band/channel recorded: {ap['band']} ch{ap['channel']} {ap['width_mhz']} MHz"))
         else:
             results.append(("FAIL", "load/latency tests skipped because the Pi health or the client path is not fit to test"))
         results += evaluate_health(health_docs)

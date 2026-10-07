@@ -22,7 +22,8 @@ the Avrana SSID, and the `party` ssh alias.
 | Tables / Markdown report | `python tools/wifi-lab/wifilab.py report --write` |
 | One specific Android device | `python tools/wifi-lab/wifilab.py --device SERIAL gate` |
 | Every attached device, separate results | `python tools/wifi-lab/wifilab.py --all-devices gate` |
-| Recover after an interrupted qualification | `python tools/wifi-lab/wifilab.py ap-recover` |
+| Recover after an interrupted qualification (lab only) | `python tools/wifi-lab/wifilab.py ap-recover --lab` |
+| Show / set / restore the AP channel (lab only) | `wifilab.py ap show`; `wifilab.py ap set --channel N --lab`; `wifilab.py ap restore --lab` |
 
 `gate` exits 0 PASS, 1 WARN, 2 FAIL. Run `baseline`/`loaded`/`gate` only when nobody is playing: they
 generate load. `qualify` additionally disconnects every client at each step.
@@ -105,15 +106,20 @@ root-owned helper and a sudoers rule that allows exactly these argument vectors 
 
 ```
 avrana-ap-control show
-avrana-ap-control restore
+avrana-ap-control restore [--lab]
 avrana-ap-control set-channel <36|40|44|48|149|153|157|161> [--lab]
 ```
 
 The helper takes no free-form input, runs no shell, uses absolute binary paths and a cleared environment, touches
 only the profile "Avrana Party Internal", checks the regulatory domain, saves the original band/channel on the
-first change, logs every call to the journal, and refuses a change while a Party session is active (and, without
-`--lab`, while any station is associated or when it cannot confirm that no session is active). `--lab` means "the
-associated station is my own test device".
+first change, logs every call to the journal, and refuses `set-channel` and `restore` while a Party session is active, and fails closed: if the Party status endpoint
+is unreachable or its answer does not carry a trustworthy session field, the helper cannot confirm there is no
+session and refuses unless `--lab`. Without `--lab` it also refuses while any station is associated. `--lab` is the
+caller's statement "the associated station is my own test device"; the helper cannot verify that, so the Python tool
+adds its own check (`ap set`, `ap restore`, `ap-recover` and `qualify` refuse when any station other than the test
+client is associated, and require `--lab`). A saved original is only restored if it is a channel the helper could
+itself have set (or a plain 2.4 GHz channel). Anyone holding the sudoers rule can pass `--lab` by hand: the rule is a
+guard against mistakes, not against its holder.
 
 Owner install (validates the sudoers file with `visudo` first):
 

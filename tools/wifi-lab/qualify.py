@@ -92,6 +92,7 @@ def run_qualify(args, wl):
     default = int(wl.CFG["default_channel"])
     if wl.DIRTY.exists():
         sys.exit(f"{wl.DIRTY} exists: an earlier qualification was interrupted. Run `wifilab.py ap-recover` first.")
+    wl.require_only_own_client()
     h0 = wl.pi_health()
     if h0["state"] != "HEALTHY":
         sys.exit(f"Pi health is {h0['state']} ({'; '.join(h0.get('reasons', []))}); refusing to switch channels")

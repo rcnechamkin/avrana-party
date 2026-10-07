@@ -18,9 +18,9 @@ import datetime as dt, json, math, socket, statistics, subprocess, sys, threadin
 
 ECHO_SERVER = r"""
 import socket, sys, threading, time
-port, dur = int(sys.argv[1]), float(sys.argv[2])
+port, dur, bind = int(sys.argv[1]), float(sys.argv[2]), sys.argv[3]
 srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-srv.bind(("0.0.0.0", port)); srv.listen(64); srv.settimeout(1.0)
+srv.bind((bind, port)); srv.listen(64); srv.settimeout(1.0)
 end = time.time() + dur
 def h(c):
     c.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -171,7 +171,7 @@ def run_multi(args, wl):
     echo = None
     if need_synth:
         total = int(max(counts) and sum(seconds + 20 for _ in counts) + 30)
-        echo = subprocess.Popen(wl.ssh_cmd(f"python3 - {port} {total}"), stdin=subprocess.PIPE,
+        echo = subprocess.Popen(wl.ssh_cmd(f"python3 - {port} {total} {target}"), stdin=subprocess.PIPE,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         echo.stdin.write(ECHO_SERVER.encode())
         echo.stdin.close()

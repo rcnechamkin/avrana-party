@@ -30,6 +30,10 @@ CFG = {}
 SCHEMA = "avrana.wifi-lab/v1"
 
 
+class TrialRefused(Exception):
+    """A trial could not or must not run (bad path, wrong channel, ssh down). The gate maps it to FAIL."""
+
+
 # ---------------------------------------------------------------- plumbing
 def load_cfg(overrides):
     CFG.update(json.loads((HERE / "config.json").read_text()))
@@ -334,12 +338,12 @@ def run_trial(kind, label, count, interval, extra_meta=None, traffic=None, paren
     """One ping trial (optionally under load). Returns (dir, summary). Refuses to run on a bad path."""
     pf = preflight()
     if not pf["ok"]:
-        print(json.dumps(pf, indent=2))
-        sys.exit("preflight failed; refusing to benchmark")
+        raise TrialRefused("preflight failed, refusing to benchmark: "
+                           + "; ".join(pf.get("path", {}).get("problems", []) or [str(pf.get("error") or "client or Pi not reachable")]))
     want = CFG.get("expect_channel")  # never label a run with a channel the AP isn't on
     got = ap_channel_from(pf.get("pi_wifi"))
     if want is not None and (got is None or int(got) != int(want)):
-        sys.exit(f"AP is on channel {got if got else '?'}, expected {want}; refusing to benchmark")
+        raise TrialRefused(f"AP is on channel {got if got else '?'}, expected {want}; refusing to benchmark")
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     serial = CFG.get("android_serial") or "device"
     base = parent or RESULTS
@@ -496,12 +500,25 @@ def wait_rejoin(max_wait=180):
     raise RuntimeError(f"client did not rejoin {CFG['ap_ssid']!r} within {max_wait}s; events: {events}")
 
 
+def require_only_own_client():
+    """Tool-side guard beside the helper's: the only associated station must be this client.
+    `--lab` tells the helper "the associated station is mine"; this check makes that true."""
+    mac = tablet_snapshot()["mac"].lower()
+    others = [m for m in parse_station_dump(parse_sections(pi_snapshot()).get("stations", "")) if m.lower() != mac]
+    if others:
+        raise TrialRefused(f"{len(others)} other station(s) are associated; a channel change would disconnect them. "
+                           "Never change channels while people are connected.")
+
+
 def cmd_ap(args):
     if args.action == "show":
         print(json.dumps(ap_helper("show"), indent=2))
         return
+    if not args.lab:
+        sys.exit("ap set/restore disconnects every client: pass --lab to confirm the only associated device is your own test client")
+    require_only_own_client()
     if args.action == "restore":
-        print(json.dumps(ap_helper("restore"), indent=2))
+        print(json.dumps(ap_helper("restore", "--lab"), indent=2))
     else:
         if not args.channel:
             sys.exit("ap set needs --channel N")
@@ -517,6 +534,9 @@ def cmd_ap_recover(args):
     if not DIRTY.exists():
         print("no interrupted qualification recorded")
         return
+    if not args.lab:
+        sys.exit("ap-recover disconnects every client: pass --lab to confirm the only associated device is your own test client")
+    require_only_own_client()
     info = json.loads(DIRTY.read_text())
     print(f"recovering: qualification started {info['started']} left the AP at channel {info.get('current')}")
     ap_helper("set-channel", str(CFG["default_channel"]), "--lab")
@@ -557,7 +577,9 @@ def main():
     p = sub.add_parser("ap", help="show/set/restore the AP channel via the restricted helper")
     p.add_argument("action", choices=["show", "set", "restore"])
     p.add_argument("--channel")
-    sub.add_parser("ap-recover", help="restore the default channel after an interrupted qualification")
+    p.add_argument("--lab", action="store_true", help="required for set/restore: the only associated device is your own")
+    p = sub.add_parser("ap-recover", help="restore the default channel after an interrupted qualification")
+    p.add_argument("--lab", action="store_true", help="required: the only associated device is your own")
     for mod in (health_cmd, gate, loadtest, qualify, multi, report):
         mod.register(sub)
     args = ap.parse_args()
@@ -565,6 +587,14 @@ def main():
     if args.device:
         CFG["android_serial"] = args.device
     wl = sys.modules[__name__]
+    try:
+        dispatch(args, wl)
+    except TrialRefused as e:
+        print(f"REFUSED: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
+def dispatch(args, wl):
     if args.cmd == "preflight":
         pick_device(CFG.get("android_serial"))
         print(json.dumps(preflight(), indent=2))

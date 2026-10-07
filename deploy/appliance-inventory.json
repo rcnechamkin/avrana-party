@@ -206,6 +206,7 @@
     {"what": "/var/www/avrana-party/web/{releases,current}", "by": "ops/install-party-web.sh"},
     {"what": "/opt/avrana-party and /opt/avrana-party-games releases, /var/lib/avrana-party/deployment.json", "by": "ops/deploy.sh"},
     {"what": "telemetry: /opt/avrana-telemetry, /var/log/avrana, pi-throttle-check.timer, pi-health-check.timer (AVR-297, not installed yet), /etc/logrotate.d/avrana-telemetry, the Beszel agent", "by": "telemetry/install-pi-throttle-check.sh, telemetry/install-pi-health-check.sh and telemetry/install-beszel-agent.sh (optional; not needed to play)"},
+    {"what": "the restricted AP-control helper /usr/local/sbin/avrana-ap-control, /etc/sudoers.d/avrana-ap-control and /var/lib/avrana-party/ap-saved.json (AVR-298, not installed yet)", "by": "ops/ap-control/install-ap-control.sh, run by the owner as root (optional; only the Wi-Fi lab uses it)"},
     {"what": "the access point profile and every other NetworkManager connection", "by": "the owner, with nmcli"}
   ],
   "hardware_checks": [

@@ -60,7 +60,7 @@ today's `eth0`).
 - **Channel 149 performed badly in that test** (p99 140-211 ms, ~30 TX retries per success, ~1.75 Mbps uplink)
   although a tablet-side scan showed no neighbouring network on it. **That does not establish that 149 is
   universally bad.** The mechanism is unknown (tablet, this Pi, or the channel at that place); the second-device
-  A/B is tracked as AVR-300. Evidence: `tools/wifi-lab/FINDINGS-2026-10-06.md` (historical).
+  A/B is tracked as AVR-300. Evidence: [2026-10-06 finding](../findings/2026-10-06-wifi-channel-36-vs-149.md) (historical).
 - **Selection must eventually be based on measurement, not on counting neighbouring SSIDs** (an empty-looking
   channel is not automatically good): AVR-299. Until then 36 is the default, and 2.4 GHz is not offered.
 - **Never switch channels while a party is in play.** A channel change drops every client. Automatic

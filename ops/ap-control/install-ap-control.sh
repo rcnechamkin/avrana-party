@@ -7,7 +7,7 @@
 #
 # What it grants: the named user may run, via `sudo -n`, ONLY these exact commands:
 #     /usr/local/sbin/avrana-ap-control show
-#     /usr/local/sbin/avrana-ap-control restore
+#     /usr/local/sbin/avrana-ap-control restore [--lab]
 #     /usr/local/sbin/avrana-ap-control set-channel <36|40|44|48|149|153|157|161> [--lab]
 # No wildcards, no shell, no other sudo rights. The sudoers file is validated with visudo before it
 # is activated; a failed validation leaves the previous state untouched.
@@ -21,7 +21,7 @@ CHANNELS=(36 40 44 48 149 153 157 161)
 make_sudoers() {  # $1 = user
   local u="$1" c lines=()
   [[ "$u" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo "invalid user name: $u" >&2; exit 2; }
-  lines+=("$HELPER show" "$HELPER restore")
+  lines+=("$HELPER show" "$HELPER restore" "$HELPER restore --lab")
   for c in "${CHANNELS[@]}"; do lines+=("$HELPER set-channel $c" "$HELPER set-channel $c --lab"); done
   echo "# Managed by ops/ap-control/install-ap-control.sh (AVR-298). Exact argument vectors only."
   printf 'Cmnd_Alias AVRANA_AP_CONTROL = '

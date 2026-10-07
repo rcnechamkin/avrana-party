@@ -22,7 +22,8 @@ python tools/wifi-lab/wifilab.py report --write                  # tables / resu
 python tools/wifi-lab/wifilab.py --device SERIAL gate            # a specific Android device
 python tools/wifi-lab/wifilab.py --all-devices gate              # every attached device, results kept per client
 python tools/wifi-lab/wifilab.py ap show                         # AP state through the restricted helper
-python tools/wifi-lab/wifilab.py ap-recover                      # after an interrupted qualification
+python tools/wifi-lab/wifilab.py ap set --channel 36 --lab       # lab only: drops every client (also: ap restore --lab)
+python tools/wifi-lab/wifilab.py ap-recover --lab                # after an interrupted qualification
 python -m unittest tests/unit/test_wifi_lab.py                   # offline tests
 ```
 

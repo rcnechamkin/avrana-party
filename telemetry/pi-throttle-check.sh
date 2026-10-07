@@ -44,7 +44,22 @@ b() { if (( $1 )); then echo true; else echo false; fi; }
 # AVR-296: when the VideoCore firmware mailbox wedges (seen 2026-10-06) vcgencmd hangs in
 # uninterruptible sleep and cannot be killed. Bound every call and never start another while one is
 # stuck, so this sampler cannot pile up D-state processes (which also inflate the load average).
-vcg() { timeout -k 1 5 "$VCG" "$@"; }
+# `timeout` would still wait on a child in D state, so the call runs in the background writing to a
+# file and is abandoned after 5 s (rc 124); nothing here ever blocks on it.
+vcg() {
+  local out pid i=0 rc
+  out="$(mktemp)"
+  "$VCG" "$@" >"$out" 2>/dev/null &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt 50 ]; then rm -f "$out"; return 124; fi
+    sleep 0.1
+  done
+  rc=0; wait "$pid" || rc=$?
+  cat "$out"; rm -f "$out"
+  return "$rc"
+}
 stuck_vcgencmd() { ps -eo stat,comm | awk '$1 ~ /^D/ && $2 == "vcgencmd" { n++ } END { print n + 0 }'; }
 
 sample() {
