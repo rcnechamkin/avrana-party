@@ -737,7 +737,7 @@ test.describe('three phones at one party', () => {
   });
 
   test('the Host’s phone goes quiet at home: Away is said, then hosting passes on, and nothing is counted down', async ({ request }) => {
-    await goQuiet(host);
+    const wake = await goQuiet(host);
     await later(request, 50);                                               // past 45 s: Party Core says Ada is away
     for (const p of [bob, cleo]) {
       await expect(p.page.locator('#party-host'), p.name).toHaveText('Ada is the host, and is away.');
@@ -770,6 +770,7 @@ test.describe('three phones at one party', () => {
     // only Bob's button moves the Party now
     await expect((await (async () => { await place(bob.page, 'library'); return openGame(bob.page, 'expo'); })()).getByRole('button', { name: 'Start for everyone' })).toBeVisible();
     // Ada comes back: she is told who hosts, and nothing about what she did not see
+    await wake();
     await host.page.goto('/party/');
     await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
     await expect(host.page.locator('#party-host')).toHaveText('Bob is the host and picks the games.');

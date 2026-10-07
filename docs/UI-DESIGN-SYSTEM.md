@@ -321,7 +321,23 @@ phone setting has been tried (AVR-295).
 
 ## Game artwork
 
-Fallback order: **the title's own art → curated art that genuinely depicts it → a generic icon.**
+Fallback order: **a cover the owner supplied → the title's own art → curated art that genuinely
+depicts it → a generic icon.**
+
+- **The owner's cover (AVR-306):** a picture the owner has a copy of (box art), one per game,
+  **never committed**. It is a file named for the game (`<game id>.jpg`, `.jpeg`, `.png`, `.webp`
+  or `.avif`) in one folder: `web/party/covers/` on a development machine (ignored by Git; only
+  an empty `index.json` is tracked) and `/srv/avrana/covers` on the Pi, beside the owner's ROM.
+  The build and the dev server pass only plain picture files of at most 1 MB with a game-id
+  name, never a link, and publish each under the extension of what it really is (a WebP saved
+  as `.jpg` is served as WebP); they write `covers/index.json`, which is all the shell reads, so
+  a page never guesses at a file (`avrana/web/covers.py`, `loadCovers` in
+  `lib/catalog-load.js`). A cover fills a square tile, is shown whole in a wide frame
+  (`own-art`), and is decoration (`alt=""`): the name beside it stays text. A cover that does
+  not load gives way to the art below, and is not asked for again until the page next starts
+  or the Party box answers again after a break.
+  Covers are not in the offline copy. How they reach the Pi:
+  [deploy runbook](runbooks/deploy.md#game-covers-the-owners-never-committed).
 
 - **Own art:** each LAN title's GameArt scene (`avrana-party-games` `web/gameart.js`), exported by its
   `ops/export_game_art.mjs` as square, self-contained SVGs (presentation attributes only, frozen) into

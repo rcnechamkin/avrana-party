@@ -352,6 +352,11 @@ travels as a bundle ([games-fork-deploy](games-fork-deploy.md), section 1) to
 | `party-checkout`, `games-checkout` | `/home/cody/avrana-party/.git`, `/home/cody/avrana-party-games/.git` | step 2 |
 | `party-release`, `games-release`, `web-release` | `/opt/avrana-party/current/avrana/ops/smoke.py`, `/opt/avrana-party-games/current/server.py`, `/var/www/avrana-party/web/current/version.json` | step 4 |
 
+Also in no repository, optional, and not checked by `verify`: the owner's game covers in
+`/srv/avrana/covers` ([deploy runbook](deploy.md#game-covers-the-owners-never-committed)). A
+rebuilt appliance shows each game's own art until they are copied there again and a web release
+is built.
+
 **Step 7: the access point.** No script creates the NetworkManager profile, and none should:
 it holds the passphrase. `python3 -m avrana.ops.rebuild ap-profile` prints the `nmcli` command
 for the profile every script here targets ("Avrana Party Internal" on `wlan0`, 5 GHz channel

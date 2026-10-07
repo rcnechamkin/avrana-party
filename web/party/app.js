@@ -23,7 +23,7 @@ import { hydrateIcons, icon } from './lib/icons.js';
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
-import { loadCatalog } from './lib/catalog-load.js';
+import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
@@ -50,7 +50,10 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
   // box: the status document, asked for by the Host only; entries: the shelf as last drawn
-  failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null };
+  failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
+  // covers: the owner's cover for a game (id -> path), from covers/index.json; badCovers: the ones
+  // that would not load on this phone since the page last started
+  covers: new Map(), badCovers: new Set() };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -126,13 +129,19 @@ function favButton(game, cls = '') {
     } }, icon('heart'));
 }
 
-/** A cover: the title's own art, else its kind icon on its own colour. `mark` is the player
- * range for the corner (lib/library.js seatsMark), or null. `shape`: 'wide' for the lead cover on
- * Home, a game's page and the briefing; square otherwise. */
+/** A cover: the cover the owner supplied for the title (AVR-306), else the title's own art, else
+ * its kind icon on its own colour. `mark` is the player range for the corner (lib/library.js
+ * seatsMark), or null. `shape`: 'wide' for the lead cover on Home, a game's page and the
+ * briefing; square otherwise. */
 function tileCover(game, mark, shape = '') {
-  const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
-  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (art ? ' has-art' : '') + (art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
-    art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async' }) : icon(kindIcon(game)),
+  const own = state.badCovers.has(game.id) ? null : state.covers.get(game.id) || null;
+  const art = own || (ARTWORK.test(game.artwork || '') ? game.artwork : null);
+  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (art ? ' has-art' : '') + (own ? ' own-art' : '') + (!own && art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
+    art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async',
+      // An owner's cover that will not load (the box out of reach, a picture this phone cannot
+      // draw) gives way to the art the title had before, here and wherever it is drawn next.
+      onerror: own ? () => { state.badCovers.add(game.id); el.replaceWith(tileCover(game, mark, shape)); } : null,
+    }) : icon(kindIcon(game)),
     mark ? h('span', { class: 'seats' + (mark.ok ? '' : ' no') }, icon(mark.ok ? 'users' : 'triangle-alert'), mark.text) : null);
   if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
   return el;
@@ -609,6 +618,7 @@ function onLink({ ok, answered }) {
     clearTimeout(state.lostTimer);
     gameOrigins.refresh();                      // the box may have restarted with other registrations
     renderLink();
+    state.badCovers = new Set();                // a cover that did not load while the box was away is tried again
     refreshHealth();                            // what was off may be on again, and the other way
     return;
   }
@@ -1112,11 +1122,13 @@ async function boot() {
   state.failingSince = null;
   state.trying = false;
   clearTimeout(state.lostTimer);
-  const [reachable, loaded, report, partyView] = await Promise.all([
-    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(),
+  const [reachable, loaded, report, partyView, covers] = await Promise.all([
+    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(), loadCovers(fetch),
     gameOrigins.refresh(),
   ]);
   state.reachable = reachable;
+  state.covers = covers;
+  state.badCovers = new Set();
   const catalog = loaded.catalog;       // empty, never null, when catalog.json is missing or corrupt (AVR-220)
   state.catalog = catalog;
   $('catalog-error').hidden = loaded.ok || !reachable;
