@@ -695,7 +695,9 @@ test.describe('three phones at one party', () => {
         }
         expect((await post(p, 'session/launch', { game: 'bluff', if_version: await version(p) })).status(), p.name).toBe(403);
       }
-      await expect((await openGame(dee.page, 'arcade-gauntlet2')).locator('[data-suits="false"]')).toHaveText('Up to 2 play; two of you sit out.');
+      // Gauntlet II seats four (AVR-311): all four phones fit it, as they fit BLUFF
+      // (a title too small for the party is in "a fifth phone", above)
+      await expect((await openGame(dee.page, 'arcade-gauntlet2')).locator('[data-suits="true"]')).toHaveText('Room for all four of you.');
       await expect((await openGame(dee.page, 'bluff')).locator('[data-suits="true"]')).toHaveText('Room for all four of you.');
       expect((await view(host)).location.at).toBe('home');                   // nobody but Ada moved anything
       // BLUFF: a briefing for all four, and a guest can neither start it nor call it off
