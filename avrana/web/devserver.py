@@ -36,7 +36,7 @@ from avrana import REPO_ROOT, WEB_DIR
 
 # The games the simulated party offers (deploy/party-core/party-core.example.json's shape).
 PARTY_GAMES = {'bluff': {'max_players': 6, 'min_players': 2, 'pregame': True, 'late_join': 'spectator_only'},
-               'arcade-gauntlet2': {'max_players': 2, 'late_join': 'supported'},
+               'arcade-gauntlet2': {'max_players': 4, 'late_join': 'supported'},
                # two seats in this simulation, so a third phone shows the spectator path
                'expo': {'max_players': 2, 'late_join': 'spectator_only'}}
 FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length', 'sec-fetch-site')
@@ -218,8 +218,8 @@ class Arcade:
             return None
         if mode == 'hang':
             return 'hang'
-        players = 2 if mode == 'full' else 1
-        return {'players': players, 'max_players': 2, 'video_encoders': 1, 'error': None, 'emulator_running': True,
+        players = 4 if mode == 'full' else 1
+        return {'players': players, 'max_players': 4, 'video_encoders': 1, 'error': None, 'emulator_running': True,
                 'providers': {'runtime': {'id': 'retroarch', 'running': True}}}
 
 

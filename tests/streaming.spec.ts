@@ -9,8 +9,8 @@ import { test, expect, type Page } from '@playwright/test';
  *
  * Chromium only: Playwright's WebKit has no reliable WebRTC media path, so
  * iPhone-Safari streaming must be verified on a real device (the brief). The
- * appliance also has MAX_PLAYERS=2, so these run serially and ALWAYS disconnect
- * to hand the slot back to the next test or a real phone.
+ * appliance has a fixed number of controller slots (MAX_PLAYERS), so these run
+ * serially and ALWAYS disconnect to hand the slot back to the next test or a real phone.
  */
 test.describe.configure({ mode: 'serial' });
 

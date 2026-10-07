@@ -87,9 +87,9 @@ test('search, group size and cross-provider favorites work together', async ({ p
     await page.locator(`#filter-players [data-players="${n}"]`).click();
     await page.locator('#filters-show').click();
   };
-  await players(4);
+  await players(5);
   await expect(page.locator('#games')).toContainText('No games match these filters');
-  await players(2);
+  await players(4);
   await expect(page.locator('#games')).toContainText('Gauntlet II');
 });
 test('Party Chat, in the drawer, uses the same hello and server echo, then reconnects after a profile edit', async ({ page }) => {

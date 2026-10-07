@@ -294,12 +294,12 @@
       "kind": "emulated",
       "players": {
         "min": 1,
-        "max": 2
+        "max": 4
       },
       "screen": "tv_optional",
       "input": {
         "model": "controller_slots",
-        "slots": 2,
+        "slots": 4,
         "buttons": [
           "fire",
           "magic",
@@ -343,7 +343,7 @@
       ],
       "provider": "arcade",
       "status": "current",
-      "summary": "Two heroes, one dungeon. Every phone is a controller and a screen.",
+      "summary": "Up to four heroes, one dungeon. Every phone is a controller and a screen.",
       "artwork": "art/kenney-sword.svg"
     },
     {

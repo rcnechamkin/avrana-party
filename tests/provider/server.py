@@ -57,7 +57,7 @@ async def origin():
 
 @donor.app.get('/arcade/stats')
 async def arcade():
-    return JSONResponse({'players': 0, 'max_players': 2, 'emulator_running': True})
+    return JSONResponse({'players': 0, 'max_players': 4, 'emulator_running': True})
 
 @donor.app.middleware('http')
 async def shell_headers(request, call_next):

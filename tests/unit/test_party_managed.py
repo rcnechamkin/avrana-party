@@ -315,7 +315,7 @@ class RecordingGame(ReferenceGame):
 
 class PartyAndArcade(ServiceCase):
     games = {'bluff': {'id': 'bluff', 'max_players': 6, 'late_join': 'spectator_only'},
-             GAME: {'id': GAME, 'max_players': 2, 'late_join': 'supported'}}
+             GAME: {'id': GAME, 'max_players': 4, 'late_join': 'supported'}}
     arcade_kw = {}
     link_timeout = 5
 

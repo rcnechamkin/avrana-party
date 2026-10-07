@@ -102,9 +102,10 @@ player-count balance. Differential masking and protocol tests remain essential: 
 player's hidden state must never reach a player's browser. Do not generalize gameplay primitives
 until a second game needs them.
 
-Gauntlet II remains the shared-stream arcade path, with two controller slots. Earlier two-iPhone
-play proves that dated prototype, not ADR 0011 phone behavior or a long multi-phone soak. Preserve
-the runtime while measuring reconnect, audio recovery, latency, power and phone usability.
+Gauntlet II remains the shared-stream arcade path, with four controller slots in source (AVR-311,
+2026-10-07). Earlier two-iPhone play proves that dated prototype, not four phones, ADR 0011 phone
+behavior or a long multi-phone soak. Preserve the runtime while measuring reconnect, audio
+recovery, latency, power and phone usability.
 
 ## Emulation and Personal Viewports research
 
