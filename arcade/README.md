@@ -83,6 +83,59 @@ Deploying: a hand-typed `"max_players": 2` for `arcade-gauntlet2` in
 `/etc/avrana-party/party-core.json` would make Party Core refuse to start
 (`docs/runbooks/arcade-party-provider.md`, "Four controller seats").
 
+## The phone page is an Avrana game surface (AVR-133, 2026-10-07)
+
+`index.html` is the page a phone shows while it is a controller. It was restyled to the Party shell's
+language (`docs/design/AVRANA-UX-UI-PRODUCT-BRIEF.md` section 24; the findings it answers are
+ARC-1 to ARC-7 in `docs/design/ux-redesign/audit/PARTY-SHELL-AUDIT.md`). A restyle only: the
+signalling, input, reconnect and Party code in its script is as it was, and so are its words, apart
+from the three that named the old sound button and one more behaviour: a picture that arrives after
+"no picture yet", or after a prompt to tap Sound, takes those words away.
+
+- **Portrait:** one slim bar (the game, a "Player N" mark once a seat is held, Sound, Leave), the
+  picture edge to edge at 4:3, one status line (an icon and words, never colour alone), and the
+  controls under the thumbs: movement left, Fire and Magic right, Add coin and Start above them.
+  Before a seat is held only the title is in the bar. The way back to the games hub (outside a
+  Party) and the Party Host's End sit in a footer, out of the picture's way. Where the window is too
+  short for a full-width picture and the controls under it (a small phone, a tablet sideways, a
+  laptop), the picture is narrower rather than the page longer. With large text the title gives way
+  (an ellipsis) down to a floor, then Sound and Leave move to a row of their own, so the "Player N"
+  mark is never pushed under them; the Host's End wraps rather than leaving the footer.
+- **Sideways (a phone under 600 px tall):** the picture takes the height under the bar, the controls
+  float over its two ends (a smoky fill, no blur, so the stream is not slowed; the edge and the held
+  look are the upright ones), and the status line goes quiet while the picture plays (it stays for a
+  screen reader).
+- **Accessibility:** pinch zoom is no longer blocked (the picture and the controls opt out with
+  `touch-action: none`, the text does not); targets are 44 px or more; focus is visible; reduced
+  motion and more contrast are honoured; text is in `rem`, and the layout scrolls rather than clips
+  at 200% text.
+- **Tokens and icons are copies.** The page cannot load the Party's stylesheet (it may be served from
+  the game's own origin, or over plain HTTP, where `/party/` does not exist), so it carries the
+  colour and radius tokens of `web/src/party.css` and the Lucide icons it draws, inline, with the
+  system font stack (Geist cannot be fetched from another origin). `tests/unit/test_arcade_page.py`
+  fails when a value drifts from the shell; when a pair of colours drops under 4.5:1 (3:1 for edges,
+  icons and the focus ring), for every control at rest, held and disabled, upright and floating
+  sideways, in both palettes; when an edge you can press is not the `control` token (the 3:1 edge
+  that more contrast raises); when a layout rule can recolour a control or out-rank its held look;
+  or when the page fetches anything. Change a token in `web/src/party.css` and that test says what
+  to copy. What only a layout engine can read (the colours as drawn, a held control, large text) is
+  in `tests/offline/arcade.spec.ts`.
+- **Another emulator title:** the chrome is the same. `GAME` at the top of the script names the
+  title, the labels of the four game buttons are in the markup, and the button names are the
+  arcade's own (`LAYOUT` in `stream.py`, held equal to the page by `test_arcade_stream.py`).
+  Sound is one "Sound" toggle (`aria-pressed`), not two sets of words.
+
+Not proven without phones: comfort under a thumb in portrait and sideways, diagonal movement (a
+pointer holds one button, so a diagonal is two fingers, as before), how the controls overlap the
+picture on short or notched phones, and pinch behaviour in iOS Safari. These are the
+"Needs real phones" list of the AVR-133 pull request.
+
+One layout question is open, and is not settled here: the Host's End sits in the footer, directly
+under the d-pad's Down (no gap) in portrait on phones up to 700 px tall, while
+`docs/design/ux-redesign/SCREENS.md` (the Arcade shell row) puts the Host's End in the bar. A real
+thumb has to say whether the footer is too close to Down for a button that ends the game for
+everyone; if it is, moving End is a layout decision for the owner, not a restyle.
+
 ## Historical prototype baseline (2026-09-19/20)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
@@ -108,7 +161,7 @@ No public STUN/TURN is used.
 
 Open the page in a regular phone browser, tap Play, then Add coin. Use arrows to
 select a character and Fire to confirm/attack; Magic is the second action.
-Enable sound is a separate user gesture. Controls use same-origin WebSocket
+Sound is a separate user gesture (the Sound button). Controls use same-origin WebSocket
 state snapshots at 20 Hz, mapped to a server-assigned virtual gamepad. Stale
 held inputs are released after 300 ms, with immediate release on disconnect.
 The browser releases held inputs when backgrounded. Only gamepad controls are
