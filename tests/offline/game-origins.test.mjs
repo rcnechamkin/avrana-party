@@ -155,6 +155,33 @@ test('a slow answer: nothing is settled until it arrives', async () => {
   assert.equal(go.isSettled(), true);
 });
 
+test('a refresh or retry on its way is waited for: no leaving on the old or failed answer', async () => {
+  const good = { ok: true, json: async () => ({ schema: 'avrana.party-bridge/v1', origins: { [GAMES]: '*' } }) };
+  let release, calls = 0, clock = 0;
+  const gate = new Promise((r) => { release = r; });
+  const go = createGameOrigins({ now: () => clock, fetch: async () => { calls += 1; if (calls === 1) throw new Error('down'); await gate; return good; } });
+  await go.settled();
+  assert.equal(go.ok(), false);                    // the first ask failed
+  await new Promise((r) => setTimeout(r, 0));      // the failed ask has fully finished
+  clock = 10000;
+  go.retry();                                      // the next view asks again
+  let settled = false;
+  const waiting = go.settled().then(() => { settled = true; });
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(settled, false);                    // not settled while that ask is on its way
+  release();
+  await waiting;
+  assert.deepEqual(go.get(), { [GAMES]: '*' });
+});
+
+test('never the Party host on another scheme, nor a host written with a trailing dot', () => {
+  const at = (origin, partyOrigin = PARTY) => gameAddress({ game: 'g', entry: '/games/g/', origins: { [origin]: '*' }, partyOrigin });
+  assert.equal(at('http://party.example.test'), null);
+  assert.equal(at('https://party.example.test.'), null);
+  assert.equal(at('https://games.example.test.'), null);
+  assert.equal(at('http://games.example.test', 'http://party.example.test'), 'http://games.example.test/games/g/');
+});
+
 test('no title is named by the shell code for this behavior', () => {
   for (const f of ['lib/game-origins.js', 'lib/party-mode.js']) {
     const src = readFileSync(new URL('../../web/party/' + f, import.meta.url), 'utf8');

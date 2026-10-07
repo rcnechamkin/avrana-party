@@ -226,7 +226,7 @@ class Provisioning(unittest.TestCase):
                             raise subprocess.CalledProcessError(3, argv)
                     if step != 'provision':
                         self.provision()
-                    do = {'provision': lambda r: pg.provision('checkers', self.layout, CONTRACTS, GRANTS, r, self.own),
+                    do = {'provision': lambda r: pg.provision('checkers', self.layout, CONTRACTS, GRANTS, r, self.own, ORIGIN),
                           'rotate': lambda r: pg.rotate('checkers', self.layout, CONTRACTS, GRANTS, r, self.own, lambda s: False),
                           'remove': lambda r: pg.remove('checkers', self.layout, r)}[step]
                     if stopped:
@@ -369,11 +369,17 @@ class Provisioning(unittest.TestCase):
         for good in ('https://party.avrana.net', 'http://10.0.0.142', 'https://p.example.test:8443'):
             self.assertEqual(pg.bare_origin(good), good)
 
-    def test_the_party_origin_comes_from_the_first_usable_entry_of_the_core_config(self):
+    def test_the_party_origin_is_the_one_usable_entry_of_the_core_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             conf = Path(tmp) / 'party-core.json'
-            conf.write_text(json.dumps({'origins': ['https://party.avrana.net', 'http://10.0.0.142']}), encoding='utf-8')
+            conf.write_text(json.dumps({'origins': ['https://party.avrana.net', 'https://party.avrana.net']}), encoding='utf-8')
             self.assertEqual(pg.party_origin(conf), 'https://party.avrana.net')
+            conf.write_text(json.dumps({'origins': ['https://party.avrana.net', 'http://10.0.0.142']}), encoding='utf-8')
+            with self.assertRaisesRegex(pg.Refused, 'party-core.json.*more than one Party origin'):
+                pg.party_origin(conf)                    # a game is told exactly one; no guessing
+            for loose in ('https://PARTY.avrana.net', 'https://party.avrana.net:443', 'http://10.0.0.142:80',
+                          'http://10.0.0.142:080', 'https://party.avrana.net.'):
+                self.assertIsNone(pg.bare_origin(loose), loose)   # never what a browser calls the origin
             conf.write_text(json.dumps({'origins': ['https://x.test/y', 7, 'junk', 'http://10.0.0.142:8080/', 'http://10.0.0.142']}),
                             encoding='utf-8')
             self.assertEqual(pg.party_origin(conf), 'http://10.0.0.142')
@@ -744,7 +750,7 @@ class CommandLine(unittest.TestCase):
         self.main('checkers')
         dropin = self.root / 'units' / 'avrana-game@checkers.service.d' / 'exec.conf'
         self.assertIn(f'Environment=AVRANA_PARTY_ORIGIN={ORIGIN}\n', dropin.read_text(encoding='utf-8'))
-        self.config.write_text(json.dumps({'origins': ['http://10.0.0.142:8080', ORIGIN]}), encoding='utf-8')
+        self.config.write_text(json.dumps({'origins': ['http://10.0.0.142:8080']}), encoding='utf-8')
         code, out, _ = self.main('checkers', '--dry-run', root=False)
         self.assertEqual((code, out), (0, 'checkers: would change dropin\n'))
         self.assertEqual(self.main('checkers')[1], 'checkers: changed dropin\n')

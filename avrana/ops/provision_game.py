@@ -28,9 +28,9 @@ missing or differ. A grant without `runtime` is refused: there would be nothing 
 
 The same drop-in carries `Environment=AVRANA_PARTY_ORIGIN=<origin>`: the Party's browser origin,
 which a game page must hand to the bridge shim (ADR 0013). It is per appliance, so it is read here,
-from Party Core's own configuration (the first entry of `origins` in party-core.json that is a bare
-http(s)://host[:port]), and never from the shared template. A configuration with no such entry
-refuses provisioning: a game that cannot name its Party would be a game that cannot return to it.
+from Party Core's own configuration (the one entry of `origins` in party-core.json that is a bare
+http(s)://host[:port]), and never from the shared template. A configuration with no such entry,
+or with more than one, refuses provisioning: a game that cannot name its Party would be a game that cannot return to it.
 
 Reconcile never restarts a game. If only the drop-in or the templates changed and the game's
 service is already running, it keeps running the old command until it next stops (systemd re-reads
@@ -69,7 +69,7 @@ QUERY_TIMEOUT_S = 10          # an uncached status build can take several second
 STATUS_SETTLE_S = 6.0          # longer than Party Core's status cache (avrana.ops.status.CACHE_S)
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 PARTY_ORIGIN_ENV = 'AVRANA_PARTY_ORIGIN'
-BARE_ORIGIN = re.compile(r'https?://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::([0-9]{1,5}))?')
+BARE_ORIGIN = re.compile(r'(https?)://[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::([1-9][0-9]{0,4}))?')
 
 
 class Refused(Exception):
@@ -149,23 +149,29 @@ def bare_origin(value):
     if not isinstance(value, str):
         return None
     m = BARE_ORIGIN.fullmatch(value)
-    if not m or (m.group(1) is not None and not 0 < int(m.group(1)) < 65536):
+    if not m or (m.group(2) is not None and not 0 < int(m.group(2)) < 65536):
         return None
+    if m.group(2) == {'http': '80', 'https': '443'}[m.group(1)]:
+        return None                                  # a browser never writes the default port in an origin
     return value
 
 
 def party_origin(config_path):
-    """The Party's browser origin, from Party Core's own configuration: the first entry of
-    `origins` that is a bare http(s)://host[:port]. Refused, naming the file, when there is none."""
+    """The Party's browser origin, from Party Core's own configuration: the one entry of
+    `origins` that is a bare http(s)://host[:port]. Refused, naming the file, when there is none
+    or more than one: a game is told exactly one Party origin, and this command does not guess."""
     try:
         with open(config_path, encoding='utf-8') as f:
             conf = json.load(f)
     except (OSError, ValueError) as e:
         raise Refused(f"Party Core's config {config_path} is unreadable ({type(e).__name__})") from None
     origins = conf.get('origins') if isinstance(conf, dict) else None
-    for candidate in origins if isinstance(origins, list) else ():
-        if bare_origin(candidate):
-            return candidate
+    usable = sorted({c for c in (origins if isinstance(origins, list) else ()) if bare_origin(c)})
+    if len(usable) == 1:
+        return usable[0]
+    if usable:
+        raise Refused(f'the Party Core config {config_path} names more than one Party origin '
+                      f'({", ".join(usable)}); a game is told exactly one')
     raise Refused(f'the Party Core config {config_path} names no usable "origins" entry (a bare '
                   f'https://host[:port] or http://host[:port]); a game would not know its Party origin')
 

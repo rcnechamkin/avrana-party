@@ -17,7 +17,7 @@ const RETRY_MS = 3000;
 export function cleanOrigin(value) {
   if (typeof value !== 'string' || value.length > 255) return null;
   const text = value.endsWith('/') ? value.slice(0, -1) : value;
-  if (!/^https?:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?$/.test(text)) return null;
+  if (!/^https?:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$/.test(text)) return null;   // no trailing dot
   let url;
   try { url = new URL(text); } catch { return null; }
   return url.origin === text ? text : null;
@@ -29,6 +29,9 @@ function plainPath(entry) {
   return typeof entry === 'string' && entry.startsWith('/') && !entry.startsWith('//')
     && !/[\\\u0000- \u007f]/.test(entry);
 }
+
+const hostOf = (origin) => new URL(origin).hostname;
+const portOf = (origin) => new URL(origin).port;
 
 /** Where a member's page goes for `game`, from Party Core's registrations.
  *   game         the Party Core game id
@@ -53,6 +56,7 @@ export function gameAddress({ game, entry, origins, partyOrigin, limited = false
   const origin = clean[0];
   const own = cleanOrigin(partyOrigin);
   if (!own || own === origin) return null;                      // a game origin is never a Party origin
+  if (hostOf(own) === hostOf(origin) && portOf(own) === portOf(origin)) return null;   // nor the Party's host on another scheme
   if (!plainPath(entry)) return null;
   let url;
   try { url = new URL(entry, origin); } catch { return null; }
@@ -61,8 +65,9 @@ export function gameAddress({ game, entry, origins, partyOrigin, limited = false
 
 /** Party Core's registrations, fetched once per page load and again when asked. A failed fetch
  * is "no game origins" for now (same-origin paths, today's behavior) and is tried again, never
- * kept as the answer. `settled()` resolves once the first attempt has finished either way, so a
- * page never navigates on a guess while that answer is still on its way. */
+ * kept as the answer. `settled()` resolves once no attempt is on its way (the first one, or a
+ * later refresh or retry), so a page never navigates on an old or failed answer while a new one
+ * is coming. */
 export function createGameOrigins({ fetch = globalThis.fetch.bind(globalThis), now = () => Date.now() } = {}) {
   let origins = null, ok = false, inflight = null, last = -Infinity, done = false;
   let release;
@@ -88,7 +93,7 @@ export function createGameOrigins({ fetch = globalThis.fetch.bind(globalThis), n
     refresh,
     /** Ask again only when the last answer failed (and not in the last few seconds). */
     retry() { if (!ok && !inflight && now() - last >= RETRY_MS) refresh(); },
-    settled: () => (done ? Promise.resolve() : (refresh(), first)),
+    settled: () => inflight || (done ? Promise.resolve() : (refresh(), first)),
     isSettled: () => done,
     get: () => origins,
     ok: () => ok,

@@ -863,8 +863,6 @@ function onPartyView(view, previous = null) {
   const url = destination(view, HOME, state.catalog, gameOrigins.isSettled() ? addressOf : null);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
-    const round = roundToRemember(view);       // a round this phone plays, while it is on
-    if (g && round) recordRound(g, round);
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
     leaveForRound();
@@ -898,7 +896,12 @@ function leaveForRound() {
   gameOrigins.settled().then(() => {
     const view = party.view();
     const to = view ? destination(view, HOME, state.catalog, addressOf) : null;
-    if (to) location.replace(to);
+    if (to) {
+      const g = partyGame(state.catalog, locationOf(view).game);
+      const round = roundToRemember(view);     // a round this phone plays, while it is on
+      if (g && round) recordRound(g, round);   // only once it is really going there
+      location.replace(to);
+    }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
 }
