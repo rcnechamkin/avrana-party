@@ -204,8 +204,14 @@ class StandinLogic(unittest.TestCase):
                             (b'{"ok": true}', (200, None)), (b'not json', (200, None)), (b'[1]', (200, None))):
             class Handler(socketserver.StreamRequestHandler):
                 def handle(self, reply=reply):
-                    while self.rfile.readline() not in (b'\r\n', b''):
-                        pass
+                    length = 0
+                    while True:
+                        line = self.rfile.readline()
+                        if line in (b'\r\n', b''):
+                            break
+                        if line.lower().startswith(b'content-length:'):
+                            length = int(line.split(b':', 1)[1])
+                    self.rfile.read(length)       # the whole request is read before the answer
                     self.wfile.write(b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: '
                                      + str(len(reply)).encode() + b'\r\n\r\n' + reply)
             server = socketserver.UnixStreamServer(path, Handler)
@@ -213,7 +219,39 @@ class StandinLogic(unittest.TestCase):
             self.assertEqual(standin.report_to(path)('m'), want, reply)
             server.server_close()
             os.unlink(path)
-        self.assertEqual(standin.report_to(path)('m'), (None, None))             # nobody there
+        with self.assertLogs(standin.log, 'WARNING') as logs:
+            self.assertEqual(standin.report_to(path)('m'), (None, None))         # nobody there
+        self.assertIn('could not report to the party (', logs.output[0])
+
+    @unittest.skipUnless(UNIX, 'Unix sockets')
+    def test_DIAGNOSTIC_what_a_server_that_leaves_the_body_unread_does_to_the_report(self):
+        """TEMPORARY (AVR-236): shows on Linux CI what the first version of the fixture above did
+        to the client, so the cause of that failure is observed, not assumed. Removed afterwards."""
+        import socketserver
+        import sys
+        tmp = tempfile.TemporaryDirectory(prefix='avr', dir='/tmp')
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, 'p.sock')
+        reply = b'{"ok": true, "result": "accepted"}'
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                while self.rfile.readline() not in (b'\r\n', b''):
+                    pass
+                self.wfile.write(b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: '
+                                 + str(len(reply)).encode() + b'\r\n\r\n' + reply)
+        summary = {}
+        for _ in range(20):
+            server = socketserver.UnixStreamServer(path, Handler)
+            threading.Thread(target=server.handle_request, daemon=True).start()
+            with self.assertLogs(standin.log, 'DEBUG') as logs:
+                standin.log.debug('probe')
+                got = standin.report_to(path)('m')
+            key = f'{got} {[line for line in logs.output if "could not report" in line]}'
+            summary[key] = summary.get(key, 0) + 1
+            server.server_close()
+            os.unlink(path)
+        print(f'\nDIAGNOSTIC unread-body fixture, 20 tries: {summary}', file=sys.stderr)
 
     def test_nothing_secret_is_logged(self):
         with self.assertLogs(standin.log, 'INFO') as logs:

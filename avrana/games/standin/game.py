@@ -212,7 +212,8 @@ def report_to(party_socket):
                 reply = None
             verdict = reply.get('result') if isinstance(reply, dict) else None
             return r.status, verdict if isinstance(verdict, str) else None
-        except (OSError, ValueError, http.client.HTTPException):
+        except (OSError, ValueError, http.client.HTTPException) as e:
+            log.warning('could not report to the party (%s)', type(e).__name__)     # the kind of failure only
             return None, None
         finally:
             conn.close()
