@@ -211,7 +211,11 @@ class StandinLogic(unittest.TestCase):
                             break
                         if line.lower().startswith(b'content-length:'):
                             length = int(line.split(b':', 1)[1])
-                    self.rfile.read(length)       # the whole request is read before the answer
+                    # The whole request is read before the answer. The client sends the headers and
+                    # the body as two writes; a party that answered and closed after the headers
+                    # could close before the second, and the reporter's write would then fail
+                    # (a broken pipe: about 6 in 1000 on Linux CI, AVR-236).
+                    self.rfile.read(length)
                     self.wfile.write(b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: '
                                      + str(len(reply)).encode() + b'\r\n\r\n' + reply)
             server = socketserver.UnixStreamServer(path, Handler)
@@ -222,106 +226,6 @@ class StandinLogic(unittest.TestCase):
         with self.assertLogs(standin.log, 'WARNING') as logs:
             self.assertEqual(standin.report_to(path)('m'), (None, None))         # nobody there
         self.assertIn('could not report to the party (', logs.output[0])
-
-    @unittest.skipUnless(UNIX, 'Unix sockets')
-    def test_DIAGNOSTIC_what_a_server_that_leaves_the_body_unread_does_to_the_report(self):
-        """TEMPORARY (AVR-236): shows on Linux CI what the first version of the fixture above did
-        to the client, so the cause of that failure is observed, not assumed. Removed afterwards."""
-        import socketserver
-        tmp = tempfile.TemporaryDirectory(prefix='avr', dir='/tmp')
-        self.addCleanup(tmp.cleanup)
-        path = os.path.join(tmp.name, 'p.sock')
-        reply = b'{"ok": true, "result": "accepted"}'
-        answer = (b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: '
-                  + str(len(reply)).encode() + b'\r\n\r\n' + reply)
-
-        def attempt(handler, connection=None):
-            server = socketserver.UnixStreamServer(path, handler)
-            threading.Thread(target=server.handle_request, daemon=True).start()
-            old = sessions.UnixHTTPConnection
-            if connection:
-                sessions.UnixHTTPConnection = connection
-            try:
-                with self.assertLogs(standin.log, 'DEBUG') as logs:
-                    standin.log.debug('probe')
-                    got = standin.report_to(path)('m')
-            finally:
-                sessions.UnixHTTPConnection = old
-                server.server_close()
-                os.unlink(path)
-            return f'{got} {[line for line in logs.output if "could not report" in line]}'
-
-        def tally(n, handler, connection=None):
-            summary = {}
-            for _ in range(n):
-                key = attempt(handler, connection)
-                summary[key] = summary.get(key, 0) + 1
-            return summary
-
-        class Unread(socketserver.StreamRequestHandler):     # the first fixture: headers only
-            def handle(self):
-                while self.rfile.readline() not in (b'\r\n', b''):
-                    pass
-                self.wfile.write(answer)
-        print(f'\nDIAGNOSTIC A natural race, unread body, 3000 tries: {tally(3000, Unread)}', file=sys.stderr)
-
-        # how many sends the client makes for one report (headers and body together, or apart)
-        sends = []
-
-        class Counting(sessions.UnixHTTPConnection):
-            def send(self, data):
-                sends.append(len(data))
-                return super().send(data)
-        tally(1, Unread, Counting)
-        print(f'DIAGNOSTIC B sends per report: {sends}', file=sys.stderr)
-
-        # forced order 1: the server answers and closes BEFORE the client sends the body
-        closed = threading.Event()
-
-        class HeadersOnlyThenClose(socketserver.BaseRequestHandler):
-            def handle(self):
-                seen = b''
-                while b'\r\n\r\n' not in seen:
-                    more = self.request.recv(1)
-                    if not more:
-                        break
-                    seen += more
-                self.request.sendall(answer)
-
-            def finish(self):
-                self.request.close()
-                closed.set()
-
-        class BodyAfterClose(sessions.UnixHTTPConnection):
-            def send(self, data):
-                if not bytes(data[:5]) == b'POST ':
-                    closed.wait(5)
-                    time.sleep(0.05)
-                return super().send(data)
-        closed.clear()
-        print(f'DIAGNOSTIC C server closed before the body was sent: '
-              f'{tally(1, HeadersOnlyThenClose, BodyAfterClose)}', file=sys.stderr)
-
-        # forced order 2: the whole request is in the socket, the server reads the headers only,
-        # answers and closes with the body still unread
-        sent = threading.Event()
-
-        class BodyThenSignal(sessions.UnixHTTPConnection):
-            def send(self, data):
-                r = super().send(data)
-                if not bytes(data[:5]) == b'POST ':
-                    sent.set()
-                return r
-
-        class WaitThenHeadersOnly(HeadersOnlyThenClose):
-            def handle(self):
-                sent.wait(5)
-                time.sleep(0.05)
-                super().handle()
-        sent.clear()
-        closed.clear()
-        print(f'DIAGNOSTIC D server closed with the body unread in the socket: '
-              f'{tally(1, WaitThenHeadersOnly, BodyThenSignal)}', file=sys.stderr)
 
     def test_nothing_secret_is_logged(self):
         with self.assertLogs(standin.log, 'INFO') as logs:
