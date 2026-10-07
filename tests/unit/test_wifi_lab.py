@@ -197,11 +197,19 @@ class Gate(unittest.TestCase):
         self.assertEqual(gate.verdict(r), "FAIL")
         self.assertTrue(any("retry ratio" in t and l == "FAIL" for l, t in r))
 
-    def test_retry_ratio_alone_is_only_a_warning(self):
+    def test_retry_ratio_alone_is_informational_only(self):
         # observed 2026-10-07 on a clean channel 36: ratio 129 with perfect latency, loss and throughput
         r = gate.evaluate_phase("loaded", summary(61.8, 146.1, 0.0, 129.4, rx=20.45), self.cfg["loaded"], 20, 20)
-        self.assertEqual(gate.verdict(r), "WARN")
-        self.assertTrue(any("noisy client counter" in t for _, t in r))
+        self.assertEqual(gate.verdict(r), "PASS")
+        self.assertTrue(any(l == "INFO" and "does not affect the verdict" in t for l, t in r))
+        self.assertFalse(any(l in ("WARN", "FAIL") for l, _ in r))
+        r = gate.evaluate_phase("idle", summary(38.7, 99.0, 0.0, 129.4), self.cfg["idle"], 20)
+        self.assertEqual(gate.verdict(r), "PASS")
+
+    def test_unavailable_retry_counters_are_shown_but_do_not_decide(self):
+        r = gate.evaluate_phase("idle", summary(38.7, 99.0, 0.0, None, counters=False), self.cfg["idle"], 20)
+        self.assertEqual(gate.verdict(r), "PASS")
+        self.assertTrue(any(l == "INFO" and "retry counters unavailable" in t for l, t in r))
 
     def test_retry_ratio_fails_when_corroborated(self):
         r = gate.evaluate_phase("idle", summary(65.0, 220.0, 0.0, 33.5), self.cfg["idle"], 20)  # p99 over warn too
@@ -266,9 +274,30 @@ class Qualify(unittest.TestCase):
     def test_score_and_missing_metrics(self):
         best = {"idle_p99_ms": 0, "loaded_p99_ms": 0, "max_loss_pct": 0, "idle_retry_ratio": 0, "loaded_retry_ratio": 0, "uplink_mbps": 20}
         self.assertEqual(qualify.score(best), 100.0)
-        self.assertEqual(qualify.score({}), 0.0)  # every missing metric takes its full penalty
+        self.assertEqual(qualify.score({}), 10.0)  # every missing metric takes its full penalty (retry costs nothing)
         worse = dict(best, idle_p99_ms=300)
-        self.assertEqual(qualify.score(worse), 75.0)
+        self.assertEqual(qualify.score(worse), 70.0)
+
+    HEALTHY = {"idle_p99_ms": 90.0, "loaded_p99_ms": 150.0, "max_loss_pct": 0.0, "uplink_mbps": 49.0}
+    WORSE = {"idle_p99_ms": 250.0, "loaded_p99_ms": 900.0, "max_loss_pct": 1.0, "uplink_mbps": 5.0}
+
+    def test_bogus_retry_spike_cannot_demote_a_healthy_channel(self):
+        clean = dict(self.HEALTHY, idle_retry_ratio=0.5, loaded_retry_ratio=1.0)
+        spiked = dict(self.HEALTHY, idle_retry_ratio=129.0, loaded_retry_ratio=129.0)  # seen on a clean ch36 run
+        worse = dict(self.WORSE, idle_retry_ratio=0.0, loaded_retry_ratio=0.0)
+        self.assertEqual(qualify.score(spiked), qualify.score(clean))
+        self.assertGreater(qualify.score(spiked), qualify.score(worse))
+        recs = [{"channel": 149, "verdict": "PASS", "score": qualify.score(worse)},
+                {"channel": 36, "verdict": "PASS", "score": qualify.score(spiked)}]
+        self.assertEqual([r["channel"] for r in qualify.rank(recs)], [36, 149])
+
+    def test_retry_only_deepens_an_already_justified_penalty(self):
+        degraded = dict(self.WORSE, idle_retry_ratio=0.0, loaded_retry_ratio=0.0)
+        with_retries = dict(self.WORSE, idle_retry_ratio=30.0, loaded_retry_ratio=90.0)
+        diff = qualify.score(degraded) - qualify.score(with_retries)
+        self.assertGreater(diff, 0)
+        self.assertLessEqual(diff, qualify.RETRY_MAX_PENALTY)
+        self.assertEqual(qualify.score(dict(self.WORSE)), qualify.score(degraded))  # missing retry metric costs nothing
 
     def test_rank_orders_by_verdict_then_score_and_never_by_neighbours(self):
         recs = [{"channel": 149, "verdict": "FAIL", "score": 90.0, "neighbours_same_channel_info_only": 0},
@@ -304,6 +333,52 @@ PHY = """Band 2:
 			* 5745.0 MHz [149] (20.0 dBm)
 			* 5865.0 MHz [173] (no IR)
 """
+
+
+class RestoreOriginal(unittest.TestCase):
+    ORIG = {"band": "a", "channel": "149"}  # deliberately not the preferred 36
+
+    def fake(self, shown_before, shown_after):
+        calls = []
+        shows = iter([shown_before, shown_after])
+
+        def helper_call(*args, **kw):
+            calls.append(args)
+            return next(shows) if args == ("show",) else {"ok": True}
+        return calls, helper_call
+
+    def test_restores_the_saved_original_not_a_default(self):
+        calls, f = self.fake({"saved_original": self.ORIG, "profile": {"band": "a", "channel": "44"}}, {"saved_original": None, "profile": self.ORIG})
+        with mock.patch.object(wifilab, "ap_helper", side_effect=f), mock.patch.object(wifilab, "wait_rejoin"):
+            self.assertEqual(wifilab.restore_original(self.ORIG), self.ORIG)
+        self.assertIn(("restore", "--lab"), calls)
+        self.assertFalse(any(c[0] == "set-channel" for c in calls))
+
+    def test_nothing_changed_means_nothing_to_restore(self):
+        shown = {"saved_original": None, "profile": self.ORIG}
+        calls, f = self.fake(shown, shown)
+        with mock.patch.object(wifilab, "ap_helper", side_effect=f), mock.patch.object(wifilab, "wait_rejoin"):
+            wifilab.restore_original(self.ORIG)
+        self.assertEqual(calls, [("show",)])
+
+    def test_mismatch_after_restore_is_an_error_not_a_silent_success(self):
+        calls, f = self.fake({"saved_original": None, "profile": {"band": "a", "channel": "36"}}, None)
+        with mock.patch.object(wifilab, "ap_helper", side_effect=f), mock.patch.object(wifilab, "wait_rejoin") as wr:
+            with self.assertRaises(RuntimeError):
+                wifilab.restore_original(self.ORIG)
+        wr.assert_not_called()
+
+    def test_ap_recover_returns_to_the_recorded_original(self):
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        marker = tmp / ".ap-dirty.json"
+        marker.write_text(json.dumps({"started": "x", "current": 40, "original": self.ORIG}))
+        with mock.patch.object(wifilab, "DIRTY", marker), mock.patch.object(wifilab, "require_only_own_client"),                 mock.patch.object(wifilab, "restore_original", return_value=self.ORIG) as ro,                 mock.patch.object(wifilab, "ap_helper") as ah:
+            wifilab.cmd_ap_recover(mock.MagicMock(lab=True))
+        ro.assert_called_once_with(self.ORIG)
+        ah.assert_not_called()
+        self.assertFalse(marker.exists())
 
 
 class ApHelper(unittest.TestCase):
@@ -465,7 +540,7 @@ class Report(unittest.TestCase):
                  "client": {"serial": "SERIAL0001"}, "traffic": None}
         gate_doc = {"verdict": "PASS", "duration_s": 150, "client": {"serial": "SERIAL0001"}, "ap": {"band": "5GHz", "channel": 36},
                     "results": [{"level": "PASS", "text": "ok"}]}
-        qual = {"started": "s", "client": "SERIAL0001", "restored_default": True, "original_profile": {"channel": "36"},
+        qual = {"started": "s", "client": "SERIAL0001", "restored_original": True, "original_profile": {"channel": "36"},
                 "ranked": [{"channel": 36, "verdict": "PASS", "score": 95.0, "metrics": {}, "rssi_dbm": -45}], "skipped": {52: "dfs"}}
         md = report.render_markdown([("run1", trial)], [("g1", gate_doc)], [("q1", qual)], [])
         for needle in ("Pre-event gate runs", "**PASS**", "Channel qualification q1", "| 1 | 36 | PASS | 95.0", "run1", "Skipped"):

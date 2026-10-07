@@ -1,9 +1,10 @@
 """`qualify`: controlled non-DFS channel matrix, ranked by what the client actually measured.
 
 Lab / pre-event only: every switch drops all clients. It requires --lab, refuses on an unhealthy Pi,
-and the AP helper itself refuses while a Party session is active. The AP is always returned to the
-default channel (config default_channel) in a finally block; an interrupted run leaves
-results/.ap-dirty.json and `wifilab.py ap-recover` finishes the job.
+and the AP helper itself refuses while a Party session is active. The AP is always returned, in a finally
+block, to the state observed at the start of the run (the helper's saved original), NOT to a configured
+default: "preferred channel" (config preferred_channel, documentation only) and "restore" are different
+things. An interrupted run leaves results/.ap-dirty.json and `wifilab.py ap-recover --lab` finishes the job.
 
 Ranking never uses the neighbouring-network count (it is recorded as information only): on 2026-10-06
 an empty-looking channel (149) performed far worse than another empty one (36).
@@ -42,19 +43,35 @@ def _dig(d, keys):
     return d
 
 
-def score(m):
-    """100 minus capped penalties. A missing metric takes its full penalty (and is flagged by the caller).
+RETRY_CORROBORATION_MIN = 25.0  # base penalty (of 90) at which a channel is demonstrably degraded
+RETRY_MAX_PENALTY = 5.0
 
-    score = 100 - 25*min(1, idle_p99/300) - 25*min(1, loaded_p99/1000) - 15*min(1, max_loss/3)
-                - 15*min(1, idle_retry/10) - 10*min(1, loaded_retry/30) - 10*(1 - min(1, uplink_mbps/20))
-    A heuristic for ordering candidates on one client at one place, not a universal quality measure."""
+
+def base_penalty(m):
+    """Latency, loss and throughput only (max 90). A missing metric takes its full penalty."""
     def frac(v, scale):
         return 1.0 if v is None else min(1.0, v / scale)
     up = m.get("uplink_mbps")
-    return round(100 - 25 * frac(m.get("idle_p99_ms"), 300) - 25 * frac(m.get("loaded_p99_ms"), 1000)
-                 - 15 * frac(m.get("max_loss_pct"), 3) - 15 * frac(m.get("idle_retry_ratio"), 10)
-                 - 10 * frac(m.get("loaded_retry_ratio"), 30)
-                 - 10 * (1.0 if up is None else 1 - min(1.0, up / 20)), 1)
+    return (30 * frac(m.get("idle_p99_ms"), 300) + 30 * frac(m.get("loaded_p99_ms"), 1000)
+            + 20 * frac(m.get("max_loss_pct"), 3) + 10 * (1.0 if up is None else 1 - min(1.0, up / 20)))
+
+
+def score(m):
+    """score = 100 - base - retry_extra, where
+         base        = 30*min(1, idle_p99/300) + 30*min(1, loaded_p99/1000) + 20*min(1, max_loss/3)
+                       + 10*(1 - min(1, uplink_mbps/20))                       (latency, loss, throughput; max 90)
+         retry_extra = 0 unless base >= 25 (the channel is already demonstrably degraded), else
+                       up to 5 from the client's TX retry ratio (idle/10 and loaded/30, averaged, capped).
+    The Android retry counter has shown extreme false values on healthy channels (129 retries per success with
+    perfect latency/loss/throughput), so on its own it can never move a channel: it can only deepen a penalty that
+    latency, loss or throughput already justify, and by at most 5 points. A missing retry metric costs nothing.
+    A heuristic for ordering candidates on one client at one place, not a universal quality measure."""
+    base = base_penalty(m)
+    extra = 0.0
+    if base >= RETRY_CORROBORATION_MIN:
+        fr = [min(1.0, v / s) for v, s in ((m.get("idle_retry_ratio"), 10), (m.get("loaded_retry_ratio"), 30)) if v is not None]
+        extra = RETRY_MAX_PENALTY * (sum(fr) / len(fr)) if fr else 0.0
+    return round(100 - base - extra, 1)
 
 
 def rank(records):
@@ -89,7 +106,7 @@ def run_qualify(args, wl):
                  "Never during play (the AP helper also refuses while a Party session is active).")
     wl.pick_device(wl.CFG.get("android_serial"))
     qcfg, gcfg = wl.CFG["qualify"], wl.CFG["gate"]
-    default = int(wl.CFG["default_channel"])
+    preferred = int(wl.CFG["preferred_channel"])
     if wl.DIRTY.exists():
         sys.exit(f"{wl.DIRTY} exists: an earlier qualification was interrupted. Run `wifilab.py ap-recover` first.")
     wl.require_only_own_client()
@@ -105,12 +122,19 @@ def run_qualify(args, wl):
     permitted = [c for c in wanted if c in helper.APPROVED_CHANNELS and helper.channel_allowed(info, c)]
     skipped = {c: "not approved or not permitted by the regulatory domain on this radio" for c in wanted if c not in permitted}
     orig = wl.ap_helper("show")
+    orig_p = orig.get("profile") or {}
+    if orig.get("saved_original") is not None:
+        sys.exit("the helper still holds a saved original from an earlier unrestored change; run `wifilab.py ap restore --lab` "
+                 "(or ap-recover --lab) first so this run's starting state is unambiguous")
+    if not helper.saved_is_valid(orig_p.get("band"), orig_p.get("channel")):
+        sys.exit(f"the AP's current profile {orig_p} cannot be restored by the helper (not a fixed channel it could itself set); "
+                 "refusing to change it")
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     serial = wl.CFG["android_serial"]
     parent = wl.RESULTS / f"{stamp}_qualify_{serial[-4:]}"
     parent.mkdir(parents=True)
-    wl.DIRTY.write_text(json.dumps({"started": stamp, "serial": serial, "original": orig.get("profile"), "current": None}))
-    print(f"qualifying channels {permitted} (skipped: {skipped or 'none'}); original {orig.get('profile')}; default after: {default}")
+    wl.DIRTY.write_text(json.dumps({"started": stamp, "serial": serial, "original": orig_p, "current": None}))
+    print(f"qualifying channels {permitted} (skipped: {skipped or 'none'}); AP returns to its starting state {orig_p} afterwards")
 
     prev_term = signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(KeyboardInterrupt()))
     records = []
@@ -140,7 +164,8 @@ def run_qualify(args, wl):
                 m = metrics_from(idle, loaded, up)
                 rec.update(verdict=gate.verdict(res), score=score(m), metrics=m,
                            missing_metrics=[k for k, v in m.items() if v is None],
-                           reasons=[{"level": l, "text": t} for l, t in res if l != "PASS"],
+                           reasons=[{"level": l, "text": t} for l, t in res if l in ("WARN", "FAIL")],
+                           informational=[t for l, t in res if l == "INFO"],
                            neighbours_same_channel_info_only=neighbours_on(wl, idle["ap"]["freq_mhz"]),
                            rssi_dbm=idle["tablet"]["rssi_after"], link_mbps=idle["tablet"]["tx_link_mbps_after"], dir=str(sub))
             except KeyboardInterrupt:
@@ -153,18 +178,17 @@ def run_qualify(args, wl):
                 (parent / "qualify.json").write_text(json.dumps({"records": records, "skipped": skipped}, indent=2))
     finally:
         signal.signal(signal.SIGTERM, prev_term)
-        print(f"restoring default channel {default} ...")
+        print(f"restoring the AP to its starting state {orig_p} ...")
         try:
-            wl.ap_helper("set-channel", str(default), "--lab")
-            wl.wait_rejoin()
+            wl.restore_original(orig_p)
             wl.DIRTY.unlink()
             restored = True
         except Exception as e:
             restored = False
-            print(f"RESTORE FAILED: {e}\n  run `wifilab.py ap-recover` or the owner restores the profile by hand.", file=sys.stderr)
+            print(f"RESTORE FAILED: {e}\n  run `wifilab.py ap-recover --lab` or the owner restores the profile by hand.", file=sys.stderr)
         ranked = rank(records)
-        doc = {"schema": "avrana.wifi-qualify/v1", "started": stamp, "client": serial, "original_profile": orig.get("profile"),
-               "default_channel": default, "restored_default": restored, "skipped": skipped, "ranked": ranked,
+        doc = {"schema": "avrana.wifi-qualify/v1", "started": stamp, "client": serial, "original_profile": orig_p,
+               "preferred_channel_info": preferred, "restored_original": restored, "skipped": skipped, "ranked": ranked,
                "scoring": "see qualify.score docstring / docs/runbooks/wifi-qualification.md; heuristic, not universal",
                "thresholds_status": gcfg["_status"]}
         (parent / "qualify.json").write_text(json.dumps(doc, indent=2))
@@ -173,7 +197,7 @@ def run_qualify(args, wl):
 
 
 def render(doc):
-    L = [f"Channel qualification ({doc['started']}, client {doc['client']}); default restored: {doc['restored_default']}",
+    L = [f"Channel qualification ({doc['started']}, client {doc['client']}); original state restored: {doc['restored_original']}",
          "rank  ch   verdict  score  idle p99  loaded p99  loss%  idle retry  up Mbps  RSSI  [neighbours: info only]"]
     for i, r in enumerate(doc["ranked"], 1):
         m = r.get("metrics") or {}

@@ -10,7 +10,7 @@
   "ap_connection": "Avrana Party Internal",
   "pi_wifi_iface": "wlan0",
   "ap_helper_path": "/usr/local/sbin/avrana-ap-control",
-  "default_channel": 36,
+  "preferred_channel": 36,
   "ping_count": 400,
   "ping_interval_s": 0.2,
   "ping_payload_bytes": 56,

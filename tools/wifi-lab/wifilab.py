@@ -500,6 +500,21 @@ def wait_rejoin(max_wait=180):
     raise RuntimeError(f"client did not rejoin {CFG['ap_ssid']!r} within {max_wait}s; events: {events}")
 
 
+def restore_original(original):
+    """Return the AP to the profile observed before a test (not to any configured default) and verify it.
+    The helper saved that original on its first change; `restore --lab` puts exactly that back. If nothing
+    was changed through the helper, the AP must still be in the original state. Raises otherwise."""
+    shown = ap_helper("show")
+    if shown.get("saved_original") is not None:
+        ap_helper("restore", "--lab")
+        shown = ap_helper("show")
+    now = shown.get("profile") or {}
+    if (now.get("band"), str(now.get("channel"))) != (original.get("band"), str(original.get("channel"))):
+        raise RuntimeError(f"AP profile is {now} but the pre-test state was {original}; the owner restores it by hand")
+    wait_rejoin()
+    return now
+
+
 def require_only_own_client():
     """Tool-side guard beside the helper's: the only associated station must be this client.
     `--lab` tells the helper "the associated station is mine"; this check makes that true."""
@@ -538,9 +553,12 @@ def cmd_ap_recover(args):
         sys.exit("ap-recover disconnects every client: pass --lab to confirm the only associated device is your own test client")
     require_only_own_client()
     info = json.loads(DIRTY.read_text())
-    print(f"recovering: qualification started {info['started']} left the AP at channel {info.get('current')}")
-    ap_helper("set-channel", str(CFG["default_channel"]), "--lab")
-    print(json.dumps(wait_rejoin(), indent=2))
+    original = info.get("original")
+    if not original:
+        sys.exit(f"{DIRTY} records no original AP state; the owner restores the profile by hand")
+    print(f"recovering: qualification started {info['started']} left the AP at channel {info.get('current')}; "
+          f"returning to the state observed before it: {original}")
+    print(json.dumps(restore_original(original), indent=2))
     DIRTY.unlink()
 
 

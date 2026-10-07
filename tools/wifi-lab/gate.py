@@ -7,7 +7,7 @@ The evaluation is a pure function (evaluate) so it is unit-tested without device
 import datetime as dt, json, sys
 from pathlib import Path
 
-RANK = {"PASS": 0, "WARN": 1, "FAIL": 2}
+RANK = {"INFO": 0, "PASS": 0, "WARN": 1, "FAIL": 2}  # INFO never changes a verdict
 
 
 def _check(level_name, value, spec, unit, higher_is_worse=True):
@@ -40,9 +40,9 @@ def evaluate_phase(name, summary, spec, min_tx, offered_mbps=None):
     out.append(r or ("WARN", f"{name} packet loss unavailable"))
     samples = (t.get("tx_success_delta") or 0) + (t.get("tx_retries_delta") or 0)
     if not t.get("retry_counters_available"):
-        out.append(("WARN", f"{name} retry counters unavailable from the client"))
+        out.append(("INFO", f"{name} retry counters unavailable from the client (informational metric)"))
     elif samples < min_tx:
-        out.append(("WARN", f"{name} too few client TX samples ({samples} < {min_tx}) to judge the retry ratio"))
+        out.append(("INFO", f"{name} too few client TX samples ({samples} < {min_tx}) to judge the retry ratio (informational metric)"))
     else:
         out.append(_check(f"{name} client TX retry ratio", t["tx_retry_ratio"], spec["retry_ratio"], ""))
     if offered_mbps:
@@ -59,13 +59,14 @@ def evaluate_phase(name, summary, spec, min_tx, offered_mbps=None):
 
 def corroborate_retries(name, results):
     """The client's retry counter is noisy: on a clean channel 36 run (2026-10-07) it read 129 retries per
-    success while latency, loss and throughput were all perfect. So a retry-ratio FAIL stands only when
-    another metric of the same phase is also degraded; otherwise it is reported as a WARN that says why."""
-    others_degraded = any(l != "PASS" for l, t in results if "retry ratio" not in t)
+    success while latency, loss and throughput were all perfect. Until AVR-300 gives better evidence it is
+    corroborating, not deciding: a WARN/FAIL retry finding stands only when another metric of the same phase
+    (latency, loss, delivery) is also degraded; on its own it is reported as INFO, which never changes the verdict."""
+    others_degraded = any(l in ("WARN", "FAIL") for l, t in results if "retry" not in t)
     fixed = []
     for l, t in results:
-        if l == "FAIL" and "retry ratio" in t and not others_degraded:
-            fixed.append(("WARN", t + "; latency, loss and throughput are within limits, so this noisy client counter alone is not a FAIL"))
+        if l in ("WARN", "FAIL") and "retry ratio" in t and not others_degraded:
+            fixed.append(("INFO", t + "; latency, loss and throughput are within limits, so this client counter alone does not affect the verdict"))
         else:
             fixed.append((l, t))
     return fixed
@@ -95,7 +96,7 @@ def verdict(results):
 
 
 def render(name, results, extra=""):
-    order = {"FAIL": 0, "WARN": 1, "PASS": 2}
+    order = {"FAIL": 0, "WARN": 1, "INFO": 2, "PASS": 3}
     lines = [name] + [f"  - [{l}] {t}" for l, t in sorted(results, key=lambda r: order[r[0]])]
     return "\n".join(lines) + ("\n" + extra if extra else "") + "\n"
 

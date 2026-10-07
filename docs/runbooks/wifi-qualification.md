@@ -22,7 +22,7 @@ the Avrana SSID, and the `party` ssh alias.
 | Tables / Markdown report | `python tools/wifi-lab/wifilab.py report --write` |
 | One specific Android device | `python tools/wifi-lab/wifilab.py --device SERIAL gate` |
 | Every attached device, separate results | `python tools/wifi-lab/wifilab.py --all-devices gate` |
-| Recover after an interrupted qualification (lab only) | `python tools/wifi-lab/wifilab.py ap-recover --lab` |
+| Recover after an interrupted qualification (lab only) | `python tools/wifi-lab/wifilab.py ap-recover --lab` (returns to the recorded pre-test state) |
 | Show / set / restore the AP channel (lab only) | `wifilab.py ap show`; `wifilab.py ap set --channel N --lab`; `wifilab.py ap restore --lab` |
 
 `gate` exits 0 PASS, 1 WARN, 2 FAIL. Run `baseline`/`loaded`/`gate` only when nobody is playing: they
@@ -64,17 +64,19 @@ FAIL, never a silent pass.
 |---|---|---|
 | idle p95 / p99 RTT | 80 / 150 ms | 200 / 300 ms |
 | idle packet loss | 0.5 % | 2 % |
-| idle client TX retries per success | 3 | 10 |
+| idle client TX retries per success (informational, see below) | 3 | 10 |
 | loaded p95 / p99 RTT | 250 / 400 ms | 600 / 1000 ms |
 | loaded packet loss | 1 % | 3 % |
-| loaded client TX retries per success | 10 | 30 |
+| loaded client TX retries per success (informational, see below) | 10 | 30 |
 | loaded delivered / offered (20 Mbps) | below 0.8 | below 0.5 |
 | Pi health | DEGRADED | SUSPECT, POWER, UNKNOWN or not collectable |
 
-**Retry ratio is corroborating evidence, not a stand-alone FAIL.** On a clean channel-36 gate run (2026-10-07) the
+**Retry ratio is corroborating evidence only, never a deciding one.** On a clean channel-36 gate run (2026-10-07) the
 client counter read 129 retries per success (about 140 retries/s against 8 successes/s) while latency, loss and
-delivered throughput were all perfect, so the counter is noisy. A retry-ratio breach is a FAIL only when another metric
-of the same phase (latency, loss, delivery) is also degraded; otherwise it is reported as a WARN that says so.
+delivered throughput were all perfect, so the counter has shown extreme false values. Until AVR-300 gives better evidence:
+a retry-ratio breach on its own is reported as `INFO` and **never changes PASS/WARN/FAIL**; it counts as WARN/FAIL only when
+another metric of the same phase (latency, loss, delivery) is also degraded, where it strengthens that finding. Unavailable
+retry counters are likewise shown as `INFO`.
 
 Retry ratios come from the Android client's counters (`cmd wifi status`); the Pi's brcmfmac exposes only
 `tx failed` in AP mode and no channel-utilisation data, so neither is used as a verdict input.
@@ -85,17 +87,23 @@ Retry ratios come from the Android client's counters (`cmd wifi status`); the Pi
 regulatory domain permits on this radio (enabled, no radar detection, no "no IR"), and for each: switches the AP
 through the helper, waits for the client (recovering one that roamed to another saved network by toggling its
 Wi-Fi; saved networks are never edited), verifies the route and the channel, then runs idle (150 pings), downlink
-20 Mbps (100 pings) and uplink max-effort (60 pings). The AP always returns to `default_channel` (36) in a
-`finally`; an interruption leaves `results/.ap-dirty.json` and `ap-recover` finishes the job.
+20 Mbps (100 pings) and uplink max-effort (60 pings). The AP always returns, in a
+`finally`, to the profile **observed at the start of the run** (the helper's saved original, verified after the restore), not
+to a configured default. Channel 36 stays the documented *preferred* baseline (`preferred_channel`, information only);
+"preferred" and "restore" are different things. `qualify` refuses to start if the helper still holds an unrestored saved
+original or the current profile is not one the helper could restore. An interruption leaves `results/.ap-dirty.json`
+(with the original state) and `ap-recover --lab` finishes the job the same way.
 
 Ranking: gate verdict first (PASS, WARN, FAIL, then errors), then this score, highest first:
 
 ```
-score = 100 - 25*min(1, idle_p99/300) - 25*min(1, loaded_p99/1000) - 15*min(1, max_loss/3)
-            - 15*min(1, idle_retry/10) - 10*min(1, loaded_retry/30) - 10*(1 - min(1, uplink_mbps/20))
+base  = 30*min(1, idle_p99/300) + 30*min(1, loaded_p99/1000) + 20*min(1, max_loss/3) + 10*(1 - min(1, uplink_mbps/20))
+extra = 0 if base < 25 else up to 5 from the client TX retry ratio (mean of idle/10 and loaded/30, capped at 1)
+score = 100 - base - extra
 ```
 
-A missing metric takes its full penalty and is listed. This is a heuristic for ordering candidates for one client
+The retry ratio can only deepen a penalty that latency, loss or throughput already justify (base of at least 25) and by at
+most 5 points; an isolated retry spike cannot move a healthy channel (unit-tested against a worse channel). A missing latency, loss or throughput metric takes its full penalty and is listed; a missing retry metric costs nothing. This is a heuristic for ordering candidates for one client
 at one place; it is not a universal quality measure and the weights are judgement. The number of neighbouring
 networks is recorded as information only and never scored (empty-looking channel 149 was bad on 2026-10-06).
 

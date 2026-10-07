@@ -51,6 +51,8 @@ counters, Pi `tx failed`, Pi health state/temperature/load/throttle. A `gate` wr
 - Ping at 200 ms is the non-root Android minimum and lets the radio doze between packets, which adds up to one
   beacon interval to idle p95/p99.
 - Gate thresholds and the ranking score are **provisional heuristics** from one tablet and one Pi.
+- The client TX retry counter has shown extreme false values on healthy runs: it is informational and never decides a verdict or ranking on its own.
+- `qualify` and `ap-recover` return the AP to the state observed before the test (the helper's saved original), not to a fixed default channel.
 - Synthetic multi-client traffic from this machine is not evidence about Wi-Fi clients unless its path is the Avrana subnet.
 - The Pi health check cannot observe a wedged firmware directly; it infers it from a `vcgencmd` that does not answer
   or is stuck in D state, plus kernel messages. It does not reboot or restart anything and neither does this tool.

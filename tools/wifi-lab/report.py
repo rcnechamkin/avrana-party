@@ -54,7 +54,7 @@ def render_markdown(trials, gates, quals, multis, label=None):
         if "ranked" not in q:
             continue
         out += [f"## Channel qualification {name}", "",
-                f"Client {q['client']}; default restored: {q['restored_default']}; original profile {q.get('original_profile')}", ""]
+                f"Client {q['client']}; original state restored: {q.get('restored_original', q.get('restored_default'))}; original profile {q.get('original_profile')}", ""]
         rows = []
         for i, r in enumerate(q["ranked"], 1):
             m = r.get("metrics") or {}
