@@ -126,9 +126,12 @@ enabled it), removes the socket node systemd leaves behind, and runs `daemon-rel
 overwrites is first kept in `replaced/` of the before-state, and it says when a file was changed after
 this command wrote it. **It never restarts Party Core**: that keeps running as it is until its next
 restart, still holding the socket it was handed (which no longer has a path), and `systemctl reload` is
-refused again, as on the earlier host. It needs only root and the before-state, not phase 1. A second
-reverse says there is nothing to reverse. It leaves the phase 1 identities, the `avrana-game@` template
-units and `/etc/avrana-party/games.d`.
+refused again, as on the earlier host. The one exception is a Party Core that is `failed` when you
+reverse (the likely reason to): it is reset and started again, on the earlier files.
+
+A reverse needs only root and the before-state, not phase 1. A second one says there is nothing to
+reverse. It leaves the phase 1 identities, the `avrana-game@` template units and
+`/etc/avrana-party/games.d`.
 
 ## When it stops half way
 

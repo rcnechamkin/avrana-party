@@ -52,8 +52,9 @@ Before it writes anything it keeps the previous unit file(s) and party-core.json
 state.json, and prints that directory. `--reverse` puts them back (a file that did not exist is
 removed), disables the socket unit when the run enabled it, and is REFUSED while any native game is
 provisioned (a registry entry or an avrana-game@<slug> unit exists): remove the game first with
-`provision-game <slug> --remove`. A reverse never restarts Party Core. It needs only root and a
-backup directory, not phase 1.
+`provision-game <slug> --remove`. A reverse never restarts Party Core; it starts one that is `failed`,
+since the earlier files are what that one ran on. It needs only root and a backup directory, not
+phase 1.
 
 Exit status: 0 done (or nothing to change, or a dry run); 1 refused or failed before anything was
 changed (the reason is on stderr); 2 usage; 3 the host was changed and a step or check after that
