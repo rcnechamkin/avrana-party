@@ -269,6 +269,13 @@ class ApplianceAndCatalog(unittest.TestCase):
         only = {'standin': self.contracts['standin']}
         self.assertEqual([g['id'] for g in catalog.build(VOCAB, granted, only)['games']], ['standin'])
 
+    def test_a_test_only_extension_that_is_not_an_object_is_a_product_game(self):
+        for extensions in ({catalog.TEST_EXTENSION: True}, {catalog.TEST_EXTENSION: 'yes'}, {catalog.TEST_EXTENSION: None},
+                           {catalog.TEST_EXTENSION: [1]}, {catalog.TEST_EXTENSION: {'test_only': 'true'}}, [], 'x', None):
+            self.assertFalse(catalog._test_only({'extensions': extensions}), extensions)
+        self.assertFalse(catalog._test_only({}))
+        self.assertTrue(catalog._test_only({'extensions': {catalog.TEST_EXTENSION: {'test_only': True}}}))
+
     def test_catalog_shape(self):
         built = catalog.build(VOCAB, self.appliance, self.contracts)
         self.assertEqual(built['schema'], 'avrana.catalog/v0')
@@ -338,7 +345,11 @@ class ApplianceAndCatalog(unittest.TestCase):
                dict(good, command=['/bin/x', '']), dict(good, command=['/bin/x', 1]),
                dict(good, command=['/bin/x', 'a\nExecStart=/bin/sh']), dict(good, command=['/bin/x\r']),
                dict(good, command=['/bin/x', 'a\x00']), dict(good, working_directory='rel'),
-               dict(good, working_directory='/a\nb'), dict(good, working_directory=None)]
+               dict(good, working_directory='/a\nb'), dict(good, working_directory=None),
+               dict(good, command=['/opt/../bin/x']), dict(good, command=['/opt/./x']), dict(good, command=['/opt//x']),
+               dict(good, command=['/opt/x/..']), dict(good, working_directory='/opt/..'),
+               dict(good, working_directory='/opt/./g'), dict(good, working_directory='/opt//g'),
+               dict(good, working_directory='/opt/g\\')]
         for runtime in bad:
             doc = copy.deepcopy(self.appliance)
             doc['installed'][0]['runtime'] = runtime

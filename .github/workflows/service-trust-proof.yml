@@ -13,17 +13,12 @@ name: Service trust proof
 on:
   pull_request:
     paths:
-      - 'experiments/service-trust/**'
-      - 'experiments/native-game/**'
-      - 'avrana/party/protocol.py'
-      - 'avrana/party/registry.py'
-      - 'avrana/party/sessions.py'
-      - 'avrana/party/service.py'
-      - 'avrana/ops/boundary.py'
-      - 'avrana/ops/provision_game.py'
-      - 'avrana/games/standin/**'
-      - 'deploy/games/**'
-      - 'deploy/party-core/avrana-party-core.*'
+      - 'avrana/**'
+      - 'contracts/**'
+      - 'deploy/**'
+      - 'ops/provision-game'
+      - 'experiments/**'
+      - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
   workflow_dispatch:
 

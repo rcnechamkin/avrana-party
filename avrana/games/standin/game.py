@@ -24,6 +24,10 @@ Routes (every path is under /games/standin, which is where the front door and Pa
     POST /games/standin/api/finish   {"token"}     -> {"ok"}: the redeemed player wins; the game
                                                       reports a signed `ended` with a result
 
+The stand-in stays resident once started: ADR 0016 section 4's "stops itself when idle" is NOT
+implemented here (it is deferred to AVR-238, with the resource ceilings), so a stopped game is
+one the host or `provision-game --rotate` stopped.
+
 The credential a redeemed participant holds is protocol.game_token (stable per session and
 participant, unforgeable without the key). Nothing here logs a key, a ticket or a token.
 """
@@ -95,7 +99,8 @@ def _json(status, body):
 
 class Standin:
     """The game's logic, with no sockets in it: `handle` maps one request to one answer, `report`
-    (an injected callable: message -> HTTP status or None) is how `ended` reaches the party."""
+    (an injected callable: message -> (HTTP status or None, the party's verdict on the result:
+    "accepted", "refused" or None)) is how `ended` reaches the party."""
 
     def __init__(self, side, report):
         self.side = side                  # protocol.GameSide for GAME
@@ -178,25 +183,37 @@ class Standin:
                 players, data_schema='standin.result/v1', data={'rounds': 1})
             message = self.side.ended('completed', result=made)     # the session stops admitting here
             self.redeemed.clear()
-        status = self.report(message)                  # off the lock: it waits on the party
-        log.info('finished; the party answered %s', status)
-        if status != 200:
+        # The session was stopped (above) before the report, on purpose: nothing more is admitted
+        # while the party is asked. If the report then fails, the party's session is still there and
+        # this game no longer knows it; the host ends it from Party Home (or Party Core's own end
+        # timer does). A retry would need the same signed message, which this game does not keep.
+        status, verdict = self.report(message)         # off the lock: it waits on the party
+        verdict = verdict if verdict in ('accepted', 'refused') else 'unknown'
+        log.info('finished; the party answered %s (result %s)', status, verdict)    # the verdict word only
+        if status != 200 or verdict != 'accepted':
             return _json(502, {'ok': False, 'message': 'The party did not accept the result.'})
         return _json(200, {'ok': True})
 
 
 def report_to(party_socket):
-    """A `report` that POSTs one signed `ended` to Party Core's internal Unix socket."""
+    """A `report` that POSTs one signed `ended` to Party Core's internal Unix socket and returns
+    (HTTP status, the "result" word of the reply: "accepted" or "refused"); (None, None) when the
+    party cannot be reached."""
     def report(message):
         conn = sessions.UnixHTTPConnection(party_socket, REPORT_TIMEOUT)
         try:
             conn.request('POST', sessions.ENDED_ROUTE, body=json.dumps({'message': message}).encode(),
                          headers={'Content-Type': 'application/json', 'Host': 'localhost'})
             r = conn.getresponse()
-            r.read()
-            return r.status
+            raw = r.read(MAX_BODY)
+            try:                                        # the party says whether the result was accepted
+                reply = json.loads(raw.decode('utf-8'))
+            except ValueError:
+                reply = None
+            verdict = reply.get('result') if isinstance(reply, dict) else None
+            return r.status, verdict if isinstance(verdict, str) else None
         except (OSError, ValueError, http.client.HTTPException):
-            return None
+            return None, None
         finally:
             conn.close()
     return report

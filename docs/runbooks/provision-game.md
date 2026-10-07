@@ -18,14 +18,24 @@ reload), and never prints a key.
 1. [ADR 0016 phase 1](service-users-migration.md) is applied: the user `avrana-party`, the groups
    `avrana-front` (members `avrana-party` and `www-data`) and `avrana-games`, and
    `/etc/avrana-party/game-keys` (`0700`, `avrana-party`). The command refuses without them.
-2. Party Core runs from a root-owned release tree (`/opt/avrana-party/current`, built by
+2. **Reinstall Party Core's service unit first**: `deploy/party-core/avrana-party-core.service` gained
+   `ExecReload=` (what `systemctl reload` sends: a `SIGHUP`) and `Wants=` the socket unit, and the
+   installed copy on an older appliance has neither. Without `ExecReload=` every provision and
+   rotation fails at its last step, `systemctl reload avrana-party-core.service`, and the command
+   says so (exit 1, "no ExecReload="). Install it, `systemctl daemon-reload`, and only then provision.
+   Party Core runs from a root-owned release tree (`/opt/avrana-party/current`, built by
    [`ops/deploy.sh`](deploy.md)), with its game-facing socket unit installed and enabled
    (`deploy/party-core/avrana-party-core.socket`) and `"registry": "/etc/avrana-party/games.d"` in
    `/etc/avrana-party/party-core.json`. Without the `registry` key Party Core never sees a
    provisioned game, and the command says so and refuses. Rotation asks Party Core on
    loopback whether the game has a session, naming the first entry of Party Core's `hosts`.
 3. The game's code is under a root-owned path (a release tree, never a home directory), and its
-   Game Contract is in `contracts/games/<slug>.json`.
+   Game Contract is in `contracts/games/<slug>.json`. The command checks this before it writes
+   anything: the grant's `command[0]` and `working_directory`, and every directory above each (a
+   symbolic link is followed, and where it leads is checked too), must exist, belong to root (uid 0)
+   and be writable by neither group nor others. Otherwise it refuses and names the path: "a native
+   game runs only root-owned code (ADR 0016 section 2)". The grant's paths may not contain `.`,
+   `..` or `//`. A dry run does not make this check.
 4. The appliance profile (`contracts/appliances/avrana-pi4.json`) has a grant for the game with a
    `runtime`: `{"command": ["/usr/bin/python3", "-m", "..."], "working_directory": "/opt/..."}`.
    A grant without `runtime` is refused: there would be nothing to start.
@@ -49,13 +59,22 @@ Exit status: 0 done, 1 refused or failed (the reason is on stderr; it never name
 | Command | Keeps | Writes or replaces |
 |---|---|---|
 | `<slug>` (first run) | | the key (`0600 avrana-party`), the registry entry (`games.d/<slug>.json`), the two shared template units if missing or different, the exec drop-in (`avrana-game@<slug>.service.d/exec.conf`, from the grant's `runtime`); enables and starts `avrana-game@<slug>.socket`; asks Party Core to reload |
-| `<slug>` again (reconcile) | key, state | registry entry, templates and drop-in rewritten to match; a second run prints "nothing to change" and touches nothing. A running game is **not** restarted: it keeps the old command until it next stops |
+| `<slug>` again (reconcile) | key, state | registry entry, templates and drop-in rewritten to match; a second run prints "nothing to change" and writes nothing. It still enables the socket and asks Party Core to reload, **every run**: if a run failed half way (files written, then `systemctl` failed), run it again and it finishes. A running game is **not** restarted: it keeps the old command until it next stops |
 | `--rotate` | state | the key; stops the game so its next start loads the new one; asks Party Core to reload. **Refused while the game has a session** (it asks Party Core; wait for the round to end) |
-| `--remove` | the shared template units | stops and disables the units; removes the registry entry, the drop-in, the key, the runtime socket and the state directory (`--keep-state` keeps it; it is inert without a key). Works for a game whose contract is already gone |
+| `--remove` | the shared template units | stops and disables the units; removes the registry entry, the drop-in, the key, the runtime socket and the state directory (`--keep-state` keeps it; it is inert without a key). Asks Party Core to reload again as the last step, also when nothing was left, so a second `--remove` repairs a Party Core that kept the game. **Refused while the game has a session**, as `--rotate` is: end it from Party Home first. Works for a game whose contract is already gone, and needs neither the contracts nor ADR 0016 phase 1, only root |
 
 The game's process and socket: `/run/avrana-games/<slug>.sock` (`root:avrana-front 0660`, held by
 systemd), state in `/var/lib/avrana-games/<slug>`, its key only as a credential. Party Core is
 reloaded (`systemctl reload`, a `SIGHUP`), never restarted, so the party survives.
+
+`--rotate` and `--remove` ask Party Core on loopback whether that game has a session. Only "nobody is
+listening" (connection refused) means no party and lets them go on; a timeout (10 s), another
+error or an answer they cannot read refuses, because Party Core may be there and busy. A non-root
+`--dry-run` that cannot read the key store (`/etc/avrana-party/game-keys` is `0700`) says "needs
+root to read the key store": run it with `sudo`.
+
+**Maintenance.** To stop Party Core, stop `avrana-party-core.socket` as well as
+`avrana-party-core.service`: a game's report arrives on that socket and starts the service again.
 
 ## Verify
 

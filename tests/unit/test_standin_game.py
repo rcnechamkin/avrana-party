@@ -43,9 +43,9 @@ class StandinLogic(unittest.TestCase):
     def setUp(self):
         self.key = protocol.new_key()
         self.reports = []
-        self.answer = 200
+        self.answer, self.verdict = 200, 'accepted'
         self.app = standin.Standin(protocol.GameSide(self.key, GAME),
-                                   lambda m: (self.reports.append(m), self.answer)[1])
+                                   lambda m: (self.reports.append(m), (self.answer, self.verdict))[1])
 
     def call(self, method, path, raw=b'', headers=None):
         status, ctype, out = self.app.handle(method, path, dict(headers or {}), raw)
@@ -170,8 +170,50 @@ class StandinLogic(unittest.TestCase):
     def test_a_party_that_does_not_answer_is_a_502_not_a_success(self):
         self.launch()
         _, r = self.redeem(self.ticket())
-        self.answer = None
+        self.answer, self.verdict = None, None
         self.assertEqual(self.finish(r['token'])[0], 502)
+
+    def test_a_result_the_party_refused_or_did_not_confirm_is_a_502(self):
+        for answer, verdict in ((200, 'refused'), (200, None), (200, 'maybe'), (409, 'accepted'), (200, 7)):
+            self.launch()
+            _, r = self.redeem(self.ticket())
+            self.answer, self.verdict = answer, verdict
+            self.assertEqual(self.finish(r['token'])[0], 502, (answer, verdict))
+
+    def test_the_log_says_whether_the_party_accepted_the_result_and_nothing_more(self):
+        self.launch()
+        _, r = self.redeem(self.ticket())
+        with self.assertLogs(standin.log, 'INFO') as logs:
+            self.finish(r['token'])
+        self.assertIn('finished; the party answered 200 (result accepted)', '\n'.join(logs.output))
+        self.launch(sid='session-' + 'b' * 32)
+        _, r = self.redeem(self.ticket(sid='session-' + 'b' * 32))
+        self.verdict = 'refused'
+        with self.assertLogs(standin.log, 'INFO') as logs:
+            self.finish(r['token'])
+        self.assertIn('finished; the party answered 200 (result refused)', '\n'.join(logs.output))
+
+    @unittest.skipUnless(UNIX, 'Unix sockets')
+    def test_the_report_reads_the_verdict_from_the_partys_reply(self):
+        import socketserver
+        tmp = tempfile.TemporaryDirectory(prefix='avr', dir='/tmp')
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, 'p.sock')
+        for reply, want in ((b'{"ok": true, "result": "accepted"}', (200, 'accepted')),
+                            (b'{"ok": true, "result": "refused", "reason": "x"}', (200, 'refused')),
+                            (b'{"ok": true}', (200, None)), (b'not json', (200, None)), (b'[1]', (200, None))):
+            class Handler(socketserver.StreamRequestHandler):
+                def handle(self, reply=reply):
+                    while self.rfile.readline() not in (b'\r\n', b''):
+                        pass
+                    self.wfile.write(b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: '
+                                     + str(len(reply)).encode() + b'\r\n\r\n' + reply)
+            server = socketserver.UnixStreamServer(path, Handler)
+            threading.Thread(target=server.handle_request, daemon=True).start()
+            self.assertEqual(standin.report_to(path)('m'), want, reply)
+            server.server_close()
+            os.unlink(path)
+        self.assertEqual(standin.report_to(path)('m'), (None, None))             # nobody there
 
     def test_nothing_secret_is_logged(self):
         with self.assertLogs(standin.log, 'INFO') as logs:

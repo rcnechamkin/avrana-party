@@ -8,14 +8,14 @@
   "screen": "no_tv_needed",
   "input": {"model": "browser_native"},
   "late_join": "spectator_only",
-  "spectators": "none",
+  "spectators": "watch",
   "private_player_ui": true,
   "runtime": {"type": "external", "start": "service"},
   "presentations": [
     {
       "id": "phone_table",
       "method": "browser_native",
-      "roles": ["player"],
+      "roles": ["player", "spectator"],
       "requires": {"device": ["websocket"]}
     }
   ],

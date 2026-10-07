@@ -15,8 +15,8 @@
 #   users and groups  system user and group avrana-party (nologin, no home); groups avrana-front
 #                     (members avrana-party, www-data) and avrana-games; www-data only if absent
 #   /etc/avrana-party              party-core.json, games.d/, game-keys/ (0700 avrana-party)
-#   /opt/avrana-party              releases/ci (a copy of avrana/, contracts/, deploy/games/, one
-#                                  test fixture) and the symlink current
+#   /opt/avrana-party              releases/ci (a copy of avrana/, contracts/, deploy/games/,
+#                                  ops/provision-game, one test fixture) and the symlink current
 #   /etc/systemd/system            avrana-party-core.{service,socket}, avrana-game@.{socket,service},
 #                                  avrana-game@standin.service.d/, the .wants symlinks
 #   runtime and state              /run/avrana-games, /run/avrana-party, /run/avrana-native-game-proof,
@@ -117,6 +117,11 @@ sha_of() { sha256sum "$1" | cut -d' ' -f1; }                 # compared, never p
 prov() { (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.provision_game "$@"); }
 driver() { python3 "$here/driver.py" --state "$work/driver.json" "$@"; }
 party_status() { curl -fsS --max-time 10 -H 'Host: party.ci.test' http://127.0.0.1:8191/party/api/status; }
+refused() {  # refused <name> <text the refusal must contain>: $rc is 1 and $out says why (set by `capture`)
+    check "$1" 0 "$([[ $rc == 1 && $out == *"$2"* ]] && echo 0 || echo 1)"
+}
+accepted_line='finished; the party answered 200 (result accepted)'
+accepted_count() { journalctl --sync >/dev/null 2>&1 || true; journalctl -u "$game" --no-pager 2>/dev/null | grep -cF -- "$accepted_line" || true; }
 journal_has() { journalctl --sync >/dev/null 2>&1 || true; journalctl -u "$1" --no-pager 2>/dev/null | grep -qF -- "$2"; }
 
 echo "systemd $(systemctl --version | head -n1 | awk '{print $2}'), kernel $(uname -r), $(uname -m), $(python3 --version)"
@@ -145,6 +150,8 @@ t 'game-keys is 0700 avrana-party:avrana-party' 0 test "$(stat -c '%a %U:%G' "$k
 install -d -m 0755 /opt/avrana-party /opt/avrana-party/releases "$rel" "$rel/deploy" "$rel/tests/fixtures/appliances"
 cp -r "$repo/avrana" "$repo/contracts" "$rel/"
 cp -r "$repo/deploy/games" "$rel/deploy/games"
+install -d -m 0755 "$rel/ops"
+install -m 0755 "$repo/ops/provision-game" "$rel/ops/provision-game"      # the wrapper, run once below
 cp "$repo/tests/fixtures/appliances/ci-standin.json" "$fixture"
 find "$rel" -name __pycache__ -type d -prune -exec rm -rf {} +
 chown -R root:root /opt/avrana-party
@@ -197,7 +204,14 @@ since_before=$(systemctl show -p ActiveEnterTimestampMonotonic --value "$party")
 capture prov standin --appliance "$fixture" --dry-run
 show 'dry run' "$out"
 check 'provision --dry-run exits 0 and says it would create the key' 0 "$([[ $rc == 0 && $out == *'would change key'* ]] && echo 0 || echo 1)"
-t 'a dry run changed nothing (no key, no registry entry)' nonzero test -e "$key" -o -e "$entry"
+t 'a dry run changed nothing (no key, no registry entry, no template units, no drop-in)' nonzero \
+    test -e "$key" -o -e "$entry" -o -e "$unit_dir/avrana-game@.socket" -o -e "$unit_dir/avrana-game@.service" -o -e "$dropin_dir"
+t 'a dry run enabled nothing (the socket unit is not enabled)' nonzero systemctl is-enabled --quiet avrana-game@standin.socket
+capture "$rel/ops/provision-game" standin --appliance "$fixture" --dry-run          # the wrapper, from the release tree
+show 'dry run through ops/provision-game' "$out"
+check 'ops/provision-game (the wrapper) runs from the release tree: exit 0 and it would create the key' 0 \
+    "$([[ $rc == 0 && $out == *'would change key'* ]] && echo 0 || echo 1)"
+t 'the wrapper dry run changed nothing either' nonzero test -e "$key" -o -e "$entry" -o -e "$dropin_dir"
 
 capture prov standin --appliance "$fixture"
 show 'provision' "$out"
@@ -212,17 +226,22 @@ capture prov standin --appliance "$fixture"
 show 'second run' "$out"
 check 'a second run exits 0 and has nothing to change' 0 "$([[ $rc == 0 && $out == *'nothing to change'* ]] && echo 0 || echo 1)"
 t 'a second run leaves the key unchanged' 0 test "$(sha_of "$key")" = "$sha1"
+chmod 0775 "$rel"                                    # the game's code directory becomes group-writable
+capture prov standin --appliance "$fixture"
+show 'code not root-owned' "$out"
+refused 'a run is refused when the working directory is writable by a group (root-owned code only)' 'root-owned code'
+chmod 0755 "$rel"
 
 # ---- g. refusals ---------------------------------------------------------------------------------------
 capture prov nosuchgame --appliance "$fixture"
 show 'unknown slug' "$out"
-check 'an unknown slug is refused (exit 1)' 0 "$([[ $rc == 1 ]] && echo 0 || echo 1)"
+refused 'an unknown slug is refused (exit 1) with "no Game Contract"' 'no Game Contract'
 capture prov bluff --appliance "$fixture"
 show 'no grant' "$out"
-check 'a game with a contract but no grant in the profile is refused (exit 1)' 0 "$([[ $rc == 1 ]] && echo 0 || echo 1)"
+refused 'a game with a contract but no grant in the profile is refused (exit 1) with "no grant"' 'no grant'
 capture prov standin --appliance "$tree/contracts/appliances/avrana-pi4.json"
 show 'product profile' "$out"
-check 'the stand-in against the real product appliance profile is refused (exit 1)' 0 "$([[ $rc == 1 ]] && echo 0 || echo 1)"
+refused 'the stand-in against the real product appliance profile is refused (exit 1) with "no grant"' 'no grant'
 t 'refusals created nothing' 0 test "$(ls /etc/avrana-party/games.d | paste -sd,)" = standin.json -a "$(ls "$keydir" | paste -sd,)" = standin.key
 
 # ---- h. the full session over real socket activation, then the boundary checker ------------------------
@@ -231,7 +250,8 @@ check 'a full session: two phones, launch, tickets, redeems, strangers refused, 
 t 'the game (a DynamicUser instance, socket-activated) is running' 0 systemctl is-active --quiet "$game"
 t 'the game received the signed launch (journal)' 0 journal_has "$game" 'launched ('
 t 'the game reported its signed ended and the party answered 200 (journal)' 0 journal_has "$game" 'finished; the party answered 200'
-t 'Party Core did not refuse the result (journal has no "result refused")' nonzero journal_has "$party" 'result refused'
+check 'Party Core accepted the result of session 1 (the game logged: finished; the party answered 200 (result accepted))' 0 \
+    "$([[ $(accepted_count) == 1 ]] && echo 0 || echo 1)"
 t 'Party Core was not restarted by any of it' 0 test "$(systemctl show -p ExecMainPID --value "$party")" = "$pid_before"
 
 (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.boundary --phase 2 --json) > "$work/phase2.json" || true
@@ -271,9 +291,17 @@ s=$(status driver --hold)
 check 'a second session is launched and held live' 0 "$s"
 capture prov standin --appliance "$fixture" --rotate
 show 'rotate during a session' "$out"
-check 'rotate is refused while the game has a session (exit 1)' 0 "$([[ $rc == 1 ]] && echo 0 || echo 1)"
+refused 'rotate is refused while the game has a session (exit 1) with "has a session running"' 'has a session running'
 t 'the refused rotation left the key unchanged' 0 test "$(sha_of "$key")" = "$sha_live"
 t 'the refused rotation did not stop the game' 0 systemctl is-active --quiet "$game"
+capture prov standin --appliance "$fixture" --remove
+show 'remove during a session' "$out"
+refused 'remove is refused while the game has a session (exit 1) with "has a session running"' 'has a session running'
+t 'the refused removal removed nothing (key, entry, drop-in, socket file, enabled socket unit)' 0 \
+    bash -c 'test -s "$1" && test -s "$2" && test -s "$3/exec.conf" && test -S "$4" && systemctl is-enabled --quiet avrana-game@standin.socket' _ \
+    "$key" "$entry" "$dropin_dir" "$sock"
+t 'the refused removal left the key unchanged' 0 test "$(sha_of "$key")" = "$sha_live"
+t 'the refused removal did not stop the game' 0 systemctl is-active --quiet "$game"
 s=$(status driver --end)
 check 'the host ends the held session from Party Home' 0 "$s"
 sleep 7                                   # longer than Party Core's status cache (5 s): rotate must not see the old session
@@ -287,6 +315,9 @@ sleep 2                                   # Party Core re-reads the registry on 
 s=$(status driver)
 check 'a fresh full session works with the new key (game restarted, Party reloaded)' 0 "$s"
 t 'the game is running again with the new key' 0 systemctl is-active --quiet "$game"
+check 'Party Core accepted the result of the session after the rotation too (two accepted lines in all)' 0 \
+    "$([[ $(accepted_count) == 2 ]] && echo 0 || echo 1)"
+sleep 7                                   # longer than Party Core's status cache: remove must not see the finished session as live
 
 # ---- j. remove -----------------------------------------------------------------------------------------
 capture prov standin --appliance "$fixture" --remove

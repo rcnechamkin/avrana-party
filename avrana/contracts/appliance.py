@@ -26,6 +26,12 @@ RESERVED_PREFIXES = ('/party/', '/admin/', '/shared/')
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')       # written into a systemd unit: no newline, no control character
 
 
+def _plain_path(path):
+    """No `.` or `..` component and no `//`: the path names one place, and the root-owned-code
+    check (provision-game) walks the same components that systemd will."""
+    return '//' not in path and not any(part in ('.', '..') for part in path.split('/'))
+
+
 def runtime_problems(runtime, where):
     """A native game's `runtime` (AVR-236): {"command": [absolute path, args...], "working_directory": "/abs"}."""
     if not isinstance(runtime, dict) or set(runtime) != {'command', 'working_directory'}:
@@ -37,9 +43,13 @@ def runtime_problems(runtime, where):
         p.append(f'{where}.command: a non-empty list of non-empty strings without control characters')
     elif not command[0].startswith('/'):
         p.append(f'{where}.command: the first element is an absolute path')
+    elif not _plain_path(command[0]):
+        p.append(f'{where}.command: the first element has no "." or ".." component and no "//"')
     cwd = runtime['working_directory']
     if not isinstance(cwd, str) or not cwd.startswith('/') or CONTROL.search(cwd):
         p.append(f'{where}.working_directory: an absolute path without control characters')
+    elif not _plain_path(cwd) or cwd.endswith('\\'):
+        p.append(f'{where}.working_directory: no "." or ".." component, no "//" and no trailing backslash')
     return p
 
 

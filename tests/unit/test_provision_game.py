@@ -57,8 +57,10 @@ class Provisioning(unittest.TestCase):
     def run_(self, argv):
         self.calls.append(argv)
 
-    def own(self, path):
-        self.owned.append(Path(path))
+    def own(self, target):
+        """Records what `own` was handed: the directory by path, the key by OPEN DESCRIPTOR (an
+        int: nothing can be swapped under it), recorded as ('fd', inode of that file)."""
+        self.owned.append(('fd', os.fstat(target).st_ino) if isinstance(target, int) else Path(target))
 
     def provision(self, slug='checkers', **kw):
         return pg.provision(slug, self.layout, CONTRACTS, GRANTS, self.run_, self.own, **kw)
@@ -74,7 +76,9 @@ class Provisioning(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(key.parent.stat().st_mode), 0o700)
         self.assertEqual(self.owned, [key.parent, self.owned[1]])        # the directory, then the key
-        self.assertEqual(self.owned[1].parent, key.parent)
+        self.assertEqual(self.owned[1][0], 'fd')                         # the key by descriptor, never by name
+        if os.name == 'posix':
+            self.assertEqual(self.owned[1][1], key.stat().st_ino)        # that descriptor was the file now in place
         self.assertEqual(self.tree(), PROVISIONED)
         entry = json.loads(self.layout.entry('checkers').read_text(encoding='utf-8'))
         self.assertEqual(entry, {'id': 'checkers', 'socket': self.layout.socket('checkers').as_posix(),
@@ -96,8 +100,27 @@ class Provisioning(unittest.TestCase):
         self.owned.clear()
         self.assertEqual(self.provision(), [])
         self.assertEqual((self.layout.key('checkers').read_bytes(), self.layout.entry('checkers').read_bytes()), (key, entry))
-        self.assertEqual(self.calls, [['systemctl', 'enable', '--now', 'avrana-game@checkers.socket']])   # no reload
+        # nothing written, no daemon-reload; but the socket is enabled and Party Core reloaded every
+        # run, so a run that failed half way is repaired by running again
+        self.assertEqual(self.calls, [['systemctl', 'enable', '--now', 'avrana-game@checkers.socket'],
+                                      ['systemctl', 'reload', 'avrana-party-core.service']])
         self.assertEqual(self.owned, [])
+
+    def test_a_failed_run_is_repaired_by_running_again(self):
+        import subprocess
+
+        def failing(argv):
+            if argv[1] == 'enable':
+                raise subprocess.CalledProcessError(1, argv)
+            self.calls.append(argv)
+        with self.assertRaises(subprocess.CalledProcessError):
+            pg.provision('checkers', self.layout, CONTRACTS, GRANTS, failing, self.own)
+        self.assertEqual(self.tree(), PROVISIONED)                      # everything was written, nothing reloaded
+        self.assertNotIn(['systemctl', 'reload', 'avrana-party-core.service'], self.calls)
+        self.calls.clear()
+        self.assertEqual(self.provision(), [])                           # the change list is unchanged: nothing to write
+        self.assertEqual(self.calls, [['systemctl', 'enable', '--now', 'avrana-game@checkers.socket'],
+                                      ['systemctl', 'reload', 'avrana-party-core.service']])
 
     def test_reconcile_rewrites_a_drifted_entry_and_keeps_key_and_state(self):
         self.provision()
@@ -151,7 +174,16 @@ class Provisioning(unittest.TestCase):
             self.layout.socket(slug).parent.mkdir(parents=True, exist_ok=True)
             self.layout.socket(slug).write_text('', encoding='utf-8')
         self.calls.clear()
-        self.assertEqual(pg.remove('checkers', self.layout, self.run_), ['registry', 'dropin', 'key', 'socket', 'state'])
+        seen = []
+
+        def snapshot(argv):                 # which of the game's files exist at each systemctl call
+            self.calls.append(argv)
+            seen.append((argv[1], self.layout.entry('checkers').exists(), self.layout.key('checkers').exists()))
+        self.assertEqual(pg.remove('checkers', self.layout, snapshot), ['registry', 'dropin', 'key', 'socket', 'state'])
+        # (call, registry entry exists, key exists): the entry is gone before Party reloads, and the
+        # key is still there at that first reload; at the last reload both are gone
+        self.assertEqual(seen, [('disable', True, True), ('stop', True, True), ('reload', False, True),
+                                ('reload', False, False), ('daemon-reload', False, False)])
         self.assertEqual([p for p in self.tree() if 'checkers' in p], [])
         self.assertFalse(self.layout.state('checkers').exists())
         self.assertFalse(self.layout.dropin_dir('checkers').exists())
@@ -162,9 +194,56 @@ class Provisioning(unittest.TestCase):
         self.assertEqual(self.calls, [['systemctl', 'disable', '--now', 'avrana-game@checkers.socket'],
                                       ['systemctl', 'stop', 'avrana-game@checkers.service'],
                                       ['systemctl', 'reload', 'avrana-party-core.service'],
+                                      ['systemctl', 'reload', 'avrana-party-core.service'],
                                       ['systemctl', 'daemon-reload']])
         # the entry goes before the key, so Party Core never reloads onto an entry with no key
         self.assertEqual(pg.remove('checkers', self.layout, self.run_), [])             # again: nothing left
+
+    def test_remove_is_refused_during_that_games_session_before_anything_is_stopped(self):
+        self.provision()
+        before = self.tree()
+        self.calls.clear()
+        asked = []
+        for fn in (lambda a: pg.remove('checkers', self.layout, self.run_, active=a),
+                   lambda a: pg.plan_remove('checkers', self.layout, active=a)):
+            with self.assertRaisesRegex(pg.Refused, 'has a session running; end it from Party Home first'):
+                fn(lambda slug: asked.append(slug) or True)
+        self.assertEqual((asked, self.calls, self.tree()), (['checkers', 'checkers'], [], before))
+        self.assertEqual(pg.remove('checkers', self.layout, self.run_, active=lambda slug: False),
+                         ['registry', 'dropin', 'key'])
+
+    def test_a_second_remove_still_reloads_party_core_and_tolerates_a_failed_reload(self):
+        import subprocess
+        self.provision()
+        pg.remove('checkers', self.layout, self.run_)
+        self.calls.clear()
+        self.assertEqual(pg.remove('checkers', self.layout, self.run_), [])             # nothing left, but Party reloads
+        self.assertEqual(self.calls, [['systemctl', 'disable', '--now', 'avrana-game@checkers.socket'],
+                                      ['systemctl', 'stop', 'avrana-game@checkers.service'],
+                                      ['systemctl', 'reload', 'avrana-party-core.service'],
+                                      ['systemctl', 'daemon-reload']])
+        calls = []
+
+        def reload_fails(argv):
+            calls.append(argv)
+            if argv[1] == 'reload':
+                raise subprocess.CalledProcessError(1, argv)
+        self.assertEqual(pg.remove('checkers', self.layout, reload_fails), [])
+        self.assertEqual(calls[-1], ['systemctl', 'daemon-reload'])                      # the rest still goes
+
+    def test_rotate_fails_when_stop_or_reload_fails_and_a_plain_rerun_reloads(self):
+        import subprocess
+        self.provision()
+        for failing in ('stop', 'reload'):
+            def run(argv, failing=failing):
+                if argv[1] == failing:
+                    raise subprocess.CalledProcessError(1, argv)
+                self.calls.append(argv)
+            with self.assertRaises(subprocess.CalledProcessError, msg=failing):
+                pg.rotate('checkers', self.layout, CONTRACTS, GRANTS, run, self.own, lambda s: False)
+            self.calls.clear()
+            self.assertEqual(self.provision(), [])
+            self.assertIn(['systemctl', 'reload', 'avrana-party-core.service'], self.calls)   # I3's repair
 
     def test_remove_can_keep_the_state_directory_and_needs_no_contract(self):
         self.provision()
@@ -191,7 +270,8 @@ class Provisioning(unittest.TestCase):
         self.assertEqual(self.provision(), ['unit avrana-game@.socket'])
         self.assertEqual(socket_unit.read_bytes(), (TEMPLATES / 'avrana-game@.socket').read_bytes())
         self.assertEqual(self.calls, [['systemctl', 'daemon-reload'],
-                                      ['systemctl', 'enable', '--now', 'avrana-game@checkers.socket']])   # no Party reload
+                                      ['systemctl', 'enable', '--now', 'avrana-game@checkers.socket'],
+                                      ['systemctl', 'reload', 'avrana-party-core.service']])
 
     def test_a_changed_runtime_rewrites_only_the_dropin_and_restarts_nothing(self):
         self.provision()
@@ -200,7 +280,8 @@ class Provisioning(unittest.TestCase):
         self.assertEqual(pg.provision('checkers', self.layout, CONTRACTS, grants, self.run_, self.own), ['dropin'])
         self.assertIn('WorkingDirectory=/srv/checkers\n', self.layout.dropin('checkers').read_text(encoding='utf-8'))
         self.assertEqual(self.calls, [['systemctl', 'daemon-reload'],
-                                      ['systemctl', 'enable', '--now', 'avrana-game@checkers.socket']])
+                                      ['systemctl', 'enable', '--now', 'avrana-game@checkers.socket'],
+                                      ['systemctl', 'reload', 'avrana-party-core.service']])
         self.assertNotRegex(' '.join(' '.join(c) for c in self.calls), r'restart|stop|start ')
 
     def test_a_grant_without_runtime_is_refused_before_anything_is_written(self):
@@ -371,13 +452,13 @@ class SessionQuery(unittest.TestCase):
         def down(url, timeout):
             raise urllib.error.URLError(ConnectionRefusedError())
 
-        def slow(url, timeout):
-            raise TimeoutError()
+        def bare_down(url, timeout):
+            raise ConnectionRefusedError()
 
         def broken(url, timeout):
             raise urllib.error.HTTPError(url, 500, 'x', {}, None)
-        self.assertFalse(pg.party_session_check('http://x', down)('checkers'))
-        self.assertFalse(pg.party_session_check('http://x', slow)('checkers'))
+        self.assertFalse(pg.party_session_check('http://x', down)('checkers'))          # nobody is listening
+        self.assertFalse(pg.party_session_check('http://x', bare_down)('checkers'))
         with self.assertRaises(pg.Refused):
             pg.party_session_check('http://x', broken)('checkers')
 
@@ -385,6 +466,158 @@ class SessionQuery(unittest.TestCase):
             body = b'<html>'
         with self.assertRaises(pg.Refused):
             pg.party_session_check('http://x', lambda url, timeout: Junk({}))('checkers')
+
+
+    def test_a_timeout_or_any_other_failure_is_refused_not_taken_for_no_party(self):
+        """Party Core may be there and busy (an uncached status build takes seconds): only a
+        refused connection means nobody is listening."""
+        import socket
+        for name, exc, text in (('bare timeout', TimeoutError(), 'did not answer in time'),
+                                ('socket.timeout', socket.timeout(), 'did not answer in time'),
+                                ('URLError timeout', urllib.error.URLError(TimeoutError()), 'did not answer in time'),
+                                ('URLError socket.timeout', urllib.error.URLError(socket.timeout()), 'did not answer in time'),
+                                ('reset', ConnectionResetError(), 'ConnectionResetError'),
+                                ('unreachable', urllib.error.URLError(OSError(113, 'no route')), 'OSError'),
+                                ('dns', urllib.error.URLError(socket.gaierror(-2, 'x')), 'gaierror'),
+                                ('other OSError', OSError('x'), 'OSError')):
+            def opener(url, timeout, exc=exc):
+                raise exc
+            with self.assertRaises(pg.Refused, msg=name) as e:
+                pg.party_session_check('http://x', opener)('checkers')
+            self.assertIn(text, str(e.exception), name)
+            self.assertIn('not rotating', str(e.exception), name)
+
+    def test_the_query_waits_long_enough_for_an_uncached_status_build(self):
+        seen = []
+
+        def opener(url, timeout):
+            seen.append(timeout)
+            return Response(STATUS_IDLE)
+        pg.party_session_check('http://x', opener)('checkers')
+        self.assertEqual(seen, [10])
+
+
+class Hardening(unittest.TestCase):
+    """The temporary key is never chmod-ed or chown-ed by name; the root-owned-code check; a
+    game id is matched in full."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    @unittest.skipUnless(os.name == 'posix', 'descriptors and O_EXCL symlink semantics are POSIX')
+    def test_a_link_planted_at_the_temporary_name_cannot_redirect_ownership(self):
+        import unittest.mock
+        victim = self.root / 'victim'
+        victim.write_text('not a key\n', encoding='utf-8')
+        os.chmod(victim, 0o644)
+        owned = []
+        key = self.root / 'keys' / 'g.key'
+        key.parent.mkdir()
+        (key.parent / '.g.key.abababab').symlink_to(victim)
+        with unittest.mock.patch.object(pg.secrets, 'token_hex', lambda n: 'ab' * n):
+            with self.assertRaises(FileExistsError):            # O_EXCL: a planted name is never opened
+                pg._write_key(key, owned.append)
+        self.assertEqual((victim.read_text(encoding='utf-8'), stat.S_IMODE(victim.stat().st_mode)), ('not a key\n', 0o644))
+        self.assertTrue(all(isinstance(o, Path) for o in owned))      # only the directory, by path
+        self.assertFalse(key.exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'descriptors are POSIX')
+    def test_the_key_is_owned_through_the_open_descriptor_and_never_by_name(self):
+        handed = []
+        key = self.root / 'keys' / 'g.key'
+        pg._write_key(key, handed.append)
+        self.assertEqual([isinstance(h, int) for h in handed], [False, True])       # directory by path, key by descriptor
+        self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
+
+    @unittest.skipUnless(os.name == 'posix', 'symbolic links')
+    def test_a_key_directory_that_is_a_link_is_refused(self):
+        real = self.root / 'real'
+        real.mkdir()
+        (self.root / 'keys').symlink_to(real, target_is_directory=True)
+        owned = []
+        with self.assertRaisesRegex(pg.Refused, 'symbolic link'):
+            pg._write_key(self.root / 'keys' / 'g.key', owned.append)
+        self.assertEqual((owned, list(real.iterdir())), ([], []))
+
+    def test_the_real_own_refuses_a_linked_directory_and_takes_a_descriptor(self):
+        import unittest.mock
+        with unittest.mock.patch.object(pg, '_phase_1', lambda: (1, 2)), \
+                unittest.mock.patch.object(pg.os, 'chown', create=True) as chown:
+            pg.real_own(7)
+            chown.assert_called_once_with(7, 1, 2)
+            chown.reset_mock()
+            plain = self.root / 'plain'
+            plain.mkdir()
+            pg.real_own(plain)
+            self.assertEqual(chown.call_args.args, (plain, 1, 2))
+            link = self.root / 'link'
+            try:
+                link.symlink_to(plain, target_is_directory=True)
+            except OSError:
+                self.skipTest('this account cannot create symbolic links')
+            chown.reset_mock()
+            with self.assertRaisesRegex(pg.Refused, 'symbolic link'):
+                pg.real_own(link)
+            chown.assert_not_called()
+
+    def test_the_root_owned_code_decision_on_injected_stat_results(self):
+        from types import SimpleNamespace as St
+        d755, f755 = stat.S_IFDIR | 0o755, stat.S_IFREG | 0o755
+        table = {'/': St(st_uid=0, st_mode=d755), '/opt': St(st_uid=0, st_mode=d755),
+                 '/opt/g': St(st_uid=0, st_mode=d755), '/opt/g/run': St(st_uid=0, st_mode=f755)}
+
+        def why(path, **changes):
+            seen = {**table, **{k.replace('_', '/'): v for k, v in changes.items()}}
+
+            def lstat(part):
+                if part not in seen:
+                    raise FileNotFoundError(part)
+                return seen[part]
+            return pg.untrusted_reason(path, lstat, lambda p: p)
+        self.assertIsNone(why('/opt/g/run'))
+        self.assertIsNone(why('/opt/g'))
+        self.assertIn('/opt/g/missing does not exist', why('/opt/g/missing'))
+        self.assertIn('/opt/g is not owned by root', why('/opt/g/run', _opt_g=St(st_uid=1000, st_mode=d755)))
+        self.assertIn('/opt is writable by a group or others', why('/opt/g/run', _opt=St(st_uid=0, st_mode=stat.S_IFDIR | 0o775)))
+        self.assertIn('/ is writable', why('/opt/g/run', _=St(st_uid=0, st_mode=stat.S_IFDIR | 0o757)))
+        self.assertIn('/opt/g/run is writable', why('/opt/g/run', _opt_g_run=St(st_uid=0, st_mode=stat.S_IFREG | 0o722)))
+        self.assertIn('/opt/g/run is not owned by root', why('/opt/g/run', _opt_g_run=St(st_uid=1000, st_mode=f755)))
+        # a link is followed: the resolved path is checked as well as the ancestors of the link
+        link = {'/opt/l': St(st_uid=0, st_mode=stat.S_IFLNK | 0o777)}
+        resolved = lambda p: '/opt/g/run' if p == '/opt/l' else p
+        self.assertIsNone(pg.untrusted_reason('/opt/l', lambda part: {**table, **link}[part], resolved))
+        bad = {**table, **link, '/opt/g': St(st_uid=1000, st_mode=d755)}
+        self.assertIn('/opt/g is not owned by root', pg.untrusted_reason('/opt/l', lambda part: bad[part], resolved))
+        with self.assertRaisesRegex(pg.Refused, r'root-owned code \(ADR 0016 section 2\)'):
+            pg.trusted_path('/nonexistent-avrana/x')
+
+    def test_provision_checks_trust_before_writing_anything(self):
+        layout = pg.Layout(key_dir=self.root / 'keys', registry_dir=self.root / 'games.d', socket_dir=self.root / 'run',
+                           state_dir=self.root / 'var', unit_dir=self.root / 'units', template_dir=TEMPLATES)
+        asked, calls = [], []
+
+        def distrust(path):
+            asked.append(path)
+            raise pg.Refused(f'{path}: not root-owned')
+        with self.assertRaisesRegex(pg.Refused, 'not root-owned'):
+            pg.provision('checkers', layout, CONTRACTS, GRANTS, calls.append, lambda t: None, trusted=distrust)
+        self.assertEqual((asked, calls, list(self.root.rglob('*'))), (['/opt/games/checkers/run'], [], []))
+        asked.clear()
+        pg.provision('checkers', layout, CONTRACTS, GRANTS, calls.append, lambda t: None, trusted=asked.append)
+        self.assertEqual(asked, ['/opt/games/checkers/run', '/opt/games/checkers'])      # command, then working directory
+
+    def test_a_game_id_is_matched_in_full(self):
+        layout = pg.Layout(key_dir=self.root, registry_dir=self.root, socket_dir=self.root, state_dir=self.root,
+                           unit_dir=self.root, template_dir=TEMPLATES)
+        for slug in ('checkers\n', 'checkers\n\n'):
+            with self.assertRaisesRegex(pg.Refused, 'not a game id'):
+                pg.check(slug, CONTRACTS, GRANTS)
+            with self.assertRaisesRegex(pg.Refused, 'not a game id'):
+                pg.remove(slug, layout, lambda argv: None)
+            with self.assertRaisesRegex(pg.Refused, 'not a game id'):
+                pg.plan_remove(slug, layout)
 
 
 class CommandLine(unittest.TestCase):
@@ -474,6 +707,99 @@ class CommandLine(unittest.TestCase):
         code = pg.main(['checkers', '--rotate', *paths], run=self.calls.append, own=self.owned.append, is_root=True,
                        opener=down, contracts=CONTRACTS, appliance_doc=self.doc, out=out, err=err)
         self.assertEqual((code, out.getvalue()), (0, 'checkers: replaced key\n'))
+
+    def test_rotate_reports_failure_when_systemctl_fails(self):
+        import subprocess
+        self.main('checkers')
+        out, err = io.StringIO(), io.StringIO()
+
+        def run(argv):
+            if argv[1] == 'stop':
+                raise subprocess.CalledProcessError(1, argv)
+        paths = ['--key-dir', str(self.root / 'keys'), '--registry-dir', str(self.root / 'games.d'),
+                 '--unit-dir', str(self.root / 'units'), '--template-dir', str(TEMPLATES)]
+        code = pg.main(['checkers', '--rotate', *paths], run=run, own=self.owned.append, is_root=True,
+                       opener=lambda url, timeout: Response(STATUS_IDLE), contracts=CONTRACTS,
+                       appliance_doc=self.doc, out=out, err=err)
+        self.assertEqual((code, out.getvalue()), (1, ''))
+        self.assertIn('failed: systemctl stop avrana-game@checkers.service exited 1', err.getvalue())
+
+    def test_a_failed_party_reload_names_the_likely_cause(self):
+        import subprocess
+        out, err = io.StringIO(), io.StringIO()
+
+        def run(argv):
+            if argv[1] == 'reload':
+                raise subprocess.CalledProcessError(1, argv)
+        paths = ['--key-dir', str(self.root / 'keys'), '--registry-dir', str(self.root / 'games.d'),
+                 '--unit-dir', str(self.root / 'units'), '--template-dir', str(TEMPLATES)]
+        code = pg.main(['checkers', *paths], run=run, own=self.owned.append, is_root=True,
+                       opener=lambda url, timeout: Response(STATUS_IDLE), contracts=CONTRACTS,
+                       appliance_doc=self.doc, out=out, err=err)
+        self.assertEqual((code, out.getvalue()), (1, ''))
+        self.assertIn('systemctl reload avrana-party-core.service exited 1', err.getvalue())
+        self.assertIn("no ExecReload=: reinstall deploy/party-core/avrana-party-core.service, "
+                      "see docs/runbooks/provision-game.md", err.getvalue())
+        self.assertEqual(self.main('checkers')[0], 0)                      # running again repairs it
+
+    def test_remove_is_refused_during_a_session_through_the_command_line(self):
+        self.main('checkers')
+        before = self.files()
+        self.calls.clear()
+        code, out, err = self.main('checkers', '--remove', status=status_with('checkers'))
+        self.assertEqual((code, out, self.calls, self.files()), (1, '', [], before))
+        self.assertIn('has a session running; end it from Party Home first', err)
+        self.assertEqual(self.main('checkers', '--remove', '--dry-run', status=status_with('checkers'))[0], 1)
+        self.assertEqual(self.main('checkers', '--remove', status=status_with('bluff'))[0], 0)    # another game's session
+
+    def test_remove_loads_no_contracts_and_needs_no_phase_1_identities(self):
+        def boom(*a, **k):
+            raise AssertionError('--remove must not load contracts or the appliance profile')
+
+        class Boom(dict):
+            def __getitem__(self, k):
+                boom()
+            get = __contains__ = __iter__ = items = keys = boom
+        self.main('checkers')
+        out, err = io.StringIO(), io.StringIO()
+        paths = ['--key-dir', str(self.root / 'keys'), '--registry-dir', str(self.root / 'games.d'),
+                 '--socket-dir', str(self.root / 'run'), '--state-dir', str(self.root / 'var'),
+                 '--unit-dir', str(self.root / 'units'), '--template-dir', str(TEMPLATES)]
+        import unittest.mock
+        # no injected `own`: the real one would need phase 1; a remove must not ask for it
+        with unittest.mock.patch.object(pg, '_phase_1', boom):
+            code = pg.main(['checkers', '--remove', *paths], run=self.calls.append, is_root=True,
+                           opener=lambda url, timeout: Response(STATUS_IDLE), contracts=Boom(),
+                           appliance_doc=Boom(), out=out, err=err)
+        self.assertEqual((code, err.getvalue()), (0, ''))
+        self.assertIn('removed registry', out.getvalue())
+        # with the loaders not injected either, the real ones are never reached
+        with unittest.mock.patch.object(pg, '_phase_1', boom), \
+                unittest.mock.patch('avrana.contracts.party_config.load_contracts', boom), \
+                unittest.mock.patch('avrana.contracts.appliance.load', boom):
+            code = pg.main(['checkers', '--remove', *paths], run=self.calls.append, is_root=True,
+                           opener=lambda url, timeout: Response(STATUS_IDLE), out=out, err=err)
+        self.assertEqual(code, 0)
+
+    def test_a_non_root_dry_run_that_cannot_read_the_key_store_says_so(self):
+        import unittest.mock
+        for args in (('checkers', '--dry-run'), ('checkers', '--remove', '--dry-run')):
+            with unittest.mock.patch.object(pg, 'plan_provision', side_effect=PermissionError(13, 'denied')), \
+                    unittest.mock.patch.object(pg, 'plan_remove', side_effect=PermissionError(13, 'denied')):
+                code, out, err = self.main(*args, root=False)
+            self.assertEqual((code, out), (1, ''), args)
+            self.assertIn('needs root to read the key store', err)
+            self.assertNotIn('Traceback', err)
+        with unittest.mock.patch.object(pg, 'plan_provision', side_effect=PermissionError(13, 'denied')):
+            code, _, err = self.main('checkers', '--dry-run', root=True)
+        self.assertEqual(code, 1)
+        self.assertNotIn('needs root', err)                                # root has another problem: say it
+
+    def test_the_not_root_refusal_does_not_promise_a_dry_run(self):
+        code, out, err = self.main('checkers', root=False)
+        self.assertEqual((code, out), (1, ''))
+        self.assertIn('must run as root', err)
+        self.assertNotIn('dry-run', err)
 
     def test_keep_state_through_the_command_line(self):
         self.main('checkers')
