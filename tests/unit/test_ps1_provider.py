@@ -9,6 +9,7 @@ BIOS or core anywhere. The X11, XTestPad and BANKS code was recovered from the d
 """
 import asyncio
 import contextlib
+import functools
 import hashlib
 import io
 import json
@@ -958,6 +959,22 @@ class ContentCheck(ContentFixture):
             with self.assertRaises(ps1.ProfileError):
                 ps1.load_core_pin(Path(folder) / 'absent.json')
 
+    def test_a_core_pin_the_parser_refuses_is_an_unusable_pin_not_a_traceback(self):
+        previous = sys.get_int_max_str_digits()
+        self.addCleanup(sys.set_int_max_str_digits, previous)
+        sys.set_int_max_str_digits(4300)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'pin.json'
+            for label, text in (('digits', '{"so_sha256": ' + '9' * 5000 + '}'), ('brackets', '[' * 8000 + ']' * 8000)):
+                path.write_text(text, encoding='utf-8')
+                with self.subTest(label), self.assertRaises(ps1.ProfileError):
+                    ps1.load_core_pin(path)
+        deep = mock.patch.object(ps1.strictjson, 'load_path', side_effect=RecursionError('maximum recursion depth'))
+        with deep, self.assertRaisesRegex(ps1.ProfileError, 'cannot be read'):
+            ps1.load_core_pin()
+        with deep:                                                   # and the check says so instead of raising
+            self.assertEqual(self.failing(self.check(pin=None)), [('core', 'core_pin_invalid')])
+
     def test_the_pin_is_what_decides_not_the_core_file_name(self):
         """A file called pcsx_rearmed_libretro.so with other bytes is not the pinned build."""
         shipped = ps1.load_core_pin()['so_sha256']
@@ -1008,6 +1025,18 @@ class CommandLine(ContentFixture):
         self.assertEqual((code, out), (1, ''))
         self.assertIn('ps1: unknown title', err)
         self.assertEqual(self.run_main('check', '../x')[0], 1)
+
+    def test_a_profile_the_parser_refuses_ends_the_command_with_a_message_not_a_traceback(self):
+        previous = sys.get_int_max_str_digits()
+        self.addCleanup(sys.set_int_max_str_digits, previous)
+        sys.set_int_max_str_digits(4300)
+        titles = self.tmp / 'titles'
+        titles.mkdir()
+        (titles / 'bomberman.json').write_text('{"version": ' + '9' * 5000 + '}', encoding='utf-8')
+        with mock.patch.object(ps1, 'load_checked', functools.partial(ps1.load_checked, titles_dir=titles)):
+            code, out, err = self.run_main('check', 'bomberman')
+        self.assertEqual((code, out), (1, ''))
+        self.assertEqual(err, 'ps1: bomberman: invalid JSON (a number the parser cannot take)\n')
 
     def test_usage_errors_exit_two(self):
         for argv in ([], ['check'], ['launch', 'bomberman']):

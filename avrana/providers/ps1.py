@@ -206,6 +206,10 @@ def load(title_id, titles_dir=TITLES):
         raise ProfileError(f'{title_id}: invalid JSON ({e})') from None
     except UnicodeDecodeError:
         raise ProfileError(f'{title_id}: invalid JSON (not UTF-8 text)') from None
+    except RecursionError:          # thousands of open brackets fit in 16 KiB
+        raise ProfileError(f'{title_id}: invalid JSON (nested too deeply)') from None
+    except (ValueError, OverflowError):    # not a JSONDecodeError: an integer of over 4300 digits, for one
+        raise ProfileError(f'{title_id}: invalid JSON (a number the parser cannot take)') from None
     except OSError as e:
         raise ProfileError(f'{title_id}: cannot read the profile ({e.strerror})') from None
     return validate(p, title_id)
@@ -399,7 +403,7 @@ def load_core_pin(path=CORE_PIN):
     uses its so_sha256 only; the rest of the file is provenance."""
     try:
         pin = strictjson.load_path(path)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:
         raise ProfileError(f'the core pin {Path(path).name} cannot be read ({e})') from None
     try:
         _pin_sha256(pin)

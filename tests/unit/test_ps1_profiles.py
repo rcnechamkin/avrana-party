@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -303,6 +304,28 @@ class Validation(unittest.TestCase):
         for bad_id in ('../x', 'Worms', '', 'a' * 40, 'a\n', 'x.json', None, 7):
             with self.subTest(bad_id=bad_id), self.assertRaisesRegex(ps1.ProfileError, 'bad title id'):
                 ps1.load(bad_id, self.dir)
+
+    def test_an_integer_of_thousands_of_digits_is_a_refusal_not_a_traceback(self):
+        """Python 3.11 and later will not turn more than 4300 digits into an integer: a plain ValueError,
+        not a JSONDecodeError, and 5000 digits fit in a profile's 16 KiB."""
+        previous = sys.get_int_max_str_digits()
+        self.addCleanup(sys.set_int_max_str_digits, previous)
+        sys.set_int_max_str_digits(4300)                 # the default; an environment may have lifted it
+        self.put(raw='{"version": ' + '9' * 5000 + '}')
+        self.assertLess(os.path.getsize(os.path.join(self.dir, 'bomberman.json')), ps1.MAX_PROFILE_BYTES)
+        self.refused(why='invalid JSON (a number the parser cannot take)')
+        with mock.patch.object(ps1.json, 'load', side_effect=OverflowError('int too large to convert to float')):
+            self.refused(why='invalid JSON (a number the parser cannot take)')
+
+    def test_a_deeply_nested_profile_is_a_refusal_not_a_traceback(self):
+        """The parser stops a deep nesting with a RecursionError, which is not a JSONDecodeError either, and 8000
+        open brackets fit in 16 KiB. The parser raises inside load(), so nothing here recurses. (An interpreter
+        with a higher limit parses the list instead, and it is refused as not being an object.)"""
+        self.put(raw='[' * 8000 + ']' * 8000)
+        self.assertLess(os.path.getsize(os.path.join(self.dir, 'bomberman.json')), ps1.MAX_PROFILE_BYTES)
+        self.refused()
+        with mock.patch.object(ps1.json, 'load', side_effect=RecursionError('maximum recursion depth exceeded')):
+            self.refused(why='invalid JSON (nested too deeply)')
 
     def test_one_named_error_per_refusal(self):
         names = [ps1.DuplicateKeyError, ps1.UnknownKeysError, ps1.ContentPathError, ps1.SlotsExceedUsersError,
