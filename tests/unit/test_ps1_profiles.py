@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from avrana import REPO_ROOT
 from avrana.providers import ps1
@@ -269,6 +270,12 @@ class Validation(unittest.TestCase):
             self.assertEqual(ps1.cue_path(dict(self.good, cue='alias/game.cue'), root),
                              (Path(root).resolve() / 'real' / 'game.cue'))
 
+    def test_a_cue_path_that_loops_through_links_is_refused(self):
+        """Before Python 3.13, resolving links that loop raises RuntimeError instead of returning."""
+        with mock.patch.object(Path, 'resolve', side_effect=RuntimeError('Symlink loop from x')):
+            with self.assertRaisesRegex(ps1.ContentPathError, 'loops through links'):
+                ps1.cue_path(self.good, self.dir)
+
     def test_duplicate_keys_are_refused_by_name(self):
         self.put(raw='{"version": 1, "version": 1}')
         self.refused(ps1.DuplicateKeyError, 'duplicate key')
@@ -376,7 +383,8 @@ class ContractCrossCheck(unittest.TestCase):
         self.assertIn('multitap', self.mismatch('bomberman', contract=both))      # port 2 and disabled at once
 
     def test_every_difference_is_named_in_one_message(self):
-        message = self.mismatch('bomberman', profile={'serial': 'SLUS-00000', 'stream_slots': 2, 'multitap': 'disabled'})
+        message = self.mismatch('bomberman',
+                                profile={'serial': 'SLUS-00000', 'stream_slots': 2, 'multitap': 'disabled'})
         for field in ('serial', 'stream_slots', 'multitap', 'ps1-bomberman'):
             self.assertIn(field, message)
 
