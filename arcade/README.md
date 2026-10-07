@@ -96,7 +96,9 @@ picture yet" takes those words away.
   picture edge to edge at 4:3, one status line (an icon and words, never colour alone), and the
   controls under the thumbs: movement left, Fire and Magic right, Add coin and Start above them.
   Before a seat is held only the title is in the bar. The way back to the games hub (outside a
-  Party) and the Party Host's End sit in a footer, out of the picture's way.
+  Party) and the Party Host's End sit in a footer, out of the picture's way. Where the window is too
+  short for a full-width picture and the controls under it (a small phone, a tablet sideways, a
+  laptop), the picture is narrower rather than the page longer.
 - **Sideways (a phone under 600 px tall):** the picture takes the height under the bar, the controls
   float over its two ends (smoky material, no blur, so the stream is not slowed), and the status line
   goes quiet while the picture plays (it stays for a screen reader).

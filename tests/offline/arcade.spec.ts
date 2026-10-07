@@ -551,6 +551,20 @@ test('sideways, the picture takes the height and the controls sit over its two e
   await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');   // still there for a screen reader
 });
 
+test('a tablet sideways or a laptop window holds the whole page: the picture gives way, not the page', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await fakeTransport(page);
+  await open(page);
+  await page.locator('#connect').click();
+  await expect(page.locator('#status')).toHaveText('Player 1 connected. Add a coin to join.');
+  expect(await layoutProblems(page), 'connected').toEqual([]);
+  const m = await page.evaluate(() => ({
+    vh: innerHeight, scrollH: document.documentElement.scrollHeight, picture: document.querySelector('.screen')!.getBoundingClientRect().width,
+  }));
+  expect(m.scrollH, 'nothing to scroll').toBeLessThanOrEqual(m.vh);
+  expect(m.picture, 'the picture is still the main thing').toBeGreaterThan(300);
+});
+
 test('the seat and the connection state are said in an icon and in words', async ({ page }) => {
   await fakeTransport(page);
   await open(page);
