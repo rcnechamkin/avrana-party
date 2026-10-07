@@ -410,6 +410,8 @@
   .avrana-cover.wide { aspect-ratio: 16 / 9; }
   .avrana-cover.wide > img { object-position: 50% 0; }   /* a square cover keeps its top, where its subject is */
   .avrana-cover.wide.icon-art > img { object-fit: contain; padding: 0.75rem; }
+  /* A cover the owner supplied (box art) is shown whole in a wide frame, never cut to a strip. */
+  .avrana-cover.wide.own-art > img { object-fit: contain; object-position: 50% 50%; }
   .avrana-grid { display: grid; gap: 0.875rem 0.625rem; margin: 0; padding: 0; list-style: none; container: shelf / inline-size; }
   .avrana-grid > li { min-width: 0; }
   .avrana-grid.medium { grid-template-columns: repeat(3, minmax(0, 1fr)); }
