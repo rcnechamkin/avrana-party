@@ -71,7 +71,7 @@ class UInputAdapter(unittest.TestCase):
     def test_identical_to_the_original_pad(self):
         rng = random.Random(3)
         names = sorted(ARCADE.names)
-        for slot in (0, 1):
+        for slot in (0, 1, 2, 3):           # the four seats of Gauntlet II (AVR-311)
             old_log, new_log = [], []
             old = OriginalPad(fake_evdev(old_log), slot, old_log)
             new = UInputGamepadProvider(evdev=fake_evdev(new_log)).open(slot, ARCADE)

@@ -27,6 +27,7 @@ import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
+import { createGameOrigins, gameAddress } from './lib/game-origins.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
 import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
@@ -39,7 +40,7 @@ const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
-  partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
+  gamesKey: null, partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
   mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0,
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
@@ -615,6 +616,7 @@ function onLink({ ok, answered }) {
     if (state.failingSince === null) return;
     state.failingSince = null;
     clearTimeout(state.lostTimer);
+    gameOrigins.refresh();                      // the box may have restarted with other registrations
     renderLink();
     state.badCovers = new Set();                // a cover that did not load while the box was away is tried again
     refreshHealth();                            // what was off may be on again, and the other way
@@ -862,14 +864,18 @@ function onPartyView(view, previous = null) {
   else if (state.passed && previous && previous.party !== view.party) state.passed = null;   // a new Party: that was the last one's news
   const hosts = Boolean(view.me && view.me.host);
   if (hosts !== Boolean(previous && previous.me && previous.me.host)) refreshBox().then(renderBox);   // the Host's notice is the Host's
-  const url = destination(view, HOME, state.catalog);
+  // Party Core's game origins: asked again when the game list changes, or when the last ask failed.
+  const gamesKey = view.games.join(',');
+  if (state.gamesKey !== null && gamesKey !== state.gamesKey) gameOrigins.refresh(); else gameOrigins.retry();
+  state.gamesKey = gamesKey;
+  // Until Party Core's answer is known the address is the same-origin path; the phone does not
+  // leave on that guess (leaveForRound waits), and once it is known, refusing it keeps Party Home.
+  const url = destination(view, HOME, state.catalog, gameOrigins.isSettled() ? addressOf : null);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
-    const round = roundToRemember(view);       // a round this phone plays, while it is on
-    if (g && round) recordRound(g, round);
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
-    location.replace(url);
+    leaveForRound();
     return;
   }
   if (view.me && locationOf(view).at === 'setup') {
@@ -884,6 +890,29 @@ function onPartyView(view, previous = null) {
     if (!state.refocus) return;
     state.refocus = false;
     refocusStart();
+  });
+}
+
+/** Where this page's game addresses are decided (lib/game-origins.js): Party Core's registrations,
+ * never Limited Mode, never an address this page's own origin could be mistaken for. */
+function addressOf(game, entry) {
+  return gameAddress({ game, entry, origins: gameOrigins.get(), partyOrigin: location.origin,
+    limited: state.mode === LIMITED });
+}
+
+/** Take this phone to the round, once Party Core has said where games open (or that it could not
+ * say): never on a guess, so a slow answer cannot send a phone to the wrong address and back. */
+function leaveForRound() {
+  gameOrigins.settled().then(() => {
+    const view = party.view();
+    const to = view ? destination(view, HOME, state.catalog, addressOf) : null;
+    if (to) {
+      const g = partyGame(state.catalog, locationOf(view).game);
+      const round = roundToRemember(view);     // a round this phone plays, while it is on
+      if (g && round) recordRound(g, round);   // only once it is really going there
+      location.replace(to);
+    }
+    else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
 }
 
@@ -1095,6 +1124,7 @@ async function boot() {
   clearTimeout(state.lostTimer);
   const [reachable, loaded, report, partyView, covers] = await Promise.all([
     checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(), loadCovers(fetch),
+    gameOrigins.refresh(),
   ]);
   state.reachable = reachable;
   state.covers = covers;
@@ -1174,6 +1204,7 @@ function syncPresence() {
   if (view.me) party.rename(who.name, who.avatar); else ensurePresent(view);
 }
 const party = createPartyClient({ onView: onPartyView, onLink });
+const gameOrigins = createGameOrigins();
 $('net-retry').onclick = tryAgain;
 $('scene-retry').onclick = tryAgain;
 $('host-now-x').onclick = () => {

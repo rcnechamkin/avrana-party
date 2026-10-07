@@ -103,8 +103,37 @@ class ArcadeStream(unittest.TestCase):
         self.assertEqual(self.stream.LAYOUT.buttons, tuple(inp['buttons']))
         self.assertEqual(self.stream.LAYOUT.directions, inp['directions'])
         self.assertEqual(self.stream.MAX_PLAYERS, inp['slots'])
+        self.assertEqual(self.stream.MAX_PLAYERS, self.contract['players']['max'])
         page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
         self.assertEqual(set(re.findall(r'data-key="([a-z]+)"', page)), set(self.stream.LAYOUT.names))
+
+    def test_retroarch_reads_one_pad_per_seat(self):
+        """AVR-311: RetroArch player N reads the Nth pad this process opens, for every seat, and
+        RetroArch is told to expect that many users. A seat the config does not name would be a pad
+        nobody could play; a cap above input_max_users would open pads RetroArch never reads."""
+        config = {}
+        for line in (REPO_ROOT / 'arcade' / 'retroarch.cfg').read_text(encoding='utf-8').splitlines():
+            key, _, value = line.partition(' = ')
+            config[key.strip()] = value.strip().strip('"')
+        seats = range(1, self.stream.MAX_PLAYERS + 1)
+        for n in seats:
+            self.assertEqual(config.get(f'input_player{n}_joypad_index'), str(n - 1), f'player {n}')
+        self.assertGreaterEqual(int(config['input_max_users']), self.stream.MAX_PLAYERS)
+
+        def mapping(n):  # the pads are identical, so every seat maps their buttons and axes alike
+            return {key[len(f'input_player{n}_'):]: value for key, value in config.items()
+                    if key.startswith(f'input_player{n}_') and not key.endswith('_joypad_index')}
+        self.assertTrue(mapping(1))
+        for n in seats:
+            self.assertEqual(mapping(n), mapping(1), f'player {n}')
+
+    def test_the_page_names_no_number_of_controllers(self):
+        """AVR-311: the words for a full arcade hold for whatever MAX_PLAYERS is: not "both", no count."""
+        page = (REPO_ROOT / 'arcade' / 'index.html').read_text(encoding='utf-8')
+        full = re.search(r"WORDS=\{full:'([^']*)'", page).group(1)
+        self.assertIn('in use', full)                       # tests/lib/soak-driver.ts reads a refusal by these words
+        self.assertNotRegex(full, r'(?i)\b(both|two|three|four|\d+)\b')
+        self.assertNotIn('Both controllers', page)
 
     def test_party_origin_is_an_origin_or_nothing(self):
         # ADR 0013: the page is told the Party's origin only by this configuration.
@@ -196,15 +225,18 @@ class ArcadeStream(unittest.TestCase):
                 return stats
             stats = asyncio.run(run())
         self.assertTrue(stats['emulator_running'])
-        self.assertEqual(stats['max_players'], 2)
+        self.assertEqual(stats['max_players'], 4)
         self.assertEqual(stats['video_encoders'], 1)
         self.assertEqual(stats['providers']['runtime']['id'], 'retroarch')
         self.assertTrue(stats['providers']['runtime']['running'])
         self.assertEqual(stats['providers']['input']['isolation'], 'global')
-        self.assertEqual(stats['providers']['input']['controllers'], 2)
+        self.assertEqual(stats['providers']['input']['controllers'], 4)
         self.assertEqual(stats['providers']['presentation']['viewers'], 0)
-        self.assertEqual([entry[2] for entry in log if entry[0] == 'create'], ['Avrana Player 1', 'Avrana Player 2'])
-        self.assertEqual(sum(1 for entry in log if entry[0] == 'close'), 2)
+        created = [entry for entry in log if entry[0] == 'create']
+        self.assertEqual([entry[2] for entry in created],
+                         ['Avrana Player 1', 'Avrana Player 2', 'Avrana Player 3', 'Avrana Player 4'])
+        self.assertEqual([entry[4] for entry in created], [0xA001, 0xA002, 0xA003, 0xA004])   # four distinct pads
+        self.assertEqual(sum(1 for entry in log if entry[0] == 'close'), 4)
         self.assertFalse(s.runtime.running())
         self.assertEqual(pipeline.states, ['PLAYING', 'NULL'])
 
@@ -298,8 +330,8 @@ class ManagedArcade(unittest.TestCase):
         self.assertEqual(self.pipelines[1].states, ['PLAYING', 'NULL'])  # cleanup stopped run 2
         self.assertFalse(s.runtime.running())
         # the controllers stayed open across runs and were released once, at the end
-        self.assertEqual(sum(1 for e in log if e[0] == 'create'), 2)
-        self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+        self.assertEqual(sum(1 for e in log if e[0] == 'create'), self.stream.MAX_PLAYERS)
+        self.assertEqual(sum(1 for e in log if e[0] == 'close'), self.stream.MAX_PLAYERS)
 
     def test_newer_launch_clears_reservations_even_without_old_end(self):
         s = self.make([])
@@ -406,13 +438,42 @@ class PartySeatReservations(unittest.TestCase):
     def test_grace_blocks_other_participant_and_expires_at_deadline(self):
         a = object()
         self.claim(1, a)
-        self.claim(2)
+        for who in (2, 3, 4):                   # every other seat is taken
+            self.claim(who)
         self.seats.disconnect(0, a)
         self.now += 59.999
         with self.assertRaisesRegex(self.protocol.Invalid, 'full'):
-            self.claim(3)
+            self.claim(5)
         self.now = 160
-        self.assertEqual(self.claim(3)[0], 0)
+        self.assertEqual(self.claim(5)[0], 0)
+
+    def test_four_participants_get_four_stable_slots_and_a_fifth_is_full(self):
+        """AVR-311: Gauntlet II seats four. Slots are handed out lowest first, the same ticket keeps
+        its slot, and a refused fifth allocates nothing."""
+        self.assertEqual(self.module.MAX_PLAYERS, 4)
+        self.assertEqual([self.claim(who)[0] for who in (1, 2, 3, 4)], [0, 1, 2, 3])
+        with self.assertRaisesRegex(self.protocol.Invalid, 'full'):
+            self.claim(5)
+        self.assertEqual(len(self.seats.seats), 4)
+        for who, slot in ((3, 2), (1, 0), (4, 3), (2, 1)):     # tickets again, in another order
+            self.assertEqual(self.claim(who)[0], slot)
+        with self.assertRaisesRegex(self.protocol.Invalid, 'full'):
+            self.claim(5)
+
+    def test_a_seat_frees_on_leave_and_on_grace_expiry_and_nobody_is_renumbered(self):
+        sockets = {who: object() for who in (1, 2, 3, 4)}
+        for who, ws in sockets.items():
+            self.claim(who, ws)
+        self.seats.disconnect(1, sockets[2], leave=True)        # participant 2 leaves: slot 1 is free at once
+        self.assertEqual(self.claim(5)[0], 1)
+        self.seats.disconnect(2, sockets[3])                    # participant 3 drops: slot 2 stays theirs
+        with self.assertRaisesRegex(self.protocol.Invalid, 'full'):
+            self.claim(6)
+        self.now += self.module.SEAT_GRACE_S                    # the grace is over
+        self.assertEqual(self.claim(6)[0], 2)
+        self.assertEqual([self.claim(who)[0] for who in (1, 4, 5, 6)], [0, 3, 1, 2])
+        with self.assertRaisesRegex(self.protocol.Invalid, 'full'):
+            self.claim(3)                                       # participant 3's seat went to someone else
 
     def test_leave_releases_immediately(self):
         a = object()
@@ -476,7 +537,7 @@ class ArcadeSocketSeats(unittest.TestCase):
         self.s = module.Stream()
         self.s.party_seats = self.seats
         self.s.pipeline = mock.MagicMock()
-        self.s.pads = [mock.Mock(), mock.Mock()]
+        self.s.pads = [mock.Mock() for _ in range(module.MAX_PLAYERS)]
         self.s.request_keyframe = mock.Mock()
         self.s.managed = types.SimpleNamespace(side=self.side, state='running')
         module.Gst = mock.MagicMock()
@@ -516,16 +577,20 @@ class ArcadeSocketSeats(unittest.TestCase):
                             inner.request.pause.set()
                             await inner.stopped.wait()
                         yield types.SimpleNamespace(type='text', data=json.dumps(body))
+                    if inner.request.hold is not None:      # a phone that stays until the test closes its socket
+                        inner.request.hold.set()
+                        await inner.stopped.wait()
                 return messages()
         module.web.WebSocketResponse = Socket
 
     ticket = PartySeatReservations.ticket
 
-    async def connect(self, ticket, messages=(), pause=None):
+    async def connect(self, ticket, messages=(), pause=None, hold=None):
         self.s.loop = asyncio.get_running_loop()
         request = types.SimpleNamespace(headers={'Origin': 'https://party.test'}, host='party.test',
                                         remote='127.0.0.1', query={},
-                                        hello={'type': 'hello', 'ticket': ticket}, messages=messages, pause=pause)
+                                        hello={'type': 'hello', 'ticket': ticket}, messages=messages, pause=pause,
+                                        hold=hold)
         return await self.s.websocket(request)
 
     def test_socket_admission_input_disconnect_and_leave(self):
@@ -561,6 +626,72 @@ class ArcadeSocketSeats(unittest.TestCase):
             self.s.reserved.add(0)
             ws = await self.connect(None)
             self.assertIn({'type': 'player', 'slot': 2}, ws.sent)
+        asyncio.run(run())
+
+    def test_four_phones_are_four_players_and_a_fifth_is_refused_without_media_or_input(self):
+        """AVR-311: four phones hold Player 1 to Player 4 at once, each one's buttons reach its own
+        pad only, and a fifth is told 'full' before any transport or input exists."""
+        buttons = ['fire', 'magic', 'coin', 'start']
+
+        async def run():
+            tasks = []
+            for who in (1, 2, 3, 4):
+                held = asyncio.Event()
+                tasks.append(asyncio.create_task(self.connect(self.ticket(who), [
+                    {'type': 'answer', 'sdp': 'fake'}, {'type': 'input', 'buttons': [buttons[who - 1]]}], hold=held)))
+                await asyncio.wait_for(held.wait(), 2)
+            for who, ws in enumerate(self.sockets, start=1):
+                self.assertIn({'type': 'player', 'slot': who}, ws.sent)
+                self.s.pads[who - 1].update.assert_any_call([buttons[who - 1]])
+                for other, pad in enumerate(self.s.pads, start=1):
+                    if other != who:
+                        self.assertNotIn(mock.call([buttons[who - 1]]), pad.update.call_args_list)
+            made = self.module.Gst.ElementFactory.make.call_count
+            fifth = await self.connect(self.ticket(5), [{'type': 'input', 'buttons': ['magic', 'coin']}])
+            self.assertEqual(fifth.sent[0], {'type': 'error', 'reason': 'full'})
+            self.assertTrue(fifth.closed)
+            self.assertEqual(self.module.Gst.ElementFactory.make.call_count, made)      # no transport for the fifth
+            for pad in self.s.pads:
+                self.assertNotIn(mock.call(['magic', 'coin']), pad.update.call_args_list)
+            for ws in self.sockets[:4]:                                                   # all four phones go away
+                await ws.close()
+            await asyncio.gather(*tasks)
+            for pad in self.s.pads:
+                pad.update.assert_called_with([])                                         # nothing stays held
+            refused = await self.connect(self.ticket(5))                                  # the seats wait out the grace
+            self.assertEqual(refused.sent[0], {'type': 'error', 'reason': 'full'})
+            self.now += self.module.SEAT_GRACE_S
+            again = await self.connect(self.ticket(5))
+            self.assertIn({'type': 'player', 'slot': 1}, again.sent)
+        asyncio.run(run())
+
+    def test_standalone_four_phones_take_four_slots_and_a_fifth_gets_a_conflict(self):
+        self.s.managed = None
+
+        async def run():
+            tasks = []
+            for _ in range(4):
+                held = asyncio.Event()
+                tasks.append(asyncio.create_task(self.connect(None, hold=held)))
+                await asyncio.wait_for(held.wait(), 2)
+            self.assertEqual(self.s.reserved, {0, 1, 2, 3})
+            for who, ws in enumerate(self.sockets, start=1):
+                self.assertIn({'type': 'player', 'slot': who}, ws.sent)
+            with self.assertRaises(self.module.web.HTTPConflict) as refused:
+                await self.connect(None)
+            self.assertIn('in use', refused.exception.text)
+            self.assertEqual(self.s.reserved, {0, 1, 2, 3})                               # the refusal took nothing
+            await self.sockets[1].close()                                                 # the second phone leaves
+            await tasks[1]
+            self.assertEqual(self.s.reserved, {0, 2, 3})
+            held = asyncio.Event()
+            tasks.append(asyncio.create_task(self.connect(None, hold=held)))
+            await asyncio.wait_for(held.wait(), 2)
+            self.assertIn({'type': 'player', 'slot': 2}, self.sockets[-1].sent)           # the first free slot
+            for ws in self.sockets:
+                await ws.close()
+            await asyncio.gather(*tasks)
+            self.assertEqual(self.s.reserved, set())
         asyncio.run(run())
 
     def test_duplicate_route_closes_old_socket_and_rejects_its_queued_input(self):

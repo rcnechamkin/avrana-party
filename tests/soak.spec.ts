@@ -14,11 +14,13 @@ import { connectClient, tryConnect, readClientMetrics, sampleServer, serverMaxPl
  * interval, then evaluates regression thresholds and writes a JSON artifact.
  *
  * Config via env:
- *   SOAK_CLIENTS  (default 2)  target client count (extras beyond MAX_PLAYERS must be rejected)
+ *   SOAK_CLIENTS  (default 2)  target client count (extras beyond MAX_PLAYERS must be rejected).
+ *                              Two clients is the load that was tried on real phones; the four
+ *                              seats (AVR-311) need SOAK_CLIENTS=4, and a real four-phone night.
  *   SOAK_SECONDS  (default 90) hold duration
  *   SOAK_INTERVAL (default 5)  sample interval seconds
  *
- * Two real phones remain authoritative; Chromium clients validate the server/
+ * Real phones remain authoritative; Chromium clients validate the server/
  * encoder behaviour repeatably.
  */
 const CLIENTS = Number(process.env.SOAK_CLIENTS ?? 2);
@@ -27,7 +29,7 @@ const INTERVAL = Number(process.env.SOAK_INTERVAL ?? 5);
 
 test.describe('@heavy soak', () => {
   test.skip(({ browserName }) => browserName !== 'chromium',
-    'WebRTC load is driven on Chromium; two real phones remain authoritative.');
+    'WebRTC load is driven on Chromium; real phones remain authoritative.');
 
   test(`soak: ${CLIENTS} client(s) for ${SECONDS}s`, async ({ browser, request }, testInfo) => {
     test.setTimeout((SECONDS + 90) * 1000);
