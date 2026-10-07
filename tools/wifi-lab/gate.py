@@ -61,12 +61,15 @@ def corroborate_retries(name, results):
     """The client's retry counter is noisy: on a clean channel 36 run (2026-10-07) it read 129 retries per
     success while latency, loss and throughput were all perfect. Until AVR-300 gives better evidence it is
     corroborating, not deciding: a WARN/FAIL retry finding stands only when another metric of the same phase
-    (latency, loss, delivery) is also degraded; on its own it is reported as INFO, which never changes the verdict."""
+    (latency, loss, delivery) is also degraded, and even then only as a WARN: it can never produce a FAIL by itself.
+    On its own it is reported as INFO, which never changes the verdict."""
     others_degraded = any(l in ("WARN", "FAIL") for l, t in results if "retry" not in t)
     fixed = []
     for l, t in results:
         if l in ("WARN", "FAIL") and "retry ratio" in t and not others_degraded:
             fixed.append(("INFO", t + "; latency, loss and throughput are within limits, so this client counter alone does not affect the verdict"))
+        elif l == "FAIL" and "retry ratio" in t:  # corroborated, but still capped: the counter is unvalidated (AVR-300)
+            fixed.append(("WARN", t + "; capped at WARN: the client retry counter is unvalidated (AVR-300), so it can never be the reason for a FAIL"))
         else:
             fixed.append((l, t))
     return fixed

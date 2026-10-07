@@ -194,8 +194,9 @@ class Gate(unittest.TestCase):
 
     def test_channel_149_numbers_fail_on_retries(self):
         r = gate.evaluate_phase("idle", summary(65.0, 176.0, 0.0, 33.5), self.cfg["idle"], 20)
-        self.assertEqual(gate.verdict(r), "FAIL")
-        self.assertTrue(any("retry ratio" in t and l == "FAIL" for l, t in r))
+        self.assertEqual(gate.verdict(r), "WARN")  # corroborated by p99, but retries are capped at WARN
+        self.assertTrue(any("retry ratio" in t and l == "WARN" and "capped" in t for l, t in r))
+        self.assertFalse(any("retry ratio" in t and l == "FAIL" for l, t in r))
 
     def test_retry_ratio_alone_is_informational_only(self):
         # observed 2026-10-07 on a clean channel 36: ratio 129 with perfect latency, loss and throughput
@@ -213,7 +214,7 @@ class Gate(unittest.TestCase):
 
     def test_retry_ratio_fails_when_corroborated(self):
         r = gate.evaluate_phase("idle", summary(65.0, 220.0, 0.0, 33.5), self.cfg["idle"], 20)  # p99 over warn too
-        self.assertEqual(gate.verdict(r), "FAIL")
+        self.assertEqual(gate.verdict(r), "WARN")  # a bogus counter never turns a marginal WARN into a FAIL
         r = gate.evaluate_phase("loaded", summary(100.0, 150.0, 0.0, 41.0, rx=1.7), self.cfg["loaded"], 20, 20)  # starved
         self.assertEqual(gate.verdict(r), "FAIL")
 
@@ -297,6 +298,11 @@ class Qualify(unittest.TestCase):
         diff = qualify.score(degraded) - qualify.score(with_retries)
         self.assertGreater(diff, 0)
         self.assertLessEqual(diff, qualify.RETRY_MAX_PENALTY)
+        # no cliff: two channels either side of the threshold differ by about their base difference only
+        a = dict(self.HEALTHY, idle_p99_ms=200.0, idle_retry_ratio=129.0, loaded_retry_ratio=129.0)
+        b = dict(a, idle_p99_ms=210.0)
+        self.assertLess(abs(qualify.base_penalty(a) - 25.0), 1.0)
+        self.assertLess(abs((qualify.score(a) - qualify.score(b)) - (qualify.base_penalty(b) - qualify.base_penalty(a))), 0.5)
         self.assertEqual(qualify.score(dict(self.WORSE)), qualify.score(degraded))  # missing retry metric costs nothing
 
     def test_rank_orders_by_verdict_then_score_and_never_by_neighbours(self):

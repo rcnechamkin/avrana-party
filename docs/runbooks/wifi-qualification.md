@@ -75,7 +75,7 @@ FAIL, never a silent pass.
 client counter read 129 retries per success (about 140 retries/s against 8 successes/s) while latency, loss and
 delivered throughput were all perfect, so the counter has shown extreme false values. Until AVR-300 gives better evidence:
 a retry-ratio breach on its own is reported as `INFO` and **never changes PASS/WARN/FAIL**; it counts as WARN/FAIL only when
-another metric of the same phase (latency, loss, delivery) is also degraded, where it strengthens that finding. Unavailable
+another metric of the same phase (latency, loss, delivery) is also degraded, where it strengthens that finding, but only as a WARN: it can never be the reason for a FAIL. Unavailable
 retry counters are likewise shown as `INFO`.
 
 Retry ratios come from the Android client's counters (`cmd wifi status`); the Pi's brcmfmac exposes only
@@ -98,11 +98,11 @@ Ranking: gate verdict first (PASS, WARN, FAIL, then errors), then this score, hi
 
 ```
 base  = 30*min(1, idle_p99/300) + 30*min(1, loaded_p99/1000) + 20*min(1, max_loss/3) + 10*(1 - min(1, uplink_mbps/20))
-extra = 0 if base < 25 else up to 5 from the client TX retry ratio (mean of idle/10 and loaded/30, capped at 1)
+extra = 0 at base <= 25, ramping linearly to at most 5 at base >= 35, scaled by the client TX retry ratio (mean of idle/10 and loaded/30, capped at 1)
 score = 100 - base - extra
 ```
 
-The retry ratio can only deepen a penalty that latency, loss or throughput already justify (base of at least 25) and by at
+The retry ratio can only deepen a penalty that latency, loss or throughput already justify (base above 25, ramping in by 35) and by at
 most 5 points; an isolated retry spike cannot move a healthy channel (unit-tested against a worse channel). A missing latency, loss or throughput metric takes its full penalty and is listed; a missing retry metric costs nothing. This is a heuristic for ordering candidates for one client
 at one place; it is not a universal quality measure and the weights are judgement. The number of neighbouring
 networks is recorded as information only and never scored (empty-looking channel 149 was bad on 2026-10-06).

@@ -60,8 +60,8 @@ def score(m):
     """score = 100 - base - retry_extra, where
          base        = 30*min(1, idle_p99/300) + 30*min(1, loaded_p99/1000) + 20*min(1, max_loss/3)
                        + 10*(1 - min(1, uplink_mbps/20))                       (latency, loss, throughput; max 90)
-         retry_extra = 0 unless base >= 25 (the channel is already demonstrably degraded), else
-                       up to 5 from the client's TX retry ratio (idle/10 and loaded/30, averaged, capped).
+         retry_extra = 0 at base <= 25 (the channel is not demonstrably degraded), rising linearly to
+                       at most 5 at base >= 35, scaled by the client's TX retry ratio (idle/10, loaded/30, averaged).
     The Android retry counter has shown extreme false values on healthy channels (129 retries per success with
     perfect latency/loss/throughput), so on its own it can never move a channel: it can only deepen a penalty that
     latency, loss or throughput already justify, and by at most 5 points. A missing retry metric costs nothing.
@@ -70,7 +70,8 @@ def score(m):
     extra = 0.0
     if base >= RETRY_CORROBORATION_MIN:
         fr = [min(1.0, v / s) for v, s in ((m.get("idle_retry_ratio"), 10), (m.get("loaded_retry_ratio"), 30)) if v is not None]
-        extra = RETRY_MAX_PENALTY * (sum(fr) / len(fr)) if fr else 0.0
+        ramp = min(1.0, (base - RETRY_CORROBORATION_MIN) / 10.0)  # no cliff at the threshold
+        extra = RETRY_MAX_PENALTY * ramp * (sum(fr) / len(fr)) if fr else 0.0
     return round(100 - base - extra, 1)
 
 
@@ -125,7 +126,7 @@ def run_qualify(args, wl):
     orig_p = orig.get("profile") or {}
     if orig.get("saved_original") is not None:
         sys.exit("the helper still holds a saved original from an earlier unrestored change; run `wifilab.py ap restore --lab` "
-                 "(or ap-recover --lab) first so this run's starting state is unambiguous")
+                 "first so this run's starting state is unambiguous")
     if not helper.saved_is_valid(orig_p.get("band"), orig_p.get("channel")):
         sys.exit(f"the AP's current profile {orig_p} cannot be restored by the helper (not a fixed channel it could itself set); "
                  "refusing to change it")
