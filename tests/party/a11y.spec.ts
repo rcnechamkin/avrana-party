@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { openGame, place, sideways, smallTargets, startForEveryone } from '../lib/frame';
 import { faintEdges, focusWalk, lowContrast, moving, outline, outOfOrder, unnamed } from '../lib/a11y';
-import { cutOff, goQuiet, later, phone, type Phone } from '../lib/phones';
+import { cutOff, goQuiet, later, phone, view, type Phone } from '../lib/phones';
 
 /**
  * The accessibility pass over the screens that need a Party (UX/UI redesign PR 1.4): Home with
@@ -86,6 +86,7 @@ test.describe('three phones at one party', () => {
     for (const p of [bob, cleo]) await place(p.page, 'party');
     await everyone('Party, the Host away', [bob, cleo]);
     for (const p of [bob, cleo]) await place(p.page, 'home');
+    await view(bob); await view(cleo);                            // both have asked since: they are here when the role passes
     await later(request, 30);
     await expect(bob.page.locator('#host-now')).toBeVisible();
     await expect(cleo.page.locator('#party-state')).toContainText('Bob is hosting now');
@@ -98,6 +99,7 @@ test.describe('three phones at one party', () => {
     await later(request, 50);
     await expect(cleo.page.locator('#scene-status')).toContainText('is away');
     await audit(cleo, 'the briefing, the Host away');
+    await view(cleo);
     await later(request, 30);
     await expect(cleo.page.locator('#scene-start')).toBeVisible();
     await audit(cleo, 'the briefing, hosting passed to this phone');

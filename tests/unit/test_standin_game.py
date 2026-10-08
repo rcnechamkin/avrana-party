@@ -116,6 +116,35 @@ class StandinLogic(unittest.TestCase):
         self.assertEqual(self.finish(r['token'])[0], 403)
 
     # --- page side
+    def test_the_party_origin_it_was_handed_is_what_the_game_tells_its_page(self):
+        self.assertEqual(self.call('GET', standin.PARTY), (200, {'partyOrigin': None}))
+        self.app.party_origin = 'https://party.example.test'
+        self.assertEqual(self.call('GET', standin.PARTY), (200, {'partyOrigin': 'https://party.example.test'}))
+        self.assertEqual(self.call('POST', standin.PARTY)[0], 404)                 # a read, nothing else
+        self.assertEqual(self.call('GET', standin.PARTY)[1].keys(), {'partyOrigin'})   # and not a secret: nothing else rides along
+
+    def test_the_process_reads_the_origin_from_its_environment_and_only_a_bare_origin(self):
+        import unittest.mock
+        with tempfile.TemporaryDirectory() as tmp:
+            protocol.write_key(os.path.join(tmp, f'{GAME}.key'), protocol.new_key())
+            seen = []
+            cases = (('https://party.example.test', 'https://party.example.test'),
+                     ('http://10.0.0.142:8080', 'http://10.0.0.142:8080'), (None, None), ('', None),
+                     ('https://party.example.test/x', None), ('javascript:1', None),
+                     ('https://u@party.example.test', None), ('https://party.example.test\n', None))
+            for value, want in cases:
+                env = {'AVRANA_PARTY_KEYS': tmp, 'AVRANA_PARTY_SOCKET': '/x/internal.sock'}
+                if value is not None:
+                    env['AVRANA_PARTY_ORIGIN'] = value
+
+                def serve(fd, app):
+                    seen.append(app)
+                    return unittest.mock.Mock()
+                with unittest.mock.patch.object(standin.service, 'listen_fds', return_value=[3]), \
+                        unittest.mock.patch.object(standin, 'make_server', side_effect=serve):
+                    self.assertEqual(standin.main(env), 0)
+                self.assertEqual(seen[-1].party_origin, want, value)
+
     def test_the_page_is_static_and_other_paths_are_not_found(self):
         status, page = self.call('GET', standin.PAGE, headers={'x-forwarded-for': '10.42.0.2'})
         self.assertEqual(status, 200)

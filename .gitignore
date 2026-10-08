@@ -89,3 +89,8 @@ node_modules/
 # tools/reconcile.py output
 reconcile-report.md
 reconcile-report.json
+
+# The owner's game covers (box art; AVR-306): shown by the shell, never committed. The empty
+# index is the only tracked file; avrana/web/covers.py says what a cover is.
+web/party/covers/*
+!web/party/covers/index.json

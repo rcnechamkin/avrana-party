@@ -10,6 +10,8 @@ and handed, by the socket unit and the service unit, only this (the field-test r
     that nginx (pages, with proxy headers) and Party Core (control, without) both connect to;
   * $AVRANA_PARTY_KEYS: a directory holding `<game id>.key`;
   * $AVRANA_PARTY_SOCKET: Party Core's internal Unix socket, where it reports `ended`;
+  * $AVRANA_PARTY_ORIGIN: the Party's browser origin (set per appliance by provision-game from
+    Party Core's own configuration), which a game page hands to the bridge shim (ADR 0013);
   * $STATE_DIRECTORY: unused here.
 It has no IP networking at all (RestrictAddressFamilies=AF_UNIX): nothing in this module opens an
 IP socket or resolves a name. The session logic is the reference protocol.GameSide, unmodified.
@@ -23,6 +25,8 @@ Routes (every path is under /games/standin, which is where the front door and Pa
                                                       caller's own private view only
     POST /games/standin/api/finish   {"token"}     -> {"ok"}: the redeemed player wins; the game
                                                       reports a signed `ended` with a result
+    GET  /games/standin/api/party                  -> {"partyOrigin"}: the origin the game was
+                                                      handed, or null (what a real page's server tells it)
 
 The stand-in stays resident once started: ADR 0016 section 4's "stops itself when idle" is NOT
 implemented here (it is deferred to AVR-238, with the resource ceilings), so a stopped game is
@@ -37,6 +41,7 @@ import http.server
 import json
 import logging
 import os
+import re
 import socket
 import socketserver
 import sys
@@ -52,6 +57,8 @@ END = BASE + sessions.END_PATH
 PAGE = BASE + '/'
 REDEEM = BASE + '/api/redeem'
 FINISH = BASE + '/api/finish'
+PARTY = BASE + '/api/party'
+BARE_ORIGIN = re.compile(r'https?://[A-Za-z0-9][A-Za-z0-9.-]{0,252}(:[0-9]{1,5})?')
 PROXY_HEADERS = ('x-forwarded-for', 'x-real-ip', 'forwarded')
 MAX_BODY = 16384                # a signed launch for a few players fits many times over
 REQUEST_TIMEOUT = 10            # s: a stalled client never holds a thread for long
@@ -102,9 +109,10 @@ class Standin:
     (an injected callable: message -> (HTTP status or None, the party's verdict on the result:
     "accepted", "refused" or None)) is how `ended` reaches the party."""
 
-    def __init__(self, side, report):
+    def __init__(self, side, report, party_origin=None):
         self.side = side                  # protocol.GameSide for GAME
         self.report = report
+        self.party_origin = party_origin  # the Party's browser origin, as handed to this process, or None
         self.lock = threading.Lock()
         self.redeemed = {}                # game token -> (participant, role), current session only
 
@@ -119,6 +127,8 @@ class Standin:
             return self._control(path, raw)
         if path == PAGE and method == 'GET':
             return 200, 'text/html; charset=utf-8', HTML
+        if path == PARTY and method == 'GET':
+            return _json(200, {'partyOrigin': self.party_origin})
         if path in (REDEEM, FINISH):
             if method != 'POST':
                 return _json(405, {'ok': False, 'error': 'method'})
@@ -294,5 +304,7 @@ def main(environ=os.environ):
     except (OSError, ValueError):
         log.error('the party key is missing or unusable')      # never the key or the file content
         return 2
-    make_server(3, Standin(protocol.GameSide(key, GAME), report_to(party_socket))).serve_forever()
+    origin = environ.get('AVRANA_PARTY_ORIGIN')
+    origin = origin if origin and BARE_ORIGIN.fullmatch(origin) else None     # an origin and nothing else
+    make_server(3, Standin(protocol.GameSide(key, GAME), report_to(party_socket), origin)).serve_forever()
     return 0

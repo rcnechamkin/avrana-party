@@ -40,7 +40,7 @@ export default defineConfig({
       timeout: 15_000,
     },
     {
-      command: `${python} -m avrana.web.devserver --port ${PARTY_PORT} --test-controls --party`,
+      command: `${python} -m avrana.web.devserver --port ${PARTY_PORT} --test-controls --party --game-origin`,
       url: `http://127.0.0.1:${PARTY_PORT}/party/`,
       reuseExistingServer: false,
       timeout: 15_000,

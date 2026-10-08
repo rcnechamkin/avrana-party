@@ -181,7 +181,7 @@ grant), and physical seating (not a platform concept).
 | id | kind | players | screen | input | shared video | viewports | late join | spectators | results |
 |---|---|---|---|---|---|---|---|---|---|
 | `bluff` | native | 1–6 (bots fill) | no_tv_needed | browser_native + private UI | no | — | spectator_only | watch (cap 6) | authoritative *(once a result event exists; today the winner lives only in game state)* |
-| `arcade-gauntlet2` | emulated | 1–2 | tv_optional | controller_slots (2) | yes | — | supported (free slot) | none today (409 when full) | none |
+| `arcade-gauntlet2` | emulated | 1–4 | tv_optional | controller_slots (4) | yes | — | supported (free slot) | none today (409 when full) | none |
 | `ps1-bomberman` | emulated | 1–4 | tv_optional | controller_slots (4, multitap port 2) | yes | not a split-screen game | supported (free slot) | watch | none |
 | `ps1-worms` | emulated | 1–4 people | tv_optional | hotseat (1 slot) | yes | — | spectator_only | watch | none (hot-seat can't attribute turns) |
 | LAN Games titles | native | from the registry | per registry `tv` flag | browser_native | no | — | spectator_only (locked at countdown) | watch | none until a game adds a result hook |

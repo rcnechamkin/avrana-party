@@ -23,10 +23,11 @@ import { hydrateIcons, icon } from './lib/icons.js';
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
-import { loadCatalog } from './lib/catalog-load.js';
+import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
+import { createGameOrigins, gameAddress } from './lib/game-origins.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
 import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
@@ -39,7 +40,7 @@ const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
-  partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
+  gamesKey: null, partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
   mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0,
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
@@ -49,7 +50,10 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
   // box: the status document, asked for by the Host only; entries: the shelf as last drawn
-  failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null };
+  failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
+  // covers: the owner's cover for a game (id -> path), from covers/index.json; badCovers: the ones
+  // that would not load on this phone since the page last started
+  covers: new Map(), badCovers: new Set() };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -125,13 +129,19 @@ function favButton(game, cls = '') {
     } }, icon('heart'));
 }
 
-/** A cover: the title's own art, else its kind icon on its own colour. `mark` is the player
- * range for the corner (lib/library.js seatsMark), or null. `shape`: 'wide' for the lead cover on
- * Home, a game's page and the briefing; square otherwise. */
+/** A cover: the cover the owner supplied for the title (AVR-306), else the title's own art, else
+ * its kind icon on its own colour. `mark` is the player range for the corner (lib/library.js
+ * seatsMark), or null. `shape`: 'wide' for the lead cover on Home, a game's page and the
+ * briefing; square otherwise. */
 function tileCover(game, mark, shape = '') {
-  const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
-  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (art ? ' has-art' : '') + (art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
-    art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async' }) : icon(kindIcon(game)),
+  const own = state.badCovers.has(game.id) ? null : state.covers.get(game.id) || null;
+  const art = own || (ARTWORK.test(game.artwork || '') ? game.artwork : null);
+  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (art ? ' has-art' : '') + (own ? ' own-art' : '') + (!own && art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
+    art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async',
+      // An owner's cover that will not load (the box out of reach, a picture this phone cannot
+      // draw) gives way to the art the title had before, here and wherever it is drawn next.
+      onerror: own ? () => { state.badCovers.add(game.id); el.replaceWith(tileCover(game, mark, shape)); } : null,
+    }) : icon(kindIcon(game)),
     mark ? h('span', { class: 'seats' + (mark.ok ? '' : ' no') }, icon(mark.ok ? 'users' : 'triangle-alert'), mark.text) : null);
   if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
   return el;
@@ -606,7 +616,9 @@ function onLink({ ok, answered }) {
     if (state.failingSince === null) return;
     state.failingSince = null;
     clearTimeout(state.lostTimer);
+    gameOrigins.refresh();                      // the box may have restarted with other registrations
     renderLink();
+    state.badCovers = new Set();                // a cover that did not load while the box was away is tried again
     refreshHealth();                            // what was off may be on again, and the other way
     return;
   }
@@ -852,14 +864,18 @@ function onPartyView(view, previous = null) {
   else if (state.passed && previous && previous.party !== view.party) state.passed = null;   // a new Party: that was the last one's news
   const hosts = Boolean(view.me && view.me.host);
   if (hosts !== Boolean(previous && previous.me && previous.me.host)) refreshBox().then(renderBox);   // the Host's notice is the Host's
-  const url = destination(view, HOME, state.catalog);
+  // Party Core's game origins: asked again when the game list changes, or when the last ask failed.
+  const gamesKey = view.games.join(',');
+  if (state.gamesKey !== null && gamesKey !== state.gamesKey) gameOrigins.refresh(); else gameOrigins.retry();
+  state.gamesKey = gamesKey;
+  // Until Party Core's answer is known the address is the same-origin path; the phone does not
+  // leave on that guess (leaveForRound waits), and once it is known, refusing it keeps Party Home.
+  const url = destination(view, HOME, state.catalog, gameOrigins.isSettled() ? addressOf : null);
   if (url) {                                  // the party is in a round: this phone goes there
     const g = partyGame(state.catalog, locationOf(view).game);
-    const round = roundToRemember(view);       // a round this phone plays, while it is on
-    if (g && round) recordRound(g, round);
     $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
     show('going');
-    location.replace(url);
+    leaveForRound();
     return;
   }
   if (view.me && locationOf(view).at === 'setup') {
@@ -874,6 +890,29 @@ function onPartyView(view, previous = null) {
     if (!state.refocus) return;
     state.refocus = false;
     refocusStart();
+  });
+}
+
+/** Where this page's game addresses are decided (lib/game-origins.js): Party Core's registrations,
+ * never Limited Mode, never an address this page's own origin could be mistaken for. */
+function addressOf(game, entry) {
+  return gameAddress({ game, entry, origins: gameOrigins.get(), partyOrigin: location.origin,
+    limited: state.mode === LIMITED });
+}
+
+/** Take this phone to the round, once Party Core has said where games open (or that it could not
+ * say): never on a guess, so a slow answer cannot send a phone to the wrong address and back. */
+function leaveForRound() {
+  gameOrigins.settled().then(() => {
+    const view = party.view();
+    const to = view ? destination(view, HOME, state.catalog, addressOf) : null;
+    if (to) {
+      const g = partyGame(state.catalog, locationOf(view).game);
+      const round = roundToRemember(view);     // a round this phone plays, while it is on
+      if (g && round) recordRound(g, round);   // only once it is really going there
+      location.replace(to);
+    }
+    else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
 }
 
@@ -1083,10 +1122,13 @@ async function boot() {
   state.failingSince = null;
   state.trying = false;
   clearTimeout(state.lostTimer);
-  const [reachable, loaded, report, partyView] = await Promise.all([
-    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(),
+  const [reachable, loaded, report, partyView, covers] = await Promise.all([
+    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(), loadCovers(fetch),
+    gameOrigins.refresh(),
   ]);
   state.reachable = reachable;
+  state.covers = covers;
+  state.badCovers = new Set();
   const catalog = loaded.catalog;       // empty, never null, when catalog.json is missing or corrupt (AVR-220)
   state.catalog = catalog;
   $('catalog-error').hidden = loaded.ok || !reachable;
@@ -1162,6 +1204,7 @@ function syncPresence() {
   if (view.me) party.rename(who.name, who.avatar); else ensurePresent(view);
 }
 const party = createPartyClient({ onView: onPartyView, onLink });
+const gameOrigins = createGameOrigins();
 $('net-retry').onclick = tryAgain;
 $('scene-retry').onclick = tryAgain;
 $('host-now-x').onclick = () => {

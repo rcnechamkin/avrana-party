@@ -1,0 +1,8 @@
+pcsx_rearmed_bios = "auto"
+pcsx_rearmed_show_bios_bootlogo = "disabled"
+pcsx_rearmed_region = "auto"
+pcsx_rearmed_drc = "enabled"
+pcsx_rearmed_frameskip_type = "disabled"
+pcsx_rearmed_neon_enhancement_enable = "disabled"
+pcsx_rearmed_multitap = "disabled"
+pcsx_rearmed_memcard2 = "none"

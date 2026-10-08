@@ -26,6 +26,12 @@ contracts/appliances/<id>.json): {"command": [absolute path, args...], "working_
 and installs the two shared template units from the repository into <unit_dir> when they are
 missing or differ. A grant without `runtime` is refused: there would be nothing to start.
 
+The same drop-in carries `Environment=AVRANA_PARTY_ORIGIN=<origin>`: the Party's browser origin,
+which a game page must hand to the bridge shim (ADR 0013). It is per appliance, so it is read here,
+from Party Core's own configuration (the one entry of `origins` in party-core.json that is a bare
+http(s)://host[:port]), and never from the shared template. A configuration with no such entry,
+or with more than one, refuses provisioning: a game that cannot name its Party would be a game that cannot return to it.
+
 Reconcile never restarts a game. If only the drop-in or the templates changed and the game's
 service is already running, it keeps running the old command until it next stops (systemd re-reads
 the unit at `daemon-reload`, and applies it at the next start). A game behind a live session is
@@ -62,6 +68,8 @@ PARTY_CONFIG = '/etc/avrana-party/party-core.json'
 QUERY_TIMEOUT_S = 10          # an uncached status build can take several seconds
 STATUS_SETTLE_S = 6.0          # longer than Party Core's status cache (avrana.ops.status.CACHE_S)
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
+PARTY_ORIGIN_ENV = 'AVRANA_PARTY_ORIGIN'
+BARE_ORIGIN = re.compile(r'(https?)://[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::([1-9][0-9]{0,4}))?')
 
 
 class Refused(Exception):
@@ -135,16 +143,52 @@ def quote_exec(arg):
     return f'"{escaped}"'
 
 
-def dropin_text(runtime):
-    """The exec.conf for a validated `runtime`. Refuses any control character itself, since the
-    text goes into a unit file where a newline would add a directive."""
+def bare_origin(value):
+    """`value` when it is an origin and nothing else (http(s)://host[:port]: no path, query,
+    fragment or user information, no space or control character), else None."""
+    if not isinstance(value, str):
+        return None
+    m = BARE_ORIGIN.fullmatch(value)
+    if not m or (m.group(2) is not None and not 0 < int(m.group(2)) < 65536):
+        return None
+    if m.group(2) == {'http': '80', 'https': '443'}[m.group(1)]:
+        return None                                  # a browser never writes the default port in an origin
+    return value
+
+
+def party_origin(config_path):
+    """The Party's browser origin, from Party Core's own configuration: the one entry of
+    `origins` that is a bare http(s)://host[:port]. Refused, naming the file, when there is none
+    or more than one: a game is told exactly one Party origin, and this command does not guess."""
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            conf = json.load(f)
+    except (OSError, ValueError) as e:
+        raise Refused(f"Party Core's config {config_path} is unreadable ({type(e).__name__})") from None
+    origins = conf.get('origins') if isinstance(conf, dict) else None
+    usable = sorted({c for c in (origins if isinstance(origins, list) else ()) if bare_origin(c)})
+    if len(usable) == 1:
+        return usable[0]
+    if usable:
+        raise Refused(f'the Party Core config {config_path} names more than one Party origin '
+                      f'({", ".join(usable)}); a game is told exactly one')
+    raise Refused(f'the Party Core config {config_path} names no usable "origins" entry (a bare '
+                  f'https://host[:port] or http://host[:port]); a game would not know its Party origin')
+
+
+def dropin_text(runtime, origin):
+    """The exec.conf for a validated `runtime` and the Party's `origin`. Refuses any control
+    character itself, since the text goes into a unit file where a newline would add a directive."""
     strings = list(runtime['command']) + [runtime['working_directory']]
     if any(not isinstance(s, str) or CONTROL.search(s) for s in strings):
         raise Refused('runtime: control characters are not allowed in a unit file')
+    if not bare_origin(origin):
+        raise Refused('the Party origin is not a bare http(s)://host[:port]')
     return ('# Written by provision-game from the appliance grant (AVR-236). Edits are overwritten.\n'
             '[Service]\n'
             f"ExecStart={' '.join(quote_exec(a) for a in runtime['command'])}\n"
-            f"WorkingDirectory={runtime['working_directory'].replace('%', '%%')}\n")
+            f"WorkingDirectory={runtime['working_directory'].replace('%', '%%')}\n"
+            f'Environment={PARTY_ORIGIN_ENV}={origin}\n')
 
 
 def _put(path, data, mode):
@@ -203,7 +247,7 @@ def _entry(layout, slug, timeout):
     return entry
 
 
-def _wanted(slug, layout, grants, timeout):
+def _wanted(slug, layout, grants, timeout, origin):
     """(registry text, drop-in text, [(template path, bytes)]) this slug should have."""
     runtime = _runtime(slug, grants)
     entry = json.dumps(_entry(layout, slug, timeout), indent=2, sort_keys=True) + '\n'
@@ -213,7 +257,7 @@ def _wanted(slug, layout, grants, timeout):
         if not src.is_file():
             raise Refused(f'{name}: missing from {layout.template_dir}')
         templates.append((Path(layout.unit_dir) / name, src.read_bytes()))
-    return entry, dropin_text(runtime), templates
+    return entry, dropin_text(runtime, origin), templates
 
 
 def untrusted_reason(path, lstat=os.lstat, realpath=os.path.realpath):
@@ -245,10 +289,10 @@ def trusted_path(path):
         raise Refused(f'{path}: {why}; a native game runs only root-owned code (ADR 0016 section 2)')
 
 
-def plan_provision(slug, layout, contracts, grants, timeout=None):
+def plan_provision(slug, layout, contracts, grants, origin, timeout=None):
     """What `provision` would change, without changing anything (for --dry-run)."""
     check(slug, contracts, grants)
-    entry, dropin, templates = _wanted(slug, layout, grants, timeout)
+    entry, dropin, templates = _wanted(slug, layout, grants, timeout, origin)
     changed = []
     if not layout.key(slug).exists():
         changed.append('key')
@@ -260,7 +304,7 @@ def plan_provision(slug, layout, contracts, grants, timeout=None):
     return changed
 
 
-def provision(slug, layout, contracts, grants, run, own, timeout=None, trusted=None):
+def provision(slug, layout, contracts, grants, run, own, origin, timeout=None, trusted=None):
     """Create or reconcile. Returns the list of what changed ('key', 'registry', 'unit <name>',
     'dropin'); [] on a second run, which writes nothing and runs no daemon-reload.
     The key and the state directory are kept if they exist (ADR 0016 section 8); the registry
@@ -269,9 +313,11 @@ def provision(slug, layout, contracts, grants, run, own, timeout=None, trusted=N
     (files written, then systemctl failed) is repaired by running it again. A reload only
     re-reads the registry (SIGHUP); the party itself is untouched. A running game is not
     restarted; see the module docstring. `trusted(path)`, when given, raises Refused unless the
-    command and working directory are root-owned code; it runs before anything is written."""
+    command and working directory are root-owned code; it runs before anything is written.
+    `origin` is the Party's browser origin (see `party_origin`), written into the drop-in as
+    AVRANA_PARTY_ORIGIN; a changed origin rewrites the drop-in."""
     check(slug, contracts, grants)
-    entry_text, dropin, templates = _wanted(slug, layout, grants, timeout)       # refuse before writing anything
+    entry_text, dropin, templates = _wanted(slug, layout, grants, timeout, origin)       # refuse before writing anything
     if trusted is not None:
         runtime = grants[slug]['runtime']
         for path in (runtime['command'][0], runtime['working_directory']):
@@ -642,8 +688,11 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
                            else rotate(a.slug, layout, contracts, grants, run or _real_run, own, active))
                 verb = 'replace'
             else:
-                changes = (plan_provision(a.slug, layout, contracts, grants) if a.dry_run
-                           else provision(a.slug, layout, contracts, grants, run or _real_run, own,
+                check(a.slug, contracts, grants)
+                _runtime(a.slug, grants)                     # the grant's own refusals come first
+                origin = party_origin(a.party_config or PARTY_CONFIG)
+                changes = (plan_provision(a.slug, layout, contracts, grants, origin) if a.dry_run
+                           else provision(a.slug, layout, contracts, grants, run or _real_run, own, origin,
                                           trusted=trusted_path if own is real_own else None))
                 verb = 'change'
     except Refused as e:

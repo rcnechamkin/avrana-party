@@ -23,7 +23,7 @@ context, but no page depends on it: every feature degrades silently.
 
 | Page | For | What it shows |
 |---|---|---|
-| `/party/` | guests | "Connected to the party · 🔒 Secure"; the games installed on this Party box, each with what it will be like on **this phone** ("Works on this phone" / "Works, with limits" / "You can watch" / "Not on this phone" + one plain sentence) and its live state ("1 of 2 playing", "Full right now", "Not running right now"); individual browser titles alongside arcade and experimental PS1 metadata; the shared Avrana profile and Party Chat; favorites/history and search/group-size filters; a "This phone" disclosure (secure connection, saved offline, live video, keeping the screen on, sound, controllers, vibration) |
+| `/party/` | guests | "Connected to the party · 🔒 Secure"; the games installed on this Party box, each with what it will be like on **this phone** ("Works on this phone" / "Works, with limits" / "You can watch" / "Not on this phone" + one plain sentence) and its live state ("1 of 4 playing", "Full right now", "Not running right now"); individual browser titles alongside arcade and experimental PS1 metadata; the shared Avrana profile and Party Chat; favorites/history and search/group-size filters; a "This phone" disclosure (secure connection, saved offline, live video, keeping the screen on, sound, controllers, vibration) |
 | `/party/` with Party Core (current source, ADR 0011) | members | Automatic presence with an Avrana profile, roster/host, home or Party-owned full-screen Play/Watch setup; host-only Start. No normal Join/Leave buttons. Authoritative location sends members to the round/held results; host controls live in the game. Without Core/profile, standalone catalog access remains supported |
 | `/party/` while the Pi is out of reach | guests | "Can’t reach the party. Make sure this phone is on the Avrana Party Wi-Fi", Try again, and a link to the basic HTTP version; it recovers by itself when the phone is back online |
 | `/party/diag/` (also `/party/#diag`) | owner, developers, agents | every capability with its status, evidence level and note; the seat evaluation for every game in the catalog (installed or not); the providers of this Party box; offline-copy state; deep checks (WebGPU adapter, DataChannel loopback); a keep-awake test; a copyable `avrana.diagnostics/v0` report; the user agent, labelled as never used for decisions |
@@ -113,7 +113,8 @@ pointer and preferences are reported separately. The report never contains the u
 ## Arcade behavior and remaining reconnect gap
 
 - The screen stays on during play.
-- "Both controllers are in use" is shown only when `/arcade/stats` says the game is full.
+- "All controllers are in use" is shown only when `/arcade/stats` says the game is full
+  (`players` has reached `max_players`; the page knows no number of controllers).
   Otherwise the page says it "Can’t connect right now".
 - A drop triggers "Reconnecting…" with up to five quiet retries, paused while the phone is locked.
 - Stream disconnect is lower-level stream behavior, not ordinary Leave Party UI.

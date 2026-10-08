@@ -46,8 +46,17 @@ export async function later(request: APIRequestContext, seconds: number) {
   expect((await request.post(`/__test__/party/advance?s=${seconds}`)).status()).toBe(204);
 }
 
-/** A phone that stops asking: its page is gone, as when it is locked in a pocket. */
-export const goQuiet = (p: Phone) => p.page.goto('about:blank');
+/** A phone that stops asking: its page is gone, as when it is locked in a pocket. Nothing more
+ * leaves it for Party Core, and what was already on its way is given a moment to land: a request
+ * the page had just made could otherwise arrive after the test has moved the clock, and count
+ * as the phone being here. Returns the way to let the phone ask again (before it comes back). */
+export async function goQuiet(p: Phone) {
+  const block = (route: { abort: () => Promise<void> }) => route.abort();
+  await p.context.route('**/party/api/**', block);
+  await p.page.goto('about:blank');
+  await p.page.waitForTimeout(250);
+  return () => p.context.unroute('**/party/api/**', block);
+}
 
 /** Party Core stops answering this phone (the Wi-Fi dropped): every new ask fails, and the ask
  * already waiting is ended by a change it was waiting for. Returns the way to bring it back. */

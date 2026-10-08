@@ -196,30 +196,33 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   expect(await smallTargets(page, '#lib-filters button')).toEqual([]);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
 
+  // four players leave nobody out any more (Gauntlet II seats four); five leave three out
   await page.locator('#filter-players [data-players="4"]').click();
-  await expect(page.locator('#filters-show')).toHaveText('Show 4 games');           // before the sheet is closed
-  await expect(page.locator('#filter-players').getByRole('button', { pressed: true })).toHaveText('4');
+  await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
+  await page.locator('#filter-players [data-players="5"]').click();
+  await expect(page.locator('#filters-show')).toHaveText('Show 2 games');           // before the sheet is closed
+  await expect(page.locator('#filter-players').getByRole('button', { pressed: true })).toHaveText('5');
   await page.locator('#filters-show').click();
   await expect(sheet).toBeHidden();
   await expect(button).toBeFocused();
-  await expect(button).toHaveAccessibleName('Filters, 1 on: 4 players');
+  await expect(button).toHaveAccessibleName('Filters, 1 on: 5 players');
   await expect(badge).toHaveText('1');
-  expect(await shown(page)).toEqual(['bluff', 'expo', 'ps1-bomberman', 'ps1-worms']);
-  await expect(page.locator('#games h3')).toHaveText(['4 games for 4 players']);
-  await expect(page.locator('#game-count')).toHaveText('4 games of 5');
-  await expect(page.locator('#games .avrana-hid')).toContainText('1 game hidden by this filter.');
+  expect(await shown(page)).toEqual(['bluff', 'expo']);
+  await expect(page.locator('#games h3')).toHaveText(['2 games for 5 players']);
+  await expect(page.locator('#game-count')).toHaveText('2 games of 5');
+  await expect(page.locator('#games .avrana-hid')).toContainText('3 games hidden by this filter.');
 
-  await setFilter(page, { screen: 'phone' });                                       // a second filter narrows it further
+  await setFilter(page, { screen: 'phone' });                                       // a second filter joins the first
   await expect(page.locator('#filters-show')).toHaveText('Show 2 games');
   await page.locator('#filters-close').click();
-  await expect(button).toHaveAccessibleName('Filters, 2 on: 4 players, Phone only');
+  await expect(button).toHaveAccessibleName('Filters, 2 on: 5 players, Phone only');
   await expect(badge).toHaveText('2');
   expect(await shown(page)).toEqual(['bluff', 'expo']);
-  await expect(page.locator('#games h3')).toHaveText(['2 games for 4 players, Phone only']);
+  await expect(page.locator('#games h3')).toHaveText(['2 games for 5 players, Phone only']);
   await expect(page.locator('#games .avrana-hid')).toContainText('3 games hidden by these filters.');
   await setView(page, 'list');                                                      // the same in the list
   expect(await shown(page)).toEqual(['bluff', 'expo']);
-  await expect(page.locator('#games h3')).toHaveText(['2 games for 4 players, Phone only']);
+  await expect(page.locator('#games h3')).toHaveText(['2 games for 5 players, Phone only']);
 
   await page.locator('#games .avrana-sec').getByRole('button', { name: 'Reset' }).click();
   expect(await shown(page)).toEqual(ALL);
@@ -533,7 +536,7 @@ test('thumb-sized targets and nothing sideways in every view, at 360 px', async 
   // and with a filter on: "Reset" and "Show all" are short words and still thumb-sized
   for (const view of ['list', 'medium']) {
     await setView(page, view);
-    await setFilter(page, { players: 4 });
+    await setFilter(page, { players: 5 });
     await page.keyboard.press('Escape');
     await expect(page.locator('#games .avrana-hid')).toBeVisible();
     expect(await smallTargets(page, `#view-library :is(${CONTROLS})`), view + ', filtered').toEqual([]);
