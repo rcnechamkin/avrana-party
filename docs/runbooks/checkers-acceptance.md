@@ -74,7 +74,7 @@ code/web releases; it does not undo identities, provisioning, config, DNS, TLS o
    Review installed units without exporting secret environment values. Record migration backup path,
    arcade core checksum, phase-1 boundary verdict and BLUFF/EXPO/Gauntlet launch checks. Migration is
    a separate consequential appliance operation; a dry run is not proof of runtime compatibility.
-3. Apply [prepare-native-games](prepare-native-games.md) from the deployed root-owned Party release:
+3. Apply [prepare-native-games (PR #92 prerequisite)](https://github.com/rcnechamkin/avrana-party/blob/aff9e3f73b285a9f62d5c95ec6137a8e626b61fb/docs/runbooks/prepare-native-games.md) from the deployed root-owned Party release:
 
    ```bash
    sudo /opt/avrana-party/current/ops/prepare-native-games --dry-run
