@@ -65,12 +65,15 @@ async function gamePost(page: Page, path: string, body: any) {
   }, { path, body });
 }
 async function move(page: Page, path: number[], before: number) {
-  await page.locator(`[data-sq="${path[0]}"]`).click();
+  await page.locator(`[data-sq="${path[0]}"][data-movable]`).click();
   // The page may offer a full jump destination or require intermediate choices for branches.
   for (let i = 1; i < path.length; i++) {
     const final = page.locator(`[data-sq="${path.at(-1)}"][data-target]`);
     if (await final.count()) { await final.click(); break; }
-    await page.locator(`[data-sq="${path[i]}"][data-target]`).click();
+    const next = page.locator(`[data-sq="${path[i]}"][data-target]`);
+    // A branch choice can uniquely select the entire multi-jump before its final landing.
+    if (!(await next.count())) break;
+    await next.click();
   }
   await expect.poll(async () => (await latest(page))?.v).toBeGreaterThan(before);
 }
