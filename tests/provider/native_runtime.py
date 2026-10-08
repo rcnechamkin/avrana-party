@@ -2,11 +2,9 @@
 
 The parent owns a listening Unix socket, as socket activation does. A child gets fd 3 and the
 runtime command from its appliance grant. No game imports, title-specific launcher or TCP game
-listener. Linux CI supplies real systemd identity/filter/credential evidence separately.
+listener. This proves subprocess/socket integration only, never systemd isolation.
 """
 import atexit
-import http.client
-import json
 import os
 from pathlib import Path
 import socket
@@ -48,7 +46,7 @@ class NativeRuntime:
         self.socket.bind(self.path)
         self.socket.listen(128)
         self.proc = None
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.closed = False
         atexit.register(self.close)
 
@@ -87,20 +85,23 @@ class NativeRuntime:
                     self.proc.wait(timeout=5)
 
     def close(self):
-        if not self.closed:
-            self.stop_process()
+        with self.lock:
+            if self.closed:
+                return
+            # Serialize with activation so teardown cannot leave a new orphan child behind.
             self.closed = True
+            self.stop_process()
             self.socket.close()
             self.tmp.cleanup()
 
 
 class ActivatedLink(sessions.HttpGameLink):
-    """Start only the test runtime before the normal Party Unix-socket launch."""
+    """Emulate socket activation before any normal Party request to this test socket."""
     def __init__(self, endpoints, runtime):
         super().__init__(endpoints)
         self.runtime = runtime
 
-    def launch(self, session, roster):
-        if session.game_id == self.runtime.slug:
+    def _post(self, url, message, timeout=None, socket_path=None):
+        if socket_path == self.runtime.path:
             self.runtime.start()
-        return super().launch(session, roster)
+        return super()._post(url, message, timeout=timeout, socket_path=socket_path)

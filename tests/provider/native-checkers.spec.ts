@@ -1,4 +1,4 @@
-import { test, expect, devices, type Browser, type Page } from '@playwright/test';
+import { test, expect as baseExpect, devices, type Browser, type Page } from '@playwright/test';
 import { place, startForEveryone } from '../lib/frame';
 
 // Real Party + real Unix-socket child, two isolated origins and the real bridge frame.
@@ -8,6 +8,7 @@ const LOOPBACK = 'http://127.0.0.1:8185';
 test.beforeEach(({}, info) => test.skip(process.platform === 'win32' || info.project.name !== 'android-size',
   'native Unix processes on Linux, once with both phone sizes'));
 test.setTimeout(240_000);
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 async function phone(browser: Browser, name: string, n = 0) {
   const { defaultBrowserType, ...device } = [devices['Pixel 7'], devices['iPhone 13']][n % 2] as any;
@@ -19,13 +20,14 @@ async function phone(browser: Browser, name: string, n = 0) {
   });
   await page.addInitScript(() => {
     const original = window.fetch;
-    (window as any).__native = { views: [], tokens: [], tickets: [] };
+    (window as any).__native = { views: [], tokens: [], tickets: [], polls: 0 };
     window.fetch = async (...args) => {
       const response = await original(...args);
       const url = String(args[0]);
       if (url.includes('api/')) {
         try {
           const body = await response.clone().json();
+          if (url.includes('api/poll') && response.ok) (window as any).__native.polls++;
           if (body.view) (window as any).__native.views.push(body.view);
           if (body.token) (window as any).__native.tokens.push(body.token);
           if (url.includes('api/redeem')) (window as any).__native.tickets.push(JSON.parse(String(args[1]?.body)).ticket);
@@ -91,18 +93,26 @@ test('native Checkers: seats, controls, spectator, illegal input, reload, reconn
     const illegal = await gamePost(ana.page, 'move', { token: oldToken, v: first.v, move: [0, 1] });
     expect(illegal.status).toBe(409);
     expect(illegal.body.view.board).toEqual(first.board);
-    expect((await gamePost(cleo!.page, 'move', { token: await token(cleo!.page), v: first.v, move: first.moves[0] })).status).toBe(409);
+    expect((await gamePost(cleo!.page, 'move', { token: await token(cleo!.page), v: first.v, move: first.moves[0] })).status).toBe(403);
     await move(ana.page, first.moves[0], first.v);
     await expect.poll(async () => (await latest(ben.page))?.v).toBe(first.v + 1);
     const board = (await latest(ben.page)).board;
     await ana.page.reload();
     await expect.poll(async () => (await latest(ana.page))?.board).toEqual(board);
     expect(await token(ana.page)).toBe(oldToken);
+    const beforeReconnect = await ben.page.evaluate(() => (window as any).__native.polls);
     await ben.context.setOffline(true);
-    await ben.page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    // Wake while disconnected, forcing the existing long poll to fail and retry.
+    await ben.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(ben.page.locator('#status')).toContainText('Reconnecting');
     await ben.context.setOffline(false);
     await ben.page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => ben.page.evaluate(() => (window as any).__native.polls)).toBeGreaterThan(beforeReconnect);
     await expect.poll(async () => (await latest(ben.page))?.board).toEqual(board);
+    await expect(ben.page.locator('#status')).not.toContainText('Reconnecting');
+    const recovered = await latest(ben.page);
+    await move(ben.page, recovered.moves[0], recovered.v);
+    await expect.poll(async () => (await latest(ana.page))?.v).toBe(recovered.v + 1);
     await ana.page.locator('#end').click();
     await ana.page.locator('#confirm-yes').click();
     for (const p of [ana, ben, cleo!]) await expect(p.page).toHaveURL(`${PARTY}/party/`);

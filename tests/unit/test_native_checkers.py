@@ -100,8 +100,8 @@ class NativeCheckers(unittest.TestCase):
         self.assertTrue(a['view']['moves'])
         self.assertEqual(b['view']['moves'], [])
         self.assertEqual(c['view']['moves'], [])
-        for seat in (b, c):
-            self.assertEqual(self.request('move', {'token': seat['token'], 'v': 1, 'move': a['view']['moves'][0]})[0], 409)
+        self.assertEqual(self.request('move', {'token': b['token'], 'v': 1, 'move': a['view']['moves'][0]})[0], 409)
+        self.assertEqual(self.request('move', {'token': c['token'], 'v': 1, 'move': a['view']['moves'][0]})[0], 403)
         self.assertEqual(self.request('move', {'token': a['token'], 'v': 1, 'move': [0, 1]})[0], 409)
         status, moved = self.request('move', {'token': a['token'], 'v': 1, 'move': a['view']['moves'][0]})
         self.assertEqual(status, 200)
@@ -150,9 +150,14 @@ class NativeCheckers(unittest.TestCase):
 
     def test_process_failure_host_cleanup_and_subsequent_launch(self):
         old = self.redeem(self.phones[0])
+        stale = self.ticket(self.phones[1])
         self.runtime.stop_process()
-        # Socket reactivation loses the in-memory match; it cannot resurrect its old token.
+        # Host End itself activates the empty child, as systemd's listening socket would.
+        # Party records the refusal honestly: the empty child cannot confirm the lost session.
+        ended = self.end()
+        self.assertEqual(ended['session']['outcome'], 'ended_by_host')
+        self.assertFalse(self.svc.core.party.session.game_confirmed_end)
         self.assertEqual(self.request('poll', {'token': old['token'], 'since': -1})[0], 403)
-        self.end()
         self.launch()
+        self.assertEqual(self.request('redeem', {'ticket': stale})[0], 403)
         self.assertEqual(self.redeem(self.phones[0])['view']['seat'], 'w')
