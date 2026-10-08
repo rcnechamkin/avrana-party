@@ -53,7 +53,7 @@ async function table(browser: Browser, request: any, spectator = false) {
   const cleo = spectator ? await phone(browser, 'Cleo') : null;
   await startForEveryone(ana.page, 'checkers');
   for (const p of [ana, ben, ...(cleo ? [cleo] : [])]) {
-    await expect(p.page).toHaveURL(`${GAMES}/games/checkers/?avrana=1`);
+    await expect(p.page).toHaveURL(`${GAMES}/games/checkers/`);
     await expect.poll(() => latest(p.page)).toBeTruthy();
   }
   return { ana, ben, cleo };
@@ -153,7 +153,7 @@ test('a complete legal match reports signed results to Party and both phones ret
     // Party's public result display is checked, not only its JSON record.
     await expect(ana.page.locator('#party-result')).toContainText(/Checkers:.*(won|draw)/);
     await startForEveryone(ana.page, 'checkers');
-    await expect(ana.page).toHaveURL(`${GAMES}/games/checkers/?avrana=1`);
+    await expect(ana.page).toHaveURL(`${GAMES}/games/checkers/`);
     expect((await gamePost(ana.page, 'redeem', { ticket: staleTicket })).status).toBe(403);
     expect((await gamePost(ana.page, 'poll', { token: oldToken, since: -1 })).status).toBe(403);
   } finally { await close(ana, ben); }

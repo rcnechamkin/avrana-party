@@ -362,11 +362,11 @@ test.describe('three phones at one party', () => {
     const page = host.page;
     await place(page, 'library');
     const order = () => page.locator('#games [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game));
-    // all five seat three (Gauntlet II seats four since AVR-311): one shelf, and nobody is "not for three"
-    await expect(page.locator('#games h3')).toHaveText(['Great for three']);
-    await expect(page.locator('#games .avrana-sec .meta')).toHaveText(['5']);
-    expect(await order()).toEqual(['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);
-    await expect(page.locator('#game-count')).toHaveText('5 games');
+    // Five titles seat three; Checkers stays listed with its two-player limit.
+    await expect(page.locator('#games h3')).toHaveText(['Great for three', 'Not for three']);
+    await expect(page.locator('#games .avrana-sec .meta')).toHaveText(['5', '1']);
+    expect(await order()).toEqual(['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms', 'checkers']);
+    await expect(page.locator('#game-count')).toHaveText('6 games');
     const four = page.locator('#games [data-game="arcade-gauntlet2"]');
     await expect(four.locator('.seats')).toHaveText('1–4');
     await expect(four).toHaveAccessibleName(/^Gauntlet II\. 1–4 players\. TV optional/);
@@ -375,11 +375,11 @@ test.describe('three phones at one party', () => {
     await page.locator('#lib-filter').click();
     await expect(page.locator('#filters-party')).toHaveText('Your Party is 3');
     await expect(page.locator('#filter-players').getByRole('button', { pressed: true })).toHaveText('Any');
-    await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
+    await expect(page.locator('#filters-show')).toHaveText('Show 6 games');
     await page.keyboard.press('Escape');
     // a guest sees the same shelf as the Host
     await place(bob.page, 'library');
-    await expect(bob.page.locator('#games h3')).toHaveText(['Great for three']);
+    await expect(bob.page.locator('#games h3')).toHaveText(['Great for three', 'Not for three']);
     // the smallest covers drop the plain range: nothing is wrong, so nothing is shown
     await page.locator('#lib-view').click();
     await page.locator('#view-choices [data-v="compact"]').click();
@@ -388,8 +388,8 @@ test.describe('three phones at one party', () => {
     // the list is the same list, in the same order
     await page.locator('#lib-view').click();
     await page.locator('#view-choices [data-v="list"]').click();
-    await expect(page.locator('#games h3')).toHaveText(['Great for three']);
-    expect(await order()).toEqual(['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);
+    await expect(page.locator('#games h3')).toHaveText(['All games']);
+    expect(await order()).toEqual(['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms', 'checkers']);
     await expect(page.locator('#games .avrana-row', { hasText: 'Gauntlet II' })).toContainText('1–4');
     // Home says the same thing
     await place(page, 'home');
@@ -405,20 +405,20 @@ test.describe('three phones at one party', () => {
     await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(1);
     await place(page, 'library');
     await expect(page.locator('#games h3')).toHaveText(['Great for two']);
-    await expect(page.locator('#games [data-game]')).toHaveCount(5);
+    await expect(page.locator('#games [data-game]')).toHaveCount(6);
   });
 
-  test('a fifth phone: a game too small for the party says who sits out, and the shelf still lists all five', async ({ browser }) => {
+  test('a fifth phone: a game too small for the party says who sits out, and the shelf still lists all six', async ({ browser }) => {
     const dee = await phone(browser, 'Dee'), eli = await phone(browser, 'Eli');
     try {
       const page = host.page;
       await place(page, 'library');
       const order = () => page.locator('#games [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game));
-      const all = ['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'];
+      const all = ['bluff', 'expo', 'checkers', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'];
       await expect(page.locator('#games h3')).toHaveText(['Great for five', 'Not for five']);
-      await expect(page.locator('#games .avrana-sec .meta')).toHaveText(['2', '3']);
-      expect(await order()).toEqual(all);                                         // all five, best fit first
-      await expect(page.locator('#game-count')).toHaveText('5 games');
+      await expect(page.locator('#games .avrana-sec .meta')).toHaveText(['2', '4']);
+      expect(await order()).toEqual(all);                                         // all six, best fit first
+      await expect(page.locator('#game-count')).toHaveText('6 games');
       const four = page.locator('#games [data-game="arcade-gauntlet2"]');
       await expect(four.locator('.seats')).toHaveText('Max 4');
       await expect(four).toHaveAccessibleName(/^Gauntlet II\. Max 4, you’re 5\. TV optional/);
@@ -426,7 +426,7 @@ test.describe('three phones at one party', () => {
       // the sheet says how many are here; it does not filter for them
       await page.locator('#lib-filter').click();
       await expect(page.locator('#filters-party')).toHaveText('Your Party is 5');
-      await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
+      await expect(page.locator('#filters-show')).toHaveText('Show 6 games');
       await page.keyboard.press('Escape');
       // a guest sees the same shelf as the Host, and the game's page says what happens to the rest
       await place(bob.page, 'library');
@@ -435,6 +435,9 @@ test.describe('three phones at one party', () => {
       await expect(gauntlet.locator('[data-suits="false"]')).toHaveText('Up to 4 play; one of you sits out.');
       await expect(gauntlet.locator('[data-suits="false"] svg')).toBeVisible();   // a mark and words, not colour
       await expect((await openGame(bob.page, 'bluff')).locator('[data-suits="true"]')).toHaveText('Room for all five of you.');
+      const checkers = await openGame(bob.page, 'checkers');
+      await expect(checkers.locator('[data-suits="false"]')).toHaveText('Up to 2 play; three of you watch.');
+      await expect(checkers).toContainText('2 players');
       // the smallest covers drop the plain range and keep the warning
       await page.locator('#lib-view').click();
       await page.locator('#view-choices [data-v="compact"]').click();
@@ -444,7 +447,7 @@ test.describe('three phones at one party', () => {
       await page.locator('#lib-view').click();
       await page.locator('#view-choices [data-v="list"]').click();
       await expect(page.locator('#games h3')).toHaveText(['All games']);
-      await expect(page.locator('#games .avrana-sec .meta')).toHaveText('5, best fit first');
+      await expect(page.locator('#games .avrana-sec .meta')).toHaveText('6, best fit first');
       expect(await order()).toEqual(all);
       await expect(page.locator('#games .avrana-row', { hasText: 'Gauntlet II' })).toContainText('Max 4, you’re 5');
       // Home says the same thing: only what seats five is on its shelf
@@ -460,8 +463,8 @@ test.describe('three phones at one party', () => {
       await expect(page.locator('#home-great-h')).toHaveText('Great for four');
       await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(1);
       await place(page, 'library');
-      await expect(page.locator('#games h3')).toHaveText(['Great for four']);
-      await expect(page.locator('#games [data-game]')).toHaveCount(5);
+      await expect(page.locator('#games h3')).toHaveText(['All games']);
+      await expect(page.locator('#games [data-game]')).toHaveCount(6);
     } finally {
       await dee.context.close();
       await eli.context.close();

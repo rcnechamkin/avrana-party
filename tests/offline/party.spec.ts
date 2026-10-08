@@ -40,7 +40,7 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(page.locator('#status')).toContainText('Connected to the party');
   await expect(page.locator('#secure')).toBeVisible();
   await place(page, 'library');
-  await expect(page.locator('#games [data-game]')).toHaveCount(5);
+  await expect(page.locator('#games [data-game]')).toHaveCount(6);
   await expect(page.locator('#games [data-game^="lan-"]')).toHaveCount(0);       // no retired LAN Games title is offered
   await expect(page.locator('#games [data-game="ps1-worms"]')).toContainText('Not installed');
   await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).not.toHaveAttribute('data-note', /.+/);

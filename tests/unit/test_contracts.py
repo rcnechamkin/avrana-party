@@ -280,8 +280,9 @@ class ApplianceAndCatalog(unittest.TestCase):
         built = catalog.build(VOCAB, self.appliance, self.contracts)
         self.assertEqual(built['schema'], 'avrana.catalog/v0')
         installed = [g for g in built['games'] if g['installed']]
-        self.assertEqual(sorted(g['id'] for g in installed), ['arcade-gauntlet2', 'bluff', 'expo'])
-        self.assertEqual([g['id'] for g in installed if g['provider'] != 'lan-games'], ['arcade-gauntlet2'])
+        self.assertEqual(sorted(g['id'] for g in installed), ['arcade-gauntlet2', 'bluff', 'checkers', 'expo'])
+        self.assertEqual([g['id'] for g in installed if g['provider'] == 'arcade'], ['arcade-gauntlet2'])
+        self.assertEqual([g['id'] for g in installed if g['provider'] == 'native'], ['checkers'])
         self.assertEqual(next(g for g in installed if g['id'] == 'arcade-gauntlet2')['entry'], '/arcade/')
         bomber = next(g for g in built['games'] if g['id'] == 'ps1-bomberman')
         tv = next(p for p in bomber['presentations'] if p['id'] == 'tv_controller')
@@ -356,8 +357,12 @@ class ApplianceAndCatalog(unittest.TestCase):
             with self.assertRaises(ValueError, msg=repr(runtime)):
                 appliance.validate(doc, VOCAB)
 
-    def test_the_shipped_appliance_grants_no_runtime_yet(self):
-        self.assertFalse([i['game'] for i in self.appliance['installed'] if 'runtime' in i])
+    def test_the_shipped_appliance_grants_only_the_checkers_native_runtime(self):
+        native = [i for i in self.appliance['installed'] if 'runtime' in i]
+        self.assertEqual([i['game'] for i in native], ['checkers'])
+        self.assertEqual(native[0]['runtime'], {
+            'command': ['/usr/bin/python3', '-m', 'checkers'],
+            'working_directory': '/opt/avrana-party-games/current'})
 
     def test_malformed_appliance_values_are_reported_not_raised(self):
         junk = [None, 1, [], [1], {}, {'a': 1}, 'x']

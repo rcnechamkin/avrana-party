@@ -3,12 +3,12 @@ import { openGame, place, sideways, smallTargets } from '../lib/frame';
 
 /**
  * The Library and Home's shelves (AVR-285) against the simulated Party (Tier 2), on a phone with
- * no party behind it: the five real titles, four views, two real filters, and a cover that opens
+ * no party behind it: the six real titles, four views, two real filters, and a cover that opens
  * the game's own page (AVR-286). What the size of a party does to the shelf is in tests/party/multi-client.spec.ts
  * (it needs a party); the arranging itself is in tests/offline/library.test.mjs.
  * Chromium at phone sizes: not a real phone (docs/TESTING.md, Tier 3).
  */
-const ALL = ['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'];
+const ALL = ['bluff', 'checkers', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'];
 const VIEWS = ['medium', 'large', 'compact', 'list'] as const;
 const CONTROLS = 'a, button, input, select, summary';
 
@@ -53,16 +53,19 @@ const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.ge
 
 test.beforeEach(async ({ page }) => arcade(page, 'up'));
 
-test('the Library lists the five real titles, with no invented facts on any of them', async ({ page }) => {
+test('the Library lists the six real titles, with no invented facts on any of them', async ({ page }) => {
   await h264(page, true);
   await open(page);
   expect(await shown(page)).toEqual(ALL);
-  await expect(page.locator('#game-count')).toHaveText('5 games');
+  await expect(page.locator('#game-count')).toHaveText('6 games');
   await expect(page.locator('#games h3')).toHaveText(['All games']);
-  await expect(page.locator('#games .avrana-sec .meta')).toHaveText('5');
+  await expect(page.locator('#games .avrana-sec .meta')).toHaveText('6');
   const bluff = page.locator('#games [data-game="bluff"]');
   await expect(bluff).toHaveAccessibleName('BLUFF. 2–6 players. Phone only');
   await expect(bluff.locator('.seats')).toHaveText('2–6');
+  const checkers = page.locator('#games [data-game="checkers"]');
+  await expect(checkers).toHaveAccessibleName('Checkers. 2 players. Phone only');
+  await expect(checkers.locator('.seats')).toHaveText('2');
   await expect(page.locator('#games [data-game="ps1-worms"]')).toHaveAccessibleName('Worms Armageddon. 1–4 players. TV optional. Not installed');
   // no length, kind, rating or "quick start": the catalog says none of those
   await expect(page.locator('#view-library')).not.toContainText(/\bmin\b|minutes|Quick Start|★/i);
@@ -91,15 +94,15 @@ test('four views: the choice is one tap, shows at once, and is kept on this phon
     await expect(button).toBeFocused();
     expect(await shown(page), view).toEqual(ALL);                                  // a view never changes what is listed
     expect(await stored(page, 'avrana-library-view')).toBe(view);
-    if (view === 'list') await expect(page.locator('#games ul.avrana-rows > li')).toHaveCount(5);
-    else await expect(page.locator(`#games ul.avrana-grid.${view} > li`)).toHaveCount(5);
+    if (view === 'list') await expect(page.locator('#games ul.avrana-rows > li')).toHaveCount(6);
+    else await expect(page.locator(`#games ul.avrana-grid.${view} > li`)).toHaveCount(6);
   }
   await setView(page, 'list');
   await expect(button).toHaveAccessibleName('View: list');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
   await expect(shelf).toHaveAttribute('data-view', 'list');                        // kept
-  await expect(page.locator('#games .avrana-row')).toHaveCount(5);
+  await expect(page.locator('#games .avrana-row')).toHaveCount(6);
   await expect(page.locator('#games .avrana-row').first()).toContainText('Claim anything. Get caught, lose a card.');
   await page.locator('#lib-view').click();
   await expect(page.locator('#lib-views').getByRole('button', { pressed: true })).toHaveText('List');
@@ -120,7 +123,7 @@ test('what a title means on this phone is said the same way in all four views', 
     return [b.dataset.game, b.dataset.note || '', b.querySelector('.warn, .f .no:last-child')?.textContent?.trim() || '',
       /\. (Not installed|Not on this phone|Off for now|Watch only on this phone)$/.exec(b.getAttribute('aria-label') || '')?.[1] || ''];
   }));
-  const want = [['bluff', '', '', ''], ['expo', '', '', ''],
+  const want = [['bluff', '', '', ''], ['checkers', '', '', ''], ['expo', '', '', ''],
     ['arcade-gauntlet2', 'no', 'Not on this phone', 'Not on this phone'],
     ['ps1-bomberman', 'not_installed', 'Not installed', 'Not installed'],
     ['ps1-worms', 'not_installed', 'Not installed', 'Not installed']];
@@ -188,7 +191,7 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   await button.click();
   await expect(sheet).toBeVisible();
   await expect(sheet).toHaveAccessibleName('Filters');
-  await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
+  await expect(page.locator('#filters-show')).toHaveText('Show 6 games');
   await expect(page.locator('#filter-players').getByRole('button', { pressed: true })).toHaveText('Any');
   await expect(page.locator('#filter-screens').getByRole('button', { pressed: true })).toHaveText('Any');
   // only what the catalog really says: how many play, and where it is seen
@@ -196,7 +199,7 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   expect(await smallTargets(page, '#lib-filters button')).toEqual([]);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
 
-  // four players leave nobody out any more (Gauntlet II seats four); five leave three out
+  // four players hide Checkers; five leave four titles out
   await page.locator('#filter-players [data-players="4"]').click();
   await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
   await page.locator('#filter-players [data-players="5"]').click();
@@ -209,8 +212,8 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   await expect(badge).toHaveText('1');
   expect(await shown(page)).toEqual(['bluff', 'expo']);
   await expect(page.locator('#games h3')).toHaveText(['2 games for 5 players']);
-  await expect(page.locator('#game-count')).toHaveText('2 games of 5');
-  await expect(page.locator('#games .avrana-hid')).toContainText('3 games hidden by this filter.');
+  await expect(page.locator('#game-count')).toHaveText('2 games of 6');
+  await expect(page.locator('#games .avrana-hid')).toContainText('4 games hidden by this filter.');
 
   await setFilter(page, { screen: 'phone' });                                       // a second filter joins the first
   await expect(page.locator('#filters-show')).toHaveText('Show 2 games');
@@ -219,7 +222,7 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   await expect(badge).toHaveText('2');
   expect(await shown(page)).toEqual(['bluff', 'expo']);
   await expect(page.locator('#games h3')).toHaveText(['2 games for 5 players, Phone only']);
-  await expect(page.locator('#games .avrana-hid')).toContainText('3 games hidden by these filters.');
+  await expect(page.locator('#games .avrana-hid')).toContainText('4 games hidden by these filters.');
   await setView(page, 'list');                                                      // the same in the list
   expect(await shown(page)).toEqual(['bluff', 'expo']);
   await expect(page.locator('#games h3')).toHaveText(['2 games for 5 players, Phone only']);
@@ -230,7 +233,7 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   await expect(button).toHaveAccessibleName('Filters');
   await expect(badge).toBeHidden();
   await expect(page.locator('#games .avrana-hid')).toHaveCount(0);
-  await expect(page.locator('#game-count')).toHaveText('5 games');
+  await expect(page.locator('#game-count')).toHaveText('6 games');
 
   await setFilter(page, { players: 1 });
   await page.keyboard.press('Escape');
@@ -238,7 +241,7 @@ test('filters: the button, the sheet, the heading, the count and the hidden line
   expect(await shown(page)).toEqual(ALL);
   await setFilter(page, { players: 2, screen: 'tv_optional' });
   await page.locator('#filters-reset').click();                                     // Reset inside the sheet
-  await expect(page.locator('#filters-show')).toHaveText('Show 5 games');
+  await expect(page.locator('#filters-show')).toHaveText('Show 6 games');
   await expect(page.locator('#filter-players').getByRole('button', { pressed: true })).toHaveText('Any');
   await page.mouse.click(180, 20);                                                  // a tap outside closes it
   await expect(sheet).toBeHidden();
@@ -270,7 +273,7 @@ test('nothing to show always says why and offers the way back', async ({ page })
   await page.locator('#game-search').fill('chess');
   await expect(blank).toHaveAttribute('data-empty', 'search');
   await expect(blank).toContainText('Nothing matches “chess”');
-  await expect(blank).toContainText('The Library has 5 games.');
+  await expect(blank).toContainText('The Library has 6 games.');
   await blank.getByRole('button', { name: 'Clear search' }).click();
   await expect(page.locator('#game-search')).toHaveValue('');
   await expect(page.locator('#game-search')).toBeFocused();
@@ -278,7 +281,7 @@ test('nothing to show always says why and offers the way back', async ({ page })
   await page.locator('#game-search').fill('dungeon');                               // a title's own sentence is searched
   expect(await shown(page)).toEqual(['arcade-gauntlet2']);
   await expect(page.locator('#games h3')).toHaveText(['Search results']);
-  await expect(page.locator('#game-count')).toHaveText('1 game of 5');
+  await expect(page.locator('#game-count')).toHaveText('1 game of 6');
   await page.locator('#game-search').fill('');
 
   const tab = (name: string) => page.locator('#game-views').getByRole('button', { name, exact: true });
@@ -477,7 +480,7 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await expect(lead).toHaveAccessibleName('BLUFF 2–6 players');
   await expect(page.locator('#home-great-h')).toHaveText('Games');                  // no party: nothing to be "great for"
   expect(await page.locator('#home-great [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game)))
-    .toEqual(['expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);           // the lead is not repeated
+    .toEqual(['checkers', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);           // the lead is not repeated
   await expect(page.locator('#home-great [data-game="ps1-worms"]')).toContainText('Not installed');
   await expect(page.locator('#home-recent-sec')).toBeHidden();                      // nothing played here yet
   expect(await smallTargets(page, `#view-home :is(${CONTROLS})`)).toEqual([]);
@@ -604,7 +607,7 @@ test('reading order: search, filters, view, the tabs, then the shelf; the skip l
   const order = await page.locator('#view-library').evaluate((root) =>
     [...root.querySelectorAll('input, button, a[data-game]')].filter((el) => el.getClientRects().length)
       .map((el) => el.id || (el as HTMLElement).dataset.view || (el as HTMLElement).dataset.game).slice(0, 8));
-  expect(order).toEqual(['game-search', 'lib-filter', 'lib-view', 'all', 'favorites', 'recent', 'bluff', 'expo']);
+  expect(order).toEqual(['game-search', 'lib-filter', 'lib-view', 'all', 'favorites', 'recent', 'bluff', 'checkers']);
   await page.locator('#game-search').focus();
   for (const want of ['lib-filter', 'lib-view']) {
     await page.keyboard.press('Tab');
