@@ -122,7 +122,10 @@ test('native Checkers: seats, controls, spectator, illegal input, reload, reconn
     await ana.page.locator('#confirm-yes').click();
     for (const p of [ana, ben, cleo!]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
     // Old game authority was torn down, independently of phone navigation.
-    expect((await request.post(`${GAMES}/games/checkers/api/poll`, { data: { token: oldToken, since: -1 } })).status()).toBe(403);
+    // APIRequestContext uses Node DNS, not Chromium's *.avrana.test resolver rules.
+    expect((await request.post(`${LOOPBACK}/games/checkers/api/poll`, {
+      headers: { Host: new URL(GAMES).host }, data: { token: oldToken, since: -1 },
+    })).status()).toBe(403);
   } finally { await close(ana, ben, cleo); }
 });
 
