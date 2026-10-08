@@ -90,6 +90,29 @@ Published deployment evidence has not advanced to this source; physical acceptan
 From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 `test-results/` is generated and Git-ignored.
 
+### Native Checkers integration (AVR-238 branch)
+
+`AVRANA_GAMES_REPO` must name the paired Games checkout containing top-level `checkers/`.
+On Linux, run `AVRANA_REQUIRE_NATIVE=1 python3 -m unittest discover -s tests/unit -p
+test_native_checkers.py -v` with that variable set. The cross-repo CI job requires these tests:
+the generic provider launcher inherits a real Unix listening socket into the grant-declared
+child, and real Party Core receives signed results over its internal Unix socket. Windows skips
+the process tests; metadata checks still run. Missing peer source is a failure in the required lane.
+
+`npx playwright test -c playwright.provider.config.ts tests/provider/native-checkers.spec.ts`
+uses the same paired checkout on Linux and two Chromium phone contexts through separate Party
+and game host names and the real bridge. It checks legal completion and Party Home's generic
+result display, reconnect, private controls, host end and process failure recovery. HTTP test
+origins and inherited descriptors prove browser/process integration only: this harness does
+not prove TLS, production cookies, systemd identities/credentials/hardening, nginx, the Pi or
+real Safari/Android phones. Checkers-specific real-systemd provisioning and phase-2 boundary
+proof remain separate acceptance requirements; the stand-in proof is not Checkers evidence.
+
+Result projection privacy is pinned by `test_party_result.py` (observer/departed refusal,
+allowlisted detached summaries, missing/refused/abandoned result exclusion and next-session
+replacement) and `party-bridge.test.mjs` (no summary crosses the bridge). Executed results belong
+in the PR implementation report; the presence of these tests is not a passing verdict.
+
 ## Offline CI lane and what Cloud can run (current main)
 
 `.github/workflows/offline-checks.yml` (“Offline checks”) runs on PRs, main pushes and demand.
