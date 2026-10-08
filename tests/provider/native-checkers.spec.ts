@@ -89,6 +89,8 @@ test('native Checkers: seats, controls, spectator, illegal input, reload, reconn
     expect((await latest(cleo!.page)).moves).toEqual([]);
     for (const p of [ana, ben, cleo!]) {
       expect(await p.page.evaluate(() => document.cookie)).toBe('');
+      // Browser storage sees HttpOnly cookies too; document.cookie alone cannot prove this.
+      expect(await p.context.cookies(GAMES)).toEqual([]);
       await expect(p.page.locator('iframe[title="Avrana Party"]')).toHaveAttribute('src', `${PARTY}/party/bridge.html`);
       expect(p.direct).toEqual([]);
     }
