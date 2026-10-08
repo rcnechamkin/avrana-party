@@ -23,7 +23,10 @@ parser.add_argument('--port', type=int, default=8182)
 parser.add_argument('--party-session', action='store_true')
 parser.add_argument('--bind', default='127.0.0.1')
 parser.add_argument('--game-origin', action='store_true')
+parser.add_argument('--native-game', help='run a grant-declared native process (POSIX tests only)')
 args = parser.parse_args()
+if args.native_game and not (args.party_session and args.game_origin):
+    parser.error('--native-game requires --party-session --game-origin')
 PARTY_HOST, GAMES_HOST = f'party.avrana.test:{args.port}', f'games.avrana.test:{args.port}'
 if args.game_origin:
     import os
@@ -75,9 +78,36 @@ async def shell_headers(request, call_next):
 
 if args.party_session:
     public = {args.bind} - {'127.0.0.1'}
+    native = None
+    if args.native_game:
+        from native_runtime import NativeRuntime
+        native = NativeRuntime(platform, games, args.native_game, f'http://{PARTY_HOST}')
+        # Browser routes have proxy headers; signed control routes are never exposed by the front.
+        import anyio
+        from starlette.responses import Response
+        from starlette.requests import Request
+        native_threads = anyio.CapacityLimiter(64)
+
+        async def native_page(request: Request):
+            if request.headers.get('host') != GAMES_HOST or '/avrana/session/' in request.url.path:
+                return JSONResponse({'error': 'not_found'}, status_code=404)
+            target = request.url.path + (f'?{request.url.query}' if request.url.query else '')
+            body = await request.body()
+            headers = {'Host': GAMES_HOST, 'X-Forwarded-For': '127.0.0.1'}
+            if 'content-type' in request.headers:
+                headers['Content-Type'] = request.headers['content-type']
+            status, returned, data = await anyio.to_thread.run_sync(
+                native.request, request.method, target, body, headers, limiter=native_threads)
+            response = Response(data, status_code=status)
+            for key, value in returned:
+                if key.lower() in ('content-type', 'cache-control', 'content-security-policy', 'x-content-type-options'):
+                    response.headers[key] = value
+            return response
+        donor.app.router.routes.insert(0, __import__('starlette.routing', fromlist=['Route']).Route(
+            f'/games/{args.native_game}/{{rest:path}}', native_page, methods=['GET', 'POST']))
     if args.game_origin:
         party_harness.attach(donor.app, party_key, args.port, public | {'party.avrana.test'}, party_port,
-                             game_origins={f'http://{GAMES_HOST}': '*'})
+                             game_origins={f'http://{GAMES_HOST}': '*'}, native=native)
     else:
         party_harness.attach(donor.app, party_key, args.port, public, party_port)
 

@@ -90,6 +90,22 @@
       "permissions_granted": [
         "party_roster"
       ]
+    },
+    {
+      "game": "checkers",
+      "entry": "/games/checkers/",
+      "tier": "builtin",
+      "permissions_granted": [
+        "party_roster"
+      ],
+      "runtime": {
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "checkers"
+        ],
+        "working_directory": "/opt/avrana-party-games/current"
+      }
     }
   ],
   "collections": []

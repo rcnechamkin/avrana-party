@@ -231,6 +231,54 @@
       "artwork": "art/lan-bluff.svg"
     },
     {
+      "id": "checkers",
+      "name": "Checkers",
+      "kind": "native",
+      "players": {
+        "min": 2,
+        "max": 2
+      },
+      "screen": "no_tv_needed",
+      "input": {
+        "model": "browser_native"
+      },
+      "late_join": "spectator_only",
+      "spectators": "watch",
+      "private_player_ui": true,
+      "fallback": "spectate",
+      "installed": true,
+      "entry": "/games/checkers/",
+      "health": null,
+      "playableHere": true,
+      "presentations": [
+        {
+          "id": "phone_table",
+          "method": "browser_native",
+          "roles": [
+            "player",
+            "spectator"
+          ],
+          "available": true,
+          "runtimeMissing": [],
+          "requires": {
+            "device": []
+          },
+          "optional": {
+            "device": [
+              "wake_lock"
+            ],
+            "runtime": []
+          }
+        }
+      ],
+      "provider": "native",
+      "status": "current",
+      "icon": "gamepad",
+      "category": "Board",
+      "solo": false,
+      "summary": "Two sides. Every capture counts."
+    },
+    {
       "id": "expo",
       "name": "EXPO",
       "kind": "native",
