@@ -180,4 +180,5 @@ one to the site file: every location that proxies to a game process on the Party
 site file is changed in the repository; it takes effect when the owner deploys it. The rule that
 games never receive the device token is unchanged; this records the mechanism that keeps it, as
 [BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) 3.3 describes for before and after the game
-origin exists.
+origin exists. AVR-318 adds the arcade (`/arcade/`, both server blocks) to the same rule: its
+server reads no cookie, so it sends none either.

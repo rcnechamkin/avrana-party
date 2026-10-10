@@ -536,6 +536,37 @@ http {{
         conn.close()
         self.assertEqual((got['upstream'], got['cookie']), ('native', None))
 
+    def test_the_arcade_process_receives_no_cookie(self):
+        """AVR-318 / ADR 0003 section 4: the arcade server (stream.py, port 8097) reads no cookie,
+        in HTTP or in the socket handshake (its seat comes from a ticket in the hello message), so
+        /arcade/ sends it no Cookie header, in the HTTPS and in the port 80 block, with the
+        upgrade headers intact. The Party API, in the same server block, still gets the cookie."""
+        extra = {'Cookie': self.DEVICE_COOKIES}
+        for path in ('/arcade/', '/arcade/stats', '/arcade/ws?audio=0'):
+            res, body = self.request('GET', path, extra=extra)
+            got = json.loads(body)
+            self.assertEqual((res.status, got['upstream']), (200, 'arcade'), path)
+            self.assertIsNone(got['cookie'], path)
+            self.assertEqual(got['proto'], 'https', path)                 # the other headers still go
+            res, body = self.request('POST', path, body={'x': 1}, extra=extra)
+            self.assertIsNone(json.loads(body)['cookie'], path)
+        res, body = self.request('GET', '/arcade/ws', extra=dict(extra, Upgrade='websocket', Connection='Upgrade'))
+        got = json.loads(body)
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+        for path in ('/arcade/', '/arcade/stats'):                         # the port 80 block
+            conn = http.client.HTTPConnection('127.0.0.1', self.p80, timeout=5)
+            conn.request('GET', path, headers={'Host': 'party.local', 'Cookie': self.DEVICE_COOKIES})
+            got = json.loads(conn.getresponse().read())
+            conn.close()
+            self.assertEqual(got['upstream'], 'arcade', path)
+            self.assertIsNone(got['cookie'], path)
+        conn = http.client.HTTPConnection('127.0.0.1', self.p80, timeout=5)
+        conn.request('GET', '/arcade/ws', headers={'Host': 'party.local', 'Cookie': self.DEVICE_COOKIES,
+                                                   'Upgrade': 'websocket', 'Connection': 'Upgrade'})
+        got = json.loads(conn.getresponse().read())
+        conn.close()
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+
     def test_the_party_api_still_receives_the_device_cookie(self):
         """The counterpart of the test above: the cookie is cleared for games, not for the Party."""
         res, body = self.request('POST', '/party/api/join', {'name': 'Cookie Check'})

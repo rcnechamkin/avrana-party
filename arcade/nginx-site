@@ -23,6 +23,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        # The arcade process reads no cookie (its seat is a ticket in the socket's hello message), so
+        # it receives none: the device cookie (ADR 0003, ADR 0013) stays with the Party. AVR-318.
+        proxy_set_header Cookie "";
         proxy_read_timeout 3600;
         proxy_buffering off;
         add_header Cache-Control "no-store" always;
@@ -158,6 +161,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        # The arcade process reads no cookie (its seat is a ticket in the socket's hello message), so
+        # it receives none: the device cookie (ADR 0003, ADR 0013) stays with the Party. AVR-318.
+        proxy_set_header Cookie "";
         proxy_read_timeout 3600;
         proxy_buffering off;
         add_header Cache-Control "no-store" always;
