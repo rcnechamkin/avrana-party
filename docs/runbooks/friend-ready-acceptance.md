@@ -1,13 +1,13 @@
 # Runbook: friend-ready acceptance session (AVR-10, AVR-12, AVR-261, AVR-27)
 
-Status: **PROPOSED owner-run procedure, NOT RUN on the appliance** (2026-10-10).
+Status: **PROPOSED owner-run procedure, NOT RUN on the appliance** (2026-10-09).
 This is one packet for one physical session on the Pi and real phones. It prepares
 [AVR-10](https://linear.app/avranakern/issue/AVR-10) (offline cold boot),
 [AVR-12](https://linear.app/avranakern/issue/AVR-12) (four-phone connectivity),
 [AVR-261](https://linear.app/avranakern/issue/AVR-261) (Checkers on an iPhone and an Android phone) and
 [AVR-27](https://linear.app/avranakern/issue/AVR-27) (four-human offline BLUFF). It also produces
 evidence for AVR-11 (onboarding) and AVR-295 (shell-to-BLUFF journey); it closes none of them.
-Written from source and Linear on 2026-10-10. **Every command below is owner-run on the Pi or a phone.
+Written from source and Linear on 2026-10-09 (repository dates are local time). **Every command below is owner-run on the Pi or a phone.
 Nothing here was run by an agent, nothing in CI or a document authorizes it, and no result is claimed.**
 An agent cannot close any of these issues. Where this packet disagrees with a script's `--help` or
 source, the script wins: stop and report the difference.
@@ -16,6 +16,24 @@ Evidence rules ([TESTING](../TESTING.md)): CI, Chromium and disposable-runner sy
 Raspberry Pi or phone evidence. A merged PR is not a deployment. A curl is not a phone test.
 Leave a field blank when it was not measured; never estimate afterwards.
 
+## Two sessions
+
+**Session B cannot be run yet.** Native Checkers needs the separate game origin
+`https://games.avrana.net`: the Checkers page (Games `fb711d9`, `checkers/web/app.mjs`) refuses to connect when
+the Party origin it is told equals its own origin and shows "Open Checkers from Party Home."; `provision-game`
+always tells it `AVRANA_PARTY_ORIGIN=https://party.avrana.net`. The repository has no `games.avrana.net` DNS record,
+certificate name, nginx server block or `game_origins` entry. That work is Linear AVR-319 (blocks AVR-261), on
+branch `feat/avr-319-game-origin-deployable`; its owner runbook will be `docs/runbooks/game-origin.md`, which
+**arrives with AVR-319 and is not merged**. Until AVR-319 is merged **and** deployed, AVR-261 cannot pass.
+
+| Session | Issues | Needs | Steps |
+|---|---|---|---|
+| **A: can run on today's release pair** | AVR-10, AVR-12, AVR-27 | The release pair, the matching nginx site file and the config check. BLUFF runs through the legacy same-origin route: no service-users migration, no `prepare-native-games`, no `provision-game`, no game origin | 0, 1, 2, 3, 5, 6, 8, 10 (and section 9 if needed) |
+| **B: blocked** | AVR-261 | AVR-319 merged and deployed, then the service-users migration, `prepare-native-games`, the game origin, `provision-game checkers` | 4, 7, 10 (and section 9 if needed) |
+
+Session A accepts BLUFF on the **pre-migration service layout** (services still run as `cody`). AVR-27 is worth a
+short BLUFF re-check after the migration (a launch, a deal, one reconnect, an end) before the result is relied on for the shipping configuration.
+
 ## What counts as developer intervention
 
 AVR-27 requires "no developer intervention on the normal happy path"; AVR-10 requires a cold boot
@@ -23,7 +41,7 @@ AVR-27 requires "no developer intervention on the normal happy path"; AVR-10 req
 
 | Counts as intervention (the criterion fails) | Does not count |
 |---|---|
-| Any command on the Pi, service restart, config or network change, or reboot after the first phone has joined, other than the scripted read-only observations in this packet | Steps 0 to 4 before any phone joins; the scripted cable pull and power cycle in step 5 |
+| Any command on the Pi, service restart, config or network change, or reboot after the first phone has joined, other than the scripted read-only observations in this packet | Steps 0 to 3 (Session A) or 0 to 4 (Session B) before any phone joins; the scripted cable pull and power cycle in step 5 |
 | Explaining the objective, rules, controls, or what a screen means; telling a player which button to press; touching a participant's phone | The printed join card (step 6) and the scripted prompts in the record sheets ("lock your phone now"), given to everyone alike |
 | Choosing or starting the game for the Host, ending it for them, or rejoining someone | Reading screens, timing with a stopwatch, taking notes, screen-recording |
 | Re-running a step because it failed | Read-only checks at the checkpoints this packet names (they are timed and logged) |
@@ -52,8 +70,8 @@ Each defect becomes its own scoped Linear issue with the evidence; fixing it is 
 
 | # | Decision | Recommended default | Why |
 |---|---|---|---|
-| D1 | A separate game origin `games.avrana.net` (ADR 0013) for this session? | **No. Run Checkers and BLUFF on `https://party.avrana.net/games/...`.** Leave `game_origins` unset. | The repository has no `games.avrana.net` nginx server block, no dnsmasq record and no certificate name: `ops/renew-party-certificate.sh` issues `--domains party.avrana.net` only and `avrana-captive.conf` has one `host-record`. The step cannot be done from the repository. Not needed: with no `game_origins`, Party Home opens the grant's relative entry `/games/checkers/` (`web/party/lib/game-origins.js` `gameAddress`). The bridge is documented as not relied on for field testing until a real iPhone passes it ([BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) section 4). |
-| D2 | Order of risk: run the service-users migration (step 4b) before the BLUFF session? | **Yes, keep the order of this packet** so BLUFF is accepted on the configuration that will ship. | The alternative (BLUFF session first on the un-migrated deploy, migration later) puts the least-proven step last but means AVR-27 evidence is on a configuration that changes afterwards. If step 4b fails and cannot be reversed cleanly, fall back to the alternative and say so in the record. |
+| D1 | How does native Checkers get its game origin? | **Checkers needs the game origin; same-origin does not work** (see "Two sessions"). Do Session A first and run Session B only after AVR-319 is merged and deployed, following `docs/runbooks/game-origin.md` (arrives with AVR-319, not merged). | Same-origin was considered and rejected: the page never connects when the Party origin equals its own. BLUFF and EXPO are unaffected (legacy route, same origin) and do not need it. |
+| D2 | Run the never-run service-users migration (step 4b) before the BLUFF session? | **No. Keep Session A to the smallest change set**: the release pair, the matching nginx site file, the config check. Run the migration only as part of Session B. | A failed migration must not put the four-human BLUFF acceptance at risk. The cost: AVR-27 is accepted on the pre-migration layout and deserves a short re-check afterwards. |
 | D3 | Run AVR-27 before or after Games [PR #57](https://github.com/rcnechamkin/avrana-party-games/pull/57) (AVR-313 BLUFF table polish, open, not in Games `fb711d9`)? | **Now, without waiting.** If #57 merges first, use the new Games `main` SHA, re-check Party's `Cross-repo contract` for that pair, and update the SHAs in step 0. | AVR-27 measures comprehension and completion of what ships; the unpolished reveal and focus behaviour are what AVR-313 records as gaps. Waiting delays all physical evidence. |
 | D4 | How is "upstream removed" done for AVR-10? | **Pull the Ethernet cable (eth0) and power-cycle.** Observe from a laptop on the Party Wi-Fi (`ssh 10.42.0.1`). | `tools/avrana-offline` only blocks party clients and leaves the Pi's own upstream; it does not prove the Pi boots without one. The cost is losing the home SSH path ([network](network.md): "Never take eth0 down during a remote session"). Restore the cable only after the session. |
 | D5 | Is AVR-31 (certificate renewal timer) required before this session? | **No**, but check the certificate runway in step 1 and install renewal before 2026-11-25. | Linear AVR-31 (2026-10-03): the certificate expires 2026-12-25; `lego renew --days 30` would act about 2026-11-25; the timer is not enabled. `/party/api/status` fails its certificate check below 21 days (about 2026-12-04). |
@@ -61,7 +79,7 @@ Each defect becomes its own scoped Linear issue with the evidence; fixing it is 
 
 ## 0. The release pair, and how to verify it
 
-Pinned for this packet (checked 2026-10-10; Party `main` was `defd4a2` and Games `main` was `fb711d9`):
+Pinned for this packet (checked 2026-10-09 local, 2026-10-10 UTC; Party `main` was `defd4a2` and Games `main` was `fb711d9`):
 
 | Repository | SHA (pass the full 40 characters; `ops/deploy.sh` refuses short ones) | Evidence on that SHA |
 |---|---|---|
@@ -85,7 +103,7 @@ record sheet; this packet does not supply it.
 
 ## 1. Preflight, backups and rollback preparation (before any change)
 
-Owner-run on the Pi (`ssh party`). Nothing here changes the appliance except the backup copies.
+**On the Pi** (a shell from `ssh party`; the commands are written for the Pi's own shell). Nothing here changes the appliance except the backup copies.
 
 ```bash
 # What is deployed now (the "before" pair; keep it for rollback)
@@ -98,10 +116,10 @@ openssl x509 -in /etc/avrana-party/tls/current/fullchain.pem -noout -dates -ext 
 # Power baseline
 vcgencmd get_throttled; journalctl -k -b | grep -icE 'undervoltage|voltage normalis'
 # Boundary before: how many phase-1 rules the Pi meets today (6 of 25 on 2026-10-03)
-python3 -m avrana.ops.boundary --phase 1   # only if the installed release carries avrana.ops; otherwise skip and record "not available"
+(cd /opt/avrana-party/current && sudo python3 -m avrana.ops.boundary --phase 1)   # only if /opt/avrana-party/current exists and carries avrana.ops; otherwise skip and record "not available"
 ```
 
-Back up (root-only; the TLS copy holds a private key: never download it):
+Back up, **on the Pi** (root-only; the TLS copy holds a private key: never download it):
 
 ```bash
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -124,7 +142,7 @@ prepare commands each make theirs. Write all four paths down. Each reverses a di
 start when `party-core.json` disagrees with a Game Contract (`avrana.party.service.main`
 raises `SystemExit`), and a deploy that cannot start Party Core rolls itself back. The known
 case: an old `games.arcade-gauntlet2.max_players: 2` against the contract's 4
-([arcade-party-provider](arcade-party-provider.md)). Check with the target tree, not the installed one:
+([arcade-party-provider](arcade-party-provider.md)). Check with the target tree, not the installed one, **on the Pi**:
 
 ```bash
 git -C /home/cody/avrana-party fetch origin
@@ -136,19 +154,18 @@ cd /tmp/avrana-target && sudo python3 -m avrana.contracts.party_config --check /
 Expect `... game(s) agree with their contracts`. If it names `arcade-gauntlet2.max_players` (or another
 derived key), edit only that line out of the config (the backup above is the undo), keep URL, key path
 and timeout, and run the check again. Also confirm, without printing the file to anyone, that `origins`
-holds exactly one bare `https://party.avrana.net` entry and `game_origins` is absent (decision D1);
-`provision-game` refuses zero or several usable origins.
+holds exactly one bare `https://party.avrana.net` entry; `provision-game` (Session B) refuses zero or several usable origins. `game_origins` is set only in Session B, by the game-origin runbook.
 
 ## 2. Deploy with explicit SHAs (dry run first)
 
 Stage the Games commit (the Pi's GitHub key reads `avrana-party`, not the private Games repository;
-[games-fork-deploy](games-fork-deploy.md) section 1). On the laptop, in a Games checkout after `git fetch`:
+[games-fork-deploy](games-fork-deploy.md) section 1). **On the laptop**, in a Games checkout after `git fetch`:
 
 ```bash
 git bundle create avrana-party-games.bundle origin/main && scp avrana-party-games.bundle party:
 ```
 
-On the Pi (the fetch refspec form below is standard git; it is not spelled out in an earlier runbook):
+**On the Pi** (the fetch refspec form below is standard git; it is not spelled out in an earlier runbook):
 
 ```bash
 git -C /home/cody/avrana-party-games fetch ~/avrana-party-games.bundle 'refs/remotes/origin/main:refs/remotes/bundle/main'
@@ -156,7 +173,7 @@ git -C /home/cody/avrana-party-games cat-file -e fb711d95242789fafec18a22023a1d7
 rm ~/avrana-party-games.bundle
 ```
 
-Take the deploy script from the target commit (the checkout may predate `ops/deploy.sh`; [deploy](deploy.md) "First run"), then dry run, then the real run. No game session may be live; the real run refuses otherwise.
+Take the deploy script from the target commit (the checkout may predate `ops/deploy.sh`; [deploy](deploy.md) "First run"), then dry run, then the real run. No game session may be live; the real run refuses otherwise. **These lines run on the laptop** (`ssh party "..."` is the form [deploy](deploy.md) uses); the script is a copy at `/tmp/avrana-deploy.sh` on the Pi, taken from the target commit. Record that this copy was used: a rollback uses the same form (section 9).
 
 ```bash
 P=defd4a2e8120baddcc556615daf06a76d0b93ee4; G=fb711d95242789fafec18a22023a1d728a2f6a90
@@ -170,10 +187,10 @@ whether a web release is built). The real run: checks both repositories out deta
 SHAs, builds root-owned releases under `/opt/avrana-party` and `/opt/avrana-party-games`, installs a
 web release, restarts only the changed units, writes the deployment manifest and runs
 `python3 -m avrana.ops.smoke`. It prints the before pair and the rollback command if smoke fails
-(exit 2). **Party Core is memory-only: this restart forgets every member. Do all of steps 2 to 4
+(exit 2). **Party Core is memory-only: this restart forgets every member. Do all of steps 2 and 3 (Session A), or 2 to 4 (Session B),
 before any phone joins.**
 
-Expected afterwards (from the Pi, or from a Party-connected machine):
+Expected afterwards (**on the Pi**, or the `curl` from a Party-connected laptop):
 
 ```bash
 curl -s https://party.avrana.net/party/api/status | python3 -m json.tool
@@ -189,7 +206,10 @@ as not installed ([deploy](deploy.md) "After"). Copy the status JSON into the re
 The web build and the site file of one commit are a single deployment unit (the catalog offers
 exactly the games the site routes; [deploy](deploy.md)). `ops/deploy.sh` never installs nginx, so
 install the site file **immediately** after step 2, still before any phone joins. Until then Party
-Home may show tiles that lead to nginx's own 502.
+Home may show tiles that lead to nginx's own 502. In Session A Checkers is not provisioned and
+Party Home may still list it (the catalog comes from the contracts): nobody taps it.
+
+**On the Pi:**
 
 ```bash
 cmp /opt/avrana-party/current/avrana-party.nginx /opt/avrana-party/current/arcade/nginx-site && echo "repo files identical"
@@ -203,29 +223,31 @@ cmp /opt/avrana-party/current/avrana-party.nginx /etc/nginx/sites-available/avra
 repository's candidate-config syntax check, with a throwaway certificate; run it against the target
 tree before the copy if you want a second `nginx -t`.)
 
-Verify the AVR-314 rule (the device cookie never reaches a game server: five
-`proxy_set_header Cookie "";` directives at `defd4a2`, one in each of the port 80 and 443 legacy BLUFF/EXPO
-blocks, the native-game block, the root fallback and the 443 root block):
+Verify the AVR-314 rule (the device cookie never reaches a game server). The expected count of
+`proxy_set_header Cookie "";` directives depends on the Party SHA: **5 at `defd4a2`**; **7 once PR #96 (AVR-318, `/arcade/`
+also clears Cookie) is in the deployed commit**. Take the number from the deployed `avrana-party.nginx` itself and compare
+the installed file and the loaded config with it. **On the Pi** (lines marked laptop run from a Party-connected laptop):
 
 ```bash
-grep -c 'proxy_set_header Cookie ""' /etc/nginx/sites-available/avrana-party        # 5 at defd4a2
-sudo nginx -T 2>/dev/null | grep -c 'proxy_set_header Cookie ""'                    # 5: the LOADED config, not only the file
-curl -s --noproxy '*' https://party.avrana.net/party/api/origin.json                 # "scheme":"https", "serverAddr":"10.42.0.1" from a Party client
-curl -s --noproxy '*' https://party.avrana.net/party/version.json                    # the web release of the deployed Party SHA
+grep -c 'proxy_set_header Cookie ""' /opt/avrana-party/current/avrana-party.nginx    # the expected count for this SHA (5 at defd4a2, 7 with #96)
+grep -c 'proxy_set_header Cookie ""' /etc/nginx/sites-available/avrana-party        # equal to the line above
+sudo nginx -T 2>/dev/null | grep -c 'proxy_set_header Cookie ""'                    # equal again: the LOADED config, not only the file
+curl -s --noproxy '*' https://party.avrana.net/party/api/origin.json                 # (laptop) "scheme":"https", "serverAddr":"10.42.0.1" from a Party client
+curl -s --noproxy '*' https://party.avrana.net/party/version.json                    # (laptop) the web release of the deployed Party SHA
 curl -sk --resolve party.avrana.net:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://party.avrana.net/games/checkers/avrana/x   # 404: control paths are never proxied
-curl -sk --resolve party.avrana.net:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://party.avrana.net/games/checkers/          # 502 until step 4 provisions Checkers
-curl -s --noproxy '*' -i -H 'Host: captive.apple.com' http://10.42.0.1/hotspot-detect.html   # still the literal Success page
+curl -sk --resolve party.avrana.net:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://party.avrana.net/games/checkers/          # 502 while Checkers is not provisioned (no socket): expected in Session A
+curl -s --noproxy '*' -i -H 'Host: captive.apple.com' http://10.42.0.1/hotspot-detect.html   # (laptop) still the literal Success page
 ```
 
 What this proves: the file and the loaded config carry the rule. Whether an upstream really receives
 no `Cookie` header is proven by `tests/unit/test_nginx_site.py` against a real nginx in CI, and on the
-Pi only by the phone inspection in step 7 (the game page holds no Party cookie). There is no
+Pi only by the phone inspection in step 7 (Session B). There is no
 Pi-side echo test in the repository. Do not run any nginx command not listed here. No Checkers-specific
 route, `Secure` cookie change, HSTS or `Service-Worker-Allowed` is part of this step.
 
-## 4. Phase 1 check, prepare native games, provision Checkers
+## 4. Session B only: phase 1, migration, prepare, game origin, provision Checkers
 
-All owner-run on the Pi, before any phone joins. Sources: [service-users-migration](service-users-migration.md),
+**Not runnable yet** (see "Two sessions"): the game origin in 4d needs AVR-319 merged and deployed. Do not run this step in Session A (decision D2). All on the Pi (the lines written `ssh -t party "..."` run on the laptop), before any phone joins. Sources: [service-users-migration](service-users-migration.md),
 [prepare-native-games](prepare-native-games.md), [provision-game](provision-game.md).
 
 **4a. Is phase 1 applied?** From the deployed tree:
@@ -237,7 +259,7 @@ cd /opt/avrana-party/current && sudo python3 -m avrana.ops.boundary --phase 1
 25 of 25 rules met means phase 1 is applied; go to 4c. On 2026-10-03 the Pi met 6 of 25 and
 no document records the migration as run, so expect to do 4b.
 
-**4b. Service-users migration (ADR 0016 phase 1, AVR-256), only if 4a is not 25 of 25.** This is the least
+**4b. Service-users migration (ADR 0016 phase 1, AVR-256), only if 4a is not 25 of 25.** Session B only. This is the least
 proven step in the packet: it has never run on any host, and the arcade's hardening with RetroArch is
 "never validated anywhere" (the runbook). Read the runbook's "To verify against the Pi before migration"
 table against `systemctl cat avrana-party-core avranaparty-games avranaparty-arcade` first. Prerequisites
@@ -245,7 +267,9 @@ it names: the key store holds `arcade-gauntlet2.key`, `bluff.key` **and `expo.ke
 `expo.key` on 2026-10-03; the script refuses until it exists), and no session is live.
 
 ```bash
+# on the Pi:
 sudo AVRANA_PARTY_KEY_OWNER=cody bash /opt/avrana-party/current/ops/provision-party-game-key.sh expo   # only if expo.key is missing; before migration the key store is still cody's
+# on the laptop:
 ssh -t party "sudo bash /opt/avrana-party/current/ops/migrate-service-users.sh --dry-run"
 ssh -t party "sudo bash /opt/avrana-party/current/ops/migrate-service-users.sh"
 ```
@@ -255,10 +279,10 @@ Record the printed backup directory (`/var/backups/avrana-party/service-users-<U
 `sudo python3 -m avrana.ops.boundary --phase 1` (25 of 25), `python3 -m avrana.ops.smoke`, and re-read
 `/party/api/status`. The migration changes the listener of the games service to loopback and moves the
 services to dedicated users. Its phone checks (BLUFF, EXPO and Gauntlet II each launch and end from Party Home)
-are step 7.5 and 8; if you want them earlier, join and launch with one phone, then restart nothing.
+are in step 7 (item 9) and, for BLUFF, the short re-check named under "Two sessions"; if you want them earlier, join and launch with one phone, then restart nothing.
 If the script exits 2, a service is not active or a rule is not met: stop (section 9 reverses it).
 
-**4c. Prepare the appliance for native games (AVR-304)**, from the deployed root-owned tree. It restarts
+**4c. Prepare the appliance for native games (AVR-304)**, on the Pi, from the deployed root-owned tree. It restarts
 Party Core when it has to (it says so first, and refuses while a session runs):
 
 ```bash
@@ -273,7 +297,13 @@ grep -n '"registry"' /etc/avrana-party/party-core.json
 
 Keep the printed reverse command and the backup directory (`/var/backups/avrana-party/native-games-<UTC>/`).
 
-**4d. Provision Checkers**, from `/opt/avrana-party/current` (the grant's runtime is
+**4d. Game origin (AVR-319; arrives with that issue, not merged).** Follow `docs/runbooks/game-origin.md` end to end:
+the `games.avrana.net` DNS host-record, the certificate name, the nginx server block, `game_origins` in
+`party-core.json` and the game servers' `AVRANA_PARTY_ORIGIN=https://party.avrana.net`. Its backups, checks and reverse
+are its own; this packet does not restate or guess them. Do it before 4e so the first launch finds both names;
+`provision-game` derives `AVRANA_PARTY_ORIGIN` from the single usable `origins` entry.
+
+**4e. Provision Checkers**, on the Pi, from `/opt/avrana-party/current` (the grant's runtime is
 `/usr/bin/python3 -m checkers` under `/opt/avrana-party-games/current`, which step 2 built):
 
 ```bash
@@ -282,7 +312,7 @@ sudo python3 -m avrana.ops.provision_game checkers --dry-run
 sudo python3 -m avrana.ops.provision_game checkers
 sudo python3 -m avrana.ops.provision_game checkers          # second run: "nothing to change"
 systemctl is-active avrana-game@checkers.socket
-curl -sk --resolve party.avrana.net:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://party.avrana.net/games/checkers/   # the game now answers (a status other than nginx's 502 for a missing socket)
+curl -sk --resolve party.avrana.net:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://party.avrana.net/games/checkers/   # expect 200 (the game's static page, served from its socket); 502 means the socket is missing or the game cannot start: stop. A 200 is not a phone test: the page refuses to run unless it was opened from the game origin
 ```
 
 (A non-root dry run says "needs root to read the key store"; use `sudo`. The real run asks Party Core to
@@ -292,16 +322,16 @@ stop. `boundary --phase 2` needs Checkers **running** to inspect loaded units, a
 only when launched from Party Home, so its verdict is taken in step 7. Run it now only if you launch a
 test round; otherwise record "deferred to step 7".
 
-**4e. Final preflight for the phones:** `/party/api/status` is `ok` with the two SHAs; `python3 -m avrana.ops.smoke` passes;
+**4f. Final preflight for the phones:** `/party/api/status` is `ok` with the two SHAs; `python3 -m avrana.ops.smoke` passes;
 `sudo python3 -m avrana.ops.boundary --phase 1` still passes; the backup paths from steps 1 to 4 are written down.
 
 ## 5. AVR-10: offline cold boot
 
 Purpose: upstream removed on purpose, a cold boot with nobody touching the Pi, a Party an unprimed phone
-can reach. Run only after step 4. This is also the first reboot of the final configuration: it tests that the services (including
-`avrana-game@checkers.socket`) come up by themselves.
+can reach. Session A: run after steps 2 and 3. Session B: the same checks apply after step 4 and also cover
+`avrana-game@checkers.socket`. This is also the first reboot of the deployed configuration: it tests that the services come up by themselves.
 
-Before the pull, record on the Pi (steps 1 and 4 already hold most of it):
+Before the pull, record **on the Pi** (step 1 already holds most of it):
 
 ```bash
 nmcli -f NAME,UUID,TYPE,AUTOCONNECT,AUTOCONNECT-PRIORITY connection show   # is "Avrana Party Internal" priority above the client profiles? (network.md "Boot determinism", PROPOSED)
@@ -313,21 +343,21 @@ Do: note the time; `sudo poweroff`; unplug the Ethernet cable; wait 30 s; apply 
 keyboard or a screen after power-on.** Start a stopwatch at power-on. The observer laptop and
 phones are on the Party Wi-Fi only.
 
-Checkpoints (from a laptop joined to "Avrana Party", read once each, times recorded; no polling):
+Checkpoints (**on the laptop** joined to "Avrana Party", read once each, times recorded; no polling; the `ssh` lines run commands on the Pi through it):
 
 ```bash
 ssh 10.42.0.1 'ip -br addr; ip route; nmcli -t -f GENERAL.CONNECTION device show wlan0; iw dev wlan0 info | head -8'
-ssh 10.42.0.1 'timedatectl; iw dev wlan0 get power_save; systemctl is-active avrana-party-core avrana-party-core.socket avranaparty-games avranaparty-arcade nginx avrana-game@checkers.socket'
+ssh 10.42.0.1 'timedatectl; iw dev wlan0 get power_save; systemctl is-active avrana-party-core avrana-party-core.socket avranaparty-games avranaparty-arcade nginx'   # Session B: add avrana-game@checkers.socket
 ssh 10.42.0.1 '! ping -c1 -W3 1.1.1.1 && echo "no upstream (expected)"'
 dig +short @10.42.0.1 party.avrana.net                                         # 10.42.0.1
 dig +time=3 +tries=1 @10.42.0.1 example.com                                    # must fail; record SERVFAIL/REFUSED/timeout
 for h in captive.apple.com connectivitycheck.gstatic.com www.msftconnecttest.com detectportal.firefox.com; do dig +short @10.42.0.1 $h; done   # all 10.42.0.1
 curl --noproxy '*' -s -H 'Host: captive.apple.com' http://10.42.0.1/hotspot-detect.html
 curl --noproxy '*' -s https://party.avrana.net/party/api/status | python3 -m json.tool
-ssh 10.42.0.1 'vcgencmd get_throttled; journalctl -k -b | grep -icE "undervoltage|voltage normalis"; sudo tail -n 5 /var/log/avrana/pi-throttle.jsonl'
+ssh -t 10.42.0.1 'vcgencmd get_throttled; journalctl -k -b | grep -icE "undervoltage|voltage normalis"; sudo tail -n 5 /var/log/avrana/pi-throttle.jsonl'   # -t: sudo needs a tty
 ```
 
-(The sudo line prompts the owner; `tools/avrana-topology-check` and `tools/radio-watch` can be copied to
+(The last line prompts for the sudo password, which is why it uses `ssh -t`; `tools/avrana-topology-check` and `tools/radio-watch` can be copied to
 `~/avrana-lab/` beforehand, per [network](network.md); the former is read-only and not to be run during a
 power measurement.) On a **phone**, forget "Avrana Party", rejoin and record what the OS shows (iOS: no
 sign-in sheet expected; Android: "no internet" but no sign-in sheet; both are expectations from
@@ -346,10 +376,10 @@ participant gets, identical for all: the Wi-Fi name, the Wi-Fi password written 
 repository), and the address `https://party.avrana.net/party/`. A link QR code of that address is optional;
 the Wi-Fi password never goes into a document or issue.
 
-Start `tools/radio-watch` detached on the Pi (copy it to `~/avrana-lab/` first; it records hashed station ids, never MACs, and
+Start `tools/radio-watch` detached **on the Pi** (copy it to `~/avrana-lab/` first; it records hashed station ids, never MACs, and
 its file is read once at the end), e.g. `setsid -f ~/avrana-lab/radio-watch 1500 10 ~/avrana-lab/friend-ready-radio.jsonl </dev/null`.
 Join the phones one at a time with a stopwatch, then use Party Home and navigation for at least 15 minutes (open Library, a game
-detail, return; lock and unlock one phone; walk one phone to the edge of range and back). Afterwards, once:
+detail, return; lock and unlock one phone; walk one phone to the edge of range and back). Afterwards, once, **on the Pi** (through `ssh -t 10.42.0.1` from the laptop on the Party Wi-Fi, since the cable is out):
 
 ```bash
 iw dev wlan0 station dump | grep -c '^Station'                       # associated stations
@@ -362,12 +392,12 @@ Practical device limit: the Pi 4 AP is reported to top out near 8 stations ([net
 
 ## 7. AVR-261: Checkers on two phones (iPhone Safari + Android Chrome)
 
-Needs steps 2 to 4 complete. Two of the four phones: one iPhone (Safari) and one Android (Chrome), joined to the Pi's own
+**Session B only; blocked until AVR-319 is merged and deployed (see "Two sessions").** Needs steps 2 to 4 complete, including the game origin. Two of the four phones: one iPhone (Safari) and one Android (Chrome), joined to the Pi's own
 Wi-Fi, no internet dependency, no installed player app. Full Mode only; Limited Mode is out of scope.
 
 1. **Launch.** Host chooses Checkers on Party Home; each phone receives a distinct seat and reaches
-   `https://party.avrana.net/games/checkers/...` with no certificate warning.
-2. **Boundary command** (the game is now running), from `/opt/avrana-party/current`:
+   the Checkers page on the game origin (`https://games.avrana.net/games/checkers/...`, per `docs/runbooks/game-origin.md`) with no certificate warning on either name. The page connects to the Party through the bridge frame; it shows "Open Checkers from Party Home." if it was opened any other way.
+2. **Boundary command, on the Pi** (the game is now running), from `/opt/avrana-party/current`:
    ```bash
    sudo python3 -m avrana.ops.boundary --phase 2
    systemctl is-active avrana-game@checkers.service avrana-game@checkers.socket
@@ -379,14 +409,14 @@ Wi-Fi, no internet dependency, no installed player app. Full Mode only; Limited 
 5. **Disconnect** one phone from Wi-Fi and reconnect: same seat and board.
 6. **Finish** a full match: both phones return to Party Home and show the result.
 7. **Host End.** Start another round; the Host ends it mid-play; both phones return to Party Home. A guest cannot end it.
-8. **Cookie boundary (iPhone Web Inspector or Android remote inspect if available; otherwise "not inspected").** The game page holds no Party device cookie it can read; with D1 the origin is shared with Party, and nginx drops the header upstream (step 3). Redact tickets/tokens.
+8. **Cookie boundary (iPhone Web Inspector or Android remote inspect if available; otherwise "not inspected").** `games.avrana.net` holds no cookie and no Party local storage; the Party frame stays on `party.avrana.net`. Redact tickets/tokens. [BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) section 4 lists the ten real-phone bridge checks.
 9. **Regression.** Afterwards launch and end BLUFF; launch and end Gauntlet II (the arcade after phase 1 is the least-proven path: see 4b); check Party Home/Library and presence. Record participant counts and anything not tested.
 
 Failure capture and reverse: sections 9 and 10.
 
 ## 8. AVR-27: four-human offline BLUFF
 
-Prerequisites in Linear (AVR-27 is Backlog and blocked): AVR-10 (step 5), AVR-12 (step 6) and the Done blockers AVR-51, AVR-90, AVR-91, AVR-23, AVR-24, AVR-25.
+**Session A.** Prerequisites in Linear (AVR-27 is Backlog and blocked): AVR-10 (step 5), AVR-12 (step 6) and the Done blockers AVR-51, AVR-90, AVR-91, AVR-23, AVR-24, AVR-25.
 Four humans, four phones, **at least one first-time player who has not seen BLUFF** (say how many are first-timers); the upstream still disconnected (step 5 not undone).
 Pick the Host in advance as the most reliable participant and tell them only: keep your phone awake and unlocked at Party Home; this is the same for all
 roles and is not a rules explanation. The Host launches BLUFF from Party Home, chooses Play or Watch as prompted, and starts the game when ready (host-only Start, ADR 0010).
@@ -415,10 +445,9 @@ Do not delete keys or state by hand; do not use `--force-busy`.
 | Service-users migration | `ssh -t party "sudo bash /opt/avrana-party/current/ops/migrate-service-users.sh --reverse /var/backups/avrana-party/service-users-<UTC>"` | Needs its own backup path. Users, groups, `/opt/avrana-arcade` and the venv stay. Do the prepare reverse first |
 | nginx site | `sudo cp -a /root/avrana-friend-ready-backups/<stamp>/avrana-party /etc/nginx/sites-available/avrana-party && sudo nginx -t && sudo systemctl reload nginx` | (From step 1's backup, whose file is named `avrana-party`; or the `/root/avrana-party-site.<stamp>` copy from the older runbooks.) Phones fall back as in [party-core-deploy](party-core-deploy.md) |
 | Web release only | `sudo bash /home/cody/avrana-party/ops/install-party-web.sh --rollback` | Switches back to the previous of the five kept releases. Pair it with the nginx restore: site file and web build of one commit are one unit |
-| Code release (Party and Games) | `sudo bash /home/cody/avrana-party/ops/deploy.sh --party <BEFORE_PARTY_SHA> --games <BEFORE_GAMES_SHA>` | Pair printed by the failing run and in `/var/backups/avrana-party/deploy-<UTC>/before.json`. Rolls back code and web only: **not** identities, provisioning, config, DNS, TLS or installed units. Going back to a commit that predates `avrana.ops` uses the running release's tooling, and its smoke will fail on `/party/api/status` ([deploy](deploy.md)) |
+| Code release (Party and Games) | `ssh -t party "sudo bash /opt/avrana-party/current/ops/deploy.sh --party <BEFORE_PARTY_SHA> --games <BEFORE_GAMES_SHA>"` (laptop form; first add `--dry-run` and read it) | This is the copy of the script that the forward step deployed (the target commit's `ops/deploy.sh`, root-owned under `/opt`). Not `/tmp/avrana-deploy.sh`, which the step-5 power cycle may have cleared, and not the checkout copy, whose content depends on where that checkout is. [deploy](deploy.md) prescribes the checkout path for routine rollbacks; `deploy.sh` does not locate itself, so any copy from the target commit does the same. Pair printed by the failing run and in `/var/backups/avrana-party/deploy-<UTC>/before.json`. Rolls back code and web only: **not** identities, provisioning, config, DNS, TLS or installed units. Going back to a commit that predates `avrana.ops` uses the running release's tooling, and its smoke will fail on `/party/api/status` ([deploy](deploy.md)) |
 | Party Core config | `sudo cp -a /root/avrana-friend-ready-backups/<stamp>/party-core.json /etc/avrana-party/party-core.json`, then `python3 -m avrana.contracts.party_config --check /etc/avrana-party/party-core.json` (from the tree that will run) and only then `sudo systemctl restart avrana-party-core` | The restart ends the party. `prepare-native-games --reverse` already restores its own edit |
-| Certificates, DNS, NetworkManager | Not changed by this packet (D1 default). If you did change them, restore from the step 1 backup using [party-https](party-https.md) and [network](network.md) | `ops/deploy.sh` never touches them |
-
+| Game origin (Session B: DNS record, certificate name, nginx block, `game_origins`) | Its own reverse in `docs/runbooks/game-origin.md` (arrives with AVR-319, not merged); do it after the Checkers removal and before the nginx site restore | Session A changes none of DNS, certificates or NetworkManager. For anything else, restore from the step 1 backup using [party-https](party-https.md) and [network](network.md)  |
 After any rollback: `curl -s https://party.avrana.net/party/api/status`, `python3 -m avrana.ops.smoke`, and one phone to Party Home.
 
 ## 10. Failure capture, record sheet
@@ -484,7 +513,7 @@ After the session: update [SYSTEM](../SYSTEM.md) only from observed deployment e
 | Topology/radio evidence recorded (files kept, not committed) | | |
 | Practical device-count limitation documented (observed maximum) | | |
 
-**AVR-261: Checkers on real phones**
+**AVR-261: Checkers on real phones (Session B; blocked on AVR-319)**
 
 | Acceptance criterion | Observation | Pass / fail / not measured |
 |---|---|---|
@@ -494,7 +523,8 @@ After the session: update [SYSTEM](../SYSTEM.md) only from observed deployment e
 | `sudo python3 -m avrana.ops.boundary --phase 2` reports every rule met with Checkers provisioned (paste the rule lines) | | |
 | BLUFF and Gauntlet II still launch and end afterwards | | |
 | Run recorded with date, devices, OS/browser versions and the deployed Party and Games commits | | |
-| Beyond the issue, worth recording: certificate warning (none expected), cookie inspection result, spectator/late-join, second launch after End | | |
+| **Session B only; blocked on AVR-319 merged and deployed.** Game-origin facts to record: both names resolve and are trusted on both phones (no warning), the Checkers page ran from `games.avrana.net` and connected (not "Open Checkers from Party Home."), cookie inspection result | | |
+| Beyond the issue, worth recording: spectator/late-join, second launch after End | | |
 
 **AVR-27: Four-human offline BLUFF**
 
@@ -517,7 +547,7 @@ After the session: update [SYSTEM](../SYSTEM.md) only from observed deployment e
 [deploy](deploy.md), [service-users-migration](service-users-migration.md), [prepare-native-games](prepare-native-games.md),
 [provision-game](provision-game.md), [party-core-deploy](party-core-deploy.md), [party-https](party-https.md),
 [network](network.md), [logs-and-retention](logs-and-retention.md), [games-fork-deploy](games-fork-deploy.md),
-[arcade-party-provider](arcade-party-provider.md), [TESTING](../TESTING.md), [SYSTEM](../SYSTEM.md);
-[BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) (the separate game origin, not part of the default path);
+[arcade-party-provider](arcade-party-provider.md), `docs/runbooks/game-origin.md` (arrives with AVR-319, not merged), [TESTING](../TESTING.md), [SYSTEM](../SYSTEM.md);
+[BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) (the separate game origin, required by Session B);
 [bluff-playtest](bluff-playtest.md) and [bluff-party-reconnect](bluff-party-reconnect.md) are earlier lab procedures,
 superseded for this session.

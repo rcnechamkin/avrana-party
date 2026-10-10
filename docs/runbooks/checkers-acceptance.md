@@ -1,12 +1,12 @@
 # Runbook: native Checkers real-device acceptance (AVR-261)
 
-Status: **PROPOSED owner-run procedure, NOT RUN on the appliance** (2026-10-10).
+Status: **PROPOSED owner-run procedure, NOT RUN on the appliance** (2026-10-09).
 
 The procedure for [AVR-261](https://linear.app/avranakern/issue/AVR-261/play-checkers-on-real-phones-over-the-pis-wi-fi)
 now lives in one place, with the release pair, backups, deploy, nginx, native-game preparation,
 provisioning, the two-phone Checkers scenarios, rollback and the record sheet:
 [friend-ready-acceptance](friend-ready-acceptance.md) (step 7 and the AVR-261 record table).
-This file no longer carries its own copy, so the two cannot drift.
+This is Session B of that packet, and it is blocked: Checkers needs the game origin (Linear AVR-319, runbook `docs/runbooks/game-origin.md`, arrives with that issue). This file no longer carries its own copy, so the two cannot drift.
 
 The merge prerequisites this file used to list are done: Games PR #54 (`fb711d9`), Party PR #94
 (`b5a484c`) and the AVR-314 nginx cookie fix, PR #95 (`defd4a2`). A merge is not a deployment:
