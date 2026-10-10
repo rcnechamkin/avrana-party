@@ -8,6 +8,9 @@ and accepted; "As built" notes say where step 1 differs. Linear: AVR-226. Relate
 [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md), [LIMITED-MODE](LIMITED-MODE.md),
 [GAME-INSTALLATION](GAME-INSTALLATION.md).
 
+**Update 2026-10-10 (AVR-319):** the repository files of step 4 are now in source and tested; the owner-run order is
+[game-origin](../runbooks/game-origin.md). Nothing is deployed and nothing is validated on a phone: see the table in §4.
+
 Tags: **[E]** read in source or config on `main` at `b4c470d` and Games `main` at `f8f9148`;
 **[I]** inference; **[R]** recommendation.
 
@@ -210,6 +213,19 @@ What step 4 must set together, or not at all: the certificate name, the dnsmasq 
 `games.avrana.net` server block (with `frame-ancestors https://games.avrana.net` on
 `/party/bridge.html` only), `game_origins` in Party Core's configuration, and
 `AVRANA_PARTY_ORIGIN=https://party.avrana.net` in the games and arcade drop-ins.
+
+**Step 4, as of AVR-319: what exists in the repository and what is still the owner's.** The owner-run order, with
+commands and the reverse of each step, is [game-origin](../runbooks/game-origin.md) (status proposed, not run).
+
+| Step 4 item | In the repository now | Still owner-run / unvalidated |
+|---|---|---|
+| Certificate SAN `games.avrana.net` | a one-time two-name `lego run` command and the installer's name check (`ops/install-party-certificate.sh`); renewal already renews every name (`ops/renew-party-certificate.sh`) | issuing it (internet, DNS-01 credentials), installing it; nothing issued |
+| dnsmasq `host-record` | `avrana-captive.conf` | installing it (bounces the AP); nothing installed |
+| nginx `games.avrana.net` server block | `avrana-party.nginx` and `arcade/nginx-site`, tested against real nginx on Linux CI | installing and reloading it; nothing installed |
+| `frame-ancestors https://games.avrana.net` on `/party/bridge.html` only | the same site file (an exact-match location on the Party host; Party Core sets no such header) | as above |
+| `game_origins` in Party Core's configuration | `party_config --check` validates it; the runbook gives the member and says a restart (not a reload) is needed | writing it and restarting Party Core |
+| `AVRANA_PARTY_ORIGIN=https://party.avrana.net` | already so: `provision-game` writes the one bare `origins` entry | provisioning Checkers |
+| Step 5 on real phones | the checklist below | all of it: no phone has run it |
 
 ### What step 5 must validate on a real iPhone (owner)
 

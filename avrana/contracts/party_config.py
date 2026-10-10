@@ -22,6 +22,7 @@ Home and Party Core cannot disagree about a game.
 """
 import argparse
 import json
+import re
 import sys
 
 from avrana import CONTRACTS_DIR
@@ -100,6 +101,36 @@ def resolve(entries, contracts=None):
     return games
 
 
+BARE_ORIGIN = re.compile(r'https?://[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[1-9][0-9]{0,4})?')
+
+
+def check_game_origins(conf):
+    """Problems with the config's `game_origins` (ADR 0013, AVR-319), as Party Core reads it:
+    {origin: '*' | [game ids]}, each origin a bare http(s)://host[:port] that is not also one of the
+    Party's `origins` or `hosts`. A list of origins (a natural mistake) is refused by name, since
+    Party Core would refuse to start on it. Absent is fine: no game has a game origin."""
+    origins = conf.get('game_origins')
+    if origins is None:
+        return []
+    if not isinstance(origins, dict):
+        return ['game_origins: an object {"https://games.avrana.net": ["checkers"]}, not a list']
+    from avrana.contracts import game
+    problems = []
+    party = {o for o in conf.get('origins', ()) if isinstance(o, str)}
+    hosts = {h for h in conf.get('hosts', ()) if isinstance(h, str)}
+    for origin, games in origins.items():
+        if (not isinstance(origin, str) or not BARE_ORIGIN.fullmatch(origin)
+                or origin.endswith((':443', ':80'))):      # a browser never writes a default port
+            problems.append(f'game_origins: {origin!r} is not a bare http(s)://host[:port] origin')
+            continue
+        if origin in party or origin.split('://', 1)[1] in hosts:
+            problems.append(f'game_origins: {origin} is a Party origin or host; a game origin may not be')
+        if games != '*' and not (isinstance(games, list) and games and all(
+                isinstance(g, str) and game.ID.fullmatch(g) for g in games)):
+            problems.append(f'game_origins[{origin}]: "*" or a non-empty list of game ids')
+    return problems
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -115,6 +146,11 @@ def main(argv=None):
     except ConfigError as e:
         for problem in e.problems:
             print(f'{path}: {problem}', file=sys.stderr)
+        return 1
+    problems = check_game_origins(conf)
+    for problem in problems:
+        print(f'{path}: {problem}', file=sys.stderr)
+    if problems:
         return 1
     if args.show:
         json.dump(games, sys.stdout, indent=2, sort_keys=True)

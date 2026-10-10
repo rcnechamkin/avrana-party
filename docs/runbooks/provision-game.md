@@ -36,6 +36,8 @@ reload), and never prints a key.
    its page for the bridge shim. When no entry is usable, or more than one is, it refuses, naming the config file, and
    writes nothing (a dry run too). Change `origins` and run the command again: the drop-in is
    rewritten (reported as `dropin`) and a running game keeps its old value until it next stops.
+   A native game page runs only on the game origin, which is a separate owner-run step: [game-origin](game-origin.md)
+   (certificate name, DNS, nginx block, `game_origins`). `AVRANA_PARTY_ORIGIN` stays the Party origin there.
 3. The game's code is under a root-owned path (a release tree, never a home directory), and its
    Game Contract is in `contracts/games/<slug>.json`. The command checks this before it writes
    anything: the grant's `command[0]` and `working_directory`, and every directory above each (a

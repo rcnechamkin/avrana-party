@@ -145,6 +145,20 @@ server {
         client_max_body_size 8k;
     }
 
+    # The one Party page a game origin may frame (ADR 0013, BROWSER-ORIGINS 3.2 and 4; AVR-319): the
+    # invisible bridge frame a native game page embeds from https://games.avrana.net. The headers are
+    # those of /party/ below with frame-ancestors naming the game origin instead of 'none' (an exact
+    # match, so no other Party page is frameable by it or by anything else). Party Core does not set
+    # this header: it serves no pages. Headers must match avrana/web/devserver.py (the /party/bridge.html
+    # route) and tests/unit/test_nginx_site.py. Never send the old frame-options header (it cannot name an origin).
+    location = /party/bridge.html {
+        alias /var/www/avrana-party/web/current/bridge.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://games.avrana.net" always;
+    }
+
     location /party/ {
         alias /var/www/avrana-party/web/current/;
         index index.html;
@@ -261,5 +275,90 @@ server {
         # header is dropped here, which also keeps both cookie names out. AVR-314.
         proxy_set_header Cookie "";
         proxy_read_timeout 3600;
+    }
+}
+
+# The game origin (ADR 0013, BROWSER-ORIGINS 3.1; AVR-319): native game pages, their assets and
+# their sockets on a host of their own, so a game page and the Party never share an origin, a cookie
+# or a service worker. It is selected by the exact name games.avrana.net and is never the default
+# server: any other Host on port 443 is answered by the Party block above, as before. It serves
+# native games and nothing else: no /party/, no /arcade/, no LAN Games runtime (BLUFF and EXPO stay
+# on the Party origin), no hub, no static root. Every other path is nginx's own 404. No HSTS and no
+# Service-Worker-Allowed here either (expiry must stay escapable; the worker belongs to /party/).
+# The Party's device cookie is host-only to party.avrana.net, so a browser never sends it here, and
+# every game upstream has its Cookie header cleared regardless (AVR-314).
+#
+# Certificate: the same files as the Party block. nginx loads a certificate that does not (yet) name
+# games.avrana.net without complaint (it checks no name), and a browser then refuses the host. So this
+# file is safe to install before the two-name certificate exists, and no phone is sent here until
+# Party Core's game_origins says so (docs/runbooks/game-origin.md installs the certificate first).
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name games.avrana.net;
+
+    ssl_certificate /etc/avrana-party/tls/current/fullchain.pem;
+    ssl_certificate_key /etc/avrana-party/tls/current/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # The Party and the arcade are not served on this origin. Prefix matches that stop regular
+    # expressions: nothing below can answer them.
+    location ^~ /party {
+        return 404;
+    }
+    location ^~ /arcade {
+        return 404;
+    }
+
+    # Native games (ADR 0016 section 4, AVR-259): one rule for every title, no per-game block and
+    # no port. A native game listens on its own Unix socket, /run/avrana-games/<slug>.sock, which
+    # only nginx and Party Core may connect to (group avrana-front). The slug pattern is the Game
+    # Contract's id pattern (avrana/contracts/game.py ID): 1 to 40 characters, no "/" and no ".",
+    # so no request can name a socket outside that directory. nginx matches locations against the
+    # normalised path ("//", "/./", "/../" and %-escapes resolved), so the slug is whatever the
+    # path really names; the game is sent the request line as the client wrote it. These rules
+    # name no title and are the same in every server block that serves native games. Source copy:
+    # deploy/games/nginx-native-games.location.
+    #
+    # Control paths are never proxied: Party Core sends launch and end to a game directly, so a
+    # request for them through the front door is refused here, for every slug. The match is on
+    # the normalised path and is case-sensitive; a spelling this rule does not match is not a
+    # control path to the game either, and a game refuses any control request that carries the
+    # proxy headers set below.
+    location ~ ^/games/[^/]+/avrana/ {
+        return 404;
+    }
+
+    # A slug is a native game or nothing. A game that is not provisioned has no socket, and one
+    # that is down refuses or closes: either way the phone gets nginx's own 502 and the request
+    # is sent nowhere else. nginx reads no registry here; telling "not provisioned" from "down"
+    # is left to the game registry (AVR-236).
+    location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
+        proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        # The device cookie (ADR 0003, ADR 0013) never goes to a game server: the whole Cookie
+        # header is dropped here, which also keeps both cookie names out. AVR-314.
+        proxy_set_header Cookie "";
+        proxy_read_timeout 3600;
+    }
+
+    # Anything else under /games/ names no game (a slug outside the pattern): refused here, never
+    # passed to a catch-all. The bare /games is refused the same way.
+    location /games/ {
+        return 404;
+    }
+    location = /games {
+        return 404;
+    }
+
+    # Nothing else is served, and nginx's default document root is never consulted.
+    location / {
+        return 404;
     }
 }

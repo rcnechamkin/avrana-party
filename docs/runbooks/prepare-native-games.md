@@ -143,7 +143,8 @@ change.
 
 ## Not in this step
 
-nginx, DNS, certificates and `games.avrana.net` (AVR-226 step 4); provisioning any game
+nginx, DNS, certificates and `games.avrana.net` (AVR-226 step 4: its own owner-run
+[game-origin](game-origin.md) runbook, AVR-319); provisioning any game
 ([provision-game](provision-game.md), AVR-236; Checkers, AVR-238); users and groups (phase 1, AVR-256);
 the clean-target rebuild inventory (`avrana.ops.rebuild`); keeping the installed Party Core unit in step
 with later releases (`ops/deploy.sh` does not).
