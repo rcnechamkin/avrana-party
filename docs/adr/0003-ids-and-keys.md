@@ -169,3 +169,15 @@ Dated clarification; the invariants and the historical token mapping in §5 are 
 - **Consequences, second bullet:** per-game keys "add nothing" for built-in LAN modules only
   while they share a process. Under ADR 0014 each native game is its own process with its own key,
   so the per-game key becomes a real boundary for built-in games too.
+
+## Amendment (2026-10-10): the cookie is no longer path-scoped; nginx clears it (AVR-314)
+
+Two sentences above were not true of the code. The device cookie is `__Host-avrana_device;
+Path=/` (ADR 0013 D3; the earlier `avrana_device; Path=/party/` is still read), so path scoping
+does not keep it from game servers, and the site file had no rule that stripped it. AVR-314 adds
+one to the site file: every location that proxies to a game process on the Party host
+(BLUFF and EXPO, the native-game rule, the LAN Games catch-all) sends no `Cookie` header. The
+site file is changed in the repository; it takes effect when the owner deploys it. The rule that
+games never receive the device token is unchanged; this records the mechanism that keeps it, as
+[BROWSER-ORIGINS](../design/BROWSER-ORIGINS.md) 3.3 describes for before and after the game
+origin exists.

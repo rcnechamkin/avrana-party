@@ -170,7 +170,8 @@ What each rollback step is backed by:
 
 - The key file is the only secret. The script never prints it, and it never appears in the
   config, unit, logs or the repository.
-- The device token lives only in the `HttpOnly; Secure; SameSite=Lax; Path=/party/` cookie.
+- The device token lives only in the `__Host-avrana_device` cookie (`HttpOnly; Secure;
+  SameSite=Lax; Path=/`); nginx clears the `Cookie` header on game locations (AVR-314).
 - The service refuses:
   - a Host header other than `party.avrana.net`;
   - a POST whose Origin is not `https://party.avrana.net`;

@@ -524,16 +524,17 @@ own credential (never the `Secure` device cookie), says so visibly, and grants n
 elevated authority. What hidden-information games may do in Limited Mode is part of AVR-225.
 
 **Browser trust boundary (Target, ADR 0013):** the Party origin and the game origin are separate
-trust domains. Path-scoped `HttpOnly` cookies keep the device token from game *servers* but not
+trust domains. nginx clears the `Cookie` header on game locations (AVR-314; the `__Host-` device
+cookie is `Path=/`, so its path does not), which keeps the device token from game *servers* but not
 from same-origin game *JavaScript*, which today can call `/party/api/` as the viewer. The target
 removes that: game pages hold tickets only. **Current:** one origin; treat every game page as able
 to act as the member until the split lands.
 
 **MUST before profiles ship**
 - Server-issued device token (`secrets.token_urlsafe(32)`) in an `HttpOnly; SameSite=Lax` cookie
-  scoped to the party path (e.g. `Path=/party/`), and nginx strips the `Cookie` header on every game
-  location, so **game servers never receive device tokens** (path scoping keeps cookies from
-  servers, not from same-origin JavaScript). Store only its SHA-256; revoke = delete. It unlocks the
+  (as built: `__Host-avrana_device`, `Secure`, `Path=/`), and nginx strips the `Cookie` header on
+  every game location, so **game servers never receive device tokens** (the nginx rule keeps cookies
+  from servers, not from same-origin JavaScript). Store only its SHA-256; revoke = delete. It unlocks the
   "Welcome back" picker; it never grants admin or skips the admin PIN; on a device the owner chose
   to trust, it skips that profile's PIN.
 - One canonical HTTPS *Party* origin (`https://party.avrana.net`, §4; games move to a separate

@@ -131,3 +131,14 @@ Still to do, in order: the paired Games change (vendor the shim); the arcade pag
 owner-only live changes (certificate name, dnsmasq record, nginx server block and the
 `frame-ancestors` header for `bridge.html`) and the real-phone validation in BROWSER-ORIGINS §4.
 The bridge is not relied on for field testing until that validation has passed.
+
+## Amendment (2026-10-10): what keeps the cookie from game servers on the shared host (AVR-314)
+
+The context above says path-scoped cookies and nginx keep the device token from game *servers*.
+With D3 the cookie is `Path=/`, so the browser sends it to every path of the Party host, and the
+site file had no rule that dropped it. AVR-314 adds `proxy_set_header Cookie "";` to each
+game-server location of the site file (a repository change; deployed only when the owner
+installs it). Until the game origin exists, nginx is therefore the mechanism; after it, the
+separate origin is, because the browser never sends a Party-host cookie to the game host. The
+nginx rule stays as a second layer. Game *JavaScript* on the shared origin is unaffected and
+is still what this ADR's split addresses.

@@ -25,7 +25,8 @@ Tags: **[E]** read in source or config on `main` at `b4c470d` and Games `main` a
 - [E] Party Core checks `Origin` against an allow-list on every POST and checks `Host` on every
   request. GET `/party/api/state` has no Origin check and touches the caller's presence.
 - [E] The cookie has no `Domain` attribute, so it is host-only: it is sent only to
-  `party.avrana.net`. Its `Path=/party/` keeps it from game *servers* on the same host.
+  `party.avrana.net`. `__Host-avrana_device` is `Path=/`, so the path does not keep it from game
+  *servers* on the same host: nginx clearing the `Cookie` header does (section 3.3, AVR-314).
 - [E] The certificate names one host. `ops/renew-party-certificate.sh` passes one `--domains`.
 - [E] The strict Content-Security-Policy applies to `/party/` only, and includes
   `frame-ancestors 'none'`.
@@ -134,6 +135,19 @@ Alternatives considered:
 [R] `__Host-avrana_device; Path=/; Secure; HttpOnly; SameSite=Lax`, issued alongside the old name
 for one release so that phones in the room keep their member, then the old name is no longer
 read. **Decision D3.**
+
+Who keeps this cookie from game *servers* (AVR-314; the cookie no longer has the party path,
+so path scoping does not):
+
+- **Before the game origin is deployed:** nginx. Each game-server location of the site file on
+  the Party host (BLUFF and EXPO, the native-game rule, the LAN Games catch-all, on HTTPS and on
+  the port 80 block) sets `proxy_set_header Cookie "";`, so a game process receives no `Cookie`
+  header at all. This is in the repository's site file; it holds on the Pi only after the owner
+  deploys it. `/arcade/` is not cleared: its process reads no cookie, and the finding is
+  recorded in the pull request.
+- **After the game origin is deployed:** the separate origin. A browser never sends a
+  `__Host-` cookie of the Party host to the game host, so game requests carry none. The nginx
+  rule stays as a second layer on the Party host.
 
 ### 3.4 Returning to the Party
 

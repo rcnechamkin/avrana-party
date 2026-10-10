@@ -157,7 +157,8 @@ def upstream(label):
             body = json.dumps({'upstream': label, 'path': self.path,
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
-                               'upgrade': self.headers.get('Upgrade')}).encode()
+                               'upgrade': self.headers.get('Upgrade'),
+                               'cookie': self.headers.get('Cookie')}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
@@ -186,7 +187,8 @@ def native_game(path):
             body = json.dumps({'upstream': 'native', 'path': self.path, 'host': self.headers.get('Host'),
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
-                               'upgrade': self.headers.get('Upgrade')}).encode()
+                               'upgrade': self.headers.get('Upgrade'),
+                               'cookie': self.headers.get('Cookie')}).encode()
             if self.headers.get('Content-Length'):
                 self.rfile.read(int(self.headers['Content-Length']))
             self.send_response(502 if 'own502' in self.path else 418 if 'own418' in self.path else 200)
@@ -495,6 +497,56 @@ http {{
             self.assertEqual(res.status, 404, path)
             self.assertNotIn(b'upstream', body, path)         # nginx answered, no process did
         self.assertEqual((len(self.native.seen), self.lan_paths()), (before_native, before_lan))
+
+    DEVICE_COOKIES = '__Host-avrana_device=host-token; avrana_device=legacy-token; theme=dark'
+
+    def test_no_game_server_on_the_party_host_receives_the_device_cookie(self):
+        """AVR-314 / ADR 0003 section 4 / ADR 0013: a game process behind nginx sees no Cookie
+        header at all (neither device cookie name, nor any other), on every location that proxies
+        to one. The upstream stubs report the Cookie header they received."""
+        extra = {'Cookie': self.DEVICE_COOKIES}
+        legacy_cookie = {'Cookie': 'avrana_device=legacy-token'}
+        for path in ('/games/bluff/?avrana=1', '/games/expo/ws', '/games/bluff', '/shared/shared.css', '/api/venue',
+                     '/games/demo/play?seat=2', '/games/demo/ws'):
+            for headers in (extra, legacy_cookie):
+                res, body = self.request('GET', path, extra=headers)
+                got = json.loads(body)
+                self.assertEqual(res.status, 200, path)
+                self.assertIn(got['upstream'], ('lan', 'native'), path)
+                self.assertIsNone(got['cookie'], (path, headers))
+                self.assertEqual(got['proto'], 'https', path)             # the other headers still go
+                res, body = self.request('POST', path, body={'x': 1}, extra=headers)
+                self.assertIsNone(json.loads(body)['cookie'], (path, headers))
+        # a WebSocket upgrade keeps Upgrade and Connection and still loses the cookie
+        res, body = self.request('GET', '/games/demo/ws', extra=dict(extra, Upgrade='websocket', Connection='Upgrade'))
+        got = json.loads(body)
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+        # the same on plain HTTP, where the two legacy games and the shared assets are served
+        for path in ('/games/bluff/', '/games/expo/ws', '/shared/shared.css'):
+            conn = http.client.HTTPConnection('127.0.0.1', self.p80, timeout=5)
+            conn.request('GET', path, headers={'Host': 'party.local', 'Cookie': self.DEVICE_COOKIES})
+            got = json.loads(conn.getresponse().read())
+            conn.close()
+            self.assertEqual(got['upstream'], 'lan', path)
+            self.assertIsNone(got['cookie'], path)
+        # and in the block that takes the shared native rules from the include file
+        conn = http.client.HTTPConnection('127.0.0.1', self.pgames, timeout=5)
+        conn.request('GET', '/games/demo/play', headers={'Host': 'games.avrana.net', 'Cookie': self.DEVICE_COOKIES})
+        got = json.loads(conn.getresponse().read())
+        conn.close()
+        self.assertEqual((got['upstream'], got['cookie']), ('native', None))
+
+    def test_the_party_api_still_receives_the_device_cookie(self):
+        """The counterpart of the test above: the cookie is cleared for games, not for the Party."""
+        res, body = self.request('POST', '/party/api/join', {'name': 'Cookie Check'})
+        self.assertEqual(res.status, 200, body)
+        name = json.loads(body)['me']['name']
+        pair = res.getheader('Set-Cookie').split(';')[0]
+        self.assertTrue(pair.startswith('__Host-avrana_device='), pair)
+        res, body = self.request('GET', '/party/api/state', extra={'Cookie': pair})
+        self.assertEqual(json.loads(body)['me']['name'], name)          # the party read the cookie
+        res, body = self.request('GET', '/party/api/state')
+        self.assertIsNone(json.loads(body)['me'])
 
     def test_the_two_party_games_of_the_retiring_runtime_answer_as_before(self):
         """BLUFF and EXPO are routed to the LAN Games runtime by name (ADR 0016 section 7)."""
