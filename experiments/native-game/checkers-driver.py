@@ -26,8 +26,7 @@ import os
 import random
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import driver as base                                      # noqa: E402  (the AVR-236 helpers, unchanged)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))     # the AVR-236 helpers, unchanged
 from driver import Fail, Phone, UnixConnection, exchange, leave_all, poll, short, want   # noqa: E402
 
 GAME = 'checkers'
@@ -43,6 +42,11 @@ def gpost(args, path, body, headers=None):
 
 def observe(text):
     print(f'driver: observe {text}')
+
+
+def wait_offered(watcher):
+    poll('Party Core offers the game (from its contract)', lambda: (GAME in watcher.state().get('games', []),
+                                                                  f'games {watcher.state().get("games")}'))
 
 
 def seat_up(args):
@@ -219,7 +223,7 @@ def finish(args, ana, ben, cy, plies):
 
 
 def run_full(args):
-    base.wait_offered(args, Phone(args, 'Watcher'))
+    wait_offered(Phone(args, 'Watcher'))
     ana, ben = seat_up(args)
     redeem_players(args, ana, ben)
     cy = strangers(args, ana)
@@ -230,7 +234,7 @@ def run_full(args):
 
 
 def run_end(args):
-    base.wait_offered(args, Phone(args, 'Watcher'))
+    wait_offered(Phone(args, 'Watcher'))
     ana, ben = seat_up(args)
     redeem_players(args, ana, ben)
     by_seat = {p.seat: p for p in (ana, ben)}
