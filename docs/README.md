@@ -30,6 +30,7 @@ second description of product state. [Linear](https://linear.app/avranakern) alo
 | [Branch inventory](branches.json) | Retention roles for divergent branches | Dated snapshot, canonical: false | GitHub refs for current source, Linear for active work |
 | [Deployment index](../deploy/README.md) | Configuration and operations file map | Source assets; no deployment claim | SYSTEM and relevant runbook |
 | [Rebuild runbook](runbooks/rebuild.md) and [appliance inventory](../deploy/appliance-inventory.json) (AVR-32) | What a clean target needs and the order to install it: automated steps, secret handoffs, owner-only actions, phone checks, rollback, and what the repository cannot say | Proposed procedure, **not run on any device**; the simulated rehearsal in the tests is not hardware evidence | SYSTEM for what is deployed; [deploy](runbooks/deploy.md) for a routine release |
+| [Friend-ready acceptance](runbooks/friend-ready-acceptance.md) (AVR-10, AVR-12, AVR-261, AVR-27) | One owner-run session packet: release pair, backups, deploy, nginx, native-game preparation, offline cold boot, four phones, Checkers on two phones, four-human BLUFF, rollback, record sheet | Proposed procedure, **not run on the appliance or any phone** | SYSTEM for what is deployed; the four issues for acceptance |
 
 ## Maintaining the map
 
