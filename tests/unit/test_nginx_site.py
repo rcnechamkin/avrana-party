@@ -538,12 +538,13 @@ http {{
 
     def test_the_party_api_still_receives_the_device_cookie(self):
         """The counterpart of the test above: the cookie is cleared for games, not for the Party."""
-        res, body = self.request('POST', '/party/api/join', {'name': 'Robin'})
+        res, body = self.request('POST', '/party/api/join', {'name': 'Cookie Check'})
         self.assertEqual(res.status, 200, body)
+        name = json.loads(body)['me']['name']
         pair = res.getheader('Set-Cookie').split(';')[0]
         self.assertTrue(pair.startswith('__Host-avrana_device='), pair)
         res, body = self.request('GET', '/party/api/state', extra={'Cookie': pair})
-        self.assertEqual(json.loads(body)['me']['name'], 'Robin')       # the party read the cookie
+        self.assertEqual(json.loads(body)['me']['name'], name)          # the party read the cookie
         res, body = self.request('GET', '/party/api/state')
         self.assertIsNone(json.loads(body)['me'])
 
