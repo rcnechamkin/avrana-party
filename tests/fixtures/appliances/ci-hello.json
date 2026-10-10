@@ -1,0 +1,28 @@
+{
+  "schema": "avrana.appliance/v0",
+  "id": "ci-hello",
+  "name": "CI appliance fixture with the Hello Party developer reference game (AVR-38)",
+  "providers": [
+    {
+      "id": "lan-games",
+      "kind": "runtime",
+      "offers": ["runtime.lan_games"],
+      "status": "live",
+      "adapter": null,
+      "implementation": "placeholder: the schema needs one provider; Hello Party uses none"
+    }
+  ],
+  "installed": [
+    {
+      "game": "hello",
+      "entry": "/games/hello/",
+      "tier": "builtin",
+      "permissions_granted": ["party_roster"],
+      "runtime": {
+        "command": ["/usr/bin/python3", "-m", "hello_party"],
+        "working_directory": "/opt/avrana-party-games/current"
+      }
+    }
+  ],
+  "collections": []
+}
