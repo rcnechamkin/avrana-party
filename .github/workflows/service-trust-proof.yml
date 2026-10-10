@@ -14,6 +14,9 @@
 #                `provision-game checkers` against the real appliance profile, Party Core launching
 #                the socket-activated game, a game played to its natural end by two phones, a
 #                Host-ended session, the phase 2 boundary checker, and remove. Runner only.
+#   package      (AVR-39, EXPERIMENTAL) the Hello Party .avrgame package of the paired Games branch: built
+#                unprivileged, refused when tampered, installed by `ops/install-game`, two sessions,
+#                the phase 2 boundary checker, removed, re-installed. Runner only.
 name: Service trust proof
 
 on:
@@ -24,6 +27,7 @@ on:
       - 'deploy/**'
       - 'ops/provision-game'
       - 'ops/prepare-native-games'
+      - 'ops/install-game'
       - 'experiments/**'
       - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
@@ -111,3 +115,49 @@ jobs:
           persist-credentials: false
       - name: Checkers - prepare, provision-game, a complete game, a Host-ended session, the boundary, remove
         run: sudo AVRANA_CHECKERS_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/checkers-proof.sh
+
+  # (AVR-39, EXPERIMENTAL) An .avrgame package, not a game of the release tree: the Hello Party package is
+  # built unprivileged from the paired Games branch's committed recipe, refused when tampered or wrong,
+  # installed by `ops/install-game` through provision-game, played by two phones, removed during no
+  # session (refused during one), and left no trace. The release tree copied to /opt has no contract
+  # for the game. The Games checkout is the branch paired with this one (same logic as the checkers
+  # job above). Runner only.
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - name: Resolve the matching Games branch
+        id: peer
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          # A failure to list the other repository's branches must fail this job: falling back to
+          # main would report compatibility that was never checked against the paired branch.
+          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
+          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
+          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
+          ref=main; why='no AVR id in this branch name'
+          if [ -n "$avr" ]; then
+            why="no Games branch carries $avr"
+            if echo "$heads" | grep -qxF "$BRANCH"; then
+              ref=$BRANCH; why='same branch name'
+            else
+              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
+              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: ${{ steps.peer.outputs.ref }}
+          path: games
+          persist-credentials: false
+      - name: Package - build, refusals, install-game, two sessions, the boundary, remove, re-install
+        run: sudo AVRANA_PACKAGE_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-proof.sh

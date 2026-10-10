@@ -585,7 +585,8 @@ def main(argv=None):
     # registry directory (avrana.party.registry). One dict of endpoints is shared by the game
     # link and the session routes, so a reload changes both at once.
     try:
-        games, endpoints = registry.build(conf.get('games', {}), conf.get('registry'))
+        games, endpoints = registry.build(conf.get('games', {}), conf.get('registry'),
+                                          packages=conf.get('packages'))
     except registry.RegistryError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
     service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True))

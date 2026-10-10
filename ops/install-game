@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Install, remove, list or verify an EXPERIMENTAL .avrgame package (AVR-39). Run as root from the
+# deployed code tree; see avrana/ops/install_game.py for the commands:
+#
+#   sudo /opt/avrana-party/current/ops/install-game install <file.avrgame> [--grant PERM ...] [--dry-run]
+#   sudo /opt/avrana-party/current/ops/install-game remove <id> [--keep-state] [--dry-run]
+#   /opt/avrana-party/current/ops/install-game list|verify
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+cd "$tree"
+PYTHONDONTWRITEBYTECODE=1 exec python3 -m avrana.ops.install_game "$@"

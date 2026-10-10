@@ -85,9 +85,17 @@ def _test_only(contract):
     return isinstance(extension, dict) and extension.get('test_only') is True
 
 
-def build(vocab, appliance, contracts, include=('live',), artwork=None):
+def build(vocab, appliance, contracts, include=('live',), artwork=None, extra_grants=None):
+    """The catalog document. `extra_grants` ({game id: grant}) are grants made outside the appliance
+    profile, today only the install records of .avrgame packages (AVR-39, EXPERIMENTAL); without
+    them the output is exactly what it always was. An id in both is an error."""
     runtime = appliance_mod.runtime_capabilities(appliance, include)
     grants = appliance_mod.grants(appliance)
+    if extra_grants:
+        both = sorted(set(grants) & set(extra_grants))
+        if both:
+            raise ValueError(f'granted by the appliance profile and by an install record: {both}')
+        grants = {**grants, **extra_grants}
     unknown = sorted(set(grants) - set(contracts))
     if unknown:
         raise ValueError(f'installed games without a contract: {unknown}')
@@ -122,7 +130,8 @@ def build(vocab, appliance, contracts, include=('live',), artwork=None):
         }
         meta = c.get('extensions', {}).get('net.avrana.catalog', {})
         entry['provider'] = meta.get('provider', 'arcade' if cid.startswith('arcade-') else
-                                     'lan-games' if c['runtime']['type'] == 'lan_games_module' else 'retroarch')
+                                     'lan-games' if c['runtime']['type'] == 'lan_games_module' else
+                                     'native' if c['runtime']['type'] == 'external' else 'retroarch')
         if entry['provider'] == 'retroarch-ps1':
             entry['providerMetadata'] = provider_metadata.ps1(c)
         provider_target = donor_launches.get(cid) if meta.get('integration') else None
@@ -168,13 +177,26 @@ def main(argv=None):
     ap.add_argument('--include-experiments', action='store_true',
                     help='also count experiment providers (lab builds only; never the committed catalog)')
     ap.add_argument('--check', action='store_true', help='exit 1 if --out differs from a fresh build')
+    ap.add_argument('--packages', metavar='DIR',
+                    help='also list the games installed as .avrgame packages (their install records, '
+                         'EXPERIMENTAL); requires an explicit --out, never the committed catalog')
     args = ap.parse_args(argv)
+    if args.packages and args.out == str(DEFAULT_OUT):
+        print('--packages needs an explicit --out: the committed product catalog never lists installed '
+              'packages', file=sys.stderr)
+        return 2
     vocab = vocabulary.load()
     appliance = appliance_mod.load(args.appliance, vocab)
     contracts = load_contracts(args.games, vocab)
+    extra = None
+    if args.packages:
+        from avrana.avrgame import installed
+        contracts, extra, problems = installed.overlay(contracts, args.packages)
+        for problem in problems:
+            print(f'{args.packages}: {problem}', file=sys.stderr)
     include = ('live', 'experiment') if args.include_experiments else ('live',)
     artwork = load_artwork() if Path(args.games).resolve() == (CONTRACTS_DIR / 'games').resolve() else {}
-    text = strictjson.dumps(build(vocab, appliance, contracts, include, artwork))
+    text = strictjson.dumps(build(vocab, appliance, contracts, include, artwork, extra))
     out = Path(args.out)
     if args.check:
         current = out.read_text(encoding='utf-8') if out.exists() else ''
