@@ -139,7 +139,7 @@ Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha25
 
 | Criterion | Status |
 |---|---|
-| A validated install and remove workflow through the existing native provisioning path | **Met in code and unit tests** (scratch directories, recorded systemctl). Real systemd (disposable CI runner): `package-proof.sh`, <RUN-LINK>; never the Pi |
+| A validated install and remove workflow through the existing native provisioning path | **Met in code and unit tests** (scratch directories, recorded systemctl). Real systemd (disposable CI runner): `package-proof.sh`, https://github.com/rcnechamkin/avrana-party/actions/runs/38082213316 (commit 44275a1, 78 checks); never the Pi |
 | Nothing half-installed after a failure | Met in unit tests at every injected failure point; kill -9 repair by `remove` tested by simulating the partial states |
 | A valid package is not trusted; tier community; operator grants | Met (`--grant`, record re-validation); permissions are recorded, **not enforced at launch** by Party Core |
 | Package content never imported or executed by the installer | Met by construction (only bytes are read and hashed); the game runs only in the template unit |

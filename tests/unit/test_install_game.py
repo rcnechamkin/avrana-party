@@ -827,7 +827,7 @@ class ReviewFixTests(Base):
     @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'geteuid') and os.geteuid() != 0, 'POSIX, not as root')
     def test_the_real_root_owned_code_rule_refuses_a_scratch_tree(self):
         before = self.snapshot()
-        self.refused(lambda: self.install(trusted=pg.trusted_path), 'not owned by root')
+        self.refused(lambda: self.install(trusted=pg.trusted_path), 'a native game runs only root-owned code')
         self.assertEqual((self.snapshot(), self.calls), (before, []))
 
     # -- 4. the record's root is pinned to the configured games root

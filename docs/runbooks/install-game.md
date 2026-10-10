@@ -2,7 +2,7 @@
 
 Status: **EXPERIMENTAL procedure, NOT RUN on the appliance** (2026-10-10). Written from source.
 
-Rehearsed on a disposable CI runner (real systemd): <RUN-LINK> (`experiments/native-game/package-proof.sh`,
+Rehearsed on a disposable CI runner (real systemd): https://github.com/rcnechamkin/avrana-party/actions/runs/38082213316 (commit 44275a1, 78 checks) (`experiments/native-game/package-proof.sh`,
 the `package` job of `service-trust-proof.yml`). That proves the mechanism with a test game on Ubuntu;
 never on the Pi, never with real phones. Running any step on the Pi is an owner action: nothing in CI,
 in an agent's task or in this document authorizes it. The package format ([AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md)) is not an
