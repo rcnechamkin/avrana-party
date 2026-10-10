@@ -11,7 +11,7 @@
 |---|---|---|---|
 | AVR-238 Checkers | Done | M6 | Party `defd4a2`, Games `fb711d9`. Real-systemd proof ran on a CI runner, not on the Pi or phones. |
 | AVR-37 draft `.avrgame` v0 | Backlog | M6 | Gate text unchanged: drafting after Checkers and its findings exist; no freeze, "even as experimental", until the AVR-27 four-human BLUFF findings are reviewed against the draft in writing and the owner accepts. |
-| AVR-38 SDK v0 + Hello Party | Backlog (unassigned in Linear; an implementation is in progress elsewhere) | M6 | Must not claim package or SDK shipped, or bypass the Checkers/BLUFF evidence gates. |
+| AVR-38 SDK v0 + Hello Party | Backlog (an experimental slice is on the unmerged branch `feat/avr-38-hello-party-experimental`) | M6 | Must not claim package or SDK shipped, or bypass the Checkers/BLUFF evidence gates. |
 | AVR-39 AvrGameProvider validate/install | Backlog | M6 | Must use the AVR-236 `provision-game` path; no second install path. |
 | AVR-59 developer workflow | Backlog | M9 | Porting ladder entries are "candidate feasibility", not approved work. |
 | AVR-45 owner app, trusted game host, courier | Backlog | M10 | Revised 2026-10-09: first-class commercial readiness requirement; optional for guests; friend-ready 1.0 has no app dependency. Open owner decision: whether retail activation literally requires the app. |
