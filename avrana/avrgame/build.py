@@ -5,8 +5,9 @@ is not inside the archive and not part of the package contract.
 
 Determinism: the manifest first, then every other file sorted by path; fixed timestamps
 (1980-01-01), fixed permissions (files 0644, no directory entries), forward slashes, deflate at a
-fixed level. The same inputs give the same bytes with the same zlib; `compress=False` (stored)
-gives the same bytes on every platform.
+fixed level when asked. The DEFAULT is stored (no compression): the same inputs give the same bytes
+on every machine and every zlib build, so the archive sha256 is reproducible. `compress=True`
+(deflate, the CLI's `--deflate`) is smaller but only reproducible with the same zlib.
 """
 import io
 import os
@@ -140,7 +141,7 @@ def _walk(directory, prefix, out, problems):
             problems.add(f'path {clip(rel)}: not a regular file or directory')
 
 
-def build_bytes(source_root, manifest_path, includes, compress=True):
+def build_bytes(source_root, manifest_path, includes, compress=False):
     """The archive bytes, validated exactly as `read` validates an archive. Writes nothing."""
     problems = Problems()
     try:
@@ -208,7 +209,7 @@ def _write_atomic(data, out_path):
     return out_path
 
 
-def pack(source_root, manifest_path, includes, out_path, compress=True):
+def pack(source_root, manifest_path, includes, out_path, compress=False):
     """Build `out_path` from `includes` (paths relative to `source_root`, directories recursive)
     and the manifest at `manifest_path` (stored as avrgame.json). Validates before writing and
     writes atomically. Returns the Package of the written archive."""
@@ -216,13 +217,13 @@ def pack(source_root, manifest_path, includes, out_path, compress=True):
     return archive.read(_write_atomic(data, out_path))
 
 
-def recipe_build(recipe_path, compress=True):
+def recipe_build(recipe_path, compress=False):
     """The archive bytes a recipe describes (nothing is written)."""
     r = load_recipe(recipe_path)
     return build_bytes(r.root, r.manifest, r.include, compress)
 
 
-def pack_recipe(recipe_path, out_path=None, compress=True):
+def pack_recipe(recipe_path, out_path=None, compress=False):
     """Pack from a recipe. Default output: `<id>-<version>.avrgame` in the current directory.
     Returns the Package (its `path` says where)."""
     r = load_recipe(recipe_path)
@@ -234,7 +235,7 @@ def pack_recipe(recipe_path, out_path=None, compress=True):
     return archive.read(_write_atomic(data, out_path))
 
 
-def validate_recipe(recipe_path, compress=True):
+def validate_recipe(recipe_path, compress=False):
     """Validate the package a recipe would build, without writing it. Returns its Package."""
     package, zf = archive.scan(recipe_build(recipe_path, compress))
     zf.close()

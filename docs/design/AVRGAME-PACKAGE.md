@@ -19,7 +19,7 @@ A package is one ZIP file (`*.avrgame`) holding a **native** game: its authorita
 - Names: relative, `/` separated, ASCII letters, digits and `. _ + @ = ~ -` only; at most 200 characters and 16 segments; no empty, `.` or `..` segments, no backslash, drive letter or `:`, no NUL or control characters, no segment ending in `.` or a space, no dotfiles, no Windows device names (`CON`, `NUL`, `COM1` ...), no two names differing only by case, no name that is both file and directory.
 - Entries must be regular files (or plain directory entries). Symbolic links, devices, FIFOs, sockets, setuid/setgid/sticky bits, encrypted entries and other compression methods are refused. Python bytecode (`*.pyc`, `__pycache__`) is refused: bytecode is not reviewable source.
 - Extraction ignores archive modes: files are written 0644, directories 0755, into a **new or empty** directory the caller provides, never following links, and each destination is checked to stay inside it.
-- `pack` is deterministic: manifest first, then files sorted by path, timestamps 1980-01-01, mode 0644, no directory entries, deflate level 9 (or stored with `--store`). Same inputs give the same bytes with the same zlib (stored is identical on every platform), so the sha256 is stable. Hidden files, `__pycache__`, `*.pyc` and `avrgame.build.json` are skipped inside directory includes; symbolic links are refused.
+- `pack` is deterministic: manifest first, then files sorted by path, timestamps 1980-01-01, mode 0644, no directory entries, and entries **stored** (no compression) by default, so the same inputs give the same bytes, and the same archive sha256, on every machine and zlib build (`--deflate` opts into level-9 deflate, which is smaller but only reproducible with the same zlib). Hidden files, `__pycache__`, `*.pyc` and `avrgame.build.json` are skipped inside directory includes; symbolic links are refused.
 
 ### Limits (experimental values)
 
@@ -65,7 +65,7 @@ Strict JSON (duplicate keys, NaN, a BOM or an unknown key anywhere in the envelo
 
 ```
 python -m avrana.avrgame validate <file.avrgame | directory-with-recipe>
-python -m avrana.avrgame pack <path/to/avrgame.build.json> [--out FILE] [--store]
+python -m avrana.avrgame pack <path/to/avrgame.build.json> [--out FILE] [--deflate]
 python -m avrana.avrgame inspect <file.avrgame> [--json]
 ```
 

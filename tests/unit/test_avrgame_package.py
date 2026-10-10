@@ -305,14 +305,20 @@ class PackAndReadTests(Tmp):
         root = root or self.make_tree()
         return avrgame.pack(root, root / 'avrgame.json', ['game_pkg', 'shared'], self.tmp / out, **kw)
 
+    def compress_types(self, name):
+        with zipfile.ZipFile(self.tmp / name) as zf:
+            return {i.compress_type for i in zf.infolist()}
+
     def test_pack_is_deterministic_and_a_changed_byte_changes_the_hash(self):
         root = self.make_tree()
         a = self.pack(root, 'a.avrgame')
         b = self.pack(root, 'b.avrgame')
         self.assertEqual((self.tmp / 'a.avrgame').read_bytes(), (self.tmp / 'b.avrgame').read_bytes())
         self.assertEqual(a.sha256, b.sha256)
-        s = self.pack(root, 's.avrgame', compress=False)
-        self.assertEqual(s.sha256, self.pack(root, 's2.avrgame', compress=False).sha256)
+        self.assertEqual(self.compress_types('a.avrgame'), {zipfile.ZIP_STORED})     # stored is the default
+        s = self.pack(root, 's.avrgame', compress=True)
+        self.assertEqual(s.sha256, self.pack(root, 's2.avrgame', compress=True).sha256)
+        self.assertNotEqual(s.sha256, a.sha256)
         os.utime(root / 'shared' / 'helper.py', (1, 1))          # mtime is not part of the archive
         self.assertEqual(self.pack(root, 'c.avrgame').sha256, a.sha256)
         (root / 'shared' / 'helper.py').write_bytes(b'X = 2\n')
@@ -709,7 +715,7 @@ class CommandLineTests(Tmp):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertTrue((self.tmp / 'hello-0.1.0.avrgame').is_file())
         first = (self.tmp / 'hello-0.1.0.avrgame').read_bytes()
-        self.assertEqual(self.run_cli('pack', root / 'avrgame.build.json', '--store', '--out', 's.avrgame').returncode, 0)
+        self.assertEqual(self.run_cli('pack', root / 'avrgame.build.json', '--deflate', '--out', 's.avrgame').returncode, 0)
         self.assertNotEqual((self.tmp / 's.avrgame').read_bytes(), first)
 
     def test_a_refused_package_exits_1_with_one_problem_per_line_on_stderr(self):

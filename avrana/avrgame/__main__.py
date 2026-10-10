@@ -1,7 +1,7 @@
 """python -m avrana.avrgame: validate, pack and inspect EXPERIMENTAL .avrgame packages.
 
     validate <file.avrgame | directory-with-avrgame.build.json | recipe file>
-    pack <path/to/avrgame.build.json> [--out FILE] [--store]
+    pack <path/to/avrgame.build.json> [--out FILE] [--deflate]
     inspect <file.avrgame> [--json]
 
 Exit 0 on success, 1 when the package or its inputs are refused (one problem per line on stderr),
@@ -49,7 +49,8 @@ def main(argv=None):
     p = sub.add_parser('pack', help='build an archive from an avrgame.build.json recipe')
     p.add_argument('recipe')
     p.add_argument('--out', default=None, help='default: <id>-<version>.avrgame in the current directory')
-    p.add_argument('--store', action='store_true', help='store instead of deflate (platform-independent bytes)')
+    p.add_argument('--deflate', action='store_true',
+                   help='deflate (smaller; the sha256 then depends on the zlib build). Default: stored, identical bytes everywhere')
     i = sub.add_parser('inspect', help='show the manifest summary and file list of an archive')
     i.add_argument('archive')
     i.add_argument('--json', action='store_true')
@@ -58,7 +59,7 @@ def main(argv=None):
         if args.command == 'validate':
             print(_summary(_validate(args.target)))
         elif args.command == 'pack':
-            package = build.pack_recipe(args.recipe, args.out, compress=not args.store)
+            package = build.pack_recipe(args.recipe, args.out, compress=args.deflate)
             print(f'{package.path}\nsha256: {package.sha256}')
         else:
             package = archive.read(args.archive)
