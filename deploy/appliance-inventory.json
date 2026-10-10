@@ -207,7 +207,7 @@
     {"what": "/srv/avrana/covers: the owner's game covers (AVR-306), in no repository and optional; ops/install-party-web.sh copies from it into each web release", "by": "the owner (docs/runbooks/deploy.md, 'Game covers'); a rebuilt appliance has none until they are copied again"},
     {"what": "/opt/avrana-party and /opt/avrana-party-games releases, /var/lib/avrana-party/deployment.json", "by": "ops/deploy.sh"},
     {"what": "telemetry: /opt/avrana-telemetry, /var/log/avrana, pi-throttle-check.timer, /etc/logrotate.d/avrana-telemetry, the Beszel agent", "by": "telemetry/install-pi-throttle-check.sh and telemetry/install-beszel-agent.sh (optional; not needed to play)"},
-    {"what": "native games: the avrana-game@ template units, each game's key, registry entry and exec drop-in under /etc/avrana-party/games.d and /etc/systemd/system, and Party Core's game-facing socket unit avrana-party-core.socket with the \"registry\" key in party-core.json", "by": "ops/provision-game per game, after the owner's one-time socket-unit and registry-key step (docs/runbooks/provision-game.md); no product game is provisioned yet"},
+    {"what": "native games: the avrana-game@ template units, each game's key, registry entry and exec drop-in under /etc/avrana-party/games.d and /etc/systemd/system, and Party Core's game-facing socket unit avrana-party-core.socket with the \"registry\" key in party-core.json", "by": "ops/provision-game per game (docs/runbooks/provision-game.md), after the owner's one-time ops/prepare-native-games (docs/runbooks/prepare-native-games.md); no product game is provisioned yet"},
     {"what": "the access point profile and every other NetworkManager connection", "by": "the owner, with nmcli"}
   ],
   "hardware_checks": [
