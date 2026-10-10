@@ -145,7 +145,7 @@ so path scoping does not):
   header at all. This is in the repository's site file; it holds on the Pi only after the owner
   deploys it. `/arcade/` (both blocks) is cleared too since AVR-318: the arcade process reads no
   cookie, in HTTP or in the socket handshake (its seat is a ticket in the `hello` message), so
-  it is inside the same boundary and needs nothing from the browser's cookie jar.
+  it receives no device cookie, like the game servers, and needs nothing from the browser's cookie jar.
 - **After the game origin is deployed:** the separate origin. A browser never sends a
   `__Host-` cookie of the Party host to the game host, so game requests carry none. The nginx
   rule stays as a second layer on the Party host.

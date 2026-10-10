@@ -143,4 +143,4 @@ separate origin is, because the browser never sends a Party-host cookie to the g
 nginx rule stays as a second layer. Game *JavaScript* on the shared origin is unaffected and
 is still what this ADR's split addresses. AVR-318 extends the nginx rule to `/arcade/` in both
 server blocks: the arcade server reads no cookie (the seat is a ticket in the socket's `hello`
-message), so the arcade process is inside the same boundary.
+message), so the arcade process receives no device cookie, like the game servers.
