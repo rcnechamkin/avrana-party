@@ -94,7 +94,7 @@ fails=0
 # Before the trap exists: a refusal must not run the cleanup below. A marker from an earlier run
 # of this script (a crash, then a re-run on the same machine) says the leftovers are ours.
 if [[ ! -e $marker ]]; then
-    for p in /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /var/backups/avrana-party; do
+    for p in /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /var/backups/avrana-party \n        /var/lib/avrana-party-core /var/lib/avrana-games; do
         [[ ! -e $p ]] || { echo "refusing: $p exists and this script did not create it" >&2; exit 2; }
     done
     for n in avrana-party avrana-front avrana-games; do
@@ -351,7 +351,7 @@ t 'the running game answers with the configured Party origin (what the page is t
     bash -c 'test "$(curl -fsS --max-time 10 --unix-socket "$1" http://localhost/games/checkers/api/party | tr -d " ")" = "{\"partyOrigin\":\"http://party.ci.test\"}"' _ "$sock"
 t 'the game received the signed launch (journal)' 0 journal_has "$game" 'launched ('
 t 'the game finished by the rules and reported its signed ended (journal)' 0 journal_has "$game" 'finished ('
-check 'Party Core accepted the result (the game logged: the party accepted the result), once' 0 \
+check 'the game logged one accepted result (the party accepted the result); a replayed `ended` is not tried here' 0 \
     "$([[ $(journal_count "$game" 'the party accepted the result') == 1 ]] && echo 0 || echo 1)"
 t 'the game did not log that the party refused or lost the report' nonzero journal_has "$game" 'the party did not accept the report'
 t 'Party Core was not restarted by any of it' 0 test "$(pid)" = "$pid_before"
