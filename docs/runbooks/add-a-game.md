@@ -32,12 +32,15 @@ the real Party service.
 |---|---|---|
 | 1 | Write the game process and page in the Games repository layout (a top-level package, stdlib only, the kit is optional), built on `core/party_protocol.py` and `core/party_result.py` as vendored there | Yes |
 | 2 | Run it locally with `--dev-tcp` and a stand-in Party (`avrana_gamekit.devparty`), and run its tests | Yes |
-| 3 | Prove it against the **real** Party code: the Games cross-repository test starts the real Party service in-process, with a game entry given by hand | Yes, with a Party checkout; to be able to launch the game the real Party needs its Game Contract file in that checkout's `contracts/games/` (a local, uncommitted copy is enough for the test) |
+| 3 | Prove it against the **real** Party code: the Games cross-repository test starts the real Party service in-process, with a game entry given by hand | Yes, with a Party checkout; to be able to launch the game the real Party needs its Game Contract file in that checkout's `contracts/games/` (a local, uncommitted copy should be enough for the test; **not exercised outside CI**) |
 | 4 | Write the Game Contract (`avrana.game/v0`) | Yes, but it must live in **this** repository: `contracts/games/<slug>.json`. Party Core reads game facts only from there (no external contracts directory), so a third party needs a Party PR. **This is the first concrete blocker.** |
 | 5 | A grant in the appliance profile (`contracts/appliances/avrana-pi4.json`, `installed[]`) with `runtime.command` and `working_directory` | No: a Party PR, reviewed by a maintainer |
 | 6 | The game's code under a root-owned release path on the appliance (`/opt/avrana-party-games/current` for Games-repository games) | No: a Games deploy by the owner |
 | 7 | `sudo python3 -m avrana.ops.provision_game <slug>` (key, systemd instance, registry entry, Party Core reload) | No: root on the appliance, owner action ([provision-game](provision-game.md)) |
 | 8 | A catalog entry and artwork | No: derived from the Game Contract by `python3 -m avrana.contracts.catalog`; maintainers merge it |
+
+Platforms: the Hello Party tooling was exercised locally on Windows and in CI on Linux; macOS is expected to
+work but is untested. The Hello Party page has not been opened in a browser.
 
 Test-only games (like the stand-in and Hello Party) are the exception to 4, 5 and 8 in spirit: their
 contract carries `"net.avrana.test": {"test_only": true}`, so they are in no product catalog and no
