@@ -122,11 +122,20 @@ test('trouble on the Party box, from the status document’s fields and the cata
   assert.deepEqual([cards[0].id, cards[0].title, cards[0].text], ['cards', 'Card and party games are off right now', 'Arcade games play as usual.']);
   assert.match(cards[0].detail, /BLUFF and EXPO can’t be played\. Arcade games are not affected\.$/);
   const both = troubles({ arcade: { ok: false }, games_provider: { ok: false } }, games);
-  assert.deepEqual([both.length, both[0].id, both[0].title], [1, 'games', 'Games are off right now']);
+  assert.deepEqual([both.length, both[0].id, both[0].title, both[0].text],
+    [1, 'games', 'Some games are off right now', 'Other games play as usual.']);
   assert.match(both[0].detail, /BLUFF, EXPO and Gauntlet II can’t be played\.$/);
   // a part with nothing installed cannot be "off"; a title that is not installed is never named
   assert.deepEqual(troubles({ ...ok, arcade: { ok: false } }, games.filter((g) => g.legacySlug)), []);
-  assert.equal(troubles({ ...ok, arcade: { ok: false } }, games.filter((g) => !g.legacySlug))[0].text, '');
+  assert.equal(troubles({ ...ok, arcade: { ok: false } }, games.filter((g) => g.provider === 'arcade'))[0].text, '');
+  // Native processes do not share either provider's failure; no title-specific exception.
+  const independent = [{ id: 'new-native', name: 'New native', provider: 'native', installed: true, entry: '/games/new-native/' }];
+  assert.deepEqual(troubles({ arcade: { ok: false }, games_provider: { ok: false } }, independent), []);
+  assert.doesNotMatch(JSON.stringify([arcade, cards, both]), /Checkers/);
+  const legacyOnly = troubles({ arcade: { ok: false }, games_provider: { ok: false } },
+    games.filter((g) => g.provider === 'arcade' || g.provider === 'lan-games'));
+  assert.equal(legacyOnly[0].title, 'Games are off right now');
+  assert.equal(legacyOnly[0].text, 'No game can be started.');
   assert.doesNotMatch(JSON.stringify([arcade, cards, both]), /Worms|Bomberman/);
   // a compatible-but-older provider and a certificate are not this notice's business
   assert.deepEqual(troubles({ ...ok, games_provider: { ok: true, compatible: false }, certificate: { status: 'expired' } }, games), []);

@@ -104,6 +104,15 @@ test('an origin speaks only for the games registered to it', () => {
   assert.ok(!originAllows({}, GAMES, 'bluff'));
 });
 
+test('Party member result summaries never cross the game bridge', () => {
+  const view = coreView({ at: 'results' });
+  const before = publicView(view);
+  view.session.result_summary = { game: 'bluff', mode: 'competitive',
+    players: [{ name: 'Private result name', standing: 'won', rank: 1 }] };
+  assert.deepEqual(publicView(view), before);
+  assert.ok(!JSON.stringify(publicView(view)).includes('Private result name'));
+});
+
 // ---- the bridge frame ---------------------------------------------------------------------------
 
 test('a registered game page says hello and is pushed the view, to its origin only', async () => {

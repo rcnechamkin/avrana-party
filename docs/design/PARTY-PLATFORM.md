@@ -142,7 +142,7 @@ Durable. A design that breaks one needs an explicit, recorded reason.
 | Do the Party shell and games share a browser origin? | **No (target).** A trusted Party origin owns device identity, the Party API, membership/presence, host/platform controls and profile/system surfaces. A game origin receives only session-scoped authority (tickets). | ADR 0013 |
 | Is LAN Games the native-game runtime? | **No.** It was MVP infrastructure. Standalone LAN Games is not a product mode; `wc-token` player admission retires; the code remains donor/reference material. | ADR 0014 |
 | How do native games run? | As **independent platform consumers**: own process, own service identity and secrets, generic routing from a game registry, one provisioning path, one canonical manifest, no game-specific Party Core logic. | ADR 0014 |
-| Who owns results and history? | **Party.** Games determine and report structured, versioned results; Party alone writes the persistent cross-session record. The wire schema is AVR-237, not yet designed. | ADR 0006 amendment, ADR 0014 |
+| Who owns results and history? | **Party.** Games report the structured `avrana.game-result/v1` envelope (ADR 0015); Party validates and attributes it. Current storage is session memory; persistent cross-session history remains AVR-71. | ADR 0006 amendment, ADR 0014, ADR 0015 |
 | Simultaneous activities? | **Not in Standard Mode.** One appliance, one Party, one active activity. Developer Mode, if ever, is separate. | ADR 0011 amendment |
 | What is a person? | **Device identity is not human identity, and a browser-stored name/avatar is not durable identity.** Persistent facts about a person require an explicit, optional, server-side Profile. | ADR 0003 amendment |
 | Ticket cryptography? | **Symmetric HMAC, single-use; reconnect fetches a fresh ticket.** Public-key signatures are reserved for package/update provenance. | ADR 0003 / 0006 amendments |
@@ -447,10 +447,23 @@ or real-phone acceptance. Controller release does not remove Party presence. See
 
 - **Party is the owner and only writer** of persistent cross-session results, history, stats,
   person/profile attribution and provenance. A game determines its own outcome and reports a
-  structured, versioned result; Party validates, attributes and stores it. **Current:** the v0
-  `ended` report carries only `completed`/`abandoned` and nothing is persisted; the result
-  envelope is AVR-237 and its schema is not designed yet. Game-local scoreboards are a game's
+  structured, versioned result; Party validates, attributes and stores it. **Current source:**
+  the signed v0 `ended` report optionally carries `avrana.game-result/v1` (ADR 0015); Party
+  validates it and retains the attributed record on the session in memory. Nothing is persisted.
+  Game-local scoreboards are a game's
   own presentation, never the platform's record.
+- **AVR-238 branch implementation, not deployed:** joined Party members (including spectators)
+  receive `session.result_summary` only for an accepted completed result. It contains `game`,
+  `mode`, and `players` with display `name`, `standing` (`won`, `lost`, `draw`) and optional
+  `rank`. It excludes participant/member/device ids, build/content provenance, refusal details
+  and all game-owned `data`. Observers and departed members receive no summary. The bridge's
+  closed projection does not forward it to game pages. Party Home renders the standings as
+  text for any game. The summary survives returning Home while that session object remains;
+  the next session replaces it. Names come from current Party membership, not durable Profiles.
+  This is a session display, not AVR-71 history, statistics or retention policy. Tests:
+  `tests/unit/test_party_result.py`, `tests/offline/party-bridge.test.mjs`, and the paired native
+  process/browser tests described in [TESTING](../TESTING.md). Deployment and phone evidence
+  remain [SYSTEM](../SYSTEM.md) and AVR-261.
 - Native games can report authoritative events; **emulated games produce no results** unless a
   per-game adapter exists; hot-seat games can't even attribute turns. **Participation is never a
   win.** Flags that change meaning travel with results: bot seats, autopilot, forfeits, abandoned

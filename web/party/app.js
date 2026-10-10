@@ -567,6 +567,11 @@ function renderParty(view) {
   renderHome();
   renderHud();
   const s = view.session;
+  const result = me && s && s.result_summary;
+  $('party-result').hidden = !result;
+  $('party-result').textContent = result
+    ? `${(partyGame(state.catalog, s.game) || {}).name || s.game}: ${result.players.map((p) => `${p.name} ${p.standing}`).join(', ')}.`
+    : '';
   const failed = s && s.outcome === 'launch_failed' && me && me.host && s.id !== state.failShown;
   if (failed) {
     state.failShown = s.id;

@@ -65,6 +65,12 @@ jobs:
         run: python3 party/tools/contract_check.py --party party --games games
       - name: Install the games server's dependencies
         run: python3 -m pip install -r games/requirements-dev.txt
+      - name: Real native child and Party session over Unix sockets (may not skip)
+        working-directory: party
+        env:
+          AVRANA_GAMES_REPO: ${{ github.workspace }}/games
+          AVRANA_REQUIRE_NATIVE: '1'
+        run: python3 -m unittest discover -s tests/unit -p test_native_checkers.py -v
       - name: Real Party service drives the real games server (may not skip)
         working-directory: games
         env:

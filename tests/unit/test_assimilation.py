@@ -45,10 +45,10 @@ class DonorCatalog(unittest.TestCase):
         ap = appliance.load(CONTRACTS_DIR / 'appliances/avrana-pi4.json', VOCAB)
         result = catalog.build(VOCAB, ap, contracts)
         self.assertEqual({g['provider'] for g in result['games']},
-                         {'lan-games', 'arcade', 'retroarch-ps1'})
+                         {'lan-games', 'arcade', 'retroarch-ps1', 'native'})
         self.assertEqual(result['collections'], [])
         installed = [g for g in result['games'] if g['installed']]
-        self.assertEqual(sorted(g['id'] for g in installed), ['arcade-gauntlet2', 'bluff', 'expo'])
+        self.assertEqual(sorted(g['id'] for g in installed), ['arcade-gauntlet2', 'bluff', 'checkers', 'expo'])
         # The donor library is retired from the catalog (ADR 0014, AVR-259): the snapshot still
         # describes its titles, and none of them is offered, installed or not.
         self.assertFalse([g['id'] for g in result['games'] if g['id'].startswith('lan-')])

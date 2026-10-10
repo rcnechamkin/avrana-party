@@ -10,13 +10,13 @@ import { visibleGames } from '../../web/party/lib/catalog-view.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
-const all = visibleGames(catalog);                     // the five real titles; nothing here is invented
+const all = visibleGames(catalog);                     // the six real titles; nothing here is invented
 const game = (id) => all.find((g) => g.id === id);
 const ids = (games) => games.map((g) => g.id);
 const shelf = (opts = {}) => arrange({ all, ...opts });
 
-test('the shelf is the real catalog: five titles, two of them not installed', () => {
-  assert.deepEqual(ids(all), ['bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);
+test('the shelf is the real catalog: six titles, two of them not installed', () => {
+  assert.deepEqual(ids(all), ['bluff', 'checkers', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);
   assert.deepEqual(ids(all.filter((g) => !g.installed)), ['ps1-bomberman', 'ps1-worms']);
 });
 
@@ -45,6 +45,10 @@ test('the corner mark is the player range, or why this many people do not fit', 
   assert.equal(countWord(4), 'four');
   assert.equal(countWord(13), '13');
   assert.equal(fits(game('bluff'), 4), true);
+  assert.equal(fits(game('checkers'), 2), true);
+  assert.equal(fits(game('checkers'), 3), false);
+  assert.deepEqual(seatsMark(game('checkers'), 3), { ok: false, text: 'Max 2' });
+  assert.equal(fitLine(game('checkers'), 3).text, 'Up to 2 play; one of you watches.');
   assert.equal(fits(game('arcade-gauntlet2'), 4), true);             // four controller seats (AVR-311)
   assert.equal(fits(game('arcade-gauntlet2'), 5), false);
   assert.deepEqual(seatsMark(game('bluff'), 4), { ok: true, text: '2–6' });
@@ -91,45 +95,45 @@ test('one consequence line per title, the most decisive first', () => {
 test('the size of the party orders and groups the shelf; it never leaves a title out', () => {
   for (const people of [0, 1]) {
     const one = shelf({ people });
-    assert.deepEqual(one.groups.map((g) => [g.title, g.meta]), [['All games', '5']]);
+    assert.deepEqual(one.groups.map((g) => [g.title, g.meta]), [['All games', '6']]);
     assert.deepEqual(ids(one.flat), ids(all));
   }
   for (let people = 2; people <= 12; people++) {
     const s = shelf({ people });
-    assert.equal(s.count, 5, `${people} people`);
+    assert.equal(s.count, 6, `${people} people`);
     assert.equal(s.hidden, 0);
     assert.equal(s.empty, null);
-    assert.equal(s.flat.length, 5);
-    assert.equal(s.groups.reduce((n, g) => n + g.games.length, 0), 5);
+    assert.equal(s.flat.length, 6);
+    assert.equal(s.groups.reduce((n, g) => n + g.games.length, 0), 6);
   }
-  const four = shelf({ people: 4 });                                                    // all five seat four
-  assert.deepEqual(four.groups.map((g) => [g.title, g.meta]), [['Great for four', '5']]);
+  const four = shelf({ people: 4 });                                                    // five seat four; Checkers offers two seats
+  assert.deepEqual(four.groups.map((g) => [g.title, g.meta]), [['Great for four', '5'], ['Not for four', '1']]);
   const five = shelf({ people: 5 });
   assert.deepEqual(five.groups.map((g) => [g.title, g.meta, ids(g.games)]), [
     ['Great for five', '2', ['bluff', 'expo']],
-    ['Not for five', '3', ['arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']]]);
+    ['Not for five', '4', ['checkers', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']]]);
   // best fit first, nothing left out: the titles that seat five come before the ones that do not
   const reordered = [game('ps1-worms'), game('bluff'), game('arcade-gauntlet2'), game('expo'), game('ps1-bomberman')];
   assert.deepEqual(ids(arrange({ all: reordered, people: 5 }).flat), ['bluff', 'expo', 'ps1-worms', 'arcade-gauntlet2', 'ps1-bomberman']);
   const two = shelf({ people: 2 });
   assert.deepEqual(two.groups.map((g) => g.title), ['Great for two']);                    // no empty second shelf
   const nine = shelf({ people: 9 });
-  assert.deepEqual(nine.groups.map((g) => [g.title, g.meta]), [['Not for nine', '5']]);   // still all five
+  assert.deepEqual(nine.groups.map((g) => [g.title, g.meta]), [['Not for nine', '6']]);   // still all six
 });
 
 test('a filter leaves titles out, says so, and its count, heading and hidden number agree', () => {
   const five = shelf({ people: 5, filters: { players: 5, screen: 'any' } });
-  assert.equal(five.total, 5);
+  assert.equal(five.total, 6);
   assert.equal(five.count, 2);
-  assert.equal(five.hidden, 3);
+  assert.equal(five.hidden, 4);
   assert.equal(five.filtersOn, 1);
   assert.deepEqual(five.groups.map((g) => [g.title, g.reset, g.games.length]), [['2 games for 5 players', true, 2]]);
   assert.equal(five.count + five.hidden, five.total);
   const four = shelf({ people: 4, filters: { players: 4, screen: 'any' } });              // Gauntlet II seats four now
-  assert.deepEqual([four.count, four.hidden], [5, 0]);
+  assert.deepEqual([four.count, four.hidden], [5, 1]);
   const both = shelf({ filters: { players: 2, screen: 'phone' } });
-  assert.deepEqual(ids(both.flat), ['bluff', 'expo']);
-  assert.equal(both.groups[0].title, '2 games for 2 players, Phone only');
+  assert.deepEqual(ids(both.flat), ['bluff', 'checkers', 'expo']);
+  assert.equal(both.groups[0].title, '3 games for 2 players, Phone only');
   assert.equal(both.hidden, 3);
   assert.equal(both.filtersOn, 2);
   assert.deepEqual(ids(shelf({ filters: { players: 6 } }).flat), ['bluff']);              // "6 or more" is a title that seats six
@@ -144,13 +148,13 @@ test('a filter leaves titles out, says so, and its count, heading and hidden num
 
 test('nothing to show always says why, and offers the way back', () => {
   const none = shelf({ filters: { players: 6, screen: 'tv_required' } });
-  assert.deepEqual([none.count, none.hidden, none.groups.length], [0, 5, 0]);
+  assert.deepEqual([none.count, none.hidden, none.groups.length], [0, 6, 0]);
   assert.deepEqual(none.empty, { kind: 'filters', icon: 'filter-x', title: 'No games match these filters',
     text: 'Room for 6 or more, Needs the TV', action: 'Reset filters' });
   const search = shelf({ query: '  chess ' });
   assert.equal(search.empty.kind, 'search');
   assert.equal(search.empty.title, 'Nothing matches “chess”');
-  assert.equal(search.empty.text, 'The Library has 5 games.');
+  assert.equal(search.empty.text, 'The Library has 6 games.');
   assert.equal(search.empty.action, 'Clear search');
   assert.equal(shelf({ tab: 'favorites' }).empty.title, 'No favorites yet');
   assert.equal(shelf({ tab: 'favorites' }).empty.action, 'See all games');
@@ -197,7 +201,7 @@ test('Home leads with the last title played here, else the first that suits the 
     ['bluff', true, 0, ['expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']]);
   const alone = homeShelves({ all, people: 1, keyOf: key });
   assert.equal(alone.title, 'Games');
-  assert.deepEqual([alone.lead.id, alone.great.length], ['bluff', 4]);
+  assert.deepEqual([alone.lead.id, alone.great.length], ['bluff', 5]);
   // six: only BLUFF seats them, it leads, and nothing is left for a "Great for six" shelf
   const six = homeShelves({ all, people: 6, keyOf: key });
   assert.deepEqual([six.lead.id, six.great.length], ['bluff', 0]);
@@ -240,10 +244,11 @@ test('a game’s page says whether it suits the people here, and what happens to
   }
 });
 
-test('the fit sentence on the five real titles, for a party of four and of five', () => {
+test('the fit sentence on the six real titles, for a party of four and of five', () => {
   const lines = (people) => Object.fromEntries(catalog.games.map((g) => [g.id, fitLine(g, people).text]));
   assert.deepEqual(lines(4), {
     bluff: 'Room for all four of you.',
+    checkers: 'Up to 2 play; two of you watch.',
     expo: 'Room for all four of you.',
     'arcade-gauntlet2': 'Room for all four of you.',
     'ps1-bomberman': 'Room for all four of you.',
@@ -251,6 +256,7 @@ test('the fit sentence on the five real titles, for a party of four and of five'
   });
   assert.deepEqual(lines(5), {
     bluff: 'Room for all five of you.',
+    checkers: 'Up to 2 play; three of you watch.',
     expo: 'Room for all five of you.',
     'arcade-gauntlet2': 'Up to 4 play; one of you sits out.',          // it declares no spectators (rule 4.4a)
     'ps1-bomberman': 'Up to 4 play; one of you watches.',

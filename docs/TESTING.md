@@ -33,6 +33,7 @@ All Tier 1–2: no Pi, no phones. Linux CI is authoritative; rows note what Wind
 | Service trust boundary proof (ADR 0016) | `sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh` | `Service trust proof` (when `avrana/`, `contracts/`, `deploy/`, `experiments/`, `ops/provision-game`, `ops/prepare-native-games` or the appliance fixtures change; manual dispatch) | Linux + systemd + root; transient units on a disposable machine, **never the Pi**. Tier 2 evidence about systemd, not about the appliance; cannot run on Windows |
 | Native-game provisioning (ADR 0016 sections 3 to 5 and 8; AVR-236) | `python3 -m unittest discover -s tests/unit -p test_provision_game.py` (also `-p test_standin_game.py`, `-p test_native_game_units.py`); the real path: `sudo AVRANA_NATIVE_GAME_PROOF=1 bash experiments/native-game/proof.sh` | offline lane (unit tests); `Service trust proof`, job `native-game` (same triggers as above; manual dispatch) | the unit tests run `provision-game` on a scratch directory with a recorded `systemctl` and the stand-in game over a real Party Core; the proof job runs it as root on a disposable runner: the real units, socket activation, `LoadCredential=`, a full session, rotate and remove refused during a session, the boundary checker. **Never the Pi.** Tier 2 evidence about systemd, not about the appliance or a product game; the POSIX-only unit tests (descriptors, symbolic links) are skipped on Windows |
 | Preparing an appliance for native games (ADR 0016 section 9 phase 2; AVR-304) | `python3 -m unittest discover -s tests/unit -p test_prepare_native_games.py`; the real path: `sudo AVRANA_PREPARE_PROOF=1 bash experiments/native-game/prepare-proof.sh` | offline lane (unit tests); `Service trust proof`, job `prepare-native-games` (same triggers as above; manual dispatch) | the unit tests run `ops/prepare-native-games` on a scratch root with a recording stand-in for `systemctl`: apply, a second run that changes and restarts nothing, a dry run, the reverse, and the refusals (no phase 1 identities, a session running, a native game provisioned), with every byte of `party-core.json` but the one member shown unchanged. The proof job runs it as root on a disposable runner, from a phase 1 host whose Party Core unit has no `ExecReload=` and no socket unit: the real units, the socket handed to Party Core, `provision-game` of the stand-in with a full session, the refusals, and the reverse back to the earlier state. **Never the Pi.** Tier 2 evidence about systemd, not about the appliance; the POSIX-only unit tests (modes, symbolic links, the wrapper process) are skipped on Windows |
+| Native Checkers on a real host (ADR 0016; AVR-238) | `sudo AVRANA_CHECKERS_PROOF=1 AVRANA_GAMES_REPO=<avrana-party-games checkout> bash experiments/native-game/checkers-proof.sh` | `Service trust proof`, job `checkers` (the same Party-side triggers as above and manual dispatch; Games is checked out at the paired branch as in `cross-repo.yml`, and a Games-only change does not start it) | on a disposable runner as root: `ops/prepare-native-games`, then the real `provision-game checkers` against `contracts/appliances/avrana-pi4.json`, Party Core launching the socket-activated `avrana-game@checkers` (DynamicUser, `LoadCredential=`), a game played to its natural end by two phones through Party Core's public API and the game's Unix socket (private controls, strangers refused, reconnect, signed result accepted), a Host-ended session, `boundary --phase 2` with Checkers provisioned, and `--remove`. **Never the Pi.** Tier 2 evidence about systemd on Ubuntu, not about the appliance, nginx, TLS or real phones |
 | Agent tooling | `-p test_claude_gate.py`, `-p test_avr_context.py` | offline lane | convenience only; nothing is enforced by a hook |
 | Multi-client Party browser tests | `npm run test:party-browser` (Windows: `AVRANA_PYTHON=python`) | offline lane | three browser contexts as phones against `devserver --party` (a real Party Core, stub game pages): host and followers, start/end for everyone, switching, reload keeps identity and seat, stale and unauthorized actions, Play/Watch setup, host departure; plus the diagnostics build report. Chromium at phone size is not a phone: iPhone Safari and Android stay Tier 3 |
 | Shell accessibility (UX/UI redesign PR 1.4) | part of `npm run test:offline-browser` (`tests/offline/a11y.spec.ts`) and `npm run test:party-browser` (`tests/party/a11y.spec.ts`) | offline lane | contrast, edges, names and reading order on every shell page, Library sheet and empty state and every Party state, each also drawn with more contrast and less motion asked for; headings, targets and sideways scroll on every Party screen; a Tab walk with a ring at every stop over the four places, a game's page and every Party state (not the Library's sheets and empty states). The helpers (`tests/lib/a11y.ts`) are first run against planted faults. Chromium: no screen reader, no Safari, no phone setting (AVR-295) |
@@ -90,6 +91,29 @@ Published deployment evidence has not advanced to this source; physical acceptan
 
 From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 `test-results/` is generated and Git-ignored.
+
+### Native Checkers integration (AVR-238 branch)
+
+`AVRANA_GAMES_REPO` must name the paired Games checkout containing top-level `checkers/`.
+On Linux, run `AVRANA_REQUIRE_NATIVE=1 python3 -m unittest discover -s tests/unit -p
+test_native_checkers.py -v` with that variable set. The cross-repo CI job requires these tests:
+the generic provider launcher inherits a real Unix listening socket into the grant-declared
+child, and real Party Core receives signed results over its internal Unix socket. Windows skips
+the process tests; metadata checks still run. Missing peer source is a failure in the required lane.
+
+`npx playwright test -c playwright.provider.config.ts tests/provider/native-checkers.spec.ts`
+uses the same paired checkout on Linux and two Chromium phone contexts through separate Party
+and game host names and the real bridge. It checks legal completion and Party Home's generic
+result display, reconnect, private controls, host end and process failure recovery. HTTP test
+origins and inherited descriptors prove browser/process integration only: this harness does
+not prove TLS, production cookies, systemd identities/credentials/hardening, nginx, the Pi or
+real Safari/Android phones. Checkers-specific real-systemd provisioning and phase-2 boundary
+proof is the `checkers` job of `Service trust proof` above (disposable runner, not the Pi); the stand-in proof is not Checkers evidence.
+
+Result projection privacy is pinned by `test_party_result.py` (observer/departed refusal,
+allowlisted detached summaries, missing/refused/abandoned result exclusion and next-session
+replacement) and `party-bridge.test.mjs` (no summary crosses the bridge). Executed results belong
+in the PR implementation report; the presence of these tests is not a passing verdict.
 
 ## Offline CI lane and what Cloud can run (current main)
 
