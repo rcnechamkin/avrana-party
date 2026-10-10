@@ -17,6 +17,7 @@ A package is one ZIP file (`*.avrgame`) holding a **native** game: its authorita
 
 - ZIP, entries stored or deflated only. `avrgame.json` at the root; everything else under relative paths. The package root becomes the server's working directory, so a Python game ships its importable packages at the root.
 - Names: relative, `/` separated, ASCII letters, digits and `. _ + @ = ~ -` only; at most 200 characters and 16 segments; no empty, `.` or `..` segments, no backslash, drive letter or `:`, no NUL or control characters, no segment ending in `.` or a space, no dotfiles, no Windows device names (`CON`, `NUL`, `COM1` ...), no two names differing only by case, no name that is both file and directory.
+- Key material is refused, not skipped, by the packer and by the validator: any file named `*.key`, `*.pem`, `*.p12`, `*.pfx`, `id_rsa*`, `*.env` or `.env` ("key material must never be in a package").
 - Entries must be regular files (or plain directory entries). Symbolic links, devices, FIFOs, sockets, setuid/setgid/sticky bits, encrypted entries and other compression methods are refused. Python bytecode (`*.pyc`, `__pycache__`) is refused: bytecode is not reviewable source.
 - Extraction ignores archive modes: files are written 0644, directories 0755, into a **new or empty** directory the caller provides, never following links, and each destination is checked to stay inside it.
 - `pack` is deterministic: manifest first, then files sorted by path, timestamps 1980-01-01, mode 0644, no directory entries, and entries **stored** (no compression) by default, so the same inputs give the same bytes, and the same archive sha256, on every machine and zlib build (`--deflate` opts into level-9 deflate, which is smaller but only reproducible with the same zlib). Hidden files, `__pycache__`, `*.pyc` and `avrgame.build.json` are skipped inside directory includes; symbolic links are refused.
@@ -47,7 +48,7 @@ Strict JSON (duplicate keys, NaN, a BOM or an unknown key anywhere in the envelo
 | `package.source` | optional, 1-200 printable characters |
 | `requires.session`, `.bridge`, `.result` | all three required; each must equal what this Party implements (read from `avrana/party/protocol.py`, `avrana/party/result.py` and `contracts/party-games.v0.json`). Unknown key or value is refused |
 | `server.interpreter` | a **name** from the appliance's allowlist (`INTERPRETERS`, today `python3` mapped to `/usr/bin/python3`); never a path |
-| `server.args` | 1-16 strings, each 1-200 printable characters, no control characters, no absolute path or `..` (a hygiene check, not a sandbox) |
+| `server.args` | 1-16 strings, each 1-200 printable characters, no control characters, no absolute path or `..` (a hygiene check, not a sandbox). For `python3` the only supported form is `["-m", "<dotted module>", ...]`, and the module must exist in the package as `NAME/__main__.py` or `NAME.py` (checked statically; nothing is imported or run). `-c`, a script path or other interpreter options are refused with a message saying so |
 | `client.root` | relative directory inside the package holding the portable browser bundle; must contain `index.html`. Informational today (the game's own server serves it) |
 
 `publisher`, `license` and `source` are **display-only claims**; no trust derives from them. The manifest has no tier, entry path, health check, granted permission, key, socket or absolute path; those keys are refused by name (`set by the appliance`).
@@ -89,6 +90,15 @@ Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha25
 
 **Catalog.** Party Home reads a static, generated `web/party/catalog.json`; a game without an installed catalog row has no tile and no navigation target on a phone, although Party Core offers and can launch it. `python3 -m avrana.contracts.catalog --packages DIR --out FILE` builds a catalog that includes installed packages (the committed catalog and `--check` are unchanged without `--packages`). The installer does not rewrite the release tree's catalog. Whether the appliance serves a regenerated catalog (a writable web overlay, a Party Core route, or a deploy step) touches deploy, nginx and routes: **an owner decision, not made here.**
 
+**What an installed package can and cannot do** (from [`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service) and ADR 0016; the unit is the only protection):
+
+- **Can:** run arbitrary code as a throwaway `DynamicUser=` (its Python and whatever it ships); read any world-readable file on the host, including the other install records; connect to the Unix sockets it can reach: other games' sockets (it has the `avrana-games` supplementary group) and Party Core's internal socket (`AVRANA_PARTY_SOCKET`, which is authenticated by the game's own key only); keep state in its own `StateDirectory=` (`0700`); use CPU, memory and processes without limit.
+- **Cannot:** open IP sockets (`RestrictAddressFamilies=AF_UNIX`); write its own code (the staged tree is root-owned and `ProtectSystem=strict` is implied by `DynamicUser=`); read other games' private state or keys (each game gets only its own key as a credential; state directories are `0700` per dynamic user); see home directories or devices (`ProtectHome`, `PrivateDevices`).
+- **NOT limited today:** no `CapabilityBoundingSet=` and no `SystemCallFilter=` beyond what `DynamicUser=` implies; no `MemoryMax=`, `TasksMax=` or `CPUQuota=`. Granted permissions are recorded and shown but **not enforced** by Party Core at launch.
+- The hidden path options (`--games-root`, `--visible-root`, `--records-dir`, `--lock-file`, ...) exist for tests and rehearsals. They are for root only and must never be pointed at a directory a package or a non-root user can write.
+
+**The reference id `hello` cannot be installed as a package on a tree that carries the test fixture `contracts/games/hello.json`:** the installer refuses to shadow a repository contract (the CI proof deletes that fixture from its copied tree on purpose). A developer installs their own renamed game. **Validation cannot prove a package starts.** It checks bytes, the manifest and that the `-m` module exists in the package; the only gate is running it: the Games walkthrough's packaged-conformance step, and the real-systemd proof.
+
 ## Explicitly deferred
 
 | Topic | Where it belongs |
@@ -129,7 +139,7 @@ Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha25
 
 | Criterion | Status |
 |---|---|
-| A validated install and remove workflow through the existing native provisioning path | **Met in code and unit tests** (scratch directories, recorded systemctl). Real systemd: `package-proof.sh`, written, **not yet executed** (CI runs it) |
+| A validated install and remove workflow through the existing native provisioning path | **Met in code and unit tests** (scratch directories, recorded systemctl). Real systemd (disposable CI runner): `package-proof.sh`, <RUN-LINK>; never the Pi |
 | Nothing half-installed after a failure | Met in unit tests at every injected failure point; kill -9 repair by `remove` tested by simulating the partial states |
 | A valid package is not trusted; tier community; operator grants | Met (`--grant`, record re-validation); permissions are recorded, **not enforced at launch** by Party Core |
 | Package content never imported or executed by the installer | Met by construction (only bytes are read and hashed); the game runs only in the template unit |

@@ -13,8 +13,8 @@ import zlib
 from dataclasses import dataclass
 
 from . import common
-from .common import MANIFEST_NAME, Problems, Refused, bytecode, clip, name_problem
-from .manifest import client_index, parse, validate_manifest
+from .common import MANIFEST_NAME, Problems, Refused, bytecode, clip, name_problem, secret_problem
+from .manifest import client_index, entry_problem, parse, validate_manifest
 
 CHUNK = 64 * 1024
 ALLOWED_COMPRESSION = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
@@ -49,8 +49,11 @@ def _limits():
 def read_bytes(path):
     """The archive file's bytes, bounded; refuses a non-file or one over MAX_ARCHIVE_BYTES."""
     try:
-        with open(path, 'rb') as f:
-            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+        if not stat.S_ISREG(os.stat(path).st_mode):                # before opening: a FIFO would block the open
+            raise Refused(f'{clip(str(path))}: not a regular file')
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_BINARY', 0))
+        with os.fdopen(fd, 'rb') as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):      # and again on the descriptor actually opened
                 raise Refused(f'{clip(str(path))}: not a regular file')
             data = f.read(common.MAX_ARCHIVE_BYTES + 1)
     except OSError as exc:
@@ -65,6 +68,8 @@ def _entry_problem(info):
     parsed name, and truncates at NUL, depending on platform)."""
     raw = info.orig_filename
     is_dir = raw.endswith('/')
+    if not is_dir and secret_problem(raw):
+        return f'entry {clip(raw)}: {secret_problem(raw)}'
     why = name_problem(raw[:-1] if is_dir else raw, 'entry')
     if why:
         return why
@@ -194,6 +199,9 @@ def scan(data, vocab=None):
         index = client_index(manifest)
         if index not in names:
             problems.add(f'client.root: the package has no {clip(index)}')
+        missing = entry_problem(manifest, names)
+        if missing:
+            problems.add(missing)
     problems.raise_if_any()
 
     listing = []

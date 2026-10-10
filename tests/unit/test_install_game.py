@@ -55,6 +55,9 @@ class Base(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        patch = mock.patch.object(installed, 'EXPECTED_OWNER', None)    # scratch files belong to the test user
+        patch.start()
+        self.addCleanup(patch.stop)
         self.root = Path(tmp.name) / 'host'
         r = self.root
         for d in ('etc/game-keys', 'etc/games.d', 'etc/systemd', 'run/games', 'var/games', 'opt/avrana-games'):
@@ -67,7 +70,7 @@ class Base(unittest.TestCase):
             provision=pg.Layout(key_dir=r / 'etc/game-keys', registry_dir=r / 'etc/games.d',
                                 socket_dir=r / 'run/games', state_dir=r / 'var/games', unit_dir=r / 'etc/systemd',
                                 template_dir=REPO_ROOT / 'deploy' / 'games'),
-            records_dir=r / 'etc/packages.d', games_root=r / 'opt/avrana-games', lock_file=r / 'install.lock',
+            records_dir=r / 'etc/packages.d', games_root=r / 'opt/avrana-games', lock_file=Path(tmp.name) / 'install.lock',      # a real flock leaves this file: keep it out of the host snapshot
             visible_root='/opt/avrana-games')
         (r / 'etc/party-core.json').write_text(json.dumps({'origins': [ORIGIN], 'hosts': ['party.example.test'],
                                                            'registry': str(r / 'etc/games.d'),
@@ -568,6 +571,13 @@ class RecordReaderTests(Base):
             self.assertTrue(any(expect in p for p in found.problems), (label, found.problems))
             self.assertIn('hello', found.refused, label)
 
+    def test_a_deeply_nested_record_is_refused_without_recursing(self):
+        self.good()
+        self.layout.record('hello').write_text('[' * 5000 + ']' * 5000, encoding='utf-8')
+        found = self.load()
+        self.assertTrue(any('nested deeper' in p for p in found.problems), found.problems)
+        self.assertEqual(found.contracts, {})
+
     def test_a_record_cannot_shadow_a_repository_game(self):
         base = self.good()
         self.layout.record('hello').unlink()
@@ -697,6 +707,196 @@ class CatalogTests(Base):
         self.assertIn('explicit --out', err.getvalue())
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(catalog.main(['--check']), 0)
+
+
+class ReviewFixTests(Base):
+    """Findings of the independent review: each of these failed before its fix."""
+
+    def entry(self, key_name='hello'):
+        keys = self.root / 'keys'
+        keys.mkdir(exist_ok=True)
+        key = keys / f'{key_name}.key'
+        if not key.exists():
+            protocol.write_key(str(key), protocol.new_key())
+        (self.layout.provision.registry_dir / f'{key_name}.json').write_text(
+            json.dumps({'id': key_name, 'socket': f'/run/avrana-games/{key_name}.sock', 'key_file': str(key)}),
+            encoding='utf-8')
+        return key
+
+    def bluff_config(self):
+        key = self.root / 'keys' / 'bluff.key'
+        key.parent.mkdir(exist_ok=True)
+        if not key.exists():
+            protocol.write_key(str(key), protocol.new_key())
+        return {'bluff': {'url': 'http://127.0.0.1:1/games/bluff', 'key_file': str(key)}}
+
+    # -- 1. a first-party contract that appears after a package was installed
+    def test_a_package_entry_does_not_serve_under_a_later_first_party_contract_and_remove_clears_it(self):
+        self.install()
+        self.entry()
+        everything = party_config.load_contracts()                   # now `hello` is a first-party game too
+        self.assertIn('hello', everything)
+        with self.assertLogs('avrana.party.registry', 'ERROR') as logs:
+            games, endpoints = registry.build(self.bluff_config(), str(self.layout.provision.registry_dir), everything,
+                                              packages=str(self.layout.records_dir))
+        self.assertEqual((sorted(games), sorted(endpoints)), (['bluff'], ['bluff']))
+        text = '\n'.join(logs.output)
+        self.assertIn('hello: left out', text)
+        self.assertIn('install-game remove hello', text)
+        # a first-party entry with NO install record is a legitimate game and is kept
+        self.layout.record('hello').unlink()
+        games, _ = registry.build(self.bluff_config(), str(self.layout.provision.registry_dir), everything,
+                                  packages=str(self.layout.records_dir))
+        self.assertEqual(sorted(games), ['bluff', 'hello'])
+        # remove can still clear the package install, on the evidence of the record or the staged tree
+        self.install_again_with_record(everything)
+
+    def install_again_with_record(self, everything):
+        self.remove('hello', repo=everything)                        # a tree is evidence enough
+        self.assertEqual([p for p in self.snapshot() if 'hello' in p and not p.startswith('keys/')], [])
+        self.install()
+        self.remove('hello', repo=everything)                        # the record and the tree
+        self.assertEqual([p for p in self.snapshot() if 'hello' in p and not p.startswith('keys/')], [])
+        self.refused(lambda: self.remove('bluff', repo=everything), 'first-party')    # no evidence: untouched
+
+    def test_remove_clears_a_package_whose_id_became_first_party_while_the_record_exists(self):
+        self.install()
+        everything = dict(REPO, hello={'id': 'hello'})
+        self.remove('hello', repo=everything)
+        self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+
+    # -- 2. rollback gaps: fsync after the rename and after the record replace
+    def test_a_failing_fsync_after_the_rename_or_the_record_is_rolled_back(self):
+        before = self.snapshot()
+        real = ig._fsync
+        for target in ('tree', 'record'):
+            def flaky(path, directory=False, target=target):
+                if target == 'tree' and Path(path) == self.layout.id_dir('hello'):
+                    raise OSError('input/output error')
+                if target == 'record' and Path(path) == Path(self.layout.records_dir):
+                    raise OSError('input/output error')
+                return real(path, directory)
+            with self.subTest(target), mock.patch.object(ig, '_fsync', flaky), self.assertRaises(OSError):
+                self.install()
+            self.assertEqual(self.snapshot(), before, target)
+
+    # -- 3. trust in the records directory and the files in it
+    def test_a_record_or_directory_not_owned_by_the_expected_owner_is_refused(self):
+        self.install()
+        with self.assertRaises(installed.RecordError) as ctx:
+            installed.read_record_file(self.layout.record('hello'), 'hello', REPO, owner=12345)
+        self.assertIn('not owned by uid 12345', str(ctx.exception))
+        found = installed.load(self.layout.records_dir, REPO, owner=12345)
+        self.assertEqual((found.contracts, sorted(found.refused)), ({}, ['hello']))
+        self.assertTrue(any('records directory' in p for p in found.problems))
+        with mock.patch.object(installed, 'EXPECTED_OWNER', 12345):          # the default Party Core uses
+            self.assertEqual(installed.load(self.layout.records_dir, REPO).contracts, {})
+        self.assertEqual(ig.verify('hello', self.layout, REPO, owner=12345)[0][:14], 'record refused')
+
+    def test_a_refused_records_directory_leaves_repository_games_serving(self):
+        self.install()
+        self.entry()
+        with mock.patch.object(installed, 'EXPECTED_OWNER', 12345), self.assertLogs('avrana.party.registry', 'ERROR'):
+            games, _ = registry.build(self.bluff_config(), str(self.layout.provision.registry_dir), REPO,
+                                      packages=str(self.layout.records_dir))
+        self.assertEqual(sorted(games), ['bluff'])
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX modes')
+    def test_a_writable_records_directory_is_refused(self):
+        self.install()
+        os.chmod(self.layout.records_dir, 0o777)
+        self.assertEqual(installed.directory_problem(self.layout.records_dir, owner=None), 'writable by a group or others')
+        self.assertEqual(installed.load(self.layout.records_dir, REPO).contracts, {})
+
+    def test_install_checks_the_records_directory_and_its_ancestors_before_writing(self):
+        self.install()                                              # no records directory yet: its parent is checked
+        self.assertIn(str(self.layout.records_dir.parent), self.trusted_paths)
+        self.remove()
+        self.trusted_paths.clear()
+        self.install()                                              # the (empty) directory is left behind by remove
+        self.assertIn(str(self.layout.records_dir), self.trusted_paths)
+        self.remove()
+        before = self.snapshot()
+
+        def untrusted(path):
+            if str(path) == str(self.layout.records_dir):
+                raise pg.Refused(f'{path}: is writable by a group or others')
+        self.refused(lambda: self.install(trusted=untrusted), 'writable by a group')
+        self.assertEqual(self.snapshot(), before)
+
+    @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'geteuid') and os.geteuid() != 0, 'POSIX, not as root')
+    def test_the_real_root_owned_code_rule_refuses_a_scratch_tree(self):
+        before = self.snapshot()
+        self.refused(lambda: self.install(trusted=pg.trusted_path), 'not owned by root')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+
+    # -- 4. the record's root is pinned to the configured games root
+    def test_a_record_pointing_outside_the_games_root_is_refused(self):
+        self.install()
+        doc = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
+        sha12 = doc['sha256'][:12]
+        elsewhere = f'/srv/evil/hello/0.1.0-{sha12}'
+        doc['root'] = elsewhere
+        doc['grant']['runtime']['working_directory'] = elsewhere
+        self.layout.record('hello').write_text(json.dumps(doc), encoding='utf-8')
+        found = installed.load(self.layout.records_dir, REPO)
+        self.assertEqual(found.contracts, {})
+        self.assertTrue(any('root: must be exactly /opt/avrana-games/<id>' in p for p in found.problems), found.problems)
+        self.assertEqual(installed.load(self.layout.records_dir, REPO, games_root='/srv/evil').contracts.keys(), {'hello'})
+        for bad in (f'/opt/avrana-games/hello/../hello/0.1.0-{sha12}', f'/opt/avrana-games//hello/0.1.0-{sha12}'):
+            doc['root'] = doc['grant']['runtime']['working_directory'] = bad
+            self.layout.record('hello').write_text(json.dumps(doc), encoding='utf-8')
+            self.assertEqual(installed.load(self.layout.records_dir, REPO).contracts, {})
+
+    # -- 5. exact ids
+    def test_an_id_with_a_trailing_newline_is_not_a_game_id(self):
+        m = good_manifest()
+        m['game']['id'] = 'hello\n'
+        self.refused_package(m)
+        with self.assertRaises(pg.Refused):
+            self.install(self.package('nl.avrgame', manifest=mjson(m)))
+        self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+        self.assertIsNone(installed.game.ID.fullmatch('hello\n'))
+        with self.assertRaises(installed.RecordError):
+            installed.validate_record({'id': 'hello\n'}, 'hello', REPO)
+
+    def refused_package(self, manifest):
+        from test_avrgame_package import problems_of
+        self.assertTrue(problems_of(manifest))
+
+    # -- 7. hostile remove ids, and the SIGHUP path with packages
+    def test_hostile_remove_ids_are_refused_before_anything_is_touched(self):
+        self.install()
+        before = self.snapshot()
+        self.calls.clear()
+        for bad in ('', '..', '.', '/', 'a/b', 'a\\b', 'hello\n', 'HELLO', '../hello', None):
+            with self.subTest(bad):
+                self.refused(lambda: self.remove(bad), 'not a game id')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+
+    def test_a_reload_picks_up_an_installed_game_and_drops_a_corrupt_one(self):
+        import threading
+        import types
+        self.install()
+        self.entry()
+        config = self.root / 'etc' / 'party-core.json'
+        config.write_text(json.dumps({'games': self.bluff_config(), 'registry': str(self.layout.provision.registry_dir),
+                                      'packages': str(self.layout.records_dir)}), encoding='utf-8')
+        service = types.SimpleNamespace(lock=threading.RLock(), _notify=lambda: None,
+                                        core=types.SimpleNamespace(party=types.SimpleNamespace(session=None), games={},
+                                                                   _commit=lambda: None))
+        endpoints = {}
+        self.assertTrue(registry.reload(service, endpoints, str(config), REPO))
+        self.assertEqual((sorted(endpoints), sorted(service.core.games)), (['bluff', 'hello'], ['bluff', 'hello']))
+        self.layout.record('hello').write_text('{ not json', encoding='utf-8')
+        with self.assertLogs('avrana.party.registry', 'ERROR'):
+            self.assertTrue(registry.reload(service, endpoints, str(config), REPO))
+        self.assertEqual((sorted(endpoints), sorted(service.core.games)), (['bluff'], ['bluff']))
+
+
+def shutil_rmtree(path):
+    import shutil
+    shutil.rmtree(path)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-"""python -m avrana.avrgame: validate, pack and inspect EXPERIMENTAL .avrgame packages.
+"""python -m avrana.avrgame: validate, pack, inspect and extract EXPERIMENTAL .avrgame packages.
 
     validate <file.avrgame | directory-with-avrgame.build.json | recipe file>
     pack <path/to/avrgame.build.json> [--out FILE] [--deflate]
@@ -84,6 +84,9 @@ def main(argv=None):
     except Refused as exc:
         for problem in exc.problems:
             print(problem, file=sys.stderr)
+        return 1
+    except (OSError, ValueError, ImportError) as exc:      # an unreadable path, an incomplete checkout: one line, no traceback
+        print(f'avrgame: failed: {type(exc).__name__}: {exc}', file=sys.stderr)
         return 1
     return 0
 

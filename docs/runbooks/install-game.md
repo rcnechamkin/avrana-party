@@ -1,10 +1,11 @@
 # Runbook: install an EXPERIMENTAL `.avrgame` package (AVR-39)
 
-Status: **EXPERIMENTAL procedure, NOT RUN on the appliance** (2026-10-10). Written from source; rehearsed
-only on a disposable CI runner once CI is green (`experiments/native-game/package-proof.sh`, the
-`package` job of `service-trust-proof.yml`). That proves the mechanism with a test game on Ubuntu, not
-the Pi. Running any step on the Pi is an owner action: nothing in CI, in an agent's task or in this
-document authorizes it. The package format ([AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md)) is not an
+Status: **EXPERIMENTAL procedure, NOT RUN on the appliance** (2026-10-10). Written from source.
+
+Rehearsed on a disposable CI runner (real systemd): <RUN-LINK> (`experiments/native-game/package-proof.sh`,
+the `package` job of `service-trust-proof.yml`). That proves the mechanism with a test game on Ubuntu;
+never on the Pi, never with real phones. Running any step on the Pi is an owner action: nothing in CI,
+in an agent's task or in this document authorizes it. The package format ([AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md)) is not an
 SDK and is not v0, stable or frozen; the names below may change.
 
 What it does: `install-game` takes one validated `.avrgame` file, stages its files into a root-owned
@@ -22,7 +23,14 @@ mapped by the appliance (`python3` becomes `/usr/bin/python3`) with the package'
 staged tree. Publisher, license and source are **unverified claims** shown as such (`list`); there is no
 signature, publisher identity or provenance yet (AVR-58).
 
-What the template unit ([`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service))
+**What an installed package can and cannot do** (from [`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service) and ADR 0016; the unit is the only protection):
+
+- **Can:** run arbitrary code as a throwaway `DynamicUser=` (its Python and whatever it ships); read any world-readable file on the host, including the other install records; connect to the Unix sockets it can reach: other games' sockets (it has the `avrana-games` supplementary group) and Party Core's internal socket (`AVRANA_PARTY_SOCKET`, which is authenticated by the game's own key only); keep state in its own `StateDirectory=` (`0700`); use CPU, memory and processes without limit.
+- **Cannot:** open IP sockets (`RestrictAddressFamilies=AF_UNIX`); write its own code (the staged tree is root-owned and `ProtectSystem=strict` is implied by `DynamicUser=`); read other games' private state or keys (each game gets only its own key as a credential; state directories are `0700` per dynamic user); see home directories or devices (`ProtectHome`, `PrivateDevices`).
+- **NOT limited today:** no `CapabilityBoundingSet=` and no `SystemCallFilter=` beyond what `DynamicUser=` implies; no `MemoryMax=`, `TasksMax=` or `CPUQuota=`. Granted permissions are recorded and shown but **not enforced** by Party Core at launch.
+- The hidden path options (`--games-root`, `--visible-root`, `--records-dir`, `--lock-file`, ...) exist for tests and rehearsals. They are for root only and must never be pointed at a directory a package or a non-root user can write.
+
+In more detail, what the template unit ([`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service))
 confines: a throwaway Unix user that owns nothing, `StateDirectory=` as the only writable place it is
 given (`0700`), only its own key as a credential, `RestrictAddressFamilies=AF_UNIX` (no IP socket),
 `ProtectHome`, `PrivateDevices`, `ProtectKernel*`, `UMask=0077`; ADR 0016 notes that `DynamicUser=yes` also
@@ -33,6 +41,8 @@ game can read what is world-readable on the host, and it can reach Party Core's 
 its own socket. The sandbox, not the package, is the only protection. The "granted permissions" are
 recorded and shown; **Party Core does not enforce them at launch today** (it hands every game the launch
 roster whatever was granted), so `party_roster` not being granted does not stop the roster arriving.
+
+**The reference id `hello` cannot be installed as a package on a tree that carries the test fixture `contracts/games/hello.json`:** the installer refuses to shadow a repository contract (the CI proof deletes that fixture from its copied tree on purpose). A developer installs their own renamed game. **Validation cannot prove a package starts.** It checks bytes, the manifest and that the `-m` module exists in the package; the only gate is running it: the Games walkthrough's packaged-conformance step, and the real-systemd proof.
 
 ## Before (owner actions, not done by this command)
 

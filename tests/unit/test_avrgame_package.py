@@ -291,6 +291,24 @@ class ManifestTests(unittest.TestCase):
         m['package']['version'] = 'x'
         self.assertGreaterEqual(len(problems_of(m)), 5)
 
+    def test_nesting_is_bounded_explicitly_not_by_the_interpreters_recursion_limit(self):
+        for depth in (33, 100, 5000):
+            for open_, close in ((b'[', b']'), (b'{"a":', b'}')):
+                with self.assertRaises(avrgame.Refused, msg=depth) as ctx:
+                    avrgame.parse_manifest(open_ * depth + b'1' + close * depth)
+                self.assertIn('nested deeper', str(ctx.exception))
+        # brackets inside strings do not count, and a document at the bound is still parsed
+        self.assertEqual(avrgame.parse_manifest(b'{"a": "' + b'[' * 500 + b' ] }"}'), {'a': '[' * 500 + ' ] }'})
+        self.assertEqual(avrgame.parse_manifest(b'[' * 32 + b']' * 32), json.loads('[' * 32 + ']' * 32))
+        with mock.patch('sys.getrecursionlimit', return_value=10 ** 6):          # a huge limit changes nothing
+            with self.assertRaises(avrgame.Refused):
+                avrgame.parse_manifest(b'[' * 5000 + b']' * 5000)
+
+    def test_a_game_id_with_a_trailing_newline_is_refused(self):
+        m = good_manifest()
+        m['game']['id'] = 'hello\n'
+        self.assertTrue(any('id' in p for p in problems_of(m)))
+
     def test_untrusted_text_in_a_message_is_escaped_and_bounded(self):
         m = good_manifest(format='\x1b[31m' + 'A' * 5000)
         for p in problems_of(m):
@@ -299,7 +317,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_validation_never_executes_anything(self):
         m = good_manifest()
-        m['server']['args'] = ['-c', '__import__("os").system("echo hacked > pwned.txt")']
+        m['server']['args'] = ['-m', 'game_pkg', '--x=__import__("os").system("echo hacked > pwned.txt")']
         avrgame.validate_manifest(m)
         self.assertFalse(Path('pwned.txt').exists())
 
@@ -511,6 +529,96 @@ class PackAndReadTests(Tmp):
         direct = avrgame.pack(root, root / 'sub' / 'avrgame.json', ['game_pkg', 'shared'], self.tmp / 'd.avrgame')
         self.assertEqual(via.sha256, direct.sha256)
         self.assertEqual(avrgame.validate_recipe(root / 'sub' / 'avrgame.build.json').sha256, via.sha256)
+
+
+class LaunchAndHygieneTests(Tmp):
+    """Verification findings: failures at launch that validate, secrets, tracebacks, plain sentences."""
+
+    # -- 10. the entry point
+    def test_python3_runs_only_a_module_form_that_exists_in_the_package(self):
+        for label, args in {'-c': ['-c', 'print(1)'], 'script': ['game_pkg/__main__.py'], 'bare -m': ['-m'],
+                            'bad name': ['-m', 'bad name'], 'dots': ['-m', 'a..b'], 'path': ['-m', 'a/b'],
+                            'option first': ['-u', '-m', 'game_pkg']}.items():
+            m = good_manifest()
+            m['server']['args'] = args
+            found = problems_of(m)
+            self.assertTrue(any('only ["-m", "<module in the package>"' in p for p in found), (label, found))
+        m = good_manifest()
+        m['server']['args'] = ['-m', 'game_pkg', '--port=1']
+        avrgame.validate_manifest(m)
+        # statically, the module must be in the package: NAME/__main__.py or NAME.py (dotted names are paths)
+        base = {k: v for k, v in BASE_FILES.items() if not k.startswith('game_pkg/__main__')}
+        self.refused(make_zip(files=base), 'has no game_pkg/__main__.py or game_pkg.py for "-m game_pkg"')
+        avrgame.read(self.write_zip(make_zip(files={**base, 'game_pkg.py': b'x = 1\n'}), 'one.avrgame'))
+        m = good_manifest()
+        m['server']['args'] = ['-m', 'game_pkg.sub']
+        self.refused(make_zip(manifest=mjson(m)), 'game_pkg/sub')
+        avrgame.read(self.write_zip(make_zip(manifest=mjson(m), files={**BASE_FILES, 'game_pkg/sub.py': b''}), 'two.avrgame'))
+
+    # -- 11. no tracebacks
+    def test_pack_creates_the_output_directory_and_the_cli_never_shows_a_traceback(self):
+        root = self.make_tree()
+        done = self.run_cli('pack', root / 'avrgame.build.json', '--out', 'new/dir/x.avrgame')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue((self.tmp / 'new' / 'dir' / 'x.avrgame').is_file())
+        from avrana.avrgame import __main__ as cli
+        for error in (FileNotFoundError('contracts/capabilities.v0.json'), PermissionError('denied'), ValueError('bad')):
+            err = io.StringIO()
+            with mock.patch('avrana.avrgame.build.pack_recipe', side_effect=error), \
+                    mock.patch('sys.stderr', err):
+                self.assertEqual(cli.main(['pack', 'x.json']), 1)
+            self.assertRegex(err.getvalue(), r'^avrgame: failed: \w+Error: .*\n$')
+            self.assertNotIn('Traceback', err.getvalue())
+
+    def run_cli(self, *args):
+        env = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
+        return subprocess.run([sys.executable, '-m', 'avrana.avrgame', *map(str, args)], capture_output=True,
+                              text=True, cwd=self.tmp, env=env, timeout=120)
+
+    # -- 12. secrets
+    def test_key_material_is_refused_by_the_packer_and_by_the_validator(self):
+        for name in ('hello.key', 'server.PEM', 'x.p12', 'x.pfx', 'id_rsa', 'id_rsa.pub', 'prod.env', '.env'):
+            root = self.make_tree(f'src-{name.replace(".", "-").lower()}')
+            (root / 'game_pkg' / name).write_bytes(b'secret')
+            with self.assertRaises(avrgame.Refused, msg=name) as ctx:           # refused, not silently skipped
+                avrgame.pack(root, root / 'avrgame.json', ['game_pkg', 'shared'], self.tmp / 'packed.avrgame')
+            self.assertIn('key material must never be in a package', '\n'.join(ctx.exception.problems), name)
+            self.assertFalse((self.tmp / 'packed.avrgame').exists())
+            self.refused(make_zip(extra=[(f'game_pkg/{name}', b'secret')]), 'key material must never be in a package')
+        root = self.make_tree('explicit')
+        (root / 'game_pkg' / 'a.key').write_bytes(b'secret')
+        with self.assertRaises(avrgame.Refused):
+            avrgame.pack(root, root / 'avrgame.json', ['game_pkg/a.key', 'game_pkg/__init__.py'], self.tmp / 'y.avrgame')
+        self.assertEqual(common.secret_problem('game_pkg/keyboard.py'), None)       # only the listed names
+
+    # -- 13. a plain sentence for a bad id
+    def test_a_bad_game_id_is_explained_in_words(self):
+        for bad in ('Hello', 'hello world', '1hello', 'x' * 41, 'home'):
+            m = good_manifest()
+            m['game']['id'] = bad
+            found = [p for p in problems_of(m) if 'id' in p]
+            self.assertTrue(any('lowercase letter first' in p and 'at most 40 characters' in p for p in found), (bad, found))
+            self.assertFalse(any('^[a-z]' in p for p in found), found)
+
+
+class FifoTests(Tmp):
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'POSIX named pipes')
+    def test_a_named_pipe_is_refused_instead_of_hanging_the_reader(self):
+        import threading
+        fifo = self.tmp / 'pipe.avrgame'
+        os.mkfifo(fifo)
+        outcome = []
+
+        def read():
+            try:
+                avrgame.read(fifo)
+            except avrgame.Refused as exc:
+                outcome.append(exc.problems)
+        thread = threading.Thread(target=read, daemon=True)
+        thread.start()
+        thread.join(10)
+        self.assertFalse(thread.is_alive(), 'avrgame.read blocked on a FIFO')
+        self.assertIn('not a regular file', outcome[0][0])
 
 
 class HostileArchiveTests(Tmp):

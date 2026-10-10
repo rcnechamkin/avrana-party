@@ -61,7 +61,7 @@ def _problems(doc, vocab):
     p += [f'appliance: unknown key {k!r}' for k in sorted(set(doc) - allowed)]
     if doc.get('schema') != APPLIANCE:
         p.append(f'appliance.schema: must be {APPLIANCE!r}')
-    if not isinstance(doc.get('id'), str) or not ID.match(doc['id']):
+    if not isinstance(doc.get('id'), str) or not ID.fullmatch(doc['id']):
         p.append('appliance.id: an id')
     if not isinstance(doc.get('name'), str) or not 1 <= len(doc['name']) <= 80:
         p.append('appliance.name: 1-80 characters')
@@ -79,7 +79,7 @@ def _problems(doc, vocab):
         if not isinstance(prov, dict) or set(prov) - keys or {'id', 'kind', 'offers', 'status'} - set(prov):
             p.append(f'{where}: keys {sorted(keys)} (adapter and implementation optional)')
             continue
-        if not isinstance(prov['id'], str) or not ID.match(prov['id']) or prov['id'] in seen:
+        if not isinstance(prov['id'], str) or not ID.fullmatch(prov['id']) or prov['id'] in seen:
             p.append(f'{where}.id: a unique id')
         else:
             seen.add(prov['id'])
@@ -104,7 +104,7 @@ def _problems(doc, vocab):
         if not isinstance(inst, dict) or set(inst) - keys or {'game', 'entry', 'tier'} - set(inst):
             p.append(f'{where}: keys {sorted(keys)} (health, permissions_granted and runtime optional)')
             continue
-        if not isinstance(inst['game'], str) or not ID.match(inst['game']) or inst['game'] in games:
+        if not isinstance(inst['game'], str) or not ID.fullmatch(inst['game']) or inst['game'] in games:
             p.append(f'{where}.game: a unique game id')
         else:
             games.add(inst['game'])
@@ -127,7 +127,7 @@ def _problems(doc, vocab):
         if not isinstance(col, dict) or set(col) - keys or keys - {'summary'} - set(col):
             p.append(f'{where}: keys {sorted(keys)} (summary optional)')
             continue
-        if not isinstance(col.get('id'), str) or not ID.match(col['id']) or not isinstance(col.get('name'), str):
+        if not isinstance(col.get('id'), str) or not ID.fullmatch(col['id']) or not isinstance(col.get('name'), str):
             p.append(f'{where}: id and name are text')
         if not isinstance(col['entry'], str) or not PATH.match(col['entry']):
             p.append(f'{where}.entry: a same-origin path ending in "/"')

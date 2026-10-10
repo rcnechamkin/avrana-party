@@ -15,7 +15,7 @@ from types import MappingProxyType
 from avrana.contracts import game as game_contract
 from avrana.contracts import strictjson, vocabulary
 
-from .common import FORMAT, MAX_MANIFEST_BYTES, Problems, Refused, clip, name_problem, text_ok
+from .common import FORMAT, MAX_MANIFEST_BYTES, Problems, Refused, check_json_depth, clip, name_problem, text_ok
 
 # Interpreter NAME -> absolute executable. The appliance owns this mapping; a package only picks a
 # name. The installer sets the working directory to the staged package root.
@@ -26,9 +26,12 @@ RESERVED = ('signature', 'provenance', 'entitlement', 'publisher_key')
 APPLIANCE_OWNED = frozenset({
     'tier', 'trust', 'entry', 'health', 'grant', 'granted', 'permissions', 'key', 'socket', 'path', 'url',
     'command', 'cwd', 'working_directory', 'env', 'environment', 'digest'})
-VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]{1,32})?$')
+VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]{1,32})?\Z')
 REQUIRES_KEYS = ('session', 'bridge', 'result')
 MAX_ARGS = 16
+MODULE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*\Z')
+ID_SENTENCE = ('id: a lowercase letter first, then lowercase letters, digits, "_" or "-", at most 40 '
+               'characters, and not a reserved name (home, party, admin, shared, diag, api)')
 MAX_ARG = 200
 
 
@@ -46,7 +49,9 @@ def parse(data):
     if len(data) > MAX_MANIFEST_BYTES:
         raise Refused(f'avrgame.json: larger than {MAX_MANIFEST_BYTES} bytes')
     try:
-        return strictjson.loads(data.decode('utf-8'))
+        text = data.decode('utf-8')
+        check_json_depth(text)
+        return strictjson.loads(text)
     except UnicodeDecodeError:
         raise Refused('avrgame.json: not UTF-8') from None
     except (ValueError, RecursionError) as exc:      # StrictJSONError is a ValueError
@@ -108,7 +113,7 @@ def validate_manifest(obj, vocab=None):
             contract = game_contract.validate(candidate, vocab)
         except game_contract.ContractError as exc:
             for p in exc.problems:
-                problems.add(f'game: {p}')
+                problems.add(f'game: {ID_SENTENCE if p.startswith("id:") else p}')
         if contract is not None:
             if contract['kind'] != 'native':
                 problems.add('game.kind: only "native" games are packageable; emulation is a separate provider')
@@ -156,6 +161,9 @@ def validate_manifest(obj, vocab=None):
                     problems.add(f'server.args[{i}]: 1-{MAX_ARG} printable characters, no control characters')
                 elif arg.startswith(('/', '\\')) or re.match(r'^[A-Za-z]:', arg) or '..' in arg.split('/'):
                     problems.add(f'server.args[{i}]: no absolute paths or ".." (the server runs in the package root)')
+            if interp == 'python3' and not module_form(args):
+                problems.add('server.args: for python3 only ["-m", "<module in the package>", ...] is supported '
+                             'today (a dotted module name such as "mygame" or "mygame.server")')
         out['server'] = {'interpreter': interp, 'args': list(args) if isinstance(args, list) else args}
 
     # client: where the portable browser bundle lives inside the package
@@ -169,6 +177,25 @@ def validate_manifest(obj, vocab=None):
 
     problems.raise_if_any()
     return out
+
+
+def module_form(args):
+    """True for ["-m", "<dotted module name>", ...]: the one way a python3 package starts today."""
+    return (isinstance(args, list) and len(args) >= 2 and args[0] == '-m' and isinstance(args[1], str)
+            and bool(MODULE.match(args[1])))
+
+
+def entry_problem(manifest, names):
+    """Why the package cannot start (statically: nothing is imported or run), or None. The module of
+    `-m NAME` must be NAME/__main__.py or NAME.py among the package's files."""
+    server = manifest['server']
+    if server['interpreter'] != 'python3' or not module_form(server['args']):
+        return None
+    path = server['args'][1].replace('.', '/')
+    if f'{path}/__main__.py' in names or f'{path}.py' in names:
+        return None
+    return (f'server.args: the package has no {path}/__main__.py or {path}.py for "-m {server["args"][1]}"; '
+            'validation cannot prove a package starts, but this much it can check')
 
 
 def client_index(manifest):

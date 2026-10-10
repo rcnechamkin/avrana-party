@@ -33,19 +33,23 @@ from pathlib import PurePosixPath
 
 from avrana.contracts import appliance, game, strictjson, vocabulary
 
-from .common import FORMAT, MAX_FILES, MAX_FILE_BYTES, MANIFEST_NAME, name_problem, text_ok
-from .manifest import INTERPRETERS, MAX_ARG, MAX_ARGS, VERSION
+from .common import FORMAT, MAX_FILES, MAX_FILE_BYTES, MANIFEST_NAME, check_json_depth, name_problem, text_ok
+from .manifest import INTERPRETERS, MAX_ARG, MAX_ARGS, VERSION, module_form
 
 RECORD = 'avrana.avrgame-install/experimental.1'
 DEFAULT_RECORDS_DIR = '/etc/avrana-party/packages.d'
 DEFAULT_GAMES_ROOT = '/opt/avrana-games'
+# Who must own a record and its directory when a reader enforces it. Party Core runs as an
+# unprivileged user and trusts only what root wrote; a test on a scratch directory sets this to None.
+EXPECTED_OWNER = 0 if os.name == 'posix' else None
+_DEFAULT = object()
 TIER = 'community'            # the only tier a package can ever have; nothing in a package changes it
 MAX_RECORD_BYTES = 2 * 1024 * 1024
 TOP = ('record', 'id', 'version', 'sha256', 'format', 'installed_at', 'root', 'files', 'contract',
        'grant', 'package')
 REQUIRED = tuple(k for k in TOP if k != 'installed_at')
-SHA256 = re.compile(r'^[0-9a-f]{64}$')
-STAMP = re.compile(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')
+SHA256 = re.compile(r'^[0-9a-f]{64}\Z')
+STAMP = re.compile(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z')
 CLAIMS = ('publisher', 'license', 'source')
 
 
@@ -177,6 +181,8 @@ def _runtime_problems(grant, root, interpreters):
     if command[0] not in interpreters.values():
         p.append(f'grant.runtime.command: the interpreter must be one of {sorted(interpreters.values())}')
     args = command[1:]
+    if command[0] == INTERPRETERS.get('python3') and not module_form(args):
+        p.append('grant.runtime.command: python3 runs only ["-m", "<module>", ...]')
     if not 1 <= len(args) <= MAX_ARGS:
         p.append(f'grant.runtime.command: 1-{MAX_ARGS} arguments after the interpreter')
     for i, arg in enumerate(args):
@@ -186,9 +192,11 @@ def _runtime_problems(grant, root, interpreters):
     return p
 
 
-def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRETERS):
+def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRETERS, games_root=DEFAULT_GAMES_ROOT):
     """Check one parsed record found under the file name `name` (without `.json`) and return a
-    Record, or raise RecordError listing every problem. Nothing the record says is believed."""
+    Record, or raise RecordError listing every problem. Nothing the record says is believed.
+    `games_root` is where staged trees live; the record's root must be exactly
+    <games_root>/<id>/<version>-<sha12> (Party Core uses the module default, /opt/avrana-games)."""
     if not isinstance(doc, dict):
         raise RecordError('the record must be one JSON object')
     p = []
@@ -202,7 +210,7 @@ def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRE
     if doc['record'] != RECORD:
         p.append(f'record: this appliance reads only {RECORD!r}')
     pid = doc['id']
-    if not isinstance(pid, str) or not game.ID.match(pid) or pid in game.RESERVED_IDS:
+    if not isinstance(pid, str) or not game.ID.fullmatch(pid) or pid in game.RESERVED_IDS:
         raise RecordError(p + ['id: not a usable game id'])
     if pid != name:
         p.append(f'id {pid!r} does not match the file name {name}.json')
@@ -222,10 +230,8 @@ def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRE
     if not isinstance(root, str) or not root.startswith('/') or '\\' in root:
         p.append('root: an absolute POSIX path')
     elif not isinstance(version, str) or not isinstance(sha, str) or not SHA256.match(sha) \
-            or PurePosixPath(root).parts[-2:] != (pid, tree_name(version, sha)):
-        p.append(f'root: must end in <id>/<version>-<first 12 hex of sha256> ({pid}/...)')
-    elif any(part in ('', '.', '..') for part in root.split('/')[1:]) or '//' in root:
-        p.append('root: no "." or ".." component and no "//"')
+            or root != tree_root(games_root, pid, version, sha):
+        p.append(f'root: must be exactly {str(games_root).rstrip("/")}/<id>/<version>-<first 12 hex of sha256>')
     p += _files_problems(doc['files'], pid)
 
     contract = None
@@ -276,17 +282,26 @@ def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRE
                   contract=contract, grant=grant, package=dict(claims), doc=doc)
 
 
-def read_record_file(path, name, repo_contracts, vocab=None, interpreters=INTERPRETERS, strict_modes=None):
+def _owner(owner):
+    return EXPECTED_OWNER if owner is _DEFAULT else owner
+
+
+def read_record_file(path, name, repo_contracts, vocab=None, interpreters=INTERPRETERS, strict_modes=None,
+                     games_root=DEFAULT_GAMES_ROOT, owner=_DEFAULT):
     """Read, parse strictly and validate one record file. A symbolic link, a non-file, a file that
-    is group- or world-writable (POSIX), an oversized file or malformed JSON is a RecordError."""
+    is group- or world-writable (POSIX), one not owned by `owner` (default: root on POSIX; None
+    skips the check), an oversized or too deeply nested file or malformed JSON is a RecordError."""
     if strict_modes is None:
         strict_modes = os.name == 'posix'
+    owner = _owner(owner)
     try:
         st = os.lstat(path)
     except OSError:
         raise RecordError('cannot be examined') from None
     if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
         raise RecordError('not a regular file')
+    if owner is not None and st.st_uid != owner:
+        raise RecordError(f'not owned by uid {owner}')
     if strict_modes and st.st_mode & 0o022:
         raise RecordError('writable by a group or others')
     if st.st_size > MAX_RECORD_BYTES:
@@ -294,19 +309,40 @@ def read_record_file(path, name, repo_contracts, vocab=None, interpreters=INTERP
     try:
         with open(path, 'rb') as f:
             text = f.read(MAX_RECORD_BYTES + 1).decode('utf-8')
+        check_json_depth(text)
         doc = strictjson.loads(text)
     except (OSError, UnicodeDecodeError):
         raise RecordError('cannot be read as UTF-8 text') from None
     except (ValueError, RecursionError) as exc:
         raise RecordError(f'not strict JSON ({str(exc)[:80]})') from None
-    return validate_record(doc, name, repo_contracts, vocab, interpreters)
+    return validate_record(doc, name, repo_contracts, vocab, interpreters, games_root)
 
 
-def load(directory, repo_contracts, vocab=None, interpreters=INTERPRETERS, strict_modes=None):
+def directory_problem(directory, owner=_DEFAULT, strict_modes=None):
+    """Why a records directory cannot be believed, or None: a symbolic link, not owned by `owner`,
+    or writable by a group or others. Whoever can write there can make Party Core run a game."""
+    if strict_modes is None:
+        strict_modes = os.name == 'posix'
+    owner = _owner(owner)
+    try:
+        st = os.lstat(directory)
+    except OSError:
+        return 'cannot be examined'
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+        return 'not a plain directory'
+    if owner is not None and st.st_uid != owner:
+        return f'not owned by uid {owner}'
+    if strict_modes and st.st_mode & 0o022:
+        return 'writable by a group or others'
+    return None
+
+
+def load(directory, repo_contracts, vocab=None, interpreters=INTERPRETERS, strict_modes=None,
+         games_root=DEFAULT_GAMES_ROOT, owner=_DEFAULT):
     """Every valid record of `directory`, as the contracts and grants they add to the repository's.
     A missing directory is nothing installed. A record that is refused (or a stray file) is listed
-    in `problems` and affects nothing else. Hidden files (an installer's temporary file) are
-    ignored."""
+    in `problems` and affects nothing else; a directory that cannot be believed refuses every record
+    in it. Hidden files (an installer's temporary file) are ignored."""
     out = Loaded()
     if not directory or not os.path.isdir(directory):
         return out
@@ -317,16 +353,22 @@ def load(directory, repo_contracts, vocab=None, interpreters=INTERPRETERS, stric
     except OSError as exc:
         out.problems.append(f'(records directory): cannot be listed ({type(exc).__name__})')
         return out
+    bad_directory = directory_problem(directory, owner, strict_modes)
+    if bad_directory:
+        out.problems.append(f'(records directory) {directory}: {bad_directory}; none of its records is used')
     for filename in names:
         if filename.startswith('.'):
             continue
         name = filename[:-5] if filename.endswith('.json') else None
-        if name is None or not game.ID.match(name):
+        if name is None or not game.ID.fullmatch(name):
             out.problems.append(f'{filename}: not an install record (<id>.json)')
+            continue
+        if bad_directory:
+            refused.add(name)
             continue
         try:
             record = read_record_file(os.path.join(directory, filename), name, repo_contracts, vocab,
-                                      interpreters, strict_modes)
+                                      interpreters, strict_modes, games_root, owner)
         except RecordError as exc:
             refused.add(name)
             out.problems += [f'{name}: record refused: {x}' for x in exc.problems]

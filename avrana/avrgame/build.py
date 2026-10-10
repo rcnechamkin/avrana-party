@@ -21,7 +21,7 @@ from avrana.contracts import strictjson
 
 from . import archive, common
 from .common import (MANIFEST_NAME, RECIPE_FORMAT, RECIPE_NAME, Problems, Refused, bytecode, clip,
-                     name_problem)
+                     name_problem, secret_problem)
 from .manifest import parse, validate_manifest
 
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
@@ -105,6 +105,9 @@ def _collect(root, includes, problems, skip=None):
             problems.add(exc.problems[0])
             continue
         if stat.S_ISREG(st.st_mode):
+            if secret_problem(item):
+                problems.add(f'include {clip(item)}: {secret_problem(item)}')
+                continue
             out[item] = start
         elif stat.S_ISDIR(st.st_mode):
             _walk(start, item, out, problems)
@@ -123,6 +126,9 @@ def _walk(directory, prefix, out, problems):
         problems.add(f'include {clip(prefix)}: cannot list directory')
         return
     for name in names:
+        if secret_problem(name):                          # refused, never skipped: say so, even for .env
+            problems.add(f'path {clip(prefix + "/" + name)}: {secret_problem(name)}')
+            continue
         # Not part of a package: hidden files, bytecode caches, the recipe itself.
         if name.startswith('.') or name == '__pycache__' or name == RECIPE_NAME or name.endswith(('.pyc', '.pyo')):
             continue
@@ -195,6 +201,7 @@ def build_bytes(source_root, manifest_path, includes, compress=False):
 def _write_atomic(data, out_path):
     out_path = os.fspath(out_path)
     directory = os.path.dirname(os.path.abspath(out_path))
+    os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.avrgame-', suffix='.tmp', dir=directory)
     try:
         with os.fdopen(fd, 'wb') as f:

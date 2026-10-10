@@ -27,6 +27,46 @@ RESERVED_DEVICES = frozenset(['CON', 'PRN', 'AUX', 'NUL', 'CLOCK$'] + [f'COM{i}'
 DRIVE = re.compile(r'^[A-Za-z]:')
 
 
+MAX_JSON_DEPTH = 32
+
+
+def check_json_depth(text, limit=MAX_JSON_DEPTH):
+    """Raise ValueError when JSON `text` nests arrays/objects deeper than `limit`. A linear scan
+    outside strings: no recursion, so the bound does not depend on the interpreter's recursion limit
+    (CPython 3.12 parses far deeper than 3.11 did). Run it BEFORE parsing untrusted JSON."""
+    depth = 0
+    in_string = escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch in '[{':
+            depth += 1
+            if depth > limit:
+                raise ValueError(f'nested deeper than {limit} levels')
+        elif ch in ']}':
+            depth -= 1
+
+
+SECRET_SUFFIXES = ('.key', '.pem', '.p12', '.pfx', '.env')
+SECRET_MESSAGE = ('looks like key material or secrets (*.key, *.pem, *.p12, *.pfx, id_rsa*, *.env, .env); '
+                  'key material must never be in a package')
+
+
+def secret_problem(name):
+    """Why a file named `name` (any path, '/'-separated) must not be in a package, or None."""
+    base = str(name).rsplit('/', 1)[-1].lower()
+    if base.endswith(SECRET_SUFFIXES) or base.startswith('id_rsa'):
+        return SECRET_MESSAGE
+    return None
+
+
 def clip(value, limit=60):
     """A bounded, escaped rendering of untrusted text for a message (never raw, never long)."""
     if not isinstance(value, str):

@@ -67,7 +67,7 @@ def read_directory(directory):
             problems.append(f'{name}: {path.name} must hold one JSON object')
             continue
         game_id = entry.get('id')
-        if not isinstance(game_id, str) or not GAME_ID.match(game_id):
+        if not isinstance(game_id, str) or not GAME_ID.fullmatch(game_id):
             problems.append(f'{name}: {path.name} has no valid "id"')
             continue
         if game_id != name:
@@ -92,14 +92,15 @@ def read_directory(directory):
 
 
 def with_packages(contracts, packages):
-    """(contracts with the installed games', ids whose install record was refused). Each refused
-    record is logged. The repository's contracts always win: a record cannot shadow one."""
+    """(contracts with the installed games', ids whose install record was refused, the repository's
+    ids). Each refused record is logged. The repository's contracts always win: a record cannot
+    shadow one."""
     from avrana.avrgame import installed
     repo = party_config.load_contracts() if contracts is None else contracts
     found = installed.load(packages, repo)
     for problem in found.problems:
         log.error('install record refused: %s', problem)
-    return {**repo, **found.contracts}, found.refused - set(repo)
+    return {**repo, **found.contracts}, found.refused, set(repo)
 
 
 def build(config_games, directory=None, contracts=None, read_key=protocol.read_key, packages=None):
@@ -117,9 +118,17 @@ def build(config_games, directory=None, contracts=None, read_key=protocol.read_k
     merged = dict(config_games)
     merged.update({g: {k: v for k, v in e.items() if k != 'id'} for g, e in native.items()})
     if packages:
-        contracts, left_out = with_packages(contracts, packages)
+        contracts, left_out, repo_ids = with_packages(contracts, packages)
         for game_id in sorted(left_out & set(merged)):
-            log.error('%s: left out, its install record was refused', game_id)
+            if game_id in repo_ids:
+                if game_id not in native:
+                    continue              # a first-party game from party-core.json: a stray record cannot touch it
+                # The package's registry entry (its socket and key) must not serve under a first-party
+                # contract that appeared after the package was installed. The record is the evidence.
+                log.error('%s: left out: a package was installed under the id of a first-party game; '
+                          'remove it with install-game remove %s', game_id, game_id)
+            else:
+                log.error('%s: left out, its install record was refused', game_id)
             del merged[game_id]
     games = {}
     try:

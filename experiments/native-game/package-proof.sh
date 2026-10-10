@@ -405,6 +405,7 @@ check 'list shows the package, tier community, the grant and the publisher as an
 t 'list --json says the tree still verifies' 0 \
     python3 -c 'import json,sys; d=json.loads(sys.argv[1])["installed"]; assert len(d)==1 and d[0]["id"]=="hello" and d[0]["tree"]=="ok" and d[0]["tier"]=="community" and d[0]["permissions_granted"]==["party_roster"], d' "$(inst list --json)"
 
+catalog_sha=$(sha_of "$repo/web/party/catalog.json")
 # the generated catalog (a file in $work: the committed catalog and the appliance's web root are not touched)
 mkdir "$work/cat-games"
 cp "$tree/contracts/games/checkers.json" "$work/cat-games/"
@@ -420,16 +421,19 @@ capture catalog "$work/catalog-with.json"
 check 'the catalog generator accepts --packages with an explicit --out' 0 "$rc"
 t 'the generated catalog lists the package installed, at /games/hello/, native' 0 \
     python3 -c 'import json,sys; g={x["id"]:x for x in json.load(open(sys.argv[1]))["games"]}; h=g["hello"]; assert h["installed"] is True and h["entry"]=="/games/hello/" and h["provider"]=="native" and h["status"]=="current" and h["playableHere"] is True, h; assert g["checkers"]["installed"] is False' "$work/catalog-with.json"
-t 'the committed product catalog is untouched by any of it' 0 bash -c 'cd "$1" && python3 -m avrana.contracts.catalog --check' _ "$repo"
+capture bash -c 'cd "$1" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.contracts.catalog --packages "$2"' _ "$tree" "$packages"
+check 'catalog --packages without an explicit --out is refused (exit 2): the committed catalog is never the target' 0 "$([[ $rc == 2 ]] && echo 0 || echo 1)"
+t 'the committed web/party/catalog.json is byte-identical before and after' 0 test "$(sha_of "$repo/web/party/catalog.json")" = "$catalog_sha"
 
 host_installed=$(host_state)
 capture inst install "$build/a.avrgame" --grant party_roster
 refused 'a second install of the same id is refused ("remove it first")' 'remove it first'
 t 'and the refused second install changed nothing' 0 test "$(host_state)" = "$host_installed"
-t 'verify catches a modified staged file' nonzero bash -c '
-    f=$1/hello_party/__main__.py; cp -p "$f" "$f.keep"; echo "#" >> "$f"
-    (cd "$2" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.install_game verify hello); s=$?
-    mv "$f.keep" "$f"; exit $s' _ "$staged" "$tree"
+vf=$staged/hello_party/__main__.py
+cp -p "$vf" "$work/main.keep"                     # under set -e: a failed backup stops the proof loudly
+echo '#' >> "$vf"
+t 'verify catches a modified staged file' nonzero inst verify hello
+cp -p "$work/main.keep" "$vf"
 t 'and verify passes again once the file is restored' 0 inst verify hello
 
 # ---- h. session 1: a complete session, then the boundary checker while the game is up ----------------------------------------

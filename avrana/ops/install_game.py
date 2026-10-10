@@ -327,24 +327,29 @@ def _check_permissions(contract, allow):
 
 
 def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpreters=avrgame.INTERPRETERS,
-                 now=None, read=avrgame.read):
+                 now=None, read=avrgame.read, owner=None):
     """Every refusal, in one place, before anything is written. Returns a Plan."""
     try:
         package = read(path)
     except avrgame.Refused as exc:
         raise Refused('package refused: ' + '; '.join(exc.problems[:8])) from None
     pid = package.id
+    if not pg.GAME_ID.fullmatch(pid):
+        raise Refused(f'{pid!r} is not a game id')
     if pid in repo_contracts:
         raise Refused(f'{pid}: this appliance has a first-party game of that id; a package cannot shadow it')
     granted, notes = _check_permissions(package.game, allow)
     _plain_dir(layout.games_root, 'the games root')
     if trusted is not None:
         trusted(str(layout.games_root))            # root-owned and not writable by others, all the way up
+        records = layout.records_dir               # the records are what Party Core believes: same rule
+        trusted(str(records if os.path.isdir(records) else Path(records).parent))
     record, tree = layout.record(pid), layout.id_dir(pid)
     if os.path.lexists(record):
         version = ''
         try:
-            version = ' ' + installed.read_record_file(record, pid, repo_contracts).version
+            version = ' ' + installed.read_record_file(record, pid, repo_contracts, games_root=layout.root_text(),
+                                                       owner=owner).version
         except installed.RecordError:
             pass
         raise Refused(f'{pid}{version} is already installed (or its record is damaged); remove it first: '
@@ -363,10 +368,12 @@ def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpret
     stamp = (now or (lambda: time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())))()
     doc = installed.build_record(package, grant, root, stamp)
     try:        # what is about to be written must be readable by Party Core, or it is not written
-        installed.validate_record(json.loads(installed.dumps(doc)), pid, repo_contracts, interpreters=interpreters)
+        installed.validate_record(json.loads(installed.dumps(doc)), pid, repo_contracts, interpreters=interpreters,
+                                  games_root=layout.root_text())
     except installed.RecordError as exc:
         raise Refused('the install record would not be accepted: ' + '; '.join(exc.problems[:5])) from None
-    others = installed.load(layout.records_dir, repo_contracts, interpreters=interpreters)
+    others = installed.load(layout.records_dir, repo_contracts, interpreters=interpreters,
+                            games_root=layout.root_text(), owner=owner)
     return Plan(package=package, grant=grant, root=root, doc=doc, notes=notes,
                 contracts={**repo_contracts, **others.contracts, pid: package.game},
                 grants={**others.grants, pid: grant})
@@ -415,7 +422,7 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
     back as it was (see the module docstring) and the original failure is raised;
     RollbackIncomplete when the undo itself could not finish. `owner` is the uid the staged tree
     must belong to (0 in real use); None skips that check (tests as a normal user)."""
-    plan = plan_install(path, layout, repo_contracts, allow, trusted, interpreters, now, read)
+    plan = plan_install(path, layout, repo_contracts, allow, trusted, interpreters, now, read, owner)
     package, pid = plan.package, plan.package.id
     final = layout.on_disk(plan.root)
     ledger = _Ledger()
@@ -438,11 +445,11 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
         if wrong:
             raise Refused('the staged files do not match the package: ' + '; '.join(wrong[:5]))
         _seal(staging)
+        ledger.add('staged tree', lambda: _rmtree(final))
         os.rename(staging, final)
         _fsync(layout.id_dir(pid), directory=True)
-        ledger.add('staged tree', lambda: _rmtree(final))
-        _write_record(layout, pid, plan.doc)
         ledger.add('install record', lambda: os.path.lexists(layout.record(pid)) and os.unlink(layout.record(pid)))
+        _write_record(layout, pid, plan.doc)
         ledger.add('provisioning', _undo_provision(pid, layout, run))
         began['provisioning'] = True
         changed = pg.provision(pid, layout.provision, plan.contracts, plan.grants, run, own, origin,
@@ -497,16 +504,17 @@ def _ours(package_id, layout):
     return found
 
 
-def _check_removable(package_id, repo_contracts):
+def _check_removable(package_id, repo_contracts, layout):
     if not isinstance(package_id, str) or not pg.GAME_ID.fullmatch(package_id):
         raise Refused(f'{package_id!r} is not a game id')
-    if package_id in repo_contracts:
+    if package_id in repo_contracts and not {'record', 'files'} & set(_ours(package_id, layout)):
+        # no install record and no staged tree: nothing says this was ever a package
         raise Refused(f'{package_id}: a first-party game of this appliance, not a package; '
                       'use provision-game --remove for those')
 
 
 def plan_remove(package_id, layout, repo_contracts, keep_state=False, active=None):
-    _check_removable(package_id, repo_contracts)
+    _check_removable(package_id, repo_contracts, layout)
     ours = _ours(package_id, layout)
     left = pg.plan_remove(package_id, layout.provision, keep_state, active)
     if left and not ours:
@@ -539,7 +547,7 @@ def remove(package_id, layout, repo_contracts, run, active=None, keep_state=Fals
 def listing(layout, repo_contracts, owner=None):
     """({id: row}, [problems]) for every readable install record, each row with whether its tree
     still matches (`tree`: ok | modified | missing)."""
-    found = installed.load(layout.records_dir, repo_contracts)
+    found = installed.load(layout.records_dir, repo_contracts, games_root=layout.root_text(), owner=owner)
     rows = {}
     for pid, rec in sorted(found.records.items()):
         try:
@@ -563,7 +571,7 @@ def verify(package_id, layout, repo_contracts, owner=None):
     if not os.path.lexists(path):
         raise Refused(f'{package_id}: not installed (no install record)')
     try:
-        rec = installed.read_record_file(path, package_id, repo_contracts)
+        rec = installed.read_record_file(path, package_id, repo_contracts, games_root=layout.root_text(), owner=owner)
     except installed.RecordError as exc:
         return [f'record refused: {x}' for x in exc.problems]
     return check_tree(layout.on_disk(rec.root), rec.files, owner=owner)
@@ -702,7 +710,7 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
         origin = pg.party_origin(conf)
         trusted = pg.trusted_path if real else None
         if dry:
-            plan = plan_install(a.package, layout, contracts, a.grant, trusted)
+            plan = plan_install(a.package, layout, contracts, a.grant, trusted, owner=owner)
             for line in plan_install_lines(plan, layout, origin):
                 print(line, file=out)
             return 0
