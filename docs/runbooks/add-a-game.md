@@ -3,7 +3,7 @@
 There is no store and no installer yet. Pick the route that matches the game; each has its own
 canonical guide, and this page only routes you there and lists the Avrana-specific extras.
 
-## 0. A new native Avrana game — read this first (2026-10-02)
+## 0. A new native Avrana game (what exists today, 2026-10-09)
 
 **A LAN Games module is no longer the normal route for a new native Avrana game.**
 [ADR 0014](../adr/0014-native-games-isolated-lan-games-retired.md) retires LAN Games as an Avrana
@@ -11,16 +11,49 @@ runtime: new native games are independent platform consumers (their own process,
 identity, secrets and state; generic routing from a game registry; one canonical manifest;
 results reported to Party).
 
-That path is **not built yet**, and its mechanics are deliberately unfrozen: there is no
-procedure to follow here, no SDK and no `.avrgame` format. Checkers is the planned first proof of
-the boundary, then Spades. Until those land:
+**EXPERIMENTAL, not an SDK, not frozen.** There is no SDK, no `.avrgame` package format and no
+installer; the pieces below are real but their names and shapes may change. Freeze gates remain:
+Checkers integrated on the shared kit, review of the four-human BLUFF evidence (AVR-27) and Spades
+boundary validation (ADR 0014). Nothing here is deployed by this page.
 
-- do not start a new native game as a LAN Games module unless the Linear issue for it says so
-  explicitly;
-- take scope, sequencing and the current state of the registry, manifest, provisioning and
-  result-envelope work from Linear (umbrella AVR-224), not from this runbook;
-- the platform rules that already hold are in `docs/design/PARTY-PLATFORM.md`,
-  `docs/design/GAME-INTEGRATION.md` and ADR 0006 (the Party/game session protocol).
+What a native game is today: a separate process (`avrana-game@<slug>`, systemd socket activation,
+an inherited `AF_UNIX` listener on fd 3, its key as a credential, `$AVRANA_PARTY_ORIGIN`, a
+separate game origin) that speaks the signed session protocol (launch, ticket redemption, `end`,
+signed `ended` with an `avrana.game-result/v1`) and whose page reaches Party only through the
+Party-owned bridge shim. Checkers (`checkers/` in the Games repository) is the first real one.
+The Games repository also has an experimental kit, `avrana_gamekit/`, and a reference game,
+`hello_party/` (AVR-38), whose READMEs are the developer-facing guide: how to write the game, run it
+on Windows, macOS or Linux with no Pi (`python -m hello_party.conformance`), and test it against
+the real Party service.
+
+### Steps, and who can do them
+
+| # | Step | An outside developer, alone? |
+|---|---|---|
+| 1 | Write the game process and page in the Games repository layout (a top-level package, stdlib only, the kit is optional), built on `core/party_protocol.py` and `core/party_result.py` as vendored there | Yes |
+| 2 | Run it locally with `--dev-tcp` and a stand-in Party (`avrana_gamekit.devparty`), and run its tests | Yes |
+| 3 | Prove it against the **real** Party code: the Games cross-repository test starts the real Party service in-process, with a game entry given by hand | Yes, with a Party checkout; to be able to launch the game the real Party needs its Game Contract file in that checkout's `contracts/games/` (a local, uncommitted copy should be enough for the test; **not exercised outside CI**) |
+| 4 | Write the Game Contract (`avrana.game/v0`) | Yes, but it must live in **this** repository: `contracts/games/<slug>.json`. Party Core reads game facts only from there (no external contracts directory), so a third party needs a Party PR. **This is the first concrete blocker.** |
+| 5 | A grant in the appliance profile (`contracts/appliances/avrana-pi4.json`, `installed[]`) with `runtime.command` and `working_directory` | No: a Party PR, reviewed by a maintainer |
+| 6 | The game's code under a root-owned release path on the appliance (`/opt/avrana-party-games/current` for Games-repository games) | No: a Games deploy by the owner |
+| 7 | `sudo python3 -m avrana.ops.provision_game <slug>` (key, systemd instance, registry entry, Party Core reload) | No: root on the appliance, owner action ([provision-game](provision-game.md)) |
+| 8 | A catalog entry and artwork | No: derived from the Game Contract by `python3 -m avrana.contracts.catalog`; maintainers merge it |
+
+Platforms: the Hello Party tooling was exercised locally on Windows and in CI on Linux; macOS is expected to
+work but is untested. The Hello Party page has not been opened in a browser.
+
+Test-only games (like the stand-in and Hello Party) are the exception to 4, 5 and 8 in spirit: their
+contract carries `"net.avrana.test": {"test_only": true}`, so they are in no product catalog and no
+product appliance grants them; the grant lives in a CI fixture (`tests/fixtures/appliances/ci-hello.json`,
+`ci-standin.json`). That is how Hello Party exists in this repository without being installable on
+the Pi.
+
+Do not hand-edit around a step an outsider cannot do: record it on the issue as the blocker.
+Take scope and sequencing from Linear (umbrella AVR-224), not from this page.
+
+Rules that hold regardless: do not start a new native game as a LAN Games module unless the Linear
+issue says so explicitly; the platform rules are in `docs/design/PARTY-PLATFORM.md`,
+`docs/design/NATIVE-GAMES.md`, `docs/design/GAME-INTEGRATION.md` and ADR 0006.
 
 ## 1. Legacy / current state: a LAN Games module in the games fork
 
