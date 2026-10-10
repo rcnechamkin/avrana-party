@@ -143,8 +143,9 @@ so path scoping does not):
   the Party host (BLUFF and EXPO, the native-game rule, the LAN Games catch-all, on HTTPS and on
   the port 80 block) sets `proxy_set_header Cookie "";`, so a game process receives no `Cookie`
   header at all. This is in the repository's site file; it holds on the Pi only after the owner
-  deploys it. `/arcade/` is not cleared: its process reads no cookie, and the finding is
-  recorded in the pull request.
+  deploys it. `/arcade/` (both blocks) is cleared too since AVR-318: the arcade process reads no
+  cookie, in HTTP or in the socket handshake (its seat is a ticket in the `hello` message), so
+  it is inside the same boundary and needs nothing from the browser's cookie jar.
 - **After the game origin is deployed:** the separate origin. A browser never sends a
   `__Host-` cookie of the Party host to the game host, so game requests carry none. The nginx
   rule stays as a second layer on the Party host.

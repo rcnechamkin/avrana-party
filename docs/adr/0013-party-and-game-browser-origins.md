@@ -141,4 +141,6 @@ game-server location of the site file (a repository change; deployed only when t
 installs it). Until the game origin exists, nginx is therefore the mechanism; after it, the
 separate origin is, because the browser never sends a Party-host cookie to the game host. The
 nginx rule stays as a second layer. Game *JavaScript* on the shared origin is unaffected and
-is still what this ADR's split addresses.
+is still what this ADR's split addresses. AVR-318 extends the nginx rule to `/arcade/` in both
+server blocks: the arcade server reads no cookie (the seat is a ticket in the socket's `hello`
+message), so the arcade process is inside the same boundary.
