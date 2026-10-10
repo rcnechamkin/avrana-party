@@ -8,6 +8,8 @@
 #                and ends a session with the provisioned stand-in game over real socket activation
 #                and a real LoadCredential= key; boundary checker; rotate refused during a session;
 #                remove leaves nothing. Creates and removes users, units and /opt, /etc: runner only.
+#   prepare-native-games  (AVR-304) `ops/prepare-native-games` on a phase 1 host with Party Core's
+#                earlier unit, then `provision-game` of the stand-in, a session, and the reverse.
 name: Service trust proof
 
 on:
@@ -17,6 +19,7 @@ on:
       - 'contracts/**'
       - 'deploy/**'
       - 'ops/provision-game'
+      - 'ops/prepare-native-games'
       - 'experiments/**'
       - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
@@ -45,3 +48,20 @@ jobs:
           persist-credentials: false
       - name: provision-game, a real session, the boundary checker, rotate and remove
         run: sudo AVRANA_NATIVE_GAME_PROOF=1 bash experiments/native-game/proof.sh
+
+  # (AVR-304) `ops/prepare-native-games` on a host that has ADR 0016 phase 1 and Party Core's EARLIER
+  # unit (no ExecReload=, no socket unit, no registry key): refused without phase 1; --dry-run changes
+  # nothing; the run restarts Party Core and leaves the units, the socket (avrana-party:avrana-games
+  # 0660) and one added registry member; a second run changes and restarts nothing; provision-game
+  # and a real session work; --reverse refused while a game is provisioned; no restart while a session
+  # runs; --reverse shows the earlier state again. Creates and removes users, units and /opt, /etc,
+  # /var/backups: runner only.
+  prepare-native-games:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: prepare-native-games, provision-game, a real session, and the reverse
+        run: sudo AVRANA_PREPARE_PROOF=1 bash experiments/native-game/prepare-proof.sh

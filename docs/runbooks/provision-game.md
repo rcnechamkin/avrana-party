@@ -18,17 +18,18 @@ reload), and never prints a key.
 1. [ADR 0016 phase 1](service-users-migration.md) is applied: the user `avrana-party`, the groups
    `avrana-front` (members `avrana-party` and `www-data`) and `avrana-games`, and
    `/etc/avrana-party/game-keys` (`0700`, `avrana-party`). The command refuses without them.
-2. **Reinstall Party Core's service unit first**: `deploy/party-core/avrana-party-core.service` gained
-   `ExecReload=` (what `systemctl reload` sends: a `SIGHUP`) and `Wants=` the socket unit, and the
-   installed copy on an older appliance has neither. Without `ExecReload=` every provision and
-   rotation fails at its last step, `systemctl reload avrana-party-core.service`, and the command
-   says so (exit 1, "no ExecReload="). Install it, `systemctl daemon-reload`, and only then provision.
-   Party Core runs from a root-owned release tree (`/opt/avrana-party/current`, built by
-   [`ops/deploy.sh`](deploy.md)), with its game-facing socket unit installed and enabled
-   (`deploy/party-core/avrana-party-core.socket`) and `"registry": "/etc/avrana-party/games.d"` in
-   `/etc/avrana-party/party-core.json`. Without the `registry` key Party Core never sees a
-   provisioned game, and the command says so and refuses. Rotation asks Party Core on
-   loopback whether the game has a session, naming the first entry of Party Core's `hosts`.
+2. **Run [`ops/prepare-native-games`](prepare-native-games.md) once** (AVR-304), from the deployed
+   tree: a command, not hand edits. It installs the repository's
+   `deploy/party-core/avrana-party-core.service`, which gained `ExecReload=` (what `systemctl reload`
+   sends: a `SIGHUP`) and `Wants=` the socket unit (the installed copy on an older appliance has
+   neither); installs, enables and starts the game-facing socket unit
+   (`deploy/party-core/avrana-party-core.socket`); and sets `"registry": "/etc/avrana-party/games.d"` in
+   `/etc/avrana-party/party-core.json`. Without `ExecReload=` every provision and rotation fails at its
+   last step, `systemctl reload avrana-party-core.service`, and the command says so (exit 1, "no
+   ExecReload="). Without the `registry` key Party Core never sees a provisioned game, and the command
+   says so and refuses. Party Core runs from a root-owned release tree (`/opt/avrana-party/current`,
+   built by [`ops/deploy.sh`](deploy.md)). Rotation asks Party Core on loopback whether the game has a
+   session, naming the first entry of Party Core's `hosts`.
    The same file's `origins` is where a game learns its Party: the command writes the one entry
    that is a bare `https://host[:port]` or `http://host[:port]` (lower case, no default port) into the game's drop-in as
    `Environment=AVRANA_PARTY_ORIGIN=<origin>` (ADR 0013, AVR-303), which the game's server hands to
@@ -104,7 +105,9 @@ passing run is evidence about that host at that moment, not about the game.
 
 `provision_game <slug> --remove`. It leaves the template units and Party Core's socket unit in
 place (other games use them) and the phase 1 identities (they belong to the installation, not a
-game). Rolling back Party or Games code with `ops/deploy.sh` does not touch any of this.
+game). Rolling back Party or Games code with `ops/deploy.sh` does not touch any of this. What
+[`ops/prepare-native-games`](prepare-native-games.md) installed is taken back by its own
+[reverse](prepare-native-games.md#reverse), and only once no game is provisioned.
 
 ## Related
 
