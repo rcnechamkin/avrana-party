@@ -25,7 +25,8 @@ Tags: **[E]** read in source or config on `main` at `b4c470d` and Games `main` a
 - [E] Party Core checks `Origin` against an allow-list on every POST and checks `Host` on every
   request. GET `/party/api/state` has no Origin check and touches the caller's presence.
 - [E] The cookie has no `Domain` attribute, so it is host-only: it is sent only to
-  `party.avrana.net`. Its `Path=/party/` keeps it from game *servers* on the same host.
+  `party.avrana.net`. `__Host-avrana_device` is `Path=/`, so the path does not keep it from game
+  *servers* on the same host: nginx clearing the `Cookie` header does (section 3.3, AVR-314).
 - [E] The certificate names one host. `ops/renew-party-certificate.sh` passes one `--domains`.
 - [E] The strict Content-Security-Policy applies to `/party/` only, and includes
   `frame-ancestors 'none'`.
