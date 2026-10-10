@@ -344,7 +344,7 @@ echo "OBSERVE     the game runs as user $(ps -o user= -p "$(systemctl show -p Ma
 t 'the installed game unit loads the key by LoadCredential= from the key store' 0     grep -qxF 'LoadCredential=%i.key:/etc/avrana-party/game-keys/%i.key' "$unit_dir/avrana-game@.service"
 cred=/run/credentials/$game
 echo "OBSERVE     credential directory of the running game: $(stat -c '%a %U:%G' "$cred" 2>&1 | head -n1); files: $(ls -l "$cred" 2>&1 | tail -n +2 | awk '{print $1, $3":"$4, $NF}' | paste -sd';')"
-t 'the running game was handed its key as a credential file: root-owned, no access for others, readable by the game only through an ACL entry' 0     bash -c 'f=$1/checkers.key; test -f "$f" && m=$(stat -c %a "$f") && a=$(stat -c %A "$f") && test "${m: -1}" = 0 && test "${a: -1}" = + && test "$(stat -c %U "$f")" = root' _ "$cred"
+t 'the running game was handed its key as a credential file: root-owned, no access for others, readable by the game only through an ACL entry' 0     bash -c 'f=$1/checkers.key; test -f "$f" && m=$(stat -c %a "$f") && a=$(ls -l "$f" | cut -c11) && test "${m: -1}" = 0 && test "$a" = + && test "$(stat -c %U "$f")" = root' _ "$cred"
 t 'the running game was handed the Party origin in its environment (systemctl show)' 0 \
     bash -c 'systemctl show -p Environment --value "$1" | tr " " "\n" | grep -qxF AVRANA_PARTY_ORIGIN=http://party.ci.test' _ "$game"
 t 'the running game answers with the configured Party origin (what the page is told, AVR-303)' 0 \
