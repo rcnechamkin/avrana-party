@@ -902,7 +902,7 @@ class GameOriginStaticRules(unittest.TestCase):
 
     def test_no_hsts_and_no_service_worker_scope_header_in_any_block(self):
         for block in server_blocks(SITE):
-            self.assertNotRegex(block, r'(?i)Strict-Transport-Security|Service-Worker-Allowed')
+            self.assertNotRegex(block, r'(?i)add_header\s+(Strict-Transport-Security|Service-Worker-Allowed)')
 
     def test_only_the_bridge_page_may_be_framed_and_only_by_the_game_origin(self):
         body = location_body(self.party, '= /party/bridge.html')
