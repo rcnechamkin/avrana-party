@@ -341,7 +341,10 @@ t 'the game (socket-activated) is running' 0 systemctl is-active --quiet "$game"
 t 'the game runs as a systemd DynamicUser (DynamicUser=yes) and not as root' 0 \
     bash -c 'test "$(systemctl show -p DynamicUser --value "$1")" = yes && test "$(ps -o uid= -p "$(systemctl show -p MainPID --value "$1")" | tr -d " ")" != 0' _ "$game"
 echo "OBSERVE     the game runs as user $(ps -o user= -p "$(systemctl show -p MainPID --value "$game")" | tr -d ' ')"
-t 'the game holds its key by LoadCredential=: the installed unit says so, and the credential file exists for the running game, not world readable' 0     bash -c 'grep -qxF "LoadCredential=%i.key:/etc/avrana-party/game-keys/%i.key" "$1/avrana-game@.service" && f=/run/credentials/$2/checkers.key && test -f "$f" && m=$(stat -c %a "$f") && test "${m: -2}" = 00' _ "$unit_dir" "$game"
+t 'the installed game unit loads the key by LoadCredential= from the key store' 0     grep -qxF 'LoadCredential=%i.key:/etc/avrana-party/game-keys/%i.key' "$unit_dir/avrana-game@.service"
+cred=/run/credentials/$game
+echo "OBSERVE     credential directory of the running game: $(stat -c '%a %U:%G' "$cred" 2>&1 | head -n1); files: $(ls -l "$cred" 2>&1 | tail -n +2 | awk '{print $1, $3":"$4, $NF}' | paste -sd';')"
+t 'the running game was handed its key as a credential file that is not group or world accessible' 0     bash -c 'f=$1/checkers.key; test -f "$f" && m=$(stat -c %a "$f") && test "${m: -2}" = 00' _ "$cred"
 t 'the running game was handed the Party origin in its environment (systemctl show)' 0 \
     bash -c 'systemctl show -p Environment --value "$1" | tr " " "\n" | grep -qxF AVRANA_PARTY_ORIGIN=http://party.ci.test' _ "$game"
 t 'the running game answers with the configured Party origin (what the page is told, AVR-303)' 0 \
