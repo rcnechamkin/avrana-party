@@ -69,6 +69,8 @@ class CertificateScripts(unittest.TestCase):
             (root / 'lego').write_text(nl.join(['#!/usr/bin/env bash', 'echo "$@" > ' + (root / 'lego.args').as_posix(), '']))
             (root / 'install-party-certificate.sh').write_text(nl.join([
                 '#!/usr/bin/env bash', 'echo "require=${AVRANA_REQUIRE_GAME_NAME:-}" > ' + (root / 'install.env').as_posix(), '']))
+            for stub in ('lego', 'install-party-certificate.sh'):
+                (root / stub).chmod(0o755)
             text = (self.renew
                     .replace('credentials=/etc/avrana-party/cloudflare.env', 'credentials=' + (root / 'cloudflare.env').as_posix())
                     .replace('lego=/usr/local/bin/lego', 'lego=' + (root / 'lego').as_posix())
