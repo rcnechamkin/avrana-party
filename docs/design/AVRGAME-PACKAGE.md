@@ -1,9 +1,9 @@
 # `.avrgame` package format (EXPERIMENTAL)
 
 - **Status:** **EXPERIMENTAL (2026-10-10). Implemented as a library and CLI; not a specification, not frozen, not an SDK.** The format string is `avrana.avrgame/experimental.1`. Every name, field and limit here may change. It supersedes nothing and no ADR depends on it.
-- **Implements:** the subset of AVR-37 and the validation half of AVR-39 that current evidence supports. Installing a package is a separate lane (`avrana.ops.install_game`, not here).
+- **Implements:** the subset of AVR-37 that current evidence supports, and a minimal, validated install and remove of an experimental package (a bounded slice of AVR-39: `avrana.ops.install_game`, [install-game runbook](../runbooks/install-game.md)). Not run on the appliance.
 - **Evidence input:** [AVRGAME-EXPERIMENTAL-DRAFT](../research/AVRGAME-EXPERIMENTAL-DRAFT.md) (research; history, not edited here).
-- **Code:** `avrana/avrgame/`; tests `tests/unit/test_avrgame_package.py`.
+- **Code:** `avrana/avrgame/` (format; `installed.py` the install records), `avrana/ops/install_game.py`; tests `tests/unit/test_avrgame_package.py`, `tests/unit/test_install_game.py`; real-systemd proof `experiments/native-game/package-proof.sh`.
 
 **Freeze gates, all unmet.** (1) Checkers integration: met for drafting only. (2) Written review of the AVR-27 four-human BLUFF evidence against this text and owner acceptance: not met. (3) Spades boundary validation (ADR 0014 decision 12): not met. Until the owner freezes it, nothing may call `.avrgame` v0, stable or frozen.
 
@@ -67,9 +67,27 @@ Strict JSON (duplicate keys, NaN, a BOM or an unknown key anywhere in the envelo
 python -m avrana.avrgame validate <file.avrgame | directory-with-recipe>
 python -m avrana.avrgame pack <path/to/avrgame.build.json> [--out FILE] [--deflate]
 python -m avrana.avrgame inspect <file.avrgame> [--json]
+python -m avrana.avrgame extract <file.avrgame> <dest>      # validate, then unpack into a new or empty directory
 ```
 
 Exit 0 success, 1 refused (one problem per line on stderr), 2 usage.
+
+**Known limitation: run the tooling from the Party checkout.** `python -m avrana.avrgame` and `python -m avrana.ops.install_game` import the `avrana` package and read `contracts/` from the checkout they live in. Run them with the working directory set to the Party checkout, or set `PYTHONPATH` to it (`PYTHONPATH=/path/to/avrana-party python -m avrana.avrgame pack /path/to/game/hello_party/avrgame.build.json`). There is no installable distribution of this tooling yet.
+
+## Install lifecycle (EXPERIMENTAL, AVR-39)
+
+`python3 -m avrana.ops.install_game install|remove|list|verify` (wrapper `ops/install-game`; procedure and trust statement: [install-game runbook](../runbooks/install-game.md)). It calls the existing `avrana.ops.provision_game` functions for keys, registry entries, units and reloads; there is one path onto the appliance.
+
+1. Validate the archive as untrusted input (`avrana.avrgame.read`); refuse an unsupported format or `requires`, a first-party or reserved id, an installed id (upgrade and rollback are not implemented: AVR-58, AVR-60), an id already provisioned by other means.
+2. Preflight what provisioning needs (phase 1, Party Core's config naming the registry and the `packages` directory, the Party origin, a trusted games root and interpreter).
+3. Stage into `/opt/avrana-games/.staging-<random>` (root, `0700`), re-hash every file, set modes (directories `0755`, files `0644`), flush, rename to `/opt/avrana-games/<id>/<version>-<sha12>`.
+4. Write the **install record** `/etc/avrana-party/packages.d/<id>.json` atomically. This is the one generic overlay: Party Core and the catalog read installed games' contracts and grants from these records, in addition to `contracts/games/` and the appliance profile. `avrana/avrgame/installed.py` re-validates every record on every load (contract with the existing validator, grant with the appliance grant rules, tier `community`, entry `/games/<id>/`, working directory = the staged root, no collision with a repository game) and refuses a bad record by itself.
+5. `provision_game.provision` with the repository contracts merged with the installed ones, `trusted=trusted_path`.
+6. On any failure after step 3 began, unwind in reverse and report the original failure.
+
+Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha256` (archive), `format`, `installed_at`, `root`, `files` (path, size, sha256), `contract`, `grant` (`game`, `entry`, `tier`, `permissions_granted`, `runtime`), `package` (publisher, license, source: unverified claims). Granted permissions are the contract's request intersected with the operator's `--grant` flags; the tier is always `community`.
+
+**Catalog.** Party Home reads a static, generated `web/party/catalog.json`; a game without an installed catalog row has no tile and no navigation target on a phone, although Party Core offers and can launch it. `python3 -m avrana.contracts.catalog --packages DIR --out FILE` builds a catalog that includes installed packages (the committed catalog and `--check` are unchanged without `--packages`). The installer does not rewrite the release tree's catalog. Whether the appliance serves a regenerated catalog (a writable web overlay, a Party Core route, or a deploy step) touches deploy, nginx and routes: **an owner decision, not made here.**
 
 ## Explicitly deferred
 
@@ -85,7 +103,9 @@ Exit 0 success, 1 refused (one problem per line on stderr), 2 usage.
 | Owner-app hosting and transport | AVR-45, AVR-63 |
 | Storefront, entitlement, licensing | AVR-143, AVR-316, AVR-73 |
 | Emulated games | a separate provider, never this format |
-| Install, update, remove | `avrana.ops.install_game` (next lane) |
+| Update, rollback | AVR-58, AVR-60 |
+| Serving a catalog that lists installed packages on the appliance | owner decision (deploy / nginx / routes) |
+| CPU and memory ceilings for a package game | needs a measured real game |
 
 ## AVR-37 acceptance, as implemented
 
@@ -104,3 +124,18 @@ Exit 0 success, 1 refused (one problem per line on stderr), 2 usage.
 | Signing and provenance | **not met**, deferred to AVR-58 |
 | Permissions presentation, client cache, onboarding schema, resource ceilings, deprecation policy | **not met**, deferred as listed above |
 | Freeze (stable name) | **not met**; owner act after the gates above |
+
+## AVR-39 acceptance (the bounded slice implemented here), honestly
+
+| Criterion | Status |
+|---|---|
+| A validated install and remove workflow through the existing native provisioning path | **Met in code and unit tests** (scratch directories, recorded systemctl). Real systemd: `package-proof.sh`, written, **not yet executed** (CI runs it) |
+| Nothing half-installed after a failure | Met in unit tests at every injected failure point; kill -9 repair by `remove` tested by simulating the partial states |
+| A valid package is not trusted; tier community; operator grants | Met (`--grant`, record re-validation); permissions are recorded, **not enforced at launch** by Party Core |
+| Package content never imported or executed by the installer | Met by construction (only bytes are read and hashed); the game runs only in the template unit |
+| Staged tree root-owned, not group/world writable, no links; trusted-path rule | Met in code; root ownership is asserted on a real host only by the proof |
+| Upgrade, rollback | **Not met**, deferred (AVR-58, AVR-60) |
+| Signing, provenance, publisher identity, repository, permission prompts | **Not met**, deferred (AVR-58, AVR-57, AVR-62) |
+| A phone sees the installed game in Party Home on a real appliance | **Partly**: Party Core offers and launches it; the phone catalog is static and does not list it until an owner-approved catalog route exists |
+| Resource ceilings | **Not met** (needs measurement) |
+| Run on the Pi | **Not done** and not authorized |

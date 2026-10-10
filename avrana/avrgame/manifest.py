@@ -99,8 +99,13 @@ def validate_manifest(obj, vocab=None):
         contract = None
         if vocab is None:
             vocab = vocabulary.load()
+        candidate = obj['game']
+        if isinstance(candidate, dict) and 'package' in candidate:
+            problems.add("game.package: not allowed inside a package's contract; put version/publisher/license "
+                         "in the manifest's top-level \"package\" block")
+            candidate = {k: v for k, v in candidate.items() if k != 'package'}     # judge the rest on its own
         try:
-            contract = game_contract.validate(obj['game'], vocab)
+            contract = game_contract.validate(candidate, vocab)
         except game_contract.ContractError as exc:
             for p in exc.problems:
                 problems.add(f'game: {p}')

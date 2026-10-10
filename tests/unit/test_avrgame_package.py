@@ -223,7 +223,11 @@ class ManifestTests(unittest.TestCase):
         self.assertTrue(any('no_such_capability' in p for p in problems_of(m)))
         m = good_manifest()
         m['game']['package'] = {'version': '1', 'platforms': ['any']}
-        self.assertTrue(any('game.package' in p for p in problems_of(m)))
+        found = problems_of(m)
+        self.assertTrue(any('game.package' in p for p in found))
+        self.assertEqual(len(found), 1, found)                    # one clear sentence, not the contract's three
+        self.assertIn('top-level "package" block', found[0])
+        self.assertNotIn('platforms', found[0])
 
     def test_package_claims_are_bounded_display_text(self):
         for version in ('1.0', 'v1.0.0', '1.0.0-' + 'x' * 33, '1.0.0 ', '../1.0.0', '', 5):
@@ -686,6 +690,19 @@ class CommandLineTests(Tmp):
         env = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
         return subprocess.run([sys.executable, '-m', 'avrana.avrgame', *map(str, args)], capture_output=True,
                               text=True, cwd=cwd or self.tmp, env=env, timeout=120)
+
+    def test_extract_unpacks_a_valid_archive_and_refuses_the_rest(self):
+        root = self.make_tree()
+        self.assertEqual(self.run_cli('pack', root / 'avrgame.build.json', '--out', 'x.avrgame').returncode, 0)
+        done = self.run_cli('extract', 'x.avrgame', 'out')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual((self.tmp / 'out' / 'game_pkg' / '__main__.py').read_bytes(), b'print("hi")' + bytes([10]))
+        again = self.run_cli('extract', 'x.avrgame', 'out')            # no longer empty
+        self.assertEqual(again.returncode, 1)
+        self.assertIn('new or empty', again.stderr)
+        bad = self.write_zip(make_zip(extra=[('../evil.py', b'x')]), 'bad.avrgame')
+        self.assertEqual(self.run_cli('extract', bad, 'out2').returncode, 1)
+        self.assertFalse((self.tmp / 'out2').exists())
 
     def test_validate_pack_and_inspect_exit_codes_and_output(self):
         root = self.make_tree()

@@ -19,6 +19,13 @@ game. It is all or nothing: any problem raises RegistryError naming every offend
 caller keeps what it had. `apply` swaps a running service onto a new set without touching the
 party: members, host and device identities are not part of the registry.
 
+Installed packages (AVR-39, EXPERIMENTAL). When party-core.json names a `packages` directory, the
+install records in it (avrana.avrgame.installed) add Game Contracts to the repository's, and only
+then. Absent, nothing changes. A record is re-validated on every build; a record that is refused
+takes only ITS OWN game out: the problem is logged and that game is left out of the registry (its
+registry entry, if any, is ignored), while every repository game and every other installed game
+keeps working. Without that, one corrupt file under /etc would stop Party Core from starting.
+
 Stdlib only. The Unix-socket transport itself is avrana.party.sessions.
 """
 import json
@@ -84,10 +91,23 @@ def read_directory(directory):
     return entries
 
 
-def build(config_games, directory=None, contracts=None, read_key=protocol.read_key):
+def with_packages(contracts, packages):
+    """(contracts with the installed games', ids whose install record was refused). Each refused
+    record is logged. The repository's contracts always win: a record cannot shadow one."""
+    from avrana.avrgame import installed
+    repo = party_config.load_contracts() if contracts is None else contracts
+    found = installed.load(packages, repo)
+    for problem in found.problems:
+        log.error('install record refused: %s', problem)
+    return {**repo, **found.contracts}, found.refused - set(repo)
+
+
+def build(config_games, directory=None, contracts=None, read_key=protocol.read_key, packages=None):
     """(games, endpoints) for Party Core from party-core.json's `games` and the registry
     directory. Raises RegistryError, having changed nothing, when a game is registered twice,
-    has no Game Contract, disagrees with its contract, or its key cannot be read."""
+    has no Game Contract, disagrees with its contract, or its key cannot be read. With `packages`
+    (a records directory) the installed games' contracts are added, and a game whose record is
+    refused is left out with a logged problem instead of failing the whole build."""
     config_games = config_games or {}
     if not isinstance(config_games, dict):
         raise RegistryError(['games: an object keyed by game id'])
@@ -96,6 +116,11 @@ def build(config_games, directory=None, contracts=None, read_key=protocol.read_k
                 for g in sorted(set(native) & set(config_games))]
     merged = dict(config_games)
     merged.update({g: {k: v for k, v in e.items() if k != 'id'} for g, e in native.items()})
+    if packages:
+        contracts, left_out = with_packages(contracts, packages)
+        for game_id in sorted(left_out & set(merged)):
+            log.error('%s: left out, its install record was refused', game_id)
+            del merged[game_id]
     games = {}
     try:
         games = party_config.resolve(merged, contracts)
@@ -141,7 +166,7 @@ def reload(service, endpoints, config_path, contracts=None):
     try:
         with open(config_path, encoding='utf-8') as f:
             conf = json.load(f)
-        games, new = build(conf.get('games', {}), conf.get('registry'), contracts)
+        games, new = build(conf.get('games', {}), conf.get('registry'), contracts, packages=conf.get('packages'))
         before = set(endpoints)
         apply(service, endpoints, games, new)
     except RegistryError as e:

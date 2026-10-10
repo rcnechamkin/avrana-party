@@ -11,8 +11,8 @@ runtime: new native games are independent platform consumers (their own process,
 identity, secrets and state; generic routing from a game registry; one canonical manifest;
 results reported to Party).
 
-**EXPERIMENTAL, not an SDK, not frozen.** There is no SDK, no `.avrgame` package format and no
-installer; the pieces below are real but their names and shapes may change. Freeze gates remain:
+**EXPERIMENTAL, not an SDK, not frozen.** There is no SDK. An experimental `.avrgame` package format and a minimal installer exist
+([AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md), [install-game](install-game.md); not run on the appliance); the pieces below are real but their names and shapes may change. Freeze gates remain:
 Checkers integrated on the shared kit, review of the four-human BLUFF evidence (AVR-27) and Spades
 boundary validation (ADR 0014). Nothing here is deployed by this page.
 
@@ -38,6 +38,8 @@ the real Party service.
 | 6 | The game's code under a root-owned release path on the appliance (`/opt/avrana-party-games/current` for Games-repository games) | No: a Games deploy by the owner |
 | 7 | `sudo python3 -m avrana.ops.provision_game <slug>` (key, systemd instance, registry entry, Party Core reload) | No: root on the appliance, owner action ([provision-game](provision-game.md)) |
 | 8 | A catalog entry and artwork | No: derived from the Game Contract by `python3 -m avrana.contracts.catalog`; maintainers merge it |
+
+**With an experimental `.avrgame` package** (not deployed, experimental): the package carries the Game Contract and the code, so steps 4 (the contract in this repository), 5 (the grant PR) and 6 (staging the code on the appliance) are replaced by `install-game install FILE.avrgame --grant ...`, which writes an install record, stages the files root-owned and calls step 7's `provision-game` path. What remains: **root on the appliance** (an owner action), the owner prerequisites (phase 1, prepare-native-games, the `packages` key in `party-core.json`, an empty `/opt/avrana-games`) and **the catalog on the appliance**: the phone's Party Home lists only what the static `catalog.json` lists, so an installed package is offered by Party Core but has no tile until the owner decides how a catalog that includes packages is served. The package is untrusted code; see the trust statement in [install-game](install-game.md).
 
 Platforms: the Hello Party tooling was exercised locally on Windows and in CI on Linux; macOS is expected to
 work but is untested. The Hello Party page has not been opened in a browser.

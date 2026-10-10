@@ -3,6 +3,7 @@
     validate <file.avrgame | directory-with-avrgame.build.json | recipe file>
     pack <path/to/avrgame.build.json> [--out FILE] [--deflate]
     inspect <file.avrgame> [--json]
+    extract <file.avrgame> <dest>         validate, then unpack into a new or empty directory
 
 Exit 0 on success, 1 when the package or its inputs are refused (one problem per line on stderr),
 2 on bad usage. There is no install command here. Names may change; this is not a stable CLI.
@@ -51,6 +52,9 @@ def main(argv=None):
     p.add_argument('--out', default=None, help='default: <id>-<version>.avrgame in the current directory')
     p.add_argument('--deflate', action='store_true',
                    help='deflate (smaller; the sha256 then depends on the zlib build). Default: stored, identical bytes everywhere')
+    x = sub.add_parser('extract', help='validate an archive, then unpack it into a new or empty directory')
+    x.add_argument('archive')
+    x.add_argument('dest')
     i = sub.add_parser('inspect', help='show the manifest summary and file list of an archive')
     i.add_argument('archive')
     i.add_argument('--json', action='store_true')
@@ -61,6 +65,9 @@ def main(argv=None):
         elif args.command == 'pack':
             package = build.pack_recipe(args.recipe, args.out, compress=args.deflate)
             print(f'{package.path}\nsha256: {package.sha256}')
+        elif args.command == 'extract':
+            package = archive.extract(args.archive, args.dest)
+            print(f'{package.id} {package.version}: {len(package.files)} files into {args.dest}')
         else:
             package = archive.read(args.archive)
             if args.json:

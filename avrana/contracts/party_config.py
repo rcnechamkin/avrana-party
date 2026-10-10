@@ -63,10 +63,16 @@ def metadata(contract):
             'pregame': bool(party_extension(contract).get('pregame', False))}
 
 
-def load_contracts(directory=None):
-    """{game id: contract}: the same merged set the browser catalog is built from."""
+def load_contracts(directory=None, packages=None):
+    """{game id: contract}: the same merged set the browser catalog is built from. With
+    `packages` (an install-records directory, AVR-39, EXPERIMENTAL) the installed games' contracts
+    are added; a record that is refused is left out (avrana.avrgame.installed.load says why)."""
     from avrana.contracts import catalog, vocabulary
-    return catalog.load_contracts(directory or CONTRACTS_DIR / 'games', vocabulary.load())
+    contracts = catalog.load_contracts(directory or CONTRACTS_DIR / 'games', vocabulary.load())
+    if packages:
+        from avrana.avrgame import installed
+        contracts = installed.overlay(contracts, packages)[0]
+    return contracts
 
 
 def resolve(entries, contracts=None):
