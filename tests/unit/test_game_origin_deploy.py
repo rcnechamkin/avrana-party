@@ -50,14 +50,54 @@ class CertificateScripts(unittest.TestCase):
     def code(self, text):
         return '\n'.join(l for l in text.splitlines() if not l.lstrip().startswith('#'))
 
-    def test_renewal_names_the_lineage_once_and_never_adds_a_name(self):
-        """`lego renew` re-requests the names of the existing certificate, so the one command renews
-        a one-name certificate as before and a two-name one with both. Adding games.avrana.net
-        to its --domains would be a second, unreviewed way of changing what is certified."""
-        self.assertEqual(re.findall(r'--domains (\S+)', self.code(self.renew)), ['party.avrana.net'])
-        self.assertNotIn('games.avrana.net', self.code(self.renew))
-        self.assertIn('Do not add games.avrana.net here', self.renew)
-        self.assertIn('subjectAltName', self.code(self.renew))                  # the journal records the names
+    def cert(self, path, sans):
+        subprocess.run([OPENSSL, 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+                        '-nodes', '-days', '1', '-subj', '/CN=party.avrana.net', '-addext', 'subjectAltName=' + sans,
+                        '-keyout', str(path) + '.key', '-out', str(path)], check=True, capture_output=True)
+
+    def renew_run(self, installed, fresh=None):
+        """The real renewal script on a scratch tree, with stand-ins for lego and the installer that
+        record what they were given. `installed` is the SANs of /etc/avrana-party/tls/current."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'current').mkdir()
+            (root / 'state/certificates').mkdir(parents=True)
+            nl = chr(10)
+            (root / 'cloudflare.env').write_text(nl.join(['CF_DNS_API_TOKEN=x', 'ACME_EMAIL=a@example.net', '']))
+            self.cert(root / 'current/fullchain.pem', installed)
+            self.cert(root / 'state/certificates/party.avrana.net.crt', fresh or installed)
+            (root / 'lego').write_text(nl.join(['#!/usr/bin/env bash', 'echo "$@" > ' + (root / 'lego.args').as_posix(), '']))
+            (root / 'install-party-certificate.sh').write_text(nl.join([
+                '#!/usr/bin/env bash', 'echo "require=${AVRANA_REQUIRE_GAME_NAME:-}" > ' + (root / 'install.env').as_posix(), '']))
+            text = (self.renew
+                    .replace('credentials=/etc/avrana-party/cloudflare.env', 'credentials=' + (root / 'cloudflare.env').as_posix())
+                    .replace('lego=/usr/local/bin/lego', 'lego=' + (root / 'lego').as_posix())
+                    .replace('state=/var/lib/avrana-party/lego', 'state=' + (root / 'state').as_posix())
+                    .replace('current=/etc/avrana-party/tls/current', 'current=' + (root / 'current').as_posix()))
+            self.assertEqual(text.count(root.as_posix()), 4)
+            (root / 'renew.sh').write_text(text)
+            run = subprocess.run([BASH, str(root / 'renew.sh')], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            return ((root / 'lego.args').read_text().split(), (root / 'install.env').read_text().strip())
+
+    @unittest.skipUnless(BASH and OPENSSL, 'bash and openssl are needed')
+    def test_a_one_name_appliance_renews_exactly_as_before(self):
+        args, installer = self.renew_run('DNS:party.avrana.net')
+        self.assertEqual(re.findall(r'--domains (\S+)', ' '.join(args)), ['party.avrana.net'])
+        self.assertEqual(installer, 'require=')
+
+    @unittest.skipUnless(BASH and OPENSSL, 'bash and openssl are needed')
+    def test_a_two_name_appliance_asks_for_both_names_and_makes_the_installer_require_them(self):
+        args, installer = self.renew_run('DNS:party.avrana.net,DNS:games.avrana.net')
+        self.assertEqual(re.findall(r'--domains (\S+)', ' '.join(args)), ['party.avrana.net', 'games.avrana.net'])
+        self.assertEqual(installer, 'require=1')
+
+    def test_a_renewal_that_comes_back_without_the_name_is_refused_before_anything_changes(self):
+        """The installer is what refuses it (the renewal script exports the requirement, above): its
+        name check comes before the first write, so `current` is not touched."""
+        code = self.code(self.install)
+        self.assertLess(code.index('AVRANA_REQUIRE_GAME_NAME'), code.index('install -d'))
+        self.assertLess(code.index('AVRANA_REQUIRE_GAME_NAME'), code.index('mv -Tf'))
 
     def test_the_installer_requires_the_party_name_and_only_notes_a_missing_game_name(self):
         code = self.code(self.install)

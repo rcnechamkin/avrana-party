@@ -81,8 +81,10 @@ only guard while renewal is manual.
 
 ## Pre-deployment and backup
 
-Do not use the old `install-captive-dns.py`: it can reactivate the AP and uses
-historical assumptions. Keep `eth0` management active. Record `git rev-parse
+`install-captive-dns.py` (since 2026-09-24 it targets the profile `Avrana Party Internal`, refuses to
+act unless that profile is active, and restores the old file on failure; see
+[network](network.md) and [game-origin](game-origin.md) step 2) replaces the drop-in wholesale and
+bounces the AP, so diff the live file against the repository first. Keep `eth0` management active. Record `git rev-parse
 HEAD`, `ip -br addr`, `ss -lntup`, `nginx -T`, `dig @10.42.0.1` for the captive
 hosts, and the HTTP probe status/body before touching live files. Confirm the
 production checkout is clean. Do not deploy the nginx 443 block until a valid
