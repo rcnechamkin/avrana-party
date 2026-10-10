@@ -1,5 +1,7 @@
 # Runbook: first real-phone BLUFF playtest (N2)
 
+> **Superseded for the Party appliance (2026-10-10).** This is the 2026-09-24 dev-server playtest (hub profile, no host, `playtest-readiness` branch). The owner-run procedure for a four-human offline BLUFF session on the deployed Party is [friend-ready-acceptance](friend-ready-acceptance.md) (step 8); its dated expectations below are history.
+
 The `tools/avrana-offline` helper used below is on `main` (from 2026-09-27); the owner runs it
 with `sudo` (`docs/runbooks/network.md`).
 
