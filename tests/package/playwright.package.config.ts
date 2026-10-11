@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * AVR-338: real browsers (Tier 2, a CI runner) against an INSTALLED .avrgame package, through the
+ * AVR-338 (run from the repository root: npx playwright test -c tests/package/playwright.package.config.ts): real browsers (Tier 2, a CI runner) against an INSTALLED .avrgame package, through the
  * intended Party experience. Nothing here starts a server: experiments/native-game/package-browser-proof.sh
  * builds a disposable appliance (real systemd, Party Core, the installed Hello Party, the committed
  * nginx site on https://party.avrana.net and https://games.avrana.net with a throwaway certificate) and
@@ -18,7 +18,7 @@ import { defineConfig, devices } from '@playwright/test';
 const executablePath = process.env.PW_CHROMIUM_EXECUTABLE || undefined;
 
 export default defineConfig({
-  testDir: './tests/package',
+  testDir: '.',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,

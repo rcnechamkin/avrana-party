@@ -34,7 +34,6 @@ on:
       - 'ops/install-game'
       - 'experiments/**'
       - 'tests/package/**'
-      - 'playwright.package.config.ts'
       - 'avrana-party.nginx'
       - 'web/party/**'
       - 'tests/fixtures/appliances/**'
