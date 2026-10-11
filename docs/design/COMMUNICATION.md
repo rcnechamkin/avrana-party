@@ -6,6 +6,12 @@ default HUD exists: `experiments/party-service/prototypes/hud-chat.html` (branch
 AVRANA-EXPERIENCE contract (a feature is done when it is understandable, responsive, consistent,
 accessible and graceful — not when it merely works).
 
+> **Checked 2026-10-06 (AVR-53).** The "Party service" facts under "What exists today" and the
+> transport in Layer 1 do not match Party Core as built: it has no event list, no system
+> messages and no Server-Sent Events. The [messaging proposal](MESSAGING.md)
+> records what exists and proposes the transport, identity and limits; where the two
+> differ, read the proposal. Layers 2 to 4 here remain proposed direction.
+
 ## The idea
 
 Every game gets ordinary **Party chat** for free. A game may **declare a policy** that narrows or
