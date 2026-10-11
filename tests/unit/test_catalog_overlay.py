@@ -346,6 +346,72 @@ class ShellHook(unittest.TestCase):
             self.assertIn('ops/catalog-overlay refresh', run.stderr)
 
 
+class WithTheTrustHardening(OverlayBase):
+    """AVR-337 on top of AVR-336 (#103): the same ownership, evidence and signal rules."""
+
+    def test_a_legacy_record_without_the_roster_grant_gets_no_tile(self):
+        self.install()
+        path = Path(self.layout.records_dir) / 'hello.json'
+        doc = json.loads(path.read_text(encoding='utf-8'))
+        doc['grant']['permissions_granted'] = []              # a record from before party_roster was mandatory
+        path.write_text(json.dumps(doc), encoding='utf-8')
+        listed, problems = self.refresh()
+        self.assertEqual(listed, [])
+        self.assertFalse(self.overlay.exists())
+        self.assertTrue(any(p.startswith('hello: record refused') for p in problems), problems)
+
+    def test_the_undo_after_a_catalog_failure_runs_remove_with_the_same_owner(self):
+        seen = []
+        real = ig.remove
+
+        def spy(*a, **kw):
+            seen.append((a, kw))
+            return real(*a, **kw)
+        with mock.patch.object(ig, 'remove', spy):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster', base=self.root / 'missing.json')
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(seen), 1)
+        args, kw = seen[0]
+        self.assertEqual(args[0], 'hello')
+        self.assertEqual(args[-1], None)                       # owner: None in tests (a normal user), 0 for the real tool
+        self.assertEqual(len(args), 7)                         # id, layout, contracts, run, active, keep_state, owner
+
+    def test_the_undo_respects_the_ownership_checks_of_remove(self):
+        def refuse(*a, **kw):
+            raise ig.Refused('hello: the tree is not owned by root')
+        with mock.patch.object(ig, 'remove', refuse):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster', base=self.root / 'missing.json')
+        self.assertEqual(rc, 1)
+        self.assertIn('removing hello again failed', err)
+        self.assertIn('install-game remove hello', err)
+        self.assertFalse(self.overlay.exists())
+
+    def test_the_overlay_never_lists_a_game_whose_record_is_gone_after_an_interrupted_remove(self):
+        self.assertEqual(self.main('install', str(self.package()), '--grant', 'party_roster')[0], 0)
+        self.assertTrue(self.overlay.exists())
+
+        def die(package_id, layout, *a, **kw):
+            os.unlink(layout.record(package_id))                # the record goes last; the signal came right after it
+            raise KeyboardInterrupt('signal 15')
+        with mock.patch.object(ig, 'remove', die):
+            self.assertEqual(self.main('remove', 'hello')[0], 1)      # interrupted: a truthful non-zero result
+        self.assertFalse(self.overlay.exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'signals')
+    def test_a_signal_while_the_catalog_is_published_cannot_cut_the_publish_or_its_undo_short(self):
+        import signal
+        real = co.write_atomic
+
+        def slow(path, text):
+            os.kill(os.getpid(), signal.SIGTERM)                # arrives mid-publish, after the install completed
+            real(path, text)
+        with mock.patch.object(co, 'write_atomic', slow):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster')
+        self.assertEqual(rc, 0, err)                           # swallowed: the result is the truth, installed and published
+        self.assertEqual(self.doc()['games'][-1]['id'], 'hello')
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+
+
 class FromInstallGame(OverlayBase):
     def test_install_and_remove_through_the_command_line_keep_the_overlay_in_step(self):
         pkg = str(self.package())
@@ -361,7 +427,7 @@ class FromInstallGame(OverlayBase):
         self.assertEqual(os.listdir(self.out_dir), [])
 
     def test_a_dry_run_writes_no_overlay(self):
-        rc, _, err = self.main('install', str(self.package()), '--dry-run', root=False)
+        rc, _, err = self.main('install', str(self.package()), '--grant', 'party_roster', '--dry-run', root=False)
         self.assertEqual(rc, 0, err)
         self.assertFalse(self.out_dir.exists())
 

@@ -34,6 +34,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import stat
@@ -272,7 +273,63 @@ def locked(path):
         os.close(fd)
 
 
+_shield = [0]       # above zero: a signal is swallowed (see interrupts_as_exceptions)
+
+
+@contextlib.contextmanager
+def shielded():
+    """No signal interrupts this block: an undo must run to its end whatever arrives."""
+    _shield[0] += 1
+    try:
+        yield
+    finally:
+        _shield[0] -= 1
+
+
+@contextlib.contextmanager
+def interrupts_as_exceptions():
+    """A hang-up (the ssh session drops), a TERM or a Ctrl-C during install or remove becomes a
+    KeyboardInterrupt, so `install` unwinds what it began instead of dying half way, and a second
+    signal cannot cut the undo short. A run killed outright (KILL, power) leaves a partial state
+    that `remove <id>` clears."""
+    import signal
+    import threading
+    names = [n for n in ('SIGINT', 'SIGTERM', 'SIGHUP') if hasattr(signal, n)]
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = {}
+    _shield[0] = 0
+
+    def handler(signum, frame):
+        if _shield[0]:
+            return                  # an undo is running, or the install has completed: not interruptible
+        for n in names:
+            signal.signal(getattr(signal, n), signal.SIG_IGN)
+        raise KeyboardInterrupt(f'signal {signum}')
+    try:
+        for n in names:
+            previous[n] = signal.signal(getattr(signal, n), handler)
+        yield
+    finally:
+        for n, old in previous.items():
+            signal.signal(getattr(signal, n), old)
+        _shield[0] = 0
+
+
 # ---- checks that change nothing ---------------------------------------------------------------------
+
+def _empty_plain_dir(path, owner=None):
+    """True for an empty plain directory that only the expected owner (a uid; None skips the check)
+    can write to; Refused for an empty one that anybody else could write to or that is not theirs."""
+    if not os.path.isdir(path) or os.path.islink(path) or os.listdir(path):
+        return False
+    st = os.lstat(path)
+    if (owner is not None and st.st_uid != owner) or (os.name == 'posix' and st.st_mode & 0o022):
+        raise Refused(f'{path} is an empty directory that is not root-owned or is writable by a group or others; '
+                      'delete it by hand before installing')
+    return True
+
 
 def _plain_dir(path, what):
     if os.path.islink(path) or not os.path.isdir(path):
@@ -313,17 +370,35 @@ def _leftover_staging(layout, owner=None):
 
 
 def _check_permissions(contract, allow):
-    """(granted, notes): the permissions the contract requests that the operator allowed."""
+    """(granted, notes): the permissions the contract requests that the operator allowed. Fails
+    closed (AVR-336): Party Core does not enforce grants at launch, so a grant is only honest for what
+    the sandbox really provides. A permission it cannot provide (anything but `GRANTABLE`) is refused
+    as a grant; and a package must request, and be granted, `party_roster`, because every game gets
+    the roster in its launch whatever it asked for."""
     for name in allow:
         if name not in game_contract.PERMISSIONS:
             raise Refused(f'--grant {name!r}: not a permission name (one of {", ".join(game_contract.PERMISSIONS)})')
+        if name not in installed.GRANTABLE:
+            raise Refused(f'--grant {name}: the package sandbox cannot provide it (no IP sockets, no devices); '
+                          f'only {", ".join(installed.GRANTABLE)} can be granted, and a grant must not say more than is true')
     requested = list(contract['runtime']['permissions'])
+    if installed.ALWAYS_PROVIDED not in requested:
+        raise Refused(f'the package does not request {installed.ALWAYS_PROVIDED}, but Party Core hands every game '
+                      'the roster (participant, name, role) at launch, requested or not; a package that does not '
+                      f'declare it would receive it unannounced. Add "{installed.ALWAYS_PROVIDED}" to runtime.permissions')
+    if installed.ALWAYS_PROVIDED not in allow:
+        raise Refused(f'the package receives the Party roster at launch and Party Core cannot withhold it; '
+                      f'install it only with --grant {installed.ALWAYS_PROVIDED}, so the record says what is true')
     granted = sorted(set(requested) & set(allow))
     notes = [f'ignored --grant {name}: the package never requested it' for name in sorted(set(allow) - set(requested))]
     missing = [name for name in requested if name not in granted]
     if missing:
         notes.append(f'requested but not granted: {", ".join(missing)} (grant with --grant NAME; '
-                     'permissions are recorded for the catalog, Party Core does not yet enforce them at launch)')
+                     'permissions are recorded for the catalog, Party Core does not yet enforce them at launch; '
+                     'what the sandbox cannot provide stays unavailable to the package)')
+        if 'persistent_storage' in missing:
+            notes.append('persistent_storage not granted: the unit gets NO state directory (only a private, '
+                         'ephemeral /tmp)')
     return granted, notes
 
 
@@ -355,8 +430,9 @@ def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpret
             pass
         raise Refused(f'{pid}{version} is already installed (or its record is damaged); remove it first: '
                       f'install-game remove {pid}. Upgrade and rollback are not implemented yet (AVR-58, AVR-60).')
-    if os.path.lexists(tree):
-        raise Refused(f'{tree} exists without a record (an interrupted install?); run install-game remove {pid} first')
+    if os.path.lexists(tree) and not _empty_plain_dir(tree, owner):      # an empty one is what a crash after mkdir leaves
+        raise Refused(f'{tree} exists without a record (an interrupted install?); run install-game remove {pid} first '
+                      '(if that reports nothing to remove, it is not a tree this tool made: delete it by hand)')
     left = pg.plan_remove(pid, layout.provision, False, None)
     if left:
         raise Refused(f'{pid} is already provisioned by other means ({", ".join(left)}); '
@@ -434,8 +510,9 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
         if not os.path.isdir(layout.records_dir):
             _mkdir(layout.records_dir)
             ledger.add('records directory', lambda: _rmdir_if_empty(layout.records_dir))
-        _mkdir(layout.id_dir(pid))
-        ledger.add('game directory', lambda: _rmdir_if_empty(layout.id_dir(pid)))
+        if not os.path.lexists(layout.id_dir(pid)):
+            _mkdir(layout.id_dir(pid))
+            ledger.add('game directory', lambda: _rmdir_if_empty(layout.id_dir(pid)))
         staging = Path(layout.games_root) / f'{STAGING_PREFIX}{secrets.token_hex(8)}'
         _mkdir(staging, 0o700)
         ledger.add('staging directory', lambda: _rmtree(staging))
@@ -455,13 +532,18 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
         began['provisioning'] = True
         changed = pg.provision(pid, layout.provision, plan.contracts, plan.grants, run, own, origin,
                                trusted=trusted)
+        _shield[0] += 1                                # installed (the LAST statement here): a late signal must not report an undo that did not happen
     except BaseException as exc:
-        problems = ledger.unwind()
-        if began['provisioning']:
-            try:
-                pg.reload_party(run)                   # Party Core forgets the game it may have loaded
-            except Exception:
-                problems.append('Party Core reload')
+        _shield[0] += 1                                # FIRST statement: the undo is never cut short, by a signal or a second one
+        try:
+            problems = ledger.unwind()
+            if began['provisioning']:
+                try:
+                    pg.reload_party(run)               # Party Core forgets the game it may have loaded
+                except Exception:
+                    problems.append('Party Core reload')
+        finally:
+            _shield[0] -= 1
         if problems:
             raise RollbackIncomplete(exc, problems) from exc
         raise
@@ -488,13 +570,69 @@ def plan_install_lines(plan, layout, origin):
 
 # ---- remove -----------------------------------------------------------------------------------------
 
-def _ours(package_id, layout):
-    """What marks this id as an installed package (or the leftover of one): a record (valid or
-    not), a tree under the games root, or a drop-in whose WorkingDirectory is under it."""
+TREE_NAME = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]{1,32})?-[0-9a-f]{12}')
+
+
+def _tree_is_ours(package_id, layout, owner=None):
+    """True when `<games root>/<id>` has the shape only this installer makes: a plain directory
+    (owned by `owner` when given) holding nothing but plain directories named <version>-<sha12>. A
+    stray directory, a file or a link of that name is nobody's evidence."""
+    path = layout.id_dir(package_id)
+    try:
+        st = os.lstat(path)
+        if not stat.S_ISDIR(st.st_mode) or (owner is not None and st.st_uid != owner):
+            return False
+        names = os.listdir(path)
+        if not names:
+            return False                # nothing the installer made is in it
+        for name in names:
+            child = os.lstat(os.path.join(path, name))
+            if not TREE_NAME.fullmatch(name) or not stat.S_ISDIR(child.st_mode):
+                return False
+            if owner is not None and child.st_uid != owner:
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def _record_is_ours(package_id, layout, strict, owner=None):
+    """Whether the install record file marks this id as installed by this tool. For `strict` the
+    file must be a root-owned regular file that parses as JSON and says it is an install record of
+    exactly this id; otherwise any file at the record's name counts (a damaged record is the thing
+    `remove` exists to clear)."""
+    path = layout.record(package_id)
+    if not os.path.lexists(path):
+        return False
+    if not strict:
+        return True
+    try:
+        st = os.lstat(path)
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode) or st.st_size > installed.MAX_RECORD_BYTES \
+                or (owner is not None and st.st_uid != owner):
+            return False
+        with open(path, 'rb') as f:
+            doc = json.loads(f.read(installed.MAX_RECORD_BYTES + 1).decode('utf-8'))
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and doc.get('record') == installed.RECORD and doc.get('id') == package_id
+
+
+def _ours(package_id, layout, repo_contracts=(), owner=None):
+    """What marks this id as an installed package (or the leftover of one), and so as this tool's to
+    clear: a record, a tree of the shape this installer makes under the games root, or a drop-in
+    whose WorkingDirectory is under it. For an id that is a game of this repository the only
+    evidence is an install record that says it is one: a stray directory or drop-in must never be
+    enough to deprovision a first-party game."""
+    first_party = package_id in repo_contracts
     found = []
-    if os.path.lexists(layout.record(package_id)):
+    if _record_is_ours(package_id, layout, first_party, owner):
         found.append('record')
-    if os.path.lexists(layout.id_dir(package_id)):
+    if first_party:
+        if found and os.path.lexists(layout.id_dir(package_id)):
+            found.append('files')           # a package's own tree goes with its record
+        return found
+    if _tree_is_ours(package_id, layout, owner):
         found.append('files')
     try:
         text = layout.provision.dropin(package_id).read_text(encoding='utf-8')
@@ -505,18 +643,18 @@ def _ours(package_id, layout):
     return found
 
 
-def _check_removable(package_id, repo_contracts, layout):
+def _check_removable(package_id, repo_contracts, layout, owner=None):
     if not isinstance(package_id, str) or not pg.GAME_ID.fullmatch(package_id):
         raise Refused(f'{package_id!r} is not a game id')
-    if package_id in repo_contracts and not {'record', 'files'} & set(_ours(package_id, layout)):
-        # no install record and no staged tree: nothing says this was ever a package
+    if package_id in repo_contracts and not _ours(package_id, layout, repo_contracts, owner):
+        # no install record that says so: nothing says this was ever a package
         raise Refused(f'{package_id}: a first-party game of this appliance, not a package; '
                       'use provision-game --remove for those')
 
 
-def plan_remove(package_id, layout, repo_contracts, keep_state=False, active=None):
-    _check_removable(package_id, repo_contracts, layout)
-    ours = _ours(package_id, layout)
+def plan_remove(package_id, layout, repo_contracts, keep_state=False, active=None, owner=None):
+    _check_removable(package_id, repo_contracts, layout, owner)
+    ours = _ours(package_id, layout, repo_contracts, owner)
     left = pg.plan_remove(package_id, layout.provision, keep_state, active)
     if left and not ours:
         raise Refused(f'{package_id} is provisioned but was not installed by install-game; '
@@ -524,21 +662,25 @@ def plan_remove(package_id, layout, repo_contracts, keep_state=False, active=Non
     return [*(item for item in ('record', 'files') if item in ours), *left]
 
 
-def remove(package_id, layout, repo_contracts, run, active=None, keep_state=False):
+def remove(package_id, layout, repo_contracts, run, active=None, keep_state=False, owner=None):
     """Leave nothing for this id: the game provisioned by provision_game.remove (units, key,
-    registry entry, socket, state unless `keep_state`), then the record, then the staged files,
-    then one more Party reload. Works from any partial state, with a damaged record or none, and
-    twice. Refused while that game has a session (`active`), before anything is touched. Never
-    touches a first-party game or a game this tool did not install."""
-    plan_remove(package_id, layout, repo_contracts, keep_state, None)           # may refuse; changes nothing
+    registry entry, socket, state unless `keep_state`), then the staged files, then the record, then
+    one more Party reload. The record goes LAST: it is the evidence that this id is ours, so every
+    state an interruption can leave still has it (or, for an id that is not a repository game, a
+    tree of the installer's shape) and a second `remove` finishes the job. Works from any partial
+    state, with a damaged record or none, and twice. Refused while that game has a session
+    (`active`), before anything is touched. Never touches a first-party game (one that has no
+    install record naming it) or a game this tool did not install."""
+    plan_remove(package_id, layout, repo_contracts, keep_state, None, owner)    # may refuse; changes nothing
+    ours = _ours(package_id, layout, repo_contracts, owner)
     removed = pg.remove(package_id, layout.provision, run, keep_state, active)
+    if 'files' in ours and os.path.lexists(layout.id_dir(package_id)):
+        _rmtree(layout.id_dir(package_id))
+        removed.append('files')
     record = layout.record(package_id)
     if os.path.lexists(record):
         os.unlink(record)
         removed.append('record')
-    if os.path.lexists(layout.id_dir(package_id)):
-        _rmtree(layout.id_dir(package_id))
-        removed.append('files')
     pg.reload_party(run)                              # Party Core no longer reads a record that is gone
     return removed
 
@@ -690,18 +832,26 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
                                             settle=pg.STATUS_SETTLE_S if opener is None and not a.dry_run else 0.0,
                                             host=pg.party_host(conf) if opener is None else None)
             if a.dry_run:
-                changes = plan_remove(a.id, layout, contracts, a.keep_state, active)
+                changes = plan_remove(a.id, layout, contracts, a.keep_state, active, owner)
                 for item in changes:
                     print(f'{a.id}: would remove {item}', file=out)
                 if not changes:
                     print(f'{a.id}: nothing to remove', file=out)
                 return 0
-            with locked(layout.lock_file):
-                changes = remove(a.id, layout, contracts, run, active, a.keep_state)
+            with interrupts_as_exceptions(), locked(layout.lock_file):
+                try:
+                    changes = remove(a.id, layout, contracts, run, active, a.keep_state, owner)
+                except BaseException:
+                    if catalog_dir:                  # AVR-337: the record may be gone already; never leave a tile for it
+                        with shielded():
+                            catalog_overlay.best_effort(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
+                                                        catalog_dir, owner, repo_contracts=contracts)
+                    raise
                 for item in changes:                 # said first: the removal is done whatever the catalog does next
                     print(f'{a.id}: removed {item}', file=out)
-                lines = catalog_overlay.after_change(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
-                                                     catalog_dir, owner, repo_contracts=contracts) if catalog_dir else []
+                with shielded():
+                    lines = catalog_overlay.after_change(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
+                                                         catalog_dir, owner, repo_contracts=contracts) if catalog_dir else []
             for line in lines:
                 print(line, file=out)
             if not changes:
@@ -720,15 +870,24 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
             for line in plan_install_lines(plan, layout, origin):
                 print(line, file=out)
             return 0
-        with locked(layout.lock_file):
+        with interrupts_as_exceptions(), locked(layout.lock_file):
             lines = install(a.package, layout, contracts, run, own, origin, trusted, a.grant, owner)
             if catalog_dir:                          # AVR-337: fail closed, the install is undone if the catalog cannot be written
-                lines += catalog_overlay.publish_or_undo(
-                    layout, a.catalog_base or catalog_overlay.DEFAULT_BASE, catalog_dir, owner, lines[0].split(':', 1)[0],
-                    undo=lambda pid: remove(pid, layout, contracts, run), repo_contracts=contracts)
+                with shielded():                     # installed already: a signal must not cut the publish or its undo short
+                    lines += catalog_overlay.publish_or_undo(
+                        layout, a.catalog_base or catalog_overlay.DEFAULT_BASE, catalog_dir, owner, lines[0].split(':', 1)[0],
+                        undo=lambda pid: remove(pid, layout, contracts, run, None, False, owner), repo_contracts=contracts)
         for line in lines:
             print(line, file=out)
         return 0
+    except KeyboardInterrupt:
+        if a.command == 'remove':
+            print(f'install-game: interrupted; the removal of {a.id} may be half done. Run '
+                  f'"install-game remove {a.id}" again: it finishes the job from any state', file=err)
+        else:
+            print('install-game: interrupted; the install was undone as far as it had gone '
+                  '(nothing is installed), and "install-game remove <id>" clears anything left', file=err)
+        return 1
     except RollbackIncomplete as e:
         print(f'install-game: failed: {_describe(e.original)}', file=err)
         print('install-game: the undo is incomplete: ' + '; '.join(e.problems), file=err)

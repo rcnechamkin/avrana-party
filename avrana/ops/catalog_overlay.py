@@ -268,6 +268,16 @@ def after_change(layout, base_path=DEFAULT_BASE, out_dir=DEFAULT_DIR, owner=inst
     return _apply(layout, base_path, out_dir, owner, **kw)[2]
 
 
+def best_effort(layout, base_path, out_dir, owner, **kw):
+    """After a remove that did not finish: bring the overlay in step with the records as they are
+    now, and say nothing if that fails either (the overlay is then absent, and the original failure
+    is what the operator must see)."""
+    try:
+        _apply(layout, base_path, out_dir, owner, **kw)
+    except Exception:
+        pass
+
+
 def publish_or_undo(layout, base_path, out_dir, owner, package_id, undo, **kw):
     """After a successful install of `package_id`: write the effective catalog. If that fails, or
     the package itself cannot be listed (its row is refused: a game nobody can see on a phone is
