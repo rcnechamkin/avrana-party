@@ -25,13 +25,15 @@ signature, publisher identity or provenance yet (AVR-58).
 
 **What an installed package can and cannot do** (from [`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service) and ADR 0016; the unit is the only protection):
 
-- **Can:** run arbitrary code as a throwaway `DynamicUser=` (its Python and whatever it ships); read any world-readable file on the host, including the other install records; connect to the Unix sockets it can reach: other games' sockets (it has the `avrana-games` supplementary group) and Party Core's internal socket (`AVRANA_PARTY_SOCKET`, which is authenticated by the game's own key only); keep state in its own `StateDirectory=` (`0700`); use CPU, memory and processes without limit.
-- **Cannot:** open IP sockets (`RestrictAddressFamilies=AF_UNIX`); write its own code (the staged tree is root-owned and `ProtectSystem=strict` is implied by `DynamicUser=`); read other games' private state or keys (each game gets only its own key as a credential; state directories are `0700` per dynamic user); see home directories or devices (`ProtectHome`, `PrivateDevices`).
-- **NOT limited today:** no `CapabilityBoundingSet=` and no `SystemCallFilter=` beyond what `DynamicUser=` implies; no `MemoryMax=`, `TasksMax=` or `CPUQuota=`. Granted permissions are recorded and shown but **not enforced** by Party Core at launch.
+- **Can:** run arbitrary code as a throwaway `DynamicUser=` (its Python and whatever it ships); read any world-readable file on the host, including the install records (they hold no secret); connect to Party Core's internal Unix socket (`AVRANA_PARTY_SOCKET`, group `avrana-games`; authenticated by the game's own key only, so it can also flood it); keep state in its own `StateDirectory=` (`0700`, no disk quota) when `persistent_storage` is granted; receive, in every launch, the roster of the session (participant id, display name, role) and sign results for its own session.
+- **Cannot:** connect to another game's socket (`/run/avrana-games/<id>.sock` is `root:avrana-front` `0660` and a package is not in `avrana-front`; `package-proof.sh` runs the connect with that identity and sees it refused, while Party Core's internal socket accepts it); open IP sockets (`RestrictAddressFamilies=AF_UNIX`); write its own code (the staged tree is root-owned and `ProtectSystem=strict` is implied by `DynamicUser=`); read other games' private state or keys (each game gets only its own key as a credential; state directories are `0700` per dynamic user); see home directories or devices (`ProtectHome`, `PrivateDevices`).
+- **Community-tier ceilings (AVR-336; provisional values, to be revisited with measurements on a real game and the Pi, owner decision 2026-10-10):** the package's drop-in adds `MemoryMax=256M`, `TasksMax=64`, `CPUQuota=100%`, an empty `CapabilityBoundingSet=`, `PrivateNetwork=yes` (no abstract-namespace sockets of the host; path sockets such as Party's still work), `ProtectProc=invisible`, `ProtectClock`, `ProtectHostname`, `LockPersonality`, `RestrictRealtime` and `RestrictNamespaces`. First-party units are unchanged. A ceiling that is too low kills the package's process, not the host.
+- **State directory follows the grant (AVR-336).** A community unit has its `StateDirectory=` (`0700`, from the template) only when `persistent_storage` was requested and granted; otherwise the drop-in resets it (`StateDirectory=`), so the unit has no `$STATE_DIRECTORY` and no persistent directory (`package-proof.sh` checks both cases on a real systemd). `/tmp` is `PrivateTmp` (implied by `DynamicUser=`): private to the unit and discarded when it stops. No game or gamekit in use reads `$STATE_DIRECTORY` (Hello Party requests only `party_roster`).
+- **NOT limited today:** `SystemCallFilter=` is **deferred** (owner decision 2026-10-10) until an arm64 run on the Pi with a real game proves a filter; no disk quota (a granted state directory, or `/tmp` while the unit runs, can fill the disk); and **granted permissions are not enforced by Party Core at launch**, so the installer fails closed instead: it refuses `--grant` of any permission the sandbox cannot provide (everything except `persistent_storage` and `party_roster`), and requires `party_roster` (above). `persistent_storage` is enforced by the unit as described.
 - The hidden path options (`--games-root`, `--visible-root`, `--records-dir`, `--lock-file`, ...) exist for tests and rehearsals. They are for root only and must never be pointed at a directory a package or a non-root user can write.
 
 In more detail, what the template unit ([`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service))
-confines: a throwaway Unix user that owns nothing, `StateDirectory=` as the only writable place it is
+confines: a throwaway Unix user that owns nothing, `StateDirectory=` (only with `persistent_storage` granted) as the only persistent place it is
 given (`0700`), only its own key as a credential, `RestrictAddressFamilies=AF_UNIX` (no IP socket),
 `ProtectHome`, `PrivateDevices`, `ProtectKernel*`, `UMask=0077`; ADR 0016 notes that `DynamicUser=yes` also
 implies `ProtectSystem=strict`, `PrivateTmp`, `NoNewPrivileges` and `RestrictSUIDSGID`. What it does
@@ -74,9 +76,12 @@ bad hashes, unsupported `format` or `requires`: compatibility fails closed); an 
 game, reserved, already installed (any version: "remove it first"; upgrade and rollback are not
 implemented, AVR-58 and AVR-60), or already provisioned by other means; an interpreter that is missing or
 not root-owned; a games root that is not trusted; a leftover from an interrupted run (see below).
-`--grant` names a permission the operator allows; the grant is requested ∩ allowed (default: nothing).
-A permission the contract requested and you did not grant, or granted and it never requested, is said
-in the output; neither stops the install.
+`--grant` names a permission the operator allows; the grant is requested ∩ allowed. Party Core does not
+enforce grants at launch, so the installer fails closed (AVR-336): it refuses `--grant` of a permission the
+sandbox cannot provide (all but `persistent_storage` and `party_roster`), and it refuses a package that does not
+request `party_roster`, or an install without `--grant party_roster`, because the roster reaches every game
+regardless. Other requested-but-ungranted permissions, and a grant the package never requested, are said in the
+output and do not stop the install.
 
 ## What install leaves
 
@@ -97,9 +102,17 @@ Install is all or nothing. Each step is recorded as it begins and a failure undo
 failure. If the undo itself fails, the message says so; run `remove ID`. A crash (power, `kill -9`) can
 leave a partial state: a staging directory (cleaned by the next install), a tree without a record, a
 record without a tree, or a provisioned game without a record. `remove ID` clears any of them and is safe
-to repeat; `install` refuses to guess. A lock file (`/run/avrana-install-game.lock`) stops two runs
+to repeat; `install` refuses to guess. `remove` deletes the staged files first and the install record LAST, so every interrupted state keeps the evidence that the id is a package; it clears an id only on that evidence (a record, a tree of the shape this installer makes, or a drop-in running from it) and **never a first-party game: for an id of the repository it requires a genuine install record**, so a stray `/opt/avrana-games/<id>` directory cannot make it deprovision one. A hang-up, TERM or Ctrl-C during `install` unwinds it like a failure. A lock file (`/run/avrana-install-game.lock`) stops two runs
 interleaving. `remove` is refused while the game has a session (end it from Party Home), never touches a
 first-party game, and with `--keep-state` leaves the game's `/var/lib/avrana-games/<id>`.
+
+## Upgrade note: records from before the roster rule (AVR-336)
+
+A record whose `permissions_granted` lacks `party_roster` is no longer read by Party Core (it logs
+`install record refused` and leaves that game out). `install-game list` shows it as `REFUSED <id>: ...` and
+`install-game verify <id>` reports it, both with the remedy: `install-game remove <id>`, then install the
+package again with `--grant party_roster`. No package has been installed on an appliance yet, so this is a
+precaution. The rule is an owner decision of 2026-10-10 for the experimental format, to be revisited before any freeze (AVR-37): see [AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md).
 
 ## Reverse
 
@@ -114,4 +127,4 @@ reload). It leaves nothing for that id. The shared template units stay (other ga
   Core* but has **no tile and no navigation** in the phone UI until a catalog that includes it is served.
   `python3 -m avrana.contracts.catalog --packages DIR --out FILE` generates one; where it is served from
   is an owner decision (see [AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md)).
-- No CPU or memory ceiling for a package game; the tree is only as trustworthy as the person who installed it.
+- The community-tier ceilings are provisional values, to be revisited with measurements; there is no syscall filter (deferred) and no disk quota; the tree is only as trustworthy as the person who installed it.

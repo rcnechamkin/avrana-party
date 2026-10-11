@@ -44,6 +44,13 @@ DEFAULT_GAMES_ROOT = '/opt/avrana-games'
 EXPECTED_OWNER = 0 if os.name == 'posix' else None
 _DEFAULT = object()
 TIER = 'community'            # the only tier a package can ever have; nothing in a package changes it
+# What the package sandbox really provides, whatever was granted (AVR-336). `party_roster`: Party Core
+# puts the roster (participant, name, role) in every game's launch. `persistent_storage`: the template
+# community drop-in gives a state directory only when persistent_storage is granted. Every other permission is unobtainable in the sandbox (the
+# unit has AF_UNIX only and PrivateDevices=), so a grant of one would be a record that says more than
+# is true. Party Core does not enforce grants at launch (docs/design/AVRGAME-PACKAGE.md).
+GRANTABLE = ('persistent_storage', 'party_roster')
+ALWAYS_PROVIDED = 'party_roster'    # delivered to every game, so a package must request it and be granted it
 MAX_RECORD_BYTES = 2 * 1024 * 1024
 TOP = ('record', 'id', 'version', 'sha256', 'format', 'installed_at', 'root', 'files', 'contract',
        'grant', 'package')
@@ -269,6 +276,14 @@ def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRE
             extra = sorted(set(granted) - set(contract['runtime']['permissions']))
             if extra:
                 p.append(f'grant.permissions_granted: {extra} were never requested by the contract')
+            unobtainable = sorted(set(granted) - set(GRANTABLE))
+            if unobtainable:
+                p.append(f'grant.permissions_granted: {unobtainable} cannot be provided inside the package sandbox '
+                         f'(only {", ".join(GRANTABLE)} can)')
+            if ALWAYS_PROVIDED not in granted:
+                p.append(f'grant.permissions_granted: {ALWAYS_PROVIDED} is delivered to every game at launch, '
+                         'so a package record must carry it; a record from before this rule is refused: run '
+                         f'"install-game remove {pid}" and install the package again with --grant {ALWAYS_PROVIDED}')
         if isinstance(root, str):
             p += _runtime_problems(grant, root, interpreters)
     claims = doc['package']
