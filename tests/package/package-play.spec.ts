@@ -62,7 +62,7 @@ test('Hello Party, installed: admission, discovery, launch, private views, recon
     // A watcher joins late: the Party sends it to the game, as a spectator with no card.
     const cy = await phone(browser, info, 'Cy');
     all.push(cy);
-    await joinParty(cy);
+    await joinParty(cy, { intoRound: true });
     await expect(cy.page).toHaveURL(GAME_PAGE);
     await expect(cy.page.locator('#status')).toHaveText('You are watching.');
     await expect(cy.page.locator('#card')).toBeHidden();
@@ -128,7 +128,7 @@ test('Hello Party, installed: admission, discovery, launch, private views, recon
     for (const [p, others] of [[ana, [benWord]], [ben, [anaWord]], [cy, [anaWord, benWord]]] as const)
       for (const other of others) expect(received(p), `${p.name} was sent another seat's word`).not.toContain(`"${other}"`);
   } finally {
-    await leaveAll([...all].reverse());
+    await leaveAll(all);
     for (const p of all) await p.context.close();
   }
 });
