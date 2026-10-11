@@ -68,5 +68,7 @@ export async function leaveAll(phones: Phone[]) {
     const state = await partyState(host);
     if (state.session && !['ended'].includes(state.session.state)) await post(host, 'session/end', { if_version: state.version });
   } catch { /* nothing to end, or the context is gone */ }
+  // A page that is still open keeps the phone present (presence is automatic): park every page first.
+  for (const p of phones) { try { await p.page.goto('about:blank'); } catch { /* gone */ } }
   for (const p of [...phones].reverse()) { try { await post(p, 'leave', {}); } catch { /* the context may be gone */ } }
 }
