@@ -9,6 +9,9 @@ import hashlib
 import io
 import json
 import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -196,6 +199,146 @@ class WithPackage(OverlayBase):
         self.assertEqual(self.overlay.read_bytes(), before)
 
 
+class PackageControlledFields(OverlayBase):
+    """A package's contract is free text. Whatever it says, its row is the allowlisted, bounded,
+    native, community row and never passes for a first-party game."""
+
+    def edit_record(self, **changes):
+        path = Path(self.layout.records_dir) / 'hello.json'
+        doc = json.loads(path.read_text(encoding='utf-8'))
+        doc['contract'].update(changes)
+        path.write_text(json.dumps(doc), encoding='utf-8')
+
+    def row(self):
+        self.refresh()
+        return self.doc()['games'][-1]
+
+    def test_the_reviewers_probe_is_neutralised(self):
+        self.install()
+        self.edit_record(extensions={'net.avrana.catalog': {
+            'provider': 'lan-games', 'status': 'experimental', 'legacySlug': 'bluff', 'integration': 'avrana.lan-launch/v1',
+            'icon': 'skull', 'category': 'x' * 5000, 'art': 'lan:bluff', 'accent': '#ff0000', 'description': 'd' * 3000,
+            'playersLabel': 'p', 'hardwareValidationRequired': True}})
+        row = self.row()
+        self.assertEqual(row['id'], 'hello')
+        for key in ('legacySlug', 'integration', 'icon', 'category', 'art', 'accent', 'description', 'playersLabel',
+                    'launchTarget', 'artwork', 'providerMetadata', 'hardwareValidationRequired'):
+            self.assertNotIn(key, row)
+        self.assertEqual((row['provider'], row['status'], row['tier'], row['installed'], row['entry']),
+                         ('native', 'current', 'community', True, '/games/hello/'))
+        self.assertLessEqual(len(json.dumps(row)), co.MAX_ROW_BYTES)
+        self.assertEqual(set(row) - set(co.ROW_KEYS), {'provider', 'status', 'tier'})
+
+    def test_the_row_keys_are_an_allowlist_even_if_the_builder_adds_one(self):
+        self.install()
+        real = co.catalog.build
+
+        def build(*a, **kw):
+            doc = real(*a, **kw)
+            for g in doc['games']:
+                g['surprise'] = 'x'
+                g['provider'] = 'lan-games'
+            return doc
+        with mock.patch.object(co.catalog, 'build', build):
+            self.refresh()
+        self.assertNotIn('surprise', self.doc()['games'][-1])
+        self.assertEqual(self.doc()['games'][-1]['provider'], 'native')
+
+    def test_oversize_text_and_rows_are_refused(self):
+        self.install()
+        for field, value in (('name', 'N' * (co.MAX_NAME + 1)), ('summary', 'S' * (co.MAX_SUMMARY + 1)),
+                             ('name', 'bad\nname')):
+            self.edit_record(**{field: value})
+            text, listed, problems = co.effective(self.base, self.layout.records_dir, **self.kw())
+            self.assertEqual((text, listed), (None, []), field)
+            self.assertIn('hello: ', problems[0])
+        row = {'id': 'hello', 'name': 'Hello', 'presentations': ['p' * 190] * 30}
+        with self.assertRaises(ValueError) as ctx:
+            co.package_row(row, 'hello', set())
+        self.assertIn('larger than', str(ctx.exception))
+        with self.assertRaises(ValueError):
+            co.package_row({'id': 'hello', 'name': 'Hello', 'fallback': 'f' * 201}, 'hello', set())
+
+    def test_a_name_that_passes_for_a_first_party_game_is_refused(self):
+        self.install()
+        for name in ('BLUFF', 'bluff', 'ＢＬＵＦＦ', 'Checkers', 'ExPo'):
+            self.edit_record(name=name)
+            text, listed, problems = co.effective(self.base, self.layout.records_dir, **self.kw())
+            self.assertEqual((text, listed), (None, []), name)
+            self.assertIn('first-party', problems[0], name)
+        self.edit_record(name='Hello Party')
+        self.assertEqual(co.effective(self.base, self.layout.records_dir, **self.kw())[1], ['hello'])
+
+    def test_a_refused_row_fails_the_install_and_undoes_it(self):
+        def refuse(row, pid, names):
+            raise ValueError('the display name is, or is easily mistaken for, a first-party game')
+        with mock.patch.object(co, 'package_row', refuse):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster')
+        self.assertEqual(rc, 1)
+        self.assertIn('the effective catalog:', err)
+        self.assertIn('first-party game', err)
+        self.assertIn('nothing is left installed', err)
+        self.assertFalse(self.overlay.exists())
+        self.assertEqual([p for p in self.files() if 'hello' in p], [])
+
+    def test_a_refused_row_at_refresh_time_drops_only_that_row_and_check_says_so(self):
+        self.install()
+        self.edit_record(name='Bluff')
+        self.assertEqual(self.refresh()[0], [])
+        notes = []
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, notes, **self.kw()), [])
+        self.assertTrue(any('first-party' in n for n in notes), notes)
+        out, err = io.StringIO(), io.StringIO()
+        co.main(['check', '--base', str(self.base), '--out-dir', str(self.out_dir), '--records-dir',
+                 str(self.layout.records_dir), '--games-root', '/opt/avrana-games'], out=out, err=err)
+        self.assertIn('catalog-overlay: warning: hello:', err.getvalue())
+
+    def test_the_whole_overlay_is_bounded(self):
+        self.install()
+        with mock.patch.object(co, 'MAX_OVERLAY_BYTES', 100):
+            with self.assertRaises(co.OverlayError):
+                self.refresh()
+        self.assertFalse(self.overlay.exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'a umask')
+    def test_the_catalog_directory_is_0755_whatever_the_umask(self):
+        self.install()
+        old = os.umask(0o077)
+        try:
+            self.refresh()
+        finally:
+            os.umask(old)
+        self.assertEqual(self.out_dir.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(self.overlay.stat().st_mode & 0o777, 0o644)
+
+
+class ShellHook(unittest.TestCase):
+    """ops/install-party-web.sh refresh_catalog: any failure removes the overlay (never left built
+    from the previous release) and says how to repair. Real bash, a python3 that fails."""
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'needs bash on POSIX')
+    def test_a_failed_refresh_removes_the_overlay_and_is_loud(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'bin').mkdir()
+            (tmp / 'bin' / 'python3').write_text('#!/bin/sh\nexit 1\n')
+            (tmp / 'bin' / 'python3').chmod(0o755)
+            (tmp / 'ov').mkdir()
+            (tmp / 'ov' / 'catalog.json').write_text('old first-party catalog')
+            (tmp / 'rec').mkdir()
+            script = REPO_ROOT / 'ops' / 'install-party-web.sh'
+            fn = subprocess.run(['sed', '-n', '/^refresh_catalog()/,/^}/p', str(script)], capture_output=True, text=True).stdout
+            self.assertIn('catalog_overlay refresh', fn)
+            env = dict(os.environ, PATH=f'{tmp}/bin:{os.environ["PATH"]}', AVRANA_CATALOG_OVERLAY=str(tmp / 'ov' / 'catalog.json'),
+                       AVRANA_PACKAGE_RECORDS=str(tmp / 'rec'))
+            run = subprocess.run(['bash', '-c', f'BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel'], env=env,
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)               # a failure never fails the web install
+            self.assertFalse((tmp / 'ov' / 'catalog.json').exists())
+            self.assertIn('could NOT be regenerated', run.stderr)
+            self.assertIn('ops/catalog-overlay refresh', run.stderr)
+
+
 class FromInstallGame(OverlayBase):
     def test_install_and_remove_through_the_command_line_keep_the_overlay_in_step(self):
         pkg = str(self.package())
@@ -227,9 +370,10 @@ class FromInstallGame(OverlayBase):
 
     def test_a_catalog_that_cannot_be_written_after_a_remove_leaves_the_release_catalog_served(self):
         self.assertEqual(self.main('install', str(self.package()), '--grant', 'party_roster')[0], 0)
-        rc, _, err = self.main('remove', 'hello', base=self.root / 'missing.json')
+        rc, out, err = self.main('remove', 'hello', base=self.root / 'missing.json')
         self.assertEqual(rc, 1)
         self.assertIn('the effective catalog:', err)
+        self.assertIn('hello: removed record', out)         # the completed removal is reported beside the problem
         self.assertFalse(self.overlay.exists())            # absent, so the release catalog is served
         self.assertEqual([p for p in self.files() if 'hello' in p], [])
 

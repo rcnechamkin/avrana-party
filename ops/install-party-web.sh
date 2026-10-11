@@ -32,15 +32,16 @@ esac
 # AVR-337 (EXPERIMENTAL): when .avrgame packages are installed the appliance serves an effective catalog
 # (the release catalog plus their rows) instead of the release's own. It is derived from the release,
 # so it is regenerated here whenever "current" moves, a new release or a rollback. Does nothing when no
-# package is installed and no overlay exists. A failure never fails the install: the tool has already
-# removed the overlay, so the release catalog is served (no package tile) until the owner re-runs it.
+# package is installed and no overlay exists. A failure never fails the install; the overlay is removed (here too,
+# in case the tool itself could not start), so the release catalog is served until the owner re-runs it.
 refresh_catalog() {
     local tree overlay=${AVRANA_CATALOG_OVERLAY:-/var/lib/avrana-party/catalog/catalog.json}
     local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
     [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
     tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
     (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records") ||
-        echo "WARNING: the effective catalog was not regenerated; run ops/catalog-overlay refresh" >&2
+        { rm -f "$overlay"    # fail toward the release: never leave an overlay built from the previous release
+          echo "WARNING: the effective catalog could NOT be regenerated for this release; the overlay was removed, so the release catalog is served and installed .avrgame packages have no tile. Run: sudo ops/catalog-overlay refresh" >&2; }
 }
 
 switch_to() {

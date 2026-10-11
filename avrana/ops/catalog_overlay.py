@@ -35,8 +35,10 @@ Everything that touches the host is an argument, so the tests run in scratch dir
 import argparse
 import json
 import os
+import re
 import secrets
 import sys
+import unicodedata
 from pathlib import Path
 
 from avrana import CONTRACTS_DIR
@@ -48,6 +50,52 @@ DEFAULT_DIR = '/var/lib/avrana-party/catalog'
 FILE_NAME = 'catalog.json'
 DEFAULT_BASE = '/var/www/avrana-party/web/current/catalog.json'
 MAX_BASE_BYTES = 4 * 1024 * 1024
+MAX_OVERLAY_BYTES = 5 * 1024 * 1024
+MAX_ROW_BYTES = 4096
+MAX_NAME, MAX_SUMMARY, MAX_STRING = 60, 400, 200
+# The only keys of a package's row. Everything else the builder copies from the contract's free-form
+# extensions (provider, status, legacySlug, integration, icon, art, accent, category, description,
+# playersLabel, launchTarget, artwork, ...) is package-controlled and dropped.
+ROW_KEYS = ('id', 'name', 'kind', 'players', 'screen', 'input', 'late_join', 'spectators', 'private_player_ui',
+            'fallback', 'installed', 'entry', 'health', 'playableHere', 'presentations', 'summary')
+
+
+def _fold(text):
+    return ' '.join(unicodedata.normalize('NFKC', str(text)).casefold().split())
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            yield from _strings(k)
+            yield from _strings(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from _strings(v)
+
+
+def package_row(row, pid, taken_names):
+    """The row a package may have: an allowlist of the builder's keys, the fields that say what it
+    is forced (native, /games/<id>/, installed, community), every string and the row bounded, and a
+    display name that cannot pass for a first-party game's. ValueError says why not."""
+    out = {k: row[k] for k in ROW_KEYS if k in row}
+    out.update({'id': pid, 'installed': True, 'entry': f'/games/{pid}/', 'provider': 'native', 'status': 'current',
+                'tier': 'community'})
+    name = out.get('name')
+    if not isinstance(name, str) or not name.strip() or not name.isprintable() or len(name) > MAX_NAME:
+        raise ValueError(f'the display name must be 1 to {MAX_NAME} printable characters')
+    if isinstance(out.get('summary'), str) and (len(out['summary']) > MAX_SUMMARY or not out['summary'].isprintable()):
+        raise ValueError(f'the summary is longer than {MAX_SUMMARY} characters or not printable')
+    for text in _strings({k: v for k, v in out.items() if k not in ('name', 'summary')}):
+        if len(text) > MAX_STRING:
+            raise ValueError(f'a text in the row is longer than {MAX_STRING} characters')
+    if _fold(name) in taken_names or _fold(pid) in taken_names:
+        raise ValueError(f'the display name {name!r} is, or is easily mistaken for, the name of a first-party game')
+    if len(json.dumps(out, ensure_ascii=False).encode('utf-8')) > MAX_ROW_BYTES:
+        raise ValueError(f'the row is larger than {MAX_ROW_BYTES} bytes')
+    return out
 
 
 class OverlayError(Exception):
@@ -82,6 +130,7 @@ def effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, o
     problems = list(found.problems)
     appliance = appliance_mod.load(appliance_path, vocab)
     taken = {row.get('id') for row in doc['games'] if isinstance(row, dict)}
+    names = {_fold(x) for row in doc['games'] if isinstance(row, dict) for x in (row.get('id'), row.get('name')) if x}
     rows, labels = [], {}
     for pid in sorted(found.records):
         if pid in taken or pid in repo:
@@ -89,16 +138,21 @@ def effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, o
             continue
         try:
             one = catalog.build(vocab, appliance, {**repo, pid: found.contracts[pid]}, extra_grants={pid: found.grants[pid]})
+            row = package_row(next(g for g in one['games'] if g['id'] == pid), pid, names)
         except ValueError as exc:
             problems.append(f'{pid}: not listed: {exc}')
             continue
-        rows.append(next(g for g in one['games'] if g['id'] == pid))
+        names.add(_fold(row['name']))
+        rows.append(row)
         labels.update({k: v for k, v in one['labels'].items() if k not in doc['labels']})
     if not rows:
         return None, [], problems
     doc['games'] = [*doc['games'], *rows]
     doc['labels'] = {**doc['labels'], **{k: labels[k] for k in sorted(labels)}}
-    return strictjson.dumps(doc), [row['id'] for row in rows], problems
+    text = strictjson.dumps(doc)
+    if len(text.encode('utf-8')) > MAX_OVERLAY_BYTES:
+        raise OverlayError(f'the effective catalog would be larger than {MAX_OVERLAY_BYTES} bytes')
+    return text, [row['id'] for row in rows], problems
 
 
 def _fsync_dir(path):
@@ -113,7 +167,10 @@ def _fsync_dir(path):
 
 def write_atomic(path, text):
     path = Path(path)
+    existed = path.parent.is_dir()
     os.makedirs(path.parent, mode=0o755, exist_ok=True)
+    if not existed:
+        os.chmod(path.parent, 0o755)         # the directory made here only; the umask must not narrow it
     tmp = path.with_name(f'.{path.name}.{secrets.token_hex(4)}.tmp')
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0)
@@ -171,11 +228,13 @@ def refresh(out_dir, base_path, records_dir, **kw):
         raise
 
 
-def check(out_dir, base_path, records_dir, **kw):
+def check(out_dir, base_path, records_dir, problems_out=None, **kw):
     """[] when the overlay is exactly what `refresh` would write now (including: absent when no
     package is to be listed); otherwise what is wrong."""
     target = Path(out_dir) / FILE_NAME
-    text, _, _ = effective(base_path, records_dir, **kw)
+    text, _, problems = effective(base_path, records_dir, **kw)
+    if problems_out is not None:
+        problems_out.extend(problems)         # packages left out of the overlay and why (not a staleness)
     have = target.read_text(encoding='utf-8') if target.is_file() else None
     if have == text:
         return []
@@ -186,33 +245,43 @@ def check(out_dir, base_path, records_dir, **kw):
     return [f'{target} is stale (the release catalog or an install record changed): run refresh']
 
 
-def after_change(layout, base_path=DEFAULT_BASE, out_dir=DEFAULT_DIR, owner=installed._DEFAULT, **kw):
-    """For install-game, after a change to the install records. Returns the lines to show; raises
-    OverlayError (overlay already removed) when it cannot be written."""
+def _apply(layout, base_path, out_dir, owner, **kw):
     listed, problems = refresh(out_dir, base_path, layout.records_dir, games_root=layout.root_text(), owner=owner, **kw)
     lines = [f'catalog: the effective catalog lists {", ".join(listed)}' if listed
              else 'catalog: no package is listed; the release catalog is served as it is']
-    return lines + [f'catalog: {p}' for p in problems]
+    return listed, problems, lines + [f'catalog: {p}' for p in problems]
+
+
+def after_change(layout, base_path=DEFAULT_BASE, out_dir=DEFAULT_DIR, owner=installed._DEFAULT, **kw):
+    """For install-game, after a change to the install records. Returns the lines to show; raises
+    OverlayError (overlay already removed) when it cannot be written."""
+    return _apply(layout, base_path, out_dir, owner, **kw)[2]
 
 
 def publish_or_undo(layout, base_path, out_dir, owner, package_id, undo, **kw):
-    """After a successful install of `package_id`: write the effective catalog. If that fails the
-    install is not left half done: `undo(package_id)` removes the package again (a game nobody can
-    see on a phone is worse than none), the overlay is refreshed once more for the packages that
-    remain, and OverlayError says what happened. Fail closed."""
+    """After a successful install of `package_id`: write the effective catalog. If that fails, or
+    the package itself cannot be listed (its row is refused: a game nobody can see on a phone is
+    worse than none), the install is not left half done: `undo(package_id)` removes it again, the
+    overlay is refreshed once more for the packages that remain, and OverlayError says what
+    happened. Fail closed."""
     try:
-        return after_change(layout, base_path, out_dir, owner, **kw)
+        listed, problems, lines = _apply(layout, base_path, out_dir, owner, **kw)
+        if package_id in listed:
+            return lines
+        why = '; '.join(p for p in problems if p.startswith(f'{package_id}:')) or f'{package_id} is not listed'
+        failure = OverlayError(why)
     except OverlayError as exc:
-        try:
-            undo(package_id)
-        except Exception as bad:
-            raise OverlayError(f'{exc}; and removing {package_id} again failed ({type(bad).__name__}); '
-                               f'run "install-game remove {package_id}"') from exc
-        try:
-            after_change(layout, base_path, out_dir, owner, **kw)
-        except OverlayError:
-            pass                                    # the overlay is absent; the release catalog is served
-        raise OverlayError(f'{exc}; {package_id} was removed again, nothing is left installed') from exc
+        failure = exc
+    try:
+        undo(package_id)
+    except Exception as bad:
+        raise OverlayError(f'{failure}; and removing {package_id} again failed ({type(bad).__name__}); '
+                           f'run "install-game remove {package_id}"') from failure
+    try:
+        _apply(layout, base_path, out_dir, owner, **kw)
+    except OverlayError:
+        pass                                    # the overlay is absent; the release catalog is served
+    raise OverlayError(f'{failure}; {package_id} was removed again, nothing is left installed') from failure
 
 
 def main(argv=None, out=None, err=None):
@@ -223,6 +292,7 @@ def main(argv=None, out=None, err=None):
     ap.add_argument('--out-dir', default=DEFAULT_DIR)
     ap.add_argument('--records-dir', default=installed.DEFAULT_RECORDS_DIR)
     ap.add_argument('--games-root', default=installed.DEFAULT_GAMES_ROOT)
+    ap.add_argument('--lock-file', default='/run/avrana-install-game.lock', help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     kw = {'games_root': a.games_root}
     try:
@@ -233,7 +303,10 @@ def main(argv=None, out=None, err=None):
             out.write(text if text is not None else Path(a.base).read_text(encoding='utf-8'))
             return 0
         if a.command == 'check':
-            wrong = check(a.out_dir, a.base, a.records_dir, **kw)
+            notes = []
+            wrong = check(a.out_dir, a.base, a.records_dir, notes, **kw)
+            for item in notes:
+                print(f'catalog-overlay: warning: {item}', file=err)
             for item in wrong:
                 print(f'catalog-overlay: {item}', file=err)
             if not wrong:
@@ -242,7 +315,9 @@ def main(argv=None, out=None, err=None):
         if os.name == 'posix' and os.geteuid() != 0:
             print('catalog-overlay: refresh must run as root (use sudo)', file=err)
             return 1
-        listed, problems = refresh(a.out_dir, a.base, a.records_dir, **kw)
+        from avrana.ops import install_game      # the same lock as install and remove (taken here, never inside them)
+        with install_game.locked(a.lock_file):
+            listed, problems = refresh(a.out_dir, a.base, a.records_dir, **kw)
         print('catalog-overlay: lists ' + (', '.join(listed) if listed else 'no package (overlay removed)'), file=out)
         for p in problems:
             print(f'catalog-overlay: {p}', file=err)
@@ -250,7 +325,7 @@ def main(argv=None, out=None, err=None):
     except OverlayError as exc:
         print(f'catalog-overlay: {exc}', file=err)
         return 1
-    except (OSError, ValueError) as exc:
+    except Exception as exc:                  # includes the lock being held (install_game.Refused)
         print(f'catalog-overlay: failed: {type(exc).__name__}: {exc}', file=err)
         return 1
 

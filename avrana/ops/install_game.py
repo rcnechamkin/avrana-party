@@ -698,10 +698,10 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
                 return 0
             with locked(layout.lock_file):
                 changes = remove(a.id, layout, contracts, run, active, a.keep_state)
+                for item in changes:                 # said first: the removal is done whatever the catalog does next
+                    print(f'{a.id}: removed {item}', file=out)
                 lines = catalog_overlay.after_change(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
                                                      catalog_dir, owner, repo_contracts=contracts) if catalog_dir else []
-            for item in changes:
-                print(f'{a.id}: removed {item}', file=out)
             for line in lines:
                 print(line, file=out)
             if not changes:
