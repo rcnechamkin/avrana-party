@@ -5,6 +5,8 @@
 - **Sources:** Linear AVR-45, AVR-143, AVR-315, AVR-316, AVR-317 (read 2026-10-10) and AVR-37, AVR-39, AVR-44, AVR-63, AVR-65, AVR-79; ADR 0002, 0004, 0012, 0013, 0014, 0016; `docs/design/PARTY-PLATFORM.md`, `docs/design/GAME-INSTALLATION.md`, `docs/design/ONBOARDING.md`; Let's Encrypt rate-limit and lifetime documentation (cited in the 2026-10-09 draft).
 - **Related:** `docs/research/BLE-OWNER-CONTROL-PLANE-SPIKE.md`, `docs/research/MOBILE-STORE-POLICY-RESEARCH.md`, `docs/research/AVRGAME-EXPERIMENTAL-DRAFT.md`
 
+> **Reconciliation note (2026-10-10, AVR-335).** Statements below that the app never runs, renders or interprets game material describe the *package* (server code, which goes to the appliance only). The proposal in section 8 to host a downloaded *web client* in a viewport is a separate host-capability proposal. Whether stores accept it is a separate, unresolved policy question. Both are now recorded in [Portable game-client delivery](../design/PORTABLE-GAME-CLIENT-DELIVERY.md); this document is otherwise unchanged and is still not a decision.
+
 ## Reading guide
 
 Labels: **[A]** accepted (ADR or owner decision on record), **[D]** described as deployed in canonical docs at the time of the 2026-10-09 draft (not re-checked), **[P]** proposed here, **[unverified]** not confirmed from a primary source. Owner statements in Linear on 2026-10-09 and 2026-10-10 are marked **[Approved direction]**.
