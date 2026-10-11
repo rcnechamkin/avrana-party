@@ -26,6 +26,16 @@ export async function phone(browser: Browser, info: TestInfo, name: string): Pro
   await context.addInitScript((who) => {
     if (location.hostname === 'party.avrana.net') { try { localStorage.setItem('wc-name', who); } catch { /* private */ } }
   }, name);
+  // What the Party's bridge frame told this game page (the shim's own messages): kept so a test can say why a
+  // verb such as "go home" did not take. Types and outcomes only, never a ticket.
+  await context.addInitScript(() => {
+    if (location.hostname !== 'games.avrana.net') return;
+    const log: any[] = ((window as any).__bridge = []);
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (d && d.avrana && d.type !== 'ticket') log.push({ type: d.type, ok: d.ok, error: d.error, to: d.to });
+    });
+  });
   const page = await context.newPage();
   const p: Phone = { name, context, page, bodies: [], frames: [], gameMainFrameCalls: [] };
   context.on('response', async (res) => {
@@ -70,5 +80,7 @@ export async function leaveAll(phones: Phone[]) {
   } catch { /* nothing to end, or the context is gone */ }
   // A page that is still open keeps the phone present (presence is automatic): park every page first.
   for (const p of phones) { try { await p.page.goto('about:blank'); } catch { /* gone */ } }
-  for (const p of [...phones].reverse()) { try { await post(p, 'leave', {}); } catch { /* the context may be gone */ } }
+  for (const p of [...phones].reverse()) {
+    try { console.log(`[${p.name}] leave: HTTP ${(await post(p, 'leave', {})).status()}`); } catch { /* the context may be gone */ }
+  }
 }

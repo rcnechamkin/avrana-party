@@ -337,7 +337,7 @@ t 'the game rule never proxies a control path (games.avrana.net/games/hello/avra
 runuser -u "$pwuser" -- mkdir -p "$out_dir"      # created by the user who will write to it, parents included
 pw() {  # pw <project> <spec>: Playwright as the unprivileged user, from the checkout
     (cd "$repo" && runuser -u "$pwuser" -- env HOME="$pwhome" PATH="$PATH" CI=1 AVRANA_PACKAGE_BROWSER_PROOF=1 \
-        AVRANA_BROWSER_OUT="$out_dir" npx playwright test -c playwright.package.config.ts --project="$1" "$2")
+        AVRANA_BROWSER_OUT="$out_dir/$1-${2%.spec.ts}" npx playwright test -c playwright.package.config.ts --project="$1" "$2")
 }
 observe_game() {  # while the browsers play: where the game process runs and as whom (it idles away afterwards)
     local gpid cwd
