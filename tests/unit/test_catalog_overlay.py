@@ -345,6 +345,46 @@ class ShellHook(unittest.TestCase):
             self.assertIn('could NOT be regenerated', run.stderr)
             self.assertIn('ops/catalog-overlay refresh', run.stderr)
 
+    def hook(self, python, overlay_exists=True, records=True):
+        """Run refresh_catalog with a stand-in python3 (a shell snippet); (returncode, stdout, stderr, overlay still there)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'bin').mkdir()
+            (tmp / 'bin' / 'python3').write_text('#!/bin/sh\n' + python + '\n')
+            (tmp / 'bin' / 'python3').chmod(0o755)
+            (tmp / 'ov').mkdir()
+            if overlay_exists:
+                (tmp / 'ov' / 'catalog.json').write_text('overlay')
+            (tmp / 'rec').mkdir()
+            if records:
+                (tmp / 'rec' / 'x.json').write_text('{}')
+            script = REPO_ROOT / 'ops' / 'install-party-web.sh'
+            fn = subprocess.run(['sed', '-n', '/^refresh_catalog()/,/^}/p', str(script)], capture_output=True, text=True).stdout
+            env = dict(os.environ, PATH=f'{tmp}/bin:{os.environ["PATH"]}', AVRANA_CATALOG_OVERLAY=str(tmp / 'ov' / 'catalog.json'),
+                       AVRANA_PACKAGE_RECORDS=str(tmp / 'rec'))
+            run = subprocess.run(['bash', '-c', f'set -e; BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel; echo after'], env=env,
+                                 capture_output=True, text=True)
+            return run.returncode, run.stdout, run.stderr, (tmp / 'ov' / 'catalog.json').exists()
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'needs bash on POSIX')
+    def test_a_stale_overlay_or_a_dropped_row_is_a_warning_and_never_a_failure(self):
+        # owner decision 2026-10-10: the check after a web release switch only warns
+        rc, out, err, kept = self.hook('case " $* " in *" check "*) echo "catalog-overlay: warning: x: not listed" >&2; exit 1;; esac; exit 0')
+        self.assertEqual((rc, out.strip(), kept), (0, 'after', True))      # set -e did not trip; nothing removed
+        self.assertIn('WARNING', err)
+        self.assertIn('x: not listed', err)
+        self.assertIn('ops/catalog-overlay refresh', err)
+        rc, out, err, _ = self.hook('case " $* " in *" check "*) echo "catalog-overlay: warning: only a warning" >&2; exit 0;; esac; exit 0')
+        self.assertEqual(rc, 0)
+        self.assertIn('WARNING', err)
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'needs bash on POSIX')
+    def test_a_current_overlay_is_silent_and_so_is_a_host_without_packages(self):
+        rc, out, err, _ = self.hook('case " $* " in *" check "*) echo "catalog-overlay: current"; exit 0;; esac; exit 0')
+        self.assertEqual((rc, out.strip(), err), (0, 'after', ''))
+        rc, out, err, _ = self.hook('echo called >&2; exit 1', overlay_exists=False, records=False)
+        self.assertEqual((rc, out.strip(), err), (0, 'after', ''))         # inert: python is never even started
+
 
 class WithTheTrustHardening(OverlayBase):
     """AVR-337 on top of AVR-336 (#103): the same ownership, evidence and signal rules."""
