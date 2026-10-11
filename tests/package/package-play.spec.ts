@@ -17,8 +17,15 @@ const PARTY_HOME = `${PARTY}/party/`;
 const secretOf = (p: Phone) => p.page.locator('#secret').innerText();
 const word = (w: string) => new RegExp(`\\b${w}\\b`, 'i');
 
-/** Everything a phone was told over HTTP or a WebSocket, as one string. */
-const received = (p: Phone) => p.bodies.join('\n') + '\n' + p.frames.join('\n');
+const b64 = (w: string) => Buffer.from(w).toString('base64').replace(/=+$/, '');
+/** Does this text carry the word: bare (on word boundaries), or as its base64? */
+const carries = (text: string, w: string) => word(w).test(text) || text.includes(b64(w));
+/** The channels a phone was told things on. JSON bodies are the state; static pages and scripts (HTML, CSS, JS) are
+ * only searched for the quoted word, since a colour called "amber" in a stylesheet is not a leak. */
+const stateBodies = (p: Phone) => p.bodies.filter((b) => /json/.test(b.type)).map((b) => b.text);
+const everyBody = (p: Phone) => p.bodies.map((b) => b.text);
+const leaks = (p: Phone, w: string) => carries(stateBodies(p).join('\n'), w) || carries(p.frames.join('\n'), w)
+  || everyBody(p).some((t) => t.includes(`"${w}"`));
 const dom = (p: Phone) => p.page.evaluate(() => document.documentElement.outerHTML + '\n' + document.body.innerText);
 
 test('Hello Party, installed: admission, discovery, launch, private views, reconnect, result, home', async ({ browser }, info) => {
@@ -74,9 +81,13 @@ test('Hello Party, installed: admission, discovery, launch, private views, recon
       const shown = await dom(p);
       for (const other of others) {
         expect(shown, `${p.name}'s page shows another seat's word`).not.toMatch(word(other));
-        expect(received(p), `${p.name} was sent another seat's word`).not.toContain(`"${other}"`);
+        expect(leaks(p, other), `${p.name} was sent another seat's word`).toBe(false);
       }
-      if (mineWord) expect(received(p), `${p.name}'s own word reached ${p.name} (the recorder works)`).toContain(`"${mineWord}"`);
+      // Positive control, per channel: the phone's own word must show up where the state travels, or the recorder is blind.
+      if (mineWord) {
+        expect(carries(stateBodies(p).join('\n'), mineWord), `${p.name}'s own word is in its JSON bodies (the HTTP channel works)`).toBe(true);
+      }
+      console.log(`[${p.name}] channels: ${stateBodies(p).length} JSON bodies carried ${mineWord ? 'its own word' : 'no word'}; ${p.frames.length} WebSocket frames`);
     }
     // The game page keeps no cookie of the Party's and never calls the Party API itself (the bridge frame does).
     for (const p of all) {
@@ -101,8 +112,12 @@ test('Hello Party, installed: admission, discovery, launch, private views, recon
     await ben.context.setOffline(true);
     await ben.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await ben.page.waitForTimeout(2500);
+    const callsBefore = ben.gameApiRequests;
     await ben.context.setOffline(false);
     await ben.page.evaluate(() => window.dispatchEvent(new Event('online')));
+    // The page's own loop must talk to its game again by itself (a poll or redeem request starts after the network is back)
+    await expect.poll(() => ben.gameApiRequests, { timeout: 45_000 }).toBeGreaterThan(callsBefore);
+    await expect(ben.page.locator('#status')).not.toContainText('Lost the connection');
     await expect(ben.page.locator('#secret')).toHaveText(benWord);
 
     // 6. Completion: the last hello ends the game; Party Core accepts the signed result.
@@ -123,12 +138,18 @@ test('Hello Party, installed: admission, discovery, launch, private views, recon
     try {
       for (const p of all) await expect(p.page).toHaveURL(PARTY_HOME, { timeout: 8000 });
     } catch {
-      // One WebKit run in four did not take the first tap (AVR-338 evidence below); say what the bridge answered,
-      // tap once more, and record it as an annotation instead of hiding it.
-      const bridge = await ana.page.evaluate(() => (window as any).__bridge).catch(() => null);
-      info.annotations.push({ type: 'home-retried', description: `first tap on "Party Home" did not move the party; bridge said ${JSON.stringify(bridge)}` });
-      console.log(`[Ana] first tap on Party Home did not move the party; bridge said ${JSON.stringify(bridge)}`);
-      if (!ana.page.url().startsWith(PARTY)) await ana.page.locator('#home').click();
+      // The one symptom seen once in CI on WebKit: the Host's page still shows the game 8 s after the tap. It is
+      // retried ONCE, loudly (marker below, counted by the script, kept as an attachment): a possible product race in
+      // the bridge's "go home", not something to hide. Any other symptom falls through to the assertion and fails.
+      if (!ana.page.url().startsWith(GAMES)) throw new Error('Party Home did not take, and not by the known symptom');
+      const state = await partyState(ben).then((s) => ({ location: s.location, session: s.session && { state: s.session.state, outcome: s.session.outcome } })).catch(() => null);
+      const evidence = { bridge: await ana.page.evaluate(() => (window as any).__bridge).catch(() => null),
+        partyCalls: ana.partyCalls.slice(-8), urls: all.map((p) => `${p.name} ${p.page.url()}`), state };
+      console.log(`HOME-RETRY-FIRED ${JSON.stringify(evidence)}`);
+      info.annotations.push({ type: 'home-retried', description: 'first tap on "Party Home" did not move the party' });
+      await info.attach('home-retry-evidence.json', { body: JSON.stringify(evidence, null, 1), contentType: 'application/json' });
+      await info.attach('home-retry-host.png', { body: await ana.page.screenshot(), contentType: 'image/png' });
+      await ana.page.locator('#home').click();
     }
     for (const p of all) await expect(p.page).toHaveURL(PARTY_HOME);
     await expect(ben.page.locator('#party-result')).toContainText(/won/);
@@ -136,7 +157,7 @@ test('Hello Party, installed: admission, discovery, launch, private views, recon
 
     // The private words never crossed, whatever the phones did meanwhile (reconnect included).
     for (const [p, others] of [[ana, [benWord]], [ben, [anaWord]], [cy, [anaWord, benWord]]] as const)
-      for (const other of others) expect(received(p), `${p.name} was sent another seat's word`).not.toContain(`"${other}"`);
+      for (const other of others) expect(leaks(p, other), `${p.name} was sent another seat's word`).toBe(false);
   } finally {
     await leaveAll(all);
     for (const p of all) await p.context.close();
