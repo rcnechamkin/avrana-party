@@ -43,9 +43,10 @@ export async function phone(browser: Browser, info: TestInfo, name: string): Pro
 }
 
 /** Open Party Home as this phone: the real shell, which joins the party by itself once it has a name. */
-export async function joinParty(p: Phone) {
+export async function joinParty(p: Phone, { intoRound = false } = {}) {
   await p.page.goto('/party/');
-  await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
+  // A phone that arrives while a round is on is taken straight to the game: it never settles on Party Home.
+  if (!intoRound) await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
 }
 
 /** The Party's own JSON, as this phone's page asks it (cookie and Origin included). */
@@ -59,6 +60,13 @@ export async function post(p: Phone, path: string, body: Record<string, unknown>
   return p.page.request.post(`${PARTY}/party/api/${path}`, { data: body, headers: { 'Content-Type': 'application/json', Origin: PARTY } });
 }
 
+/** Leave the party as a failed or finished test should: a round still on is ended by the Host first, so the
+ * next test (and the script's `install-game remove`) never finds a live session. The Host is the first phone. */
 export async function leaveAll(phones: Phone[]) {
-  for (const p of phones) { try { await post(p, 'leave', {}); } catch { /* the context may be gone */ } }
+  const [host] = phones;
+  try {
+    const state = await partyState(host);
+    if (state.session && !['ended'].includes(state.session.state)) await post(host, 'session/end', { if_version: state.version });
+  } catch { /* nothing to end, or the context is gone */ }
+  for (const p of [...phones].reverse()) { try { await post(p, 'leave', {}); } catch { /* the context may be gone */ } }
 }
