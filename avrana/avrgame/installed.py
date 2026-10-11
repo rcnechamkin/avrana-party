@@ -282,7 +282,8 @@ def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRE
                          f'(only {", ".join(GRANTABLE)} can)')
             if ALWAYS_PROVIDED not in granted:
                 p.append(f'grant.permissions_granted: {ALWAYS_PROVIDED} is delivered to every game at launch, '
-                         'so a package record must carry it')
+                         'so a package record must carry it; a record from before this rule is refused: run '
+                         f'"install-game remove {pid}" and install the package again with --grant {ALWAYS_PROVIDED}')
         if isinstance(root, str):
             p += _runtime_problems(grant, root, interpreters)
     claims = doc['package']

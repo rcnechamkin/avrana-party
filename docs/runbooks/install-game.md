@@ -105,6 +105,14 @@ to repeat; `install` refuses to guess. `remove` deletes the staged files first a
 interleaving. `remove` is refused while the game has a session (end it from Party Home), never touches a
 first-party game, and with `--keep-state` leaves the game's `/var/lib/avrana-games/<id>`.
 
+## Upgrade note: records from before the roster rule (AVR-336)
+
+A record whose `permissions_granted` lacks `party_roster` is no longer read by Party Core (it logs
+`install record refused` and leaves that game out). `install-game list` shows it as `REFUSED <id>: ...` and
+`install-game verify <id>` reports it, both with the remedy: `install-game remove <id>`, then install the
+package again with `--grant party_roster`. No package has been installed on an appliance yet, so this is a
+precaution. The rule is interim: see [AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md).
+
 ## Reverse
 
 `install-game remove ID` (units, key, registry entry, socket, state, record, staged files, one more Party

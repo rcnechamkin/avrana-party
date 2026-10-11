@@ -272,6 +272,19 @@ def locked(path):
         os.close(fd)
 
 
+_shield = [0]       # above zero: a signal is swallowed (see interrupts_as_exceptions)
+
+
+@contextlib.contextmanager
+def shielded():
+    """No signal interrupts this block: an undo must run to its end whatever arrives."""
+    _shield[0] += 1
+    try:
+        yield
+    finally:
+        _shield[0] -= 1
+
+
 @contextlib.contextmanager
 def interrupts_as_exceptions():
     """A hang-up (the ssh session drops), a TERM or a Ctrl-C during install or remove becomes a
@@ -285,8 +298,11 @@ def interrupts_as_exceptions():
         yield
         return
     previous = {}
+    _shield[0] = 0
 
     def handler(signum, frame):
+        if _shield[0]:
+            return                  # an undo is running, or the install has completed: not interruptible
         for n in names:
             signal.signal(getattr(signal, n), signal.SIG_IGN)
         raise KeyboardInterrupt(f'signal {signum}')
@@ -297,9 +313,14 @@ def interrupts_as_exceptions():
     finally:
         for n, old in previous.items():
             signal.signal(getattr(signal, n), old)
+        _shield[0] = 0
 
 
 # ---- checks that change nothing ---------------------------------------------------------------------
+
+def _empty_plain_dir(path):
+    return os.path.isdir(path) and not os.path.islink(path) and not os.listdir(path)
+
 
 def _plain_dir(path, what):
     if os.path.islink(path) or not os.path.isdir(path):
@@ -400,7 +421,7 @@ def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpret
             pass
         raise Refused(f'{pid}{version} is already installed (or its record is damaged); remove it first: '
                       f'install-game remove {pid}. Upgrade and rollback are not implemented yet (AVR-58, AVR-60).')
-    if os.path.lexists(tree):
+    if os.path.lexists(tree) and not _empty_plain_dir(tree):      # an empty one is what a crash after mkdir leaves
         raise Refused(f'{tree} exists without a record (an interrupted install?); run install-game remove {pid} first '
                       '(if that reports nothing to remove, it is not a tree this tool made: delete it by hand)')
     left = pg.plan_remove(pid, layout.provision, False, None)
@@ -480,8 +501,9 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
         if not os.path.isdir(layout.records_dir):
             _mkdir(layout.records_dir)
             ledger.add('records directory', lambda: _rmdir_if_empty(layout.records_dir))
-        _mkdir(layout.id_dir(pid))
-        ledger.add('game directory', lambda: _rmdir_if_empty(layout.id_dir(pid)))
+        if not os.path.lexists(layout.id_dir(pid)):
+            _mkdir(layout.id_dir(pid))
+            ledger.add('game directory', lambda: _rmdir_if_empty(layout.id_dir(pid)))
         staging = Path(layout.games_root) / f'{STAGING_PREFIX}{secrets.token_hex(8)}'
         _mkdir(staging, 0o700)
         ledger.add('staging directory', lambda: _rmtree(staging))
@@ -502,15 +524,17 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
         changed = pg.provision(pid, layout.provision, plan.contracts, plan.grants, run, own, origin,
                                trusted=trusted)
     except BaseException as exc:
-        problems = ledger.unwind()
-        if began['provisioning']:
-            try:
-                pg.reload_party(run)                   # Party Core forgets the game it may have loaded
-            except Exception:
-                problems.append('Party Core reload')
+        with shielded():                               # the undo is never cut short, by a signal or a second one
+            problems = ledger.unwind()
+            if began['provisioning']:
+                try:
+                    pg.reload_party(run)               # Party Core forgets the game it may have loaded
+                except Exception:
+                    problems.append('Party Core reload')
         if problems:
             raise RollbackIncomplete(exc, problems) from exc
         raise
+    _shield[0] += 1                                    # installed: a late signal must not report an undo that did not happen
     lines = [f'{pid}: installed {package.version} (sha256 {package.sha256[:12]}...) as {installed.TIER}, '
              f'granted: {", ".join(plan.grant["permissions_granted"]) or "nothing"}',
              f'{pid}: staged {plan.root}', f'{pid}: wrote {layout.record(pid)}']
@@ -546,7 +570,10 @@ def _tree_is_ours(package_id, layout, owner=None):
         st = os.lstat(path)
         if not stat.S_ISDIR(st.st_mode) or (owner is not None and st.st_uid != owner):
             return False
-        for name in os.listdir(path):
+        names = os.listdir(path)
+        if not names:
+            return False                # nothing the installer made is in it
+        for name in names:
             child = os.lstat(os.path.join(path, name))
             if not TREE_NAME.fullmatch(name) or not stat.S_ISDIR(child.st_mode):
                 return False
@@ -824,8 +851,12 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
             print(line, file=out)
         return 0
     except KeyboardInterrupt:
-        print('install-game: interrupted; an install was undone as far as it had gone, '
-              'and "install-game remove <id>" clears anything left', file=err)
+        if a.command == 'remove':
+            print(f'install-game: interrupted; the removal of {a.id} may be half done. Run '
+                  f'"install-game remove {a.id}" again: it finishes the job from any state', file=err)
+        else:
+            print('install-game: interrupted; the install was undone as far as it had gone '
+                  '(nothing is installed), and "install-game remove <id>" clears anything left', file=err)
         return 1
     except RollbackIncomplete as e:
         print(f'install-game: failed: {_describe(e.original)}', file=err)

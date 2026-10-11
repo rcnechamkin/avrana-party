@@ -342,7 +342,9 @@ class InstallTests(Base):
         self.install()
         self.remove()
         self.layout.id_dir('hello').mkdir()
-        self.refused(lambda: self.install(), 'without a record', 'remove')
+        self.install()                              # an empty id directory is what a crash after mkdir leaves: not in the way
+        self.assertEqual(ig.verify('hello', self.layout, REPO), [])
+        self.remove()
 
     def test_stale_staging_directories_are_cleaned_and_foreign_ones_refused(self):
         stale = self.layout.games_root / '.staging-deadbeef'
@@ -996,8 +998,8 @@ class RemoveEvidenceTests(Base):
         self.assertEqual(self.snapshot(), before)
         self.refused(lambda: self.install_named_zzz(), 'without a record', 'delete it by hand')
         (stray / 'readme.txt').unlink()
-        self.assertEqual(self.remove('zzz'), ['files'])        # an empty id directory is the installer's own
-        stray.mkdir()
+        self.assertEqual(self.remove('zzz'), [])               # an EMPTY directory is no evidence either
+        self.assertTrue(stray.is_dir())
         (stray / '0.1.0-0123456789ab').mkdir()
         self.assertEqual(self.remove('zzz'), ['files'])
 
@@ -1146,6 +1148,101 @@ class InterruptTests(Base):
         self.assertIn('interrupted', err.getvalue())
         self.assertEqual(self.snapshot(), before)
         self.assertEqual({n: signal.getsignal(getattr(signal, n)) for n in old}, old)    # handlers put back
+
+
+class InterruptTruthTests(Base):
+    """AVR-336 review: an undo is never cut short, and the message says what really happened."""
+
+    def cli(self, *args, run):
+        paths = ['--key-dir', self.layout.provision.key_dir, '--registry-dir', self.layout.provision.registry_dir,
+                 '--socket-dir', self.layout.provision.socket_dir, '--state-dir', self.layout.provision.state_dir,
+                 '--unit-dir', self.layout.provision.unit_dir, '--template-dir', self.layout.provision.template_dir,
+                 '--records-dir', self.layout.records_dir, '--games-root', self.layout.games_root,
+                 '--lock-file', self.layout.lock_file, '--visible-root', '/opt/avrana-games',
+                 '--party-config', self.root / 'etc/party-core.json']
+        out, err = io.StringIO(), io.StringIO()
+        rc = ig.main([*args, *[str(p) for p in paths]], run=run, own=self.own, is_root=True, contracts=REPO,
+                     opener=lambda target, timeout: Response(IDLE), out=out, err=err)
+        return rc, out.getvalue(), err.getvalue()
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX signals')
+    def test_a_signal_during_the_undo_after_an_ordinary_failure_does_not_cut_it_short(self):
+        import signal
+        before = self.snapshot()
+        state = []
+
+        def run(argv):
+            self.calls.append(list(argv))
+            if argv[1] == 'enable' and not state:
+                state.append('failed')
+                raise subprocess.CalledProcessError(1, argv)       # an ordinary failure, no signal
+            if state == ['failed']:
+                state.append('signalled')
+                os.kill(os.getpid(), signal.SIGTERM)               # arrives while the undo runs
+        rc, out, err = self.cli('install', str(self.package()), '--grant', 'party_roster', run=run)
+        self.assertEqual(state, ['failed', 'signalled'])
+        self.assertEqual(rc, 1)
+        self.assertIn('nothing is left installed', err)
+        self.assertEqual(self.snapshot(), before)
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX signals')
+    def test_a_signal_after_the_install_completed_cannot_report_an_undo(self):
+        import signal
+        import time
+        with ig.interrupts_as_exceptions():
+            self.install()
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(0.05)                                       # delivered, swallowed: the game IS installed
+        self.assertEqual(ig.verify('hello', self.layout, REPO), [])
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX signals')
+    def test_an_interrupted_remove_says_to_run_remove_again_and_does_it_finish(self):
+        import signal
+        self.install()
+        fired = []
+
+        def run(argv):
+            self.calls.append(list(argv))
+            if argv[1] == 'reload' and not fired:
+                fired.append(1)
+                os.kill(os.getpid(), signal.SIGHUP)
+        rc, out, err = self.cli('remove', 'hello', run=run)
+        self.assertEqual(rc, 1)
+        self.assertIn('removal of hello may be half done', err)
+        self.assertIn('install-game remove hello', err)
+        self.assertNotIn('undone', err)
+        rc, out, err = self.cli('remove', 'hello', run=self.run_)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+
+    def test_a_legacy_record_without_the_roster_is_named_with_its_remedy_by_list_and_verify(self):
+        self.install()
+        doc = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
+        doc['grant']['permissions_granted'] = []
+        self.layout.record('hello').write_text(json.dumps(doc), encoding='utf-8')
+        if os.name == 'posix':
+            os.chmod(self.layout.record('hello'), 0o644)
+        rc, out, err = self.cli('list', run=self.run_)
+        self.assertEqual(rc, 0)
+        self.assertIn('REFUSED hello: record refused', out)
+        self.assertIn('install-game remove hello', out)
+        self.assertIn('--grant party_roster', out)
+        rc, out, err = self.cli('verify', 'hello', run=self.run_)
+        self.assertEqual(rc, 1)
+        self.assertIn('install-game remove hello', err)
+        self.assertIn('--grant party_roster', err)
+
+    def test_a_record_cannot_claim_another_tier(self):
+        self.install()
+        doc = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
+        for tier in ('builtin', 'verified', '', None):
+            doc['grant']['tier'] = tier
+            self.layout.record('hello').write_text(json.dumps(doc), encoding='utf-8')
+            if os.name == 'posix':
+                os.chmod(self.layout.record('hello'), 0o644)
+            found = installed.load(self.layout.records_dir, REPO)
+            self.assertEqual(found.grants, {}, tier)
+            self.assertTrue(any('community' in p for p in found.problems), (tier, found.problems))
 
 
 def shutil_rmtree(path):
