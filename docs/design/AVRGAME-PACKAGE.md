@@ -92,9 +92,10 @@ Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha25
 
 **What an installed package can and cannot do** (from [`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service) and ADR 0016; the unit is the only protection):
 
-- **Can:** run arbitrary code as a throwaway `DynamicUser=` (its Python and whatever it ships); read any world-readable file on the host, including the other install records; connect to the Unix sockets it can reach: other games' sockets (it has the `avrana-games` supplementary group) and Party Core's internal socket (`AVRANA_PARTY_SOCKET`, which is authenticated by the game's own key only); keep state in its own `StateDirectory=` (`0700`); use CPU, memory and processes without limit.
-- **Cannot:** open IP sockets (`RestrictAddressFamilies=AF_UNIX`); write its own code (the staged tree is root-owned and `ProtectSystem=strict` is implied by `DynamicUser=`); read other games' private state or keys (each game gets only its own key as a credential; state directories are `0700` per dynamic user); see home directories or devices (`ProtectHome`, `PrivateDevices`).
-- **NOT limited today:** no `CapabilityBoundingSet=` and no `SystemCallFilter=` beyond what `DynamicUser=` implies; no `MemoryMax=`, `TasksMax=` or `CPUQuota=`. Granted permissions are recorded and shown but **not enforced** by Party Core at launch.
+- **Can:** run arbitrary code as a throwaway `DynamicUser=` (its Python and whatever it ships); read any world-readable file on the host, including the install records (they hold no secret); connect to Party Core's internal Unix socket (`AVRANA_PARTY_SOCKET`, group `avrana-games`; authenticated by the game's own key only, so it can also flood it); keep state in its own `StateDirectory=` (`0700`, no disk quota); receive, in every launch, the roster of the session (participant id, display name, role) and sign results for its own session.
+- **Cannot:** connect to another game's socket (`/run/avrana-games/<id>.sock` is `root:avrana-front` `0660` and a package is not in `avrana-front`; `package-proof.sh` runs the connect with that identity and sees it refused, while Party Core's internal socket accepts it); open IP sockets (`RestrictAddressFamilies=AF_UNIX`); write its own code (the staged tree is root-owned and `ProtectSystem=strict` is implied by `DynamicUser=`); read other games' private state or keys (each game gets only its own key as a credential; state directories are `0700` per dynamic user); see home directories or devices (`ProtectHome`, `PrivateDevices`).
+- **Community-tier ceilings (AVR-336, conservative and not measured on a real game or the Pi):** the package's drop-in adds `MemoryMax=256M`, `TasksMax=64`, `CPUQuota=100%`, an empty `CapabilityBoundingSet=`, `PrivateNetwork=yes` (no abstract-namespace sockets of the host; path sockets such as Party's still work), `ProtectProc=invisible`, `ProtectClock`, `ProtectHostname`, `LockPersonality`, `RestrictRealtime` and `RestrictNamespaces`. First-party units are unchanged. A ceiling that is too low kills the package's process, not the host; the owner may tune them once a real game is measured.
+- **NOT limited today:** no `SystemCallFilter=` beyond what `DynamicUser=` implies (a filter that is right for Python on both x86-64 and the Pi's arm64 has not been proved: an owner decision), no disk quota for `StateDirectory=` or `/tmp`, and **granted permissions are not enforced by Party Core at launch**. Because of that the installer fails closed instead: it refuses `--grant` of any permission the sandbox cannot provide (everything except `persistent_storage` and `party_roster`), and refuses a package that does not request `party_roster` or an install without `--grant party_roster`, since Party Core hands every game the roster whatever was granted. `persistent_storage` is also given regardless (every package unit has a state directory), so leaving it ungranted withholds nothing; the install says so.
 - The hidden path options (`--games-root`, `--visible-root`, `--records-dir`, `--lock-file`, ...) exist for tests and rehearsals. They are for root only and must never be pointed at a directory a package or a non-root user can write.
 
 **The reference id `hello` cannot be installed as a package on a tree that carries the test fixture `contracts/games/hello.json`:** the installer refuses to shadow a repository contract (the CI proof deletes that fixture from its copied tree on purpose). A developer installs their own renamed game. **Validation cannot prove a package starts.** It checks bytes, the manifest and that the `-m` module exists in the package; the only gate is running it: the Games walkthrough's packaged-conformance step, and the real-systemd proof.
@@ -108,14 +109,14 @@ Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha25
 | Presenting requested permissions to a guest or owner | AVR-62 |
 | Client cache, progressive delivery, loading profile, seat-ready signal | AVR-135 |
 | `client.onboarding` schema, artwork | onboarding and art issues (AVR-294) |
-| Resource ceilings (CPU, memory) | needs measurement on a real game |
+| Tuning the community-tier ceilings (CPU, memory), a syscall filter, a disk quota | needs measurement on a real game and a Pi run |
 | Compatibility and deprecation policy | AVR-72 |
 | Owner-app hosting and transport | AVR-45, AVR-63 |
 | Storefront, entitlement, licensing | AVR-143, AVR-316, AVR-73 |
 | Emulated games | a separate provider, never this format |
 | Update, rollback | AVR-58, AVR-60 |
 | Serving a catalog that lists installed packages on the appliance | owner decision (deploy / nginx / routes) |
-| CPU and memory ceilings for a package game | needs a measured real game |
+| Enforcing permissions at launch (roster redaction, storage) | owner decision: what `party_roster` and `persistent_storage` mean for a community game |
 
 ## AVR-37 acceptance, as implemented
 
@@ -141,11 +142,11 @@ Record schema (`avrana.avrgame-install/experimental.1`): `id`, `version`, `sha25
 |---|---|
 | A validated install and remove workflow through the existing native provisioning path | **Met in code and unit tests** (scratch directories, recorded systemctl). Real systemd (disposable CI runner): `package-proof.sh`, https://github.com/rcnechamkin/avrana-party/actions/runs/38082213316 (commit 44275a1, 78 checks); never the Pi |
 | Nothing half-installed after a failure | Met in unit tests at every injected failure point; kill -9 repair by `remove` tested by simulating the partial states |
-| A valid package is not trusted; tier community; operator grants | Met (`--grant`, record re-validation); permissions are recorded, **not enforced at launch** by Party Core |
+| A valid package is not trusted; tier community; operator grants | Met (`--grant`, record re-validation); permissions are recorded, **not enforced at launch** by Party Core; the installer fails closed on what it cannot enforce (AVR-336) |
 | Package content never imported or executed by the installer | Met by construction (only bytes are read and hashed); the game runs only in the template unit |
 | Staged tree root-owned, not group/world writable, no links; trusted-path rule | Met in code; root ownership is asserted on a real host only by the proof |
 | Upgrade, rollback | **Not met**, deferred (AVR-58, AVR-60) |
 | Signing, provenance, publisher identity, repository, permission prompts | **Not met**, deferred (AVR-58, AVR-57, AVR-62) |
 | A phone sees the installed game in Party Home on a real appliance | **Partly**: Party Core offers and launches it; the phone catalog is static and does not list it until an owner-approved catalog route exists |
-| Resource ceilings | **Not met** (needs measurement) |
+| Resource ceilings | **Partly** (AVR-336): conservative community-tier ceilings are set and checked on a real systemd; not measured on a real game |
 | Run on the Pi | **Not done** and not authorized |
