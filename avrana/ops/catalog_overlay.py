@@ -60,8 +60,16 @@ ROW_KEYS = ('id', 'name', 'kind', 'players', 'screen', 'input', 'late_join', 'sp
             'fallback', 'installed', 'entry', 'health', 'playableHere', 'presentations', 'summary')
 
 
+_IGNORABLE = re.compile('[͏ᅟᅠ᠋-᠏ㅤ︀-️ﾠ󠄀-󠇯]')
+
+
 def _fold(text):
-    return ' '.join(unicodedata.normalize('NFKC', str(text)).casefold().split())
+    """NFKC, case folded, whitespace collapsed, with invisible marks and fillers dropped (categories
+    Mn, Me, Cf and the default-ignorable fillers). Confusable letters (Cyrillic or Greek look-alikes)
+    are NOT folded: a documented residual."""
+    text = unicodedata.normalize('NFKC', str(text)).casefold()
+    text = ''.join(c for c in text if unicodedata.category(c) not in ('Mn', 'Me', 'Cf'))
+    return ' '.join(_IGNORABLE.sub('', text).split())
 
 
 def _strings(value):
@@ -91,6 +99,8 @@ def package_row(row, pid, taken_names):
     for text in _strings({k: v for k, v in out.items() if k not in ('name', 'summary')}):
         if len(text) > MAX_STRING:
             raise ValueError(f'a text in the row is longer than {MAX_STRING} characters')
+    if not _fold(name):
+        raise ValueError('the display name is empty once invisible characters are removed')
     if _fold(name) in taken_names or _fold(pid) in taken_names:
         raise ValueError(f'the display name {name!r} is, or is easily mistaken for, the name of a first-party game')
     if len(json.dumps(out, ensure_ascii=False).encode('utf-8')) > MAX_ROW_BYTES:

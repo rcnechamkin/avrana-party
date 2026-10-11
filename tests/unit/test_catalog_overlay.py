@@ -269,6 +269,13 @@ class PackageControlledFields(OverlayBase):
         self.edit_record(name='Hello Party')
         self.assertEqual(co.effective(self.base, self.layout.records_dir, **self.kw())[1], ['hello'])
 
+    def test_invisible_characters_do_not_hide_a_first_party_name(self):
+        for tail in ('͏', '️', 'ㅤ', '​'):
+            with self.assertRaises(ValueError, msg=hex(ord(tail))):
+                co.package_row({'id': 'hello', 'name': 'Bluff' + tail}, 'hello', {co._fold('bluff')})
+        with self.assertRaises(ValueError):
+            co.package_row({'id': 'hello', 'name': 'ㅤ͏'}, 'hello', set())
+
     def test_a_refused_row_fails_the_install_and_undoes_it(self):
         def refuse(row, pid, names):
             raise ValueError('the display name is, or is easily mistaken for, a first-party game')

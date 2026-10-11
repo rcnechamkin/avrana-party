@@ -99,7 +99,7 @@ Install and remove then regenerate the effective catalog. **Fail closed:** if it
 release catalog, a full disk) the install is undone and exits 1; a failed regeneration removes the overlay,
 so the appliance serves the committed catalog (no package tile) until `catalog-overlay refresh` works.
 A new web release or a rollback (`ops/install-party-web.sh`) regenerates it too, so a deploy never hides
-new first-party games. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
+new first-party games. A web deploy while an install is running makes the hook's refresh refuse (the lock is non-blocking): the overlay is removed with a warning, and the install republishes it when it finishes. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
 deploy). **After every web deploy run `catalog-overlay check`** (exit 0 = current or no package; it also prints a
 warning line for any package left out of the catalog and why). It is not part of `avrana.ops.smoke`, on purpose
 (AVRGAME-PACKAGE, Catalog).
