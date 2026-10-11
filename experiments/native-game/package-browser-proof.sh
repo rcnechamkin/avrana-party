@@ -377,7 +377,7 @@ if [[ ${AVRANA_BROWSER_WEBKIT:-} == 1 ]]; then
 fi
 # The known-symptom retry of "Party Home" (see the spec): counted and shown, never a failure.
 echo "OBSERVE     home-retry fired $(cat "$work"/pw-*package-play.out | grep -c '^HOME-RETRY-FIRED' || true) time(s) in this run (0 is the normal case)"
-cat "$work"/pw-*package-play.out | grep '^HOME-RETRY-FIRED' | cut -c1-1500 | while IFS= read -r l; do echo "OBSERVE     $l"; done
+{ grep -h '^HOME-RETRY-FIRED' "$work"/pw-*package-play.out || true; } | cut -c1-1500 | while IFS= read -r l; do echo "OBSERVE     $l"; done
 for f in cwd dyn uid; do echo "OBSERVE     game process $f: $(cat "$work/game.$f" 2>&1)"; done
 t 'the game process, seen while the browsers played, ran from the STAGED package tree as a DynamicUser, not root' 0 bash -c '
     test "$(cat "$1/game.cwd")" = "$(readlink -f "$2")" && test "$(cat "$1/game.dyn")" = yes && test "$(cat "$1/game.uid")" != 0' _ "$work" "$staged"
