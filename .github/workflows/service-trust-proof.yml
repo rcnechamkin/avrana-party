@@ -222,8 +222,8 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Package in real browsers - install, play, reconnect, result, remove
         run: sudo env "PATH=$PATH" AVRANA_PACKAGE_BROWSER_PROOF=1 AVRANA_BROWSER_WEBKIT=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-browser-proof.sh
-      - name: Keep the browsers' traces and screenshots
-        if: failure()
+      - name: Keep the browsers' traces, screenshots and evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: package-browser-results

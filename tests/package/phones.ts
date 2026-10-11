@@ -8,10 +8,14 @@ import { expect, type Browser, type BrowserContext, type Page, type TestInfo } f
 export const PARTY = 'https://party.avrana.net';
 export const GAMES = 'https://games.avrana.net';
 
+export type Body = { url: string; type: string; text: string };
+
 export type Phone = {
   name: string; context: BrowserContext; page: Page;
-  bodies: string[];           // every text/JSON response body this phone received (any origin)
-  frames: string[];           // every WebSocket frame it received
+  bodies: Body[];             // every text/JSON response body this phone received (any origin)
+  frames: string[];           // every WebSocket frame it received (Hello Party uses none: see the spec's channel report)
+  gameApiRequests: number;    // requests the game page has started against its own /api/ (poll, redeem, greet)
+  partyCalls: string[];       // "METHOD path status" of every Party API call this phone made (frames included), no bodies
   gameMainFrameCalls: string[]; // requests the game page's own frame made to the Party API (must stay empty)
 };
 
@@ -37,15 +41,23 @@ export async function phone(browser: Browser, info: TestInfo, name: string): Pro
     });
   });
   const page = await context.newPage();
-  const p: Phone = { name, context, page, bodies: [], frames: [], gameMainFrameCalls: [] };
+  const p: Phone = { name, context, page, bodies: [], frames: [], gameApiRequests: 0, partyCalls: [], gameMainFrameCalls: [] };
+  // Hello Party carries its state over HTTP: JSON bodies of POST api/redeem, api/poll and api/greet on the game
+  // origin (the page long-polls; it opens no WebSocket and no event stream). Frames are recorded as well so a game
+  // that did switch channels would still be covered. A streaming response must never block this recorder, so
+  // text/event-stream is skipped and every read gives up after 8 s.
   context.on('response', async (res) => {
     try {
-      const type = res.headers()['content-type'] || '';
-      if (/json|text|javascript/.test(type)) p.bodies.push(await res.text());
-    } catch { /* aborted long poll, redirect, closed context */ }
+      const url = res.url(), type = res.headers()['content-type'] || '';
+      if (url.includes('/party/api/')) p.partyCalls.push(`${res.request().method()} ${new URL(url).pathname} ${res.status()}`);
+      if (/event-stream/.test(type) || !/json|text|javascript/.test(type)) return;
+      const text = await Promise.race([res.text(), new Promise<string>((_, no) => setTimeout(() => no(new Error('slow body')), 8000))]);
+      p.bodies.push({ url, type, text });
+    } catch { /* aborted long poll, redirect, closed context, a body that never ends */ }
   });
   page.on('websocket', (ws) => ws.on('framereceived', (f) => p.frames.push(String(f.payload))));
   page.on('request', (r) => {
+    if (r.url().startsWith(GAMES + '/games/') && r.url().includes('/api/')) p.gameApiRequests++;
     if (r.frame() === page.mainFrame() && page.url().startsWith(GAMES) && r.url().includes('/party/api/')) p.gameMainFrameCalls.push(r.url());
   });
   page.on('pageerror', (e) => console.log(`[${name}] pageerror: ${e.message}`));

@@ -12,7 +12,7 @@
 #     through the REAL `provision-game` path, removed by the REAL `install-game remove`;
 #   - Party Core (the real unit, socket-activated), the game (avrana-game@hello, socket-activated,
 #     DynamicUser, running from the staged tree), the signed launch and the signed result;
-#   - nginx: the COMMITTED avrana-party.nginx, byte for byte (cmp'd), on its real ports 80 and 443,
+#   - nginx: the COMMITTED avrana-party.nginx, byte for byte (compared with `git show HEAD:`), on its real ports 80 and 443,
 #     with the real host names party.avrana.net and games.avrana.net, the real native-game rule that
 #     proxies to /run/avrana-games/hello.sock, and the real built web shell (avrana.web.build);
 #   - the browsers: Playwright's Chromium (and WebKit when AVRANA_BROWSER_WEBKIT=1), one browser context
@@ -301,8 +301,9 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 
     -keyout "$tls/privkey.pem" -out "$tls/fullchain.pem" >/dev/null 2>&1
 chmod 0600 "$tls/privkey.pem"
 printf '127.0.0.1 party.avrana.net games.avrana.net %s\n' "$hosts_tag" >> /etc/hosts
+git -C "$repo" show HEAD:avrana-party.nginx > "$work/committed.nginx" 2>/dev/null || cp "$repo/avrana-party.nginx" "$work/committed.nginx"
 cp "$repo/avrana-party.nginx" "$work/site.conf"
-t 'the nginx site in use is the committed avrana-party.nginx, byte for byte' 0 cmp -s "$work/site.conf" "$repo/avrana-party.nginx"
+t 'the nginx site in use is byte for byte the one committed at HEAD (git show HEAD:avrana-party.nginx), no edits' 0 cmp -s "$work/site.conf" "$work/committed.nginx"
 mime=/etc/nginx/mime.types
 [[ -f $mime ]] || { echo "$mime not found" >&2; exit 2; }
 for d in body proxy fastcgi uwsgi scgi; do mkdir "$work/tmp-$d"; done
@@ -335,9 +336,13 @@ t 'the game rule never proxies a control path (games.avrana.net/games/hello/avra
 
 # ---- f. the browsers: play the installed package --------------------------------------------------------------------
 runuser -u "$pwuser" -- mkdir -p "$out_dir"      # created by the user who will write to it, parents included
-pw() {  # pw <project> <spec>: Playwright as the unprivileged user, from the checkout
+pw() {  # pw <project> <spec>: Playwright as the unprivileged user, from the checkout; its output is kept in $work/pw-*.out
     (cd "$repo" && runuser -u "$pwuser" -- env HOME="$pwhome" PATH="$PATH" CI=1 AVRANA_PACKAGE_BROWSER_PROOF=1 \
-        AVRANA_BROWSER_OUT="$out_dir/$1-${2%.spec.ts}" npx playwright test -c tests/package/playwright.package.config.ts --project="$1" "$2")
+        AVRANA_BROWSER_OUT="$out_dir/$1-${2%.spec.ts}" npx playwright test -c tests/package/playwright.package.config.ts --project="$1" "$2") \
+        2>&1 | tee "$work/pw-$1-${2%.spec.ts}.out"
+}
+exactly_one_passed() {  # a run counts only if Playwright said "1 passed" and nothing was skipped, failed or flaky
+    grep -qE '^ +1 passed' "$1" && ! grep -qiE '^ +[0-9]+ (skipped|failed|flaky|did not run)' "$1"
 }
 observe_game() {  # while the browsers play: where the game process runs and as whom (it idles away afterwards)
     local gpid cwd
@@ -365,7 +370,14 @@ fi
 set -e
 kill "$observer" 2>/dev/null || true
 check 'real Chromium (Pixel 7 size): admission, discovery, launch, private views, reconnect, result, home' 0 "$s_play"
-if [[ ${AVRANA_BROWSER_WEBKIT:-} == 1 ]]; then check 'real WebKit (iPhone 13 size): the same' 0 "$s_webkit"; fi
+t 'and Playwright reported exactly 1 passed for it (a skipped spec is not a pass)' 0 exactly_one_passed "$work/pw-chromium-pixel-package-play.out"
+if [[ ${AVRANA_BROWSER_WEBKIT:-} == 1 ]]; then
+    check 'real WebKit (iPhone 13 size): the same' 0 "$s_webkit"
+    t 'and Playwright reported exactly 1 passed for it' 0 exactly_one_passed "$work/pw-webkit-iphone-package-play.out"
+fi
+# The known-symptom retry of "Party Home" (see the spec): counted and shown, never a failure.
+echo "OBSERVE     home-retry fired $(cat "$work"/pw-*package-play.out | grep -c '^HOME-RETRY-FIRED' || true) time(s) in this run (0 is the normal case)"
+cat "$work"/pw-*package-play.out | grep '^HOME-RETRY-FIRED' | cut -c1-1500 | while IFS= read -r l; do echo "OBSERVE     $l"; done
 for f in cwd dyn uid; do echo "OBSERVE     game process $f: $(cat "$work/game.$f" 2>&1)"; done
 t 'the game process, seen while the browsers played, ran from the STAGED package tree as a DynamicUser, not root' 0 bash -c '
     test "$(cat "$1/game.cwd")" = "$(readlink -f "$2")" && test "$(cat "$1/game.dyn")" = yes && test "$(cat "$1/game.uid")" != 0' _ "$work" "$staged"
@@ -389,6 +401,7 @@ pw chromium-pixel package-removed.spec.ts
 s_gone=$?
 set -e
 check 'real Chromium: after the removal the game is not in Party Home, not launchable, and its route is gone' 0 "$s_gone"
+t 'and Playwright reported exactly 1 passed for it' 0 exactly_one_passed "$work/pw-chromium-pixel-package-removed.out"
 t 'Party Core was never restarted in the whole run' 0 test "$(pid)" = "$pid_before"
 
 echo "failed checks: $fails"

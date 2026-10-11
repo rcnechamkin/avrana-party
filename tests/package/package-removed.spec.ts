@@ -30,14 +30,16 @@ test('a removed package: gone from the Library, not launchable, its route is an 
     expect(launch.status()).toBeLessThan(500);
     expect((await partyState(dee)).session?.id ?? null).toBe(before);    // and nothing new started
 
-    // Its route is gone: the game origin answers an error (nginx 502: no socket), never the page.
+    // Its route is gone. In the committed nginx site a slug that matches the native-game rule is proxied to
+    // /run/avrana-games/<slug>.sock; with no socket nginx answers 502 itself. A 404 would mean the request never
+    // reached that rule (a different failure), so only 502 or 503 is accepted. Never the page.
     const route = await dee.page.request.get(`${GAMES}/games/hello/`);
-    expect([404, 502, 503]).toContain(route.status());
+    expect([502, 503]).toContain(route.status());
     expect(await route.text()).not.toContain('Hello Party');
     const api = await dee.page.request.get(`${GAMES}/games/hello/api/party`);
-    expect([404, 502, 503]).toContain(api.status());
+    expect([502, 503]).toContain(api.status());
     const nav = await dee.page.goto(`${GAMES}/games/hello/`);
-    expect([404, 502, 503]).toContain(nav!.status());
+    expect([502, 503]).toContain(nav!.status());
     await expect(dee.page.locator('#secret')).toHaveCount(0);
   } finally {
     await leaveAll([dee]);
