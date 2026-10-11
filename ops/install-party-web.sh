@@ -29,10 +29,41 @@ case ${1:-} in
     --kill) kill_flag=(--no-service-worker); shift ;;
 esac
 
+# AVR-337 (EXPERIMENTAL): when .avrgame packages are installed the appliance serves an effective catalog
+# (the release catalog plus their rows) instead of the release's own. It is derived from the release,
+# so it is regenerated here whenever "current" moves, a new release or a rollback. Does nothing when no
+# package is installed and no overlay exists. A failure never fails the install; the overlay is removed (here too,
+# in case the tool itself could not start), so the release catalog is served until the owner re-runs it.
+refresh_catalog() {
+    local tree overlay=${AVRANA_CATALOG_OVERLAY:-/var/lib/avrana-party/catalog/catalog.json}
+    local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
+    [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
+    tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd) || tree=.
+    if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
+        # Owner decision 2026-10-10: a read-only consistency check, WARNING ONLY. It never changes the exit
+        # status of this script, the deploy, smoke, the manifest or /party/api/status.
+        local note rc=0
+        note=$(cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay check --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records" 2>&1) || rc=$?
+        if [[ $rc -ne 0 || $note == *warning:* ]]; then
+            echo "WARNING: the effective catalog is not what the installed packages call for (a package may have no tile):" >&2
+            echo "$note" | sed 's/^/    /' >&2
+            echo "WARNING: run: sudo ops/catalog-overlay refresh   (the web release itself is installed and unaffected)" >&2
+        fi
+        return 0
+    fi
+        { rm -f "$overlay" 2>/dev/null || true    # (set -e: a failing rm must reach the warning, never abort the web install) fail toward the release: never leave an overlay built from the previous release
+          if [[ -e $overlay ]]; then
+              echo "WARNING: the effective catalog could NOT be regenerated for this release AND the old overlay could NOT be removed (not root?): phones may be served a STALE catalog. Run: sudo rm $overlay && sudo ops/catalog-overlay refresh" >&2
+          else
+              echo "WARNING: the effective catalog could NOT be regenerated for this release; the overlay was removed, so the release catalog is served and installed .avrgame packages have no tile. Run: sudo ops/catalog-overlay refresh" >&2
+          fi; }
+}
+
 switch_to() {
     ln -sfn "$1" "$dest/current.new"
     mv -Tf "$dest/current.new" "$dest/current"
     echo "current -> $1"
+    refresh_catalog "$1"
 }
 
 if [[ $mode == rollback ]]; then
