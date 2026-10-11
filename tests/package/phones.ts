@@ -1,0 +1,98 @@
+import { expect, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
+
+/**
+ * Phones for the installed-package suite (AVR-338): one browser context each (its own Secure cookie
+ * jar, its own storage), with a recorder of everything that phone RECEIVED over HTTP and WebSocket, so
+ * a test can say "this phone was never told that secret".
+ */
+export const PARTY = 'https://party.avrana.net';
+export const GAMES = 'https://games.avrana.net';
+
+export type Body = { url: string; type: string; text: string };
+
+export type Phone = {
+  name: string; context: BrowserContext; page: Page;
+  bodies: Body[];             // every text/JSON response body this phone received (any origin)
+  frames: string[];           // every WebSocket frame it received (Hello Party uses none: see the spec's channel report)
+  gameApiRequests: number;    // requests the game page has started against its own /api/ (poll, redeem, greet)
+  partyCalls: string[];       // "METHOD path status" of every Party API call this phone made (frames included), no bodies
+  gameMainFrameCalls: string[]; // requests the game page's own frame made to the Party API (must stay empty)
+};
+
+export async function phone(browser: Browser, info: TestInfo, name: string): Promise<Phone> {
+  const { viewport, userAgent, isMobile, hasTouch, deviceScaleFactor } = info.project.use as any;
+  const context = await browser.newContext({
+    baseURL: PARTY, ignoreHTTPSErrors: true, serviceWorkers: 'block',
+    viewport, userAgent, isMobile, hasTouch, deviceScaleFactor,
+  });
+  // A saved profile is who this phone is at the party; presence then follows (ADR 0011). Only on the
+  // Party origin: the game origin keeps no storage of ours.
+  await context.addInitScript((who) => {
+    if (location.hostname === 'party.avrana.net') { try { localStorage.setItem('wc-name', who); } catch { /* private */ } }
+  }, name);
+  // What the Party's bridge frame told this game page (the shim's own messages): kept so a test can say why a
+  // verb such as "go home" did not take. Types and outcomes only, never a ticket.
+  await context.addInitScript(() => {
+    if (location.hostname !== 'games.avrana.net') return;
+    const log: any[] = ((window as any).__bridge = []);
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (d && d.avrana && d.type !== 'ticket') log.push({ type: d.type, ok: d.ok, error: d.error, to: d.to });
+    });
+  });
+  const page = await context.newPage();
+  const p: Phone = { name, context, page, bodies: [], frames: [], gameApiRequests: 0, partyCalls: [], gameMainFrameCalls: [] };
+  // Hello Party carries its state over HTTP: JSON bodies of POST api/redeem, api/poll and api/greet on the game
+  // origin (the page long-polls; it opens no WebSocket and no event stream). Frames are recorded as well so a game
+  // that did switch channels would still be covered. A streaming response must never block this recorder, so
+  // text/event-stream is skipped and every read gives up after 8 s.
+  context.on('response', async (res) => {
+    try {
+      const url = res.url(), type = res.headers()['content-type'] || '';
+      if (url.includes('/party/api/')) p.partyCalls.push(`${res.request().method()} ${new URL(url).pathname} ${res.status()}`);
+      if (/event-stream/.test(type) || !/json|text|javascript/.test(type)) return;
+      const text = await Promise.race([res.text(), new Promise<string>((_, no) => setTimeout(() => no(new Error('slow body')), 8000))]);
+      p.bodies.push({ url, type, text });
+    } catch { /* aborted long poll, redirect, closed context, a body that never ends */ }
+  });
+  page.on('websocket', (ws) => ws.on('framereceived', (f) => p.frames.push(String(f.payload))));
+  page.on('request', (r) => {
+    if (r.url().startsWith(GAMES + '/games/') && r.url().includes('/api/')) p.gameApiRequests++;
+    if (r.frame() === page.mainFrame() && page.url().startsWith(GAMES) && r.url().includes('/party/api/')) p.gameMainFrameCalls.push(r.url());
+  });
+  page.on('pageerror', (e) => console.log(`[${name}] pageerror: ${e.message}`));
+  return p;
+}
+
+/** Open Party Home as this phone: the real shell, which joins the party by itself once it has a name. */
+export async function joinParty(p: Phone, { intoRound = false } = {}) {
+  await p.page.goto('/party/');
+  // A phone that arrives while a round is on is taken straight to the game: it never settles on Party Home.
+  if (!intoRound) await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
+}
+
+/** The Party's own JSON, as this phone's page asks it (cookie and Origin included). */
+export async function partyState(p: Phone) {
+  const res = await p.page.request.get(`${PARTY}/party/api/state`);
+  expect(res.ok()).toBeTruthy();
+  return res.json();
+}
+
+export async function post(p: Phone, path: string, body: Record<string, unknown>) {
+  return p.page.request.post(`${PARTY}/party/api/${path}`, { data: body, headers: { 'Content-Type': 'application/json', Origin: PARTY } });
+}
+
+/** Leave the party as a failed or finished test should: a round still on is ended by the Host first, so the
+ * next test (and the script's `install-game remove`) never finds a live session. The Host is the first phone. */
+export async function leaveAll(phones: Phone[]) {
+  const [host] = phones;
+  try {
+    const state = await partyState(host);
+    if (state.session && !['ended'].includes(state.session.state)) await post(host, 'session/end', { if_version: state.version });
+  } catch { /* nothing to end, or the context is gone */ }
+  // A page that is still open keeps the phone present (presence is automatic): park every page first.
+  for (const p of phones) { try { await p.page.goto('about:blank'); } catch { /* gone */ } }
+  for (const p of [...phones].reverse()) {
+    try { console.log(`[${p.name}] leave: HTTP ${(await post(p, 'leave', {})).status()}`); } catch { /* the context may be gone */ }
+  }
+}

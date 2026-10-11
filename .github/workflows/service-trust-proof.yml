@@ -17,6 +17,10 @@
 #   package      (AVR-39, EXPERIMENTAL) the Hello Party .avrgame package of the paired Games branch: built
 #                unprivileged, refused when tampered, installed by `ops/install-game`, two sessions,
 #                the phase 2 boundary checker, removed, re-installed. Runner only.
+#   package-browser (AVR-338, EXPERIMENTAL) the same installed package, played in REAL BROWSERS
+#                (Playwright Chromium and WebKit) through Party Home, the Host's launch, the game origin
+#                and the bridge, behind the committed nginx site with a throwaway certificate; then
+#                removed. Discovery is the real effective-catalog overlay of install-game (AVR-337). Runner only; not a phone.
 name: Service trust proof
 
 on:
@@ -28,7 +32,12 @@ on:
       - 'ops/provision-game'
       - 'ops/prepare-native-games'
       - 'ops/install-game'
+      - 'ops/catalog-overlay'
+      - 'ops/install-party-web.sh'
       - 'experiments/**'
+      - 'tests/package/**'
+      - 'avrana-party.nginx'
+      - 'web/party/**'
       - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
   workflow_dispatch:
@@ -161,3 +170,65 @@ jobs:
           persist-credentials: false
       - name: Package - build, refusals, install-game, two sessions, the boundary, remove, re-install
         run: sudo AVRANA_PACKAGE_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-proof.sh
+
+  # (AVR-338, EXPERIMENTAL) Real browsers against the INSTALLED Hello Party package: the disposable
+  # appliance of the package job plus the committed nginx site on party.avrana.net / games.avrana.net
+  # (throwaway certificate, /etc/hosts), the real effective-catalog overlay of install-game, Playwright Chromium and WebKit as phones. The Games checkout is
+  # the branch paired with this one (same logic as the jobs above). Runner only. Tier 2: not a phone,
+  # not Wi-Fi, not the Pi (docs/TESTING.md).
+  package-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - name: Resolve the matching Games branch
+        id: peer
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
+          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
+          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
+          ref=main; why='no AVR id in this branch name'
+          if [ -n "$avr" ]; then
+            why="no Games branch carries $avr"
+            if echo "$heads" | grep -qxF "$BRANCH"; then
+              ref=$BRANCH; why='same branch name'
+            else
+              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
+              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: ${{ steps.peer.outputs.ref }}
+          path: games
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.2'
+          cache: npm
+          cache-dependency-path: party/package-lock.json
+      - name: Install from the committed lockfile
+        working-directory: party
+        run: npm ci
+      - name: Install the browsers
+        working-directory: party
+        run: npx playwright install --with-deps chromium webkit
+      - name: Package in real browsers - install, play, reconnect, result, remove
+        run: sudo env "PATH=$PATH" AVRANA_PACKAGE_BROWSER_PROOF=1 AVRANA_BROWSER_WEBKIT=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-browser-proof.sh
+      - name: Keep the browsers' traces, screenshots and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-browser-results
+          path: party/test-results/package-browser
+          if-no-files-found: ignore
+          retention-days: 7
