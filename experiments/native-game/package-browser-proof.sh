@@ -365,6 +365,7 @@ set -e
 kill "$observer" 2>/dev/null || true
 check 'real Chromium (Pixel 7 size): admission, discovery, launch, private views, reconnect, result, home' 0 "$s_play"
 if [[ ${AVRANA_BROWSER_WEBKIT:-} == 1 ]]; then check 'real WebKit (iPhone 13 size): the same' 0 "$s_webkit"; fi
+for f in cwd dyn uid; do echo "OBSERVE     game process $f: $(cat "$work/game.$f" 2>&1)"; done
 t 'the game process, seen while the browsers played, ran from the STAGED package tree as a DynamicUser, not root' 0 bash -c '
     test "$(cat "$1/game.cwd")" = "$(readlink -f "$2")" && test "$(cat "$1/game.dyn")" = yes && test "$(cat "$1/game.uid")" != 0' _ "$work" "$staged"
 t 'the game saw the signed launch and the party accepted the result (journal)' 0 bash -c '
