@@ -1245,6 +1245,21 @@ class InterruptTruthTests(Base):
             self.assertTrue(any('community' in p for p in found.problems), (tier, found.problems))
 
 
+class EmptyDirectoryTests(Base):
+    @unittest.skipUnless(os.name == 'posix', 'POSIX modes')
+    def test_a_writable_or_foreign_empty_id_directory_is_refused(self):
+        d = self.layout.id_dir('hello')
+        d.mkdir()
+        os.chmod(d, 0o777)
+        before = self.snapshot()
+        self.refused(lambda: self.install(), 'not root-owned or is writable', 'delete it by hand')
+        os.chmod(d, 0o755)
+        self.refused(lambda: self.install(owner=os.getuid() + 1), 'not root-owned or is writable')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+        self.install(owner=os.getuid())
+        self.assertEqual(ig.verify('hello', self.layout, REPO), [])
+
+
 def shutil_rmtree(path):
     import shutil
     shutil.rmtree(path)

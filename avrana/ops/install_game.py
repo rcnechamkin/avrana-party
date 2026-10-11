@@ -318,8 +318,16 @@ def interrupts_as_exceptions():
 
 # ---- checks that change nothing ---------------------------------------------------------------------
 
-def _empty_plain_dir(path):
-    return os.path.isdir(path) and not os.path.islink(path) and not os.listdir(path)
+def _empty_plain_dir(path, owner=None):
+    """True for an empty plain directory that only the expected owner (a uid; None skips the check)
+    can write to; Refused for an empty one that anybody else could write to or that is not theirs."""
+    if not os.path.isdir(path) or os.path.islink(path) or os.listdir(path):
+        return False
+    st = os.lstat(path)
+    if (owner is not None and st.st_uid != owner) or (os.name == 'posix' and st.st_mode & 0o022):
+        raise Refused(f'{path} is an empty directory that is not root-owned or is writable by a group or others; '
+                      'delete it by hand before installing')
+    return True
 
 
 def _plain_dir(path, what):
@@ -421,7 +429,7 @@ def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpret
             pass
         raise Refused(f'{pid}{version} is already installed (or its record is damaged); remove it first: '
                       f'install-game remove {pid}. Upgrade and rollback are not implemented yet (AVR-58, AVR-60).')
-    if os.path.lexists(tree) and not _empty_plain_dir(tree):      # an empty one is what a crash after mkdir leaves
+    if os.path.lexists(tree) and not _empty_plain_dir(tree, owner):      # an empty one is what a crash after mkdir leaves
         raise Refused(f'{tree} exists without a record (an interrupted install?); run install-game remove {pid} first '
                       '(if that reports nothing to remove, it is not a tree this tool made: delete it by hand)')
     left = pg.plan_remove(pid, layout.provision, False, None)
@@ -523,18 +531,21 @@ def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=
         began['provisioning'] = True
         changed = pg.provision(pid, layout.provision, plan.contracts, plan.grants, run, own, origin,
                                trusted=trusted)
+        _shield[0] += 1                                # installed (the LAST statement here): a late signal must not report an undo that did not happen
     except BaseException as exc:
-        with shielded():                               # the undo is never cut short, by a signal or a second one
+        _shield[0] += 1                                # FIRST statement: the undo is never cut short, by a signal or a second one
+        try:
             problems = ledger.unwind()
             if began['provisioning']:
                 try:
                     pg.reload_party(run)               # Party Core forgets the game it may have loaded
                 except Exception:
                     problems.append('Party Core reload')
+        finally:
+            _shield[0] -= 1
         if problems:
             raise RollbackIncomplete(exc, problems) from exc
         raise
-    _shield[0] += 1                                    # installed: a late signal must not report an undo that did not happen
     lines = [f'{pid}: installed {package.version} (sha256 {package.sha256[:12]}...) as {installed.TIER}, '
              f'granted: {", ".join(plan.grant["permissions_granted"]) or "nothing"}',
              f'{pid}: staged {plan.root}', f'{pid}: wrote {layout.record(pid)}']
