@@ -176,9 +176,30 @@ def party_origin(config_path):
                   f'https://host[:port] or http://host[:port]); a game would not know its Party origin')
 
 
-def dropin_text(runtime, origin):
+# Extra confinement for the community tier only (an installed .avrgame package, AVR-336); a
+# first-party game's unit is exactly the template's. The values are conservative and NOT measured on
+# a real game or on the Pi (docs/design/AVRGAME-PACKAGE.md): a ceiling that is too low kills the
+# package's process, never the host. Each line is checked on a real systemd by package-proof.sh.
+COMMUNITY_TIER = 'community'
+COMMUNITY_UNIT = (
+    '# Community tier (an installed package): ceilings and extra confinement the template does not carry.\n'
+    'MemoryMax=256M\n'
+    'TasksMax=64\n'
+    'CPUQuota=100%\n'
+    'CapabilityBoundingSet=\n'
+    'PrivateNetwork=yes\n'          # no abstract-namespace sockets of the host; path sockets still work
+    'ProtectProc=invisible\n'       # no view of other users' processes in /proc
+    'ProtectClock=yes\n'
+    'ProtectHostname=yes\n'
+    'LockPersonality=yes\n'
+    'RestrictRealtime=yes\n'
+    'RestrictNamespaces=yes\n')
+
+
+def dropin_text(runtime, origin, tier=None):
     """The exec.conf for a validated `runtime` and the Party's `origin`. Refuses any control
-    character itself, since the text goes into a unit file where a newline would add a directive."""
+    character itself, since the text goes into a unit file where a newline would add a directive.
+    For the community tier it also carries COMMUNITY_UNIT."""
     strings = list(runtime['command']) + [runtime['working_directory']]
     if any(not isinstance(s, str) or CONTROL.search(s) for s in strings):
         raise Refused('runtime: control characters are not allowed in a unit file')
@@ -188,7 +209,8 @@ def dropin_text(runtime, origin):
             '[Service]\n'
             f"ExecStart={' '.join(quote_exec(a) for a in runtime['command'])}\n"
             f"WorkingDirectory={runtime['working_directory'].replace('%', '%%')}\n"
-            f'Environment={PARTY_ORIGIN_ENV}={origin}\n')
+            f'Environment={PARTY_ORIGIN_ENV}={origin}\n'
+            + (COMMUNITY_UNIT if tier == COMMUNITY_TIER else ''))
 
 
 def _put(path, data, mode):
@@ -196,12 +218,28 @@ def _put(path, data, mode):
     path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     tmp = path.with_name(f'.{path.name}.{secrets.token_hex(4)}')
     try:
-        tmp.write_bytes(data)
+        with open(tmp, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())            # on disk before the rename: a power loss never leaves an empty file under the real name
         os.chmod(tmp, mode)
         os.replace(tmp, path)
+        _fsync_dir(path.parent)
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+def _fsync_dir(directory):
+    """Flush a directory's entries (a rename) to disk. Windows cannot open a directory; the real
+    tool runs on Linux."""
+    if os.name != 'posix':
+        return
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _differs(path, data):
@@ -232,7 +270,10 @@ def _write_key(path, own):
         f, fd = os.fdopen(fd, 'w', encoding='ascii'), None
         with f:
             f.write(secrets.token_hex(32) + '\n')
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
+        _fsync_dir(directory)
     finally:
         if fd is not None:
             os.close(fd)
@@ -257,7 +298,8 @@ def _wanted(slug, layout, grants, timeout, origin):
         if not src.is_file():
             raise Refused(f'{name}: missing from {layout.template_dir}')
         templates.append((Path(layout.unit_dir) / name, src.read_bytes()))
-    return entry, dropin_text(runtime, origin), templates
+    tier = grants[slug].get('tier') if isinstance(grants[slug], dict) else None
+    return entry, dropin_text(runtime, origin, tier), templates
 
 
 def untrusted_reason(path, lstat=os.lstat, realpath=os.path.realpath):

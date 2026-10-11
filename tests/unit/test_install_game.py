@@ -168,21 +168,47 @@ class InstallTests(Base):
         self.assertTrue(pkg.is_file())                    # the archive itself is never touched
 
     def test_a_package_is_community_whatever_it_asks_and_grants_are_the_intersection(self):
-        self.install(allow=[])
+        self.install(allow=['party_roster'])
         rec = installed.read_record_file(self.layout.record('hello'), 'hello', REPO)
-        self.assertEqual(rec.grant['permissions_granted'], [])
+        self.assertEqual(rec.grant['permissions_granted'], ['party_roster'])
         self.assertEqual(rec.grant['tier'], 'community')
-        self.remove()
-        lines = self.install(allow=['party_roster', 'camera'])
-        self.assertEqual(installed.read_record_file(self.layout.record('hello'), 'hello', REPO).grant['permissions_granted'],
-                         ['party_roster'])
-        self.assertTrue(any('ignored --grant camera' in line for line in lines))
-        self.remove()
-        lines = self.install(allow=[])
-        self.assertTrue(any('requested but not granted: party_roster' in line for line in lines))
         self.remove()
         self.refused(lambda: self.install(allow=['bogus']), 'not a permission name')
         self.assertEqual([p for p in self.files() if 'hello' in p], [])
+
+    def test_a_grant_the_sandbox_cannot_provide_is_refused_not_recorded(self):
+        # AVR-336: the unit has AF_UNIX only and PrivateDevices=, so these cannot be given; a record
+        # that said "granted" would be false. Refused before anything is written, requested or not.
+        before = self.snapshot()
+        for name in ('camera', 'microphone', 'internet', 'local_network', 'controllers', 'host_devices'):
+            with self.subTest(name):
+                self.refused(lambda: self.install(allow=['party_roster', name]), 'cannot provide', name)
+        m = good_manifest()
+        m['game']['runtime']['permissions'] = ['party_roster', 'internet']
+        pkg = self.package('wants-net.avrgame', manifest=mjson(m))
+        self.refused(lambda: self.install(pkg, allow=['party_roster', 'internet']), 'cannot provide')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+        # requesting an unobtainable permission is allowed: it is not granted, and the sandbox gives nothing
+        lines = self.install(pkg, allow=['party_roster'])
+        self.assertEqual(installed.read_record_file(self.layout.record('hello'), 'hello', REPO).grant['permissions_granted'],
+                         ['party_roster'])
+        self.assertTrue(any('requested but not granted: internet' in line for line in lines))
+
+    def test_a_package_must_request_and_be_granted_the_roster_it_receives_anyway(self):
+        before = self.snapshot()
+        self.refused(lambda: self.install(allow=[]), 'receives the Party roster', '--grant party_roster')
+        m = good_manifest()
+        m['game']['runtime']['permissions'] = []
+        quiet = self.package('quiet.avrgame', manifest=mjson(m))
+        self.refused(lambda: self.install(quiet, allow=['party_roster']), 'does not request party_roster', 'unannounced')
+        self.refused(lambda: self.install(quiet, allow=[]), 'does not request party_roster')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+
+    def test_ungranted_storage_is_reported_as_not_withheld(self):
+        m = good_manifest()
+        m['game']['runtime']['permissions'] = ['party_roster', 'persistent_storage']
+        lines = self.install(self.package('store.avrgame', manifest=mjson(m)), allow=['party_roster'])
+        self.assertTrue(any('persistent_storage is NOT withheld' in line for line in lines))
 
     def test_a_second_install_of_the_same_id_is_refused_and_changes_nothing(self):
         self.install()
@@ -456,14 +482,14 @@ class MainTests(Base):
     def test_exit_codes_and_output(self):
         pkg = str(self.package())
         self.assertEqual(self.main('install', pkg, root=False)[0], 1)                 # not root
-        rc, out, err = self.main('install', pkg, '--dry-run', root=False)
+        rc, out, err = self.main('install', pkg, '--grant', 'party_roster', '--dry-run', root=False)
         self.assertEqual(rc, 0, err)
         self.assertIn('would install 0.1.0', out)
         self.assertEqual([p for p in self.files() if 'hello' in p], [])
         rc, out, err = self.main('install', pkg, '--grant', 'party_roster')
         self.assertEqual(rc, 0, err)
         self.assertIn('granted: party_roster', out)
-        rc, out, err = self.main('install', pkg)
+        rc, out, err = self.main('install', pkg, '--grant', 'party_roster')
         self.assertEqual((rc, out), (1, ''))
         self.assertIn('refused: hello 0.1.0 is already installed', err)
         rc, out, _ = self.main('list')
@@ -486,7 +512,7 @@ class MainTests(Base):
                 raise subprocess.CalledProcessError(1, argv)
         out, err = io.StringIO(), io.StringIO()
         before = self.snapshot()
-        rc = ig.main(['install', str(self.package()), '--records-dir', str(self.layout.records_dir),
+        rc = ig.main(['install', str(self.package()), '--grant', 'party_roster', '--records-dir', str(self.layout.records_dir),
                       '--games-root', str(self.layout.games_root), '--lock-file', str(self.layout.lock_file),
                       '--visible-root', '/opt/avrana-games', '--key-dir', str(self.layout.provision.key_dir),
                       '--registry-dir', str(self.layout.provision.registry_dir),
@@ -551,6 +577,10 @@ class RecordReaderTests(Base):
             'contract id': (lambda d: d['contract'].update(id='other'), 'contract.id'),
             'contract tier': (lambda d: d['contract'].update(tier='builtin'), 'contract:'),
             'grant exceeds request': (lambda d: d['grant'].update(permissions_granted=['party_roster', 'camera']), 'never requested'),
+            'grant the sandbox cannot provide': (lambda d: (d['contract']['runtime'].update(permissions=['party_roster', 'internet']),
+                                                            d['grant'].update(permissions_granted=['party_roster', 'internet'])),
+                                                 'cannot be provided inside the package sandbox'),
+            'grant lacks the roster every game receives': (lambda d: d['grant'].update(permissions_granted=[]), 'party_roster is delivered'),
             'tier not community': (lambda d: d['grant'].update(tier='builtin'), 'community'),
             'entry': (lambda d: d['grant'].update(entry='/games/other/'), 'grant.entry'),
             'working dir': (lambda d: d['grant']['runtime'].update(working_directory='/opt/avrana-games/hello'), 'working_directory'),
@@ -752,7 +782,11 @@ class ReviewFixTests(Base):
         self.install_again_with_record(everything)
 
     def install_again_with_record(self, everything):
-        self.remove('hello', repo=everything)                        # a tree is evidence enough
+        # a tree alone is NOT evidence for a first-party id (AVR-336): nothing is touched
+        before = self.snapshot()
+        self.refused(lambda: self.remove('hello', repo=everything), 'first-party')
+        self.assertEqual(self.snapshot(), before)
+        self.remove('hello')                                         # on a tree that does not know it, the tree is evidence
         self.assertEqual([p for p in self.snapshot() if 'hello' in p and not p.startswith('keys/')], [])
         self.install()
         self.remove('hello', repo=everything)                        # the record and the tree
@@ -892,6 +926,226 @@ class ReviewFixTests(Base):
         with self.assertLogs('avrana.party.registry', 'ERROR'):
             self.assertTrue(registry.reload(service, endpoints, str(config), REPO))
         self.assertEqual((sorted(endpoints), sorted(service.core.games)), (['bluff'], ['bluff']))
+
+
+class RemoveEvidenceTests(Base):
+    """AVR-336: `remove` clears only what this installer made, and never a first-party game."""
+
+    def provisioned_stand_in(self, pid, working_directory=None):
+        lay = self.layout.provision
+        lay.key(pid).write_text('k', encoding='utf-8')
+        lay.entry(pid).write_text('{}', encoding='utf-8')
+        lay.dropin_dir(pid).mkdir()
+        wd = working_directory or '/opt/avrana-party-games/current'
+        lay.dropin(pid).write_text(f'[Service]\nWorkingDirectory={wd}\n', encoding='utf-8')
+        return lay
+
+    def test_a_stray_directory_never_makes_a_first_party_game_removable(self):
+        lay = self.provisioned_stand_in('checkers')
+        stray = self.layout.id_dir('checkers')
+        (stray / 'notes').mkdir(parents=True)
+        (stray / 'notes' / 'x.txt').write_text('stray', encoding='utf-8')
+        before = self.snapshot()
+        self.refused(lambda: self.remove('checkers'), 'first-party')
+        self.refused(lambda: ig.plan_remove('checkers', self.layout, REPO), 'first-party')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+        # a tree shaped like the installer's and a drop-in pointing into the games root are still no evidence
+        (stray / '1.0.0-0123456789ab').mkdir()
+        lay.dropin('checkers').write_text(
+            f'[Service]\nWorkingDirectory={self.layout.root_text()}/checkers/1.0.0-0123456789ab\n', encoding='utf-8')
+        before = self.snapshot()
+        self.refused(lambda: self.remove('checkers'), 'first-party')
+        self.assertEqual((self.snapshot(), self.calls), (before, []))
+        self.assertTrue(lay.key('checkers').exists() and lay.entry('checkers').exists())
+
+    def test_a_record_that_is_not_this_installers_is_no_evidence_for_a_first_party_game(self):
+        self.provisioned_stand_in('checkers')
+        for label, text in (('not json', '{ nope'), ('empty object', '{}'),
+                            ('wrong id', json.dumps({'record': installed.RECORD, 'id': 'other'})),
+                            ('wrong schema', json.dumps({'record': 'x', 'id': 'checkers'})),
+                            ('a list', '[]')):
+            self.layout.records_dir.mkdir(exist_ok=True)
+            self.layout.record('checkers').write_text(text, encoding='utf-8')
+            before = self.snapshot()
+            with self.subTest(label):
+                self.refused(lambda: self.remove('checkers'), 'first-party')
+                self.assertEqual((self.snapshot(), self.calls), (before, []))
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX links')
+    def test_a_linked_record_is_no_evidence_for_a_first_party_game(self):
+        self.provisioned_stand_in('checkers')
+        self.layout.records_dir.mkdir()
+        real = self.root / 'real-record.json'
+        real.write_text(json.dumps({'record': installed.RECORD, 'id': 'checkers'}), encoding='utf-8')
+        self.layout.record('checkers').symlink_to(real)
+        self.refused(lambda: self.remove('checkers'), 'first-party')
+
+    def test_a_genuine_record_still_lets_remove_clear_a_package_whose_id_became_first_party(self):
+        self.install()
+        everything = dict(REPO, hello={'id': 'hello'})
+        self.assertEqual(ig.plan_remove('hello', self.layout, everything)[:2], ['record', 'files'])
+        self.remove('hello', repo=everything)
+        self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+
+    def test_a_stray_directory_is_not_evidence_for_any_id_unless_it_has_the_installer_shape(self):
+        stray = self.layout.id_dir('zzz')
+        stray.mkdir()
+        (stray / 'readme.txt').write_text('mine', encoding='utf-8')
+        before = self.snapshot()
+        self.assertEqual(self.remove('zzz'), [])               # nothing to remove: not a tree this tool made
+        self.assertEqual(self.snapshot(), before)
+        self.refused(lambda: self.install_named_zzz(), 'without a record', 'delete it by hand')
+        (stray / 'readme.txt').unlink()
+        self.assertEqual(self.remove('zzz'), ['files'])        # an empty id directory is the installer's own
+        stray.mkdir()
+        (stray / '0.1.0-0123456789ab').mkdir()
+        self.assertEqual(self.remove('zzz'), ['files'])
+
+    def install_named_zzz(self):
+        m = good_manifest()
+        m['game']['id'] = 'zzz'
+        return self.install(self.package('zzz.avrgame', manifest=mjson(m)))
+
+    def run_failing_at(self, n):
+        count = []
+
+        def run(argv):
+            self.calls.append(list(argv))
+            count.append(argv)
+            if len(count) == n:
+                raise subprocess.CalledProcessError(1, argv)
+        return run
+
+    def test_an_interrupted_remove_keeps_its_evidence_and_a_second_remove_finishes(self):
+        everything = dict(REPO, hello={'id': 'hello'})
+        self.install()
+        self.calls.clear()
+        self.remove()
+        calls = len(self.calls)
+        self.assertGreater(calls, 3)
+        for view, repo in (('not first-party', REPO), ('first-party since', everything)):
+            for n in range(1, calls + 1):
+                self.install()
+                with self.subTest(view=view, failing_call=n):
+                    try:
+                        self.remove(repo=repo, run=self.run_failing_at(n))
+                    except subprocess.CalledProcessError:
+                        pass
+                    # whatever happened, a plain remove ends it (a first-party view refuses a finished one: no record)
+                    try:
+                        self.remove(repo=repo)
+                    except pg.Refused:
+                        self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+                    self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+
+    def test_a_remove_that_dies_at_each_file_step_is_finished_by_the_next_one(self):
+        everything = dict(REPO, hello={'id': 'hello'})
+        real_unlink = os.unlink
+        for view, repo in (('not first-party', REPO), ('first-party since', everything)):
+            for target in ('rmtree', 'unlink'):
+                self.install()
+
+                def boom_rmtree(path):
+                    raise OSError('i/o error')
+
+                def boom_unlink(path, *a, **kw):
+                    if Path(path) == self.layout.record('hello'):
+                        raise OSError('i/o error')
+                    return real_unlink(path, *a, **kw)
+                patch = (mock.patch.object(ig, '_rmtree', boom_rmtree) if target == 'rmtree'
+                         else mock.patch.object(ig.os, 'unlink', boom_unlink))
+                with self.subTest(view=view, target=target):
+                    with patch, self.assertRaises(OSError):
+                        self.remove(repo=repo)
+                    if target == 'rmtree':
+                        self.assertTrue(self.layout.record('hello').exists())      # the record outlives the tree
+                    self.remove(repo=repo)
+                    self.assertEqual([p for p in self.snapshot() if 'hello' in p], [])
+
+
+class CommunityUnitTests(Base):
+    """AVR-336: ceilings and extra confinement for the community tier only; durable writes."""
+
+    WANT = ('MemoryMax=256M', 'TasksMax=64', 'CPUQuota=100%', 'CapabilityBoundingSet=', 'PrivateNetwork=yes',
+            'ProtectProc=invisible', 'ProtectClock=yes', 'ProtectHostname=yes', 'LockPersonality=yes',
+            'RestrictRealtime=yes', 'RestrictNamespaces=yes')
+    RUNTIME = {'command': ['/usr/bin/python3', '-m', 'g'], 'working_directory': '/opt/avrana-games/g/1.0.0-0123456789ab'}
+
+    def test_a_package_unit_carries_the_ceilings_and_a_first_party_unit_does_not(self):
+        self.install()
+        dropin = self.layout.provision.dropin('hello').read_text(encoding='utf-8')
+        lines = dropin.splitlines()
+        for want in self.WANT:
+            self.assertIn(want, lines)
+        first_party = pg.dropin_text(self.RUNTIME, ORIGIN)
+        for want in self.WANT:
+            self.assertNotIn(want, first_party.splitlines())
+        self.assertEqual(pg.dropin_text(self.RUNTIME, ORIGIN, 'builtin'), first_party)
+        self.assertEqual(pg.dropin_text(self.RUNTIME, ORIGIN, pg.COMMUNITY_TIER), first_party + pg.COMMUNITY_UNIT)
+
+    def test_the_extra_lines_are_valid_unit_directives_in_the_service_section(self):
+        text = pg.dropin_text(self.RUNTIME, ORIGIN, pg.COMMUNITY_TIER)
+        self.assertEqual(text.count('[Service]'), 1)
+        self.assertEqual(text.count('['), 1)
+        for line in pg.COMMUNITY_UNIT.splitlines():
+            self.assertTrue(line.startswith('#') or '=' in line, line)
+
+    def test_a_pure_reconcile_of_an_installed_package_changes_nothing(self):
+        self.install()
+        wanted = pg.plan_provision('hello', self.layout.provision, installed.load(self.layout.records_dir, REPO).contracts,
+                                   installed.load(self.layout.records_dir, REPO).grants, ORIGIN)
+        self.assertEqual(wanted, [])
+
+    def test_files_are_flushed_before_they_get_their_real_name(self):
+        order = []
+        real_fsync, real_replace = os.fsync, os.replace
+
+        def fsync(fd):
+            order.append('fsync')
+            return real_fsync(fd)
+
+        def replace(src, dst):
+            order.append('replace:' + Path(dst).name)
+            return real_replace(src, dst)
+        with mock.patch.object(pg.os, 'fsync', fsync), mock.patch.object(pg.os, 'replace', replace):
+            self.install()
+        for name in ('hello.json', 'exec.conf', 'hello.key'):
+            at = order.index('replace:' + name)
+            self.assertEqual(order[at - 1], 'fsync', (name, order))
+
+
+class InterruptTests(Base):
+    """AVR-336: a hang-up or TERM during an install is an undo, not a half-installed game."""
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX signals')
+    def test_a_signal_mid_install_unwinds_and_a_second_one_cannot_cut_the_undo_short(self):
+        import signal
+        before = self.snapshot()
+        old = {n: signal.getsignal(getattr(signal, n)) for n in ('SIGINT', 'SIGTERM', 'SIGHUP')}
+        fired = []
+
+        def run(argv):
+            self.calls.append(list(argv))
+            if argv[1] == 'enable' and not fired:
+                fired.append(1)
+                os.kill(os.getpid(), signal.SIGHUP)
+            elif fired and len(fired) == 1:
+                fired.append(2)
+                os.kill(os.getpid(), signal.SIGTERM)          # arrives while the undo runs: ignored
+        out, err = io.StringIO(), io.StringIO()
+        args = ['install', str(self.package()), '--grant', 'party_roster']
+        paths = ['--key-dir', self.layout.provision.key_dir, '--registry-dir', self.layout.provision.registry_dir,
+                 '--socket-dir', self.layout.provision.socket_dir, '--state-dir', self.layout.provision.state_dir,
+                 '--unit-dir', self.layout.provision.unit_dir, '--template-dir', self.layout.provision.template_dir,
+                 '--records-dir', self.layout.records_dir, '--games-root', self.layout.games_root,
+                 '--lock-file', self.layout.lock_file, '--visible-root', '/opt/avrana-games',
+                 '--party-config', self.root / 'etc/party-core.json']
+        rc = ig.main(args + [str(p) for p in paths], run=run, own=self.own, is_root=True, contracts=REPO, out=out, err=err)
+        self.assertEqual(fired, [1, 2])
+        self.assertEqual(rc, 1)
+        self.assertIn('interrupted', err.getvalue())
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual({n: signal.getsignal(getattr(signal, n)) for n in old}, old)    # handlers put back
 
 
 def shutil_rmtree(path):
