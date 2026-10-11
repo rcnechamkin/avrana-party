@@ -338,12 +338,32 @@ class ShellHook(unittest.TestCase):
             self.assertIn('catalog_overlay refresh', fn)
             env = dict(os.environ, PATH=f'{tmp}/bin:{os.environ["PATH"]}', AVRANA_CATALOG_OVERLAY=str(tmp / 'ov' / 'catalog.json'),
                        AVRANA_PACKAGE_RECORDS=str(tmp / 'rec'))
-            run = subprocess.run(['bash', '-c', f'BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel'], env=env,
+            run = subprocess.run(['bash', '-c', f'set -euo pipefail; BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel; echo after'], env=env,
                                  capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stderr)               # a failure never fails the web install
+            self.assertEqual((run.returncode, run.stdout.strip()), (0, 'after'), run.stderr)     # a failure never fails the web install, even under set -euo pipefail
             self.assertFalse((tmp / 'ov' / 'catalog.json').exists())
             self.assertIn('could NOT be regenerated', run.stderr)
             self.assertIn('ops/catalog-overlay refresh', run.stderr)
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'needs bash on POSIX')
+    def test_an_overlay_that_cannot_be_removed_is_a_warning_not_an_aborted_web_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'bin').mkdir()
+            (tmp / 'bin' / 'python3').write_text('#!/bin/sh\nexit 1\n')
+            (tmp / 'bin' / 'python3').chmod(0o755)
+            (tmp / 'ov' / 'catalog.json').mkdir(parents=True)             # rm -f cannot remove a non-empty directory
+            (tmp / 'ov' / 'catalog.json' / 'x').write_text('x')
+            (tmp / 'rec').mkdir()
+            script = REPO_ROOT / 'ops' / 'install-party-web.sh'
+            fn = subprocess.run(['sed', '-n', '/^refresh_catalog()/,/^}/p', str(script)], capture_output=True, text=True).stdout
+            env = dict(os.environ, PATH=f'{tmp}/bin:{os.environ["PATH"]}', AVRANA_CATALOG_OVERLAY=str(tmp / 'ov' / 'catalog.json'),
+                       AVRANA_PACKAGE_RECORDS=str(tmp / 'rec'))
+            run = subprocess.run(['bash', '-c', f'set -euo pipefail; BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel; echo after'],
+                                 env=env, capture_output=True, text=True)
+            self.assertEqual((run.returncode, run.stdout.strip()), (0, 'after'), run.stderr)
+            self.assertIn('could NOT be removed', run.stderr)
+            self.assertIn('STALE', run.stderr)
 
     def hook(self, python, overlay_exists=True, records=True):
         """Run refresh_catalog with a stand-in python3 (a shell snippet); (returncode, stdout, stderr, overlay still there)."""
@@ -362,7 +382,7 @@ class ShellHook(unittest.TestCase):
             fn = subprocess.run(['sed', '-n', '/^refresh_catalog()/,/^}/p', str(script)], capture_output=True, text=True).stdout
             env = dict(os.environ, PATH=f'{tmp}/bin:{os.environ["PATH"]}', AVRANA_CATALOG_OVERLAY=str(tmp / 'ov' / 'catalog.json'),
                        AVRANA_PACKAGE_RECORDS=str(tmp / 'rec'))
-            run = subprocess.run(['bash', '-c', f'set -e; BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel; echo after'], env=env,
+            run = subprocess.run(['bash', '-c', f'set -euo pipefail; BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel; echo after'], env=env,
                                  capture_output=True, text=True)
             return run.returncode, run.stdout, run.stderr, (tmp / 'ov' / 'catalog.json').exists()
 

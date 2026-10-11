@@ -38,7 +38,7 @@ refresh_catalog() {
     local tree overlay=${AVRANA_CATALOG_OVERLAY:-/var/lib/avrana-party/catalog/catalog.json}
     local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
     [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
-    tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+    tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd) || tree=.
     if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
         # Owner decision 2026-10-10: a read-only consistency check, WARNING ONLY. It never changes the exit
         # status of this script, the deploy, smoke, the manifest or /party/api/status.
@@ -51,7 +51,7 @@ refresh_catalog() {
         fi
         return 0
     fi
-        { rm -f "$overlay" 2>/dev/null    # fail toward the release: never leave an overlay built from the previous release
+        { rm -f "$overlay" 2>/dev/null || true    # (set -e: a failing rm must reach the warning, never abort the web install) fail toward the release: never leave an overlay built from the previous release
           if [[ -e $overlay ]]; then
               echo "WARNING: the effective catalog could NOT be regenerated for this release AND the old overlay could NOT be removed (not root?): phones may be served a STALE catalog. Run: sudo rm $overlay && sudo ops/catalog-overlay refresh" >&2
           else
