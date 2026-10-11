@@ -5,7 +5,7 @@ import { GAMES, PARTY, joinParty, leaveAll, partyState, phone, post } from './ph
 /**
  * AVR-338, part 2: after `install-game remove hello` the game is gone from what a browser sees:
  * not in Party Home's Library, not launchable by the Host, and its route answers with an error, not a
- * stale page. The script has already run the real remove and regenerated the (harness-assisted) catalog.
+ * stale page. The script has already run the real remove and install-game itself removed the effective catalog (the release catalog is served again).
  * Tier 2 on a CI runner (see package-play.spec.ts).
  */
 test.skip(!process.env.AVRANA_PACKAGE_BROWSER_PROOF, 'runs only inside experiments/native-game/package-browser-proof.sh');

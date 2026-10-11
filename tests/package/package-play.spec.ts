@@ -7,8 +7,8 @@ import { GAMES, PARTY, joinParty, leaveAll, partyState, phone, type Phone } from
  * Party's own experience. The appliance behind these URLs is built by
  * experiments/native-game/package-browser-proof.sh (real systemd, Party Core, the staged package
  * running as a socket-activated DynamicUser process, the committed nginx site, a throwaway
- * certificate). Discovery is harness-assisted: the script writes the catalog the shell reads (see
- * serve_catalog there; AVR-337 replaces it). Tier 2 on a CI runner: not a phone, not Wi-Fi, not the Pi.
+ * certificate). Discovery is real: the install itself writes the effective catalog
+ * (AVR-337) that the committed nginx site serves. Tier 2 on a CI runner: not a phone, not Wi-Fi, not the Pi.
  */
 test.skip(!process.env.AVRANA_PACKAGE_BROWSER_PROOF, 'runs only inside experiments/native-game/package-browser-proof.sh');
 

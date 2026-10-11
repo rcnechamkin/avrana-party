@@ -20,7 +20,7 @@
 #   package-browser (AVR-338, EXPERIMENTAL) the same installed package, played in REAL BROWSERS
 #                (Playwright Chromium and WebKit) through Party Home, the Host's launch, the game origin
 #                and the bridge, behind the committed nginx site with a throwaway certificate; then
-#                removed. Discovery is harness-assisted until AVR-337. Runner only; not a phone.
+#                removed. Discovery is the real effective-catalog overlay of install-game (AVR-337). Runner only; not a phone.
 name: Service trust proof
 
 on:
@@ -32,6 +32,8 @@ on:
       - 'ops/provision-game'
       - 'ops/prepare-native-games'
       - 'ops/install-game'
+      - 'ops/catalog-overlay'
+      - 'ops/install-party-web.sh'
       - 'experiments/**'
       - 'tests/package/**'
       - 'avrana-party.nginx'
