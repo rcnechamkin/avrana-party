@@ -334,7 +334,7 @@ t 'the game rule never proxies a control path (games.avrana.net/games/hello/avra
     test "$(curl -sk -o /dev/null -w '%{http_code}' https://games.avrana.net/games/hello/avrana/launch)" = 404
 
 # ---- f. the browsers: play the installed package --------------------------------------------------------------------
-install -d -m 0755 -o "$pwuser" "$out_dir"
+runuser -u "$pwuser" -- mkdir -p "$out_dir"      # created by the user who will write to it, parents included
 pw() {  # pw <project> <spec>: Playwright as the unprivileged user, from the checkout
     (cd "$repo" && runuser -u "$pwuser" -- env HOME="$pwhome" PATH="$PATH" CI=1 AVRANA_PACKAGE_BROWSER_PROOF=1 \
         AVRANA_BROWSER_OUT="$out_dir" npx playwright test -c playwright.package.config.ts --project="$1" "$2")
