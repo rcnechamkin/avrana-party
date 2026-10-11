@@ -371,9 +371,17 @@ set -e
 kill "$observer" 2>/dev/null || true
 check 'real Chromium (Pixel 7 size): admission, discovery, launch, private views, reconnect, result, home' 0 "$s_play"
 t 'and Playwright reported exactly 1 passed for it (a skipped spec is not a pass)' 0 exactly_one_passed "$work/pw-chromium-pixel-package-play.out"
+# WebKit is OBSERVATIONAL, not gating (docs/TESTING.md): in CI it has failed about 1 run in 5 on a navigation to the
+# game origin that hung and died with "WebKit encountered an internal error" (evidence in the AVR-338 report); the
+# cause is undetermined. Its result is printed, its artifacts are kept, and only Chromium decides this script's exit.
+webkit_failed=0
 if [[ ${AVRANA_BROWSER_WEBKIT:-} == 1 ]]; then
-    check 'real WebKit (iPhone 13 size): the same' 0 "$s_webkit"
-    t 'and Playwright reported exactly 1 passed for it' 0 exactly_one_passed "$work/pw-webkit-iphone-package-play.out"
+    if [[ $s_webkit == 0 ]] && exactly_one_passed "$work/pw-webkit-iphone-package-play.out"; then
+        echo 'OBSERVE     WebKit (iPhone 13 size) play spec: PASSED (observational, not gating)'
+    else
+        webkit_failed=1
+        echo "OBSERVE     WebKit (iPhone 13 size) play spec: FAILED, status $s_webkit (observational, not gating; see the uploaded artifact)"
+    fi
 fi
 # The known-symptom retry of "Party Home" (see the spec): counted and shown, never a failure.
 echo "OBSERVE     home-retry fired $(cat "$work"/pw-*package-play.out | grep -c '^HOME-RETRY-FIRED' || true) time(s) in this run (0 is the normal case)"
@@ -385,6 +393,14 @@ t 'the game saw the signed launch and the party accepted the result (journal)' 0
     journalctl --sync >/dev/null 2>&1 || true
     j=$(journalctl -u "$1" --no-pager); grep -qF "launched (" <<<"$j" && grep -qF "the party accepted the result" <<<"$j"' _ "$game"
 t 'Party Core was not restarted by any of it' 0 test "$(pid)" = "$pid_before"
+party_restarted=0
+if [[ $webkit_failed == 1 ]]; then
+    # A failed WebKit run can leave a live session that only its Host could end, and install-game remove refuses
+    # while one runs. Party Core keeps sessions in memory, so a restart clears it; the "never restarted" claim below
+    # is then void for this run and is said so.
+    systemctl restart "$party"; wait_ready; party_restarted=1; pid_before=$(pid)
+    echo 'OBSERVE     Party Core restarted after the WebKit failure to drop its session (the no-restart claim below only covers the removal)'
+fi
 
 # ---- g. removal --------------------------------------------------------------------------------------------------------
 sleep 7                                   # longer than Party Core's status cache: remove must not see the finished session as live
