@@ -340,16 +340,17 @@ pw() {  # pw <project> <spec>: Playwright as the unprivileged user, from the che
         AVRANA_BROWSER_OUT="$out_dir" npx playwright test -c playwright.package.config.ts --project="$1" "$2")
 }
 observe_game() {  # while the browsers play: where the game process runs and as whom (it idles away afterwards)
-    local gpid
+    local gpid cwd
     for _ in $(seq 1 1200); do
         gpid=$(systemctl show -p MainPID --value "$game" 2>/dev/null || echo 0)
         if [[ ${gpid:-0} -gt 0 && -r /proc/$gpid/cwd ]]; then
-            readlink -f "/proc/$gpid/cwd" > "$work/game.cwd"
+            cwd=$(readlink -f "/proc/$gpid/cwd")
+            echo "$cwd" > "$work/game.cwd"
             systemctl show -p DynamicUser --value "$game" > "$work/game.dyn"
             ps -o uid= -p "$gpid" | tr -d ' ' > "$work/game.uid"
-            return 0
+            [[ $cwd == "$(readlink -f "$staged")" ]] && return 0      # the process has changed into its working directory
         fi
-        sleep 0.25
+        sleep 0.1
     done
 }
 observe_game & observer=$!
