@@ -349,6 +349,7 @@ def rewrite(name, edit=None, extra=()):
 rewrite('format.avrgame', lambda m: m.update(format='avrana.avrgame/experimental.2'))
 rewrite('traversal.avrgame', extra=[('../evil.py', b'print(1)\n')])
 rewrite('collides.avrgame', lambda m: m['game'].update(id='checkers'))
+rewrite('storage.avrgame', lambda m: m['game']['runtime']['permissions'].append('persistent_storage'))
 PY
 chmod 0644 "$build"/*.avrgame
 host_before=$(host_state)
@@ -470,6 +471,9 @@ t 'the game process has no capability at all (CapBnd and CapEff are zero)' 0 \
     bash -c '! grep -E "^Cap(Bnd|Eff):" "/proc/$1/status" | grep -qv "0000000000000000$"' _ "$gpid"
 t 'the game is in its own network namespace (no abstract sockets of the host)' 0 \
     test "$(readlink "/proc/$gpid/ns/net")" != "$(readlink /proc/1/ns/net)"
+t 'persistent_storage was not requested or granted: the running unit has NO state directory (StateDirectory is empty)' 0 \
+    bash -c 'test -z "$(systemctl show -p StateDirectory --value "$1")"' _ "$game"
+t 'and none exists on disk for the game' 0 test ! -e /var/lib/avrana-games/hello -a ! -e /var/lib/private/avrana-games/hello
 t 'ProtectProc=invisible is applied to the game unit (other users processes are hidden from it)' 0 \
     bash -c 'test "$(systemctl show -p ProtectProc --value "$1")" = invisible' _ "$game"
 t 'the game received the signed launch (journal)' 0 journal_has "$game" 'launched ('
@@ -583,6 +587,15 @@ t 'the re-installed tree is the same version and hash' 0 test -d "$groot/hello/0
 capture inst remove hello
 check 'and removing it again works' 0 "$rc"
 t 'nothing of the game is left again' 0 test -z "$(nothing_of_hello)"
+# AVR-336: persistent_storage granted: the template's state directory is back
+capture inst install "$build/storage.avrgame" --grant party_roster --grant persistent_storage
+check 'a package requesting persistent_storage installs with that grant' 0 "$rc"
+t 'granted: the unit has its state directory (StateDirectory=avrana-games/hello) and the drop-in does not reset it' 0 \
+    bash -c 'test "$(systemctl show -p StateDirectory --value "$1")" = avrana-games/hello && ! grep -q "^StateDirectory=" "$2/exec.conf"' _ "$game" "$dropin_dir"
+t 'list shows persistent_storage among the granted permissions' 0 bash -c '[[ $(cd "$1" && python3 -m avrana.ops.install_game list) == *"granted: party_roster, persistent_storage"* ]]' _ "$tree"
+capture inst remove hello
+check 'and removing the storage package works' 0 "$rc"
+t 'nothing of the game is left after the storage package' 0 test -z "$(nothing_of_hello)"
 t 'Party Core was never restarted in the whole run' 0 test "$(pid)" = "$pid_before" -a "$(entered "$party")" = "$since_before"
 
 # ---- l. summary (the cleanup trap restores the host and says so) ------------------------------------------------------------------------

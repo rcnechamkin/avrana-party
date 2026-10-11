@@ -396,8 +396,8 @@ def _check_permissions(contract, allow):
                      'permissions are recorded for the catalog, Party Core does not yet enforce them at launch; '
                      'what the sandbox cannot provide stays unavailable to the package)')
         if 'persistent_storage' in missing:
-            notes.append('persistent_storage is NOT withheld by leaving it ungranted: every package unit has a '
-                         'state directory (StateDirectory=) whatever was granted')
+            notes.append('persistent_storage not granted: the unit gets NO state directory (only a private, '
+                         'ephemeral /tmp)')
     return granted, notes
 
 

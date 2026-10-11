@@ -196,10 +196,16 @@ COMMUNITY_UNIT = (
     'RestrictNamespaces=yes\n')
 
 
-def dropin_text(runtime, origin, tier=None):
+# An empty assignment resets the list the template set: no StateDirectory=, so no $STATE_DIRECTORY and no
+# persistent directory. /tmp stays private to the unit and is discarded when it stops (PrivateTmp, implied by DynamicUser=).
+NO_STATE = '# persistent_storage was not granted: no state directory\nStateDirectory=\n'
+
+
+def dropin_text(runtime, origin, tier=None, granted=()):
     """The exec.conf for a validated `runtime` and the Party's `origin`. Refuses any control
     character itself, since the text goes into a unit file where a newline would add a directive.
-    For the community tier it also carries COMMUNITY_UNIT."""
+    For the community tier it also carries COMMUNITY_UNIT, and, unless `persistent_storage` was granted,
+    resets the template's StateDirectory= so that the unit has no state directory (AVR-336)."""
     strings = list(runtime['command']) + [runtime['working_directory']]
     if any(not isinstance(s, str) or CONTROL.search(s) for s in strings):
         raise Refused('runtime: control characters are not allowed in a unit file')
@@ -210,7 +216,7 @@ def dropin_text(runtime, origin, tier=None):
             f"ExecStart={' '.join(quote_exec(a) for a in runtime['command'])}\n"
             f"WorkingDirectory={runtime['working_directory'].replace('%', '%%')}\n"
             f'Environment={PARTY_ORIGIN_ENV}={origin}\n'
-            + (COMMUNITY_UNIT if tier == COMMUNITY_TIER else ''))
+            + ((COMMUNITY_UNIT + ('' if 'persistent_storage' in granted else NO_STATE)) if tier == COMMUNITY_TIER else ''))
 
 
 def _put(path, data, mode):
@@ -298,8 +304,8 @@ def _wanted(slug, layout, grants, timeout, origin):
         if not src.is_file():
             raise Refused(f'{name}: missing from {layout.template_dir}')
         templates.append((Path(layout.unit_dir) / name, src.read_bytes()))
-    tier = grants[slug].get('tier') if isinstance(grants[slug], dict) else None
-    return entry, dropin_text(runtime, origin, tier), templates
+    grant = grants[slug] if isinstance(grants[slug], dict) else {}
+    return entry, dropin_text(runtime, origin, grant.get('tier'), grant.get('permissions_granted') or ()), templates
 
 
 def untrusted_reason(path, lstat=os.lstat, realpath=os.path.realpath):

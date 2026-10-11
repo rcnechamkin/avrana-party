@@ -204,11 +204,26 @@ class InstallTests(Base):
         self.refused(lambda: self.install(quiet, allow=[]), 'does not request party_roster')
         self.assertEqual((self.snapshot(), self.calls), (before, []))
 
-    def test_ungranted_storage_is_reported_as_not_withheld(self):
+    def test_ungranted_storage_means_no_state_directory_and_granted_means_the_template_one(self):
         m = good_manifest()
         m['game']['runtime']['permissions'] = ['party_roster', 'persistent_storage']
-        lines = self.install(self.package('store.avrgame', manifest=mjson(m)), allow=['party_roster'])
-        self.assertTrue(any('persistent_storage is NOT withheld' in line for line in lines))
+        pkg = self.package('store.avrgame', manifest=mjson(m))
+        lines = self.install(pkg, allow=['party_roster'])
+        self.assertTrue(any('NO state directory' in line for line in lines))
+        self.assertIn('\nStateDirectory=\n', self.layout.provision.dropin('hello').read_text(encoding='utf-8'))
+        self.remove()
+        self.install(pkg, allow=['party_roster', 'persistent_storage'])
+        self.assertNotIn('StateDirectory', self.layout.provision.dropin('hello').read_text(encoding='utf-8'))
+        self.remove()
+        self.install()                          # the plain package does not request storage at all: none
+        self.assertIn('\nStateDirectory=\n', self.layout.provision.dropin('hello').read_text(encoding='utf-8'))
+
+    def test_a_first_party_unit_keeps_the_template_state_directory(self):
+        for tier in (None, 'builtin'):
+            text = pg.dropin_text(CommunityUnitTests.RUNTIME, ORIGIN, tier, ())
+            self.assertNotIn('StateDirectory', text)
+        template = (REPO_ROOT / 'deploy' / 'games' / 'avrana-game@.service').read_text(encoding='utf-8')
+        self.assertIn('StateDirectory=avrana-games/%i', template)
 
     def test_a_second_install_of_the_same_id_is_refused_and_changes_nothing(self):
         self.install()
@@ -1083,7 +1098,9 @@ class CommunityUnitTests(Base):
         for want in self.WANT:
             self.assertNotIn(want, first_party.splitlines())
         self.assertEqual(pg.dropin_text(self.RUNTIME, ORIGIN, 'builtin'), first_party)
-        self.assertEqual(pg.dropin_text(self.RUNTIME, ORIGIN, pg.COMMUNITY_TIER), first_party + pg.COMMUNITY_UNIT)
+        self.assertEqual(pg.dropin_text(self.RUNTIME, ORIGIN, pg.COMMUNITY_TIER, ['persistent_storage']),
+                         first_party + pg.COMMUNITY_UNIT)
+        self.assertEqual(pg.dropin_text(self.RUNTIME, ORIGIN, pg.COMMUNITY_TIER), first_party + pg.COMMUNITY_UNIT + pg.NO_STATE)
 
     def test_the_extra_lines_are_valid_unit_directives_in_the_service_section(self):
         text = pg.dropin_text(self.RUNTIME, ORIGIN, pg.COMMUNITY_TIER)

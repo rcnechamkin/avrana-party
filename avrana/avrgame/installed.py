@@ -46,7 +46,7 @@ _DEFAULT = object()
 TIER = 'community'            # the only tier a package can ever have; nothing in a package changes it
 # What the package sandbox really provides, whatever was granted (AVR-336). `party_roster`: Party Core
 # puts the roster (participant, name, role) in every game's launch. `persistent_storage`: the template
-# unit gives every game a StateDirectory=. Every other permission is unobtainable in the sandbox (the
+# community drop-in gives a state directory only when persistent_storage is granted. Every other permission is unobtainable in the sandbox (the
 # unit has AF_UNIX only and PrivateDevices=), so a grant of one would be a record that says more than
 # is true. Party Core does not enforce grants at launch (docs/design/AVRGAME-PACKAGE.md).
 GRANTABLE = ('persistent_storage', 'party_roster')
