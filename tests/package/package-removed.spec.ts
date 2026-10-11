@@ -23,11 +23,12 @@ test('a removed package: gone from the Library, not launchable, its route is an 
     expect((await partyState(dee)).games).not.toContain('hello');                   // Party Core does not offer it
 
     // Not launchable: the Host's own request is refused.
+    const before = (await partyState(dee)).session?.id ?? null;     // the finished session of an earlier suite stays in the Party's state
     const version = (await partyState(dee)).version;
     const launch = await post(dee, 'session/launch', { game: 'hello', if_version: version });
     expect(launch.status(), await launch.text()).toBeGreaterThanOrEqual(400);
     expect(launch.status()).toBeLessThan(500);
-    expect((await partyState(dee)).session ?? null).toBeNull();
+    expect((await partyState(dee)).session?.id ?? null).toBe(before);    // and nothing new started
 
     // Its route is gone: the game origin answers an error (nginx 502: no socket), never the page.
     const route = await dee.page.request.get(`${GAMES}/games/hello/`);
