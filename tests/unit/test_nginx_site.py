@@ -127,15 +127,31 @@ class StaticRules(unittest.TestCase):
 
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
-                                                 '= /party/bridge.html', '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
+                                                 '= /party/bridge.html', '= /party/catalog.json', '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
         from avrana.contracts import game             # the slug nginx accepts is a Game Contract id
         self.assertIn(game.ID.pattern.strip('^$'), self.GAMES[2])
         self.assertFalse(any('/party' in loc for loc in locations(self.http)))
+
+    def test_the_catalog_is_an_appliance_local_file_before_the_release_file_and_nothing_else(self):
+        """AVR-337: one exact location, two fixed files tried in order, no request-derived path."""
+        body = location_body(self.https, '= /party/catalog.json')
+        self.assertEqual(re.findall(r'try_files\s+([^;]+);', body),
+                         ['/var/lib/avrana-party/catalog/catalog.json /var/www/avrana-party/web/current/catalog.json =404'])
+        self.assertNotRegex(body, r'\$')
+        self.assertNotIn('proxy_pass', body)
+        self.assertNotIn('/party/catalog.json', self.http)                       # plain HTTP serves no Party shell, overlay included
+        # the overlay directory is the module's default
+        from avrana.ops import catalog_overlay
+        self.assertIn(catalog_overlay.DEFAULT_DIR + '/' + catalog_overlay.FILE_NAME, body)
+        self.assertIn(catalog_overlay.DEFAULT_BASE, body)
 
     def test_shell_headers_match_the_dev_server(self):
         body = location_body(self.https, '/party/')
         headers = dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body))
         self.assertEqual(headers, SHELL_HEADERS)
+        # the catalog Party Home reads has the same headers (AVR-337)
+        body = location_body(self.https, '= /party/catalog.json')
+        self.assertEqual(dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body)), SHELL_HEADERS)
         self.assertNotRegex(SITE, r'add_header\s+Service-Worker-Allowed')
         self.assertNotRegex(SITE, r'add_header\s+Strict-Transport-Security')  # expiry must stay escapable
 
@@ -321,7 +337,8 @@ class RealNginx(unittest.TestCase):
                 .replace('/run/avrana-games/', f'{tmp}/games/')
                 .replace('http://127.0.0.1:8097/', f'http://127.0.0.1:{cls.arcade.server_port}/')
                 .replace('http://127.0.0.1:8191', f'http://127.0.0.1:{cls.party.server_port}')
-                .replace('/var/www/avrana-party/web/current/', f'{tmp}/web/current/'))
+                .replace('/var/www/avrana-party/web/current/', f'{tmp}/web/current/')
+                .replace('/var/lib/avrana-party/catalog/', f'{tmp}/overlay/'))
         site += (f'\nserver {{\n    listen 127.0.0.1:{cls.pgames};\n    server_name games.avrana.net;\n'
                  f'    include {tmp}/native.location;\n}}\n')
         (tmp / 'site.conf').write_text(site)
@@ -422,6 +439,36 @@ http {{
         self.assertTrue(res.getheader('Location').endswith('/party/'))
         self.assertEqual(self.get('/party/api/nothing', https=True)[0].status, 404)
         self.assertEqual(self.get('/party/missing.js', https=True)[0].status, 404)
+
+    def test_the_catalog_is_the_overlay_when_there_is_one_and_the_release_file_when_there_is_not(self):
+        """AVR-337: /party/catalog.json answers from the appliance-local overlay if it exists, else from
+        the release tree; the same headers either way; nothing else changes."""
+        release = (self.tmp / 'web' / 'current' / 'catalog.json').read_bytes()
+        overlay = self.tmp / 'overlay' / 'catalog.json'
+        self.assertFalse(overlay.exists())
+        res, body = self.get('/party/catalog.json', https=True)
+        self.assertEqual((res.status, body), (200, release))
+        for key, value in SHELL_HEADERS.items():
+            self.assertEqual(res.getheader(key), value, key)
+        self.assertEqual(res.getheader('Content-Type'), 'application/json')
+        effective = json.dumps({'schema': 'avrana.catalog/v0', 'games': [{'id': 'effective'}], 'labels': {}}).encode()
+        overlay.parent.mkdir()
+        try:
+            overlay.write_bytes(effective)
+            res, body = self.get('/party/catalog.json', https=True)
+            self.assertEqual((res.status, body), (200, effective))
+            for key, value in SHELL_HEADERS.items():
+                self.assertEqual(res.getheader(key), value, key)
+            self.assertEqual(res.getheader('Content-Type'), 'application/json')
+            self.assertEqual(self.get('/party/catalog.json?v=1', https=True)[1], effective)
+            # the neighbours are untouched: they never see the overlay
+            self.assertIn(b'<title>Avrana Party</title>', self.get('/party/', https=True)[1])
+            self.assertEqual(self.get('/party/overlay/catalog.json', https=True)[0].status, 404)
+            self.assertEqual(self.get('/party/catalog.json/', https=True)[0].status, 404)
+        finally:
+            overlay.unlink()
+            overlay.parent.rmdir()
+        self.assertEqual(self.get('/party/catalog.json', https=True)[1], release)
 
     def test_origin_endpoint(self):
         res, body = self.get('/party/api/origin.json', https=True)
@@ -941,7 +988,7 @@ class GameOriginStaticRules(unittest.TestCase):
         self.assertEqual(headers, dict(SHELL_HEADERS, **{'Content-Security-Policy': BRIDGE_CSP}))
         self.assertIn('alias /var/www/avrana-party/web/current/bridge.html;', body)
         self.assertEqual(self.party.count('frame-ancestors https://games.avrana.net'), 1)    # in that location only
-        self.assertEqual(self.party.count("frame-ancestors 'none'"), 1)                      # every other Party page
+        self.assertEqual(self.party.count("frame-ancestors 'none'"), 2)                      # every other Party page: /party/ and the catalog (AVR-337)
         self.assertNotIn('frame-ancestors', self.games)
         self.assertNotIn('X-Frame-Options', SITE)
 

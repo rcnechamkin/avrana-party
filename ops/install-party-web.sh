@@ -29,10 +29,25 @@ case ${1:-} in
     --kill) kill_flag=(--no-service-worker); shift ;;
 esac
 
+# AVR-337 (EXPERIMENTAL): when .avrgame packages are installed the appliance serves an effective catalog
+# (the release catalog plus their rows) instead of the release's own. It is derived from the release,
+# so it is regenerated here whenever "current" moves, a new release or a rollback. Does nothing when no
+# package is installed and no overlay exists. A failure never fails the install: the tool has already
+# removed the overlay, so the release catalog is served (no package tile) until the owner re-runs it.
+refresh_catalog() {
+    local tree overlay=${AVRANA_CATALOG_OVERLAY:-/var/lib/avrana-party/catalog/catalog.json}
+    local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
+    [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
+    tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+    (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records") ||
+        echo "WARNING: the effective catalog was not regenerated; run ops/catalog-overlay refresh" >&2
+}
+
 switch_to() {
     ln -sfn "$1" "$dest/current.new"
     mv -Tf "$dest/current.new" "$dest/current"
     echo "current -> $1"
+    refresh_catalog "$1"
 }
 
 if [[ $mode == rollback ]]; then

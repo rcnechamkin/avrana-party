@@ -159,6 +159,23 @@ server {
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://games.avrana.net" always;
     }
 
+    # The game catalog Party Home reads (AVR-337, EXPERIMENTAL; docs/design/AVRGAME-PACKAGE.md). When
+    # root has installed an .avrgame package, ops/install-game writes the EFFECTIVE catalog (the
+    # release catalog plus a row per installed package, appended) to the appliance-local file named
+    # first below; with no package installed that file does not exist and the release catalog is
+    # served, byte for byte, exactly as the /party/ rule below would. Read-only: nginx only reads
+    # either file, both are root-owned, and no request can name another. The headers are those of
+    # /party/ below. Never a Service-Worker-Allowed header.
+    location = /party/catalog.json {
+        root /;
+        default_type application/json;
+        try_files /var/lib/avrana-party/catalog/catalog.json /var/www/avrana-party/web/current/catalog.json =404;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+    }
+
     location /party/ {
         alias /var/www/avrana-party/web/current/;
         index index.html;
