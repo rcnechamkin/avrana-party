@@ -81,7 +81,7 @@ Each needs a reviewed decision. Until then the accepted text governs.
 |---|---|---|---|
 | 1 | GAME-PLATFORM-ARCHITECTURE lists "Native-app execution" on the phone as an execution style; owner direction (AVR-37) rules out native mobile executable delivery | Pointer note in GAME-PLATFORM-ARCHITECTURE, section "Core Product Model" | Owner; likely an ADR or an amendment |
 | 2 | Research said the app never runs or interprets game material, while AVR-45 and AVR-135 propose hosting web clients | Dated notes in OWNER-APP-ARCHITECTURE and MOBILE-STORE-POLICY-RESEARCH; reconciled as two separate questions in section 10, not settled | Owner with counsel |
-| 3 | ADR 0013 separates the Party origin from a game origin (`games.` host) to isolate game code; an app viewport loads a client in a context whose origin, cookies and storage differ, and Limited Mode serves plain HTTP (ADR 0012) | Here | Owner; may need an ADR 0013 amendment |
+| 3 | ADR 0013 separates the Party origin from a separate game origin (hostname chosen by AVR-226) to isolate game code; an app viewport loads a client in a context whose origin, cookies and storage differ, and Limited Mode serves plain HTTP (ADR 0012) | Here | Owner; may need an ADR 0013 amendment |
 | 4 | ADR 0014 has each game's own process serve its client through the generic route; a client cache contract (AVR-135) needs version and integrity data about the client root that `client.root` currently leaves informational | Here; AVRGAME-PACKAGE unchanged | Owner at AVR-135 |
 | 5 | ADR 0002 excludes a store and says the app is not required; AVR-143 approves an optional storefront | Already recorded in OWNER-APP-ARCHITECTURE ("Where this proposal needs new ADRs") | Owner |
 

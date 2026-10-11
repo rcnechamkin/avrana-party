@@ -9,7 +9,7 @@
 
 ## Scope and caveats
 
-Research note, **not legal advice**, no decision. External pages were read on **2026-10-09** through a summarising fetch tool, so wording is paraphrase unless quoted, and quotes are short. Content was not re-fetched on 2026-10-10. **Anything marked [NOT VERIFIED] could not be confirmed from a primary source and must not be relied on without counsel.** Several fetches returned incomplete page text (Apple's guidelines page truncated after 5.3.4; the Local Network page returned only a title).
+Research note, **not legal advice**, no decision. External pages were read on **2026-10-09** through a summarising fetch tool, so wording is paraphrase unless quoted, and quotes are short. Content was not re-fetched on 2026-10-10, except the Apple and Google pages named in the reconciliation note at the top. **Anything marked [NOT VERIFIED] could not be confirmed from a primary source and must not be relied on without counsel.** Several fetches returned incomplete page text (Apple's guidelines page truncated after 5.3.4; the Local Network page returned only a title).
 
 Direction context (2026-10-09/10, **Approved direction**): the owner app is a first-class commercial requirement (AVR-45) and an optional official storefront for licensed games is approved (AVR-143). The constraints below are therefore design inputs for AVR-45, AVR-315 and AVR-316 rather than hypotheticals. Friend-ready 1.0 has no app or store dependency. "Section x" of the architecture note means `OWNER-APP-ARCHITECTURE.md`.
 
