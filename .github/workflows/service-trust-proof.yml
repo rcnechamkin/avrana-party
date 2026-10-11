@@ -171,7 +171,7 @@ jobs:
 
   # (AVR-338, EXPERIMENTAL) Real browsers against the INSTALLED Hello Party package: the disposable
   # appliance of the package job plus the committed nginx site on party.avrana.net / games.avrana.net
-  # (throwaway certificate, /etc/hosts), Playwright Chromium and WebKit as phones. The Games checkout is
+  # (throwaway certificate, /etc/hosts), the real effective-catalog overlay of install-game, Playwright Chromium and WebKit as phones. The Games checkout is
   # the branch paired with this one (same logic as the jobs above). Runner only. Tier 2: not a phone,
   # not Wi-Fi, not the Pi (docs/TESTING.md).
   package-browser:

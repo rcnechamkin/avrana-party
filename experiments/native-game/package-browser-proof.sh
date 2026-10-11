@@ -12,6 +12,8 @@
 #     through the REAL `provision-game` path, removed by the REAL `install-game remove`;
 #   - Party Core (the real unit, socket-activated), the game (avrana-game@hello, socket-activated,
 #     DynamicUser, running from the staged tree), the signed launch and the signed result;
+#   - DISCOVERY (AVR-337): the real `install-game install` writes the effective catalog and the committed nginx
+#     site serves it at /party/catalog.json; no harness step touches the catalog;
 #   - nginx: the COMMITTED avrana-party.nginx, byte for byte (compared with `git show HEAD:`), on its real ports 80 and 443,
 #     with the real host names party.avrana.net and games.avrana.net, the real native-game rule that
 #     proxies to /run/avrana-games/hello.sock, and the real built web shell (avrana.web.build);
@@ -21,10 +23,6 @@
 #   - TLS: a throwaway self-signed certificate for the two names, in the place the appliance keeps its
 #     certificate (/etc/avrana-party/tls/current/); the browsers ignore the certificate error;
 #   - DNS: one line in /etc/hosts sends both names to 127.0.0.1 (removed on exit);
-#   - DISCOVERY IS HARNESS-ASSISTED (see serve_catalog below): the shell reads a static catalog.json,
-#     and nothing on this branch makes the appliance regenerate it from the installed packages
-#     (AVR-337 builds that). This script generates it with the existing
-#     `python -m avrana.contracts.catalog --packages` and writes it into the web root;
 #   - the web shell's service worker is blocked in the browsers (as in the other Playwright suites);
 #   - the host is a CI runner: not a phone, not Wi-Fi, not the Pi.
 #
@@ -86,7 +84,7 @@ hosts_tag='# avrana-package-browser-proof'
 # ---- refuse to touch anything that is not ours -----------------------------------------------------
 if [[ ! -e $marker ]]; then
     for p in /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /opt/avrana-games /var/backups/avrana-party \
-        /var/lib/avrana-party-core /var/lib/avrana-games /var/www/avrana-party; do
+        /var/lib/avrana-party-core /var/lib/avrana-games /var/lib/avrana-party /var/www/avrana-party; do
         [[ ! -e $p ]] || { echo "refusing: $p exists and this script did not create it" >&2; exit 2; }
     done
     for n in avrana-party avrana-front avrana-games; do
@@ -112,7 +110,7 @@ cleanup() {
     rm -rf /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /opt/avrana-games /var/backups/avrana-party \
         /var/lib/avrana-party-core /var/lib/private/avrana-party-core /var/lib/avrana-games \
         /var/lib/private/avrana-games /run/avrana-games /run/avrana-party /run/avrana-install-game.lock \
-        /var/www/avrana-party "$work"
+        /var/www/avrana-party /var/lib/avrana-party "$work"
     systemctl daemon-reload 2>/dev/null
     systemctl reset-failed "$game" "$party" "$psock" 2>/dev/null
     userdel avrana-party 2>/dev/null
@@ -126,7 +124,7 @@ cleanup() {
 leftovers() {
     local p
     for p in /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /opt/avrana-games /var/backups/avrana-party \
-        /run/avrana-games /run/avrana-party "$work" /var/lib/avrana-games /var/lib/private/avrana-games /var/www/avrana-party \
+        /run/avrana-games /run/avrana-party "$work" /var/lib/avrana-games /var/lib/private/avrana-games /var/www/avrana-party /var/lib/avrana-party \
         "$unit_dir/$party" "$unit_dir/$psock" "$unit_dir/avrana-game@.socket" "$unit_dir/avrana-game@.service" "$dropin_dir"; do
         [[ ! -e $p ]] || echo "$p"
     done
@@ -177,25 +175,6 @@ wait_ready() {
     done
 }
 
-# ---- DISCOVERY, HARNESS-ASSISTED -------------------------------------------------------------------------
-# THE ONE PLACE TO SWAP (AVR-337): the shell's Party Home reads a static catalog.json from the web root.
-# On an appliance nothing regenerates it from the installed packages yet, so this harness does, with the
-# existing generator (`--packages` lists the games installed as .avrgame packages) over the real appliance
-# profile and the release tree's contracts, and writes the result where nginx serves it. When the
-# appliance-local effective-catalog overlay (lane B, AVR-337) exists, replace the body of this function
-# with the real mechanism (or delete the calls and let the appliance do it); nothing else here depends on
-# how the catalog came to be, and the browser tests only read what nginx serves at /party/catalog.json.
-serve_catalog() {
-    local games="$work/cat-games"
-    if [[ ! -d $games ]]; then
-        mkdir "$games"
-        cp "$tree"/contracts/games/*.json "$games/"          # the release tree: NO contract for hello
-    fi
-    ( cd "$repo" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.contracts.catalog --games "$games" \
-        --appliance "$appliance" --packages "$packages" --out "$web/catalog.json" )
-    chmod 0644 "$web/catalog.json"
-}
-
 # ---- a. the release tree: root-owned, WITHOUT the contract of the game -------------------------------------
 opt_mode=$(stat -c %a /opt); echo "$opt_mode" > "$marker.opt-mode"
 chmod 0755 /opt
@@ -206,6 +185,7 @@ install -m 0644 "$repo/deploy/party-core/avrana-party-core.service" "$repo/deplo
 install -m 0755 "$repo/ops/provision-game" "$rel/ops/provision-game"
 install -m 0755 "$repo/ops/prepare-native-games" "$rel/ops/prepare-native-games"
 install -m 0755 "$repo/ops/install-game" "$rel/ops/install-game"
+install -m 0755 "$repo/ops/catalog-overlay" "$rel/ops/catalog-overlay"
 rm -f "$rel/contracts/games/hello.json"
 find "$rel" -name __pycache__ -type d -prune -exec rm -rf {} +
 chown -R root:root /opt/avrana-party
@@ -281,20 +261,9 @@ chown nobody "$build"
 capture packer pack "$src/hello_party/avrgame.build.json" --out "$build/a.avrgame"
 show 'pack (nobody)' "$out"
 check 'the package builds from the committed recipe as an unprivileged user' 0 "$rc"
-capture inst install "$build/a.avrgame" --grant party_roster
-show 'install' "$out"
-check 'install-game install exits 0' 0 "$rc"
-staged=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["root"])' "$record")
-t 'the staged tree exists and holds the game and the bridge shim' 0 \
-    test -f "$staged/hello_party/__main__.py" -a -f "$staged/web/avrana-party-bridge.js" -a -f "$staged/hello_party/web/index.html"
-t 'install-game verify: every staged file matches the record' 0 inst verify hello
-
 # ---- e. the front door: the web shell, a certificate, two names, the COMMITTED nginx site --------------------------------
 install -d -m 0755 -o root -g root /var/www/avrana-party /var/www/avrana-party/web
 ( cd "$repo" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.web.build --out "$web" --build ci )
-serve_catalog
-t 'the served catalog lists the package, installed, at /games/hello/, native' 0 \
-    python3 -c 'import json,sys; g={x["id"]:x for x in json.load(open(sys.argv[1]))["games"]}; h=g["hello"]; assert h["installed"] is True and h["entry"]=="/games/hello/" and h["provider"]=="native" and h["playableHere"] is True, h' "$web/catalog.json"
 install -d -m 0755 "$tls"
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj '/CN=party.avrana.net' \
     -addext 'subjectAltName=DNS:party.avrana.net,DNS:games.avrana.net' \
@@ -333,6 +302,32 @@ t 'the game origin refuses the Party shell (games.avrana.net/party/ is nginx 404
     test "$(curl -sk -o /dev/null -w '%{http_code}' https://games.avrana.net/party/)" = 404
 t 'the game rule never proxies a control path (games.avrana.net/games/hello/avrana/launch is nginx 404)' 0 \
     test "$(curl -sk -o /dev/null -w '%{http_code}' https://games.avrana.net/games/hello/avrana/launch)" = 404
+
+
+# ---- discovery, for real (AVR-337): nothing installed, so the release catalog is served byte for byte ---------------------------
+overlay=/var/lib/avrana-party/catalog/catalog.json
+served() { curl -fsSk --max-time 10 https://party.avrana.net/party/catalog.json; }
+git -C "$repo" show HEAD:web/party/catalog.json > "$work/committed-catalog.json" 2>/dev/null || cp "$repo/web/party/catalog.json" "$work/committed-catalog.json"
+served > "$work/served-before.json" || true
+t 'before the install, /party/catalog.json over HTTPS is byte-identical to the committed catalog' 0 cmp -s "$work/served-before.json" "$work/committed-catalog.json"
+t 'and no overlay file exists' nonzero test -e "$overlay"
+t 'and the committed catalog has no row for the game' nonzero grep -q '"hello"' "$work/committed-catalog.json"
+
+capture inst install "$build/a.avrgame" --grant party_roster
+show 'install' "$out"
+check 'install-game install exits 0' 0 "$rc"
+staged=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["root"])' "$record")
+t 'the staged tree exists and holds the game and the bridge shim' 0 \
+    test -f "$staged/hello_party/__main__.py" -a -f "$staged/web/avrana-party-bridge.js" -a -f "$staged/hello_party/web/index.html"
+t 'install-game verify: every staged file matches the record' 0 inst verify hello
+
+t 'the install wrote the effective catalog (the overlay file exists, root-owned, 0644)' 0 test "$(stat -c '%U:%G %a' "$overlay")" = 'root:root 644'
+served > "$work/served-after.json" || true
+t 'after the install, /party/catalog.json over HTTPS is exactly the overlay file' 0 cmp -s "$work/served-after.json" "$overlay"
+t 'it lists the game last, installed, at /games/hello/, native, and every first-party row is identical to the committed catalog' 0     python3 -c 'import json,sys; new=json.load(open(sys.argv[1])); old=json.load(open(sys.argv[2])); g=new["games"]; h=g[-1]; assert h["id"]=="hello" and h["installed"] is True and h["entry"]=="/games/hello/" and h["provider"]=="native" and h["playableHere"] is True, h; assert g[:-1]==old["games"], "first-party rows differ"; assert {k:v for k,v in new.items() if k not in ("games","labels")}=={k:v for k,v in old.items() if k not in ("games","labels")}' "$work/served-after.json" "$work/committed-catalog.json"
+capture "$tree/ops/catalog-overlay" check
+show 'catalog-overlay check' "$out"
+check 'ops/catalog-overlay check says the overlay is current' 0 "$rc"
 
 # ---- f. the browsers: play the installed package --------------------------------------------------------------------
 runuser -u "$pwuser" -- mkdir -p "$out_dir"      # created by the user who will write to it, parents included
@@ -409,9 +404,9 @@ show 'remove' "$out"
 check 'install-game remove exits 0' 0 "$rc"
 t 'nothing of the game is left (record, staged tree, key, registry entry, drop-in, socket)' 0 \
     bash -c 'for p in "$@"; do [[ -e $p || -L $p ]] && exit 1; done; exit 0' _ "$record" "$groot/hello" "$key" "$entry" "$dropin_dir" "$sock"
-serve_catalog
-t 'the served catalog no longer lists the game' 0 \
-    python3 -c 'import json,sys; g={x["id"] for x in json.load(open(sys.argv[1]))["games"]}; assert "hello" not in g, g' "$web/catalog.json"
+t 'after the remove the overlay file is gone' nonzero test -e "$overlay"
+served > "$work/served-removed.json" || true
+t 'and /party/catalog.json is again byte-identical to the committed catalog' 0 cmp -s "$work/served-removed.json" "$work/committed-catalog.json"
 set +e
 pw chromium-pixel package-removed.spec.ts
 s_gone=$?
