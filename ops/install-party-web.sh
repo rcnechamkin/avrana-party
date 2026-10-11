@@ -39,9 +39,24 @@ refresh_catalog() {
     local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
     [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
     tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
-    (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records") ||
-        { rm -f "$overlay"    # fail toward the release: never leave an overlay built from the previous release
-          echo "WARNING: the effective catalog could NOT be regenerated for this release; the overlay was removed, so the release catalog is served and installed .avrgame packages have no tile. Run: sudo ops/catalog-overlay refresh" >&2; }
+    if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
+        # Owner decision 2026-10-10: a read-only consistency check, WARNING ONLY. It never changes the exit
+        # status of this script, the deploy, smoke, the manifest or /party/api/status.
+        local note rc=0
+        note=$(cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay check --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records" 2>&1) || rc=$?
+        if [[ $rc -ne 0 || $note == *warning:* ]]; then
+            echo "WARNING: the effective catalog is not what the installed packages call for (a package may have no tile):" >&2
+            echo "$note" | sed 's/^/    /' >&2
+            echo "WARNING: run: sudo ops/catalog-overlay refresh   (the web release itself is installed and unaffected)" >&2
+        fi
+        return 0
+    fi
+        { rm -f "$overlay" 2>/dev/null    # fail toward the release: never leave an overlay built from the previous release
+          if [[ -e $overlay ]]; then
+              echo "WARNING: the effective catalog could NOT be regenerated for this release AND the old overlay could NOT be removed (not root?): phones may be served a STALE catalog. Run: sudo rm $overlay && sudo ops/catalog-overlay refresh" >&2
+          else
+              echo "WARNING: the effective catalog could NOT be regenerated for this release; the overlay was removed, so the release catalog is served and installed .avrgame packages have no tile. Run: sudo ops/catalog-overlay refresh" >&2
+          fi; }
 }
 
 switch_to() {

@@ -269,6 +269,13 @@ class PackageControlledFields(OverlayBase):
         self.edit_record(name='Hello Party')
         self.assertEqual(co.effective(self.base, self.layout.records_dir, **self.kw())[1], ['hello'])
 
+    def test_invisible_characters_do_not_hide_a_first_party_name(self):
+        for tail in ('͏', '️', 'ㅤ', '​'):
+            with self.assertRaises(ValueError, msg=hex(ord(tail))):
+                co.package_row({'id': 'hello', 'name': 'Bluff' + tail}, 'hello', {co._fold('bluff')})
+        with self.assertRaises(ValueError):
+            co.package_row({'id': 'hello', 'name': 'ㅤ͏'}, 'hello', set())
+
     def test_a_refused_row_fails_the_install_and_undoes_it(self):
         def refuse(row, pid, names):
             raise ValueError('the display name is, or is easily mistaken for, a first-party game')
@@ -338,6 +345,112 @@ class ShellHook(unittest.TestCase):
             self.assertIn('could NOT be regenerated', run.stderr)
             self.assertIn('ops/catalog-overlay refresh', run.stderr)
 
+    def hook(self, python, overlay_exists=True, records=True):
+        """Run refresh_catalog with a stand-in python3 (a shell snippet); (returncode, stdout, stderr, overlay still there)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'bin').mkdir()
+            (tmp / 'bin' / 'python3').write_text('#!/bin/sh\n' + python + '\n')
+            (tmp / 'bin' / 'python3').chmod(0o755)
+            (tmp / 'ov').mkdir()
+            if overlay_exists:
+                (tmp / 'ov' / 'catalog.json').write_text('overlay')
+            (tmp / 'rec').mkdir()
+            if records:
+                (tmp / 'rec' / 'x.json').write_text('{}')
+            script = REPO_ROOT / 'ops' / 'install-party-web.sh'
+            fn = subprocess.run(['sed', '-n', '/^refresh_catalog()/,/^}/p', str(script)], capture_output=True, text=True).stdout
+            env = dict(os.environ, PATH=f'{tmp}/bin:{os.environ["PATH"]}', AVRANA_CATALOG_OVERLAY=str(tmp / 'ov' / 'catalog.json'),
+                       AVRANA_PACKAGE_RECORDS=str(tmp / 'rec'))
+            run = subprocess.run(['bash', '-c', f'set -e; BASH_SOURCE={script}; {fn}\nrefresh_catalog {tmp}/rel; echo after'], env=env,
+                                 capture_output=True, text=True)
+            return run.returncode, run.stdout, run.stderr, (tmp / 'ov' / 'catalog.json').exists()
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'needs bash on POSIX')
+    def test_a_stale_overlay_or_a_dropped_row_is_a_warning_and_never_a_failure(self):
+        # owner decision 2026-10-10: the check after a web release switch only warns
+        rc, out, err, kept = self.hook('case " $* " in *" check "*) echo "catalog-overlay: warning: x: not listed" >&2; exit 1;; esac; exit 0')
+        self.assertEqual((rc, out.strip(), kept), (0, 'after', True))      # set -e did not trip; nothing removed
+        self.assertIn('WARNING', err)
+        self.assertIn('x: not listed', err)
+        self.assertIn('ops/catalog-overlay refresh', err)
+        rc, out, err, _ = self.hook('case " $* " in *" check "*) echo "catalog-overlay: warning: only a warning" >&2; exit 0;; esac; exit 0')
+        self.assertEqual(rc, 0)
+        self.assertIn('WARNING', err)
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'needs bash on POSIX')
+    def test_a_current_overlay_is_silent_and_so_is_a_host_without_packages(self):
+        rc, out, err, _ = self.hook('case " $* " in *" check "*) echo "catalog-overlay: current"; exit 0;; esac; exit 0')
+        self.assertEqual((rc, out.strip(), err), (0, 'after', ''))
+        rc, out, err, _ = self.hook('echo called >&2; exit 1', overlay_exists=False, records=False)
+        self.assertEqual((rc, out.strip(), err), (0, 'after', ''))         # inert: python is never even started
+
+
+class WithTheTrustHardening(OverlayBase):
+    """AVR-337 on top of AVR-336 (#103): the same ownership, evidence and signal rules."""
+
+    def test_a_legacy_record_without_the_roster_grant_gets_no_tile(self):
+        self.install()
+        path = Path(self.layout.records_dir) / 'hello.json'
+        doc = json.loads(path.read_text(encoding='utf-8'))
+        doc['grant']['permissions_granted'] = []              # a record from before party_roster was mandatory
+        path.write_text(json.dumps(doc), encoding='utf-8')
+        listed, problems = self.refresh()
+        self.assertEqual(listed, [])
+        self.assertFalse(self.overlay.exists())
+        self.assertTrue(any(p.startswith('hello: record refused') for p in problems), problems)
+
+    def test_the_undo_after_a_catalog_failure_runs_remove_with_the_same_owner(self):
+        seen = []
+        real = ig.remove
+
+        def spy(*a, **kw):
+            seen.append((a, kw))
+            return real(*a, **kw)
+        with mock.patch.object(ig, 'remove', spy):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster', base=self.root / 'missing.json')
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(seen), 1)
+        args, kw = seen[0]
+        self.assertEqual(args[0], 'hello')
+        self.assertEqual(args[-1], None)                       # owner: None in tests (a normal user), 0 for the real tool
+        self.assertEqual(len(args), 7)                         # id, layout, contracts, run, active, keep_state, owner
+
+    def test_the_undo_respects_the_ownership_checks_of_remove(self):
+        def refuse(*a, **kw):
+            raise ig.Refused('hello: the tree is not owned by root')
+        with mock.patch.object(ig, 'remove', refuse):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster', base=self.root / 'missing.json')
+        self.assertEqual(rc, 1)
+        self.assertIn('removing hello again failed', err)
+        self.assertIn('install-game remove hello', err)
+        self.assertFalse(self.overlay.exists())
+
+    def test_the_overlay_never_lists_a_game_whose_record_is_gone_after_an_interrupted_remove(self):
+        self.assertEqual(self.main('install', str(self.package()), '--grant', 'party_roster')[0], 0)
+        self.assertTrue(self.overlay.exists())
+
+        def die(package_id, layout, *a, **kw):
+            os.unlink(layout.record(package_id))                # the record goes last; the signal came right after it
+            raise KeyboardInterrupt('signal 15')
+        with mock.patch.object(ig, 'remove', die):
+            self.assertEqual(self.main('remove', 'hello')[0], 1)      # interrupted: a truthful non-zero result
+        self.assertFalse(self.overlay.exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'signals')
+    def test_a_signal_while_the_catalog_is_published_cannot_cut_the_publish_or_its_undo_short(self):
+        import signal
+        real = co.write_atomic
+
+        def slow(path, text):
+            os.kill(os.getpid(), signal.SIGTERM)                # arrives mid-publish, after the install completed
+            real(path, text)
+        with mock.patch.object(co, 'write_atomic', slow):
+            rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster')
+        self.assertEqual(rc, 0, err)                           # swallowed: the result is the truth, installed and published
+        self.assertEqual(self.doc()['games'][-1]['id'], 'hello')
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+
 
 class FromInstallGame(OverlayBase):
     def test_install_and_remove_through_the_command_line_keep_the_overlay_in_step(self):
@@ -354,7 +467,7 @@ class FromInstallGame(OverlayBase):
         self.assertEqual(os.listdir(self.out_dir), [])
 
     def test_a_dry_run_writes_no_overlay(self):
-        rc, _, err = self.main('install', str(self.package()), '--dry-run', root=False)
+        rc, _, err = self.main('install', str(self.package()), '--grant', 'party_roster', '--dry-run', root=False)
         self.assertEqual(rc, 0, err)
         self.assertFalse(self.out_dir.exists())
 

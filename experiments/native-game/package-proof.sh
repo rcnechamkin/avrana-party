@@ -366,6 +366,7 @@ def rewrite(name, edit=None, extra=()):
 rewrite('format.avrgame', lambda m: m.update(format='avrana.avrgame/experimental.2'))
 rewrite('traversal.avrgame', extra=[('../evil.py', b'print(1)\n')])
 rewrite('collides.avrgame', lambda m: m['game'].update(id='checkers'))
+rewrite('storage.avrgame', lambda m: m['game']['runtime']['permissions'].append('persistent_storage'))
 PY
 chmod 0644 "$build"/*.avrgame
 host_before=$(host_state)
@@ -382,6 +383,20 @@ refused 'an install by a non-root user is refused' 'must run as root'
 t 'none of those left anything behind (the host is byte-for-byte as before, by name)' 0 test "$(host_state)" = "$host_before"
 t 'and nothing of the game exists on the host' 0 test -z "$(nothing_of_hello)"
 t 'and no failed run left a staging directory in the games root' 0 test -z "$(find "$groot" -mindepth 1 -print -quit)"
+# AVR-336: a grant must not say more than the sandbox gives, and the roster arrives whatever was granted
+capture inst install "$build/a.avrgame" --grant party_roster --grant camera
+refused 'a grant the package sandbox cannot provide (camera) is refused, not recorded' 'cannot provide'
+capture inst install "$build/a.avrgame"
+refused 'an install without --grant party_roster is refused: Party Core hands every game the roster' 'receives the Party roster'
+t 'neither of those left anything behind' 0 test "$(host_state)" = "$host_before"
+# AVR-336: a stray directory under the games root never makes a first-party game removable
+mkdir "$groot/checkers"
+echo stray > "$groot/checkers/keep.txt"
+capture inst remove checkers
+refused 'remove refuses a first-party id even when a stray directory of that name exists' 'first-party'
+t 'and the stray directory is untouched' 0 test -f "$groot/checkers/keep.txt"
+rm -rf "$groot/checkers"
+t 'and the host is as before' 0 test "$(host_state)" = "$host_before"
 
 # ---- g. install --------------------------------------------------------------------------------------------------------
 capture inst install "$build/a.avrgame" --grant party_roster --dry-run
@@ -406,6 +421,8 @@ t 'install-game verify: every staged file matches the record' 0 inst verify hell
 t 'the registry entry names the game socket and key' 0 \
     python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); assert e["id"]=="hello" and e["socket"]=="/run/avrana-games/hello.sock" and e["key_file"]==sys.argv[2], e' "$entry" "$key"
 t 'the key exists, 0600, owned by avrana-party' 0 test "$(stat -c '%a %U:%G' "$key")" = '600 avrana-party:avrana-party'
+t 'the drop-in carries the community-tier ceilings (MemoryMax, TasksMax, CPUQuota) and confinement' 0 \
+    bash -c 'for l in MemoryMax=256M TasksMax=64 CPUQuota=100% CapabilityBoundingSet= PrivateNetwork=yes ProtectProc=invisible RestrictNamespaces=yes; do grep -qxF "$l" "$1/exec.conf" || { echo "missing $l"; exit 1; }; done' _ "$dropin_dir"
 t 'the exec drop-in runs /usr/bin/python3 -m hello_party from the STAGED tree' 0 \
     bash -c 'grep -qxF "ExecStart=\"/usr/bin/python3\" \"-m\" \"hello_party\"" "$1/exec.conf" && grep -qxF "WorkingDirectory=$2" "$1/exec.conf"' _ "$dropin_dir" "$staged"
 t 'the drop-in hands the game the Party origin from party-core.json' 0 \
@@ -475,6 +492,19 @@ t 'the unit WorkingDirectory is the staged tree' 0 test "$(systemctl show -p Wor
 t 'the game runs as a systemd DynamicUser (DynamicUser=yes) and not as root' 0 \
     bash -c 'test "$(systemctl show -p DynamicUser --value "$1")" = yes && test "$(ps -o uid= -p "$2" | tr -d " ")" != 0' _ "$game" "$gpid"
 echo "OBSERVE     the game runs as user $(ps -o user= -p "$gpid" | tr -d ' ')"
+# AVR-336: the ceilings and confinement are real on the running process, not only written in a file
+t 'systemd applies MemoryMax=256M, TasksMax=64 and CPUQuota=100% to the game unit' 0 \
+    bash -c 'test "$(systemctl show -p MemoryMax --value "$1")" = 268435456 && test "$(systemctl show -p TasksMax --value "$1")" = 64 && test "$(systemctl show -p CPUQuotaPerSecUSec --value "$1")" = 1s' _ "$game"
+echo "OBSERVE     memory.max in the cgroup: $(cat "/sys/fs/cgroup/system.slice/$game/memory.max" 2>/dev/null || echo 'not readable here')"
+t 'the game process has no capability at all (CapBnd and CapEff are zero)' 0 \
+    bash -c '! grep -E "^Cap(Bnd|Eff):" "/proc/$1/status" | grep -qv "0000000000000000$"' _ "$gpid"
+t 'the game is in its own network namespace (no abstract sockets of the host)' 0 \
+    test "$(readlink "/proc/$gpid/ns/net")" != "$(readlink /proc/1/ns/net)"
+t 'persistent_storage was not requested or granted: the running unit has NO state directory (StateDirectory is empty)' 0 \
+    bash -c 'test -z "$(systemctl show -p StateDirectory --value "$1")"' _ "$game"
+t 'and none exists on disk for the game' 0 test ! -e /var/lib/avrana-games/hello -a ! -e /var/lib/private/avrana-games/hello
+t 'ProtectProc=invisible is applied to the game unit (other users processes are hidden from it)' 0 \
+    bash -c 'test "$(systemctl show -p ProtectProc --value "$1")" = invisible' _ "$game"
 t 'the game received the signed launch (journal)' 0 journal_has "$game" 'launched ('
 t 'the game reported its signed ended and the party accepted the result (journal)' 0 journal_has "$game" 'the party accepted the result'
 t 'Party Core was not restarted by any of it' 0 test "$(pid)" = "$pid_before"
@@ -495,6 +525,54 @@ assert not bad, 'rules not met: ' + '; '.join(bad)
 PY
 )
 check 'boundary --phase 2 with the installed package: every rule is present and met, and a rule names the game' 0 "$s"
+
+# AVR-336: what an identity with a package game's groups can reach. A transient unit with the template's
+# identity (DynamicUser, SupplementaryGroups=avrana-games, AF_UNIX only) stands in for the game process.
+cat > "$work/probe.py" <<'PY'
+import socket, sys
+
+def connect(path):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(3)
+    try:
+        s.connect(path)
+        return 'connected'
+    except PermissionError:
+        return 'denied'
+    except OSError as exc:
+        return f'error-{exc.errno}'
+    finally:
+        s.close()
+
+def read(path):
+    try:
+        with open(path, 'rb') as f:
+            f.read(1)
+        return 'read'
+    except PermissionError:
+        return 'denied'
+    except OSError as exc:
+        return f'error-{exc.errno}'
+
+print('connect-game-socket', connect('/run/avrana-games/hello.sock'))
+print('connect-party-internal', connect('/run/avrana-party/internal.sock'))
+print('read-game-key', read('/etc/avrana-party/game-keys/hello.key'))
+print('read-record', read('/etc/avrana-party/packages.d/hello.json'))
+PY
+chmod 0644 "$work/probe.py"
+set +e
+systemd-run --quiet --wait --pipe --collect -p DynamicUser=yes -p SupplementaryGroups=avrana-games \
+    -p RestrictAddressFamilies=AF_UNIX /usr/bin/python3 -I "$work/probe.py" > "$work/probe.out" 2>&1
+probe_rc=$?
+set -e
+show 'identity with the games group (as a package game has it)' "$(cat "$work/probe.out")"
+check 'the probe ran as a transient dynamic user' 0 "$probe_rc"
+t 'an identity in avrana-games alone cannot connect to a game socket (root:avrana-front 0660): other games stay unreachable' 0 \
+    grep -qx 'connect-game-socket denied' "$work/probe.out"
+t 'and the same identity CAN connect to Party Core internal socket (so the denial above is not vacuous)' 0 \
+    grep -qx 'connect-party-internal connected' "$work/probe.out"
+t 'it cannot read the key store (the keys are the Party own)' 0 grep -qx 'read-game-key denied' "$work/probe.out"
+t 'it can read the world-readable install record (documented: records hold no secret)' 0 grep -qx 'read-record read' "$work/probe.out"
 
 # ---- i. session 2: removal is refused during a live session; the Host ends it ----------------------------------------------------
 run_driver 'session 2: remove is refused during the live session, then the Host ends it from Party' --end --cwd "$tree" \
@@ -549,6 +627,15 @@ t 'the re-installed tree is the same version and hash' 0 test -d "$groot/hello/0
 capture inst remove hello
 check 'and removing it again works' 0 "$rc"
 t 'nothing of the game is left again' 0 test -z "$(nothing_of_hello)"
+# AVR-336: persistent_storage granted: the template's state directory is back
+capture inst install "$build/storage.avrgame" --grant party_roster --grant persistent_storage
+check 'a package requesting persistent_storage installs with that grant' 0 "$rc"
+t 'granted: the unit has its state directory (StateDirectory=avrana-games/hello) and the drop-in does not reset it' 0 \
+    bash -c 'test "$(systemctl show -p StateDirectory --value "$1")" = avrana-games/hello && ! grep -q "^StateDirectory=" "$2/exec.conf"' _ "$game" "$dropin_dir"
+t 'list shows persistent_storage among the granted permissions' 0 bash -c '[[ $(cd "$1" && python3 -m avrana.ops.install_game list) == *"granted: party_roster, persistent_storage"* ]]' _ "$tree"
+capture inst remove hello
+check 'and removing the storage package works' 0 "$rc"
+t 'nothing of the game is left after the storage package' 0 test -z "$(nothing_of_hello)"
 t 'Party Core was never restarted in the whole run' 0 test "$(pid)" = "$pid_before" -a "$(entered "$party")" = "$since_before"
 
 # ---- l. summary (the cleanup trap restores the host and says so) ------------------------------------------------------------------------
