@@ -5,7 +5,9 @@
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --status      # where the last run stopped; the last known good
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback    # return to the last known good (no SHAs needed)
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --recover     # after a run that DIED before the commit point
-#   sudo bash /home/cody/avrana-party/ops/deploy.sh --finish      # after a run that died after it: smoke, record, close
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --recover --force   # also on a closed journal (moves a kept revision)
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --finish      # after a run that died after it, or a kept revision whose
+#                                                                  # failing check you have fixed: smoke, record, close
 #
 # It never decides *what* to deploy: both target commits are explicit arguments (the reviewed,
 # CI-green commits named in the PRs). It then, in order:
@@ -92,11 +94,15 @@ if [[ ${AVRANA_DEPLOY_TESTING:-0} == 1 && $backup_root != /var/backups/avrana-pa
         && $games_releases != /opt/avrana-party-games && $web_root != /var/www/avrana-party/web \
         && $manifest != /var/lib/avrana-party/deployment.json ]]; then testing=1; fi
 for v in AVRANA_DEPLOY_SMOKE AVRANA_NGINX AVRANA_SYSTEMCTL AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_UNPRIVILEGED \
-        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP; do
+        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE; do
     if [[ -n ${!v:-} && $testing -eq 0 ]]; then
         die "$v is a test-only setting; it is honoured only with AVRANA_DEPLOY_TESTING=1 on a scratch root (never on the appliance). Unset it"
     fi
 done
+# The production waits: one second before each restarted unit is checked (a unit that dies at once), two seconds
+# before the first smoke. Only the test harness may shorten them (the gate above), so CI speed never changes production.
+unit_grace=${AVRANA_DEPLOY_UNIT_GRACE:-1}
+smoke_pause=${AVRANA_DEPLOY_SMOKE_PAUSE:-2}
 # inject <step>: test-only fault injection into the steps after the commit point (fails when asked to).
 inject() { [[ $testing -eq 1 && ${AVRANA_DEPLOY_FAIL_STEP:-} == "$1" ]] && return 1; return 0; }
 
@@ -119,7 +125,7 @@ while (($#)); do
         --finish) finish=1; shift ;;
         --smoke-settle) settle=${2:-}; shift 2 ;;
         --internal-nested) internal_nested=1; shift ;;      # set by this script on its own nested rollback; not for operators
-        --internal-detached) internal_detached=1; shift ;;
+        --internal-detached) internal_detached=1; shift ;;      # set by the launcher for the detached run: only "do not detach again"; harmless typed by hand
         --internal-rollback-kind) internal_kind=${2:-}; shift 2 ;;
         --no-prune) prune=0; shift ;;
         --keep) keep=${2:-}; shift 2 ;;
@@ -240,6 +246,7 @@ g() {
 # The checkout cannot be that place: before the deployment it holds the commit being replaced,
 # which may predate avrana.ops altogether.
 tools=''
+staged_new=() backup_created=0       # what this run created before the point of no return; removed again if it refuses
 py() { (cd "$tools" && PYTHONDONTWRITEBYTECODE=1 python3 "$@"); }
 has_tooling() { [[ -f $1/avrana/ops/manifest.py && -f $1/avrana/ops/smoke.py ]]; }
 # stage_release <checkout> <sha> <root>: exactly the tracked files of that commit, owned by whoever
@@ -253,6 +260,7 @@ stage_release() {
         g "$repo" archive --format=tar "$sha" | tar -x -C "$tmp" --no-same-owner
         chmod -R u+rwX,go+rX,go-w "$tmp"
         mv -T "$tmp" "$root/releases/$sha"
+        [[ $armed -eq 1 ]] || staged_new+=("$root/releases/$sha")
     fi
 }
 # link_release <sha> <root>: switch `current` atomically, so a rollback is only the link.
@@ -408,6 +416,13 @@ nginx_preflight() {
     [[ -d $(dirname "$nginx_site") ]] || die "$(dirname "$nginx_site") does not exist: no nginx site directory (--skip-nginx-site to leave the site file alone)"
     if ! out=$("$nginx_bin" -t 2>&1); then
         first=$(printf '%s\n' "$out" | head -n 3 | tr '\n' ' ')
+        if [[ $recover -eq 1 || -n $rollback_kind ]]; then
+            # A recovery exists for exactly this state: a dead run may have left a site file nginx rejects. Do not refuse;
+            # the site file of the pair being returned to is installed and validated below (and if THAT is rejected, the
+            # restore fails and a person is needed).
+            log "WARNING: nginx -t fails with the live site file ($first); the site file of the pair being returned to is installed next and validated"
+            return 0
+        fi
         record_attempt refused
         die "the existing nginx configuration is already invalid: nginx -t fails before any change ($first). Fix nginx first; nothing was installed or stopped (or --skip-nginx-site)"
     fi
@@ -415,6 +430,8 @@ nginx_preflight() {
 # check_cert_names: for every server_name in a 443 ssl server block of the TARGET site file, does the certificate
 # that block names cover that name? A mismatch is a WARNING (Party must stay deployable) unless --require-cert-names.
 # Needs root to read the root-only certificate directory; an unreadable certificate is reported, not guessed.
+# Only a listener on exactly port 443 counts (not 8443). A parsing failure (no python, an odd file) yields no names and
+# so never blocks a deploy by default; only a positively reported mismatch can, and only with --require-cert-names.
 cert_mismatch=()
 check_cert_names() {
     local name cert out
@@ -437,7 +454,7 @@ for m in re.finditer(r"\bserver\s*\{", t):
     body = t[m.end():j - 1]
     cert = re.search(r"\bssl_certificate\s+([^;\s]+)\s*;", body)
     names = re.search(r"\bserver_name\s+([^;]+);", body)
-    if cert and names and re.search(r"\blisten\s+[^;]*443[^;]*\bssl\b", body):
+    if cert and names and re.search(r"\blisten\s+(?:\S*:)?443(?=[\s;])[^;]*\bssl\b", body):
         for n in names.group(1).split():
             if n != "_" and "*" not in n and not n.startswith("~"):
                 print(n, cert.group(1))' "$site_tmp" 2>/dev/null)
@@ -526,7 +543,7 @@ prune_all() {
 record_attempt() {
     [[ -n $tools && -n $backup && -f $manifest ]] || return 0
     py -m avrana.ops.manifest last-attempt "$manifest" --party "$party_sha" --games "$games_sha" \
-        --outcome "$1" --backup "$(basename "$backup")" >/dev/null 2>&1 || true
+        --outcome "$1" --backup "$([[ ${armed:-0} -eq 1 ]] && basename "$backup" || true)" >/dev/null 2>&1 || true
 }
 
 # ---- smoke ------------------------------------------------------------------------------------------
@@ -576,8 +593,8 @@ run_smoke_settled() {
 finish_cmd() {
     local phase k v
     phase=$(journal_value phase)
-    [[ $phase == committed || $phase == post-commit-failed ]] \
-        || die "--finish closes a run that died after the commit point; the journal is at '${phase:-none}'"
+    [[ $phase == committed || $phase == post-commit-failed || $phase == smoke-failed ]] \
+        || die "--finish closes a run that died after the commit point or kept a revision whose smoke failed; the journal is at '${phase:-none}'"
     backup=$(journal_value backup)
     [[ -d $backup ]] || die "the backup directory named by the journal is gone ($backup)"
     while IFS='=' read -r k v; do [[ -z $k ]] || J[$k]=$v; done < "$journal_file"
@@ -666,6 +683,11 @@ on_exit() {
     trap - EXIT
     [[ -z $pair ]] || rm -rf "$pair"
     [[ -z $site_tmp ]] || rm -f "$site_tmp"
+    if [[ $armed -eq 0 && $rc -ne 0 ]]; then
+        # A refusal before the first change says "nothing changed": leave nothing behind that this run created.
+        [[ $backup_created -eq 0 || -z $backup ]] || rm -rf --one-file-system -- "$backup"
+        for u in ${staged_new[@]+"${staged_new[@]}"}; do rm -rf --one-file-system -- "$u"; done
+    fi
     if [[ $armed -eq 1 && $committed -eq 0 && $rollback_done -eq 0 ]]; then rollback_body "$rc"; fi
     if [[ $armed -eq 1 ]]; then
         report_units
@@ -819,6 +841,7 @@ tool_sha=$(basename "$tools")
 nginx_before=$(site_hash "$nginx_site")
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup=$backup_root/deploy-$stamp
+[[ -e $backup ]] || backup_created=1
 install -d -m 0750 "$backup"
 # A copy of this script for the nested rollback below: the file in the checkout changes at step 3.
 if [[ $self != "$backup"/* ]]; then cp "$self" "$backup/deploy.sh" && self_copy=$backup/deploy.sh; else self_copy=$self; fi
@@ -856,12 +879,11 @@ if [[ $auto -eq 1 ]]; then
     fi
     [[ $baseline_ok -eq 1 ]] || log "NOTE: --auto-rollback is off for this run: $auto_note"
 fi
-if [[ -n $site_tmp && $site_state != match ]]; then
-    nginx_preflight
-    if [[ ${#cert_mismatch[@]} -gt 0 && $require_cert_names -eq 1 ]]; then
-        record_attempt refused
-        die "the certificate does not cover: ${cert_mismatch[*]} (--require-cert-names); nothing was installed or stopped. See docs/runbooks/game-origin.md"
-    fi
+if [[ -n $site_tmp && $site_state != match ]]; then nginx_preflight; fi
+# Whenever the flag is given, also when the live file already matches the deployed one.
+if [[ ${#cert_mismatch[@]} -gt 0 && $require_cert_names -eq 1 ]]; then
+    record_attempt refused
+    die "the certificate does not cover: ${cert_mismatch[*]} (--require-cert-names); nothing was installed or stopped. See docs/runbooks/game-origin.md"
 fi
 armed=1
 journal started "pid=$$" "backup=$backup" "party_target=$party_sha" "games_target=$games_sha"     "before_party=$before_party" "before_games=$before_games" "restart=${restart[*]:-}"
@@ -898,8 +920,8 @@ fi
 journal switched; hook switched
 # Start order matters: providers first, then the party that launches into them.
 start_stopped start || { log 'a unit did not start'; false; }
-[[ ${#restart[@]} -eq 0 ]] || sleep 1          # a unit that dies at once is caught here; slower failures by the smoke settle window
 for unit in ${restart[@]+"${restart[@]}"}; do
+    sleep "$unit_grace"
     systemctl is-active --quiet "$unit" || { log "$unit did not stay active"; false; }
 done
 journal restarted; hook restarted
@@ -963,6 +985,7 @@ if [[ $skip_smoke -eq 1 ]]; then
     log 'smoke checks skipped (--skip-smoke); the manifest says so; the last known good is NOT updated; old releases are NOT pruned'
     close_run 0
 fi
+sleep "$smoke_pause"
 if run_smoke_settled; then
     smoke_recorded=1
     { inject smoke-record && py -m avrana.ops.manifest smoke "$manifest" passed; } || { smoke_recorded=0; post_err 'recording the passed smoke in the manifest'; }
@@ -986,10 +1009,14 @@ lkg_party=$(lkg_value party_sha); lkg_games=$(lkg_value games_sha)
 have_lkg=0; [[ $lkg_party =~ ^[0-9a-f]{40}$ && $lkg_games =~ ^[0-9a-f]{40}$ ]] && have_lkg=1
 back_cmd=$manual; [[ $have_lkg -eq 0 ]] || back_cmd="sudo bash $party_checkout/ops/deploy.sh --rollback"
 # Regressions: checks that passed in the baseline and fail now (only with --auto-rollback and a usable baseline).
-regressions=''
+regressions='' preexisting='' unchecked=''
 if [[ $baseline_ok -eq 1 ]]; then
     post_fail=$(smoke_names "$backup/smoke.json" fail) || post_fail=''
-    for n in $post_fail; do [[ " ${J[baseline_pass]} " == *" $n "* ]] && regressions+="$n "; done
+    for n in $post_fail; do
+        if [[ " ${J[baseline_pass]} " == *" $n "* ]]; then regressions+="$n "
+        elif [[ " ${J[baseline_fail]} " == *" $n "* ]]; then preexisting+="$n "
+        else unchecked+="$n "; fi          # skipped (or absent) in the baseline: nothing to compare with
+    done
 fi
 keep_revision() {
     record_attempt smoke-failed-kept
@@ -1000,7 +1027,12 @@ if [[ -n $rollback_kind ]]; then
     log "this was a $rollback_kind: it is not rolled back again. The machine runs party $party_sha, games $games_sha with a failing smoke: a person is needed."
     keep_revision
 elif [[ $baseline_ok -eq 1 && -z $regressions ]]; then
-    log "PRE-EXISTING, NOT CAUSED BY THIS DEPLOY: the failing checks (${post_fail:-none}) also failed in the baseline taken before anything was stopped. The new revision is kept."
+    if [[ -n $unchecked ]]; then
+        log "NOT CHECKED BEFORE THE DEPLOY, FAILING AFTER: ${unchecked% }. The baseline skipped these checks, so there is nothing to compare with: no automatic rollback. The new revision is kept."
+        [[ -z $preexisting ]] || log "PRE-EXISTING, NOT CAUSED BY THIS DEPLOY: ${preexisting% } also failed in the baseline."
+    else
+        log "PRE-EXISTING, NOT CAUSED BY THIS DEPLOY: the failing checks (${post_fail:-none}) also failed in the baseline taken before anything was stopped. The new revision is kept."
+    fi
     log "To go back anyway:  $back_cmd"
     keep_revision
 elif [[ $baseline_ok -eq 0 ]]; then
