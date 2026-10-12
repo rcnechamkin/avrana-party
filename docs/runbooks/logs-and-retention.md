@@ -1,8 +1,21 @@
 # Runbook: logs, telemetry and their bounds (AVR-30)
 
+**Correction 2026-10-12 (AVR-29): the journal is volatile, not persistent.** This runbook said the journal was
+persistent because `/var/log/journal` existed on 2026-09-29. The directory existing does not make journald use
+it. Read-only on 2026-10-12 ([baseline](../findings/2026-10-12-deployed-baseline.md)): the effective setting is
+`Storage=volatile`, from the Raspberry Pi OS drop-in `/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf`;
+`/etc/systemd/journald.conf.d/avrana.conf` (this repository's `deploy/journald/avrana-journald.conf`) sets sizes
+and, deliberately, does not set `Storage`; `journalctl --list-boots` shows one boot; `--disk-usage` is 11.4M; the
+live journal is under `/run/log/journal`. So logs are lost at every reboot, and `SYSTEM.md` ("volatile") was
+right. The 2026-09-29 reading "24.3 MB" stands as a size, but the word "persistent" next to it was an inference
+from the directory and is withdrawn; what the setting was on 2026-09-29 cannot be recovered from the record.
+Whether rsyslog writes persistent copies under `/var/log` (`ForwardToSyslog=yes`) has not been checked. A
+deliberate reboot proof (marker line, reboot, read it back) is **NOT RUN**: it is test A-19 in
+[offline-acceptance](offline-acceptance.md) and is expected to fail until the setting below is decided.
+
 Every file the appliance keeps writing has a known bound. Measured on the Pi on 2026-09-29, read-only:
 - 117 GB card, 8% used;
-- journal 24.3 MB, persistent (`/var/log/journal` exists);
+- journal 24.3 MB (labelled "persistent" at the time: see the correction above; it was volatile);
 - `/var/log/avrana` 4.1 MB;
 - `/var/log/nginx` 1.1 MB;
 - `arcade/runtime` 3.1 MB;
@@ -15,7 +28,7 @@ parties, or on a smaller card.
 
 | Source | Writer | Bound | Status |
 |---|---|---|---|
-| systemd journal (all Avrana services: `avranaparty-games`, `avranaparty-arcade`, `avrana-party-core`, the telemetry timer) | journald | `deploy/journald/avrana-journald.conf`: 256 MB on disk, 1 GB always kept free, 64 MB in RAM, one file per week | LIVE since 2026-09-29 (effective config verified) |
+| systemd journal (all Avrana services: `avranaparty-games`, `avranaparty-arcade`, `avrana-party-core`, the telemetry timer) | journald | `deploy/journald/avrana-journald.conf`: 256 MB on disk, 1 GB always kept free, 64 MB in RAM, one file per week | size bounds LIVE since 2026-09-29 (effective config verified); **volatile**: lost at reboot (observed 2026-10-12) |
 | `/var/log/nginx/*.log` | nginx | Debian's `/etc/logrotate.d/nginx`: daily, 14 generations, compressed | LIVE, unchanged (read 2026-09-29) |
 | `/var/log/avrana/pi-throttle.jsonl` | `pi-throttle-check.timer`, one line a minute (~0.4 MB/day) | `telemetry/avrana-telemetry.logrotate`: weekly or past 10 MB, 8 compressed generations (about two months, well under 20 MB) | LIVE since 2026-09-29 (`logrotate -d` parses it as intended) |
 | `/var/log/avrana/baseline.jsonl` and other hand-made captures | the owner, by hand | none on purpose: they're measurement evidence | Never rotated or expired automatically |
@@ -45,6 +58,14 @@ journalctl --disk-usage
 ```
 
 Both steps need the production checkout to contain this change first (a fast-forward, as usual).
+
+**Making the journal survive a reboot is an owner decision (AVR-29), not done and not part of the steps above.**
+The proposed change is one line, `Storage=persistent`, under `[Journal]` in `deploy/journald/avrana-journald.conf`
+(`tests/unit/test_log_bounds.py` currently asserts that `Storage` is absent and would change with it). The
+Raspberry Pi OS drop-in `40-rpi-volatile-storage.conf` sorts before `avrana.conf`, and a later drop-in wins for
+a key it sets, so the installed `avrana.conf` should override it: an inference to confirm with
+`systemd-analyze cat-config systemd/journald.conf` and `journalctl --disk-usage` after the owner installs it. It
+trades SD-card writes (bounded by `SystemMaxUse=256M`) for diagnostics that survive a power loss. Then run A-19.
 The arcade's stats-log rotation goes live when the arcade next restarts on the new code.
 
 ## Disk pressure: what happens if the card does fill
