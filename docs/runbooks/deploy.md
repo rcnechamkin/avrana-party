@@ -77,8 +77,20 @@ old Party Home shows tiles that lead to nginx's 502. Since AVR-271 both are chec
 `avrana-party.nginx`, or the live web build is from a different commit than the deployed Party. The
 deploy still does not install the site file (that stays the owner step in
 [party-core-deploy](party-core-deploy.md)); when the reason reads `nginx site file differs`, install it
-(`cmp` first, then `nginx -t`, then reload, as there), and re-run `python3 -m avrana.ops.smoke` from
-`/opt/avrana-party/current` and `python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed`.
+and re-run smoke:
+
+```bash
+site=/opt/avrana-party/current/avrana-party.nginx
+sudo cp -a /etc/nginx/sites-available/avrana-party /root/avrana-party-site.$(date -u +%Y%m%dT%H%M%SZ)
+cmp "$site" /home/cody/avrana-party/arcade/nginx-site          # the two tracked copies are identical
+sudo cp "$site" /etc/nginx/sites-available/avrana-party
+sudo nginx -t && sudo systemctl reload nginx
+cmp "$site" /etc/nginx/sites-available/avrana-party && echo "installed = repo"
+cd /opt/avrana-party/current && python3 -m avrana.ops.smoke &&   sudo python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed
+```
+
+The first deploy from a revision before this change (the Pi is on `c59f1c8`) is expected to exit 2
+for this reason until that site file has been installed.
 If the service user cannot read the site file the reason says `unavailable` and the state is `unknown`, never `ok`.
 
 ## After

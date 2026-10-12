@@ -203,6 +203,20 @@ class Document(unittest.TestCase):
         self.assertEqual(probe(installed, [root / 'missing']), 'unavailable')
         self.assertEqual(probe(root / 'missing', [new]), 'unavailable')
 
+    def test_first_readable_source_wins_over_a_differing_fallback(self):
+        root = Path(self.temp.name)
+        installed, release, home = root / 'installed', root / 'release', root / 'home'
+        installed.write_text('server {}')
+        release.write_text('server {}')
+        home.write_text('server { other }')
+        self.assertEqual(status.Probes().nginx_site(installed, [release, home]), 'match')
+
+    def test_web_drift_without_a_manifest_compares_with_the_checkout(self):
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}, web={'path': '/w', 'build': 'b', 'commit': SHA_B})
+        self.assertIn('web build is from a different commit than the deployed Party', self.build(probes)['summary']['reasons'])
+        probes.web = {'path': '/w', 'build': 'b', 'commit': SHA_A}
+        self.assertNotIn('web build is from a different commit than the deployed Party', self.build(probes)['summary']['reasons'])
+
     def test_dirty_deployment_and_untracked_files_are_reported_accurately(self):
         dirty = sample()
         dirty['games'] = dict(dirty['games'], dirty=True)
