@@ -14,7 +14,7 @@ Two client kinds, never mixed up in the reports:
 At each step K the first min(K, #real devices) real devices run, the rest are synthetic. Pi health,
 temperature, load and memory are recorded before and after each step.
 """
-import datetime as dt, json, math, socket, statistics, subprocess, sys, threading, time
+import datetime as dt, json, math, shlex, socket, statistics, subprocess, sys, threading, time
 
 ECHO_SERVER = r"""
 import socket, sys, threading, time
@@ -53,6 +53,11 @@ def rtt_stats(rtts, sent, reconnects=0):
         out.update(min_ms=round(s[0], 2), p50_ms=round(pct(50), 2), p95_ms=round(pct(95), 2), p99_ms=round(pct(99), 2),
                    max_ms=round(s[-1], 2), stdev_ms=round(statistics.pstdev(s), 2))
     return out
+
+
+def echo_command(port, total, target):
+    """The remote command that starts the echo server. The target comes from the command line: quote it."""
+    return f"python3 - {int(port)} {int(total)} {shlex.quote(str(target))}"
 
 
 def path_kind(local_ip, subnet_prefix):
@@ -176,7 +181,7 @@ def run_multi(args, wl):
     echo = None
     if need_synth:
         total = int(max(counts) and sum(seconds + 20 for _ in counts) + 30)
-        echo = subprocess.Popen(wl.ssh_cmd(f"python3 - {port} {total} {target}"), stdin=subprocess.PIPE,
+        echo = subprocess.Popen(wl.ssh_cmd(echo_command(port, total, target)), stdin=subprocess.PIPE,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         echo.stdin.write(ECHO_SERVER.encode())
         echo.stdin.close()
