@@ -25,6 +25,7 @@ is cached for 5 seconds so phones cannot turn it into a `systemctl` storm.
 | `deployment` | the [deployment manifest](DEPLOYMENT-MANIFEST.md) without filesystem paths and operator login, or `null`; `manifest_error` says why when malformed |
 | `party`, `games` | `{deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}`: what the manifest says was deployed versus what is on disk now. `dirty` = tracked files modified now; `untracked` = count of untracked, non-ignored files; `deployed_dirty` = the deployment itself was made with `--allow-dirty` |
 | `web_release` | `{build, commit}` of the installed `/party/` shell |
+| `nginx_site` | `{status}`: `match`, `differs` or `unavailable`: the installed nginx site file against the deployed Party release's `avrana-party.nginx`, byte for byte (AVR-271). `differs` degrades; `unavailable` makes the summary `unknown`. The web build's `commit` must also equal the deployed Party SHA, else `degraded` |
 | `contract` | `{party_games, party_session, lan_launch, games_advertises}`: what Party implements and what the games server advertises at `/api/games` |
 | `services` | each configured systemd unit: `active`, `inactive`, `failed`, `not-installed`, `unknown` or `unavailable` |
 | `certificate` | `{not_after, days_left, status}` with `ok`, `expiring` (< 21 days), `expired` or `unavailable`. The service user cannot read the root-only certificate directory, so the expiry comes from the public record `/etc/avrana-party/certificate-not-after` (the `openssl x509 -enddate` line, written by `ops/install-party-certificate.sh`); `unavailable` means neither could be read |
@@ -54,7 +55,7 @@ arcade `peers` list is dropped on purpose. `tests/unit/test_ops_status.py` asser
 
 Optional `"status"` block in `/etc/avrana-party/party-core.json`
 ([example](../../deploy/party-core/party-core.example.json)): `manifest`, `party_checkout`,
-`games_checkout`, `web_root`, `certificate`, `games_url`, `arcade_url`, `units`. Unknown keys are
+`games_checkout`, `web_root`, `certificate`, `games_url`, `arcade_url`, `units`, `nginx_site`, `nginx_site_sources`. Unknown keys are
 ignored; defaults match the appliance layout in SYSTEM.
 
 ## Consumers
