@@ -36,6 +36,7 @@ deployment also keeps `before.json`, `after.json` and `smoke.txt` under
 | `contract` | `{party_games, party_session, lan_launch}` | the identifiers from [the contract declaration](PARTY-GAMES-CONTRACT.md) |
 | `restarted` | `[unit, ...]` | the systemd units this deployment restarted (only those whose code changed) |
 | `smoke` | `{status, at}` | `pending` while the deployment runs, then `passed`, `failed` or `skipped` |
+| `contract_check` | `{status, at}`, optional | how `ops/deploy.sh` judged the Party/Games pair with `tools/contract_check.py` on the two exact commits: `compatible`, `not_checkable` (a commit predates the checker or the declaration) or `skipped` (`--skip-contract-check`). Absent in manifests written before this field existed |
 
 `dirty` is recorded, never hidden: `ops/deploy.sh` refuses a dirty checkout unless
 `--allow-dirty` is given, and the manifest then says so.
@@ -46,6 +47,7 @@ deployment also keeps `before.json`, `after.json` and `smoke.txt` under
 python3 -m avrana.ops.manifest validate                 # exit 1 and a reason when malformed/missing
 python3 -m avrana.ops.manifest write --out PATH --party DIR --games DIR --web-root DIR
 python3 -m avrana.ops.manifest smoke PATH passed|failed|skipped
+python3 -m avrana.ops.manifest contract-check PATH compatible|not_checkable|skipped
 ```
 
 `avrana/ops/manifest.py` is stdlib-only; `tests/unit/test_ops_manifest.py` covers observation,

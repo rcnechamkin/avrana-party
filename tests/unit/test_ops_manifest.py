@@ -118,6 +118,20 @@ class Files(unittest.TestCase):
         if os.name == 'posix':
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o644)
 
+    def test_the_contract_check_is_recorded_additively_and_validated(self):
+        manifest.write(self.path, sample())
+        self.assertNotIn('contract_check', manifest.read(self.path))       # older manifests stay valid
+        for status in manifest.CONTRACT_CHECK_STATES:
+            manifest.record_contract_check(self.path, status, now='2026-10-12T00:00:00Z')
+            self.assertEqual(manifest.read(self.path)['contract_check'],
+                             {'status': status, 'at': '2026-10-12T00:00:00Z'})
+        with self.assertRaises(manifest.ManifestError):
+            manifest.record_contract_check(self.path, 'fine')
+        bad = dict(sample(), contract_check={'status': 'maybe', 'at': None})
+        self.assertTrue(any('contract_check' in e for e in manifest.validate(bad)))
+        self.assertEqual(manifest.main(['contract-check', str(self.path), 'skipped']), 0)
+        self.assertEqual(manifest.read(self.path)['contract_check']['status'], 'skipped')
+
     def test_missing_is_none_and_malformed_is_an_error(self):
         self.assertIsNone(manifest.read(self.path))
         self.path.parent.mkdir(parents=True)
