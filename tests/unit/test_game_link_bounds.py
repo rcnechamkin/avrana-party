@@ -286,13 +286,23 @@ class OverallDeadline(unittest.TestCase):
                             conn, _ = l.accept()
                         except OSError:
                             return
-                        threading.Thread(target=lambda c=conn: (s(c), c.close()), daemon=True).start()
+                        threading.Thread(target=serve_conn, args=(s, conn), daemon=True).start()
                 threading.Thread(target=serve_one, daemon=True).start()
                 link = sessions.HttpGameLink({'drip': sessions.GameEndpoint(
                     'drip', 'http://localhost/games/drip', KEY, socket_path=path)}, timeout=self.TIMEOUT)
                 started = time.monotonic()
                 self.assertFalse(link.launch(Session, [])[0])
                 self.assertLess(time.monotonic() - started, self.TIMEOUT + self.SLACK)
+
+
+def serve_conn(script, conn):
+    """Run a game-side script on one accepted connection; the client cutting it off is expected."""
+    try:
+        script(conn)
+    except OSError:
+        pass
+    finally:
+        conn.close()
 
 
 def says(status, body):
