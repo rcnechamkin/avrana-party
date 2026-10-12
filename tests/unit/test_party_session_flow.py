@@ -88,28 +88,13 @@ class LinkTimeouts(unittest.TestCase):
         from unittest import mock
         seen = []
 
-        class Reply:
-            status = 200
-
-            def read(self, n=-1):               # a stream: the body once, then end of file
-                body, self.body = self.body, b''
-                return body
-
-            body = b'{"ok": true}'
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        def urlopen(req, timeout):
-            seen.append((req.full_url, timeout))
-            return Reply()
+        def exchange(conn, path, data, seconds, headers):
+            seen.append((f'http://{conn.host}:{conn.port}{path}', seconds))
+            return sessions.Reply(True, 200, {'ok': True})
         eps = {'bluff': sessions.GameEndpoint('bluff', 'http://127.0.0.1:1', KEY),
                'arcade-gauntlet2': sessions.GameEndpoint('arcade-gauntlet2', 'http://127.0.0.1:2', KEY, 25)}
         link = sessions.HttpGameLink(eps, timeout=5)
-        with mock.patch.object(sessions.urllib.request, 'urlopen', urlopen):
+        with mock.patch.object(sessions, '_exchange', exchange):
             for gid in eps:
                 s = type('S', (), {'game_id': gid, 'id': 'session-' + 'a' * 32})()
                 self.assertEqual(link.launch(s, []), (True, None))

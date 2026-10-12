@@ -25,14 +25,14 @@ A native game is reached over its own Unix socket instead of loopback TCP (ADR 0
 AVR-258): the same two POSTs, the same paths under /games/<id>, the same signed messages. Only
 the address changes. A game reports `ended` to the party's internal Unix socket
 (service.make_internal_server), which serves the same route.
+
+Every call to a game is bounded in size and in time (AVR-336, AVR-33): see `_exchange`.
 """
 import http.client
 import json
 import logging
 import socket
 import time
-import urllib.error
-import urllib.request
 from urllib.parse import urlsplit
 
 from avrana.party import core, protocol
@@ -52,18 +52,80 @@ def unix_base(game_id):
     return f'http://localhost/games/{game_id}'
 
 
-class UnixHTTPConnection(http.client.HTTPConnection):
-    """HTTP over a Unix stream socket: the same requests as loopback TCP, a different address."""
+class DeadlineSocket(socket.socket):
+    """A socket whose every wait is cut to what is left of ONE deadline (a time on the monotonic
+    clock). The stdlib's timeout is per call, so a peer that sends a byte just inside it, again and
+    again, would hold the reader for ever; here each send and receive is given only the remaining
+    budget, and once it is spent they raise TimeoutError. Set `deadline` before use."""
+    deadline = None
 
-    def __init__(self, path, timeout):
-        super().__init__('localhost', timeout=timeout)
-        self.unix_path = path
+    def _budget(self):
+        left = self.deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError('deadline')
+        self.settimeout(left)
+
+    def recv(self, *args, **kw):
+        self._budget()
+        return super().recv(*args, **kw)
+
+    def recv_into(self, *args, **kw):
+        self._budget()
+        return super().recv_into(*args, **kw)
+
+    def send(self, *args, **kw):
+        self._budget()
+        return super().send(*args, **kw)
+
+    def sendall(self, *args, **kw):
+        self._budget()
+        return super().sendall(*args, **kw)
+
+    def connect(self, address):
+        self._budget()
+        return super().connect(address)
+
+
+class BoundedConnection(http.client.HTTPConnection):
+    """HTTP over a socket that obeys `deadline` (see DeadlineSocket): loopback TCP, or, with
+    `unix_path`, a Unix stream socket: the same requests, a different address."""
+
+    def __init__(self, host, port, timeout, unix_path=None):
+        super().__init__(host, port, timeout=timeout)
+        self.unix_path = unix_path
+        self.deadline = time.monotonic() + timeout
 
     def connect(self):
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(self.timeout)
-        sock.connect(self.unix_path)
-        self.sock = sock
+        if self.unix_path:
+            sock = DeadlineSocket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.deadline = self.deadline
+            try:
+                sock.connect(self.unix_path)
+            except BaseException:
+                sock.close()
+                raise
+            self.sock = sock
+            return
+        last = OSError('no address')
+        for family, kind, proto, _, address in socket.getaddrinfo(self.host, self.port, 0, socket.SOCK_STREAM):
+            sock = DeadlineSocket(family, kind, proto)
+            sock.deadline = self.deadline
+            try:
+                sock.connect(address)
+            except OSError as e:
+                sock.close()
+                last = e
+                continue
+            self.sock = sock
+            return
+        raise last
+
+
+class UnixHTTPConnection(BoundedConnection):
+    """HTTP over a Unix stream socket (a native game, ADR 0016 §4)."""
+
+    def __init__(self, path, timeout):
+        super().__init__('localhost', None, timeout, unix_path=path)
 
 
 MAX_REPLY_BYTES = 64 * 1024     # a launch/end answer is one small JSON object; more is a misbehaving game
@@ -75,12 +137,11 @@ class ReplyRefused(OSError):
 
 def read_reply(response, seconds):
     """The body of a game server's answer, read in pieces and refused past MAX_REPLY_BYTES or once
-    `seconds` have passed since the body began. BOUNDED, not exact: the clock starts after the
-    headers and is checked after each piece, so the worst case is roughly the wait for the headers,
-    plus `seconds`, plus one socket timeout. The socket timeout alone bounds each wait, not the
-    whole answer: a game that drips bytes would otherwise hold a Party Core request thread, and one
-    that streams without end would fill its memory. The game is third-party code at the community
-    tier."""
+    `seconds` have passed since the body began. This is the second line of defence: the first is
+    the whole-call deadline in `_exchange`, which cuts the socket whatever stage the game is at.
+    The socket timeout alone bounds each wait, not the whole answer: a game that drips bytes would
+    otherwise hold a Party Core request thread, and one that streams without end would fill its
+    memory. The game is third-party code at the community tier."""
     deadline = time.monotonic() + seconds
     out = bytearray()
     while True:
@@ -92,6 +153,54 @@ def read_reply(response, seconds):
             raise ReplyRefused('answer too large')
         if time.monotonic() > deadline:
             raise ReplyRefused('answer too slow')
+
+
+class Reply:
+    """What one POST to a game came to. `answered` is False when no usable HTTP answer arrived
+    (nothing listening, a cut-off, a malformed or oversized reply)."""
+    __slots__ = ('answered', 'status', 'body', 'detail')
+
+    def __init__(self, answered, status=None, body=None, detail=None):
+        self.answered, self.status, self.body, self.detail = answered, status, body or {}, detail
+
+    @property
+    def ok(self):
+        return self.answered and self.status == 200 and self.body.get('ok') is True
+
+    @property
+    def message(self):
+        """The game's own words for a refusal, or None."""
+        text = self.body.get('message')
+        return text if self.answered and isinstance(text, str) else None
+
+    @property
+    def not_held(self):
+        """The game answered, and says it holds no such session (Invalid('session') in the shared
+        protocol code). The two refusal shapes games use today are both read; they are a convention
+        of the games, not a declared field of v0: {"reason": "session"} and
+        {"error": "bad_message:session"}. An `end` answered like this has nothing left to reset."""
+        return (self.answered and self.status in (403, 409)
+                and (self.body.get('reason') == 'session' or self.body.get('error') == 'bad_message:session'))
+
+
+def _exchange(conn, path, data, seconds, headers):
+    """One POST with ONE deadline: `seconds` on the monotonic clock from before the connection is
+    made. Every wait on the socket, the headers' as much as the body's, is cut to what is left
+    of it (DeadlineSocket), so a game that drips its headers, drips its body, or stalls after its
+    headers frees the caller within `seconds` (plus scheduling) whatever its interval. The size of
+    the answer is bounded by read_reply. Never raises; returns a Reply."""
+    conn.deadline = time.monotonic() + seconds
+    try:
+        conn.request('POST', path, body=data, headers=headers)
+        response = conn.getresponse()
+        body = json.loads(read_reply(response, seconds) or b'{}')
+        if not isinstance(body, dict):
+            return Reply(False, detail='The game server did not answer (ValueError).')
+        return Reply(True, response.status, body)
+    except (http.client.HTTPException, OSError, ValueError) as e:
+        return Reply(False, detail=f'The game server did not answer ({type(e).__name__}).')
+    finally:
+        conn.close()
 
 
 class GameEndpoint:
@@ -108,10 +217,12 @@ class GameEndpoint:
 # not stop in time is then reported as unconfirmed (and a pending switch says why) instead of the
 # party's timer closing the session first and dropping the switch silently (AVR-223).
 END_LINK_TIMEOUT = core.END_TIMEOUT - 3.0
+PROBE_TIMEOUT = 1.0     # s for a connection to a game to be accepted (the reachability check)
 
 
 class HttpGameLink:
-    """Implements service.PartyService's GameLink with protocol messages."""
+    """Implements service.PartyService's GameLink with protocol messages. Every call has one
+    deadline (`_exchange`) and a bounded reply; the service makes none of them under its lock."""
 
     def __init__(self, endpoints, timeout=5.0, share=False):
         # game_id -> GameEndpoint. With share=True the caller's own dict is used, so a registry
@@ -119,49 +230,74 @@ class HttpGameLink:
         self.endpoints = endpoints if share else dict(endpoints)
         self.timeout = timeout
 
-    def _post(self, url, message, timeout=None, socket_path=None):
+    def _post(self, ep, route, message, timeout=None):
+        """POST {"message": …} to the game's `route`: loopback TCP at the endpoint's URL, or its
+        Unix socket (same path under /games/<id>, same message). Returns a Reply."""
         data = json.dumps({'message': message}).encode()
         headers = {'Content-Type': 'application/json'}
-        if socket_path:
-            return self._post_unix(socket_path, urlsplit(url).path, data, headers, timeout or self.timeout)
-        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        seconds = timeout or self.timeout
+        u = urlsplit(ep.url + route)
+        if ep.socket_path:
+            if not hasattr(socket, 'AF_UNIX'):
+                return Reply(False, detail='This system has no Unix sockets.')
+            return _exchange(UnixHTTPConnection(ep.socket_path, seconds), u.path, data, seconds,
+                             dict(headers, Host='localhost'))
         try:
-            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
-                body = json.loads(read_reply(r, timeout or self.timeout) or b'{}')
-                return r.status == 200 and body.get('ok') is True, body.get('message')
-        except (urllib.error.URLError, OSError, ValueError) as e:
-            return False, f'The game server did not answer ({type(e).__name__}).'
-
-    def _post_unix(self, socket_path, path, data, headers, timeout):
-        if not hasattr(socket, 'AF_UNIX'):
-            return False, 'This system has no Unix sockets.'
-        conn = UnixHTTPConnection(socket_path, timeout)
-        try:
-            conn.request('POST', path, body=data, headers=dict(headers, Host='localhost'))
-            r = conn.getresponse()
-            body = json.loads(read_reply(r, timeout) or b'{}')
-            return r.status == 200 and isinstance(body, dict) and body.get('ok') is True, \
-                body.get('message') if isinstance(body, dict) else None
-        except (http.client.HTTPException, OSError, ValueError) as e:
-            return False, f'The game server did not answer ({type(e).__name__}).'
-        finally:
-            conn.close()
+            conn = BoundedConnection(u.hostname, u.port or 80, seconds)
+        except (ValueError, TypeError):
+            return Reply(False, detail='The game server did not answer (bad address).')
+        return _exchange(conn, u.path, data, seconds, headers)
 
     def launch(self, session, roster):
         ep = self.endpoints.get(session.game_id)
         if ep is None:
             return False, 'That game has no server here.'
         msg = protocol.launch_message(ep.key, ep.game_id, session.id, roster)
-        ok, detail = self._post(ep.url + LAUNCH_PATH, msg, ep.timeout, ep.socket_path)
-        return ok, (None if ok else detail or 'The game refused to start.')
+        r = self._post(ep, LAUNCH_PATH, msg, ep.timeout)
+        return r.ok, (None if r.ok else r.message or r.detail or 'The game refused to start.')
+
+    def end_outcome(self, session):
+        """What an `end` came to: 'ended' (the game reset), 'not_held' (the game answered that it
+        holds no such session: nothing to reset), 'refused' (it answered otherwise: it did not
+        stop) or 'unreachable' (no usable answer)."""
+        ep = self.endpoints.get(session.game_id)
+        if ep is None:
+            return 'unreachable'
+        msg = protocol.end_message(ep.key, ep.game_id, session.id)
+        r = self._post(ep, END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT))
+        if r.ok:
+            return 'ended'
+        if r.not_held:
+            return 'not_held'
+        return 'refused' if r.answered else 'unreachable'
 
     def end(self, session):
+        """True when the game is not running this session any more: it reset, or it says it never
+        held it (a game that restarted lost its session; there is nothing left to stop)."""
+        return self.end_outcome(session) in ('ended', 'not_held')
+
+    def reachable(self, session, seconds=PROBE_TIMEOUT):
+        """Whether a connection to the session's game is accepted: True or False, or None when
+        this system cannot tell (no Unix sockets). A connection only; no message is sent. For a
+        socket-activated native game systemd accepts it even while the process is down (and
+        starts the process), so this finds a game whose socket is gone, not one that restarted."""
         ep = self.endpoints.get(session.game_id)
         if ep is None:
             return False
-        msg = protocol.end_message(ep.key, ep.game_id, session.id)
-        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
-                          ep.socket_path)[0]
+        try:
+            if ep.socket_path:
+                if not hasattr(socket, 'AF_UNIX'):
+                    return None
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(seconds)
+                sock.connect(ep.socket_path)
+            else:
+                u = urlsplit(ep.url)
+                sock = socket.create_connection((u.hostname, u.port or 80), timeout=seconds)
+        except (OSError, ValueError, TypeError):
+            return False
+        sock.close()
+        return True
 
 
 def routes(service, endpoints):
