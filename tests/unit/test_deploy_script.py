@@ -259,6 +259,7 @@ class Harness(unittest.TestCase):
         self.nginx_log = root / 'nginx.log'
         self.manifest_path = root / 'state' / 'deployment.json'
         self.web = root / 'web'
+        self.lkg = root / 'state' / 'last-known-good.json'
         self.env = dict(self.genv, AVRANA_PARTY_CHECKOUT=str(self.party), AVRANA_GAMES_CHECKOUT=str(self.games),
                         AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_WEB_ROOT=str(self.web),
                         AVRANA_DEPLOYMENT_MANIFEST=str(self.manifest_path), AVRANA_BACKUP_ROOT=str(root / 'backups'),
@@ -286,6 +287,26 @@ class Harness(unittest.TestCase):
 
     def nginx_calls(self):
         return self.nginx_log.read_text().splitlines() if self.nginx_log.exists() else []
+
+    def smoke(self, *results):
+        root = Path(self.temp.name)
+        queue, stub = root / 'smoke-queue', root / 'smoke-stub'
+        queue.write_text(''.join(r + '\n' for r in results))
+        stub.write_text(SMOKE_STUB)
+        stub.chmod(0o755)
+        self.env.update(AVRANA_DEPLOY_SMOKE=str(stub), SMOKE_QUEUE=str(queue))
+        return queue
+
+    def script(self, *args, **env):
+        return subprocess.run([BASH, str(SCRIPT), *args], capture_output=True, text=True,
+                              env=dict(self.env, **env), timeout=300)
+
+    def record(self):
+        return json.loads(self.lkg.read_text())
+
+    def manifest(self):
+        from avrana.ops import manifest
+        return manifest.read(self.manifest_path)
 
     def starts(self):
         """Every attempt to bring a unit up: a plain start, or the restart a rollback uses."""
@@ -620,30 +641,6 @@ class LastKnownGood(Harness):
     """AVR-271: the last deployment whose smoke PASSED is an explicit record that a failed or
     skipped-smoke deployment never overwrites; a failed smoke rolls back to it automatically."""
 
-    def setUp(self):
-        super().setUp()
-        self.lkg = self.manifest_path.parent / 'last-known-good.json'
-
-    def smoke(self, *results):
-        root = Path(self.temp.name)
-        queue, stub = root / 'smoke-queue', root / 'smoke-stub'
-        queue.write_text(''.join(r + '\n' for r in results))
-        stub.write_text(SMOKE_STUB)
-        stub.chmod(0o755)
-        self.env.update(AVRANA_DEPLOY_SMOKE=str(stub), SMOKE_QUEUE=str(queue))
-        return queue
-
-    def script(self, *args, **env):
-        return subprocess.run([BASH, str(SCRIPT), *args], capture_output=True, text=True,
-                              env=dict(self.env, **env), timeout=300)
-
-    def record(self):
-        return json.loads(self.lkg.read_text())
-
-    def manifest(self):
-        from avrana.ops import manifest
-        return manifest.read(self.manifest_path)
-
     def test_a_passed_smoke_records_it_and_nothing_else_overwrites_it(self):
         import hashlib
         self.smoke('pass')
@@ -822,6 +819,190 @@ class LastKnownGood(Harness):
         self.assertIn('recovering to the before-state', r.stdout)
         self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
         self.assertEqual(self.site.read_bytes(), self.site_before)
+
+
+class Pruning(Harness):
+    """AVR-271: old code releases, web releases and deploy backups are pruned to the newest N, only after a
+    passed smoke, and never what the running state or a rollback points at."""
+
+    def fixture(self):
+        """Old releases and backups, and things that must never be touched."""
+        import time
+        root = Path(self.temp.name)
+        self.outside = root / 'outside'
+        self.outside.mkdir()
+        (self.outside / 'precious').write_text('keep me')
+        old = time.time() - 90 * 86400
+        self.party_old = []
+        for i in range(1, 7):
+            d = root / 'opt-party' / 'releases' / f'{i:040x}'
+            d.mkdir(parents=True)
+            (d / 'x').write_text('x')
+            os.utime(d, (old + i, old + i))
+            self.party_old.append(d)
+        releases = root / 'opt-party' / 'releases'
+        (releases / ('e' * 40)).symlink_to(self.outside)                     # named like a release, is a link
+        (releases / 'weird name').mkdir()
+        (releases / '.new.abc').mkdir()
+        self.backups = root / 'backups'
+        self.backup_old = []
+        for i in range(1, 6):
+            d = self.backups / f'deploy-2020010{i}T000000Z'
+            d.mkdir(parents=True)
+            self.backup_old.append(d)
+        (self.backups / 'deploy-20190101T000000Z').symlink_to(self.outside)
+        (self.backups / 'deploy-notes.txt').write_text('a file')
+        self.web_old = []
+        for i in range(1, 5):
+            d = self.web / 'releases' / f'2020010{i}T000000Z-aaaaaaaaaaaa'
+            d.mkdir(parents=True)
+            self.web_old.append(d)
+
+    def assert_untouchables_untouched(self):
+        releases = Path(self.temp.name) / 'opt-party' / 'releases'
+        self.assertEqual((self.outside / 'precious').read_text(), 'keep me')
+        self.assertTrue((releases / ('e' * 40)).is_symlink())
+        self.assertTrue((releases / 'weird name').is_dir() and (releases / '.new.abc').is_dir())
+        self.assertTrue((self.backups / 'deploy-20190101T000000Z').is_symlink())
+        self.assertTrue((self.backups / 'deploy-notes.txt').is_file())
+        self.assertTrue((self.backups / 'deploy.journal').is_file())
+
+    def test_after_a_passed_smoke_only_the_newest_n_remain_and_nothing_unexpected_is_touched(self):
+        self.fixture()
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games, '--keep', '3')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([d.exists() for d in self.party_old], [False, False, False, False, True, True])   # newest 3 incl. the new one
+        self.assertTrue(self.party_release.resolve().is_dir())
+        self.assertEqual([d.exists() for d in self.backup_old], [False, False, False, True, True])           # + this run's backup
+        self.assertEqual([d.exists() for d in self.web_old], [False, False, True, True])
+        self.assertEqual(len(list((self.web / 'releases').iterdir())), 3)
+        self.assert_untouchables_untouched()
+        self.assertIn('prune: party code releases: removed', r.stdout)
+        self.assertEqual(self.web.joinpath('current').resolve().name[-12:], self.target_party[:12])
+
+    def test_nothing_is_pruned_unless_the_smoke_passed(self):
+        self.fixture()
+        self.smoke('fail')
+        r = self.deploy(self.target_party, self.target_games, '--keep', '3')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('NOT pruned', r.stdout)
+        r = self.deploy(self.target_party, self.target_games, '--keep', '3', '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('NOT pruned', r.stdout)
+        self.assertTrue(all(d.exists() for d in self.party_old + self.backup_old + self.web_old))
+
+    def test_no_prune_leaves_everything(self):
+        self.fixture()
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games, '--keep', '3', '--no-prune')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('not pruned (--no-prune)', r.stdout)
+        self.assertTrue(all(d.exists() for d in self.party_old + self.backup_old + self.web_old))
+
+    def test_the_dry_run_lists_what_would_be_pruned_and_removes_nothing(self):
+        self.fixture()
+        r = self.deploy(self.target_party, self.target_games, '--dry-run', '--keep', '3')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f'prune: party code releases: would remove {1:040x}', r.stdout)
+        self.assertIn('prune: deploy backups: would remove deploy-20200101T000000Z', r.stdout)
+        self.assertNotIn(f'would remove {6:040x}', r.stdout)
+        self.assertTrue(all(d.exists() for d in self.party_old + self.backup_old + self.web_old))
+
+    def test_a_releases_directory_that_is_a_link_is_never_followed(self):
+        self.fixture()
+        victim = Path(self.temp.name) / 'victim'
+        for i in range(1, 5):
+            (victim / f'{i:040x}').mkdir(parents=True)
+        (Path(self.temp.name) / 'opt-games').mkdir()
+        (Path(self.temp.name) / 'opt-games' / 'releases').symlink_to(victim)
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games, '--keep', '2')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('is not a plain directory; nothing removed', r.stdout)
+        self.assertEqual(sorted(p.name for p in victim.iterdir() if p.name != self.target_games),
+                         [f'{i:040x}' for i in range(1, 5)])
+
+    def test_the_running_and_previous_releases_survive_even_when_older_than_the_newest_n(self):
+        import time
+        self.smoke('pass', 'pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        root = Path(self.temp.name)
+        future = time.time() + 3600
+        for i in (1, 2):                                                           # two newer decoys fill the keep count
+            d = root / 'opt-party' / 'releases' / f'{i:040x}'
+            d.mkdir()
+            os.utime(d, (future + i, future + i))
+        old = root / 'opt-party' / 'releases' / ('9' * 40)
+        old.mkdir()
+        os.utime(old, (1000, 1000))
+        r = self.deploy(self.before_party, self.before_games, '--keep', '2')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        releases = root / 'opt-party' / 'releases'
+        self.assertTrue((releases / self.before_party).is_dir())                   # being deployed and running
+        self.assertTrue((releases / self.target_party).is_dir())                   # the previous one, a rollback target
+        self.assertFalse(old.exists())                                             # the unprotected old one is gone
+        self.assertIn(f'keeping {self.target_party}', r.stdout)
+
+    def test_keep_must_leave_the_running_and_the_previous_release(self):
+        r = self.deploy(self.target_party, self.target_games, '--keep', '1', '--dry-run')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('--keep needs a number of at least 2', r.stderr)
+
+
+class ContractAndOptions(Harness):
+    """A pair that disagrees on the Party <-> Games contract is refused before anything changes; every flag
+    that loosens a check is on the manifest's record."""
+
+    def setUp(self):
+        super().setUp()
+        self.run_git(self.games, 'checkout', '-q', self.target_games)
+        (self.games / 'provider').mkdir()
+        (self.games / 'provider/avrana-contract.json').write_text('{}\n')
+        self.run_git(self.games, 'add', 'provider')
+        self.run_git(self.games, 'commit', '-q', '-m', 'declaration')
+        self.declared_games = self.run_git(self.games, 'rev-parse', 'HEAD')
+        self.run_git(self.games, 'checkout', '-q', '--detach', self.before_games)
+        fake = Path(self.temp.name) / 'fake-python'
+        fake.write_text('#!/usr/bin/env bash\n'
+                        'if [[ $1 == tools/contract_check.py ]]; then echo "CONTRACT DRIFT: stub" >&2; exit 1; fi\n'
+                        'exec python3 "$@"\n')
+        fake.chmod(0o755)
+        self.env['AVRANA_DEPLOY_PYTHON'] = str(fake)
+
+    def test_a_contract_mismatch_is_refused_before_anything_is_stopped(self):
+        r = self.deploy(self.target_party, self.declared_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('Party <-> Games contract', r.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+        self.assertFalse(self.manifest_path.exists() or (Path(self.temp.name) / 'backups').exists())
+
+    def test_every_flag_that_loosens_a_check_is_recorded_in_the_manifest(self):
+        r = self.deploy(self.target_party, self.declared_games, '--skip-contract-check', '--skip-smoke',
+                        '--force-busy', '--skip-nginx-site', '--no-auto-rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        doc = self.manifest()
+        self.assertEqual(doc['contract_check']['status'], 'skipped')
+        options = doc['deploy_options']
+        self.assertEqual({k for k, v in options.items() if v is True},
+                         {'skip_contract_check', 'skip_smoke', 'force_busy', 'skip_nginx_site', 'no_auto_rollback'})
+
+    def test_a_pair_that_agrees_is_recorded_as_compatible(self):
+        fake = Path(self.temp.name) / 'fake-python'
+        fake.write_text('#!/usr/bin/env bash\nif [[ $1 == tools/contract_check.py ]]; then exit 0; fi\nexec python3 "$@"\n')
+        r = self.deploy(self.target_party, self.declared_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.manifest()['contract_check']['status'], 'compatible')
+
+    def test_a_rollback_to_a_pair_that_would_now_disagree_is_not_refused(self):
+        """The checker of the newer commit may fail the old pair; a rollback must stay possible."""
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games, '--skip-contract-check').returncode, 0)
+        self.assertEqual(self.deploy(self.before_party, self.before_games, '--skip-smoke').returncode, 0)
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
 
 
 class Detached(Harness):

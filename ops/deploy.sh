@@ -2,29 +2,40 @@
 # The one deterministic deployment entry point for the appliance. Owner-run, on the Pi, as root:
 #
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --party <sha> --games <sha> [--dry-run]
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --status      # where the last run stopped; the last known good
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback    # return to the last known good (no SHAs needed)
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --recover     # after a run that died: converge on the last known good
 #
 # It never decides *what* to deploy: both target commits are explicit arguments (the reviewed,
 # CI-green commits named in the PRs). It then, in order:
-#   1. refuses to run twice at once, on a dirty checkout (unless --allow-dirty), on a Party commit
-#      that is not on origin/main (unless --allow-branch), on a Party/Games pair that disagrees on
-#      the Party <-> Games contract (tools/contract_check.py run on the two exact commits; unless
-#      --skip-contract-check), or while a game session is live (unless --force-busy);
-#   2. records the before-state (JSON) under /var/backups/avrana-party/deploy-<UTC>/;
-#   3. stops only the services whose code changes, checks both repositories out at exactly the
-#      named commits (detached, so forward, backward and rollback deployments are the same
-#      operation and no local branch is ever moved or reset), builds a root-owned code release
-#      of each changed repository under /opt (what the services run once they have their own
-#      users, ADR 0016; unused until then), installs a fresh atomic web release when Party
-#      changed, and starts those services again; a failure after a stop puts both
-#      checkouts back where they were (same branch or commit, never --force/--hard) and restarts;
-#   4. writes the deployment manifest (/var/lib/avrana-party/deployment.json, avrana.deployment/v0);
-#   5. runs the post-deploy smoke checks (python3 -m avrana.ops.smoke) and records the result.
+#   1. refuses to run twice at once, after a run that died and was never recovered, on a dirty checkout
+#      (unless --allow-dirty), on a Party commit that is not on origin/main (unless --allow-branch), on a
+#      Party/Games pair that disagrees on the Party <-> Games contract (tools/contract_check.py run on the two
+#      exact commits; unless --skip-contract-check), or while a game session is live (unless --force-busy);
+#   2. records the before-state (JSON) under /var/backups/avrana-party/deploy-<UTC>/ and opens the journal
+#      (deploy.journal there: the phase this run has reached, rewritten atomically at each phase);
+#   3. installs the nginx site file of the deployed Party commit (checked with nginx -t, then reloaded; the old
+#      file is put back on any failure; --skip-nginx-site leaves it alone), stops only the services whose code
+#      changes, checks both repositories out at exactly the named commits (detached, so forward, backward and
+#      rollback deployments are the same operation and no local branch is ever moved or reset), builds a root-owned
+#      code release of each changed repository under /opt, installs a fresh atomic web release when Party changed,
+#      and starts those services again. Any failure, or a HUP/INT/TERM, before step 4 puts site file, web build,
+#      code releases and both checkouts back (same branch or commit, never --force/--hard) and starts every unit it
+#      stopped. The run itself continues in its own session if the SSH connection drops (log under the backup root);
+#   4. writes the deployment manifest (/var/lib/avrana-party/deployment.json, avrana.deployment/v0): the commit point;
+#   5. runs the post-deploy smoke checks (python3 -m avrana.ops.smoke). Passed: the deployment is recorded as the
+#      last known good and old releases and backups are pruned to the newest --keep (default 5). Failed: it is rolled
+#      back to the last known good, smoke is run again, and both results are reported (--no-auto-rollback keeps the
+#      failed revision for debugging).
+# Exit codes: 0 deployed and verified; 1 refused, or failed and everything was put back; 2 smoke failed and the new
+# revision is kept (no last known good, --no-auto-rollback, or it is the same pair); 3 smoke failed and the last known
+# good is running again with a passing smoke; 4 a rollback also failed or a unit is down: a person is needed.
 # The manifest and smoke tooling (avrana.ops) always runs from a code release under /opt, never
 # from the checkout: the target commit's when it has the tooling, otherwise the release that is
 # running. So this script, taken from the target commit, also deploys an appliance whose checkout
 # predates the tooling, and can deploy back to such a commit.
 # docs/runbooks/deploy.md explains the arguments, the paths and what to do when a step fails.
-# Keys, certificates, nginx, NetworkManager and systemd unit files are never touched here.
+# Keys, certificates, NetworkManager and systemd unit files are never touched here.
 set -Eeuo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
@@ -58,11 +69,11 @@ party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
 games_units=(avranaparty-games)                      # code in the games repository
 
 party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0 skip_contract=0
-status_only=0 skip_nginx=0 no_auto=0 recover=0 rollback_kind=${AVRANA_DEPLOY_ROLLBACK_KIND:-}
+status_only=0 skip_nginx=0 prune=1 keep=${AVRANA_DEPLOY_KEEP:-5} no_auto=0 recover=0 rollback_kind=${AVRANA_DEPLOY_ROLLBACK_KIND:-}
 self=$(readlink -f "$0")
 orig_args=("$@")
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,/^set -Eeuo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 die() { echo "deploy: $*" >&2; exit 1; }
 systemctl() { command "${AVRANA_SYSTEMCTL:-systemctl}" "$@"; }
 log() { echo "[$(date -u +%H:%M:%SZ)] $*"; }
@@ -80,6 +91,8 @@ while (($#)); do
         --status) status_only=1; shift ;;
         --skip-nginx-site) skip_nginx=1; shift ;;
         --no-auto-rollback) no_auto=1; shift ;;
+        --no-prune) prune=0; shift ;;
+        --keep) keep=${2:-}; shift 2 ;;
         --rollback) rollback_kind=${rollback_kind:-manual}; shift ;;
         --recover) rollback_kind=recover; recover=1; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -151,6 +164,7 @@ if [[ -n $rollback_kind ]]; then
     log "$rollback_kind: target is party $party_sha, games $games_sha"
 fi
 
+[[ $keep =~ ^[0-9]+$ && $keep -ge 2 ]] || die '--keep needs a number of at least 2 (the running release and the one before it)'
 [[ $party_sha =~ ^[0-9a-f]{40}$ ]] || die '--party needs a full 40-character commit SHA'
 [[ $games_sha =~ ^[0-9a-f]{40}$ ]] || die '--games needs a full 40-character commit SHA'
 # AVRANA_DEPLOY_UNPRIVILEGED=1 and AVRANA_SYSTEMCTL exist for the automated test of this script
@@ -357,6 +371,49 @@ restore_site() {
     else log 'ROLLBACK INCOMPLETE: nginx did not accept (or reload) the restored site file'; rollback_ok=0; fi
 }
 
+# ---- accumulation: keep the newest $keep of everything, never what a rollback needs ----------------
+# prune_dir <run|list> <label> <dir> <name-regex> <sort: mtime|name> <protected name>...
+# Only a plain directory whose name matches <name-regex> is ever a candidate. Each candidate's real path must be
+# exactly <real dir>/<name> (a link, or a name that resolves elsewhere, is skipped), and the directory itself must
+# be a plain directory somewhere below the root of the filesystem: anything else is left alone and said so.
+pruned_total=0
+prune_dir() {
+    local mode=$1 label=$2 dir=$3 re=$4 order=$5; shift 5
+    local real_dir rank=0 name real p keepit
+    if [[ ! -d $dir || -L $dir ]]; then log "prune: $label: $dir is not a plain directory; nothing removed"; return 0; fi
+    real_dir=$(realpath -e -- "$dir") || return 0
+    if [[ $dir != /* || $real_dir != /*/* ]]; then log "prune: $label: refusing $real_dir (not an expected release or backup directory)"; return 0; fi
+    while IFS= read -r -d '' name; do
+        [[ $name =~ $re ]] || continue
+        [[ -d $dir/$name && ! -L $dir/$name ]] || { log "prune: $label: $name is not a plain directory; left alone"; continue; }
+        rank=$((rank + 1))
+        [[ $rank -gt $keep ]] || continue
+        keepit=0
+        for p in "$@"; do [[ -n $p && $p == "$name" ]] && keepit=1; done
+        if [[ $keepit -eq 1 ]]; then log "prune: $label: keeping $name (running, previous, last known good or being deployed)"; continue; fi
+        real=$(realpath -e -- "$dir/$name") || continue
+        if [[ $real != "$real_dir/$name" ]]; then log "prune: $label: $name resolves to $real; left alone"; continue; fi
+        if [[ $mode == list ]]; then log "prune: $label: would remove $name"
+        else rm -rf --one-file-system -- "$real_dir/$name" && log "prune: $label: removed $name"; fi
+        pruned_total=$((pruned_total + 1))
+    done < <(
+        if [[ $order == mtime ]]; then find "$real_dir" -mindepth 1 -maxdepth 1 -printf '%T@ %f\0' | sort -z -rn | sed -z 's/^[0-9.]* //'
+        else find "$real_dir" -mindepth 1 -maxdepth 1 -printf '%f\0' | sort -z -r; fi)
+}
+prune_all() {
+    local mode=$1 lkg_p lkg_g cur_p cur_g cur_w
+    lkg_p=$(lkg_value party_sha); lkg_g=$(lkg_value games_sha)
+    cur_p=$(basename "$(readlink -f "$party_releases/current" 2>/dev/null || echo -)")
+    cur_g=$(basename "$(readlink -f "$games_releases/current" 2>/dev/null || echo -)")
+    cur_w=$(basename "$(readlink -f "$web_root/current" 2>/dev/null || echo -)")
+    log "prune: keeping the newest $keep of each (--keep), plus what the running state and a rollback point at"
+    prune_dir "$mode" 'party code releases' "$party_releases/releases" '^[0-9a-f]{40}$' mtime         "$party_sha" "$before_party" "$lkg_p" "$cur_p"
+    prune_dir "$mode" 'games code releases' "$games_releases/releases" '^[0-9a-f]{40}$' mtime         "$games_sha" "$before_games" "$lkg_g" "$cur_g"
+    prune_dir "$mode" 'web releases' "$web_root/releases" '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}(-[0-9]+)?$' name         "$cur_w" "$(basename "$(cat "$backup/web-release-before" 2>/dev/null || echo -)")"
+    prune_dir "$mode" 'deploy backups' "$backup_root" '^deploy-[0-9]{8}T[0-9]{6}Z$' name         "$(basename "$backup")" "$(basename "$(journal_value backup)")"
+    log "prune: $pruned_total director$([[ $pruned_total -eq 1 ]] && echo y || echo ies) $([[ $mode == list ]] && echo 'would be removed' || echo removed)"
+}
+
 # rollback_body <rc>: put back what this run changed. Never --force or reset --hard: local changes
 # (only possible with --allow-dirty) survive, and no branch was moved by this script, so returning
 # to the earlier ref restores the exact state. Sets $rollback_ok.
@@ -514,6 +571,7 @@ plan_site
 if [[ $dry_run -eq 1 ]]; then
     # Up to here the script only read state and fetched remote refs: no file, checkout, service,
     # backup or manifest was touched.
+    if [[ $prune -eq 1 ]]; then backup=''; prune_all list; fi   # what would be pruned after a passed smoke; removes nothing
     log 'dry run: nothing changed'
     exit 0
 fi
@@ -573,7 +631,7 @@ if [[ $party_changed -eq 1 ]]; then
     [[ $(g "$party_checkout" rev-parse HEAD) == "$party_sha" ]] || { log 'party checkout is not at the requested commit'; false; }
     log "party at $party_sha"
     build_release "$party_checkout" "$party_sha" "$party_releases"
-    AVRANA_ALLOW_DIRTY=$allow_dirty bash "$party_checkout/ops/install-party-web.sh" "$party_checkout"
+    AVRANA_ALLOW_DIRTY=$allow_dirty AVRANA_WEB_KEEP=$keep AVRANA_WEB_PRUNE=0 bash "$party_checkout/ops/install-party-web.sh" "$party_checkout"
 fi
 if [[ $games_changed -eq 1 ]]; then
     g "$games_checkout" checkout --quiet --detach "$games_sha"
@@ -637,7 +695,7 @@ run_smoke() { if [[ -n ${AVRANA_DEPLOY_SMOKE:-} ]]; then "$AVRANA_DEPLOY_SMOKE";
 if [[ $skip_smoke -eq 1 ]]; then
     py -m avrana.ops.manifest smoke "$manifest" skipped
     journal smoke-skipped
-    log 'smoke checks skipped (--skip-smoke); the manifest says so; the last known good is NOT updated'
+    log 'smoke checks skipped (--skip-smoke); the manifest says so; the last known good is NOT updated; old releases are NOT pruned'
     exit 0
 fi
 sleep 2
@@ -647,12 +705,14 @@ if run_smoke | tee "$backup/smoke.txt"; then
         || log "WARNING: could not record the last known good ($lkg_file)"
     journal smoke-passed
     log 'deployment complete; smoke passed; recorded as the last known good. Physical phone acceptance is still a human step.'
+    if [[ $prune -eq 1 ]]; then prune_all run || log 'WARNING: pruning old releases failed; the deployment itself is fine'
+    else log 'old releases and backups are not pruned (--no-prune)'; fi
     exit 0
 fi
 py -m avrana.ops.manifest smoke "$manifest" failed
 cp "$manifest" "$backup/failed-manifest.json" || true
 journal smoke-failed
-log "deployment applied but smoke FAILED (see $backup/smoke.txt)"
+log "deployment applied but smoke FAILED (see $backup/smoke.txt); old releases and backups are NOT pruned"
 manual="sudo bash $party_checkout/ops/deploy.sh --party $before_party --games $before_games"
 lkg_party=$(lkg_value party_sha); lkg_games=$(lkg_value games_sha)
 # Never a loop: a rollback run (or the nested one) never rolls back again, and a record that is the very pair
