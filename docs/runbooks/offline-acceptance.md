@@ -59,7 +59,7 @@ Each test has a **Revision** field:
 |---|---|
 | **DEPLOYED** | Meaningful on what runs today without a deploy: Party `c59f1c8`, Games `a448972`, deployed 2026-10-06, read from `/party/api/status` on 2026-10-12 ([baseline](../findings/2026-10-12-deployed-baseline.md)). Re-read the SHAs at run time. |
 | **MAIN** | Needs an owner deployment of `origin/main` first (Party `04c5844`, Games `2ee23e6` on 2026-10-12; main was 120 Party commits ahead of the Pi). Do not run before; record "not run: not deployed". |
-| **PR #N** | Needs that unmerged pull request deployed. Named in the test. |
+| **PR #N** | Needs that pull request deployed. Named in the test. PRs #85, #108, #109 and #110 merged into main on 2026-10-12 after this procedure was written (Party main `14a0278`, Games `282c620`): tests that name them now need only an owner deployment of that main or later, and where a step says a file exists only on a PR's branch, it is on main. |
 
 The ADR 0011 console model **is** in the deployed revision: `git merge-base --is-ancestor ff32bb4 c59f1c8`
 is true (checked 2026-10-12; `ff32bb4` is the merge of PR #34, committed 2026-09-29 19:28 PDT). Phone

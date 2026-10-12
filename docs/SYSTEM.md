@@ -26,10 +26,10 @@ and branches).
 
 | Repository | Deployed (Pi, manifest read 2026-10-12) | `origin/main` (2026-10-12) | Unmerged |
 |---|---|---|---|
-| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed | `04c5844`, 120 commits ahead of `c59f1c8` | PRs #85, #86, #106 to #112 and the two `fix/avr-336-*` branches; listed in the [baseline](findings/2026-10-12-deployed-baseline.md) |
-| Games | `a448972` (clean, no mismatch) | `2ee23e6` | Games #61 |
+| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed | `14a0278` plus the merges of #86 and this document's PR #113; 157 commits ahead of `c59f1c8` at `14a0278`. PRs #85, #86 and #108 to #111 merged on 2026-10-12, after the [baseline](findings/2026-10-12-deployed-baseline.md) was written | Draft PRs #106, #107, #112 and #114 (deploy hardening) and the branch `fix/avr-33-session-recovery` |
+| Games | `a448972` (clean, no mismatch) | `282c620` (Games #61 merged 2026-10-12) | none |
 
-**Main is ahead of production, and unmerged work is ahead of main.** Main's 120 extra commits include native
+**Main is ahead of production, and unmerged work is ahead of main.** Main's extra commits include native
 games (`provision-game`, `prepare-native-games`, native Checkers), the game origin runbook and nginx block,
 the service-user migration tooling, the experimental `.avrgame` package installer and the Party/Games contract
 work. **None of that is running on the Pi**: the installed nginx site equals the deployed checkout's file, the
@@ -81,7 +81,7 @@ The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch
 
 | Copy | Where | State (local copies: 2026-09-24 inventory; source/production: see revision table above) |
 |---|---|---|
-| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical source; `main` @ `2ee23e6` (2026-10-12; was `0b4e9d2` on 2026-10-01); work on issue-scoped branches with PRs |
+| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical source; `main` @ `282c620` (2026-10-12; was `0b4e9d2` on 2026-10-01); work on issue-scoped branches with PRs |
 | laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `6d795a7` (reconnect fix, lifecycle log lines, the Pi's `ops/lab` helpers; 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
 | Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; also has `playtest-readiness`, checked out as the worktree **`~/avrana-lab/wt/playtest`** (historical playtest worktree; current scope comes from Linear); old `agent/*` worktrees under `~/avrana-lab/wt/`. Runs BLUFF on port 8196 when started |
 | laptop working clone | any scratch clone of the bare backup | edit on a branch; the separate games fork has independent GitHub CI |
