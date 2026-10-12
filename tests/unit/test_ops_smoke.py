@@ -115,6 +115,14 @@ class Checks(unittest.TestCase):
         self.assertEqual(r.status, smoke.FAIL)
         self.assertIn('nginx is failed', r.detail)
 
+    def test_unknown_status_passes_but_shows_its_reasons(self):
+        table = healthy_table()
+        table[(443, '/party/api/status')] = ok_json({'schema': status.SCHEMA, 'contract': {'party_games': 'avrana.party-games/v0'},
+                                                     'summary': {'state': 'unknown', 'reasons': ['nginx site file unavailable to compare']}, 'party': {}})
+        r = smoke.check_status(ScriptedHttp(table), 'https', '127.0.0.1', 443, smoke.HOST)
+        self.assertEqual(r.status, smoke.PASS)
+        self.assertIn('nginx site file unavailable', r.detail)
+
     def test_units_and_dns_with_fakes(self):
         def runner(cmd, **kw):
             state = {'nginx': b'active\n', 'avrana-party-core': b'failed\n'}[cmd[-1]]

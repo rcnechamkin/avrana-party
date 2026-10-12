@@ -71,8 +71,27 @@ commit offers exactly the games its site file routes. `ops/deploy.sh` installs t
 never the site file, so a deploy that crosses AVR-259 is followed at once by the site file of
 the same commit (the nginx step in [party-core-deploy](party-core-deploy.md)). Web build alone:
 the retired LAN Games tiles disappear and their old routes still answer. Site file alone: the
-old Party Home shows tiles that lead to nginx's 502. Neither is checked by a script.
-Those remain the first-time runbooks' owner steps.
+old Party Home shows tiles that lead to nginx's 502. Since AVR-271 both are checked: `/party/api/status`
+(and so the step 5 smoke) is `degraded`, and the deploy exits 2 with `smoke FAILED`, while the installed
+`/etc/nginx/sites-available/avrana-party` differs byte for byte from the deployed commit's
+`avrana-party.nginx`, or the live web build is from a different commit than the deployed Party. The
+deploy still does not install the site file (that stays the owner step in
+[party-core-deploy](party-core-deploy.md)); when the reason reads `nginx site file differs`, install it
+and re-run smoke:
+
+```bash
+site=/opt/avrana-party/current/avrana-party.nginx
+sudo cp -a /etc/nginx/sites-available/avrana-party /root/avrana-party-site.$(date -u +%Y%m%dT%H%M%SZ)
+cmp "$site" /home/cody/avrana-party/arcade/nginx-site          # the two tracked copies are identical
+sudo cp "$site" /etc/nginx/sites-available/avrana-party
+sudo nginx -t && sudo systemctl reload nginx
+cmp "$site" /etc/nginx/sites-available/avrana-party && echo "installed = repo"
+cd /opt/avrana-party/current && python3 -m avrana.ops.smoke &&   sudo python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed
+```
+
+The first deploy from a revision before this change (the Pi is on `c59f1c8`) is expected to exit 2
+for this reason until that site file has been installed.
+If the service user cannot read the site file the reason says `unavailable` and the state is `unknown`, never `ok`.
 
 ## After
 

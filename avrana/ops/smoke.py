@@ -132,7 +132,7 @@ def check_status(http, scheme, address, port, host, verify=True):
     state = doc.get('summary', {}).get('state')
     detail = f'summary {state}; party {str(doc.get("party", {}).get("checkout_sha"))[:12]}'
     return Result('status', PASS if state in ('ok', 'unknown') else FAIL, detail + (
-        '; ' + ', '.join(doc['summary'].get('reasons', [])) if state == 'degraded' else ''))
+        '; ' + ', '.join(doc['summary'].get('reasons', [])) if state in ('degraded', 'unknown') else ''))
 
 
 def check_games_provider(http, address='127.0.0.1', port=8096):
