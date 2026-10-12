@@ -325,6 +325,8 @@ def routes(service, endpoints):
         ep = endpoints.get(s.game_id)
         if ep is None:
             return _send(h, 409, {'error': 'no_game', 'message': 'That game has no server here.'})
+        if not service.game_up(s):                  # AVR-33: the game is gone; the session just closed
+            return _send(h, 409, {'error': 'no_game', 'message': 'The game stopped.'})
         tok = protocol.mint_ticket(ep.key, ep.game_id, s.id, p.id, p.role, host=host)
         return _send(h, 200, {'protocol': protocol.VERSION, 'game': s.game_id, 'session': s.id,
                               'role': p.role, 'ticket': tok, 'expires_in': protocol.TICKET_TTL})

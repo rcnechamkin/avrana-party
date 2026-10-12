@@ -62,6 +62,8 @@ HOST_GRACE = 30.0          # s an away host keeps the role before succession (PA
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
+GAME_LOST_FAILS = 3        # failed reachability checks in a row ...
+GAME_LOST_SPAN = 10.0      # ... spread over at least this many s, before an active session is closed
 NAME_MAX = 16
 RESERVED_NAMES = ('system', 'admin', 'host', 'avrana', 'moderator')
 AVATAR = re.compile(r'^gaze-\d\d$')     # a bundled DiceBear Gaze avatar id (web/party/avatars/)
@@ -154,6 +156,7 @@ class GameSession:
         self.result = None              # the accepted game result (ADR 0015), or None
         self.result_refused = None      # why a reported result was not accepted, or None
         self.detail = None              # e.g. why a launch failed; shown to people
+        self.reason = None              # why Party Core closed it on its own: 'game_lost', or None
         self.game_confirmed_end = None  # True/False once an end-for-everyone was attempted
         self.replaced = None            # the session a host switch ended for this one (AVR-128)
         self.pregame = bool(game.get('pregame'))   # opened in setup (AVR-129)
@@ -192,6 +195,7 @@ class PartyCore:
         self.games = dict(games)        # game_id -> {'id', 'max_players', 'late_join'}
         self.party = Party(clock())
         self._shown = {}                # member_id -> presence last published (timer diffing)
+        self._unreachable = None        # (session id, failures, first failure) while a game is down
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
@@ -628,6 +632,40 @@ class PartyCore:
             record['data_schema'], record['data'] = checked['data_schema'], checked['data']
         s.result = record
 
+    def game_unreachable(self, session_id):
+        """A check found the active session's game server not answering. One miss means nothing (a
+        restart, a busy Pi); GAME_LOST_FAILS misses in a row over at least GAME_LOST_SPAN seconds
+        close the session as `abandoned`, reason `game_lost` (see game_lost). Returns True when
+        it closed."""
+        self._timed()
+        s = self.party.session
+        if s is None or s.id != session_id or s.state != ACTIVE:
+            return False
+        now = self.clock()
+        seen = self._unreachable
+        _, fails, first = seen if seen and seen[0] == s.id else (s.id, 0, now)
+        self._unreachable = (s.id, fails + 1, first)
+        if fails + 1 >= GAME_LOST_FAILS and now - first >= GAME_LOST_SPAN:
+            return self.game_lost(session_id)
+        return False
+
+    def game_reachable(self, session_id):
+        """The game answered: the count of misses starts again."""
+        if self._unreachable and self._unreachable[0] == session_id:
+            self._unreachable = None
+
+    def game_lost(self, session_id):
+        """The party's active session has no game any more. It ends as `abandoned` (the outcome a
+        game that gave up reports, and the one every phone already handles: nav goes home, tickets
+        stop, the seats are released) and carries reason `game_lost` so a phone can say so."""
+        s = self.party.session
+        if s is None or s.id != session_id or s.state != ACTIVE:
+            return False
+        s.reason = 'game_lost'
+        self._close(s, 'abandoned', 'The game stopped.')
+        self._unreachable = None
+        return True
+
     def _close(self, s, outcome, detail=None):
         now = self.clock()
         s.state, s.state_since, s.outcome = ENDED, now, outcome
@@ -745,7 +783,7 @@ class PartyCore:
         if s is not None:
             mine = s.participants.get(me.id) if me else None
             session = {'id': s.id, 'game': s.game_id, 'state': s.state, 'outcome': s.outcome,
-                       'detail': s.detail,
+                       'detail': s.detail, 'reason': s.reason,
                        'players': sum(1 for p in s.participants.values() if p.role == 'player'),
                        'my_role': mine.role if mine else None}
             # Party Home's minimal platform result (AVR-238). The authenticated record and

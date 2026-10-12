@@ -44,6 +44,7 @@ at once, a short poll), and the listen backlog is REQUEST_QUEUE_SIZE so phone wa
 import argparse
 import http.server
 import json
+import logging
 import os
 import signal
 import socket
@@ -55,10 +56,14 @@ from urllib.parse import parse_qs, urlsplit
 
 from avrana.party import core, identity
 
+log = logging.getLogger('avrana.party.service')
+
 MAX_BODY = 8192
 MAX_WAIT = 25.0
 MAX_WAITERS = 64            # AVR-218: concurrent blocked long polls; beyond it a poll returns at once
 REQUEST_QUEUE_SIZE = 128    # AVR-218: listen backlog (socketserver default 5 drops reconnect storms)
+RELEASE_THREAD = 'avrana-end-lost-game'
+PROBE_EVERY = 2.0           # s: at most one reachability check of a session's game this often (AVR-33)
 
 
 class NoGameLink:
@@ -75,8 +80,10 @@ class PartyService:
     """Thread-safe wrapper: one lock around the core, a condition for long polls, and game-link
     calls made outside the lock (a slow game must not freeze the party)."""
 
-    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None):
+    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, record=None):
         self.store = store
+        self.record = record                 # avrana.party.record.SessionRecord, or None (AVR-33)
+        self._probed = None                  # (session id, when) of the last reachability check
         self.limited = limited or identity.LimitedStore()     # Limited Mode credentials (memory)
         self.core = core.PartyCore(clock, games)
         self.link = link or NoGameLink()
@@ -135,7 +142,7 @@ class PartyService:
         with self.lock:
             s = self.core.go_home(device_id, if_version)
             self._notify()
-        self.link.end(s)
+        self._end_at_game(s)
         return s
 
     def start_round(self, device_id, if_version):
@@ -156,7 +163,7 @@ class PartyService:
             old = self.core.begin_switch(device_id, game_id, if_version)
             self._notify()
         # a round still in setup never reached the game: nothing there to end
-        confirmed = True if old.state == core.ENDED else self.link.end(old)
+        confirmed = True if old.state == core.ENDED else self._end_at_game(old)
         with self.lock:
             self.core.end_confirmed(old.id, confirmed)
             s = self.core.launch_pending()
@@ -166,13 +173,26 @@ class PartyService:
             return s or old
         return self._start(s, roster)
 
+    def _remember(self, s):
+        if self.record is not None:
+            self.record.write(s.id, s.game_id)
+
+    def _end_at_game(self, s):
+        """The signed `end` for a session, and the durable record of it dropped once the game says
+        it is not running it. Returns the link's answer. Never called under the lock."""
+        confirmed = self.link.end(s)
+        if confirmed and self.record is not None:
+            self.record.clear(s.id)
+        return confirmed
+
     def _start(self, s, roster):
+        self._remember(s)                  # before the game can hold it: a crash now is still cleaned up
         ok, detail = self.link.launch(s, roster)
         if not ok:
             # Roll back at the game too (AVR-134): a runtime that came up after the link gave up
             # waiting, or half-started, is stopped before the party says the launch failed, so a
             # failed start never leaves a heavy runtime running beside the next one.
-            self.link.end(s)
+            self._end_at_game(s)
         with self.lock:
             if ok:
                 accepted = self.core.launch_accepted(s.id)
@@ -183,7 +203,7 @@ class PartyService:
         if ok and not accepted:
             # AVR-223: the party moved on while the launch was in flight (the host cancelled it,
             # or LAUNCH_TIMEOUT passed): the runtime that just came up would be orphaned. Stop it.
-            self.link.end(s)
+            self._end_at_game(s)
         return s
 
     def game_reported_end(self, session_id, outcome, result=None):
@@ -195,7 +215,7 @@ class PartyService:
             s = self.core.game_reported_end(session_id, outcome, result)
             self._notify()
         if s.outcome == 'abandoned':
-            self.link.end(s)
+            self._end_at_game(s)
         return s
 
     def end(self, device_id, if_version):
@@ -204,11 +224,71 @@ class PartyService:
             self._notify()
             if s.state == core.ENDED:            # a launch that was cancelled: nothing to reset
                 return s
-        confirmed = self.link.end(s)
+        confirmed = self._end_at_game(s)
         with self.lock:
             self.core.end_confirmed(s.id, confirmed)
             self._notify()
         return s
+
+    # ---- a game that is gone (AVR-33) ---------------------------------------------------------------
+    def game_up(self, s):
+        """Asked when a phone is about to be sent to the active session's game (a ticket request):
+        is a connection to that game accepted? At most one check per PROBE_EVERY seconds, made
+        outside the lock. Misses are counted by Party Core, which closes the session as `game_lost`
+        only after several over some seconds (core.GAME_LOST_FAILS, GAME_LOST_SPAN); until then the
+        answer is True, as it was before this check existed. False means this call closed it."""
+        reachable = getattr(self.link, 'reachable', None)
+        if reachable is None:
+            return True
+        with self.lock:
+            now = self.core.clock()
+            if self._probed and self._probed[0] == s.id and now - self._probed[1] < PROBE_EVERY:
+                return True
+            self._probed = (s.id, now)
+        up = reachable(s)
+        if up is None:
+            return True
+        with self.lock:
+            if up:
+                self.core.game_reachable(s.id)
+                return True
+            lost = self.core.game_unreachable(s.id)
+            if lost:
+                self._notify()
+        if lost:
+            log.warning('game %s: session %s closed, the game stopped answering', s.game_id, s.id)
+            # the game may come back holding a ghost: say `end` once it can hear it, off this request
+            threading.Thread(target=self._end_at_game, args=(s,), daemon=True, name=RELEASE_THREAD).start()
+        return not lost
+
+    def recover_orphan(self, attempts=5, delay=2.0, sleep=time.sleep):
+        """At startup: the party forgot the session it was running, but the record remembers it.
+        Send that game the signed `end` for it (a game that holds it resets; the arcade and PS1
+        stop their runtime; one that holds nothing says so) and drop the record. A game that does
+        not answer is tried `attempts` times, `delay` seconds apart (it may be starting beside
+        Party Core), then given up on: its next launch replaces whatever it holds. Returns what
+        the game said ('ended', 'not_held', 'refused', 'unreachable'), or None without a record.
+        Safe beside a new launch: an `end` names its session, and a game never ends a newer one."""
+        found = self.record.read() if self.record is not None else None
+        if found is None:
+            return None
+        with self.lock:
+            running = self.core.party.session
+            if running is not None and running.id == found[0]:
+                return None                  # this run started it: not an orphan
+        ghost = type('Orphan', (), {'id': found[0], 'game_id': found[1]})()
+        ask = getattr(self.link, 'end_outcome', None)
+        outcome = 'unreachable'
+        for attempt in range(attempts):
+            outcome = ask(ghost) if ask else ('ended' if self.link.end(ghost) else 'refused')
+            if outcome != 'unreachable':
+                break
+            if attempt + 1 < attempts:
+                sleep(delay)
+        log.warning('game %s: ended session %s left by the last run of Party Core (%s)',
+                    ghost.game_id, ghost.id, outcome)
+        self.record.clear(ghost.id)
+        return outcome
 
     def run_timer(self, stop, interval=1.0):
         while not stop.wait(interval):
@@ -572,6 +652,16 @@ def load_games(entries):
     return games
 
 
+def session_record_path(conf):
+    """Where the active-session record lives: the config's `session_record`, else next to the
+    device file (a folder the service already writes), else nowhere (no record, no recovery)."""
+    if conf.get('session_record'):
+        return conf['session_record']
+    if conf.get('devices'):
+        return os.path.join(os.path.dirname(conf['devices']), 'active-session.json')
+    return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--config', required=True, help='JSON: hosts, origins, devices, games')
@@ -589,7 +679,12 @@ def main(argv=None):
                                           packages=conf.get('packages'))
     except registry.RegistryError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
-    service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True))
+    # The one thing kept across a restart: which session was started at which game (AVR-33), so that
+    # a restarted Party Core can end it. Next to the device file unless the config names a path.
+    from avrana.party.record import SessionRecord
+    record_path = session_record_path(conf)
+    service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True),
+                           record=SessionRecord(record_path) if record_path else None)
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True),
                  conf.get('game_origins'))
     extra, internal = sessions.routes(service, endpoints)
@@ -612,6 +707,7 @@ def main(argv=None):
         threading.Thread(target=limited_server.serve_forever, daemon=True).start()
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()
+    threading.Thread(target=service.recover_orphan, daemon=True).start()     # AVR-33
     # Native games report on a Unix socket: inherited from the systemd socket unit in production,
     # created here when the config names a path (ADR 0016 §4, AVR-258). The loopback route above
     # stays for the arcade and the LAN Games fork.
