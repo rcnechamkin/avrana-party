@@ -128,12 +128,14 @@ copied, not linked, and `ops/deploy.sh` never touches them.
    sudo systemctl start avrana-party-certificate.service     # waits until it ends
    systemctl show -p Result,ExecMainStatus avrana-party-certificate.service   # Result=success, ExecMainStatus=0
    journalctl -u avrana-party-certificate.service -n 40 --no-pager
-   readlink /etc/avrana-party/tls/current                      # unchanged from step 1
+   readlink /etc/avrana-party/tls/current                      # unchanged from step 1 (see below)
    cat /etc/avrana-party/certificate-not-after                 # notAfter=... GMT, mode 0644
    ```
 
    The journal says lego did not renew (the days left against 30) and the installer printed
-   `Certificate is already installed`. If the unit failed, read the journal: a missing or wrong
+   `Certificate is already installed`. `current` stays unchanged only if the lego state certificate is the
+   one already installed; if the installed certificate came from elsewhere, the installer switches to the
+   state certificate, and that is why the link changed (step 1 recorded the old target). If the unit failed, read the journal: a missing or wrong
    token, lego unable to reach Cloudflare, or a clock that is far off are the usual causes. The
    installed certificate is untouched in every failure.
 
@@ -143,7 +145,7 @@ copied, not linked, and `ops/deploy.sh` never touches them.
    ```sh
    sudo systemctl enable --now avrana-party-certificate.timer
    systemctl list-timers avrana-party-certificate.timer         # a NEXT time within 26 hours
-   curl -s -H 'Host: party.avrana.net' http://127.0.0.1:8191/party/api/status | python3 -c \
+   curl -s --noproxy '*' -H 'Host: party.avrana.net' http://127.0.0.1:8191/party/api/status | python3 -c \
      'import json,sys; d=json.load(sys.stdin); print(d["certificate"], d["services"]["avrana-party-certificate.timer"], d["summary"]["state"])'
    ```
 
