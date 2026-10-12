@@ -22,6 +22,7 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     contract      versions Party implements (+ games_advertises from /api/games)
     services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
+                  (unavailable is never `ok`: the summary is `unknown` then, AVR-31)
     party_core    {ok, uptime_s, members, session}
     games_provider, arcade   health summaries
     summary       ok|degraded|unknown with reasons
@@ -44,6 +45,10 @@ SCHEMA = 'avrana.status/v0'
 CACHE_S = 5.0
 PROBE_TIMEOUT_S = 2.0
 EXPIRING_DAYS = 21
+# The certificate directory is root-only (ADR 0016), so the service user cannot read the
+# certificate itself. ops/install-party-certificate.sh therefore also writes the one public,
+# non-secret fact health needs, the `openssl x509 -enddate` line, here (AVR-31).
+CERTIFICATE_RECORD = '/etc/avrana-party/certificate-not-after'
 DEFAULT_CONFIG = {
     'manifest': manifest.DEFAULT_PATH,
     'party_checkout': '/home/cody/avrana-party',
@@ -80,11 +85,23 @@ def unit_state(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
     return state
 
 
+def _parse_enddate(text):
+    """`notAfter=Dec 25 10:00:00 2026 GMT` (openssl x509 -enddate) as an aware datetime, or None."""
+    text = text.strip()
+    if not text.startswith('notAfter='):
+        return None
+    try:
+        return datetime.strptime(text[len('notAfter='):], '%b %d %H:%M:%S %Y %Z').replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
 class Probes:
     """Every contact with the machine, in one place, so tests can replace it."""
 
-    def __init__(self, timeout=PROBE_TIMEOUT_S):
+    def __init__(self, timeout=PROBE_TIMEOUT_S, certificate_record=CERTIFICATE_RECORD):
         self.timeout = timeout
+        self.certificate_record = certificate_record
 
     def checkout(self, path):
         try:
@@ -105,7 +122,12 @@ class Probes:
 
     def certificate_not_after(self, path):
         """The notAfter instant as an aware datetime, or None when unreadable. On the appliance
-        the certificate directory is root-only, so inside the service this is None by design."""
+        the certificate directory is root-only, so inside the service the certificate itself is
+        unreadable by design; the expiry record the installer writes next to it is the fallback
+        (a stale record is bounded by the next install, which rewrites it)."""
+        return self._enddate_of_file(path) or self._enddate_record(self.certificate_record)
+
+    def _enddate_of_file(self, path):
         try:
             if not Path(path).exists():
                 return None
@@ -113,12 +135,12 @@ class Probes:
                                  capture_output=True, timeout=self.timeout)
         except (OSError, subprocess.TimeoutExpired):
             return None
-        text = out.stdout.decode('ascii', 'replace').strip()
-        if not text.startswith('notAfter='):
-            return None
+        return _parse_enddate(out.stdout.decode('ascii', 'replace'))
+
+    def _enddate_record(self, path):
         try:
-            return datetime.strptime(text[len('notAfter='):], '%b %d %H:%M:%S %Y %Z').replace(tzinfo=timezone.utc)
-        except ValueError:
+            return _parse_enddate(Path(path).read_text(encoding='ascii', errors='replace')[:256])
+        except (OSError, TypeError):
             return None
 
     def get_json(self, url):
@@ -225,6 +247,10 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     certificate = _certificate(probes.certificate_not_after(cfg['certificate']), now)
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
+    elif certificate['status'] == 'unavailable':
+        # Not a fault of the certificate, but an expiry nobody can see is a cliff nobody sees
+        # coming: never `ok` (AVR-31). `unknown`, like a unit that cannot be observed.
+        reasons.append('certificate expiry unavailable')
     games_doc = probes.get_json(cfg['games_url'].rstrip('/') + '/api/games')
     provider = _games(games_doc, contract)
     if not provider['ok']:
@@ -243,7 +269,8 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         except Exception:  # the status page must not take the party down
             core = {'ok': False}
             reasons.append('party core view failed')
-    unknown = any(s == 'unavailable' for s in services.values()) or deployed is None
+    unknown = (any(s == 'unavailable' for s in services.values()) or deployed is None
+               or certificate['status'] == 'unavailable')
     summary = 'degraded' if [r for r in reasons if 'unavailable' not in r and 'no deployment' not in r] else (
         'unknown' if unknown else 'ok')
     return {
