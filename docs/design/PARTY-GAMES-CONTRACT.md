@@ -40,6 +40,10 @@ Both name the same components:
   games declaration without it is refused;
 - **routes**: the party's ticket route, the party's loopback `ended` route, the game's launch
   and end routes under `/games/<slug>/`;
+- **reply limit** (Party-side behaviour declared here, not in `contracts/party-games.v0.json`): Party
+  reads at most 64 KiB of a game's reply to `launch` or `end` (`avrana.party.sessions.MAX_REPLY_BYTES`)
+  and stops waiting after the link timeout. An over-limit or late reply is treated as a failed
+  launch or end. The bound is approximate (the clock starts after the headers and is checked after each piece of the body);
 - **launch integration**: `avrana.lan-launch/v1`, the `avrana=1` marker, the fixed `/party/`
   return path, advertised at `/api/games`;
 - **environment**: `AVRANA_PARTY_KEYS` and `AVRANA_PARTY_URL`, set by the games service drop-in;
