@@ -48,7 +48,7 @@ command -v visudo >/dev/null || { echo "visudo not found" >&2; exit 1; }
 
 echo "==> installing helper (root:root 0755)"
 install -o root -g root -m 0755 "$HELPER_SRC" "$HELPER"
-install -d -m 0755 /var/lib/avrana-party
+install -d -m 0711 /var/lib/avrana-party   # root:root 0711, as deploy/appliance-inventory.json
 
 echo "==> validating sudoers rule before activating it"
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT

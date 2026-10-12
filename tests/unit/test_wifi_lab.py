@@ -472,6 +472,14 @@ class ApHelper(unittest.TestCase):
         for band, ch in (("a", "52"), ("a", "36;id"), ("bg", "14"), ("x", "36"), ("a", ""), ("a", None), ("bg", "-1")):
             self.assertFalse(helper.saved_is_valid(band, ch), (band, ch))
 
+    def test_installer_keeps_the_state_directory_at_the_inventory_mode(self):
+        src = (REPO / "ops" / "ap-control" / "install-ap-control.sh").read_text()
+        self.assertIn("install -d -m 0711 /var/lib/avrana-party", src)
+        self.assertNotIn("0755 /var/lib/avrana-party", src)
+        inv = json.loads((REPO / "deploy" / "appliance-inventory.json").read_text())
+        entry = next(d for d in inv["directories"] if d["path"] == "/var/lib/avrana-party")
+        self.assertEqual(entry["mode"], "0711")
+
     def test_helper_never_uses_a_shell(self):
         src = (REPO / "ops" / "ap-control" / "avrana-ap-control").read_text()
         self.assertNotIn("shell=True", src)
