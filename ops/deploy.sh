@@ -6,8 +6,9 @@
 # It never decides *what* to deploy: both target commits are explicit arguments (the reviewed,
 # CI-green commits named in the PRs). It then, in order:
 #   1. refuses to run twice at once, on a dirty checkout (unless --allow-dirty), on a Party commit
-#      that is not on origin/main (unless --allow-branch), or while a game session is live
-#      (unless --force-busy);
+#      that is not on origin/main (unless --allow-branch), on a Party/Games pair that disagrees on
+#      the Party <-> Games contract (tools/contract_check.py run on the two exact commits; unless
+#      --skip-contract-check), or while a game session is live (unless --force-busy);
 #   2. records the before-state (JSON) under /var/backups/avrana-party/deploy-<UTC>/;
 #   3. stops only the services whose code changes, checks both repositories out at exactly the
 #      named commits (detached, so forward, backward and rollback deployments are the same
@@ -47,7 +48,7 @@ checkout_user=${AVRANA_CHECKOUT_USER:-cody}
 party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
 games_units=(avranaparty-games)                      # code in the games repository
 
-party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0
+party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0 skip_contract=0
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -63,6 +64,7 @@ while (($#)); do
         --allow-branch) allow_branch=1; shift ;;
         --force-busy) force_busy=1; shift ;;
         --skip-smoke) skip_smoke=1; shift ;;
+        --skip-contract-check) skip_contract=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument $1 (see --help)" ;;
     esac
@@ -143,6 +145,27 @@ party_changed=0; games_changed=0
 [[ $before_games == "$games_sha" ]] || games_changed=1
 if [[ $party_changed -eq 0 && $games_changed -eq 0 ]]; then
     log 'both checkouts are already at the requested commits'
+fi
+
+# The two exact commits must agree on the Party <-> Games contract (AVR-336). The checker and the
+# declarations are read from the commits themselves, not the checkouts, so this holds for a
+# forward, a backward and a rollback deployment alike. A commit that predates either is warned
+# about, not refused: those pairs were deployed before the check existed.
+if [[ $skip_contract -eq 1 ]]; then
+    log 'WARNING: Party <-> Games contract check skipped (--skip-contract-check)'
+else
+    pair=$(mktemp -d); mkdir "$pair/party" "$pair/games"
+    g "$party_checkout" archive --format=tar "$party_sha" | tar -x -C "$pair/party" --no-same-owner
+    g "$games_checkout" archive --format=tar "$games_sha" | tar -x -C "$pair/games" --no-same-owner
+    if [[ ! -f $pair/party/tools/contract_check.py || ! -f $pair/games/provider/avrana-contract.json ]]; then
+        log 'WARNING: one of these commits predates the contract check; the pair was not checked'
+    elif drift=$(cd "$pair/party" && PYTHONDONTWRITEBYTECODE=1 "${AVRANA_DEPLOY_PYTHON:-python3}" tools/contract_check.py             --party "$pair/party" --games "$pair/games" 2>&1); then
+        log 'contract: compatible (tools/contract_check.py on the two exact commits)'
+    else
+        rm -rf "$pair"
+        die "Party <-> Games contract: party $party_sha and games $games_sha disagree: $drift (re-pair them, or --skip-contract-check for a supervised test)"
+    fi
+    rm -rf "$pair"
 fi
 
 busy=$(curl -s -m 5 -H "Host: $party_host" "$party_core_url/party/api/state" \

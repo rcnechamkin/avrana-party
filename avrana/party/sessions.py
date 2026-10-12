@@ -30,6 +30,7 @@ import http.client
 import json
 import logging
 import socket
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -65,6 +66,31 @@ class UnixHTTPConnection(http.client.HTTPConnection):
         self.sock = sock
 
 
+MAX_REPLY_BYTES = 64 * 1024     # a launch/end answer is one small JSON object; more is a misbehaving game
+
+
+class ReplyRefused(OSError):
+    """A game's answer was too large or too slow. Party Core stops reading it (AVR-336)."""
+
+
+def read_reply(response, seconds):
+    """The body of a game server's answer, read in pieces and refused past MAX_REPLY_BYTES or
+    `seconds` in all. The socket timeout bounds each wait, not the whole answer: a game that drips
+    bytes would otherwise hold a Party Core request thread, and one that streams without end would
+    fill its memory. The game is third-party code at the community tier."""
+    deadline = time.monotonic() + seconds
+    out = bytearray()
+    while True:
+        chunk = getattr(response, 'read1', response.read)(4096)   # read(n) would wait to fill n bytes: a drip never returns
+        if not chunk:
+            return bytes(out)
+        out += chunk
+        if len(out) > MAX_REPLY_BYTES:
+            raise ReplyRefused('answer too large')
+        if time.monotonic() > deadline:
+            raise ReplyRefused('answer too slow')
+
+
 class GameEndpoint:
     def __init__(self, game_id, url, key, timeout=None, socket_path=None):
         self.game_id = game_id
@@ -98,7 +124,7 @@ class HttpGameLink:
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
         try:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
-                body = json.loads(r.read() or b'{}')
+                body = json.loads(read_reply(r, timeout or self.timeout) or b'{}')
                 return r.status == 200 and body.get('ok') is True, body.get('message')
         except (urllib.error.URLError, OSError, ValueError) as e:
             return False, f'The game server did not answer ({type(e).__name__}).'
@@ -110,7 +136,7 @@ class HttpGameLink:
         try:
             conn.request('POST', path, body=data, headers=dict(headers, Host='localhost'))
             r = conn.getresponse()
-            body = json.loads(r.read() or b'{}')
+            body = json.loads(read_reply(r, timeout) or b'{}')
             return r.status == 200 and isinstance(body, dict) and body.get('ok') is True, \
                 body.get('message') if isinstance(body, dict) else None
         except (http.client.HTTPException, OSError, ValueError) as e:

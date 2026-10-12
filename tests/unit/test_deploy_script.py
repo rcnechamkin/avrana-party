@@ -97,6 +97,45 @@ class DeployScript(unittest.TestCase):
         self.assertIn('changed=1', r.stdout)
         self.assertIn('avrana-party-core avranaparty-arcade', r.stdout)
 
+    def commit_pair_files(self, checker_exit):
+        """Give the throwaway pair what the real ones have: the checker (Party) and a declaration
+        (Games). The stub stands for tools/contract_check.py; the real one is proved in
+        test_contract.py against real snapshots."""
+        (self.party / 'tools').mkdir()
+        (self.party / 'tools/contract_check.py').write_text(
+            'import sys\nprint("CONTRACT DRIFT: stub", file=sys.stderr)\nsys.exit(%d)\n' % checker_exit)
+        self.git(self.party, 'add', 'tools')
+        self.git(self.party, 'commit', '-q', '-m', 'checker')
+        self.git(self.party, 'push', '-q', 'origin', 'main')
+        (self.games / 'provider').mkdir()
+        (self.games / 'provider/avrana-contract.json').write_text('{}\n')
+        self.git(self.games, 'add', 'provider')
+        self.git(self.games, 'commit', '-q', '-m', 'declaration')
+        self.env['AVRANA_DEPLOY_PYTHON'] = sys.executable
+        return self.git(self.party, 'rev-parse', 'HEAD'), self.git(self.games, 'rev-parse', 'HEAD')
+
+    def test_a_pair_that_disagrees_on_the_contract_is_refused_before_anything_changes(self):
+        """Party <-> Games skew (AVR-336): the exact pair about to be deployed is checked with
+        tools/contract_check.py, in the dry run too, instead of failing at runtime."""
+        party_sha, games_sha = self.commit_pair_files(checker_exit=1)
+        r = self.run_script('--party', party_sha, '--games', games_sha, '--dry-run')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('Party <-> Games contract', r.stderr)
+        self.assertIn('--skip-contract-check', r.stderr)
+        self.assertNotIn('dry run: nothing changed', r.stdout)
+        r = self.run_script('--party', party_sha, '--games', games_sha, '--dry-run', '--skip-contract-check')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('WARNING', r.stdout)
+
+    def test_a_pair_that_agrees_passes_and_a_pair_that_predates_the_checker_is_warned_about(self):
+        party_sha, games_sha = self.commit_pair_files(checker_exit=0)
+        r = self.run_script('--party', party_sha, '--games', games_sha, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('contract: compatible', r.stdout)
+        r = self.run_script('--party', self.party_sha, '--games', self.games_sha, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('predates the contract check', r.stdout)
+
 
 SYSTEMCTL_SHIM = """#!/usr/bin/env bash
 # Records every call; `is-active` fails for the unit named in $FAIL_UNIT (to exercise rollback).
