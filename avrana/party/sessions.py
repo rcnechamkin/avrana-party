@@ -88,7 +88,12 @@ class DeadlineSocket(socket.socket):
 
 class BoundedConnection(http.client.HTTPConnection):
     """HTTP over a socket that obeys `deadline` (see DeadlineSocket): loopback TCP, or, with
-    `unix_path`, a Unix stream socket: the same requests, a different address."""
+    `unix_path`, a Unix stream socket: the same requests, a different address.
+
+    Name resolution (getaddrinfo) is outside the deadline. That is acceptable because a game is
+    only ever addressed by a loopback IP literal or a Unix socket path from the appliance's own
+    grant (never a name a game or phone supplies), so resolution does not touch the network or
+    a resolver; connect, send and receive, which can block, are all inside it."""
 
     def __init__(self, host, port, timeout, unix_path=None):
         super().__init__(host, port, timeout=timeout)

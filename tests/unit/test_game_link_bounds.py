@@ -223,7 +223,7 @@ class OverallDeadline(unittest.TestCase):
     the request is sent. Every wait on the socket counts against it: a game that drips its headers,
     drips its body or stalls after its headers cannot hold a Party Core request thread for more
     than the link timeout (plus scheduling), whatever interval it sends at."""
-    TIMEOUT = 1.0
+    TIMEOUT = 0.5
     SLACK = 0.6
 
     def link(self, script, timeout=None):
@@ -242,15 +242,15 @@ class OverallDeadline(unittest.TestCase):
         return out
 
     def test_headers_dripped_faster_than_the_socket_timeout_are_still_cut_off(self):
-        ok, detail = self.bounded(drip_headers(0.3))
+        ok, detail = self.bounded(drip_headers(0.15))
         self.assertFalse(ok)
         self.assertTrue(detail)
 
     def test_headers_dripped_just_inside_the_socket_timeout_are_still_cut_off(self):
-        self.assertFalse(self.bounded(drip_headers(0.8))[0])
+        self.assertFalse(self.bounded(drip_headers(0.4))[0])
 
     def test_a_body_dripped_just_inside_the_socket_timeout_is_cut_off(self):
-        self.assertFalse(self.bounded(drip_body(0.8))[0])
+        self.assertFalse(self.bounded(drip_body(0.4))[0])
 
     def test_a_stall_after_the_headers_is_cut_off(self):
         self.assertFalse(self.bounded(stall_after_headers)[0])
@@ -261,7 +261,7 @@ class OverallDeadline(unittest.TestCase):
     def test_end_is_bounded_the_same_way(self):
         from unittest import mock
         with mock.patch.object(sessions, 'END_LINK_TIMEOUT', self.TIMEOUT):
-            link = self.link(drip_headers(0.8), timeout=60.0)
+            link = self.link(drip_headers(0.4), timeout=60.0)
             started = time.monotonic()
             self.assertFalse(link.end(Session))
             self.assertLess(time.monotonic() - started, self.TIMEOUT + self.SLACK)
@@ -272,7 +272,7 @@ class OverallDeadline(unittest.TestCase):
 
     @unittest.skipUnless(hasattr(socket, 'AF_UNIX'), 'Unix sockets only (the Linux runner)')
     def test_the_unix_link_has_the_same_overall_deadline(self):
-        for script in (drip_headers(0.8), drip_body(0.8), stall_after_headers):
+        for script in (drip_headers(0.4), drip_body(0.4), stall_after_headers):
             with self.subTest(script=getattr(script, '__name__', 'drip')):
                 path = os.path.join(tempfile.mkdtemp(), 'g.sock')
                 listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -303,7 +303,55 @@ def says(status, body):
     return script
 
 
+def chunked(pieces, gap=0.0):
+    def script(c):
+        head(c)
+        c.sendall(b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n')
+        for piece in pieces:
+            c.sendall(b'%x\r\n' % len(piece) + piece + b'\r\n')
+            time.sleep(gap)
+        c.sendall(b'0\r\n\r\n')
+    return script
+
+
+def close_delimited(body):
+    def script(c):
+        head(c)
+        c.sendall(b'HTTP/1.0 200 OK\r\n\r\n' + body)       # no Content-Length: the close ends it
+    return script
+
+
 class WhatAGamesAnswerMeans(unittest.TestCase):
+    """An answer that is not what the link expects is a failure, never an exception; and the two
+    ways a body can be framed without a Content-Length are read correctly and stay bounded."""
+
+    def link(self, script, timeout=2.0):
+        server = raw_server(script)
+        self.addCleanup(server.close)
+        url = f'http://127.0.0.1:{server.getsockname()[1]}/games/drip'
+        return sessions.HttpGameLink({'drip': sessions.GameEndpoint('drip', url, KEY)}, timeout=timeout)
+
+    def test_an_answer_that_is_not_a_json_object_is_a_failed_launch(self):
+        for body in ([], 'ok', 7, None):
+            with self.subTest(body=body):
+                self.assertFalse(self.link(says(200, body)).launch(Session, [])[0])
+
+    def test_a_chunked_reply_is_read_whole_and_a_chunked_drip_is_cut_off(self):
+        self.assertEqual(self.link(chunked([b'{"ok"', b': tr', b'ue}'])).launch(Session, []), (True, None))
+        link = self.link(chunked([b' '] * 40, gap=0.2), timeout=0.5)
+        started = time.monotonic()
+        self.assertFalse(link.launch(Session, [])[0])
+        self.assertLess(time.monotonic() - started, 1.1)
+
+    def test_a_close_delimited_reply_is_read_whole_and_an_endless_one_is_refused(self):
+        self.assertEqual(self.link(close_delimited(b'{"ok": true}')).launch(Session, []), (True, None))
+        started = time.monotonic()
+        ok, _ = self.link(close_delimited(b' ' * (sessions.MAX_REPLY_BYTES + 10) + b'{"ok": true}')).launch(Session, [])
+        self.assertFalse(ok)
+        self.assertLess(time.monotonic() - started, 1.5)
+
+
+class NotHeldAndReachable(unittest.TestCase):
     """An answer that is not what the link expects is a failure, never an exception; and a game that
     says it holds no such session has nothing left to stop (a Games server that restarted)."""
 
@@ -312,11 +360,6 @@ class WhatAGamesAnswerMeans(unittest.TestCase):
         self.addCleanup(server.close)
         url = f'http://127.0.0.1:{server.getsockname()[1]}/games/drip'
         return sessions.HttpGameLink({'drip': sessions.GameEndpoint('drip', url, KEY)}, timeout=2.0)
-
-    def test_an_answer_that_is_not_a_json_object_is_a_failed_launch(self):
-        for body in ([], 'ok', 7, None):
-            with self.subTest(body=body):
-                self.assertFalse(self.link(says(200, body)).launch(Session, [])[0])
 
     def test_a_game_that_holds_no_such_session_has_ended_it_in_both_refusal_shapes(self):
         for status, body in ((403, {'ok': False, 'error': 'bad_message:session'}),            # the Games server
