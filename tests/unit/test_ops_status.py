@@ -241,6 +241,22 @@ class Document(unittest.TestCase):
         probes.nginx = 'match'
         self.assertEqual(self.build(probes)['summary']['state'], 'ok')
 
+    def test_a_last_attempt_that_did_not_end_ok_is_a_note_not_a_fault(self):
+        attempt = {'party_sha': SHA_B, 'games_sha': SHA_A, 'at': '2026-10-12T00:00:00Z', 'outcome': 'rolled-back',
+                   'backup': 'deploy-20261012T000000Z'}
+        manifest.write(self.manifest, sample(last_attempt=attempt))
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)})
+        doc = self.build(probes)
+        self.assertEqual(doc['last_attempt'], attempt)
+        self.assertEqual(doc['summary']['state'], 'ok')                         # the machine runs the good pair
+        self.assertTrue(any('ended rolled-back' in n for n in doc['summary']['notes']), doc['summary'])
+        manifest.write(self.manifest, sample(last_attempt=dict(attempt, outcome='ok')))
+        doc = self.build(probes)
+        self.assertEqual(doc['last_attempt']['outcome'], 'ok')
+        self.assertFalse(any('last deployment attempt' in n for n in doc['summary']['notes']))
+        manifest.write(self.manifest, sample())                                 # an old manifest without the field
+        self.assertIsNone(self.build(probes)['last_attempt'])
+
     def test_the_installed_site_hash_and_the_last_known_good_are_reported_additively(self):
         manifest.write(self.manifest, sample())
         probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)})

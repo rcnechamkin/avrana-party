@@ -118,6 +118,23 @@ class Files(unittest.TestCase):
         if os.name == 'posix':
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o644)
 
+    def test_cert_name_mismatches_and_the_last_attempt_are_recorded_and_validated(self):
+        manifest.write(self.path, sample())
+        manifest.record_deploy_info(self.path, 'installed', None, [], None, now='2026-10-12T00:00:00Z',
+                                    cert_name_mismatch=['games.avrana.net', 'games.avrana.net'])
+        self.assertEqual(manifest.read(self.path)['nginx_site']['cert_name_mismatch'], ['games.avrana.net'])
+        self.assertNotIn('last_attempt', manifest.read(self.path))                 # older manifests stay valid
+        for outcome in manifest.ATTEMPT_OUTCOMES:
+            manifest.record_last_attempt(self.path, SHA_A, SHA_B, outcome, 'deploy-20261012T000000Z')
+            self.assertEqual(manifest.read(self.path)['last_attempt']['outcome'], outcome)
+        with self.assertRaises(manifest.ManifestError):
+            manifest.record_last_attempt(self.path, SHA_A, SHA_B, 'fine', 'x')
+        self.assertTrue(manifest.validate(dict(sample(), last_attempt={'outcome': 'ok'})))
+        self.assertIsNone(manifest.record_last_attempt(Path(self.temp.name) / 'none.json', SHA_A, SHA_B, 'ok', 'x'))
+        self.assertEqual(manifest.main(['last-attempt', str(self.path), '--party', SHA_A, '--games', SHA_B,
+                                        '--outcome', 'rolled-back', '--backup', 'deploy-x']), 0)
+        self.assertEqual(manifest.read(self.path)['last_attempt']['outcome'], 'rolled-back')
+
     def test_the_last_known_good_is_recorded_only_after_a_passed_smoke(self):
         out = Path(self.temp.name) / 'last-known-good.json'
         manifest.write(self.path, sample())                                  # smoke pending
@@ -168,7 +185,8 @@ class Files(unittest.TestCase):
         manifest.record_deploy_info(self.path, 'installed', digest, ['skip_smoke', 'force_busy'], 'auto',
                                     now='2026-10-12T00:00:00Z')
         doc = manifest.read(self.path)
-        self.assertEqual(doc['nginx_site'], {'status': 'installed', 'sha256': digest, 'at': '2026-10-12T00:00:00Z'})
+        self.assertEqual(doc['nginx_site'], {'status': 'installed', 'sha256': digest, 'at': '2026-10-12T00:00:00Z',
+                                             'cert_name_mismatch': []})
         self.assertEqual({k for k, v in doc['deploy_options'].items() if v is True}, {'skip_smoke', 'force_busy'})
         self.assertEqual(doc['deploy_options']['rollback'], 'auto')
         self.assertEqual(set(doc['deploy_options']) - {'rollback'}, set(manifest.OPTION_NAMES))

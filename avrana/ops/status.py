@@ -21,6 +21,8 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     web_release   {build, commit} or null
     nginx_site    {status: match|differs|unavailable, sha256}: the installed site file against the one in
                   the deployed Party release (AVR-271; deploy, web build and site file are one unit)
+    last_attempt  {party_sha, games_sha, at, outcome, backup} or null: the last deploy run that got past validation and how it
+                  ended (a rolled-back run leaves the manifest naming the old pair); a note, never a fault, unless outcome is ok
     last_known_good  {party_sha, games_sha, smoke_at, recorded_at, nginx_site_sha256} or null: the last
                   deployment whose smoke checks passed; what `ops/deploy.sh --rollback` returns to
     contract      versions Party implements (+ games_advertises from /api/games)
@@ -218,6 +220,11 @@ def _public_deployment(deployed):
     return doc
 
 
+def _public_attempt(deployed):
+    attempt = deployed.get('last_attempt') if deployed else None
+    return dict(attempt) if isinstance(attempt, dict) else None
+
+
 def _public_web(release):
     return None if release is None else {'build': release.get('build'), 'commit': release.get('commit')}
 
@@ -300,6 +307,10 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         reasons.append('nginx site file differs from the deployed commit (install avrana-party.nginx, docs/runbooks/deploy.md)')
     elif nginx_site == 'unavailable':
         reasons.append('nginx site file unavailable to compare')
+    attempt = _public_attempt(deployed)
+    if attempt and attempt.get('outcome') != 'ok':
+        notes.append(f'the last deployment attempt (party {str(attempt.get("party_sha"))[:12]}) ended {attempt.get("outcome")}; '
+                     f'the running pair is the one in "deployment" (see docs/runbooks/deploy.md)')
     certificate = _certificate(probes.certificate_not_after(cfg['certificate']), now)
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
@@ -339,6 +350,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         'games': games,
         'web_release': _public_web(web),
         'nginx_site': {'status': nginx_site, 'sha256': nginx_sha256},
+        'last_attempt': _public_attempt(deployed),
         'last_known_good': None if lkg is None else {k: lkg.get(k) for k in (
             'party_sha', 'games_sha', 'smoke_at', 'recorded_at', 'nginx_site_sha256')},
         'contract': dict(contract, games_advertises=provider['integration']),
