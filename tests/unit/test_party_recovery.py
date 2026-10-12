@@ -185,6 +185,32 @@ class DeviceStoreAfterPowerLoss(unittest.TestCase):
         self.assertEqual(store.resolve(token), device)       # good for this run, not after a restart
 
 
+class DeviceStoreDurability(unittest.TestCase):
+    """The file is on disk before it takes the real name (a power cut leaves old or new, never empty)."""
+
+    def test_fsync_of_the_temp_file_comes_before_the_replace_and_a_failing_dir_sync_is_harmless(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            store = identity.DeviceStore(os.path.join(tmp, 'devices.json'))
+            events = []
+            real_fsync, real_replace = os.fsync, os.replace
+
+            def fsync(fd):
+                events.append('fsync')
+                real_fsync(fd)
+                if events.count('fsync') > 1:
+                    raise OSError('no directory sync here')
+
+            def replace(a, b):
+                events.append('replace')
+                real_replace(a, b)
+
+            with mock.patch.object(os, 'fsync', fsync), mock.patch.object(os, 'replace', replace):
+                token, device = store.issue()
+            self.assertEqual(events[:2], ['fsync', 'replace'])
+            self.assertEqual(identity.DeviceStore(store.path).resolve(token), device)
+
+
 class WallClockSteps(unittest.TestCase):
     """The appliance has no RTC: NTP can step the wall clock once the internet appears."""
 

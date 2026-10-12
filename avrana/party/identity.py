@@ -47,6 +47,20 @@ def token_hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def _fsync_dir(directory):
+    """Best effort: flush the rename to disk. Not possible everywhere (Windows); never fails a write."""
+    try:
+        fd = os.open(directory, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
 class DeviceStore:
     """hash(token) -> device_id. With a path, persisted atomically as 0600 JSON so phones keep
     their identity across service restarts. The party itself stays in memory."""
@@ -119,8 +133,11 @@ class DeviceStore:
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(self.by_hash, f)
+                f.flush()
+                os.fsync(f.fileno())                   # on disk before the rename (AVR-33)
             os.chmod(tmp, 0o600)
             os.replace(tmp, self.path)                 # power loss leaves the old or the new file
+            _fsync_dir(folder)
         except BaseException:
             if os.path.exists(tmp):
                 os.unlink(tmp)
