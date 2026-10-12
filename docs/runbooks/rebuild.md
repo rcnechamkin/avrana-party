@@ -247,6 +247,8 @@ sudo bash /home/cody/avrana-party/ops/deploy.sh --party <PARTY_SHA> --games <GAM
 sudo bash /home/cody/avrana-party/ops/install-party-web.sh /home/cody/avrana-party
 ```
 
+`ops/deploy.sh` first runs `tools/contract_check.py` on the two exact commits and refuses a pair that disagrees on the Party <-> Games contract (the result is recorded in the manifest).
+
 With both checkouts already at the named commits `ops/deploy.sh` stops and starts nothing,
 builds `/opt/avrana-party/current` and `/opt/avrana-party-games/current` and writes the
 [deployment manifest](../design/DEPLOYMENT-MANIFEST.md). It builds no web release in that case,

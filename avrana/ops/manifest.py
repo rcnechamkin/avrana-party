@@ -5,6 +5,7 @@
         --web-root /var/www/avrana-party/web [--allow-dirty] [--restarted UNIT ...]
     python3 -m avrana.ops.manifest validate /var/lib/avrana-party/deployment.json
     python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed|failed
+    python3 -m avrana.ops.manifest contract-check /var/lib/avrana-party/deployment.json compatible|not_checkable|skipped
 
 Written by ops/deploy.sh after the checkouts are at their intended commits; read by
 /party/api/status, the smoke checks and tools/reconcile.py. The deployed system is authoritative
@@ -21,6 +22,8 @@ Schema (docs/design/DEPLOYMENT-MANIFEST.md):
     contract       {"party_games", "party_session", "lan_launch"}
     restarted      [unit names restarted by this deployment]
     smoke          {"status": "pending"|"passed"|"failed"|"skipped", "at": ISO 8601} or null
+    contract_check optional: {"status": "compatible"|"not_checkable"|"skipped", "at": ISO 8601}; how ops/deploy.sh
+                   judged the Party/Games pair (not_checkable: a commit predates the checker)
 """
 import argparse
 from datetime import datetime, timezone
@@ -38,6 +41,7 @@ SCHEMA = 'avrana.deployment/v0'
 DEFAULT_PATH = '/var/lib/avrana-party/deployment.json'
 SHA = re.compile(r'^[0-9a-f]{40}$')
 SMOKE_STATES = ('pending', 'passed', 'failed', 'skipped')
+CONTRACT_CHECK_STATES = ('compatible', 'not_checkable', 'skipped')
 
 
 class ManifestError(ValueError):
@@ -145,6 +149,10 @@ def validate(doc):
     if smoke is not None and (not isinstance(smoke, dict) or smoke.get('status') not in SMOKE_STATES
                               or (smoke.get('at') is not None and not _iso(smoke['at']))):
         errors.append(f'smoke must be null or {{status: {"|".join(SMOKE_STATES)}, at}}')
+    check = doc.get('contract_check')
+    if check is not None and (not isinstance(check, dict) or check.get('status') not in CONTRACT_CHECK_STATES
+                              or not _iso(check.get('at'))):
+        errors.append(f'contract_check must be absent or {{status: {"|".join(CONTRACT_CHECK_STATES)}, at}}')
     for key in ('privkey', 'token', 'password', 'secret'):
         if key in json.dumps(doc).lower():
             errors.append(f'manifest text must not contain {key!r}')
@@ -201,6 +209,16 @@ def record_smoke(path, status, now=None):
     return write(path, doc)
 
 
+def record_contract_check(path, status, now=None):
+    doc = read(path)
+    if doc is None:
+        raise ManifestError(f'{path}: no manifest to update')
+    if status not in CONTRACT_CHECK_STATES:
+        raise ManifestError(f'contract check status must be one of {CONTRACT_CHECK_STATES}')
+    doc['contract_check'] = {'status': status, 'at': now or utcnow()}
+    return write(path, doc)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     sub = ap.add_subparsers(dest='command', required=True)
@@ -217,6 +235,9 @@ def main(argv=None):
     s = sub.add_parser('smoke', help='record the smoke result')
     s.add_argument('path')
     s.add_argument('status', choices=SMOKE_STATES)
+    c = sub.add_parser('contract-check', help='record how the Party/Games pair was judged')
+    c.add_argument('path')
+    c.add_argument('status', choices=CONTRACT_CHECK_STATES)
     args = ap.parse_args(argv)
     try:
         if args.command == 'write':
@@ -235,6 +256,9 @@ def main(argv=None):
             if doc is None:
                 raise ManifestError(f'{args.path}: no deployment manifest (nothing deployed with ops/deploy.sh yet)')
             print(f'{args.path}: valid {SCHEMA}, party {doc["party"]["short"]}, games {doc["games"]["short"]}')
+        elif args.command == 'contract-check':
+            record_contract_check(args.path, args.status)
+            print(f'{args.path}: contract check {args.status}')
         else:
             record_smoke(args.path, args.status)
             print(f'{args.path}: smoke {args.status}')

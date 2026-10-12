@@ -61,7 +61,7 @@ Stop, record the exact step, time, exit status and sanitized error, and do not c
 - an under-voltage event or `vcgencmd get_throttled` other than `0x0` during a measured step;
 - a certificate warning on any phone (do not tap through it);
 - a phone that cannot reach `https://party.avrana.net/party/` after one rejoin of the Wi-Fi by the participant;
-- any step that would need `--allow-dirty`, `--allow-branch`, `--force-busy` or `--skip-smoke`: those flags
+- any step that would need `--allow-dirty`, `--allow-branch`, `--force-busy`, `--skip-smoke` or `--skip-contract-check`: those flags
   are not part of this procedure.
 
 Each defect becomes its own scoped Linear issue with the evidence; fixing it is not part of the session.
