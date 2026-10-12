@@ -64,8 +64,20 @@ fall back to Arial), Geist Light elsewhere. Sizes are rem, so they follow the ph
 body is 0.9375 rem; supporting lines (a sender's name in chat, a value on a list row, counts) are
 0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor.
 Light mode was dropped with the prototype system; `prefers-contrast: more` and
-`prefers-reduced-motion` are honoured. Transitions are 150 ms, colour/border only, plus a chevron
-turn.
+`prefers-reduced-motion` are honoured.
+
+**Type roles** (`@theme`, each also a `text-<role>` utility): `label` 11 px (a badge, a word under
+an icon), `meta` 13 px, `body` 15 px, `title` 17 px (a shelf, a sheet), `headline` 22 px (the place
+you are in), `display` 28 px (one statement per page). Weights: 400 to read, 500 for a control's
+word, 600 for a name or a heading, 300 for the brand line only. Write a role, not a number.
+
+**What is chosen** looks the same everywhere: the Atomic tint (`--color-select`), a heavier word
+and a mark or an edge, with `aria-pressed` or `aria-current`. The bottom bar, `avrana-tabs`,
+`avrana-seg`, `avrana-choices` and the avatar picker all follow it.
+
+**Motion** (proposed, AVR-429): `--duration-quick` 150 ms for a state change (colour, edge, a
+pressed cover), `--duration-surface` 220 ms for a sheet or the drawer arriving from its own edge,
+`--ease-standard` for both. Leaving is immediate. Under reduced motion nothing moves.
 
 ## Components
 
@@ -78,7 +90,7 @@ repeat:
 | `avrana-app` | **the frame** (`#main`): `avrana-top` (the place's title, the Limited Mode mark, the Party control), `avrana-main` (the one part that scrolls) and `avrana-nav` (Home, Party, Library, System); safe-area padding on the bars |
 | `avrana-hud` | the Party control: up to three faces and a count; opens the Party drawer. Collapses to one face in a narrow or enlarged-text bar (container query) |
 | `avrana-limmark` | the Limited Mode mark in the top bar: icon + the word; opens the "About Limited Mode" sheet |
-| `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
+| `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet (Filters, View, How to play, About Limited Mode), which is a centred panel from 44rem. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
 | `avrana-lede`, `avrana-sub` | Home's sentence about who is here, and the quieter lines under it |
 | `avrana-list` | 52 px rows that lead somewhere (a place, a sheet), chevron on the right |
 | `avrana-faces`, `avrana-people` | people as faces with names (Party page) and as rows (drawer) |
@@ -91,8 +103,8 @@ repeat:
 | `avrana-back` | the way back in the top bar of a game's page: a chevron and the name of the place it returns to |
 | `avrana-surface` | one raised, bordered surface level |
 | `avrana-section-title` | section heading with quiet meta on the right |
-| `avrana-status` | connection line: spinner while checking, dot + words after (text first, colour never the only cue) |
-| `avrana-notice` (`warn`, `quiet`) | something a person should know now, at the top of a page: an icon, a title, one sentence, and at most one action or a Dismiss. `warn` has the amber edge; `quiet` is one line with no surface (Reconnecting) |
+| `avrana-status` | connection line: spinner while checking, dot + words after (text first, colour never the only cue). Connected, secure and not Limited (`data-quiet="true"`): kept for screen readers and not drawn (proposed, AVR-429) |
+| `avrana-notice` (`warn`, `quiet`) | something a person should know now, at the top of a page: an icon, a title, one sentence, and at most one action or a Dismiss. `warn` tints the icon amber; `quiet` is one line with no surface (Reconnecting). The one recovery pattern: its action is an outlined "Try again" (lost the Party box, game list unavailable). Limited Mode and System's health blocks are the same hairline box, never a side stripe |
 | `avrana-state` | one quiet line under a page's lede that says a state in words with an icon (the Host is away; hosting passed on) |
 | `avrana-health` (`warn`) | System's opening block: how the Party box and this phone are, in a title and a sentence |
 | `avrana-avatar` (`sm`, `lg`) | a person's photo or Gaze avatar (older chat entries: their emoji) |

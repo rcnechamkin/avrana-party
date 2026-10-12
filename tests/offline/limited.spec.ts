@@ -45,6 +45,8 @@ test('a phone on the plain-HTTP origin is in the party, in Limited Mode, and is 
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
   await expect(page.locator('html')).toHaveAttribute('data-mode', 'limited');
   await expect(page.locator('#status-text')).toHaveText('Connected in Limited Mode');
+  await expect(page.locator('#status')).toHaveAttribute('data-quiet', 'false');   // Limited Mode is always said on the page
+  await expect(page.locator('#status-text')).toBeInViewport();
   await expect(page.locator('#secure')).toBeHidden();                       // never a padlock here
   const banner = page.locator('#limited');
   await expect(banner).toBeVisible();
