@@ -122,3 +122,12 @@ sudo journalctl -k --since "<window start>" | grep -icE 'undervoltage|voltage no
 Record each run as a row: {change made, load, window length, dips, temp, min ARM,
 min core V}. Only after a change drives dips to zero across a full arcade-load
 window is the fault considered resolved.
+
+## Network-hardware health check (AVR-296; install is AVR-297, not yet installed)
+
+`pi-health-check.py` classifies the Pi as `HEALTHY`, `DEGRADED`, `FIRMWARE_MAILBOX_SUSPECT`, `POWER_THROTTLE_DETECTED`
+or `UNKNOWN` without ever hanging: every command has a time limit and a stuck `vcgencmd` is abandoned, not waited
+on (on 2026-10-06 the VideoCore mailbox wedged and `vcgencmd` sat in uninterruptible sleep). It observes only; it
+never restarts anything or reboots. The state table and the owner install steps are in
+[docs/runbooks/wifi-qualification.md](../docs/runbooks/wifi-qualification.md). `pi-throttle-check.sh` is bounded the
+same way now, so neither can stack D-state processes behind a wedged firmware.
