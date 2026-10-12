@@ -92,6 +92,40 @@ Then:
 3. Update [SYSTEM](../SYSTEM.md) from the manifest (`python3 -m avrana.ops.manifest validate`
    prints the SHAs) and add a dated finding only when something noteworthy happened.
 
+## Game covers (the owner's, never committed)
+
+A game can have a cover picture the owner supplies (box art). Covers are not in Git, so they do
+not arrive with a commit: they live in one folder on the Pi, `/srv/avrana/covers` (beside the
+ROM; `AVRANA_COVERS_DIR` names another), and every web release copies from it.
+
+```bash
+sudo install -d -m 0755 /srv/avrana/covers
+sudo install -m 0644 ps1-worms.jpg arcade-gauntlet2.jpg ps1-bomberman.jpg /srv/avrana/covers/
+sudo bash /home/cody/avrana-party/ops/install-party-web.sh /home/cody/avrana-party
+```
+
+- A cover is named for its game: `<game id>.jpg`, `.jpeg`, `.png`, `.webp` or `.avif`. The ids
+  are the file names in `contracts/games/` (for example `arcade-gauntlet2`, `ps1-bomberman`,
+  `ps1-worms`).
+- Only plain picture files pass, at most 1 MB each and 64 in all; a link is never followed, a
+  folder inside is not looked in. A file that does not pass is left out and the install says so
+  (`cover left out: <name>: <why>`); it never fails the install. A picture is published as what
+  it really is, whatever its name says.
+- The third command builds a web release from the checkout as it is and the folder as it is:
+  static files only, no service restarts, safe during a round. `ops/deploy.sh` does the same
+  whenever it builds a web release, so covers already in the folder ride along with every Party
+  deploy; a changed cover alone needs only that third command. Then reload the phones.
+- Each release keeps the covers it was built with. `install-party-web.sh --rollback`, and the
+  deploy putting things back by itself when a step fails, return to the release before as it was
+  built, its covers included. Rolling back by deploying an earlier commit (below) builds a new
+  release from that commit and the folder as it is now, so the covers stay as they are now. A
+  covers-only install is one of the five releases kept.
+- For another folder, name it on the command: `sudo AVRANA_COVERS_DIR=/some/folder bash …`
+  (plain `sudo` does not pass your shell's variables on).
+- JPEG, PNG and WebP always work. An AVIF cover is only sure to be drawn if nginx sends its
+  type: `grep avif /etc/nginx/mime.types` (not checked on the Pi).
+- nginx is not involved: covers are files of the release, under `/party/covers/`.
+
 ## When it fails
 
 - **Refused before any stop**: nothing changed. Fix the stated reason.

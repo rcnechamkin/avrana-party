@@ -11,10 +11,16 @@
 # new directory; "current" switches atomically; the five newest releases are kept for rollback.
 # Only committed files are used: the commit is exported with `git archive` and built from there,
 # so ignored or untracked files (and the checkout's working tree) never reach the web root.
+# One exception, by the owner's decision (AVR-306): game covers, which are never committed. They
+# are read from one folder ($AVRANA_COVERS_DIR, default /srv/avrana/covers, beside the owner's
+# ROM), and only what avrana/web/covers.py passes is copied: plain image files named for a game,
+# of bounded size, never a link. A missing folder or a bad file never fails an install.
 set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 dest=${AVRANA_WEB_ROOT:-/var/www/avrana-party/web}
+covers=${AVRANA_COVERS_DIR:-/srv/avrana/covers}
+[[ $covers == /* ]] || covers=$PWD/$covers      # the build runs in another directory
 keep=5
 mode=install
 kill_flag=()
@@ -64,7 +70,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir "$work/src"
 git -C "$checkout" archive --format=tar "$commit" avrana web/party | tar -x -C "$work/src"
 (cd "$work/src" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.web.build \
-    --out "$work/out" --commit "$commit" "${kill_flag[@]}")
+    --out "$work/out" --commit "$commit" --covers "$covers" "${kill_flag[@]}")
 chmod -R u=rwX,go=rX "$work/out"
 if [[ $EUID -eq 0 ]]; then
     chown -R root:root "$work/out"

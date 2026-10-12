@@ -23,6 +23,34 @@ PATH = re.compile(r'^/(?:[a-z0-9][a-z0-9._-]*/)*$')
 HEALTH = re.compile(r'^/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*$')
 ADAPTER = re.compile(r'^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$')
 RESERVED_PREFIXES = ('/party/', '/admin/', '/shared/')
+CONTROL = re.compile(r'[\x00-\x1f\x7f]')       # written into a systemd unit: no newline, no control character
+
+
+def _plain_path(path):
+    """No `.` or `..` component and no `//`: the path names one place, and the root-owned-code
+    check (provision-game) walks the same components that systemd will."""
+    return '//' not in path and not any(part in ('.', '..') for part in path.split('/'))
+
+
+def runtime_problems(runtime, where):
+    """A native game's `runtime` (AVR-236): {"command": [absolute path, args...], "working_directory": "/abs"}."""
+    if not isinstance(runtime, dict) or set(runtime) != {'command', 'working_directory'}:
+        return [f'{where}: an object with exactly "command" and "working_directory"']
+    p = []
+    command = runtime['command']
+    if (not isinstance(command, list) or not command
+            or not all(isinstance(a, str) and a and not CONTROL.search(a) for a in command)):
+        p.append(f'{where}.command: a non-empty list of non-empty strings without control characters')
+    elif not command[0].startswith('/'):
+        p.append(f'{where}.command: the first element is an absolute path')
+    elif not _plain_path(command[0]):
+        p.append(f'{where}.command: the first element has no "." or ".." component and no "//"')
+    cwd = runtime['working_directory']
+    if not isinstance(cwd, str) or not cwd.startswith('/') or CONTROL.search(cwd):
+        p.append(f'{where}.working_directory: an absolute path without control characters')
+    elif not _plain_path(cwd) or cwd.endswith('\\'):
+        p.append(f'{where}.working_directory: no "." or ".." component, no "//" and no trailing backslash')
+    return p
 
 
 def _problems(doc, vocab):
@@ -33,7 +61,7 @@ def _problems(doc, vocab):
     p += [f'appliance: unknown key {k!r}' for k in sorted(set(doc) - allowed)]
     if doc.get('schema') != APPLIANCE:
         p.append(f'appliance.schema: must be {APPLIANCE!r}')
-    if not isinstance(doc.get('id'), str) or not ID.match(doc['id']):
+    if not isinstance(doc.get('id'), str) or not ID.fullmatch(doc['id']):
         p.append('appliance.id: an id')
     if not isinstance(doc.get('name'), str) or not 1 <= len(doc['name']) <= 80:
         p.append('appliance.name: 1-80 characters')
@@ -51,7 +79,7 @@ def _problems(doc, vocab):
         if not isinstance(prov, dict) or set(prov) - keys or {'id', 'kind', 'offers', 'status'} - set(prov):
             p.append(f'{where}: keys {sorted(keys)} (adapter and implementation optional)')
             continue
-        if not isinstance(prov['id'], str) or not ID.match(prov['id']) or prov['id'] in seen:
+        if not isinstance(prov['id'], str) or not ID.fullmatch(prov['id']) or prov['id'] in seen:
             p.append(f'{where}.id: a unique id')
         else:
             seen.add(prov['id'])
@@ -72,11 +100,11 @@ def _problems(doc, vocab):
     games = set()
     for i, inst in enumerate(doc.get('installed') or []):
         where = f'installed[{i}]'
-        keys = {'game', 'entry', 'health', 'tier', 'permissions_granted'}
+        keys = {'game', 'entry', 'health', 'tier', 'permissions_granted', 'runtime'}
         if not isinstance(inst, dict) or set(inst) - keys or {'game', 'entry', 'tier'} - set(inst):
-            p.append(f'{where}: keys {sorted(keys)} (health and permissions_granted optional)')
+            p.append(f'{where}: keys {sorted(keys)} (health, permissions_granted and runtime optional)')
             continue
-        if not isinstance(inst['game'], str) or not ID.match(inst['game']) or inst['game'] in games:
+        if not isinstance(inst['game'], str) or not ID.fullmatch(inst['game']) or inst['game'] in games:
             p.append(f'{where}.game: a unique game id')
         else:
             games.add(inst['game'])
@@ -88,6 +116,8 @@ def _problems(doc, vocab):
             p.append(f'{where}.health: a same-origin path')
         if inst['tier'] not in TIERS:
             p.append(f'{where}.tier: one of {list(TIERS)}')
+        if 'runtime' in inst:
+            p += runtime_problems(inst['runtime'], f'{where}.runtime')
         granted = inst.get('permissions_granted', [])
         if not isinstance(granted, list) or not all(isinstance(g, str) for g in granted):
             p.append(f'{where}.permissions_granted: a list of permission names')
@@ -97,7 +127,7 @@ def _problems(doc, vocab):
         if not isinstance(col, dict) or set(col) - keys or keys - {'summary'} - set(col):
             p.append(f'{where}: keys {sorted(keys)} (summary optional)')
             continue
-        if not isinstance(col.get('id'), str) or not ID.match(col['id']) or not isinstance(col.get('name'), str):
+        if not isinstance(col.get('id'), str) or not ID.fullmatch(col['id']) or not isinstance(col.get('name'), str):
             p.append(f'{where}: id and name are text')
         if not isinstance(col['entry'], str) or not PATH.match(col['entry']):
             p.append(f'{where}.entry: a same-origin path ending in "/"')

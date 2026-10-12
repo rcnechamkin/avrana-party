@@ -1,16 +1,35 @@
-# Non-production proof for ADR 0016 (AVR-227): the systemd primitives the service trust boundary
-# relies on (DynamicUser, LoadCredential, state directories, Unix-socket permissions) behave as the
-# ADR says, and the boundary checker's collector reads a real dynamic-user unit. Runs on a
-# disposable runner, only when the proof, the key reader or the checker changes, or on demand.
-# It is evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md tiers).
+# Non-production proofs for ADR 0016, on disposable runners; each runs only when what it proves
+# changes, or on demand. They are evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md
+# tiers).
+#   proof        (AVR-227) the systemd primitives the service trust boundary relies on (DynamicUser,
+#                LoadCredential, state directories, Unix-socket permissions) behave as the ADR says,
+#                and the boundary checker's collector reads a real dynamic-user unit.
+#   native-game  (AVR-236) `provision-game standin` as root, then Party Core (its real units) launches
+#                and ends a session with the provisioned stand-in game over real socket activation
+#                and a real LoadCredential= key; boundary checker; rotate refused during a session;
+#                remove leaves nothing. Creates and removes users, units and /opt, /etc: runner only.
+#   prepare-native-games  (AVR-304) `ops/prepare-native-games` on a phase 1 host with Party Core's
+#                earlier unit, then `provision-game` of the stand-in, a session, and the reverse.
+#   checkers     (AVR-238) the real Checkers of the paired Games branch: `ops/prepare-native-games`,
+#                `provision-game checkers` against the real appliance profile, Party Core launching
+#                the socket-activated game, a game played to its natural end by two phones, a
+#                Host-ended session, the phase 2 boundary checker, and remove. Runner only.
+#   package      (AVR-39, EXPERIMENTAL) the Hello Party .avrgame package of the paired Games branch: built
+#                unprivileged, refused when tampered, installed by `ops/install-game`, two sessions,
+#                the phase 2 boundary checker, removed, re-installed. Runner only.
 name: Service trust proof
 
 on:
   pull_request:
     paths:
-      - 'experiments/service-trust/**'
-      - 'avrana/party/protocol.py'
-      - 'avrana/ops/boundary.py'
+      - 'avrana/**'
+      - 'contracts/**'
+      - 'deploy/**'
+      - 'ops/provision-game'
+      - 'ops/prepare-native-games'
+      - 'ops/install-game'
+      - 'experiments/**'
+      - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
   workflow_dispatch:
 
@@ -27,3 +46,94 @@ jobs:
           persist-credentials: false
       - name: systemd identity, credential and socket-permission checks
         run: sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
+
+  native-game:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: provision-game, a real session, the boundary checker, rotate and remove
+        run: sudo AVRANA_NATIVE_GAME_PROOF=1 bash experiments/native-game/proof.sh
+
+  # (AVR-304) `ops/prepare-native-games` on a host that has ADR 0016 phase 1 and Party Core's EARLIER
+  # unit (no ExecReload=, no socket unit, no registry key): refused without phase 1; --dry-run changes
+  # nothing; the run restarts Party Core and leaves the units, the socket (avrana-party:avrana-games
+  # 0660) and one added registry member; a second run changes and restarts nothing; provision-game
+  # and a real session work; --reverse refused while a game is provisioned; no restart while a session
+  # runs; --reverse shows the earlier state again. Creates and removes users, units and /opt, /etc,
+  # /var/backups: runner only.
+  prepare-native-games:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: prepare-native-games, provision-game, a real session, and the reverse
+        run: sudo AVRANA_PREPARE_PROOF=1 bash experiments/native-game/prepare-proof.sh
+
+  # (AVR-238) The real Checkers, not the stand-in: the Games checkout is the branch paired with this
+  # one (same logic as cross-repo.yml, and like it a failure to list the branches fails the job).
+  checkers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
+        id: peer
+        env:
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash party/.github/ci/peer-access.sh
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: ${{ steps.peer.outputs.ref }}
+          path: games
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          persist-credentials: false
+      - name: Checkers - prepare, provision-game, a complete game, a Host-ended session, the boundary, remove
+        run: sudo AVRANA_CHECKERS_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/checkers-proof.sh
+
+  # (AVR-39, EXPERIMENTAL) An .avrgame package, not a game of the release tree: the Hello Party package is
+  # built unprivileged from the paired Games branch's committed recipe, refused when tampered or wrong,
+  # installed by `ops/install-game` through provision-game, played by two phones, removed during no
+  # session (refused during one), and left no trace. The release tree copied to /opt has no contract
+  # for the game. The Games checkout is the branch paired with this one (same logic as the checkers
+  # job above). Runner only.
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
+        id: peer
+        env:
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash party/.github/ci/peer-access.sh
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: ${{ steps.peer.outputs.ref }}
+          path: games
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          persist-credentials: false
+      - name: Package - build, refusals, install-game, two sessions, the boundary, remove, re-install
+        run: sudo AVRANA_PACKAGE_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-proof.sh

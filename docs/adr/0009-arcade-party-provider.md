@@ -19,7 +19,7 @@ Letting Party Core stop the systemd unit was rejected, for three reasons:
 ## Decision
 
 1. **Party Core controls the arcade's heavy runtime, not its unit.**
-   - With a Party session key, `arcade/stream.py` starts idle. The page, the two uinput controllers, `/stats`, Xvfb and the audio sink stay up; they are light.
+   - With a Party session key, `arcade/stream.py` starts idle. The page, the uinput controllers (two when this was decided, four since AVR-311), `/stats`, Xvfb and the audio sink stay up; they are light.
    - Party Core's signed `launch` starts RetroArch and the capture/encode. Its signed `end` stops them, encode first, then RetroArch.
    - This is the unchanged session protocol v0 (ADR 0006), so it needs no new privileges, systemd change or nginx change.
    - Rules and tests: `avrana/party/managed.py`.
@@ -46,7 +46,7 @@ Letting Party Core stop the systemd unit was rejected, for three reasons:
 6. **Always-on stays the default, and it is the rollback.**
    - With no key, or no loopback `AVRANA_PARTY_URL`, the arcade runs always-on exactly as before.
    - Party-managed mode is switched on only by the drop-in `deploy/arcade/avrana-party-session.conf` plus the key.
-7. **Gauntlet II is a Party game.** `arcade-gauntlet2` is in the Party Core config (`max_players` 2, from its contract).
+7. **Gauntlet II is a Party game.** `arcade-gauntlet2` is in the Party Core config (`max_players` 2, from its contract; 4 since AVR-311, see Amendments).
    - Party Home shows the host "Start for everyone" and "Switch everyone"; others see "The host starts it".
    - The arcade page follows the Party as that game (ADR 0008), so the host's End brings its players home, and a switch to BLUFF takes them there.
    - A phone that opens `/arcade/` while it is idle is told the Party Host starts it.
@@ -78,3 +78,19 @@ Letting Party Core stop the systemd unit was rejected, for three reasons:
 **Tier 3, still open:**
 - The Pi: the RetroArch and encoder restart cycle, and SDL keeping the controllers across runs.
 - Real phones.
+
+## Amendments
+
+- **2026-10-07 (AVR-311).** Gauntlet II seats four phones, not two. Decision 7's `max_players` of 2
+  was the contract's number, and the contract said 2 because two phones was the most that had been
+  tried on the Pi. `contracts/games/arcade-gauntlet2.json` now says `players.max` 4 and
+  `input.slots` 4, `MAX_PLAYERS` in `arcade/stream.py` is 4, and `arcade/retroarch.cfg` already
+  mapped four players (`input_max_users` 4); tests keep the three equal. Nothing else in this ADR
+  changes: a ticket's stable slot, the 60-second grace, "full" for one more than the seats, and
+  `late_join: supported` hold for any number of slots. Two things follow for the owner, neither
+  done here: a hand-typed `"max_players": 2` under `arcade-gauntlet2` in
+  `/etc/avrana-party/party-core.json` would now disagree with the contract, and Party Core refuses
+  to start on a disagreement (ADR 0010, Amendments, AVR-229), so it must be removed when this is
+  deployed (`docs/runbooks/arcade-party-provider.md`, "Four controller seats"); and four phones at
+  once have not been tried on the Pi, so `arcade/README.md` ("Four controller seats") lists what
+  the first four-phone night must prove.

@@ -214,6 +214,7 @@ class PartyCore:
             raise Refused('not_host', 'Only the host can do that.')
         if if_version != self.party.version:
             raise Refused('stale', 'The party changed. Have another look and try again.')
+        m.last_seen = self.clock()      # a host action is a party request: the host is here (AVR-33)
         return m
 
     def _live_session(self):
@@ -747,6 +748,15 @@ class PartyCore:
                        'detail': s.detail,
                        'players': sum(1 for p in s.participants.values() if p.role == 'player'),
                        'my_role': mine.role if mine else None}
+            # Party Home's minimal platform result (AVR-238). The authenticated record and
+            # game-owned data stay private; the closed bridge projection does not forward this.
+            if me and not me.left and s.result is not None:
+                session['result_summary'] = {
+                    'game': s.game_id, 'mode': s.result['mode'],
+                    'players': [
+                        {'name': party.members[e['member']].name if e['member'] in party.members else 'Player',
+                         'standing': e['standing'], **({'rank': e['rank']} if 'rank' in e else {})}
+                        for e in s.result['standings']]}
             if s.state == SETUP:
                 players, spectators, waiting, blocker = self.setup_status(s, now)
                 session['setup'] = {

@@ -352,6 +352,11 @@ travels as a bundle ([games-fork-deploy](games-fork-deploy.md), section 1) to
 | `party-checkout`, `games-checkout` | `/home/cody/avrana-party/.git`, `/home/cody/avrana-party-games/.git` | step 2 |
 | `party-release`, `games-release`, `web-release` | `/opt/avrana-party/current/avrana/ops/smoke.py`, `/opt/avrana-party-games/current/server.py`, `/var/www/avrana-party/web/current/version.json` | step 4 |
 
+Also in no repository, optional, and not checked by `verify`: the owner's game covers in
+`/srv/avrana/covers` ([deploy runbook](deploy.md#game-covers-the-owners-never-committed)). A
+rebuilt appliance shows each game's own art until they are copied there again and a web release
+is built.
+
 **Step 7: the access point.** No script creates the NetworkManager profile, and none should:
 it holds the passphrase. `python3 -m avrana.ops.rebuild ap-profile` prints the `nmcli` command
 for the profile every script here targets ("Avrana Party Internal" on `wlan0`, 5 GHz channel
@@ -408,8 +413,10 @@ is not a pass here.
 - **party**: two phones Join; the first is the Party Host; a reload keeps each phone's identity.
 - **games**: the Host starts BLUFF, then EXPO: the other phone follows, both play, the Host ends
   the game and both return to Party Home.
-- **arcade**: the Host starts Gauntlet II: video and sound arrive, two phones control two
-  heroes, End returns everyone home. The arcade unit's hardening has never met RetroArch, Xvfb,
+- **arcade**: the Host starts Gauntlet II: video and sound arrive, each phone controls its own
+  hero, End returns everyone home. The cap is four phones (AVR-311), but the Pi has only run
+  two: a rebuild check with two phones is a partial one (`arcade/README.md`, "Four controller
+  seats"). The arcade unit's hardening has never met RetroArch, Xvfb,
   PulseAudio and `uinput` on any host; read `journalctl -u avranaparty-arcade` first if it fails.
 - **health**: after a power cycle with `eth0` unplugged, the access point, DNS and every service
   come back by themselves and the checks above still pass.

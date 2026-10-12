@@ -124,8 +124,44 @@ If only the arcade drop-in is removed, Party Core still lists Gauntlet II. Its l
 
 ## AVR-130 acceptance checks (remaining on real devices)
 
-The automated reservation and fake-media tests do not establish phone acceptance. On two phones
-in one Party arcade session, connect A then B, lock/disconnect both, and reconnect B then A within
-60 seconds: B must remain Player 2 and A Player 1. Check duplicate tabs, held-input release,
+The automated reservation and fake-media tests do not establish phone acceptance. With four
+controller seats (AVR-311, below) the check is run on four phones, or on two as a first step. In
+one Party arcade session, connect A, then B (then C and D), lock/disconnect them all, and reconnect
+them in another order within 60 seconds: each must keep the Player number it had (A Player 1, B
+Player 2, C Player 3, D Player 4), whatever the order. Check duplicate tabs, held-input release,
 Leave and immediate reuse, reuse after grace, spectator refusal, and end/switch/relaunch. Repeat
 on the Party Wi-Fi with actual streaming. This change has not been deployed by these tests.
+
+## Four controller seats (AVR-311, 2026-10-07)
+
+Gauntlet II seats four phones. `players.max` and `input.slots` are 4 in
+`contracts/games/arcade-gauntlet2.json`, `MAX_PLAYERS` is 4 in `arcade/stream.py` (so the arcade opens
+four virtual pads, "Avrana Player 1" to "Avrana Player 4"), and `arcade/retroarch.cfg` already maps
+four players. Party Home then offers "1–4 players" and "N of 4 playing", and a fifth phone is
+refused as full. Tests keep the contract, the constant and `retroarch.cfg` equal. This is source
+until it is deployed; nothing on the Pi was changed or tried.
+
+**Deploying it: one line to check first.** Party Core takes `max_players` from the Game Contract
+(AVR-229; ADR 0010, Amendments) and refuses to start when its config repeats a different value, naming
+the field: `arcade-gauntlet2.max_players: the config says 2 but the contract says 4`. The repository's
+example config carries no such line, but a `/etc/avrana-party/party-core.json` made before AVR-229
+may. After the Party checkout that holds this change is in place and before Party Core is restarted,
+the owner can check the live file, read-only, from that checkout:
+
+```bash
+python3 -m avrana.contracts.party_config --check /etc/avrana-party/party-core.json
+```
+
+If it names `arcade-gauntlet2.max_players`, remove that line from the config (the contract decides).
+The arcade picks up four pads when it restarts, as for any arcade change.
+
+**What four phones must still prove.** None of this has been tried on the Pi with more than two
+phones.
+- **Pad order.** RetroArch's `input_playerN_joypad_index` is a position in the order the four pads
+  are enumerated, not a name. Check that the phone shown as Player 3 moves the third hero, and
+  Player 4 the fourth, after a cold start of the arcade and after a restart.
+- **Coin and Start on slots 3 and 4.** Only P1's coin and a short two-phone session are on record.
+  Each of the four must be able to add a coin and start in its own slot.
+- **CPU and Wi-Fi headroom.** One shared encode, four WebRTC sends and a four-player emulation, on
+  the party Wi-Fi: frame rate, `/stats` capture ages, CPU, temperature, `vcgencmd get_throttled`,
+  and whether a join forcing a keyframe disturbs the other three.

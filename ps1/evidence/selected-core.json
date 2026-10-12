@@ -1,0 +1,12 @@
+{
+  "core": "pcsx_rearmed_libretro.so",
+  "version": "PCSX-ReARMed r26l-111-g94e8a03",
+  "source_url": "https://buildbot.libretro.com/nightly/linux/aarch64/latest/pcsx_rearmed_libretro.so.zip",
+  "source_note": "Official libretro buildbot; TLS cert CN=libretro.com (Google Trust Services WE1), verified. Not in Debian trixie.",
+  "fetched": "2026-09-23",
+  "last_modified": "Wed, 23 Sep 2026 18:07:15 GMT",
+  "zip_sha256": "e9d0494f29c87b43f9efb80a0aa4f05c97271e1a461a59ccad8327378a1ca59e",
+  "so_sha256": "9b9b116aac2bbae33cc5cbad2c527bd8327e7df019a4657b39097834539aaf0c",
+  "arch": "ELF 64-bit aarch64",
+  "install_to": "$AVRANA_PS1_HOME/cores/ (default ~/avrana-lab/ps1/cores/), never committed"
+}

@@ -64,7 +64,7 @@ def location_body(block, name):
 
 class StaticRules(unittest.TestCase):
     def setUp(self):
-        self.http, self.https = server_blocks(SITE)
+        self.http, self.https = server_blocks(SITE)[:2]      # the third is the game origin (AVR-319)
 
     def test_repository_copies_are_identical(self):
         self.assertEqual(SITE, (REPO_ROOT / 'arcade' / 'nginx-site').read_text(encoding='utf-8'))
@@ -73,7 +73,7 @@ class StaticRules(unittest.TestCase):
         native = (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
         legacy = (REPO_ROOT / 'deploy/games/nginx-legacy-lan-games.location').read_text(encoding='utf-8')
         plain = (REPO_ROOT / 'deploy/games/nginx-games-plain-http.location').read_text(encoding='utf-8')
-        for block in server_blocks(SITE):
+        for block in server_blocks(SITE)[:2]:
             self.assertEqual(block.count(legacy), 1)
         self.assertEqual((self.https.count(native), self.https.count(plain)), (1, 0))
         self.assertEqual((self.http.count(native), self.http.count(plain)), (0, 1))
@@ -121,13 +121,13 @@ class StaticRules(unittest.TestCase):
         self.assertIn('default_type text/html;', root)
         self.assertRegex(root, r"return 200 '[^']*<a href=\"https://party\.avrana\.net/party/\">[^']*';")
         self.assertEqual(location_body(self.https, '= /').split(), ['return', '302', '/party/;'])
-        for block in server_blocks(SITE):
+        for block in server_blocks(SITE)[:2]:
             self.assertEqual(location_body(block, '^~ /shared/hub.html').split(), ['return', '404;'])
             self.assertNotIn('proxy_pass', location_body(block, '= /'))
 
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
-                                                 '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
+                                                 '= /party/bridge.html', '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
         from avrana.contracts import game             # the slug nginx accepts is a Game Contract id
         self.assertIn(game.ID.pattern.strip('^$'), self.GAMES[2])
         self.assertFalse(any('/party' in loc for loc in locations(self.http)))
@@ -157,7 +157,8 @@ def upstream(label):
             body = json.dumps({'upstream': label, 'path': self.path,
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
-                               'upgrade': self.headers.get('Upgrade')}).encode()
+                               'upgrade': self.headers.get('Upgrade'),
+                               'cookie': self.headers.get('Cookie')}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
@@ -186,7 +187,8 @@ def native_game(path):
             body = json.dumps({'upstream': 'native', 'path': self.path, 'host': self.headers.get('Host'),
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
-                               'upgrade': self.headers.get('Upgrade')}).encode()
+                               'upgrade': self.headers.get('Upgrade'),
+                               'cookie': self.headers.get('Cookie')}).encode()
             if self.headers.get('Content-Length'):
                 self.rfile.read(int(self.headers['Content-Length']))
             self.send_response(502 if 'own502' in self.path else 418 if 'own418' in self.path else 200)
@@ -496,6 +498,87 @@ http {{
             self.assertNotIn(b'upstream', body, path)         # nginx answered, no process did
         self.assertEqual((len(self.native.seen), self.lan_paths()), (before_native, before_lan))
 
+    DEVICE_COOKIES = '__Host-avrana_device=host-token; avrana_device=legacy-token; theme=dark'
+
+    def test_no_game_server_on_the_party_host_receives_the_device_cookie(self):
+        """AVR-314 / ADR 0003 section 4 / ADR 0013: a game process behind nginx sees no Cookie
+        header at all (neither device cookie name, nor any other), on every location that proxies
+        to one. The upstream stubs report the Cookie header they received."""
+        extra = {'Cookie': self.DEVICE_COOKIES}
+        legacy_cookie = {'Cookie': 'avrana_device=legacy-token'}
+        for path in ('/games/bluff/?avrana=1', '/games/expo/ws', '/games/bluff', '/shared/shared.css', '/api/venue',
+                     '/games/demo/play?seat=2', '/games/demo/ws'):
+            for headers in (extra, legacy_cookie):
+                res, body = self.request('GET', path, extra=headers)
+                got = json.loads(body)
+                self.assertEqual(res.status, 200, path)
+                self.assertIn(got['upstream'], ('lan', 'native'), path)
+                self.assertIsNone(got['cookie'], (path, headers))
+                self.assertEqual(got['proto'], 'https', path)             # the other headers still go
+                res, body = self.request('POST', path, body={'x': 1}, extra=headers)
+                self.assertIsNone(json.loads(body)['cookie'], (path, headers))
+        # a WebSocket upgrade keeps Upgrade and Connection and still loses the cookie
+        res, body = self.request('GET', '/games/demo/ws', extra=dict(extra, Upgrade='websocket', Connection='Upgrade'))
+        got = json.loads(body)
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+        # the same on plain HTTP, where the two legacy games and the shared assets are served
+        for path in ('/games/bluff/', '/games/expo/ws', '/shared/shared.css'):
+            conn = http.client.HTTPConnection('127.0.0.1', self.p80, timeout=5)
+            conn.request('GET', path, headers={'Host': 'party.local', 'Cookie': self.DEVICE_COOKIES})
+            got = json.loads(conn.getresponse().read())
+            conn.close()
+            self.assertEqual(got['upstream'], 'lan', path)
+            self.assertIsNone(got['cookie'], path)
+        # and in the block that takes the shared native rules from the include file
+        conn = http.client.HTTPConnection('127.0.0.1', self.pgames, timeout=5)
+        conn.request('GET', '/games/demo/play', headers={'Host': 'games.avrana.net', 'Cookie': self.DEVICE_COOKIES})
+        got = json.loads(conn.getresponse().read())
+        conn.close()
+        self.assertEqual((got['upstream'], got['cookie']), ('native', None))
+
+    def test_the_arcade_process_receives_no_cookie(self):
+        """AVR-318 / ADR 0003 section 4: the arcade server (stream.py, port 8097) reads no cookie,
+        in HTTP or in the socket handshake (its seat comes from a ticket in the hello message), so
+        /arcade/ sends it no Cookie header, in the HTTPS and in the port 80 block, with the
+        upgrade headers intact. The Party API, in the same server block, still gets the cookie."""
+        extra = {'Cookie': self.DEVICE_COOKIES}
+        for path in ('/arcade/', '/arcade/stats', '/arcade/ws?audio=0'):
+            res, body = self.request('GET', path, extra=extra)
+            got = json.loads(body)
+            self.assertEqual((res.status, got['upstream']), (200, 'arcade'), path)
+            self.assertIsNone(got['cookie'], path)
+            self.assertEqual(got['proto'], 'https', path)                 # the other headers still go
+            res, body = self.request('POST', path, body={'x': 1}, extra=extra)
+            self.assertIsNone(json.loads(body)['cookie'], path)
+        res, body = self.request('GET', '/arcade/ws', extra=dict(extra, Upgrade='websocket', Connection='Upgrade'))
+        got = json.loads(body)
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+        for path in ('/arcade/', '/arcade/stats'):                         # the port 80 block
+            conn = http.client.HTTPConnection('127.0.0.1', self.p80, timeout=5)
+            conn.request('GET', path, headers={'Host': 'party.local', 'Cookie': self.DEVICE_COOKIES})
+            got = json.loads(conn.getresponse().read())
+            conn.close()
+            self.assertEqual(got['upstream'], 'arcade', path)
+            self.assertIsNone(got['cookie'], path)
+        conn = http.client.HTTPConnection('127.0.0.1', self.p80, timeout=5)
+        conn.request('GET', '/arcade/ws', headers={'Host': 'party.local', 'Cookie': self.DEVICE_COOKIES,
+                                                   'Upgrade': 'websocket', 'Connection': 'Upgrade'})
+        got = json.loads(conn.getresponse().read())
+        conn.close()
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+
+    def test_the_party_api_still_receives_the_device_cookie(self):
+        """The counterpart of the test above: the cookie is cleared for games, not for the Party."""
+        res, body = self.request('POST', '/party/api/join', {'name': 'Cookie Check'})
+        self.assertEqual(res.status, 200, body)
+        name = json.loads(body)['me']['name']
+        pair = res.getheader('Set-Cookie').split(';')[0]
+        self.assertTrue(pair.startswith('__Host-avrana_device='), pair)
+        res, body = self.request('GET', '/party/api/state', extra={'Cookie': pair})
+        self.assertEqual(json.loads(body)['me']['name'], name)          # the party read the cookie
+        res, body = self.request('GET', '/party/api/state')
+        self.assertIsNone(json.loads(body)['me'])
+
     def test_the_two_party_games_of_the_retiring_runtime_answer_as_before(self):
         """BLUFF and EXPO are routed to the LAN Games runtime by name (ADR 0016 section 7)."""
         before = len(self.native.seen)
@@ -739,6 +822,128 @@ http {{
         lan = json.loads(self.get('/api/venue', https=True)[1])
         self.assertEqual((lan['upstream'], lan['proto']), ('lan', 'https'))
         self.assertEqual(json.loads(self.get('/arcade/', https=True)[1])['upstream'], 'arcade')
+
+
+    # ---- AVR-319: the game origin, through real nginx ----------------------------------------
+    def on(self, host, path, method='GET', extra=None, body=None):
+        return self.request(method, path, body=body, extra=dict({'Host': host}, **(extra or {})))
+
+    def test_the_game_origin_serves_a_native_game_page_and_clears_the_cookie(self):
+        for method in ('GET', 'POST'):
+            res, payload = self.on('games.avrana.net', '/games/demo/play?seat=1', method,
+                                   {'Cookie': self.DEVICE_COOKIES}, body={'x': 1} if method == 'POST' else None)
+            got = json.loads(payload)
+            self.assertEqual((res.status, got['upstream'], got['path'], got['host'], got['proto']),
+                             (200, 'native', '/games/demo/play?seat=1', 'games.avrana.net', 'https'))
+            self.assertIsNone(got['cookie'])
+        res, payload = self.on('games.avrana.net', '/games/demo/ws',
+                               extra={'Upgrade': 'websocket', 'Connection': 'Upgrade', 'Cookie': self.DEVICE_COOKIES})
+        got = json.loads(payload)
+        self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
+
+    def test_the_game_origin_refuses_the_party_and_the_arcade_and_reaches_no_other_upstream(self):
+        lan, arcade, native = len(self.lan.seen), len(self.arcade.seen), len(self.native.seen)
+        for path in ('/party', '/party/', '/party/index.html', '/party/bridge.html', '/party/api/state',
+                     '/party/api/origin.json', '/party/api/bridge', '/party/api/session/ticket', '/party/sw.js',
+                     '/arcade', '/arcade/', '/arcade/stats', '/', '/index.html', '/api/venue', '/shared/shared.css',
+                     '/shared/hub.html', '/games', '/games/', '//party/api/state', '/party/../party/api/state',
+                     '/games/demo/avrana/session/v0/launch'):
+            for method in ('GET', 'POST'):
+                res, payload = self.on('games.avrana.net', path, method, {'Cookie': self.DEVICE_COOKIES},
+                                       body={'x': 1} if method == 'POST' else None)
+                self.assertEqual(res.status, 404, (method, path))
+                self.assertNotIn(b'upstream', payload, path)
+                self.assertIsNone(res.getheader('Set-Cookie'), path)
+        self.assertEqual((len(self.lan.seen), len(self.arcade.seen), len(self.native.seen)), (lan, arcade, native))
+
+    def test_the_bridge_page_on_the_party_host_may_be_framed_by_the_game_origin_only(self):
+        res, payload = self.on('party.avrana.net', '/party/bridge.html')
+        self.assertEqual(res.status, 200)
+        self.assertEqual(payload, (self.tmp / 'web' / 'current' / 'bridge.html').read_bytes())
+        self.assertEqual(res.msg.get_all('Content-Security-Policy'), [BRIDGE_CSP])      # one policy, not two
+        for key, value in SHELL_HEADERS.items():
+            if key != 'Content-Security-Policy':
+                self.assertEqual(res.getheader(key), value, key)
+        self.assertIsNone(res.getheader('X-Frame-Options'))
+        for path in ('/party/', '/party/index.html', '/party/diag/', '/party/lib/bridge.js'):   # nothing else is frameable
+            res, _ = self.on('party.avrana.net', path)
+            self.assertEqual(res.status, 200, path)
+            self.assertIn("frame-ancestors 'none'", res.getheader('Content-Security-Policy'), path)
+
+    def test_neither_host_sends_hsts_or_a_service_worker_scope_header(self):
+        for host, path in (('party.avrana.net', '/party/'), ('party.avrana.net', '/party/sw.js'),
+                           ('party.avrana.net', '/party/bridge.html'), ('party.avrana.net', '/'),
+                           ('games.avrana.net', '/games/demo/play'), ('games.avrana.net', '/party/'),
+                           ('games.avrana.net', '/')):
+            res, _ = self.on(host, path)
+            self.assertIsNone(res.getheader('Strict-Transport-Security'), (host, path))
+            self.assertIsNone(res.getheader('Service-Worker-Allowed'), (host, path))
+
+    def test_an_unknown_host_is_never_served_by_the_game_origin_block(self):
+        """The game block is chosen by the exact name, never by default: another Host on the same
+        port gets the Party block (the default), which serves /party/, not the game block's refusal."""
+        for host in ('games.avrana.net.example', 'xgames.avrana.net', 'avrana.net', 'other.example'):
+            res, _ = self.on(host, '/party/')
+            self.assertEqual(res.status, 200, host)
+            self.assertIn("frame-ancestors 'none'", res.getheader('Content-Security-Policy'), host)
+        self.assertEqual(self.on('GAMES.avrana.net', '/party/')[0].status, 404)    # host names are not case-sensitive
+
+    def test_a_certificate_that_names_only_the_party_host_still_loads_and_serves_the_game_block(self):
+        """The test certificate has the single SAN party.avrana.net, as an appliance with the one-name
+        certificate does: nginx -t passed in setUpClass and the game block answers. Only a browser
+        refuses the name, which is why game_origins is set after the certificate."""
+        out = subprocess.run(['openssl', 'x509', '-in', str(self.tmp / 'cert.pem'), '-noout', '-ext', 'subjectAltName'],
+                             capture_output=True, text=True).stdout
+        self.assertIn('DNS:party.avrana.net', out)
+        self.assertNotIn('games.avrana.net', out)
+        self.assertEqual(self.on('games.avrana.net', '/games/demo/play')[0].status, 200)
+
+
+# ---- AVR-319: the game origin (games.avrana.net), static rules ---------------------------------
+BRIDGE_CSP = SHELL_HEADERS['Content-Security-Policy'].replace(
+    "frame-ancestors 'none'", 'frame-ancestors https://games.avrana.net')
+
+
+class GameOriginStaticRules(unittest.TestCase):
+    def setUp(self):
+        blocks = server_blocks(SITE)
+        self.assertEqual(len(blocks), 3)
+        self.party, self.games = blocks[1], blocks[2]
+
+    def test_the_game_origin_is_its_own_https_block_that_is_never_the_default(self):
+        self.assertIn('server_name games.avrana.net;', self.games)
+        self.assertNotIn('party.avrana.net', self.games)
+        self.assertIn('listen 443 ssl;', self.games)
+        self.assertNotIn('default_server', self.games)
+        for key in ('ssl_certificate ', 'ssl_certificate_key ', 'ssl_protocols '):
+            line = re.search(r'^\s*' + key + r'.*$', self.party, re.M).group(0)
+            self.assertIn(line, self.games)
+
+    def test_the_game_origin_serves_native_games_and_refuses_everything_else(self):
+        native = (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
+        self.assertEqual(self.games.count(native), 1)
+        self.assertEqual(locations(self.games), ['^~ /party', '^~ /arcade', *StaticRules.GAMES[1:], '/'])
+        for name in ('^~ /party', '^~ /arcade', '/'):       # a catch-all that is not nginx's default root
+            self.assertEqual(location_body(self.games, name).split(), ['return', '404;'])
+        rules = '\n'.join(l for l in self.games.splitlines() if not l.lstrip().startswith('#'))
+        self.assertEqual(re.findall(r'proxy_pass\s+(\S+);', rules),
+                         ['http://unix:/run/avrana-games/$native_game.sock:$request_uri'])
+        self.assertNotRegex(rules, r'8096|8097|8191|alias|root |auth_request|add_header|bluff|expo')
+        self.assertIn('proxy_set_header Cookie "";', rules)
+
+    def test_no_hsts_and_no_service_worker_scope_header_in_any_block(self):
+        for block in server_blocks(SITE):
+            self.assertNotRegex(block, r'(?i)add_header\s+(Strict-Transport-Security|Service-Worker-Allowed)')
+
+    def test_only_the_bridge_page_may_be_framed_and_only_by_the_game_origin(self):
+        body = location_body(self.party, '= /party/bridge.html')
+        headers = dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body))
+        self.assertEqual(headers, dict(SHELL_HEADERS, **{'Content-Security-Policy': BRIDGE_CSP}))
+        self.assertIn('alias /var/www/avrana-party/web/current/bridge.html;', body)
+        self.assertEqual(self.party.count('frame-ancestors https://games.avrana.net'), 1)    # in that location only
+        self.assertEqual(self.party.count("frame-ancestors 'none'"), 1)                      # every other Party page
+        self.assertNotIn('frame-ancestors', self.games)
+        self.assertNotIn('X-Frame-Options', SITE)
 
 
 if __name__ == '__main__':

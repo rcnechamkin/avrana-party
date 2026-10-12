@@ -16,7 +16,7 @@ from avrana.contracts import strictjson
 
 CONTRACT = 'avrana.game/v0'
 
-ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')
+ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')      # use fullmatch: `$` alone accepts a trailing newline
 RESERVED_IDS = {'home', 'party', 'admin', 'shared', 'diag', 'api'}
 PRESENTATION_ID = re.compile(r'^[a-z][a-z0-9_]{0,31}$')
 BUTTON = re.compile(r'^[a-z][a-z0-9_]{0,15}$')
@@ -145,7 +145,7 @@ def validate(doc, vocab=None):
     if doc.get('contract') != CONTRACT:
         problems.append(f'contract: must be {CONTRACT!r} (a newer or older contract needs its own validator)')
     cid = doc.get('id')
-    if not isinstance(cid, str) or not ID.match(cid) or cid in RESERVED_IDS:
+    if not isinstance(cid, str) or not ID.fullmatch(cid) or cid in RESERVED_IDS:
         problems.append('id: ^[a-z][a-z0-9_-]{0,39}$ and not reserved')
     if not _printable(doc.get('name'), 1, 60):
         problems.append('name: 1-60 printable characters')
@@ -211,7 +211,7 @@ def validate(doc, vocab=None):
         norm_runtime = {'type': rtype, 'start': start}
         if rtype == 'emulator_profile':
             profile = runtime.get('profile')
-            if not isinstance(profile, str) or not ID.match(profile):
+            if not isinstance(profile, str) or not ID.fullmatch(profile):
                 problems.append('runtime.profile: required for emulator_profile (an id)')
             norm_runtime['profile'] = profile
         elif 'profile' in runtime:

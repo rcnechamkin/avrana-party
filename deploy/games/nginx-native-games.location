@@ -30,6 +30,9 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        # The device cookie (ADR 0003, ADR 0013) never goes to a game server: the whole Cookie
+        # header is dropped here, which also keeps both cookie names out. AVR-314.
+        proxy_set_header Cookie "";
         proxy_read_timeout 3600;
     }
 

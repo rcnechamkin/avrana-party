@@ -110,7 +110,7 @@ class Templates(unittest.TestCase):
     def test_site_carries_the_block_verbatim_on_https_only(self):
         # deploy/party-core/nginx-party-api.location is the source copy of the committed block.
         self.assertEqual(SITE.count(BLOCK), 1)
-        http_block, https = server_blocks(SITE)
+        http_block, https = server_blocks(SITE)[:2]      # the third block is the game origin (AVR-319)
         self.assertIn(BLOCK, https)
         self.assertNotIn('/party/api/ {', http_block)
         self.assertIn('proxy_pass http://127.0.0.1:8191;', location_body(https, '/party/api/'))

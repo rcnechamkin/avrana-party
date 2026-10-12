@@ -1,0 +1,17 @@
+# A native game's listening socket (ADR 0016 sections 4 and 5, AVR-236). One template for every
+# title: the instance name is the game's slug. systemd creates and holds the socket, so the game
+# never needs membership of avrana-front (which would let it reach every other game) and nginx
+# sees no refusal while a game restarts. Only the front door (www-data) and Party Core
+# (avrana-party) are in avrana-front. Enabled and disabled by provision-game, as root; Party
+# Core has no authority over systemd.
+[Unit]
+Description=Avrana native game socket (%i)
+
+[Socket]
+ListenStream=/run/avrana-games/%i.sock
+SocketUser=root
+SocketGroup=avrana-front
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target

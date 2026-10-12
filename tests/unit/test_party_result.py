@@ -241,13 +241,71 @@ class Boundary(unittest.TestCase):
         self.assertEqual((s.outcome, s.result, s.result_refused), ('completed', None, None))
 
     def test_phones_are_not_shown_the_result_record(self):
-        """The view is unchanged by this work: what phones see of results is AVR-71's decision."""
+        """A member sees platform standings, never the authenticated result record."""
         s, pids = self.active()
         self.pc.game_reported_end(s.id, 'completed', self.bluff(pids))
         view = json.dumps(self.pc.view('device-1'))
         self.assertNotIn('standings', view)
         for pid in pids:
             self.assertNotIn(pid, view)
+
+    def test_summary_is_an_allowlist_for_members_including_spectators(self):
+        self.pc.join('device-9', 'Dee')
+        s, pids = self.active()
+        reported = self.bluff(pids)
+        for rank, entry in enumerate(reported['standings'], 1):
+            entry['rank'] = rank
+        self.pc.game_reported_end(s.id, 'completed', reported)
+        expected = {'game': 'bluff', 'mode': 'competitive', 'players': [
+            {'name': name, 'standing': standing, 'rank': rank}
+            for rank, (name, standing) in enumerate((('Ana', 'won'), ('Ben', 'lost'), ('Cy', 'lost')), 1)]}
+        for device in ('device-0', 'device-1', 'device-9'):
+            summary = self.pc.view(device)['session']['result_summary']
+            self.assertEqual(summary, expected)
+            for private in ('participant', 'member', 'data', 'data_schema', 'build', 'session', 'outcome'):
+                self.assertNotIn(private, json.dumps(summary))
+
+    def test_observer_unknown_and_departed_device_receive_no_summary(self):
+        s, pids = self.active()
+        self.pc.game_reported_end(s.id, 'completed', self.bluff(pids))
+        self.pc.leave('device-1')
+        for device in (None, 'never-joined', 'device-1'):
+            self.assertNotIn('result_summary', self.pc.view(device)['session'])
+
+    def test_summary_is_detached_from_record_members_and_other_views(self):
+        s, pids = self.active()
+        self.pc.game_reported_end(s.id, 'completed', self.bluff(pids))
+        before = json.dumps(s.result, sort_keys=True)
+        summary = self.pc.view('device-1')['session']['result_summary']
+        summary['players'][0].update(name='Changed', standing='draw', rank=9)
+        summary['players'].clear()
+        summary['mode'] = 'cooperative'
+        fresh = self.pc.view('device-1')['session']['result_summary']
+        self.assertEqual(fresh['players'][0], {'name': 'Ana', 'standing': 'won'})
+        self.assertEqual(fresh['mode'], 'competitive')
+        self.assertEqual(json.dumps(s.result, sort_keys=True), before)
+
+    def test_summary_survives_home_but_is_not_carried_into_next_session(self):
+        s, pids = self.active()
+        self.pc.game_reported_end(s.id, 'completed', self.bluff(pids))
+        self.pc.go_home('device-0', self.pc.party.version)
+        self.assertIn('result_summary', self.pc.view('device-1')['session'])
+        self.active()
+        self.assertNotIn('result_summary', self.pc.view('device-1')['session'])
+
+    def test_no_summary_for_missing_refused_abandoned_or_host_ended_result(self):
+        for kind in ('missing', 'refused', 'abandoned', 'host-ended'):
+            with self.subTest(kind):
+                self.setUp()
+                s, pids = self.active()
+                reported = self.bluff(pids)
+                if kind == 'refused':
+                    reported['standings'].pop()
+                if kind == 'host-ended':
+                    self.pc.begin_end('device-0', self.pc.party.version)
+                self.pc.game_reported_end(s.id, 'abandoned' if kind == 'abandoned' else 'completed',
+                                         None if kind == 'missing' else reported)
+                self.assertNotIn('result_summary', self.pc.view('device-1')['session'])
 
 
 if __name__ == '__main__':

@@ -40,15 +40,15 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(page.locator('#status')).toContainText('Connected to the party');
   await expect(page.locator('#secure')).toBeVisible();
   await place(page, 'library');
-  await expect(page.locator('#games [data-game]')).toHaveCount(5);
+  await expect(page.locator('#games [data-game]')).toHaveCount(6);
   await expect(page.locator('#games [data-game^="lan-"]')).toHaveCount(0);       // no retired LAN Games title is offered
   await expect(page.locator('#games [data-game="ps1-worms"]')).toContainText('Not installed');
   await expect(page.locator('#games [data-game="arcade-gauntlet2"]')).not.toHaveAttribute('data-note', /.+/);
   const card = await openGame(page, 'arcade-gauntlet2');
   await expect(card).toContainText('Gauntlet II');
-  await expect(card).toContainText('1–2 players');
+  await expect(card).toContainText('1–4 players');
   await expect(card).toContainText('Works on this phone');
-  await expect(card).toContainText('1 of 2 playing');
+  await expect(card).toContainText('1 of 4 playing');
   await expect(card.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/arcade/');
   await expect((await openGame(page, 'expo')).getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/expo/?avrana=1');
   // BLUFF is installed: listed with its own art and launched through the Avrana-integrated path.

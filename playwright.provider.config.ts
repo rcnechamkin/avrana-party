@@ -22,7 +22,10 @@ export default defineConfig({
     // (game-origin.spec.ts); the browsers below map *.avrana.test to loopback
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8184 --party-session --game-origin`,
     url: 'http://127.0.0.1:8184/party/', reuseExistingServer: false, timeout: 60000,
-  }],
+  }, ...(process.platform === 'win32' ? [] : [{
+    command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8185 --party-session --game-origin --native-game checkers`,
+    url: 'http://127.0.0.1:8185/party/', reuseExistingServer: false, timeout: 60000,
+  }])],
   projects: [
     { name: 'android-size', use: { ...devices['Pixel 7'], launchOptions: { executablePath: process.env.PW_CHROMIUM_EXECUTABLE, args: RESOLVE } } },
     { name: 'iphone-size', use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: { executablePath: process.env.PW_CHROMIUM_EXECUTABLE, args: RESOLVE } } },

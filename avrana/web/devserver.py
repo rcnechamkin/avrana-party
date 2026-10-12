@@ -16,6 +16,10 @@ POST /__test__/party/advance?s=N moves that party's clock N seconds on, so a tes
 go away and hosting pass on without waiting for it (test controls).
 Nothing here deploys; the party is memory-only and dies with the process.
 
+The owner's game covers (avrana/web/covers.py) are served from --covers, by default the shell
+directory's own covers/ folder, through the same scan a build makes. With test controls there
+are no covers unless --covers names a folder, so the covers a developer keeps never change a test.
+
 Limited Mode (ADR 0012) is simulated as a second scheme: requests whose Host is
 `limited.avrana.test` are forwarded to the same Party Core's Limited listener, so a browser test
 has a real non-secure origin beside the secure 127.0.0.1 one. /party/doorway/ is the HTTP doorway
@@ -33,10 +37,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from avrana import REPO_ROOT, WEB_DIR
+from avrana.web import covers as game_covers
 
 # The games the simulated party offers (deploy/party-core/party-core.example.json's shape).
 PARTY_GAMES = {'bluff': {'max_players': 6, 'min_players': 2, 'pregame': True, 'late_join': 'spectator_only'},
-               'arcade-gauntlet2': {'max_players': 2, 'late_join': 'supported'},
+               'arcade-gauntlet2': {'max_players': 4, 'late_join': 'supported'},
                # two seats in this simulation, so a third phone shows the spectator path
                'expo': {'max_players': 2, 'late_join': 'spectator_only'}}
 FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length', 'sec-fetch-site')
@@ -81,7 +86,7 @@ class AcceptingLink:
 class SimulatedParty:
     """A real Party Core on 127.0.0.1:<ephemeral>; the dev server forwards /party/api/ to it."""
 
-    def __init__(self, public_port):
+    def __init__(self, public_port, game_origin=False):
         from avrana.ops import status
         from avrana.party import identity, service
         self.service_module = service
@@ -92,7 +97,10 @@ class SimulatedParty:
         self.game_origin = f'http://{GAMES_HOST}:{public_port}'
         self.party_origin = f'http://{PARTY_HOST}:{public_port}'
         cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False,
-                             game_origins={self.game_origin: '*'})
+                             # Registered only when asked: the shell takes a phone to a registered
+                             # origin (AVR-303), and a browser that does not map the test host names
+                             # to loopback could not follow it there.
+                             game_origins={self.game_origin: '*'} if game_origin else {})
         # The ticket route, so a page can be handed a real ticket; the link still accepts all.
         endpoints = {g: sessions.GameEndpoint(g, f'http://127.0.0.1:{public_port}/games/{g}', protocol.new_key())
                      for g in PARTY_GAMES}
@@ -215,8 +223,8 @@ class Arcade:
             return None
         if mode == 'hang':
             return 'hang'
-        players = 2 if mode == 'full' else 1
-        return {'players': players, 'max_players': 2, 'video_encoders': 1, 'error': None, 'emulator_running': True,
+        players = 4 if mode == 'full' else 1
+        return {'players': players, 'max_players': 4, 'video_encoders': 1, 'error': None, 'emulator_running': True,
                 'providers': {'runtime': {'id': 'retroarch', 'running': True}}}
 
 
@@ -247,6 +255,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, b'not found', headers=headers)
         ctype = TYPES.get(target.suffix) or mimetypes.guess_type(target.name)[0] or 'application/octet-stream'
         return self._send(200, target.read_bytes(), ctype, headers)
+
+    def _cover(self, name):
+        """covers/index.json and the covers it lists, from the scan a build makes: a page here
+        sees what a release would hold, and nothing else in the folder is served."""
+        folder = self.server.cfg['covers']
+        found, _ = game_covers.scan(folder)
+        if name == 'index.json':
+            return self._send(200, json.dumps(game_covers.index(found)).encode(), 'application/json', SHELL_HEADERS)
+        for source, published in found.values():
+            if published != name:
+                continue
+            try:
+                data, _ = game_covers.read(Path(folder) / source)
+            except game_covers.CoverError:
+                break
+            return self._send(200, data, game_covers.TYPES[name.rsplit('.', 1)[1]], SHELL_HEADERS)
+        return self._send(404, b'not found', headers=SHELL_HEADERS)
 
     def do_HEAD(self):
         self.do_GET()
@@ -294,6 +319,8 @@ class Handler(BaseHTTPRequestHandler):
                               dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
         if cfg['test_controls'] and path == '/__test__/bridge-game.html':
             return self._send(200, BRIDGE_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
+        if path.startswith('/party/covers/'):
+            return self._cover(path[len('/party/covers/'):])
         if path.startswith('/party/'):
             return self._file(cfg['web'], path[len('/party/'):], SHELL_HEADERS)
         if path == '/api/games':
@@ -386,11 +413,14 @@ class _DevServer(ThreadingHTTPServer):
     request_queue_size = 128
 
 
-def make_server(port=0, web=WEB_DIR, test_controls=False, party=False):
+def make_server(port=0, web=WEB_DIR, test_controls=False, party=False, game_origin=False, covers=None):
     server = _DevServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
+    # Under test controls there are no covers unless a folder is named.
+    covers = Path(covers) if covers else (None if test_controls else Path(web) / 'covers')
     server.cfg = {'web': Path(web), 'arcade': Arcade(), 'test_controls': test_controls, 'full_down': False,
-                  'party': SimulatedParty(server.server_address[1]) if party else None}
+                  'covers': covers,
+                  'party': SimulatedParty(server.server_address[1], game_origin) if party else None}
     return server
 
 
@@ -400,8 +430,11 @@ def main(argv=None):
     ap.add_argument('--web', default=str(WEB_DIR), help='shell directory (a built copy also works)')
     ap.add_argument('--test-controls', action='store_true')
     ap.add_argument('--party', action='store_true', help='run a real Party Core behind /party/api/')
+    ap.add_argument('--game-origin', action='store_true',
+                    help='with --party: register the second host name as the game origin of every game (ADR 0013)')
+    ap.add_argument('--covers', default=None, help="folder of the owner's game covers (default: the shell directory's covers/)")
     args = ap.parse_args(argv)
-    server = make_server(args.port, args.web, args.test_controls, args.party)
+    server = make_server(args.port, args.web, args.test_controls, args.party, args.game_origin, args.covers)
     print(f'Avrana dev server: http://127.0.0.1:{server.server_address[1]}/party/', flush=True)
     try:
         server.serve_forever()

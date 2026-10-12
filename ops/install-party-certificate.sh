@@ -16,8 +16,33 @@ release=$(date -u +%Y%m%dT%H%M%SZ)-$$
 release_dir=$tls_dir/releases/$release
 current=$tls_dir/current
 
+# The one public, non-secret fact about the active certificate: when it ends. The directory above
+# is root-only (ADR 0016), so Party Core's status endpoint and the deploy smoke check cannot read
+# the certificate; they read this (avrana/ops/status.py, AVR-31). Failing to write it must never
+# fail an installation that has already switched, only say so.
+expiry_record=/etc/avrana-party/certificate-not-after
+record_expiry() {
+    local next=$expiry_record.next.$$
+    if { openssl x509 -in "$1" -noout -enddate >"$next" && chmod 0644 "$next" && mv -f "$next" "$expiry_record"; }; then
+        return 0
+    fi
+    rm -f "$next"
+    echo 'Note: the certificate expiry record could not be written; health will report the expiry as unavailable' >&2
+}
+
 [[ -f $certificate && -f $private_key ]] || { echo 'Certificate or key is missing' >&2; exit 1; }
 openssl x509 -in "$certificate" -noout -checkhost party.avrana.net >/dev/null
+# The game origin (ADR 0013, AVR-319): the certificate should also name games.avrana.net. An
+# appliance that still has the one-name certificate is not broken by this (nginx loads it, only a
+# browser refuses the game host), so this says so and goes on, unless the caller requires the name
+# (AVRANA_REQUIRE_GAME_NAME=1, as the two-name issuance in docs/runbooks/game-origin.md does).
+if ! openssl x509 -in "$certificate" -noout -checkhost games.avrana.net | grep -q 'does match'; then
+    if [[ ${AVRANA_REQUIRE_GAME_NAME:-} == 1 ]]; then
+        echo 'Certificate does not name games.avrana.net' >&2
+        exit 1
+    fi
+    echo 'Note: this certificate does not name games.avrana.net (the game origin needs the two-name certificate: docs/runbooks/game-origin.md)' >&2
+fi
 openssl x509 -in "$certificate" -noout -checkend 86400 >/dev/null
 openssl verify -purpose sslserver -CApath /etc/ssl/certs -untrusted "$certificate" "$certificate" >/dev/null
 cert_pub=$(openssl x509 -in "$certificate" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum)
@@ -26,6 +51,7 @@ key_pub=$(openssl pkey -in "$private_key" -pubout -outform DER | sha256sum)
 if [[ -f $current/fullchain.pem && -f $current/privkey.pem ]] && \
    cmp -s "$certificate" "$current/fullchain.pem" && \
    cmp -s "$private_key" "$current/privkey.pem"; then
+    record_expiry "$certificate"
     echo 'Certificate is already installed'
     exit 0
 fi
@@ -63,4 +89,5 @@ if ! systemctl reload nginx; then
     echo 'nginx reload failed; previous certificate restored' >&2
     exit 1
 fi
+record_expiry "$certificate"
 echo "Installed certificate release $release"

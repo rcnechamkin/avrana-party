@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Prepare this appliance for native games, once and repeatably (ADR 0016, AVR-304). Run as root from the
+# deployed code tree; see avrana/ops/prepare_native_games.py for what it does and
+# docs/runbooks/prepare-native-games.md for the procedure:
+#
+#   sudo /opt/avrana-party/current/ops/prepare-native-games --dry-run
+#   sudo /opt/avrana-party/current/ops/prepare-native-games
+#   sudo /opt/avrana-party/current/ops/prepare-native-games --reverse [BACKUP_DIR]
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+cd "$tree"
+PYTHONDONTWRITEBYTECODE=1 exec python3 -m avrana.ops.prepare_native_games "$@"

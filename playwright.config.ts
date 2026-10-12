@@ -21,7 +21,7 @@ export default defineConfig({
   testDir: './tests',
   // Offline suites have their own runners (playwright.offline.config.ts, node --test, unittest).
   testIgnore: ['offline/**', 'unit/**', 'rollback/**'],
-  fullyParallel: false, // the appliance has MAX_PLAYERS=2; avoid slot contention
+  fullyParallel: false, // the appliance has a fixed number of controller slots; avoid slot contention
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1, // one client at a time against the single live Pi

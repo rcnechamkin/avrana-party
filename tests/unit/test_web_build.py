@@ -13,6 +13,10 @@ from avrana.web import build
 JARGON = re.compile(r'\b(seat|session|runtime|server|websocket|presence|manifest|launch(ing)?|backend|token|slot)\b', re.I)
 
 
+PNG = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89'
+       b'\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82')
+
+
 class ShellFiles(unittest.TestCase):
     def test_source_tree_is_consistent(self):
         self.assertEqual(build.check_tree(WEB_DIR), [])
@@ -23,6 +27,10 @@ class ShellFiles(unittest.TestCase):
         # The HTTP doorway (ADR 0012) is never in the offline copy: it exists for plain HTTP, where
         # there is no service worker, and its one job is to ask the network.
         doorway = {'doorway/index.html', 'doorway/doorway.js', 'lib/doorway.js'}
+        # The owner's game covers (AVR-306) are ignored by Git and never precached; a developer
+        # may have some here. Only the index that lists them is a shell file.
+        files = {f for f in files if not f.startswith('covers/') or f == 'covers/index.json'}
+        self.assertIn('covers/index.json', precached)
         self.assertEqual(files - precached - {'sw.js'} - doorway, set(), 'add new shell files to SHELL in sw.js')
         self.assertEqual(precached & doorway, set())
         self.assertNotIn('sw.js', precached)
@@ -100,8 +108,10 @@ class Build(unittest.TestCase):
 
 
 class InstallScript(unittest.TestCase):
-    def run_script(self, dest, *args):
-        env = dict(os.environ, AVRANA_WEB_ROOT=str(dest), AVRANA_ALLOW_DIRTY='1')
+    def run_script(self, dest, *args, covers=None):
+        # never the machine's own /srv/avrana/covers: a folder the test names, or one that is not there
+        env = dict(os.environ, AVRANA_WEB_ROOT=str(dest), AVRANA_ALLOW_DIRTY='1',
+                   AVRANA_COVERS_DIR=str(covers if covers is not None else Path(dest).parent / 'no-covers'))
         return subprocess.run(['bash', str(REPO_ROOT / 'ops' / 'install-party-web.sh'), *args], cwd=REPO_ROOT,
                               env=env, capture_output=True, text=True, timeout=60)
 
@@ -134,12 +144,43 @@ class InstallScript(unittest.TestCase):
             (repo / 'web' / 'party' / '.env').write_text('SECRET=1')            # git-ignored
             (repo / 'web' / 'party' / 'notes.txt').write_text('draft')          # untracked
             (repo / 'web' / 'party' / 'host').symlink_to('/etc/hostname')       # untracked symlink
+            (repo / 'web' / 'party' / 'covers' / 'bluff.png').write_bytes(PNG)  # git-ignored: the checkout is not the covers folder
             dest = Path(tmp) / 'web'
             out = self.run_script(dest, str(repo))
             self.assertEqual(out.returncode, 0, out.stderr)
             published = {p.name for p in (dest / 'current').rglob('*')}
-            self.assertFalse({'.env', 'notes.txt', 'host'} & published, published)
+            self.assertFalse({'.env', 'notes.txt', 'host', 'bluff.png'} & published, published)
             self.assertIn('index.html', published)
+            self.assertEqual(json.loads((dest / 'current' / 'covers' / 'index.json').read_text())['covers'], {})
+
+    def test_covers_come_only_from_the_named_folder_and_only_as_pictures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            covers = Path(tmp) / 'covers'
+            covers.mkdir()
+            (covers / 'bluff.png').write_bytes(PNG)
+            (covers / 'expo.jpg').write_bytes(b'<script>alert(1)</script>')     # not a picture
+            (covers / 'Not A Game.png').write_bytes(PNG)                        # not a game's name
+            (covers / 'ps1-worms.png').symlink_to('/etc/hostname')              # never followed
+            (covers / 'notes').mkdir()
+            (covers / 'notes' / 'arcade-gauntlet2.png').write_bytes(PNG)        # not looked in
+            dest = Path(tmp) / 'web'
+            out = self.run_script(dest, str(REPO_ROOT), covers=covers)
+            self.assertEqual(out.returncode, 0, out.stderr)                     # a bad cover never fails an install
+            release = dest / 'current' / 'covers'
+            self.assertEqual({p.name for p in release.rglob('*')}, {'index.json', 'bluff.png'})
+            self.assertEqual(json.loads((release / 'index.json').read_text())['covers'], {'bluff': 'covers/bluff.png'})
+            self.assertEqual((release / 'bluff.png').read_bytes(), PNG)
+            self.assertFalse((release / 'bluff.png').is_symlink())
+            for name in ('expo.jpg', 'Not A Game.png', 'ps1-worms.png'):
+                self.assertIn(f'cover left out: {name}', out.stderr)
+            # the next release is built from the folder as it then is; going back restores the covers of that release
+            (covers / 'bluff.png').unlink()
+            again = self.run_script(dest, str(REPO_ROOT), covers=covers)
+            self.assertEqual(again.returncode, 0, again.stderr)
+            self.assertEqual(json.loads((dest / 'current' / 'covers' / 'index.json').read_text())['covers'], {})
+            back = self.run_script(dest, '--rollback')
+            self.assertEqual(back.returncode, 0, back.stderr)
+            self.assertEqual(json.loads((dest / 'current' / 'covers' / 'index.json').read_text())['covers'], {'bluff': 'covers/bluff.png'})
 
     def test_refuses_a_dirty_checkout_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:

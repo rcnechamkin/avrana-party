@@ -97,7 +97,8 @@ test.describe('@heavy fault injection & recovery', () => {
     const ctx = await browser.newContext();
     try {
       const slot = await connectClient(await ctx.newPage());
-      expect([1, 2]).toContain(slot);
+      expect(slot).toBeGreaterThanOrEqual(1);
+      expect(slot).toBeLessThanOrEqual(maxPlayers);
     } finally { await ctx.close(); }
   });
 });

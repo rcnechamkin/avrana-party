@@ -112,6 +112,26 @@ class Lifecycle(unittest.TestCase):
             self.assertEqual(rt.timeline[-1], ('arcade', 'stopped'))   # the partial start is undone
         run(go())
 
+    def test_a_start_failure_with_a_huge_message_is_answered_small_enough_for_the_party_to_read(self):
+        """AVR-33: Party Core reads at most sessions.MAX_REPLY_BYTES of an answer. A runtime whose
+        failure text is enormous (a captured process output) must not turn its own refusal into
+        "the game did not answer": the managed runtime says why in a line, not in a page."""
+        from avrana.party import sessions
+
+        class Chatty(Runtime):
+            async def start(self):
+                raise RuntimeError('x' * 200_000)
+        rt = Chatty()
+        m = managed.ManagedRuntime(protocol.GameSide(KEY, GAME), rt.start, rt.stop)
+
+        async def go():
+            status, body = await m.launch(launch())
+            self.assertEqual((status, body['ok']), (200, False))
+            self.assertLess(len(json.dumps(body)), 1024)
+            self.assertLess(len(json.dumps(body)), sessions.MAX_REPLY_BYTES)
+            self.assertIn('did not start', body['message'])
+        run(go())
+
     def test_a_slow_start_times_out_and_is_stopped(self):
         async def go():
             m, rt = make(start_delay=1.0, start_timeout=0.2)
@@ -315,7 +335,7 @@ class RecordingGame(ReferenceGame):
 
 class PartyAndArcade(ServiceCase):
     games = {'bluff': {'id': 'bluff', 'max_players': 6, 'late_join': 'spectator_only'},
-             GAME: {'id': GAME, 'max_players': 2, 'late_join': 'supported'}}
+             GAME: {'id': GAME, 'max_players': 4, 'late_join': 'supported'}}
     arcade_kw = {}
     link_timeout = 5
 

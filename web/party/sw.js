@@ -25,7 +25,7 @@ const SHELL = [
   '', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg', 'catalog.json', 'version.json',
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
   'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/catalog-load.js', 'lib/icons.js', 'lib/avatars.js',
-  'lib/party-mode.js', 'lib/party-client.js', 'lib/party-follow.js', 'lib/limited.js',
+  'lib/party-mode.js', 'lib/party-client.js', 'lib/party-follow.js', 'lib/limited.js', 'lib/game-origins.js',
   // The module of the frame, and the one bundled font with its licence (Geist, SIL OFL 1.1).
   'lib/frame.js', 'lib/library.js', 'lib/states.js', 'fonts/Geist-Variable.woff2', 'fonts/OFL.txt',
   // The bridge frame for game pages on another origin, and the reference shim (ADR 0013).
@@ -33,6 +33,9 @@ const SHELL = [
   'diag/', 'diag/index.html', 'diag/diag.js',
   // Library artwork (tools/build-art.mjs from contracts/artwork.json).
   'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-bluff.svg',
+  // Which games have a cover the owner supplied (AVR-306). The covers themselves are never here:
+  // they are not part of a commit, and a phone without the box draws the art above instead.
+  'covers/index.json',
   // Player avatars (tools/build-avatars.mjs): generated, committed, tiny.
   'avatars/gaze-01.svg', 'avatars/gaze-02.svg', 'avatars/gaze-03.svg', 'avatars/gaze-04.svg',
   'avatars/gaze-05.svg', 'avatars/gaze-06.svg', 'avatars/gaze-07.svg', 'avatars/gaze-08.svg',

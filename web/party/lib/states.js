@@ -94,14 +94,17 @@ const listed = (names) => (names.length < 2 ? names.join('') : `${names.slice(0,
 export function troubles(status, games = []) {
   if (!status || typeof status !== 'object') return [];
   const installed = games.filter((g) => g.installed && g.entry);
-  const arcade = installed.filter((g) => !g.legacySlug), cards = installed.filter((g) => g.legacySlug);
+  const arcade = installed.filter((g) => g.provider === 'arcade');
+  const cards = installed.filter((g) => g.provider === 'lan-games');
+  const independent = installed.filter((g) => g.provider !== 'arcade' && g.provider !== 'lan-games');
   const a = status.arcade, p = status.games_provider;
   const arcadeOff = arcade.length > 0 && Boolean(a) && (a.ok === false || a.emulator_running === false || Boolean(a.error));
   const cardsOff = cards.length > 0 && Boolean(p) && p.ok === false;
   const cannot = (list) => `${listed(list.map((g) => g.name))} can’t be played.`;
   if (arcadeOff && cardsOff) {
-    return [{ id: 'games', title: 'Games are off right now', text: 'No game can be started.',
-      detail: `The parts of the Party box that run the games aren’t answering. ${cannot(installed)}` }];
+    return [{ id: 'games', title: independent.length ? 'Some games are off right now' : 'Games are off right now',
+      text: independent.length ? 'Other games play as usual.' : 'No game can be started.',
+      detail: `The parts of the Party box that run these games aren’t answering. ${cannot([...cards, ...arcade])}` }];
   }
   if (arcadeOff) {
     return [{ id: 'arcade', title: 'Arcade games are off right now', text: cards.length ? 'Card and party games play as usual.' : '',

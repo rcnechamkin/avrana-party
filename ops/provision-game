@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Provision, rotate or remove a native game (ADR 0016, AVR-236). Run as root from the deployed
+# code tree; see avrana/ops/provision_game.py for the flags:
+#
+#   sudo /opt/avrana-party/current/ops/provision-game <slug> [--rotate|--remove] [--keep-state] [--dry-run]
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+cd "$tree"
+PYTHONDONTWRITEBYTECODE=1 exec python3 -m avrana.ops.provision_game "$@"

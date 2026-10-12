@@ -37,7 +37,8 @@ logged with the game's id, and the previous registry stays in force. Native game
 Party Core's internal Unix socket, which in production is inherited from a systemd socket unit
 (`avrana-party:avrana-games 0660`, ADR 0016 §4); `internal_socket` in the config makes Party Core
 create one itself, for tests and development only. The unit, the socket unit and the registry path
-are AVR-236's; none exists on the Pi.
+are AVR-236's, installed by one owner-run command, `ops/prepare-native-games`
+([runbook](prepare-native-games.md), AVR-304); none exists on the Pi.
 
 > **2026-10-03 (AVR-256):** the unit files and drop-ins in source now describe the host *after*
 > [the service-users migration](service-users-migration.md): dedicated users, code under `/opt`,
@@ -169,7 +170,8 @@ What each rollback step is backed by:
 
 - The key file is the only secret. The script never prints it, and it never appears in the
   config, unit, logs or the repository.
-- The device token lives only in the `HttpOnly; Secure; SameSite=Lax; Path=/party/` cookie.
+- The device token lives only in the `__Host-avrana_device` cookie (`HttpOnly; Secure;
+  SameSite=Lax; Path=/`); nginx clears the `Cookie` header on game locations (AVR-314).
 - The service refuses:
   - a Host header other than `party.avrana.net`;
   - a POST whose Origin is not `https://party.avrana.net`;

@@ -64,6 +64,10 @@ Read in this order:
      implementation plan; start at [ux-redesign/README.md](ux-redesign/README.md). The owner
      approved the direction and the plan's slices 0 and 1 on 2026-10-05; it is design reference,
      not contract, and says nothing about what is built
+   - `PORTABLE-GAME-CLIENT-DELIVERY.md` — **proposed** (2026-10-10, AVR-335): browser-first portable
+     HTML/JS/WASM game clients, the authoritative appliance, cold/warm delivery constraints, app-host
+     isolation, Android handhelds, no native mobile executable delivery, porting rights and the
+     unresolved app-store gates; lists conflicts with accepted text without resolving them
    - `PARTY-GAMES-CONTRACT.md` — the versioned Party ↔ Games boundary, its two declarations
      and the checker both CIs run
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)

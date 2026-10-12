@@ -1,9 +1,11 @@
 """Build an installable copy of the Full Mode web shell (web/party/).
 
-    python3 -m avrana.web.build --out DIR [--build ID] [--commit SHA] [--no-service-worker]
+    python3 -m avrana.web.build --out DIR [--build ID] [--commit SHA] [--no-service-worker] [--covers DIR]
 
 Copies web/party/ to DIR, stamps the build id into sw.js (so browsers see a new worker and a new
-cache name) and writes version.json. --no-service-worker produces the self-destruct worker and
+cache name) and writes version.json. The owner's game covers (avrana/web/covers.py) are taken
+from --covers, or from the source's own covers/ folder, checked one by one, and listed in
+covers/index.json; a cover that does not pass is left out and named, never a failure. --no-service-worker produces the self-destruct worker and
 tells pages to remove their offline copy (the kill switch). The result is plain static files for
 nginx; ops/install-party-web.sh puts it in place on the Pi.
 """
@@ -17,6 +19,7 @@ from pathlib import Path
 
 from avrana import WEB_DIR
 from avrana.contracts import strictjson
+from avrana.web import covers as game_covers
 
 BUILD_ID = re.compile(r'^[A-Za-z0-9._-]{1,40}$')
 BUILD_LINE = "const BUILD = 'dev';"
@@ -67,7 +70,9 @@ def check_tree(root):
     return problems
 
 
-def build(out, build_id, commit=None, service_worker=True, source=WEB_DIR, now=None):
+def build(out, build_id, commit=None, service_worker=True, source=WEB_DIR, now=None, covers=None, notes=None):
+    """`covers`: the folder of owner-supplied covers (default: the source's own covers/).
+    `notes`: a list that receives why each cover left out was left out."""
     out = Path(out)
     if not BUILD_ID.match(build_id):
         raise BuildError('build id: 1-40 of [A-Za-z0-9._-]')
@@ -77,6 +82,11 @@ def build(out, build_id, commit=None, service_worker=True, source=WEB_DIR, now=N
     if problems:
         raise BuildError('; '.join(problems))
     shutil.copytree(source, out, dirs_exist_ok=True, symlinks=True)  # check_tree refused any symlink
+    # Covers are the one part of a release that is not the source: whatever the copy brought is
+    # replaced by checked copies and the index the shell reads.
+    left_out = game_covers.install(out / 'covers', Path(source) / 'covers' if covers is None else covers)
+    if notes is not None:
+        notes.extend(left_out)
     sw = out / 'sw.js'
     sw.write_text(stamp(sw.read_text(encoding='utf-8'), build_id, service_worker), encoding='utf-8')
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -92,15 +102,19 @@ def main(argv=None):
     ap.add_argument('--build', default=None, help='build id (default: first 12 characters of --commit)')
     ap.add_argument('--commit', default=None)
     ap.add_argument('--no-service-worker', action='store_true', help='kill switch: remove offline copies')
+    ap.add_argument('--covers', default=None, help="folder of the owner's game covers (default: the source's covers/)")
     args = ap.parse_args(argv)
     build_id = args.build or (args.commit or '')[:12]
     if not build_id:
         ap.error('give --build or --commit')
     try:
-        version = build(args.out, build_id, args.commit, not args.no_service_worker)
+        notes = []
+        version = build(args.out, build_id, args.commit, not args.no_service_worker, covers=args.covers, notes=notes)
     except BuildError as exc:
         print(f'build failed: {exc}', file=sys.stderr)
         return 1
+    for note in notes:
+        print(f'cover left out: {note}', file=sys.stderr)
     print(json.dumps(version))
     return 0
 

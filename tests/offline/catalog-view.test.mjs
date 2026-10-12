@@ -15,7 +15,7 @@ const profile = createProfile({ getItem: (k) => map.get(k) ?? null, setItem: (k,
 
 test('unified catalog includes individual browser titles, arcade and honest PS1 entries', () => {
   const games = visibleGames(catalog);
-  assert.deepEqual(games.map((g) => g.id).sort(), ['arcade-gauntlet2', 'bluff', 'expo', 'ps1-bomberman', 'ps1-worms']);
+  assert.deepEqual(games.map((g) => g.id).sort(), ['arcade-gauntlet2', 'bluff', 'checkers', 'expo', 'ps1-bomberman', 'ps1-worms']);
   assert.deepEqual(games.filter((g) => g.provider === 'lan-games').map((g) => g.id).sort(), ['bluff', 'expo']);
   assert.equal(catalog.games.some((g) => g.id.startsWith('lan-')), false);   // no retired donor title is offered
   const expo = games.find((g) => g.id === 'expo');
@@ -26,6 +26,12 @@ test('unified catalog includes individual browser titles, arcade and honest PS1 
   assert.ok(bluff.installed);
   assert.equal(bluff.artwork, 'art/lan-bluff.svg');
   assert.equal(launchTarget(bluff), '/games/bluff/?avrana=1');
+  const checkers = games.find((g) => g.id === 'checkers');
+  assert.equal(checkers.provider, 'native');
+  assert.equal(checkers.installed, true);
+  assert.deepEqual(checkers.players, { min: 2, max: 2 });
+  assert.equal(checkers.spectators, 'watch');
+  assert.equal(launchTarget(checkers), '/games/checkers/');
   const ps1 = games.filter((g) => g.provider === 'retroarch-ps1');
   assert.equal(ps1.length, 2);
   assert.ok(ps1.every((g) => !g.installed && !g.entry && g.hardwareValidationRequired));

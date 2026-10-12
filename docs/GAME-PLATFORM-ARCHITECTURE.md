@@ -58,6 +58,7 @@ The platform may support multiple execution styles:
    - Avrana Party provides game packages, room/session coordination, authority, and shared state.
 
 2. **Native-app execution**
+   - *Open conflict (2026-10-10, AVR-335): owner direction in AVR-37 rules out delivering native mobile executables through `.avrgame`, which this item does not reflect. Unresolved pending a reviewed decision; see [Portable game-client delivery](design/PORTABLE-GAME-CLIENT-DELIVERY.md) section 11.*
    - The Avrana mobile app may run game or emulator workloads locally on the phone.
    - Avrana Party remains coordinator, package source, session authority, or fallback renderer.
 

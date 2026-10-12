@@ -60,7 +60,7 @@ def prepare_keys():
     return key, party_port
 
 
-def attach(app, key, port, public_hosts, party_port, game_origins=None):
+def attach(app, key, port, public_hosts, party_port, game_origins=None, native=None):
     """Run the party service beside `app` and route /party/api/ to it. `public_hosts` are the
     host names phones use for this origin (127.0.0.1 always included). `game_origins` registers
     the origins game pages are served from when they are not this one (ADR 0013)."""
@@ -72,13 +72,26 @@ def attach(app, key, port, public_hosts, party_port, game_origins=None):
     pregame = service.load_games({GAME: {'max_players': MAX_PLAYERS, 'min_players': 2, 'pregame': True},
                                   SECOND: {'max_players': 2}})
     endpoints = {GAME: sessions.GameEndpoint(GAME, f'http://127.0.0.1:{port}/games/{GAME}', key)}
-    svc = service.PartyService(identity.DeviceStore(None), games, sessions.HttpGameLink(endpoints))
+    if native:
+        from avrana.contracts import party_config
+        from native_runtime import ActivatedLink
+        metadata = party_config.resolve({native.slug: {}})
+        games.update(metadata)
+        pregame.update(metadata)
+        endpoints[native.slug] = native.endpoint
+        link = ActivatedLink(endpoints, native)
+    else:
+        link = sessions.HttpGameLink(endpoints)
+    svc = service.PartyService(identity.DeviceStore(None), games, link)
     cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False, game_origins=game_origins)
     extra, internal = sessions.routes(svc, endpoints)
     party = service.make_server(svc, cfg, host='127.0.0.1', port=party_port, extra_routes=extra,
                                 internal_routes=internal)
     stop = threading.Event()
     threading.Thread(target=party.serve_forever, daemon=True).start()
+    if native:
+        internal_server = service.make_internal_server(svc, internal, path=native.party_path)
+        threading.Thread(target=internal_server.serve_forever, daemon=True).start()
     threading.Thread(target=svc.run_timer, args=(stop,), daemon=True).start()
     atexit.register(stop.set)
     # long polls hold a thread for up to 25 s: give them their own pool, not the app's shared one
@@ -115,10 +128,22 @@ def attach(app, key, port, public_hosts, party_port, game_origins=None):
         if not loopback(request):
             return JSONResponse({'error': 'not_found'}, status_code=404)
         chosen = pregame if request.query_params.get('pregame') == '1' else games
+        if native:
+            native.stop_process()
         with svc.lock:
             svc.core = core.PartyCore(time.monotonic, chosen)
             svc._notify()
         return JSONResponse({'ok': True})
+
+    if native:
+        async def native_status(request: Request):
+            if not loopback(request):
+                return JSONResponse({'error': 'not_found'}, status_code=404)
+            if request.method == 'POST':
+                native.stop_process()
+            return JSONResponse({'running': bool(native.proc and native.proc.poll() is None)})
+        app.add_api_route('/__harness__/native/process', native_status, methods=['GET', 'POST'],
+                          include_in_schema=False)
 
     async def lab(request: Request):
         return HTMLResponse(LAB_PAGE, headers={'Cache-Control': 'no-store'})

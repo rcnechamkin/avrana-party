@@ -148,6 +148,10 @@ class Inventory(unittest.TestCase):
         elsewhere = {'telemetry/beszel-agent.service': telemetry, 'telemetry/pi-throttle-check.service': telemetry,
                      'telemetry/pi-throttle-check.timer': telemetry}
         self.assertTrue(any('telemetry' in n['what'] for n in INV['not_managed']))
+        native = 'native games arrive after a rebuild, by provision-game and its runbook (inventory not_managed)'
+        elsewhere.update({'deploy/games/avrana-game@.service': native, 'deploy/games/avrana-game@.socket': native,
+                          'deploy/party-core/avrana-party-core.socket': native})
+        self.assertTrue(any('provision-game' in n['by'] for n in INV['not_managed']))
         found = set()
         for pattern in ('**/*.service', '**/*.timer', '**/*.socket', 'deploy/**/*.conf', 'arcade/*.rules',
                         'arcade/avrana-uinput.conf', '*.nginx', 'avrana-captive.conf'):

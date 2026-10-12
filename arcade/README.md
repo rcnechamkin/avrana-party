@@ -19,7 +19,7 @@
 >   `avrana.providers.retroarch` (ADR 0004). The behaviour is identical, and a test pins it.
 > - `/stats` gains a `providers` block.
 > - The phone page keeps the screen on (via the Full Mode shell's `/party/lib/keep-awake.js`, HTTPS
->   only), says "Both controllers are in use" only when `/stats` says the game is full, and
+>   only), says "All controllers are in use" only when `/stats` says the game is full, and
 >   reconnects quietly after a drop or lock.
 > - Raw stats are visible only with `#diag`.
 > - The page is served from the checkout on every request, so it goes live with the production
@@ -57,15 +57,96 @@ binding on the same slot. Session end, switch and relaunch clear old reservation
 receive a non-player response. Standalone mode retains first-free slots freed on disconnect.
 See `docs/runbooks/arcade-party-provider.md` for security and remaining real-phone checks.
 
+## Four controller seats (AVR-311, 2026-10-07)
+
+Gauntlet II takes four phones. `MAX_PLAYERS = 4` in `stream.py` is the number of virtual pads
+("Avrana Player 1" to "Avrana Player 4"), of Party seats and of always-on slots. It is the same four
+as `players.max` and `input.slots` in `contracts/games/arcade-gauntlet2.json`, and as
+`input_playerN_joypad_index` (N = 1 to 4) and `input_max_users` in `retroarch.cfg`; unit tests fail
+if one of them moves alone (`tests/unit/test_arcade_stream.py`). A fifth phone is refused as "full",
+a seat frees when its player leaves or the 60-second grace ends, and the same ticket keeps its seat.
+The phone page names no number of controllers: "full" is the arcade's own `/stats` count.
+
+**Not yet proven on the Pi.** The cap was 2 because two phones was the most that had been tried (the
+baseline below). Four phones at once have not, so four seats are the contract and the code, not a
+measurement. The first four-phone night must show:
+
+- **Pad order under udev.** `input_playerN_joypad_index` is a position in the order the pads are
+  enumerated, not a name. Player 3 and Player 4 must move the third and fourth hero, after a cold
+  start and after a restart of the arcade.
+- **Coin and Start on slots 3 and 4.** Only P1's coin and a short two-phone session are on record.
+- **CPU and Wi-Fi headroom.** One encode, four WebRTC sends and a four-player emulation: frame rate,
+  `/stats` capture ages, CPU, temperature and `vcgencmd get_throttled` (sample on the Pi, read once at
+  the end), and whether a join's forced keyframe disturbs the other three.
+
+Deploying: a hand-typed `"max_players": 2` for `arcade-gauntlet2` in
+`/etc/avrana-party/party-core.json` would make Party Core refuse to start
+(`docs/runbooks/arcade-party-provider.md`, "Four controller seats").
+
+## The phone page is an Avrana game surface (AVR-133, 2026-10-07)
+
+`index.html` is the page a phone shows while it is a controller. It was restyled to the Party shell's
+language (`docs/design/AVRANA-UX-UI-PRODUCT-BRIEF.md` section 24; the findings it answers are
+ARC-1 to ARC-7 in `docs/design/ux-redesign/audit/PARTY-SHELL-AUDIT.md`). A restyle only: the
+signalling, input, reconnect and Party code in its script is as it was, and so are its words, apart
+from the three that named the old sound button and one more behaviour: a picture that arrives after
+"no picture yet", or after a prompt to tap Sound, takes those words away.
+
+- **Portrait:** one slim bar (the game, a "Player N" mark once a seat is held, Sound, Leave), the
+  picture edge to edge at 4:3, one status line (an icon and words, never colour alone), and the
+  controls under the thumbs: movement left, Fire and Magic right, Add coin and Start above them.
+  Before a seat is held only the title is in the bar. The way back to the games hub (outside a
+  Party) and the Party Host's End sit in a footer, out of the picture's way. Where the window is too
+  short for a full-width picture and the controls under it (a small phone, a tablet sideways, a
+  laptop), the picture is narrower rather than the page longer. With large text the title gives way
+  (an ellipsis) down to a floor, then Sound and Leave move to a row of their own, so the "Player N"
+  mark is never pushed under them; the Host's End wraps rather than leaving the footer.
+- **Sideways (a phone under 600 px tall):** the picture takes the height under the bar, the controls
+  float over its two ends (a smoky fill, no blur, so the stream is not slowed; the edge and the held
+  look are the upright ones), and the status line goes quiet while the picture plays (it stays for a
+  screen reader).
+- **Accessibility:** pinch zoom is no longer blocked (the picture and the controls opt out with
+  `touch-action: none`, the text does not); targets are 44 px or more; focus is visible; reduced
+  motion and more contrast are honoured; text is in `rem`, and the layout scrolls rather than clips
+  at 200% text.
+- **Tokens and icons are copies.** The page cannot load the Party's stylesheet (it may be served from
+  the game's own origin, or over plain HTTP, where `/party/` does not exist), so it carries the
+  colour and radius tokens of `web/src/party.css` and the Lucide icons it draws, inline, with the
+  system font stack (Geist cannot be fetched from another origin). `tests/unit/test_arcade_page.py`
+  fails when a value drifts from the shell; when a pair of colours drops under 4.5:1 (3:1 for edges,
+  icons and the focus ring), for every control at rest, held and disabled, upright and floating
+  sideways, in both palettes; when an edge you can press is not the `control` token (the 3:1 edge
+  that more contrast raises); when a layout rule can recolour a control or out-rank its held look;
+  or when the page fetches anything. Change a token in `web/src/party.css` and that test says what
+  to copy. What only a layout engine can read (the colours as drawn, a held control, large text) is
+  in `tests/offline/arcade.spec.ts`.
+- **Another emulator title:** the chrome is the same. `GAME` at the top of the script names the
+  title, the labels of the four game buttons are in the markup, and the button names are the
+  arcade's own (`LAYOUT` in `stream.py`, held equal to the page by `test_arcade_stream.py`).
+  Sound is one "Sound" toggle (`aria-pressed`), not two sets of words.
+
+Not proven without phones: comfort under a thumb in portrait and sideways, diagonal movement (a
+pointer holds one button, so a diagonal is two fingers, as before), how the controls overlap the
+picture on short or notched phones, and pinch behaviour in iOS Safari. These are the
+"Needs real phones" list of the AVR-133 pull request.
+
+One layout question is open, and is not settled here: the Host's End sits in the footer, directly
+under the d-pad's Down (no gap) in portrait on phones up to 700 px tall, while
+`docs/design/ux-redesign/SCREENS.md` (the Arcade shell row) puts the Host's End in the bar. A real
+thumb has to say whether the footer is too close to Down for a button that ends the game for
+everyone; if it is, moving End is a layout decision for the owner, not a restyle.
+
 ## Historical prototype baseline (2026-09-19/20)
 
 Phone entry: **http://party.local/arcade/**. LAN Games remains at http://party.local/.
 The isolated `avranaparty-arcade.service` is enabled at boot and running as cody.
 
-- **Players:** `MAX_PLAYERS = 2` in `stream.py`, so two slots are enabled. P1 is
+- **Players (as of 2026-09-20; four since 2026-10-07, see "Four controller seats" above):**
+  `MAX_PLAYERS = 2` in `stream.py`, so two slots were enabled. P1 was
   verified for basic gameplay and streaming on a real iPhone. Two-phone play was **verified on two
-  real iPhones on 2026-09-20** (a 3-minute session; see `docs/archive/handoffs/2026-09-25-claude-log.md`). Do not raise beyond 2
-  without a longer multi-phone soak.
+  real iPhones on 2026-09-20** (a 3-minute session; see `docs/archive/handoffs/2026-09-25-claude-log.md`). The
+  note then was "do not raise beyond 2 without a longer multi-phone soak"; AVR-311 raised it to 4
+  ahead of that soak, which is still open.
 - **Measurement:** input-to-photon latency and performance under real gameplay
   have **not** been formally measured.
 - **Boot:** service startup after a reboot is verified (all services active,
@@ -80,7 +161,7 @@ No public STUN/TURN is used.
 
 Open the page in a regular phone browser, tap Play, then Add coin. Use arrows to
 select a character and Fire to confirm/attack; Magic is the second action.
-Enable sound is a separate user gesture. Controls use same-origin WebSocket
+Sound is a separate user gesture (the Sound button). Controls use same-origin WebSocket
 state snapshots at 20 Hz, mapped to a server-assigned virtual gamepad. Stale
 held inputs are released after 300 ms, with immediate release on disconnect.
 The browser releases held inputs when backgrounded. Only gamepad controls are
@@ -137,9 +218,10 @@ the downloaded core. No ROMs were downloaded, padded, patched or renamed.
 - **Latency and performance:** measure input-to-photon latency during real
   gameplay (high-frame-rate filming of touch and screen; report median/p95). RTT
   and jitter-buffer stats are not input-to-photon latency.
-- **Two phones:** verify independent slots, coin/start, reconnect and screen lock
-  with two real phones before raising `MAX_PLAYERS`; then four phones and
-  CPU/RAM/Wi-Fi/encoder-count scaling.
+- **Four phones:** the cap is four (AVR-311) but the Pi has not run it. With four real
+  phones: independent slots and pad order, coin/start on all four, reconnect and screen
+  lock, then CPU/RAM/Wi-Fi/encoder-count scaling (one encoder context must stay open).
+  The checklist is under "Four controller seats".
 - **Boot and offline:** phone-side behavior after a reboot; a true offline test
   (wlan0 provides internet, so Ethernet being idle is not an offline test).
 - **Power:** `vcgencmd get_throttled` read `0x50000` about 50 minutes after boot

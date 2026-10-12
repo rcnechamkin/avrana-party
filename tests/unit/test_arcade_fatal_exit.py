@@ -93,7 +93,7 @@ class WatchLoop(unittest.TestCase):
         self.assertTrue(s.fatal)
         self.assertEqual(s.exits, 1)
         self.assertEqual(peer.closed_with, 1011)
-        self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)   # both pads released
+        self.assertEqual(sum(1 for e in log if e[0] == 'close'), self.stream.MAX_PLAYERS)   # every pad released
         self.assertEqual(self.pipeline.states[-1], 'NULL')
 
     def test_pipeline_error_is_fatal_and_stops_the_emulator(self):
@@ -108,7 +108,7 @@ class WatchLoop(unittest.TestCase):
         self.assertTrue(s.fatal)
         self.assertEqual(s.exits, 1)
         self.assertFalse(s.runtime.running())
-        self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+        self.assertEqual(sum(1 for e in log if e[0] == 'close'), self.stream.MAX_PLAYERS)
 
     def test_silent_video_stall_is_fatal(self):
         """2026-09-28: the encoder stopped returning frames with no bus ERROR; the process stayed
@@ -128,7 +128,7 @@ class WatchLoop(unittest.TestCase):
         self.assertEqual(s.exits, 1)
         self.assertEqual(peer.closed_with, 1011)
         self.assertFalse(s.runtime.running())
-        self.assertEqual(sum(1 for e in log if e[0] == 'close'), 2)
+        self.assertEqual(sum(1 for e in log if e[0] == 'close'), self.stream.MAX_PLAYERS)
 
     def test_video_that_never_starts_is_fatal(self):
         s = self.make([])
@@ -239,6 +239,10 @@ STUBS = {
 class ProcessLifecycle(unittest.TestCase):
     """Runs the real arcade/stream.py entry point as a child process."""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.stream, _ = load_stream()       # only for MAX_PLAYERS: the child process is the real file
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         for rel, text in STUBS.items():
@@ -276,7 +280,7 @@ class ProcessLifecycle(unittest.TestCase):
             proc.stderr.close()
         self.assertEqual(code, 1)
         events = self.log.read_text().splitlines()
-        self.assertEqual(events.count('pad closed'), 2)
+        self.assertEqual(events.count('pad closed'), self.stream.MAX_PLAYERS)
         self.assertEqual(events.count('pipeline NULL'), 1)
 
     def test_a_normal_stop_still_exits_zero(self):
@@ -294,7 +298,7 @@ class ProcessLifecycle(unittest.TestCase):
                 proc.kill()
             proc.stderr.close()
         self.assertEqual(code, 0)   # not a failure: no restart after a deliberate stop
-        self.assertEqual(self.log.read_text().splitlines().count('pad closed'), 2)
+        self.assertEqual(self.log.read_text().splitlines().count('pad closed'), self.stream.MAX_PLAYERS)
 
 
 if __name__ == '__main__':
