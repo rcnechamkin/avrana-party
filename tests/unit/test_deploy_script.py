@@ -1000,6 +1000,7 @@ class ContractAndOptions(Harness):
         self.smoke('pass')
         self.assertEqual(self.deploy(self.target_party, self.target_games, '--skip-contract-check').returncode, 0)
         self.assertEqual(self.deploy(self.before_party, self.before_games, '--skip-smoke').returncode, 0)
+        self.smoke('pass')
         r = self.script('--rollback')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)

@@ -103,7 +103,7 @@ done
 # journal_phase_kind <phase>: terminal (the run ended), open (it did not), or none.
 journal_phase_kind() {
     case $1 in
-        smoke-passed|smoke-skipped|smoke-failed|rolled-back|rollback-failed) echo terminal ;;
+        smoke-passed|smoke-skipped|smoke-failed|rolled-back|auto-rolled-back|rollback-failed) echo terminal ;;
         '') echo none ;;
         *) echo open ;;
     esac
@@ -247,7 +247,7 @@ start_order=(avranaparty-games avranaparty-arcade avrana-party-core)   # provide
 declare -gA J=()      # -g: main() is a function, and the EXIT trap runs after its locals are gone
 
 # The journal: where this run is, written atomically (temp file, fsync, rename) at every phase, as
-# KEY=VALUE lines that are only ever read as data. Terminal phases: smoke-passed, smoke-skipped,
+# KEY=VALUE lines that are only ever read as data. Terminal phases: smoke-passed, smoke-skipped, auto-rolled-back,
 # smoke-failed, rolled-back, rollback-failed. Any other phase left behind means the run died.
 journal_write() {
     [[ $dry_run -eq 1 || -z $backup ]] && return 0
