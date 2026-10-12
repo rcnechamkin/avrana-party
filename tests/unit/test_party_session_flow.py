@@ -91,8 +91,11 @@ class LinkTimeouts(unittest.TestCase):
         class Reply:
             status = 200
 
-            def read(self):
-                return b'{"ok": true}'
+            def read(self, n=-1):               # a stream: the body once, then end of file
+                body, self.body = self.body, b''
+                return body
+
+            body = b'{"ok": true}'
 
             def __enter__(self):
                 return self
