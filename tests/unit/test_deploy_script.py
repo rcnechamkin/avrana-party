@@ -234,9 +234,10 @@ class Harness(unittest.TestCase):
         self.run_git(root, 'clone', '-q', str(self.origin), str(self.party))
         self.before_party = self.run_git(self.party, 'rev-parse', 'HEAD')
         (self.origin / 'deploy-test-marker').write_text('next\n')
-        with open(self.origin / 'avrana-party.nginx', 'a', newline='') as site:    # the target's site file differs
-            site.write('# deploy test: the next commit\n')
-        self.run_git(self.origin, 'add', 'deploy-test-marker', 'avrana-party.nginx')
+        for name in ('avrana-party.nginx', 'arcade/nginx-site'):                    # the target's site file differs
+            with open(self.origin / name, 'a', newline='') as site:
+                site.write('# deploy test: the next commit\n')
+        self.run_git(self.origin, 'add', 'deploy-test-marker', 'avrana-party.nginx', 'arcade/nginx-site')
         self.run_git(self.origin, 'commit', '-q', '-m', 'next')
         self.target_party = self.run_git(self.origin, 'rev-parse', 'HEAD')
         self.games, self.before_games, _ = git_repo(root, 'games')
@@ -563,6 +564,7 @@ class NginxSite(Harness):
         """The games.avrana.net certificate is not on the appliance yet (AVR-319): nginx -t fails."""
         reject = self.target_site() + b'# FAKE-NGINX-REJECT\n'
         (self.origin / 'avrana-party.nginx').write_bytes(reject)
+        (self.origin / 'arcade/nginx-site').write_bytes(reject)
         self.run_git(self.origin, 'commit', '-q', '-am', 'a site that names a missing certificate')
         bad = self.run_git(self.origin, 'rev-parse', 'HEAD')
         r = self.deploy(bad, self.target_games, '--skip-smoke')
@@ -578,6 +580,19 @@ class NginxSite(Harness):
         self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
         self.assertFalse(self.manifest_path.exists())
         self.assertEqual(self.journal()['phase'], 'rolled-back')
+
+    def test_two_tracked_copies_that_differ_are_refused_before_anything_changes(self):
+        (self.origin / 'arcade/nginx-site').write_bytes(self.target_site() + b'# drift\n')
+        self.run_git(self.origin, 'commit', '-q', '-am', 'the copies drift apart')
+        drifted = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        r = self.deploy(drifted, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('must be byte-identical', r.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+        r = self.deploy(drifted, self.target_games, '--skip-smoke', '--skip-nginx-site')   # the opt-out still deploys
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_a_failed_reload_restores_the_old_file_and_fails_the_deployment(self):
         r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_RELOAD='once')

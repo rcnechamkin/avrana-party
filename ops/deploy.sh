@@ -316,6 +316,14 @@ plan_site() {
         log "nginx site: $party_sha has no avrana-party.nginx; the live site file is left alone"
         return 0
     fi
+    # The two tracked copies are byte-identical (docs/GENERATED.md; CI checks it on main). A commit where they
+    # are not is a repository defect: install neither.
+    other=$(mktemp)
+    if g "$party_checkout" show "$party_sha:arcade/nginx-site" > "$other" 2>/dev/null && ! cmp -s "$site_tmp" "$other"; then
+        rm -f "$other"
+        die "avrana-party.nginx and arcade/nginx-site differ at $party_sha; they must be byte-identical (docs/GENERATED.md). Nothing was changed"
+    fi
+    rm -f "$other"
     new_lines=$(( $(wc -l < "$site_tmp") ))
     if [[ ! -e $nginx_site ]]; then
         site_state=absent
