@@ -72,7 +72,7 @@ class DeviceStore:
         if path and os.path.exists(path):
             try:
                 self.by_hash = self._load(path)
-            except (ValueError, OSError) as e:
+            except (ValueError, OSError, RecursionError) as e:
                 # A power cut can leave the file empty or cut short. Refusing to start would
                 # leave the whole party down; phones are issued new identities instead, and the
                 # file is kept aside for whoever wants to look (AVR-33).
