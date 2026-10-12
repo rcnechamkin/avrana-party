@@ -6,6 +6,7 @@
     python3 -m avrana.ops.manifest validate /var/lib/avrana-party/deployment.json
     python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed|failed
     python3 -m avrana.ops.manifest contract-check /var/lib/avrana-party/deployment.json compatible|not_checkable|skipped
+    python3 -m avrana.ops.manifest deploy-info PATH --nginx-status installed --nginx-sha256 HEX [--option skip_smoke ...]
 
 Written by ops/deploy.sh after the checkouts are at their intended commits; read by
 /party/api/status, the smoke checks and tools/reconcile.py. The deployed system is authoritative
@@ -24,6 +25,10 @@ Schema (docs/design/DEPLOYMENT-MANIFEST.md):
     smoke          {"status": "pending"|"passed"|"failed"|"skipped", "at": ISO 8601} or null
     contract_check optional: {"status": "compatible"|"not_checkable"|"skipped", "at": ISO 8601}; how ops/deploy.sh
                    judged the Party/Games pair (not_checkable: a commit predates the checker)
+    nginx_site     optional: {"status": "installed"|"unchanged"|"skipped"|"not_managed", "sha256": hex or null, "at"}; what
+                   ops/deploy.sh did with the nginx site file and the sha256 of the live file afterwards (AVR-271)
+    deploy_options optional: {skip_smoke, skip_contract_check, no_auto_rollback, force_busy, allow_dirty, allow_branch,
+                   skip_nginx_site: bool, rollback: null|"manual"|"auto"|"recover"}; the flags this deployment ran with
 """
 import argparse
 from datetime import datetime, timezone
@@ -42,6 +47,10 @@ DEFAULT_PATH = '/var/lib/avrana-party/deployment.json'
 SHA = re.compile(r'^[0-9a-f]{40}$')
 SMOKE_STATES = ('pending', 'passed', 'failed', 'skipped')
 CONTRACT_CHECK_STATES = ('compatible', 'not_checkable', 'skipped')
+NGINX_SITE_STATES = ('installed', 'unchanged', 'skipped', 'not_managed')
+OPTION_NAMES = ('skip_smoke', 'skip_contract_check', 'no_auto_rollback', 'force_busy', 'allow_dirty',
+                'allow_branch', 'skip_nginx_site')
+ROLLBACK_KINDS = ('manual', 'auto', 'recover')
 
 
 class ManifestError(ValueError):
@@ -153,6 +162,18 @@ def validate(doc):
     if check is not None and (not isinstance(check, dict) or check.get('status') not in CONTRACT_CHECK_STATES
                               or not _iso(check.get('at'))):
         errors.append(f'contract_check must be absent or {{status: {"|".join(CONTRACT_CHECK_STATES)}, at}}')
+    site = doc.get('nginx_site')
+    if site is not None and (not isinstance(site, dict) or site.get('status') not in NGINX_SITE_STATES
+                             or not (site.get('sha256') is None or re.match(r'^[0-9a-f]{64}$', str(site.get('sha256'))))
+                             or not _iso(site.get('at'))):
+        errors.append(f'nginx_site must be absent or {{status: {"|".join(NGINX_SITE_STATES)}, sha256: hex|null, at}}')
+    options = doc.get('deploy_options')
+    if options is not None and (not isinstance(options, dict)
+                                or set(options) - set(OPTION_NAMES) - {'rollback'}
+                                or any(not isinstance(options.get(n, False), bool) for n in OPTION_NAMES)
+                                or options.get('rollback') not in (None, *ROLLBACK_KINDS)):
+        errors.append('deploy_options must be absent or booleans named ' + ', '.join(OPTION_NAMES)
+                      + ' and rollback null|' + '|'.join(ROLLBACK_KINDS))
     for key in ('privkey', 'token', 'password', 'secret'):
         if key in json.dumps(doc).lower():
             errors.append(f'manifest text must not contain {key!r}')
@@ -219,6 +240,19 @@ def record_contract_check(path, status, now=None):
     return write(path, doc)
 
 
+def record_deploy_info(path, nginx_status=None, nginx_sha256=None, options=(), rollback=None, now=None):
+    """Additive facts about how the deployment ran: the nginx site file and the flags (AVR-271)."""
+    doc = read(path)
+    if doc is None:
+        raise ManifestError(f'{path}: no manifest to update')
+    if nginx_status is not None:
+        doc['nginx_site'] = {'status': nginx_status, 'sha256': nginx_sha256 or None, 'at': now or utcnow()}
+    flags = {name: name in set(options) for name in OPTION_NAMES}
+    flags['rollback'] = rollback
+    doc['deploy_options'] = flags
+    return write(path, doc)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     sub = ap.add_subparsers(dest='command', required=True)
@@ -238,6 +272,12 @@ def main(argv=None):
     c = sub.add_parser('contract-check', help='record how the Party/Games pair was judged')
     c.add_argument('path')
     c.add_argument('status', choices=CONTRACT_CHECK_STATES)
+    d = sub.add_parser('deploy-info', help='record the nginx site file result and the flags of this deployment')
+    d.add_argument('path')
+    d.add_argument('--nginx-status', choices=NGINX_SITE_STATES)
+    d.add_argument('--nginx-sha256', default=None)
+    d.add_argument('--option', action='append', default=[], choices=OPTION_NAMES, help='a flag that was set')
+    d.add_argument('--rollback-kind', choices=ROLLBACK_KINDS, default=None)
     args = ap.parse_args(argv)
     try:
         if args.command == 'write':
@@ -256,6 +296,9 @@ def main(argv=None):
             if doc is None:
                 raise ManifestError(f'{args.path}: no deployment manifest (nothing deployed with ops/deploy.sh yet)')
             print(f'{args.path}: valid {SCHEMA}, party {doc["party"]["short"]}, games {doc["games"]["short"]}')
+        elif args.command == 'deploy-info':
+            record_deploy_info(args.path, args.nginx_status, args.nginx_sha256, args.option, args.rollback_kind)
+            print(f'{args.path}: deploy info recorded')
         elif args.command == 'contract-check':
             record_contract_check(args.path, args.status)
             print(f'{args.path}: contract check {args.status}')

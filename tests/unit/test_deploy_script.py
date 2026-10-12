@@ -46,7 +46,8 @@ class DeployScript(unittest.TestCase):
         self.games, self.games_sha, _ = git_repo(self.temp.name, 'games')
         self.env = dict(os.environ, AVRANA_PARTY_CHECKOUT=str(self.party), AVRANA_GAMES_CHECKOUT=str(self.games),
                         AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_CHECKOUT_USER=os.environ.get('USER', 'nobody'),
-                        AVRANA_BACKUP_ROOT=str(Path(self.temp.name) / 'backups'))
+                        AVRANA_BACKUP_ROOT=str(Path(self.temp.name) / 'backups'),
+                        AVRANA_NGINX_SITE=str(Path(self.temp.name) / 'site'), AVRANA_DEPLOY_DETACH='0')
 
     def run_script(self, *args):
         return subprocess.run([BASH, str(SCRIPT), *args], capture_output=True, text=True, env=self.env, timeout=120)
@@ -83,6 +84,15 @@ class DeployScript(unittest.TestCase):
         r = self.run_script('--party', self.party_sha, '--games', 'f' * 40, '--dry-run', '--allow-dirty')
         self.assertEqual(r.returncode, 1)
         self.assertIn('stage it first', r.stderr)
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'running as root')
+    def test_a_real_run_without_root_is_refused_before_anything_is_touched(self):
+        """The service restarts, the web root and the nginx site file all need root: a run that is not
+        root (and is not the test-only unprivileged mode) refuses up front instead of half-running."""
+        r = self.run_script('--party', self.party_sha, '--games', self.games_sha)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('run as root', r.stderr)
+        self.assertFalse((Path(self.temp.name) / 'backups').exists())
 
     def test_party_commit_must_be_on_origin_main(self):
         (self.party / 'file').write_text('two\n')
@@ -172,6 +182,26 @@ SYSTEMCTL_SHIM = """#!/usr/bin/env bash
 echo "$*" >> "$SHIM_LOG"
 if [[ $1 == is-active && -n ${FAIL_UNIT:-} && " $* " == *" $FAIL_UNIT "* ]]; then exit 3; fi
 if [[ $1 == start || $1 == restart ]] && [[ -n ${FAIL_START:-} && " $* " == *" $FAIL_START "* ]]; then exit 1; fi
+# $FAIL_RELOAD=once: the first `reload` fails, later ones work; =always: every one fails.
+if [[ $1 == reload && -n ${FAIL_RELOAD:-} ]]; then
+    if [[ $FAIL_RELOAD == always ]]; then exit 1; fi
+    if [[ ! -e "$SHIM_LOG.reload-failed" ]]; then : > "$SHIM_LOG.reload-failed"; exit 1; fi
+fi
+exit 0
+"""
+
+# Stands for nginx: `-t` rejects a site file that contains FAKE-NGINX-REJECT the way the real one rejects a
+# site that names a certificate file this appliance does not have.
+NGINX_SHIM = """#!/usr/bin/env bash
+echo "nginx $*" >> "$NGINX_LOG"
+if [[ $1 == -t ]]; then
+    if grep -q FAKE-NGINX-REJECT "$AVRANA_NGINX_SITE"; then
+        echo 'nginx: [emerg] cannot load certificate "/etc/avrana-party/tls/games/fullchain.pem": BIO_new_file() failed (No such file or directory)' >&2
+        echo 'nginx: configuration file /etc/nginx/nginx.conf test failed' >&2
+        exit 1
+    fi
+    echo 'nginx: configuration file /etc/nginx/nginx.conf test is successful' >&2
+fi
 exit 0
 """
 
@@ -195,7 +225,9 @@ class Harness(unittest.TestCase):
         self.run_git(root, 'clone', '-q', str(self.origin), str(self.party))
         self.before_party = self.run_git(self.party, 'rev-parse', 'HEAD')
         (self.origin / 'deploy-test-marker').write_text('next\n')
-        self.run_git(self.origin, 'add', 'deploy-test-marker')
+        with open(self.origin / 'avrana-party.nginx', 'a', newline='') as site:    # the target's site file differs
+            site.write('# deploy test: the next commit\n')
+        self.run_git(self.origin, 'add', 'deploy-test-marker', 'avrana-party.nginx')
         self.run_git(self.origin, 'commit', '-q', '-m', 'next')
         self.target_party = self.run_git(self.origin, 'rev-parse', 'HEAD')
         self.games, self.before_games, _ = git_repo(root, 'games')
@@ -207,6 +239,15 @@ class Harness(unittest.TestCase):
         shim.write_text(SYSTEMCTL_SHIM)
         shim.chmod(0o755)
         self.log = root / 'systemctl.log'
+        nginx = root / 'fake-nginx'
+        nginx.write_text(NGINX_SHIM)
+        nginx.chmod(0o755)
+        (root / 'nginx').mkdir()
+        self.site = root / 'nginx' / 'avrana-party'                  # what is live: the site file of before_party
+        self.site.write_bytes(subprocess.run(['git', '-C', str(self.party), 'show', f'{self.before_party}:avrana-party.nginx'],
+                                             check=True, capture_output=True, env=self.genv).stdout)
+        self.site_before = self.site.read_bytes()
+        self.nginx_log = root / 'nginx.log'
         self.manifest_path = root / 'state' / 'deployment.json'
         self.web = root / 'web'
         self.env = dict(self.genv, AVRANA_PARTY_CHECKOUT=str(self.party), AVRANA_GAMES_CHECKOUT=str(self.games),
@@ -214,7 +255,8 @@ class Harness(unittest.TestCase):
                         AVRANA_DEPLOYMENT_MANIFEST=str(self.manifest_path), AVRANA_BACKUP_ROOT=str(root / 'backups'),
                         AVRANA_DEPLOY_UNPRIVILEGED='1', AVRANA_SYSTEMCTL=str(shim), SHIM_LOG=str(self.log),
                         AVRANA_PARTY_RELEASES=str(root / 'opt-party'), AVRANA_GAMES_RELEASES=str(root / 'opt-games'),
-                        AVRANA_DEPLOY_DETACH='0')
+                        AVRANA_NGINX_SITE=str(self.site), AVRANA_NGINX=str(nginx), NGINX_LOG=str(self.nginx_log),
+                        AVRANA_NGINX_ENABLED=str(root / 'nginx' / 'enabled'), AVRANA_DEPLOY_DETACH='0', AVRANA_DEPLOY_LOCK=str(root / 'deploy.lock'))
         self.hooks = root / 'hooks'
         self.hooks.mkdir()
         self.party_release, self.games_release = root / 'opt-party' / 'current', root / 'opt-games' / 'current'
@@ -281,7 +323,7 @@ class RealRun(Harness):
         self.assertEqual(len(stops), 3)
         self.assertEqual(starts, ['start avranaparty-games', 'start avranaparty-arcade', 'start avrana-party-core'])
         self.assertLess(calls.index(stops[-1]), calls.index(starts[0]))
-        backups = list((Path(self.temp.name) / 'backups').iterdir())
+        backups = [d for d in (Path(self.temp.name) / 'backups').iterdir() if d.is_dir()]
         self.assertEqual(len(backups), 1)
         self.assertEqual(manifest.read(backups[0] / 'before.json')['party']['sha'], self.before_party)
 
@@ -447,6 +489,186 @@ class Interrupted(Harness):
         self.assertFalse(list((Path(self.temp.name) / 'backups').glob('deploy.journal.tmp.*')))
 
 
+class NginxSite(Harness):
+    """AVR-271: the nginx site file of the deployed commit is part of the deployment unit. It is read
+    from Git, installed atomically, checked with `nginx -t`, reloaded; any failure puts the previous
+    file back and fails the deployment before or as part of the rollback."""
+
+    def target_site(self):
+        return subprocess.run(['git', '-C', str(self.origin), 'show', f'{self.target_party}:avrana-party.nginx'],
+                              check=True, capture_output=True, env=self.genv).stdout
+
+    def nginx_calls(self):
+        return self.nginx_log.read_text().splitlines() if self.nginx_log.exists() else []
+
+    def test_a_differing_site_file_is_installed_tested_and_reloaded_before_anything_stops(self):
+        import hashlib
+        from avrana.ops import manifest
+        self.assertNotEqual(self.site_before, self.target_site())
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.site.read_bytes(), self.target_site())
+        self.assertEqual(self.nginx_calls(), ['nginx -t'])
+        calls = self.calls()
+        self.assertLess(calls.index('reload nginx'), calls.index('stop avrana-party-core'))   # fails fast: before any stop
+        backup = [d for d in (Path(self.temp.name) / 'backups').iterdir() if d.is_dir()][0]
+        self.assertEqual((backup / 'nginx-site-before').read_bytes(), self.site_before)       # next to the deploy backup
+        doc = manifest.read(self.manifest_path)
+        self.assertEqual(doc['nginx_site']['status'], 'installed')
+        self.assertEqual(doc['nginx_site']['sha256'], hashlib.sha256(self.target_site()).hexdigest())
+        self.assertEqual(doc['deploy_options']['rollback'], None)
+        self.assertEqual(self.journal()['phase'], 'smoke-skipped')
+        self.assertFalse(list(self.site.parent.glob('avrana-party.new.*')))                   # no staging file left
+
+    def test_a_site_file_that_already_matches_is_left_alone(self):
+        from avrana.ops import manifest
+        self.site.write_bytes(self.target_site())
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.nginx_calls(), [])
+        self.assertNotIn('reload nginx', self.calls())
+        self.assertEqual(manifest.read(self.manifest_path)['nginx_site']['status'], 'unchanged')
+
+    def test_nginx_t_rejecting_the_new_file_restores_the_old_one_and_names_the_missing_prerequisite(self):
+        """The games.avrana.net certificate is not on the appliance yet (AVR-319): nginx -t fails."""
+        reject = self.target_site() + b'# FAKE-NGINX-REJECT\n'
+        (self.origin / 'avrana-party.nginx').write_bytes(reject)
+        self.run_git(self.origin, 'commit', '-q', '-am', 'a site that names a missing certificate')
+        bad = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        r = self.deploy(bad, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(self.site.read_bytes(), self.site_before)                      # the previous file is back
+        self.assertEqual(self.nginx_calls(), ['nginx -t', 'nginx -t'])                  # rejected, then the restored one tested
+        self.assertEqual(self.calls().count('reload nginx'), 1)                         # ...and reloaded
+        self.assertIn('nginx -t REJECTED', r.stdout)
+        self.assertIn('cannot load certificate', r.stdout)
+        self.assertIn('MISSING PREREQUISITE', r.stdout)
+        self.assertIn('docs/runbooks/game-origin.md', r.stdout)
+        self.assertFalse([c for c in self.calls() if c.startswith('stop ')])            # nothing was stopped
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+        self.assertFalse(self.manifest_path.exists())
+        self.assertEqual(self.journal()['phase'], 'rolled-back')
+
+    def test_a_failed_reload_restores_the_old_file_and_fails_the_deployment(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_RELOAD='once')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('nginx reload FAILED', r.stdout)
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.calls().count('reload nginx'), 2)                         # the failed one, the restore
+        self.assertFalse(self.manifest_path.exists())
+
+    def test_a_reload_that_keeps_failing_means_the_restore_did_not_finish(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_RELOAD='always')
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertIn('ROLLBACK INCOMPLETE: nginx did not accept (or reload)', r.stdout)
+        self.assertEqual(self.site.read_bytes(), self.site_before)                      # the file is back even so
+        self.assertEqual(self.journal()['phase'], 'rollback-failed')
+
+    def test_a_failure_after_the_install_restores_site_file_and_checkouts_together(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_UNIT='avrana-party-core')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+        self.assertEqual(self.calls().count('reload nginx'), 2)                         # install, restore
+        self.assertEqual(self.nginx_calls(), ['nginx -t', 'nginx -t'])
+
+    def test_a_signal_right_after_the_site_install_restores_it(self):
+        code, out = self.deploy_interrupted(self.target_party, self.target_games, 'site-installed', signal.SIGTERM, '--skip-smoke')
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.journal()['phase'], 'rolled-back')
+        self.assertFalse([c for c in self.calls() if c.startswith('stop ')])
+
+    def test_a_site_file_that_did_not_exist_is_removed_again_on_failure(self):
+        self.site.unlink()
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_UNIT='avrana-party-core')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(self.site.exists())
+
+    def test_dry_run_reports_the_difference_without_changing_anything(self):
+        r = self.deploy(self.target_party, self.target_games, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r'nginx site: DIFFERS from avrana-party.nginx of \w+ \(live \d+ lines, deployed \d+; \+1 -0\)')
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.nginx_calls(), [])
+        self.assertEqual(self.calls(), [])
+        self.site.write_bytes(self.target_site())
+        r = self.deploy(self.target_party, self.target_games, '--dry-run')
+        self.assertIn('already equals avrana-party.nginx', r.stdout)
+
+    def test_the_site_file_can_be_left_alone_and_the_manifest_says_so(self):
+        from avrana.ops import manifest
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', '--skip-nginx-site')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.nginx_calls(), [])
+        doc = manifest.read(self.manifest_path)
+        self.assertEqual(doc['nginx_site']['status'], 'skipped')
+        self.assertTrue(doc['deploy_options']['skip_nginx_site'] and doc['deploy_options']['skip_smoke'])
+
+
+class Detached(Harness):
+    """AVR-271: a real run survives its controlling terminal. The launcher only follows a log."""
+
+    def wait_for(self, predicate, what, seconds=120):
+        import time
+        deadline = time.time() + seconds
+        while not predicate():
+            if time.time() > deadline:
+                self.fail(f'timed out waiting for {what}')
+            time.sleep(0.1)
+
+    def test_a_detached_run_prints_its_log_and_returns_the_exit_code(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', AVRANA_DEPLOY_DETACH='1')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('detaching', r.stdout)
+        self.assertIn('smoke checks skipped', r.stdout)                       # the run's own output, followed
+        logs = list((Path(self.temp.name) / 'backups').glob('deploy-*.log'))
+        self.assertEqual(len(logs), 1)
+        self.assertIn('smoke checks skipped', logs[0].read_text())
+        r = self.deploy(self.target_party, 'f' * 40, '--skip-smoke', AVRANA_DEPLOY_DETACH='1')
+        self.assertNotEqual(r.returncode, 0)                                  # a refusal still fails the command
+
+    def test_a_dropped_session_does_not_stop_the_deployment(self):
+        import signal
+        (self.hooks / 'pause-at-stopped-services').write_text('')
+        proc = subprocess.Popen([BASH, str(SCRIPT), '--party', self.target_party, '--games', self.target_games, '--skip-smoke'],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=dict(self.env, AVRANA_DEPLOY_DETACH='1', AVRANA_DEPLOY_TEST_HOOK_DIR=str(self.hooks)))
+        self.wait_for((self.hooks / 'reached-stopped-services').exists, 'the deployment to stop its services')
+        pid = int(self.journal()['pid'])
+        proc.send_signal(signal.SIGHUP)                                       # the SSH session dies
+        proc.communicate(timeout=60)
+        os.kill(pid, 0)                                                       # the deployment itself is alive
+        status = subprocess.run([BASH, str(SCRIPT), '--status'], capture_output=True, text=True, env=self.env)
+        self.assertIn("RUNNING", status.stdout, status.stdout)
+        (self.hooks / 'pause-at-stopped-services').unlink()                   # let it go on
+        self.wait_for(lambda: (self.journal() or {}).get('phase') == 'smoke-skipped', 'the deployment to finish')
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        self.assertTrue(self.manifest_path.exists())
+
+    def test_status_names_the_phase_where_a_killed_deployment_stopped(self):
+        import signal
+        status = subprocess.run([BASH, str(SCRIPT), '--status'], capture_output=True, text=True, env=self.env)
+        self.assertEqual(status.returncode, 0)
+        self.assertIn('no journal', status.stdout)
+        (self.hooks / 'pause-at-switched').write_text('')
+        proc = subprocess.Popen([BASH, str(SCRIPT), '--party', self.target_party, '--games', self.target_games, '--skip-smoke'],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=dict(self.env, AVRANA_DEPLOY_TEST_HOOK_DIR=str(self.hooks)))
+        self.wait_for((self.hooks / 'reached-switched').exists, 'the switch')
+        proc.kill()                                                           # SIGKILL: no trap can run
+        proc.communicate()
+        out = ''
+        def interrupted():
+            nonlocal out
+            out = subprocess.run([BASH, str(SCRIPT), '--status'], capture_output=True, text=True, env=self.env).stdout
+            return 'INTERRUPTED' in out
+        self.wait_for(interrupted, 'status to see a dead deployment', 30)
+        self.assertIn("phase 'switched'", out)
+        self.assertIn('--recover', out)
+
+
 class FirstRunFromACheckoutWithoutTheTooling(Harness):
     '''AVR-262: the appliance ran a commit from before avrana.ops and ops/deploy.sh existed. The
     script (from the target commit) must take it forward, roll it back and take it back again
@@ -475,7 +697,7 @@ class FirstRunFromACheckoutWithoutTheTooling(Harness):
         self.assertEqual((doc['party']['sha'], doc['games']['sha']), (self.new, self.target_games))
         self.assertEqual(doc['tool']['party_sha'], self.new)
         self.assertEqual(doc['web_release']['commit'], self.new)
-        backups = list((Path(self.temp.name) / 'backups').iterdir())
+        backups = [d for d in (Path(self.temp.name) / 'backups').iterdir() if d.is_dir()]
         self.assertEqual(manifest.read(backups[0] / 'before.json')['party']['sha'], self.old)
         self.assertEqual(len([c for c in self.calls() if c.startswith('start ')]), 3)
 

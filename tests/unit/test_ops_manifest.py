@@ -118,6 +118,33 @@ class Files(unittest.TestCase):
         if os.name == 'posix':
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o644)
 
+    def test_the_nginx_site_and_the_flags_are_recorded_additively_and_validated(self):
+        """AVR-271: which site file is live (its hash), and every flag the deployment ran with."""
+        manifest.write(self.path, sample())
+        doc = manifest.read(self.path)
+        self.assertNotIn('nginx_site', doc)                                  # older manifests stay valid
+        self.assertNotIn('deploy_options', doc)
+        digest = 'ab' * 32
+        manifest.record_deploy_info(self.path, 'installed', digest, ['skip_smoke', 'force_busy'], 'auto',
+                                    now='2026-10-12T00:00:00Z')
+        doc = manifest.read(self.path)
+        self.assertEqual(doc['nginx_site'], {'status': 'installed', 'sha256': digest, 'at': '2026-10-12T00:00:00Z'})
+        self.assertEqual({k for k, v in doc['deploy_options'].items() if v is True}, {'skip_smoke', 'force_busy'})
+        self.assertEqual(doc['deploy_options']['rollback'], 'auto')
+        self.assertEqual(set(doc['deploy_options']) - {'rollback'}, set(manifest.OPTION_NAMES))
+        for bad in (dict(doc, nginx_site={'status': 'maybe', 'sha256': None, 'at': '2026-10-12T00:00:00Z'}),
+                    dict(doc, nginx_site={'status': 'installed', 'sha256': 'xyz', 'at': '2026-10-12T00:00:00Z'}),
+                    dict(doc, deploy_options={'skip_smoke': 'yes'}),
+                    dict(doc, deploy_options={'rollback': 'sideways'}),
+                    dict(doc, deploy_options={'invented': True})):
+            self.assertTrue(manifest.validate(bad), bad)
+        self.assertEqual(manifest.main(['deploy-info', str(self.path), '--nginx-status', 'skipped',
+                                        '--option', 'skip_nginx_site', '--option', 'no_auto_rollback']), 0)
+        doc = manifest.read(self.path)
+        self.assertEqual((doc['nginx_site']['status'], doc['nginx_site']['sha256']), ('skipped', None))
+        self.assertTrue(doc['deploy_options']['skip_nginx_site'] and doc['deploy_options']['no_auto_rollback'])
+        self.assertIsNone(doc['deploy_options']['rollback'])
+
     def test_the_contract_check_is_recorded_additively_and_validated(self):
         manifest.write(self.path, sample())
         self.assertNotIn('contract_check', manifest.read(self.path))       # older manifests stay valid

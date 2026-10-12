@@ -45,10 +45,19 @@ backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
 party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
 party_host=${AVRANA_PARTY_HOST:-party.avrana.net}
 checkout_user=${AVRANA_CHECKOUT_USER:-cody}
+journal_file=$backup_root/deploy.journal
+# The nginx site file is installed by this script (AVR-271) and validated by `nginx -t` first.
+nginx_site=${AVRANA_NGINX_SITE:-/etc/nginx/sites-available/avrana-party}
+nginx_enabled=${AVRANA_NGINX_ENABLED:-/etc/nginx/sites-enabled/avrana-party}
+nginx_bin=${AVRANA_NGINX:-nginx}
+lock_file=${AVRANA_DEPLOY_LOCK:-/run/lock/avrana-deploy.lock}
 party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
 games_units=(avranaparty-games)                      # code in the games repository
 
 party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0 skip_contract=0
+status_only=0 skip_nginx=0
+self=$(readlink -f "$0")
+orig_args=("$@")
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -65,10 +74,50 @@ while (($#)); do
         --force-busy) force_busy=1; shift ;;
         --skip-smoke) skip_smoke=1; shift ;;
         --skip-contract-check) skip_contract=1; shift ;;
+        --status) status_only=1; shift ;;
+        --skip-nginx-site) skip_nginx=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument $1 (see --help)" ;;
     esac
 done
+
+# journal_phase_kind <phase>: terminal (the run ended), open (it did not), or none.
+journal_phase_kind() {
+    case $1 in
+        smoke-passed|smoke-skipped|smoke-failed|rolled-back|rollback-failed) echo terminal ;;
+        '') echo none ;;
+        *) echo open ;;
+    esac
+}
+journal_value() { sed -n "s/^$1=//p" "$journal_file" 2>/dev/null | head -n1; }
+# deploy_running: true while another deployment holds the lock.
+deploy_running() {
+    command -v flock >/dev/null || return 1
+    [[ -e $lock_file ]] || return 1
+    ! ( flock -n 9 ) 9>"$lock_file" 2>/dev/null
+}
+# --status: where the last deployment stopped. Read-only; needs no root and no SHAs.
+status_cmd() {
+    local phase kind
+    echo "deploy journal: $journal_file"
+    if [[ ! -f $journal_file ]]; then
+        echo 'no deployment has been run with this script on this machine (no journal)'
+        return 0
+    fi
+    sed 's/^/  /' "$journal_file"
+    phase=$(journal_value phase); kind=$(journal_phase_kind "$phase")
+    if deploy_running; then
+        echo "RUNNING: a deployment holds the lock now (pid $(journal_value pid)); follow it with: tail -f $(ls -t "$backup_root"/deploy-*.log 2>/dev/null | head -n1)"
+    elif [[ $kind == open ]]; then
+        echo "INTERRUPTED: the last deployment died at phase '$phase' and nothing restored it."
+        echo "  Put the machine back to a known state with: sudo bash $self --recover   (docs/runbooks/deploy.md)"
+        echo "  Phases committed/auto-rollback mean the new revision was applied; the others mean it is half-switched."
+    else
+        echo "last deployment ended at phase '$phase' (a finished run)."
+    fi
+}
+if [[ $status_only -eq 1 ]]; then status_cmd; exit 0; fi
+
 [[ $party_sha =~ ^[0-9a-f]{40}$ ]] || die '--party needs a full 40-character commit SHA'
 [[ $games_sha =~ ^[0-9a-f]{40}$ ]] || die '--games needs a full 40-character commit SHA'
 # AVRANA_DEPLOY_UNPRIVILEGED=1 and AVRANA_SYSTEMCTL exist for the automated test of this script
@@ -110,6 +159,33 @@ link_release() {
 }
 build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 
+# ---- survive the controlling terminal -------------------------------------------------------------
+# A real run re-executes itself in its own session (setsid) with all output in a log file, and this
+# process only follows that log. A dropped SSH session (SIGHUP) then kills the follower, not the
+# deployment; Ctrl-C detaches the same way; SIGTERM to this process is passed on, which rolls the
+# deployment back. AVRANA_DEPLOY_DETACH=0 keeps it in the foreground (the traps below still apply).
+if [[ $dry_run -eq 0 && -z ${AVRANA_DEPLOY_DETACHED:-} && ${AVRANA_DEPLOY_DETACH:-1} != 0 ]]; then
+    if command -v setsid >/dev/null; then
+        install -d -m 0750 "$backup_root"
+        run_log=$backup_root/deploy-$(date -u +%Y%m%dT%H%M%SZ).log
+        log "detaching: the deployment keeps running if this session drops. Log: $run_log"
+        log "  follow it again: sudo tail -f $run_log      result so far: sudo bash $self --status"
+        AVRANA_DEPLOY_DETACHED=1 setsid bash "$self" ${orig_args[@]+"${orig_args[@]}"} > "$run_log" 2>&1 < /dev/null &
+        child=$!
+        tail -n +1 -f --pid="$child" "$run_log" &
+        follower=$!
+        trap 'echo "[deploy] this session let go; the deployment (pid $child) continues. Log: $run_log" >&2; kill "$follower" 2>/dev/null; exit 130' INT HUP
+        trap 'kill -TERM "$child" 2>/dev/null' TERM
+        while :; do                      # a trapped signal interrupts `wait`: go back to waiting
+            rc=0; wait "$child" || rc=$?
+            kill -0 "$child" 2>/dev/null || break
+        done
+        wait "$follower" 2>/dev/null || true
+        exit "$rc"
+    fi
+    log 'WARNING: setsid not found; running in the foreground (a dropped session is handled by the traps only)'
+fi
+
 # ---- state, journal, traps ---------------------------------------------------------------------
 # One trap function owns every way out of this script, so the restore runs once and in order:
 #   - a failure (set -e), a `die`, or a signal (HUP/INT/TERM: the SSH session dying, Ctrl-C, kill)
@@ -121,8 +197,7 @@ build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 # SIGKILL and power loss cannot be trapped: the journal (below) is what the next run reads.
 stopped=() backup='' armed=0 committed=0 rollback_done=0 sig='' pair=''
 start_order=(avranaparty-games avranaparty-arcade avrana-party-core)   # providers first, then the party
-journal_file=$backup_root/deploy.journal
-declare -A J=()
+declare -gA J=()      # -g: main() is a function, and the EXIT trap runs after its locals are gone
 
 # The journal: where this run is, written atomically (temp file, fsync, rename) at every phase, as
 # KEY=VALUE lines that are only ever read as data. Terminal phases: smoke-passed, smoke-skipped,
@@ -175,6 +250,80 @@ report_units() {
     journal_note "active=${up[*]:-}" "inactive=${down[*]:-}"
 }
 
+# ---- the nginx site file: part of the deployment unit ---------------------------------------------
+# The site file of the deployed Party commit is read from Git (not from a checkout), compared with
+# the live one, and installed before anything is stopped: written atomically beside the live file,
+# `nginx -t`, reload. Any failure restores the previous file (and tests and reloads that), and
+# fails the deployment, so the site file and the web build always go back together.
+site_tmp='' site_state='' nginx_status=not_managed nginx_sha='' nginx_replaced=0
+plan_site() {
+    local live_lines new_lines added removed
+    if [[ $skip_nginx -eq 1 ]]; then
+        nginx_status=skipped
+        log 'nginx site: not managed in this run (--skip-nginx-site); the manifest says so'
+        return 0
+    fi
+    site_tmp=$(mktemp)
+    if ! g "$party_checkout" show "$party_sha:avrana-party.nginx" > "$site_tmp" 2>/dev/null || [[ ! -s $site_tmp ]]; then
+        rm -f "$site_tmp"; site_tmp=''
+        log "nginx site: $party_sha has no avrana-party.nginx; the live site file is left alone"
+        return 0
+    fi
+    new_lines=$(( $(wc -l < "$site_tmp") ))
+    if [[ ! -e $nginx_site ]]; then
+        site_state=absent
+        log "nginx site: $nginx_site is absent; the deployed file ($new_lines lines) would be created"
+    elif cmp -s "$nginx_site" "$site_tmp"; then
+        site_state=match
+        log "nginx site: the live file already equals avrana-party.nginx of $party_sha"
+    else
+        site_state=differs
+        live_lines=$(( $(wc -l < "$nginx_site") ))
+        added=$(diff "$nginx_site" "$site_tmp" | grep -c '^>' || true)
+        removed=$(diff "$nginx_site" "$site_tmp" | grep -c '^<' || true)
+        log "nginx site: DIFFERS from avrana-party.nginx of $party_sha (live $live_lines lines, deployed $new_lines; +$added -$removed)"
+        log "            it is installed, checked with nginx -t and reloaded before any service stops"
+    fi
+}
+site_hash() { [[ -f $1 ]] && sha256sum "$1" | cut -d' ' -f1 || true; }
+install_site() {
+    local out stage
+    [[ $EUID -eq 0 || ${AVRANA_DEPLOY_UNPRIVILEGED:-0} == 1 ]] || die 'the nginx site file needs root; nothing was installed'
+    command -v "$nginx_bin" >/dev/null || die "$nginx_bin not found: the site file cannot be validated, so it is not installed (install nginx, or --skip-nginx-site)"
+    [[ -d $(dirname "$nginx_site") ]] || die "$(dirname "$nginx_site") does not exist: no nginx site directory (--skip-nginx-site to leave the site file alone)"
+    if [[ -e $nginx_site ]]; then cp -p "$nginx_site" "$backup/nginx-site-before"; else : > "$backup/nginx-site-before.absent"; fi
+    stage=$nginx_site.new.$$
+    install -m 0644 "$site_tmp" "$stage"
+    { sync "$stage" 2>/dev/null || true; }
+    mv -f "$stage" "$nginx_site"
+    nginx_replaced=1; journal_note nginx_replaced=1
+    if [[ -e $nginx_enabled && $(readlink -f "$nginx_enabled") != "$(readlink -f "$nginx_site")" ]]; then
+        log "WARNING: $nginx_enabled does not point at $nginx_site; nginx may not serve the file just installed"
+    fi
+    if ! out=$("$nginx_bin" -t 2>&1); then
+        log "nginx -t REJECTED the new site file (avrana-party.nginx of $party_sha); the previous file is put back:"
+        printf '%s\n' "$out" | sed 's/^/    /'
+        printf '%s\n' "$out" | grep -E 'No such file|cannot load|not found' | head -n 3 | sed 's/^/MISSING PREREQUISITE: /' || true
+        log 'A file the site refers to is probably missing on this appliance (for example the games.avrana.net'
+        log 'certificate, AVR-319): install it first, see docs/runbooks/game-origin.md; or deploy with --skip-nginx-site.'
+        false
+    fi
+    systemctl reload nginx || { log 'nginx reload FAILED after a good nginx -t'; false; }
+    log "nginx site installed and reloaded: $nginx_site"
+}
+restore_site() {
+    local stage
+    [[ $nginx_replaced -eq 1 ]] || return 0
+    if [[ -f $backup/nginx-site-before ]]; then
+        stage=$nginx_site.new.$$
+        { cp -p "$backup/nginx-site-before" "$stage" && mv -f "$stage" "$nginx_site"; }             || { log 'ROLLBACK INCOMPLETE: the previous nginx site file was not restored'; rollback_ok=0; return 0; }
+    else
+        rm -f "$nginx_site"                    # there was none before this run
+    fi
+    if "$nginx_bin" -t >/dev/null 2>&1 && systemctl reload nginx; then log 'previous nginx site file restored and reloaded'
+    else log 'ROLLBACK INCOMPLETE: nginx did not accept (or reload) the restored site file'; rollback_ok=0; fi
+}
+
 # rollback_body <rc>: put back what this run changed. Never --force or reset --hard: local changes
 # (only possible with --allow-dirty) survive, and no branch was moved by this script, so returning
 # to the earlier ref restores the exact state. Sets $rollback_ok.
@@ -199,6 +348,7 @@ rollback_body() {
                 || { log "ROLLBACK INCOMPLETE: $root/current not restored"; rollback_ok=0; }
         fi
     done
+    restore_site
     start_stopped restart || rollback_ok=0
     log "after rollback: party $(g "$party_checkout" rev-parse HEAD), games $(g "$games_checkout" rev-parse HEAD)"
     log "expected:       party $before_party, games $before_games. No manifest was written."
@@ -211,6 +361,7 @@ on_exit() {
     trap '' HUP INT TERM        # a second signal must not interrupt the restore
     trap - EXIT
     [[ -z $pair ]] || rm -rf "$pair"
+    [[ -z $site_tmp ]] || rm -f "$site_tmp"
     if [[ $armed -eq 1 && $committed -eq 0 && $rollback_done -eq 0 ]]; then rollback_body "$rc"; fi
     if [[ $armed -eq 1 ]]; then
         report_units
@@ -237,7 +388,7 @@ trap on_exit EXIT
 # ---- 1. refuse unsafe states -----------------------------------------------------------------
 if command -v flock >/dev/null; then
     # The braces keep 2>/dev/null from becoming this shell's stderr for the rest of the run.
-    { exec 9>/run/lock/avrana-deploy.lock; } 2>/dev/null || exec 9>/tmp/avrana-deploy.lock
+    { exec 9>"$lock_file"; } 2>/dev/null || exec 9>/tmp/avrana-deploy.lock
     flock -n 9 || die 'another deployment is running'
 fi
 
@@ -314,6 +465,7 @@ restart=()
 [[ $games_changed -eq 1 ]] && restart+=("${games_units[@]}") || true
 log "plan: party $before_party -> $party_sha (changed=$party_changed), games $before_games -> $games_sha (changed=$games_changed)"
 log "plan: restart ${restart[*]:-nothing}; web release $([[ $party_changed -eq 1 ]] && echo yes || echo no)"
+plan_site
 if [[ $dry_run -eq 1 ]]; then
     # Up to here the script only read state and fetched remote refs: no file, checkout, service,
     # backup or manifest was touched.
@@ -348,6 +500,13 @@ log "before-state recorded in $backup"
 armed=1
 journal started "pid=$$" "backup=$backup" "party_target=$party_sha" "games_target=$games_sha"     "before_party=$before_party" "before_games=$before_games" "restart=${restart[*]:-}"
 hook started
+if [[ -n $site_tmp && $site_state != match ]]; then
+    install_site; nginx_status=installed
+    journal site-installed; hook site-installed
+elif [[ -n $site_tmp ]]; then
+    nginx_status=unchanged
+fi
+nginx_sha=$(site_hash "$nginx_site")
 
 for unit in ${restart[@]+"${restart[@]}"}; do
     stopped+=("$unit")          # recorded first: a stop that fails half-way still gets restarted
@@ -391,6 +550,7 @@ journal committed; hook committed
 # A target whose tooling predates the subcommand cannot record it: warned about, not fatal.
 py -m avrana.ops.manifest contract-check "$manifest" "$contract_check" \
     || log 'WARNING: the manifest tooling of this release cannot record the contract check result'
+py -m avrana.ops.manifest deploy-info "$manifest" --nginx-status "$nginx_status"         ${nginx_sha:+--nginx-sha256 "$nginx_sha"}         $([[ $skip_smoke -eq 1 ]] && echo --option skip_smoke) $([[ $skip_contract -eq 1 ]] && echo --option skip_contract_check)         $([[ $force_busy -eq 1 ]] && echo --option force_busy) $([[ $allow_dirty -eq 1 ]] && echo --option allow_dirty)         $([[ $allow_branch -eq 1 ]] && echo --option allow_branch) $([[ $skip_nginx -eq 1 ]] && echo --option skip_nginx_site)     || log 'WARNING: the manifest tooling of this release cannot record the nginx site and the options'
 cp "$manifest" "$backup/after.json" || log "WARNING: could not copy the manifest to $backup/after.json"
 # The manifest is public (0644; /party/api/status serves it), but on the appliance its directory
 # was created 0700 for the ACME state beside it, so no service user could reach the file. Grant
