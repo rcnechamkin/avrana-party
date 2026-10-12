@@ -1,5 +1,6 @@
 """ops/deploy.sh: argument validation and a dry run against throwaway checkouts. The real thing
 runs as root on the Pi (docs/runbooks/deploy.md); nothing here touches services."""
+import json
 import os
 from pathlib import Path
 import shutil
@@ -190,6 +191,14 @@ fi
 exit 0
 """
 
+# Stands for the smoke checks (AVRANA_DEPLOY_SMOKE): each call consumes the first line of $SMOKE_QUEUE
+# (`pass` or `fail`); an empty queue fails.
+SMOKE_STUB = """#!/usr/bin/env bash
+line=$(head -n1 "$SMOKE_QUEUE"); sed -i 1d "$SMOKE_QUEUE"
+echo "smoke stub: ${line:-fail}"
+[[ $line == pass ]]
+"""
+
 # Stands for nginx: `-t` rejects a site file that contains FAKE-NGINX-REJECT the way the real one rejects a
 # site that names a certificate file this appliance does not have.
 NGINX_SHIM = """#!/usr/bin/env bash
@@ -270,6 +279,13 @@ class Harness(unittest.TestCase):
 
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def target_site(self):
+        return subprocess.run(['git', '-C', str(self.origin), 'show', f'{self.target_party}:avrana-party.nginx'],
+                              check=True, capture_output=True, env=self.genv).stdout
+
+    def nginx_calls(self):
+        return self.nginx_log.read_text().splitlines() if self.nginx_log.exists() else []
 
     def starts(self):
         """Every attempt to bring a unit up: a plain start, or the restart a rollback uses."""
@@ -482,7 +498,7 @@ class Interrupted(Harness):
         r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         phases = [l.split('phase: ')[1] for l in r.stdout.splitlines() if 'phase: ' in l]
-        self.assertEqual(phases, ['started', 'stopped-services', 'switched', 'restarted', 'committed', 'smoke-skipped'])
+        self.assertEqual(phases, ['started', 'site-installed', 'stopped-services', 'switched', 'restarted', 'committed', 'smoke-skipped'])
         j = self.journal()
         self.assertEqual((j['party_target'], j['games_target'], j['before_party']),
                          (self.target_party, self.target_games, self.before_party))
@@ -493,13 +509,6 @@ class NginxSite(Harness):
     """AVR-271: the nginx site file of the deployed commit is part of the deployment unit. It is read
     from Git, installed atomically, checked with `nginx -t`, reloaded; any failure puts the previous
     file back and fails the deployment before or as part of the rollback."""
-
-    def target_site(self):
-        return subprocess.run(['git', '-C', str(self.origin), 'show', f'{self.target_party}:avrana-party.nginx'],
-                              check=True, capture_output=True, env=self.genv).stdout
-
-    def nginx_calls(self):
-        return self.nginx_log.read_text().splitlines() if self.nginx_log.exists() else []
 
     def test_a_differing_site_file_is_installed_tested_and_reloaded_before_anything_stops(self):
         import hashlib
@@ -605,6 +614,214 @@ class NginxSite(Harness):
         doc = manifest.read(self.manifest_path)
         self.assertEqual(doc['nginx_site']['status'], 'skipped')
         self.assertTrue(doc['deploy_options']['skip_nginx_site'] and doc['deploy_options']['skip_smoke'])
+
+
+class LastKnownGood(Harness):
+    """AVR-271: the last deployment whose smoke PASSED is an explicit record that a failed or
+    skipped-smoke deployment never overwrites; a failed smoke rolls back to it automatically."""
+
+    def setUp(self):
+        super().setUp()
+        self.lkg = self.manifest_path.parent / 'last-known-good.json'
+
+    def smoke(self, *results):
+        root = Path(self.temp.name)
+        queue, stub = root / 'smoke-queue', root / 'smoke-stub'
+        queue.write_text(''.join(r + '\n' for r in results))
+        stub.write_text(SMOKE_STUB)
+        stub.chmod(0o755)
+        self.env.update(AVRANA_DEPLOY_SMOKE=str(stub), SMOKE_QUEUE=str(queue))
+        return queue
+
+    def script(self, *args, **env):
+        return subprocess.run([BASH, str(SCRIPT), *args], capture_output=True, text=True,
+                              env=dict(self.env, **env), timeout=300)
+
+    def record(self):
+        return json.loads(self.lkg.read_text())
+
+    def manifest(self):
+        from avrana.ops import manifest
+        return manifest.read(self.manifest_path)
+
+    def test_a_passed_smoke_records_it_and_nothing_else_overwrites_it(self):
+        import hashlib
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record()
+        self.assertEqual((rec['party_sha'], rec['games_sha']), (self.target_party, self.target_games))
+        self.assertEqual(rec['web_release']['commit'], self.target_party)
+        self.assertEqual(rec['nginx_site_sha256'], hashlib.sha256(self.target_site()).hexdigest())
+        self.assertTrue(rec['smoke_at'] and rec['recorded_at'])
+        self.assertEqual(self.lkg.stat().st_mode & 0o777, 0o644)
+        # skipped smoke: another revision is running, the record stays
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('NOT updated', r.stdout)
+        self.assertEqual(self.record()['party_sha'], self.target_party)
+        # failed smoke with the rollback switched off: same
+        self.smoke('fail')
+        r = self.deploy(self.before_party, self.target_games, '--no-auto-rollback')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertEqual(self.record()['party_sha'], self.target_party)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)    # kept for debugging
+        doc = self.manifest()
+        self.assertEqual(doc['smoke']['status'], 'failed')
+        self.assertTrue(doc['deploy_options']['no_auto_rollback'])                            # and on the record
+        self.assertIn('--rollback', r.stdout)
+
+    def test_a_failed_smoke_rolls_back_to_the_last_known_good_and_reports_both_results(self):
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        self.assertEqual(self.site.read_bytes(), self.target_site())
+        self.smoke('fail', 'pass')
+        r = self.deploy(self.before_party, self.before_games)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)                      # failed, rolled back cleanly
+        self.assertIn('smoke FAILED', r.stdout)
+        self.assertIn('AUTOMATIC ROLLBACK to the last known good', r.stdout)
+        self.assertIn('DEPLOYMENT FAILED, ROLLED BACK', r.stdout)
+        self.assertIn('its smoke PASSED', r.stdout)
+        # everything is the last known good again: checkouts, code releases, web build, site file
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.target_games)
+        self.assertEqual(self.party_release.resolve().name, self.target_party)
+        self.assertEqual(self.site.read_bytes(), self.target_site())
+        doc = self.manifest()
+        self.assertEqual((doc['party']['sha'], doc['smoke']['status']), (self.target_party, 'passed'))
+        self.assertEqual(doc['web_release']['commit'], self.target_party)
+        self.assertEqual(doc['deploy_options']['rollback'], 'auto')
+        self.assertEqual(doc['nginx_site']['sha256'], self.record()['nginx_site_sha256'])
+        # the failed deployment's own record is kept
+        failed = [d / 'failed-manifest.json' for d in (Path(self.temp.name) / 'backups').iterdir()
+                  if d.is_dir() and (d / 'failed-manifest.json').exists()]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(json.loads(failed[0].read_text())['party']['sha'], self.before_party)
+        self.assertEqual(self.journal()['phase'], 'auto-rolled-back')
+        self.assertEqual(self.record()['party_sha'], self.target_party)
+
+    def test_when_the_rolled_back_revision_fails_its_smoke_too_a_person_is_needed_and_it_stops_there(self):
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        queue = self.smoke('fail', 'fail', 'pass')                                  # a third result must never be used
+        r = self.deploy(self.before_party, self.before_games)
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertIn('ROLLBACK APPLIED BUT ITS SMOKE ALSO FAILED', r.stdout)
+        self.assertEqual(r.stdout.count('AUTOMATIC ROLLBACK'), 1)                  # no loop
+        self.assertEqual(queue.read_text(), 'pass\n')
+        self.assertEqual(self.journal()['phase'], 'rollback-failed')
+
+    def test_the_first_deployment_ever_keeps_the_old_behaviour(self):
+        self.smoke('fail')
+        r = self.deploy(self.target_party, self.target_games)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('no last known good exists yet', r.stdout)
+        self.assertIn(f'--party {self.before_party} --games {self.before_games}', r.stdout)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        self.assertFalse(self.lkg.exists())
+
+    def test_never_back_to_the_pair_that_just_failed(self):
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        self.smoke('fail')
+        r = self.deploy(self.target_party, self.target_games)                       # the same pair again
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('the very pair that failed', r.stdout)
+        self.assertNotIn('AUTOMATIC ROLLBACK', r.stdout)
+
+    def test_an_appliance_deployed_before_the_record_existed_is_seeded_from_its_running_deployment(self):
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        self.lkg.unlink()                                                           # as on the Pi today
+        self.smoke('fail', 'pass')
+        r = self.deploy(self.before_party, self.before_games)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn('last-known-good seeded from the running deployment', r.stdout)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        # a running deployment that did not pass is no record
+        self.lkg.unlink()
+        self.smoke('fail')
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke')
+        r = self.deploy(self.target_party, self.target_games)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertNotIn('seeded', r.stdout)
+
+    def test_rollback_goes_back_without_any_sha(self):
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no last-known-good record', r.stderr)
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        self.assertEqual(self.deploy(self.before_party, self.before_games, '--skip-smoke').returncode, 0)
+        self.smoke('pass')
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        self.assertEqual(self.site.read_bytes(), self.target_site())
+        doc = self.manifest()
+        self.assertEqual((doc['party']['sha'], doc['deploy_options']['rollback']), (self.target_party, 'manual'))
+        self.assertIn('contract: not applied to a manual', r.stdout)
+        r = self.script('--rollback', '--party', self.target_party)
+        self.assertEqual(r.returncode, 1)
+
+    def test_a_killed_deployment_blocks_the_next_one_and_recover_restores_the_last_known_good(self):
+        import time
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        (self.hooks / 'pause-at-switched').write_text('')
+        proc = subprocess.Popen([BASH, str(SCRIPT), '--party', self.before_party, '--games', self.before_games, '--skip-smoke'],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=dict(self.env, AVRANA_DEPLOY_TEST_HOOK_DIR=str(self.hooks)))
+        deadline = time.time() + 120
+        while not (self.hooks / 'reached-switched').exists():
+            self.assertLess(time.time(), deadline)
+            time.sleep(0.05)
+        proc.kill()                                                                 # SIGKILL: no trap can run
+        proc.communicate()
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)    # half-switched
+        deadline = time.time() + 30
+        while True:                                                                 # until the lock is free again
+            r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+            if 'another deployment is running' not in r.stderr or time.time() > deadline:
+                break
+            time.sleep(0.2)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("died at phase 'switched'", r.stderr)
+        self.assertIn('--recover', r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)    # the evidence is untouched
+        self.smoke('pass')
+        r = self.script('--recover')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.target_games)
+        self.assertEqual(self.site.read_bytes(), self.target_site())
+        self.assertEqual(self.journal()['phase'], 'smoke-passed')
+        self.assertEqual(self.manifest()['deploy_options']['rollback'], 'recover')
+        self.assertEqual(sorted(self.manifest()['restarted']),                      # everything is re-applied
+                         ['avrana-party-core', 'avranaparty-arcade', 'avranaparty-games'])
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke')       # and normal deploys work again
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_recover_without_a_record_returns_to_the_before_state_of_the_dead_deployment(self):
+        import time
+        (self.hooks / 'pause-at-switched').write_text('')
+        proc = subprocess.Popen([BASH, str(SCRIPT), '--party', self.target_party, '--games', self.target_games, '--skip-smoke'],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=dict(self.env, AVRANA_DEPLOY_TEST_HOOK_DIR=str(self.hooks)))
+        deadline = time.time() + 120
+        while not (self.hooks / 'reached-switched').exists():
+            self.assertLess(time.time(), deadline)
+            time.sleep(0.05)
+        proc.kill()
+        proc.communicate()
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        time.sleep(1)
+        self.smoke('pass')
+        r = self.script('--recover')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('recovering to the before-state', r.stdout)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+        self.assertEqual(self.site.read_bytes(), self.site_before)
 
 
 class Detached(Harness):

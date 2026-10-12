@@ -51,11 +51,14 @@ nginx_site=${AVRANA_NGINX_SITE:-/etc/nginx/sites-available/avrana-party}
 nginx_enabled=${AVRANA_NGINX_ENABLED:-/etc/nginx/sites-enabled/avrana-party}
 nginx_bin=${AVRANA_NGINX:-nginx}
 lock_file=${AVRANA_DEPLOY_LOCK:-/run/lock/avrana-deploy.lock}
+# The last deployment whose smoke PASSED (a failed or skipped-smoke deployment never replaces it). It sits
+# beside the manifest, which the status endpoint's service user can read; --rollback goes back to it.
+lkg_file=${AVRANA_LAST_KNOWN_GOOD:-$(dirname "$manifest")/last-known-good.json}
 party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
 games_units=(avranaparty-games)                      # code in the games repository
 
 party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0 skip_contract=0
-status_only=0 skip_nginx=0
+status_only=0 skip_nginx=0 no_auto=0 recover=0 rollback_kind=${AVRANA_DEPLOY_ROLLBACK_KIND:-}
 self=$(readlink -f "$0")
 orig_args=("$@")
 
@@ -76,6 +79,9 @@ while (($#)); do
         --skip-contract-check) skip_contract=1; shift ;;
         --status) status_only=1; shift ;;
         --skip-nginx-site) skip_nginx=1; shift ;;
+        --no-auto-rollback) no_auto=1; shift ;;
+        --rollback) rollback_kind=${rollback_kind:-manual}; shift ;;
+        --recover) rollback_kind=recover; recover=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument $1 (see --help)" ;;
     esac
@@ -90,6 +96,13 @@ journal_phase_kind() {
     esac
 }
 journal_value() { sed -n "s/^$1=//p" "$journal_file" 2>/dev/null | head -n1; }
+lkg_value() {
+    python3 -c 'import json,sys
+try:
+    print(json.load(open(sys.argv[1])).get(sys.argv[2]) or "")
+except Exception:
+    print("")' "$lkg_file" "$1" 2>/dev/null || true
+}
 # deploy_running: true while another deployment holds the lock.
 deploy_running() {
     command -v flock >/dev/null || return 1
@@ -99,6 +112,12 @@ deploy_running() {
 # --status: where the last deployment stopped. Read-only; needs no root and no SHAs.
 status_cmd() {
     local phase kind
+    if [[ -s $lkg_file ]]; then
+        echo "last known good ($lkg_file): party $(lkg_value party_sha), games $(lkg_value games_sha), smoke passed $(lkg_value smoke_at); site file sha256 $(lkg_value nginx_site_sha256)"
+        echo "  go back to it with: sudo bash $self --rollback"
+    else
+        echo "last known good: none recorded ($lkg_file): no deployment has passed its smoke checks yet"
+    fi
     echo "deploy journal: $journal_file"
     if [[ ! -f $journal_file ]]; then
         echo 'no deployment has been run with this script on this machine (no journal)'
@@ -117,6 +136,20 @@ status_cmd() {
     fi
 }
 if [[ $status_only -eq 1 ]]; then status_cmd; exit 0; fi
+
+# --rollback / --recover need no SHAs: the pair is the last known good. A rollback is exactly a
+# deployment of that pair (checkouts, code releases, web build and nginx site file together).
+if [[ -n $rollback_kind ]]; then
+    [[ -z $party_sha && -z $games_sha ]] || die '--rollback and --recover take the SHAs from the last-known-good record; do not pass --party/--games'
+    party_sha=$(lkg_value party_sha); games_sha=$(lkg_value games_sha)
+    if ! [[ $party_sha =~ ^[0-9a-f]{40}$ && $games_sha =~ ^[0-9a-f]{40}$ ]]; then
+        [[ $recover -eq 1 ]] || die "no last-known-good record ($lkg_file): no deployment has passed its smoke checks yet; deploy explicit SHAs"
+        party_sha=$(journal_value before_party); games_sha=$(journal_value before_games)
+        [[ $party_sha =~ ^[0-9a-f]{40}$ && $games_sha =~ ^[0-9a-f]{40}$ ]]             || die "no last-known-good record ($lkg_file) and no usable journal ($journal_file): deploy explicit SHAs"
+        log 'WARNING: no last-known-good record; recovering to the before-state of the deployment that died'
+    fi
+    log "$rollback_kind: target is party $party_sha, games $games_sha"
+fi
 
 [[ $party_sha =~ ^[0-9a-f]{40}$ ]] || die '--party needs a full 40-character commit SHA'
 [[ $games_sha =~ ^[0-9a-f]{40}$ ]] || die '--games needs a full 40-character commit SHA'
@@ -386,10 +419,17 @@ trap 'on_signal TERM 143' TERM
 trap on_exit EXIT
 
 # ---- 1. refuse unsafe states -----------------------------------------------------------------
-if command -v flock >/dev/null; then
+if command -v flock >/dev/null && [[ -z ${AVRANA_DEPLOY_NESTED:-} ]]; then   # a nested rollback inherits the parent's lock
     # The braces keep 2>/dev/null from becoming this shell's stderr for the rest of the run.
     { exec 9>"$lock_file"; } 2>/dev/null || exec 9>/tmp/avrana-deploy.lock
     flock -n 9 || die 'another deployment is running'
+fi
+
+# A run that died (SIGKILL, power) leaves a journal in a phase that is not an end. Do not deploy on top of a
+# half-switched machine and hide the evidence: say where it stopped and how to put it right. --rollback and
+# --recover are the ways to put it right, so they pass; so does the nested rollback of a running deployment.
+if [[ -z ${AVRANA_DEPLOY_NESTED:-} && -z $rollback_kind && -f $journal_file ]]         && [[ $(journal_phase_kind "$(journal_value phase)") == open ]]; then
+    die "the previous deployment died at phase '$(journal_value phase)' and nothing restored it (journal $journal_file); see: sudo bash $self --status, then put the machine back with: sudo bash $self --recover"
 fi
 
 for repo in "$party_checkout" "$games_checkout"; do
@@ -408,7 +448,7 @@ log "before: party $before_party, games $before_games"
 g "$party_checkout" fetch --quiet origin || die 'git fetch origin failed in the Party checkout'
 g "$party_checkout" cat-file -e "$party_sha^{commit}" 2>/dev/null || die "Party commit $party_sha is not fetchable"
 if ! g "$party_checkout" merge-base --is-ancestor "$party_sha" origin/main; then
-    [[ $allow_branch -eq 1 ]] && log "WARNING: $party_sha is not on origin/main (--allow-branch)" \
+    [[ $allow_branch -eq 1 || -n $rollback_kind ]] && log "WARNING: $party_sha is not on origin/main ($([[ -n $rollback_kind ]] && echo "a $rollback_kind goes back to what ran" || echo --allow-branch))" \
         || die "$party_sha is not on origin/main; merge first (or --allow-branch for a supervised test)"
 fi
 g "$games_checkout" fetch --quiet --all 2>/dev/null || true   # the Games clone may come from a bundle
@@ -418,6 +458,9 @@ g "$games_checkout" cat-file -e "$games_sha^{commit}" 2>/dev/null \
 party_changed=0; games_changed=0
 [[ $before_party == "$party_sha" ]] || party_changed=1
 [[ $before_games == "$games_sha" ]] || games_changed=1
+# --recover re-applies everything: after a dead deployment the checkouts, links, web build and units
+# cannot be trusted to agree, so nothing is skipped as "already there".
+[[ $recover -eq 0 ]] || { party_changed=1; games_changed=1; }
 if [[ $party_changed -eq 0 && $games_changed -eq 0 ]]; then
     log 'both checkouts are already at the requested commits'
 fi
@@ -427,7 +470,9 @@ fi
 # forward, a backward and a rollback deployment alike. A commit that predates either is warned
 # about, not refused: those pairs were deployed before the check existed.
 pair='' contract_check=skipped       # recorded in the manifest: compatible | not_checkable | skipped
-if [[ $skip_contract -eq 1 ]]; then
+if [[ -n $rollback_kind ]]; then
+    log "contract: not applied to a $rollback_kind (it returns to a pair that already ran)"
+elif [[ $skip_contract -eq 1 ]]; then
     log 'WARNING: Party <-> Games contract check skipped (--skip-contract-check); the manifest says so'
 else
     pair=$(mktemp -d)                   # removed by on_exit on every way out, a failed archive included
@@ -455,7 +500,7 @@ try:
 except Exception:
     print("unknown")' 2>/dev/null || echo unknown)
 if [[ $busy == busy ]]; then
-    [[ $force_busy -eq 1 ]] && log 'WARNING: a game session is live (--force-busy)' \
+    [[ $force_busy -eq 1 || $recover -eq 1 ]] && log 'WARNING: a game session is live (--force-busy / --recover)' \
         || die 'a game session is live; wait for the party to return home (or --force-busy)'
 fi
 log "party core: $busy"
@@ -486,15 +531,25 @@ tool_sha=$(basename "$tools")
     || log "WARNING: $party_sha predates the deploy tooling; manifest and smoke run from release $tool_sha"
 
 # ---- 2. before-state --------------------------------------------------------------------------
+nginx_before=$(site_hash "$nginx_site")
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup=$backup_root/deploy-$stamp
 install -d -m 0750 "$backup"
+# A copy of this script for the nested rollback below: the file in the checkout changes at step 3.
+if [[ $self != "$backup"/* ]]; then cp "$self" "$backup/deploy.sh" && self_copy=$backup/deploy.sh; else self_copy=$self; fi
 py -m avrana.ops.manifest write --out "$backup/before.json" --party "$party_checkout" \
     --games "$games_checkout" --web-root "$web_root" --allow-dirty --tool-sha "$tool_sha" >/dev/null
 [[ -L $web_root/current ]] && readlink -f "$web_root/current" > "$backup/web-release-before" || true
 [[ -L $party_releases/current ]] && readlink -f "$party_releases/current" > "$backup/party-release-before" || true
 [[ -L $games_releases/current ]] && readlink -f "$games_releases/current" > "$backup/games-release-before" || true
 log "before-state recorded in $backup"
+# An appliance deployed before this record existed: its running deployment, if it passed its smoke checks and
+# is still what is checked out, is the last known good. (Nothing is written when it is not.)
+if [[ ! -s $lkg_file ]]; then
+    py -m avrana.ops.manifest last-known-good seed "$manifest" "$lkg_file" --party "$party_checkout" --games "$games_checkout" \
+        ${nginx_before:+--nginx-sha256 "$nginx_before"} >/dev/null 2>&1 \
+        && log "last-known-good seeded from the running deployment ($lkg_file)" || true
+fi
 
 # ---- 3. stop, update, start (with rollback) ---------------------------------------------------
 armed=1
@@ -550,7 +605,19 @@ journal committed; hook committed
 # A target whose tooling predates the subcommand cannot record it: warned about, not fatal.
 py -m avrana.ops.manifest contract-check "$manifest" "$contract_check" \
     || log 'WARNING: the manifest tooling of this release cannot record the contract check result'
-py -m avrana.ops.manifest deploy-info "$manifest" --nginx-status "$nginx_status"         ${nginx_sha:+--nginx-sha256 "$nginx_sha"}         $([[ $skip_smoke -eq 1 ]] && echo --option skip_smoke) $([[ $skip_contract -eq 1 ]] && echo --option skip_contract_check)         $([[ $force_busy -eq 1 ]] && echo --option force_busy) $([[ $allow_dirty -eq 1 ]] && echo --option allow_dirty)         $([[ $allow_branch -eq 1 ]] && echo --option allow_branch) $([[ $skip_nginx -eq 1 ]] && echo --option skip_nginx_site)     || log 'WARNING: the manifest tooling of this release cannot record the nginx site and the options'
+# How the run went, additively: the nginx site file (and its hash) and every flag that was set.
+info=(--nginx-status "$nginx_status")
+[[ -z $nginx_sha ]] || info+=(--nginx-sha256 "$nginx_sha")
+[[ $skip_smoke -eq 0 ]] || info+=(--option skip_smoke)
+[[ $skip_contract -eq 0 ]] || info+=(--option skip_contract_check)
+[[ $no_auto -eq 0 ]] || info+=(--option no_auto_rollback)
+[[ $force_busy -eq 0 ]] || info+=(--option force_busy)
+[[ $allow_dirty -eq 0 ]] || info+=(--option allow_dirty)
+[[ $allow_branch -eq 0 ]] || info+=(--option allow_branch)
+[[ $skip_nginx -eq 0 ]] || info+=(--option skip_nginx_site)
+[[ -z $rollback_kind ]] || info+=(--rollback-kind "$rollback_kind")
+py -m avrana.ops.manifest deploy-info "$manifest" "${info[@]}" \
+    || log 'WARNING: the manifest tooling of this release cannot record the nginx site and the options'
 cp "$manifest" "$backup/after.json" || log "WARNING: could not copy the manifest to $backup/after.json"
 # The manifest is public (0644; /party/api/status serves it), but on the appliance its directory
 # was created 0700 for the ACME state beside it, so no service user could reach the file. Grant
@@ -564,25 +631,67 @@ else
 fi
 log "deployment manifest written: $manifest"
 
-# ---- 5. smoke ---------------------------------------------------------------------------------
+# ---- 5. smoke, and what a failed smoke does -------------------------------------------------------
+# AVRANA_DEPLOY_SMOKE names a stand-in for the smoke command; it exists for tests/unit/test_deploy_script.py.
+run_smoke() { if [[ -n ${AVRANA_DEPLOY_SMOKE:-} ]]; then "$AVRANA_DEPLOY_SMOKE"; else py -m avrana.ops.smoke; fi; }
 if [[ $skip_smoke -eq 1 ]]; then
     py -m avrana.ops.manifest smoke "$manifest" skipped
     journal smoke-skipped
-    log 'smoke checks skipped (--skip-smoke); the manifest says so'
+    log 'smoke checks skipped (--skip-smoke); the manifest says so; the last known good is NOT updated'
     exit 0
 fi
 sleep 2
-if py -m avrana.ops.smoke | tee "$backup/smoke.txt"; then
+if run_smoke | tee "$backup/smoke.txt"; then
     py -m avrana.ops.manifest smoke "$manifest" passed
+    py -m avrana.ops.manifest last-known-good record "$manifest" "$lkg_file" \
+        || log "WARNING: could not record the last known good ($lkg_file)"
     journal smoke-passed
-    log 'deployment complete; smoke passed. Physical phone acceptance is still a human step.'
-else
-    py -m avrana.ops.manifest smoke "$manifest" failed
-    journal smoke-failed
-    log "deployment applied but smoke FAILED (see $backup/smoke.txt); decide: fix forward or roll back with"
-    log "  sudo bash $party_checkout/ops/deploy.sh --party $before_party --games $before_games"
+    log 'deployment complete; smoke passed; recorded as the last known good. Physical phone acceptance is still a human step.'
+    exit 0
+fi
+py -m avrana.ops.manifest smoke "$manifest" failed
+cp "$manifest" "$backup/failed-manifest.json" || true
+journal smoke-failed
+log "deployment applied but smoke FAILED (see $backup/smoke.txt)"
+manual="sudo bash $party_checkout/ops/deploy.sh --party $before_party --games $before_games"
+lkg_party=$(lkg_value party_sha); lkg_games=$(lkg_value games_sha)
+# Never a loop: a rollback run (or the nested one) never rolls back again, and a record that is the very pair
+# that just failed is not a place to go back to.
+if [[ $no_auto -eq 1 ]]; then
+    log 'the new revision is kept for debugging (--no-auto-rollback). Decide: fix forward, or go back to the last known good with:'
+    log "  sudo bash $party_checkout/ops/deploy.sh --rollback        (or: $manual)"
+    exit 2
+elif [[ -n $rollback_kind ]]; then
+    log "this was a $rollback_kind: it is not rolled back again. The machine runs party $party_sha, games $games_sha with a failing smoke: a person is needed."
+    exit 2
+elif ! [[ $lkg_party =~ ^[0-9a-f]{40}$ && $lkg_games =~ ^[0-9a-f]{40}$ ]]; then
+    log 'no last known good exists yet (no deployment has passed its smoke checks), so there is nothing to roll back to automatically.'
+    log "Decide: fix forward, or go back to the before-state with:  $manual"
+    exit 2
+elif [[ $lkg_party == "$party_sha" && $lkg_games == "$games_sha" ]]; then
+    log 'the last known good is the very pair that failed just now; not rolling back to it. Investigate (smoke.txt, /party/api/status).'
+    log "Or go back to the before-state with:  $manual"
     exit 2
 fi
+log "AUTOMATIC ROLLBACK to the last known good: party $lkg_party, games $lkg_games (--no-auto-rollback keeps a failed revision)"
+journal auto-rollback "rollback_to_party=$lkg_party" "rollback_to_games=$lkg_games"
+nested=(--rollback --no-auto-rollback --force-busy)
+[[ $allow_dirty -eq 0 ]] || nested+=(--allow-dirty)
+[[ $skip_nginx -eq 0 ]] || nested+=(--skip-nginx-site)
+rc=0
+env -u AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_DETACHED=1 AVRANA_DEPLOY_NESTED=1 AVRANA_DEPLOY_ROLLBACK_KIND=auto \
+    bash "$self_copy" "${nested[@]}" || rc=$?
+case $rc in
+    0)  journal auto-rolled-back
+        log "DEPLOYMENT FAILED, ROLLED BACK: smoke failed on party $party_sha / games $games_sha; the last known good (party $lkg_party, games $lkg_games) is running again and its smoke PASSED."
+        exit 3 ;;
+    2)  journal rollback-failed
+        log 'ROLLBACK APPLIED BUT ITS SMOKE ALSO FAILED: the machine runs the last known good and it is not healthy. A person is needed.'
+        exit 4 ;;
+    *)  journal rollback-failed
+        log "ROLLBACK FAILED (exit $rc): a person is needed. State: sudo bash $self_copy --status"
+        exit 4 ;;
+esac
 }
 
 main "$@"

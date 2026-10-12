@@ -19,8 +19,10 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     deployment    the manifest without paths/operator (or null) and manifest_error
     party, games  {deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}
     web_release   {build, commit} or null
-    nginx_site    {status: match|differs|unavailable}: the installed site file against the one in
+    nginx_site    {status: match|differs|unavailable, sha256}: the installed site file against the one in
                   the deployed Party release (AVR-271; deploy, web build and site file are one unit)
+    last_known_good  {party_sha, games_sha, smoke_at, recorded_at, nginx_site_sha256} or null: the last
+                  deployment whose smoke checks passed; what `ops/deploy.sh --rollback` returns to
     contract      versions Party implements (+ games_advertises from /api/games)
     services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
@@ -59,10 +61,12 @@ DEFAULT_CONFIG = {
     'web_root': '/var/www/avrana-party/web',
     'certificate': '/etc/avrana-party/tls/current/fullchain.pem',
     # The installed nginx site and where the deployed commit's copy lives (tried in order). ops/deploy.sh
-    # never installs the site file (an owner step); this is how a drift between the two is noticed.
+    # installs the site file with the deployment (AVR-271); this independent comparison is how a drift
+    # between the two (a hand edit, a deployment made by an older script) is noticed.
     'nginx_site': '/etc/nginx/sites-available/avrana-party',
     'nginx_site_sources': ['/opt/avrana-party/current/avrana-party.nginx',
                            '/home/cody/avrana-party/avrana-party.nginx'],
+    'last_known_good': None,            # default: last-known-good.json beside the manifest
     'games_url': 'http://127.0.0.1:8096',
     'arcade_url': 'http://127.0.0.1:8097',      # the arcade's web port serves /stats; :8098 is its Party link
     'units': ['avrana-party-core', 'avranaparty-games', 'avranaparty-arcade', 'nginx',
@@ -165,6 +169,20 @@ class Probes:
                 continue
             return 'match' if have == want else 'differs'
         return 'unavailable'
+
+    def nginx_site_sha256(self, installed):
+        """sha256 of the installed site file (not a secret), or None."""
+        try:
+            return hashlib.sha256(Path(installed).read_bytes()).hexdigest()
+        except OSError:
+            return None
+
+    def last_known_good(self, path):
+        """The last-known-good record ops/deploy.sh keeps beside the manifest, or None."""
+        try:
+            return manifest.read_last_known_good(path)
+        except (manifest.ManifestError, OSError):
+            return None
 
     def get_json(self, url):
         """A small JSON document from loopback, or None. Never raises."""
@@ -275,6 +293,9 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     if web_commit and expected and web_commit != expected:
         reasons.append('web build is from a different commit than the deployed Party')
     nginx_site = probes.nginx_site(cfg['nginx_site'], cfg['nginx_site_sources'])
+    nginx_sha256 = getattr(probes, 'nginx_site_sha256', lambda path: None)(cfg['nginx_site'])
+    lkg_path = cfg.get('last_known_good') or str(Path(str(cfg['manifest'])).with_name('last-known-good.json'))
+    lkg = getattr(probes, 'last_known_good', lambda path: None)(lkg_path)
     if nginx_site == 'differs':
         reasons.append('nginx site file differs from the deployed commit (install avrana-party.nginx, docs/runbooks/deploy.md)')
     elif nginx_site == 'unavailable':
@@ -317,7 +338,9 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         'party': party,
         'games': games,
         'web_release': _public_web(web),
-        'nginx_site': {'status': nginx_site},
+        'nginx_site': {'status': nginx_site, 'sha256': nginx_sha256},
+        'last_known_good': None if lkg is None else {k: lkg.get(k) for k in (
+            'party_sha', 'games_sha', 'smoke_at', 'recorded_at', 'nginx_site_sha256')},
         'contract': dict(contract, games_advertises=provider['integration']),
         'services': services,
         'certificate': certificate,
