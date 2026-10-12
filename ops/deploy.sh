@@ -4,7 +4,8 @@
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --party <sha> --games <sha> [--dry-run]
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --status      # where the last run stopped; the last known good
 #   sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback    # return to the last known good (no SHAs needed)
-#   sudo bash /home/cody/avrana-party/ops/deploy.sh --recover     # after a run that died: converge on the last known good
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --recover     # after a run that DIED before the commit point
+#   sudo bash /home/cody/avrana-party/ops/deploy.sh --finish      # after a run that died after it: smoke, record, close
 #
 # It never decides *what* to deploy: both target commits are explicit arguments (the reviewed,
 # CI-green commits named in the PRs). It then, in order:
@@ -24,12 +25,14 @@
 #      stopped. The run itself continues in its own session if the SSH connection drops (log under the backup root);
 #   4. writes the deployment manifest (/var/lib/avrana-party/deployment.json, avrana.deployment/v0): the commit point;
 #   5. runs the post-deploy smoke checks (python3 -m avrana.ops.smoke). Passed: the deployment is recorded as the
-#      last known good and old releases and backups are pruned to the newest --keep (default 5). Failed: it is rolled
-#      back to the last known good, smoke is run again, and both results are reported (--no-auto-rollback keeps the
-#      failed revision for debugging).
-# Exit codes: 0 deployed and verified; 1 refused, or failed and everything was put back; 2 smoke failed and the new
-# revision is kept (no last known good, --no-auto-rollback, or it is the same pair); 3 smoke failed and the last known
-# good is running again with a passing smoke; 4 a rollback also failed or a unit is down: a person is needed.
+#      last known good and old releases and backups are pruned to the newest --keep (default 5). Failed: exit 2, the
+#      new revision is kept and the one command back is printed. With --auto-rollback (opt-in) a smoke taken BEFORE
+#      anything was stopped is the baseline: only a check that passed then and fails now is rolled back to the last
+#      known good (smoke is run again, both results reported); checks that already failed are reported as pre-existing.
+# Exit codes: 0 deployed and verified; 1 refused, or failed before the commit point and everything was put back; 2 the
+# new revision is applied and kept (smoke failed, or a step after the commit point failed); 3 smoke failed and
+# --auto-rollback returned to the last known good with a passing smoke; 4 a rollback also failed or a unit is down: a
+# person is needed. After the commit point the exit code is never 1.
 # The manifest and smoke tooling (avrana.ops) always runs from a code release under /opt, never
 # from the checkout: the target commit's when it has the tooling, otherwise the release that is
 # running. So this script, taken from the target commit, also deploys an appliance whose checkout
@@ -61,6 +64,7 @@ journal_file=$backup_root/deploy.journal
 nginx_site=${AVRANA_NGINX_SITE:-/etc/nginx/sites-available/avrana-party}
 nginx_enabled=${AVRANA_NGINX_ENABLED:-/etc/nginx/sites-enabled/avrana-party}
 nginx_bin=${AVRANA_NGINX:-nginx}
+openssl_bin=${AVRANA_OPENSSL:-openssl}
 lock_file=${AVRANA_DEPLOY_LOCK:-/run/lock/avrana-deploy.lock}
 # The last deployment whose smoke PASSED (a failed or skipped-smoke deployment never replaces it). It sits
 # beside the manifest, which the status endpoint's service user can read; --rollback goes back to it.
@@ -69,14 +73,32 @@ party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
 games_units=(avranaparty-games)                      # code in the games repository
 
 party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0 skip_contract=0
-status_only=0 skip_nginx=0 prune=1 keep=${AVRANA_DEPLOY_KEEP:-5} no_auto=0 recover=0 rollback_kind=${AVRANA_DEPLOY_ROLLBACK_KIND:-}
+status_only=0 skip_nginx=0 prune=1 keep=${AVRANA_DEPLOY_KEEP:-5} auto=0 recover=0 rollback_kind='' force=0 finish=0
+require_cert_names=0 internal_nested=0 internal_detached=0 internal_kind=''
+settle=${AVRANA_DEPLOY_SMOKE_SETTLE:-90}   # seconds smoke may keep failing after the restart before it counts (see run_smoke_settled)
 self=$(readlink -f "$0")
 orig_args=("$@")
 
 usage() { sed -n '2,/^set -Eeuo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
-die() { echo "deploy: $*" >&2; exit 1; }
+die() { echo "deploy: $*$([[ ${armed:-0} -eq 0 ]] && echo ' (nothing changed)')" >&2; exit 1; }
 systemctl() { command "${AVRANA_SYSTEMCTL:-systemctl}" "$@"; }
 log() { echo "[$(date -u +%H:%M:%SZ)] $*"; }
+
+# Settings that exist only for tests/unit/test_deploy_script.py are honoured only with AVRANA_DEPLOY_TESTING=1 AND a
+# scratch root (none of the production roots below in use); anywhere else their presence is a refusal, so a stray
+# variable can never redirect a production run.
+testing=0
+if [[ ${AVRANA_DEPLOY_TESTING:-0} == 1 && $backup_root != /var/backups/avrana-party && $party_releases != /opt/avrana-party \
+        && $games_releases != /opt/avrana-party-games && $web_root != /var/www/avrana-party/web \
+        && $manifest != /var/lib/avrana-party/deployment.json ]]; then testing=1; fi
+for v in AVRANA_DEPLOY_SMOKE AVRANA_NGINX AVRANA_SYSTEMCTL AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_UNPRIVILEGED \
+        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP; do
+    if [[ -n ${!v:-} && $testing -eq 0 ]]; then
+        die "$v is a test-only setting; it is honoured only with AVRANA_DEPLOY_TESTING=1 on a scratch root (never on the appliance). Unset it"
+    fi
+done
+# inject <step>: test-only fault injection into the steps after the commit point (fails when asked to).
+inject() { [[ $testing -eq 1 && ${AVRANA_DEPLOY_FAIL_STEP:-} == "$1" ]] && return 1; return 0; }
 
 while (($#)); do
     case $1 in
@@ -90,10 +112,18 @@ while (($#)); do
         --skip-contract-check) skip_contract=1; shift ;;
         --status) status_only=1; shift ;;
         --skip-nginx-site) skip_nginx=1; shift ;;
-        --no-auto-rollback) no_auto=1; shift ;;
+        --auto-rollback) auto=1; shift ;;
+        --no-auto-rollback) auto=0; shift ;;          # the default; accepted so older command lines keep working
+        --require-cert-names) require_cert_names=1; shift ;;
+        --force) force=1; shift ;;
+        --finish) finish=1; shift ;;
+        --smoke-settle) settle=${2:-}; shift 2 ;;
+        --internal-nested) internal_nested=1; shift ;;      # set by this script on its own nested rollback; not for operators
+        --internal-detached) internal_detached=1; shift ;;
+        --internal-rollback-kind) internal_kind=${2:-}; shift 2 ;;
         --no-prune) prune=0; shift ;;
         --keep) keep=${2:-}; shift 2 ;;
-        --rollback) rollback_kind=${rollback_kind:-manual}; shift ;;
+        --rollback) rollback_kind=manual; shift ;;
         --recover) rollback_kind=recover; recover=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument $1 (see --help)" ;;
@@ -103,7 +133,7 @@ done
 # journal_phase_kind <phase>: terminal (the run ended), open (it did not), or none.
 journal_phase_kind() {
     case $1 in
-        smoke-passed|smoke-skipped|smoke-failed|rolled-back|auto-rolled-back|rollback-failed) echo terminal ;;
+        smoke-passed|smoke-skipped|smoke-failed|post-commit-failed|rolled-back|auto-rolled-back|rollback-failed) echo terminal ;;
         '') echo none ;;
         *) echo open ;;
     esac
@@ -125,6 +155,10 @@ deploy_running() {
 # --status: where the last deployment stopped. Read-only; needs no root and no SHAs.
 status_cmd() {
     local phase kind
+    if [[ -d $backup_root && ( ! -r $backup_root || ! -x $backup_root ) ]]; then
+        echo "cannot read $backup_root as this user (it is root's): run this with sudo to see the journal and the last known good"
+        return 1
+    fi
     if [[ -s $lkg_file ]]; then
         echo "last known good ($lkg_file): party $(lkg_value party_sha), games $(lkg_value games_sha), smoke passed $(lkg_value smoke_at); site file sha256 $(lkg_value nginx_site_sha256)"
         echo "  go back to it with: sudo bash $self --rollback"
@@ -148,12 +182,35 @@ status_cmd() {
         echo "last deployment ended at phase '$phase' (a finished run)."
     fi
 }
-if [[ $status_only -eq 1 ]]; then status_cmd; exit 0; fi
+if [[ $status_only -eq 1 ]]; then status_cmd; exit $?; fi
+
+# Internal arguments are for this script's own re-executions. The nested rollback must inherit the parent's held lock
+# (fd 9); a person typing the flag has no such lock and is refused.
+if [[ $internal_nested -eq 1 ]]; then
+    if command -v flock >/dev/null && ! { flock -n 9; } 2>/dev/null; then die '--internal-nested is not for operators'; fi
+    [[ $internal_kind == auto && $rollback_kind == manual ]] || die '--internal-nested needs --rollback --internal-rollback-kind auto'
+    rollback_kind=auto
+elif [[ -n $internal_kind ]]; then die '--internal-rollback-kind is not for operators'
+fi
+[[ $force -eq 0 || $recover -eq 1 ]] || die '--force goes with --recover only'
 
 # --rollback / --recover need no SHAs: the pair is the last known good. A rollback is exactly a
 # deployment of that pair (checkouts, code releases, web build and nginx site file together).
-if [[ -n $rollback_kind ]]; then
+if [[ $finish -eq 1 ]]; then
+    party_sha=$(journal_value party_target); games_sha=$(journal_value games_target)
+elif [[ -n $rollback_kind ]]; then
     [[ -z $party_sha && -z $games_sha ]] || die '--rollback and --recover take the SHAs from the last-known-good record; do not pass --party/--games'
+    if [[ ! -s $lkg_file && $dry_run -eq 0 && $internal_nested -eq 0 ]]; then
+        # An appliance deployed before the record existed: the running deployment is the record when its manifest
+        # says smoke passed and both checkouts are still at its commits (same rules as a deploy's first step).
+        rel=$(readlink -f "$party_releases/current" 2>/dev/null || true)
+        if [[ -f $rel/avrana/ops/manifest.py ]]; then
+            site_now=''; [[ -f $nginx_site ]] && site_now=$(sha256sum "$nginx_site" | cut -d' ' -f1)
+            ( cd "$rel" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.manifest last-known-good seed "$manifest" "$lkg_file" \
+                --party "$party_checkout" --games "$games_checkout" ${site_now:+--nginx-sha256 "$site_now"} ) >/dev/null 2>&1 \
+                && log "last-known-good seeded from the running deployment ($lkg_file)" || true
+        fi
+    fi
     party_sha=$(lkg_value party_sha); games_sha=$(lkg_value games_sha)
     if ! [[ $party_sha =~ ^[0-9a-f]{40}$ && $games_sha =~ ^[0-9a-f]{40}$ ]]; then
         [[ $recover -eq 1 ]] || die "no last-known-good record ($lkg_file): no deployment has passed its smoke checks yet; deploy explicit SHAs"
@@ -211,13 +268,13 @@ build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 # process only follows that log. A dropped SSH session (SIGHUP) then kills the follower, not the
 # deployment; Ctrl-C detaches the same way; SIGTERM to this process is passed on, which rolls the
 # deployment back. AVRANA_DEPLOY_DETACH=0 keeps it in the foreground (the traps below still apply).
-if [[ $dry_run -eq 0 && -z ${AVRANA_DEPLOY_DETACHED:-} && ${AVRANA_DEPLOY_DETACH:-1} != 0 ]]; then
+if [[ $dry_run -eq 0 && $internal_detached -eq 0 && ${AVRANA_DEPLOY_DETACH:-1} != 0 ]]; then
     if command -v setsid >/dev/null; then
         install -d -m 0750 "$backup_root"
-        run_log=$backup_root/deploy-$(date -u +%Y%m%dT%H%M%SZ).log
+        run_log=$backup_root/deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$.log      # the pid keeps two runs in one second apart
         log "detaching: the deployment keeps running if this session drops. Log: $run_log"
         log "  follow it again: sudo tail -f $run_log      result so far: sudo bash $self --status"
-        AVRANA_DEPLOY_DETACHED=1 setsid bash "$self" ${orig_args[@]+"${orig_args[@]}"} > "$run_log" 2>&1 < /dev/null &
+        setsid bash "$self" ${orig_args[@]+"${orig_args[@]}"} --internal-detached > "$run_log" 2>&1 < /dev/null &
         child=$!
         tail -n +1 -f --pid="$child" "$run_log" &
         follower=$!
@@ -324,6 +381,7 @@ plan_site() {
         die "avrana-party.nginx and arcade/nginx-site differ at $party_sha; they must be byte-identical (docs/GENERATED.md). Nothing was changed"
     fi
     rm -f "$other"
+    check_cert_names
     new_lines=$(( $(wc -l < "$site_tmp") ))
     if [[ ! -e $nginx_site ]]; then
         site_state=absent
@@ -341,11 +399,51 @@ plan_site() {
     fi
 }
 site_hash() { [[ -f $1 ]] && sha256sum "$1" | cut -d' ' -f1 || true; }
-install_site() {
-    local out stage
+# Before anything changes: root, nginx and its directory exist, and the EXISTING configuration already passes nginx -t
+# (a configuration that fails before we touch it is not ours to blame or to restore).
+nginx_preflight() {
+    local out first
     [[ $EUID -eq 0 || ${AVRANA_DEPLOY_UNPRIVILEGED:-0} == 1 ]] || die 'the nginx site file needs root; nothing was installed'
     command -v "$nginx_bin" >/dev/null || die "$nginx_bin not found: the site file cannot be validated, so it is not installed (install nginx, or --skip-nginx-site)"
     [[ -d $(dirname "$nginx_site") ]] || die "$(dirname "$nginx_site") does not exist: no nginx site directory (--skip-nginx-site to leave the site file alone)"
+    if ! out=$("$nginx_bin" -t 2>&1); then
+        first=$(printf '%s\n' "$out" | head -n 3 | tr '\n' ' ')
+        record_attempt refused
+        die "the existing nginx configuration is already invalid: nginx -t fails before any change ($first). Fix nginx first; nothing was installed or stopped (or --skip-nginx-site)"
+    fi
+}
+# check_cert_names: for every server_name in a 443 ssl server block of the TARGET site file, does the certificate
+# that block names cover that name? A mismatch is a WARNING (Party must stay deployable) unless --require-cert-names.
+# Needs root to read the root-only certificate directory; an unreadable certificate is reported, not guessed.
+cert_mismatch=()
+check_cert_names() {
+    local name cert out
+    [[ -n $site_tmp ]] || return 0
+    command -v "$openssl_bin" >/dev/null || { log "nginx site: no openssl here; certificate names not checked"; return 0; }
+    while read -r name cert; do
+        [[ -n $name ]] || continue
+        out=$("$openssl_bin" x509 -in "$cert" -noout -checkhost "$name" 2>&1) || true
+        if [[ $out == *"does match certificate"* ]]; then log "nginx site: $name is covered by $cert"
+        elif [[ $out == *"NOT match"* ]]; then
+            cert_mismatch+=("$name")
+            log "WARNING: the certificate $cert does not cover $name, the name its server block answers (a phone gets a name-mismatch error there; see docs/runbooks/game-origin.md)"
+        else log "nginx site: could not check $name against $cert (unreadable here? root is needed)"; fi
+    done < <(python3 -c 'import re,sys
+t = re.sub(r"#.*", "", open(sys.argv[1]).read())
+for m in re.finditer(r"\bserver\s*\{", t):
+    j, depth = m.end(), 1
+    while j < len(t) and depth:
+        depth += (t[j] == "{") - (t[j] == "}"); j += 1
+    body = t[m.end():j - 1]
+    cert = re.search(r"\bssl_certificate\s+([^;\s]+)\s*;", body)
+    names = re.search(r"\bserver_name\s+([^;]+);", body)
+    if cert and names and re.search(r"\blisten\s+[^;]*443[^;]*\bssl\b", body):
+        for n in names.group(1).split():
+            if n != "_" and "*" not in n and not n.startswith("~"):
+                print(n, cert.group(1))' "$site_tmp" 2>/dev/null)
+}
+install_site() {
+    local out stage
     if [[ -e $nginx_site ]]; then cp -p "$nginx_site" "$backup/nginx-site-before"; else : > "$backup/nginx-site-before.absent"; fi
     stage=$nginx_site.new.$$
     install -m 0644 "$site_tmp" "$stage"
@@ -359,8 +457,8 @@ install_site() {
         log "nginx -t REJECTED the new site file (avrana-party.nginx of $party_sha); the previous file is put back:"
         printf '%s\n' "$out" | sed 's/^/    /'
         printf '%s\n' "$out" | grep -E 'No such file|cannot load|not found' | head -n 3 | sed 's/^/MISSING PREREQUISITE: /' || true
-        log 'A file the site refers to is probably missing on this appliance (for example the games.avrana.net'
-        log 'certificate, AVR-319): install it first, see docs/runbooks/game-origin.md; or deploy with --skip-nginx-site.'
+        log 'The lines above say what nginx rejected (typically a file the new site refers to that this appliance does not have).'
+        log 'Install that first (the games.avrana.net origin: docs/runbooks/game-origin.md), or deploy with --skip-nginx-site.'
         false
     fi
     systemctl reload nginx || { log 'nginx reload FAILED after a good nginx -t'; false; }
@@ -419,7 +517,115 @@ prune_all() {
     prune_dir "$mode" 'games code releases' "$games_releases/releases" '^[0-9a-f]{40}$' mtime         "$games_sha" "$before_games" "$lkg_g" "$cur_g"
     prune_dir "$mode" 'web releases' "$web_root/releases" '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}(-[0-9]+)?$' name         "$cur_w" "$(basename "$(cat "$backup/web-release-before" 2>/dev/null || echo -)")"
     prune_dir "$mode" 'deploy backups' "$backup_root" '^deploy-[0-9]{8}T[0-9]{6}Z$' name         "$(basename "$backup")" "$(basename "$(journal_value backup)")"
+    prune_junk "$mode"; prune_logs "$mode"
     log "prune: $pruned_total director$([[ $pruned_total -eq 1 ]] && echo y || echo ies) $([[ $mode == list ]] && echo 'would be removed' || echo removed)"
+}
+
+# record_attempt <outcome>: the last_attempt object of the manifest (and so of /party/api/status): what this run
+# targeted and how it ended, because after a rollback the manifest names the pair that is running, not the one that failed.
+record_attempt() {
+    [[ -n $tools && -n $backup && -f $manifest ]] || return 0
+    py -m avrana.ops.manifest last-attempt "$manifest" --party "$party_sha" --games "$games_sha" \
+        --outcome "$1" --backup "$(basename "$backup")" >/dev/null 2>&1 || true
+}
+
+# ---- smoke ------------------------------------------------------------------------------------------
+# AVRANA_DEPLOY_SMOKE names a stand-in for the smoke command (tests only; refused unless AVRANA_DEPLOY_TESTING=1).
+run_smoke_json() { if [[ -n ${AVRANA_DEPLOY_SMOKE:-} ]]; then "$AVRANA_DEPLOY_SMOKE" --json; else py -m avrana.ops.smoke --json; fi; }
+# smoke_names <json file> <pass|fail>: the names of the checks with that result; non-zero when unreadable.
+smoke_names() {
+    python3 -c 'import json, sys
+try:
+    checks = json.load(open(sys.argv[1]))["checks"]
+    assert checks
+except Exception:
+    sys.exit(3)
+for c in checks:
+    if c.get("status") == sys.argv[2]:
+        print(c["name"])' "$1" "$2"
+}
+render_smoke() {
+    python3 -c 'import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    for c in d["checks"]:
+        print("%-5s %-28s %s" % (c["status"].upper(), c["name"], c.get("detail", "")))
+    k = d["counts"]
+    print("smoke: %d passed, %d failed, %d skipped" % (k["pass"], k["fail"], k["skip"]))
+except Exception:
+    print("smoke produced no readable result")' "$1"
+}
+# run_smoke_settled: smoke the restarted services, trying again while they come up. The arcade (RetroArch and
+# its encoder) and the games provider need tens of seconds on a Pi 4; each check has its own 5 s timeout
+# (avrana/ops/smoke.py TIMEOUT_S), so a slow start must not count as a failure. $settle seconds (default 90,
+# --smoke-settle / AVRANA_DEPLOY_SMOKE_SETTLE; 0 = one attempt) is how long a failing result may still change.
+run_smoke_settled() {
+    local deadline=$((SECONDS + settle)) rc
+    while :; do
+        rc=0; run_smoke_json > "$backup/smoke.json" 2> "$backup/smoke.err" || rc=$?
+        [[ $rc -ne 0 ]] || break
+        (( SECONDS < deadline )) || break
+        log "smoke is not passing yet; trying again in 3 s (the services get ${settle}s to come up)"
+        sleep 3
+    done
+    render_smoke "$backup/smoke.json" | tee "$backup/smoke.txt"
+    return "$rc"
+}
+# finish_cmd (--finish): a run died AFTER the commit point (phase committed / post-commit-failed): the new revision is
+# applied and its smoke verdict is open. Smoke it; passed: record it and the last known good, and close the journal.
+finish_cmd() {
+    local phase k v
+    phase=$(journal_value phase)
+    [[ $phase == committed || $phase == post-commit-failed ]] \
+        || die "--finish closes a run that died after the commit point; the journal is at '${phase:-none}'"
+    backup=$(journal_value backup)
+    [[ -d $backup ]] || die "the backup directory named by the journal is gone ($backup)"
+    while IFS='=' read -r k v; do [[ -z $k ]] || J[$k]=$v; done < "$journal_file"
+    tools=$(readlink -f "$party_releases/current" 2>/dev/null || true)
+    has_tooling "$tools" || die "the running code release carries no deploy tooling ($party_releases/current)"
+    armed=1; committed=1
+    log "finish: smoke for the deployment that was applied (party $party_sha, games $games_sha)"
+    if run_smoke_settled; then
+        py -m avrana.ops.manifest smoke "$manifest" passed \
+            && py -m avrana.ops.manifest last-known-good record "$manifest" "$lkg_file" \
+            || { journal post-commit-failed; log 'smoke passed but the manifest or the last-known-good record could not be written'; exit 2; }
+        journal smoke-passed; record_attempt ok
+        log 'finished: smoke passed; recorded as the manifest result and the last known good'
+        exit 0
+    fi
+    py -m avrana.ops.manifest smoke "$manifest" failed || true
+    journal smoke-failed; record_attempt smoke-failed-kept
+    log "finished: smoke FAILED; the revision is kept. Go back with: sudo bash $self --rollback"
+    exit 2
+}
+
+# prune_junk <run|list>: leftovers that are not releases or backups. Same rules as prune_dir: plain entries with the
+# exact expected name directly inside the expected directory; build leftovers only when an hour old.
+prune_junk() {
+    local mode=$1 dir kind re label minutes
+    for spec in "d:$party_releases/releases:^\.new\.[A-Za-z0-9]{6}$:staging leftover:60" \
+                "d:$games_releases/releases:^\.new\.[A-Za-z0-9]{6}$:staging leftover:60" \
+                "d:$web_root/releases:^\.build\.[A-Za-z0-9]{6}$:web build leftover:60" \
+                "f:$backup_root:^deploy\.journal\.tmp\.[0-9]+$:journal temp file:60"; do
+        IFS=: read -r kind dir re label minutes <<< "$spec"
+        [[ -d $dir && ! -L $dir ]] || continue
+        while IFS= read -r -d '' name; do
+            [[ $name =~ $re ]] || continue
+            [[ $(realpath -e -- "$dir/$name" 2>/dev/null) == "$(realpath -e -- "$dir")/$name" ]] || continue
+            if [[ $mode == list ]]; then log "prune: $label: would remove $name"; else rm -rf --one-file-system -- "$dir/$name" && log "prune: $label: removed $name"; fi
+        done < <(find "$dir" -mindepth 1 -maxdepth 1 -type "$kind" -mmin "+$minutes" -printf '%f\0')
+    done
+}
+# prune_logs <run|list>: the run logs of the detached runs, the newest $keep stay.
+prune_logs() {
+    local mode=$1 rank=0 name
+    [[ -d $backup_root && ! -L $backup_root ]] || return 0
+    while IFS= read -r -d '' name; do
+        [[ $name =~ ^deploy-[0-9]{8}T[0-9]{6}Z(-[0-9]+)?\.log$ ]] || continue
+        [[ -f $backup_root/$name && ! -L $backup_root/$name ]] || continue
+        rank=$((rank + 1)); [[ $rank -gt $keep ]] || continue
+        if [[ $mode == list ]]; then log "prune: run logs: would remove $name"; else rm -f -- "$backup_root/$name" && log "prune: run logs: removed $name"; fi
+    done < <(find "$backup_root" -mindepth 1 -maxdepth 1 -printf '%f\0' | sort -z -r)
 }
 
 # rollback_body <rc>: put back what this run changed. Never --force or reset --hard: local changes
@@ -468,9 +674,9 @@ on_exit() {
         done
         if [[ $rollback_done -eq 1 ]]; then
             if [[ $rollback_ok -eq 1 && $needs_human -eq 0 ]]; then
-                journal rolled-back; rc=1
+                journal rolled-back; rc=1; record_attempt interrupted-restored
             else
-                journal rollback-failed
+                journal rollback-failed; record_attempt rollback-failed
                 log 'ROLLBACK DID NOT COMPLETE: this needs a person (docs/runbooks/deploy.md, "When it fails")'
                 rc=4
             fi
@@ -484,18 +690,31 @@ trap 'on_signal TERM 143' TERM
 trap on_exit EXIT
 
 # ---- 1. refuse unsafe states -----------------------------------------------------------------
-if command -v flock >/dev/null && [[ -z ${AVRANA_DEPLOY_NESTED:-} ]]; then   # a nested rollback inherits the parent's lock
+if command -v flock >/dev/null && [[ $internal_nested -eq 0 ]]; then   # a nested rollback inherits the parent's lock
     # The braces keep 2>/dev/null from becoming this shell's stderr for the rest of the run.
     { exec 9>"$lock_file"; } 2>/dev/null || exec 9>/tmp/avrana-deploy.lock
     flock -n 9 || die 'another deployment is running'
 fi
 
 # A run that died (SIGKILL, power) leaves a journal in a phase that is not an end. Do not deploy on top of a
-# half-switched machine and hide the evidence: say where it stopped and how to put it right. --rollback and
-# --recover are the ways to put it right, so they pass; so does the nested rollback of a running deployment.
-if [[ -z ${AVRANA_DEPLOY_NESTED:-} && -z $rollback_kind && -f $journal_file ]]         && [[ $(journal_phase_kind "$(journal_value phase)") == open ]]; then
-    die "the previous deployment died at phase '$(journal_value phase)' and nothing restored it (journal $journal_file); see: sudo bash $self --status, then put the machine back with: sudo bash $self --recover"
+# half-switched machine and hide the evidence: say where it stopped and how to put it right. --rollback, --recover
+# and --finish are the ways to put it right, so they pass; so does the nested rollback of a running deployment.
+jphase=''; jkind=none
+if [[ -f $journal_file ]]; then jphase=$(journal_value phase); jkind=$(journal_phase_kind "$jphase"); fi
+if [[ $recover -eq 1 && $force -eq 0 && $internal_nested -eq 0 ]]; then
+    # --recover repairs a run that DIED. It must not move a revision that was kept on purpose.
+    if [[ $jkind == open ]]; then :
+    elif [[ -z $jphase || $jphase == smoke-passed || $jphase == auto-rolled-back || $jphase == rolled-back ]]; then
+        log "nothing to recover: the last run ended at '${jphase:-none}', a finished run. The machine is as that run left it (--status)"
+        exit 0
+    else
+        die "the last run ended at '$jphase', which is a closed run that kept its revision on purpose (smoke failed or skipped, or a rollback that failed): --recover would move it. Use --rollback to return to the last known good (or --recover --force)"
+    fi
+elif [[ $finish -eq 1 && $internal_nested -eq 0 ]]; then :
+elif [[ $internal_nested -eq 0 && -z $rollback_kind && $jkind == open ]]; then
+    die "the previous deployment died at phase '$jphase' and nothing restored it (journal $journal_file); see: sudo bash $self --status, then put the machine back with: sudo bash $self --recover (after the commit point: --finish or --rollback)"
 fi
+if [[ $finish -eq 1 ]]; then finish_cmd; fi
 
 for repo in "$party_checkout" "$games_checkout"; do
     if [[ -n $(g "$repo" status --porcelain --untracked-files=no) ]]; then
@@ -565,7 +784,7 @@ try:
 except Exception:
     print("unknown")' 2>/dev/null || echo unknown)
 if [[ $busy == busy ]]; then
-    [[ $force_busy -eq 1 || $recover -eq 1 ]] && log 'WARNING: a game session is live (--force-busy / --recover)' \
+    [[ $force_busy -eq 1 ]] && log 'WARNING: a game session is live (--force-busy)' \
         || die 'a game session is live; wait for the party to return home (or --force-busy)'
 fi
 log "party core: $busy"
@@ -618,6 +837,32 @@ if [[ ! -s $lkg_file ]]; then
 fi
 
 # ---- 3. stop, update, start (with rollback) ---------------------------------------------------
+# The baseline: with --auto-rollback, smoke what is running BEFORE anything is stopped. Only a check that passed here
+# and fails after the deployment counts as caused by it; a check that already failed is not this deployment's fault.
+baseline_ok=0
+if [[ $auto -eq 1 ]]; then
+    if [[ -n $rollback_kind || $skip_smoke -eq 1 ]]; then auto_note='a rollback or a run without smoke'
+    elif [[ $skip_nginx -eq 1 ]]; then auto_note='--skip-nginx-site makes the status check degrade by design'
+    elif [[ ! -f $manifest ]]; then auto_note='there is no running deployment to measure against (first deployment)'
+    else
+        auto_note=''
+        log 'baseline: smoking the running services before anything is stopped'
+        run_smoke_json > "$backup/smoke-baseline.json" 2>/dev/null || true
+        if bp=$(smoke_names "$backup/smoke-baseline.json" pass) && bf=$(smoke_names "$backup/smoke-baseline.json" fail); then
+            baseline_ok=1
+            J[baseline_pass]=$(echo $bp); J[baseline_fail]=$(echo $bf)
+            log "baseline: passing: ${J[baseline_pass]:-none}; already failing (not this deployment's fault): ${J[baseline_fail]:-none}"
+        else auto_note='the baseline smoke could not run'; fi
+    fi
+    [[ $baseline_ok -eq 1 ]] || log "NOTE: --auto-rollback is off for this run: $auto_note"
+fi
+if [[ -n $site_tmp && $site_state != match ]]; then
+    nginx_preflight
+    if [[ ${#cert_mismatch[@]} -gt 0 && $require_cert_names -eq 1 ]]; then
+        record_attempt refused
+        die "the certificate does not cover: ${cert_mismatch[*]} (--require-cert-names); nothing was installed or stopped. See docs/runbooks/game-origin.md"
+    fi
+fi
 armed=1
 journal started "pid=$$" "backup=$backup" "party_target=$party_sha" "games_target=$games_sha"     "before_party=$before_party" "before_games=$before_games" "restart=${restart[*]:-}"
 hook started
@@ -664,27 +909,32 @@ py -m avrana.ops.manifest write --out "$manifest" --party "$party_checkout" --ga
     --web-root "$web_root" --tool-sha "$tool_sha" $([[ $allow_dirty -eq 1 ]] && echo --allow-dirty) \
     --restarted ${restart[@]+"${restart[@]}"}
 # The commit point: the manifest names the new revision, so a trap no longer rolls anything back.
-# Everything after this is a report, not a step that can undo the deployment.
+# From here nothing may exit 1 ("everything was put back" is no longer true): errexit is off, each step reports its own
+# failure, and the run ends in a terminal journal phase with exit 0, or 2 (applied and kept, something after the switch failed).
 committed=1
+set +e
 journal committed; hook committed
+post_failed=()
+post_err() { post_failed+=("$1"); log "WARNING: after the commit point, $1 failed; the new revision is applied and kept"; }
 # Say how the pair was judged (additive manifest field; --skip-contract-check is on the record).
 # A target whose tooling predates the subcommand cannot record it: warned about, not fatal.
-py -m avrana.ops.manifest contract-check "$manifest" "$contract_check" \
+{ inject contract-record && py -m avrana.ops.manifest contract-check "$manifest" "$contract_check"; } \
     || log 'WARNING: the manifest tooling of this release cannot record the contract check result'
 # How the run went, additively: the nginx site file (and its hash) and every flag that was set.
 info=(--nginx-status "$nginx_status")
+for n in ${cert_mismatch[@]+"${cert_mismatch[@]}"}; do info+=(--cert-name-mismatch "$n"); done
+[[ $baseline_ok -eq 0 ]] || info+=(--option auto_rollback)
 [[ -z $nginx_sha ]] || info+=(--nginx-sha256 "$nginx_sha")
 [[ $skip_smoke -eq 0 ]] || info+=(--option skip_smoke)
 [[ $skip_contract -eq 0 ]] || info+=(--option skip_contract_check)
-[[ $no_auto -eq 0 ]] || info+=(--option no_auto_rollback)
 [[ $force_busy -eq 0 ]] || info+=(--option force_busy)
 [[ $allow_dirty -eq 0 ]] || info+=(--option allow_dirty)
 [[ $allow_branch -eq 0 ]] || info+=(--option allow_branch)
 [[ $skip_nginx -eq 0 ]] || info+=(--option skip_nginx_site)
 [[ -z $rollback_kind ]] || info+=(--rollback-kind "$rollback_kind")
-py -m avrana.ops.manifest deploy-info "$manifest" "${info[@]}" \
+{ inject deploy-info && py -m avrana.ops.manifest deploy-info "$manifest" "${info[@]}"; } \
     || log 'WARNING: the manifest tooling of this release cannot record the nginx site and the options'
-cp "$manifest" "$backup/after.json" || log "WARNING: could not copy the manifest to $backup/after.json"
+{ inject copy-manifest && cp "$manifest" "$backup/after.json"; } || post_err "copying the manifest to $backup/after.json"
 # The manifest is public (0644; /party/api/status serves it), but on the appliance its directory
 # was created 0700 for the ACME state beside it, so no service user could reach the file. Grant
 # search (not listing) on the directory, and only while every subdirectory is closed to others.
@@ -693,70 +943,95 @@ if [[ -n $(find "$manifest_dir" -mindepth 1 -maxdepth 1 -type d -perm /077 -prin
     log "WARNING: a directory in $manifest_dir is open to group or other; $manifest_dir left as it is."
     log "         /party/api/status cannot name this deployment until its service user can read the manifest."
 else
-    chmod go+x "$manifest_dir"
+    { inject chmod-dir && chmod go+x "$manifest_dir"; } || post_err "making $manifest_dir searchable for the status service"
 fi
 log "deployment manifest written: $manifest"
 
 # ---- 5. smoke, and what a failed smoke does -------------------------------------------------------
-# AVRANA_DEPLOY_SMOKE names a stand-in for the smoke command; it exists for tests/unit/test_deploy_script.py.
-run_smoke() { if [[ -n ${AVRANA_DEPLOY_SMOKE:-} ]]; then "$AVRANA_DEPLOY_SMOKE"; else py -m avrana.ops.smoke; fi; }
+# close_run <exit 0|2>: the run's end after the commit point: a failed post-commit step makes it exit 2, never 1.
+close_run() {
+    if [[ ${#post_failed[@]} -gt 0 ]]; then
+        journal post-commit-failed "post_commit_failed=${post_failed[*]}"; record_attempt post-commit-failed
+        log "the new revision is applied and kept, but these steps after the switch failed: ${post_failed[*]}. See docs/runbooks/deploy.md; --finish re-runs smoke and records the result"
+        exit 2
+    fi
+    exit "$1"
+}
 if [[ $skip_smoke -eq 1 ]]; then
-    py -m avrana.ops.manifest smoke "$manifest" skipped
-    journal smoke-skipped
+    { inject smoke-record && py -m avrana.ops.manifest smoke "$manifest" skipped; } || post_err 'recording the skipped smoke in the manifest'
+    journal smoke-skipped; record_attempt ok
     log 'smoke checks skipped (--skip-smoke); the manifest says so; the last known good is NOT updated; old releases are NOT pruned'
-    exit 0
+    close_run 0
 fi
 sleep 2
-if run_smoke | tee "$backup/smoke.txt"; then
-    py -m avrana.ops.manifest smoke "$manifest" passed
-    py -m avrana.ops.manifest last-known-good record "$manifest" "$lkg_file" \
-        || log "WARNING: could not record the last known good ($lkg_file)"
-    journal smoke-passed
+if run_smoke_settled; then
+    smoke_recorded=1
+    { inject smoke-record && py -m avrana.ops.manifest smoke "$manifest" passed; } || { smoke_recorded=0; post_err 'recording the passed smoke in the manifest'; }
+    if [[ $smoke_recorded -eq 1 ]]; then
+        { inject lkg-record && py -m avrana.ops.manifest last-known-good record "$manifest" "$lkg_file"; } \
+            || post_err "recording the last known good ($lkg_file)"
+    fi
+    journal smoke-passed; record_attempt ok
     log 'deployment complete; smoke passed; recorded as the last known good. Physical phone acceptance is still a human step.'
-    if [[ $prune -eq 1 ]]; then prune_all run || log 'WARNING: pruning old releases failed; the deployment itself is fine'
+    if [[ ${#post_failed[@]} -gt 0 ]]; then log 'old releases are NOT pruned (a step after the switch failed)'
+    elif [[ $prune -eq 1 ]]; then { inject prune && prune_all run; } || log 'WARNING: pruning old releases failed; the deployment itself is fine'
     else log 'old releases and backups are not pruned (--no-prune)'; fi
-    exit 0
+    close_run 0
 fi
-py -m avrana.ops.manifest smoke "$manifest" failed
+py -m avrana.ops.manifest smoke "$manifest" failed || post_err 'recording the failed smoke in the manifest'
 cp "$manifest" "$backup/failed-manifest.json" || true
 journal smoke-failed
 log "deployment applied but smoke FAILED (see $backup/smoke.txt); old releases and backups are NOT pruned"
 manual="sudo bash $party_checkout/ops/deploy.sh --party $before_party --games $before_games"
 lkg_party=$(lkg_value party_sha); lkg_games=$(lkg_value games_sha)
-# Never a loop: a rollback run (or the nested one) never rolls back again, and a record that is the very pair
-# that just failed is not a place to go back to.
-if [[ $no_auto -eq 1 ]]; then
-    log 'the new revision is kept for debugging (--no-auto-rollback). Decide: fix forward, or go back to the last known good with:'
-    log "  sudo bash $party_checkout/ops/deploy.sh --rollback        (or: $manual)"
+have_lkg=0; [[ $lkg_party =~ ^[0-9a-f]{40}$ && $lkg_games =~ ^[0-9a-f]{40}$ ]] && have_lkg=1
+back_cmd=$manual; [[ $have_lkg -eq 0 ]] || back_cmd="sudo bash $party_checkout/ops/deploy.sh --rollback"
+# Regressions: checks that passed in the baseline and fail now (only with --auto-rollback and a usable baseline).
+regressions=''
+if [[ $baseline_ok -eq 1 ]]; then
+    post_fail=$(smoke_names "$backup/smoke.json" fail) || post_fail=''
+    for n in $post_fail; do [[ " ${J[baseline_pass]} " == *" $n "* ]] && regressions+="$n "; done
+fi
+keep_revision() {
+    record_attempt smoke-failed-kept
+    [[ ${#post_failed[@]} -eq 0 ]] || log "also failed after the switch: ${post_failed[*]}"
     exit 2
-elif [[ -n $rollback_kind ]]; then
+}
+if [[ -n $rollback_kind ]]; then
     log "this was a $rollback_kind: it is not rolled back again. The machine runs party $party_sha, games $games_sha with a failing smoke: a person is needed."
-    exit 2
-elif ! [[ $lkg_party =~ ^[0-9a-f]{40}$ && $lkg_games =~ ^[0-9a-f]{40}$ ]]; then
-    log 'no last known good exists yet (no deployment has passed its smoke checks), so there is nothing to roll back to automatically.'
+    keep_revision
+elif [[ $baseline_ok -eq 1 && -z $regressions ]]; then
+    log "PRE-EXISTING, NOT CAUSED BY THIS DEPLOY: the failing checks (${post_fail:-none}) also failed in the baseline taken before anything was stopped. The new revision is kept."
+    log "To go back anyway:  $back_cmd"
+    keep_revision
+elif [[ $baseline_ok -eq 0 ]]; then
+    log "The new revision is kept. Decide: fix forward, or go back with:  $back_cmd"
+    [[ $have_lkg -eq 1 ]] || log 'No last known good exists yet (no deployment has passed its smoke checks), so --rollback has nothing to return to; the command above restores the before-state.'
+    keep_revision
+elif [[ $have_lkg -eq 0 ]]; then
+    log "A check that passed before now fails (${regressions% }), but no last known good exists yet, so there is nothing to roll back to automatically."
     log "Decide: fix forward, or go back to the before-state with:  $manual"
-    exit 2
+    keep_revision
 elif [[ $lkg_party == "$party_sha" && $lkg_games == "$games_sha" ]]; then
     log 'the last known good is the very pair that failed just now; not rolling back to it. Investigate (smoke.txt, /party/api/status).'
     log "Or go back to the before-state with:  $manual"
-    exit 2
+    keep_revision
 fi
-log "AUTOMATIC ROLLBACK to the last known good: party $lkg_party, games $lkg_games (--no-auto-rollback keeps a failed revision)"
+log "AUTOMATIC ROLLBACK (--auto-rollback): ${regressions% } passed before this deployment and fail now. Returning to the last known good: party $lkg_party, games $lkg_games"
 journal auto-rollback "rollback_to_party=$lkg_party" "rollback_to_games=$lkg_games"
-nested=(--rollback --no-auto-rollback --force-busy)
+nested=(--rollback --internal-nested --internal-rollback-kind auto --internal-detached --force-busy)
 [[ $allow_dirty -eq 0 ]] || nested+=(--allow-dirty)
 [[ $skip_nginx -eq 0 ]] || nested+=(--skip-nginx-site)
 rc=0
-env -u AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_DETACHED=1 AVRANA_DEPLOY_NESTED=1 AVRANA_DEPLOY_ROLLBACK_KIND=auto \
-    bash "$self_copy" "${nested[@]}" || rc=$?
+env -u AVRANA_DEPLOY_TEST_HOOK_DIR bash "$self_copy" "${nested[@]}" || rc=$?
 case $rc in
-    0)  journal auto-rolled-back
+    0)  journal auto-rolled-back; record_attempt rolled-back
         log "DEPLOYMENT FAILED, ROLLED BACK: smoke failed on party $party_sha / games $games_sha; the last known good (party $lkg_party, games $lkg_games) is running again and its smoke PASSED."
         exit 3 ;;
-    2)  journal rollback-failed
+    2)  journal rollback-failed; record_attempt rollback-failed
         log 'ROLLBACK APPLIED BUT ITS SMOKE ALSO FAILED: the machine runs the last known good and it is not healthy. A person is needed.'
         exit 4 ;;
-    *)  journal rollback-failed
+    *)  journal rollback-failed; record_attempt rollback-failed
         log "ROLLBACK FAILED (exit $rc): a person is needed. State: sudo bash $self_copy --status"
         exit 4 ;;
 esac
