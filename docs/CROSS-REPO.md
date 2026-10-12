@@ -80,11 +80,16 @@ How the jobs use them:
   (`https://api.github.com/meta`, `ssh_keys`); nothing is trusted on first use.
 - Same-repository operations use `github.token` (the base-commit fetch in `offline-checks.yml`, passed to
   that one step as a masked header, never written to `.git/config`).
-- Games' `graphify.yml` calls Party's reusable `graphify-refresh.yml` at a pinned commit and passes
-  `AVRANA_PARTY_READ_KEY` as its `PARTY_READ_KEY` secret. That call also needs Party's
-  Settings, Actions, General, **Access** set to "Accessible from repositories owned by 'rcnechamkin' user"
-  (below): without it the workflow cannot be loaded at all. That setting lets other repositories
-  use Party's actions and reusable workflows; it does not let them check out Party's files.
+- Games' `graphify.yml` calls Party's reusable `graphify-refresh.yml` at a pinned commit. Two
+  things are needed, and today neither is in place. (1) Party's Settings, Actions, General,
+  **Access** must be "Accessible from repositories owned by 'rcnechamkin' user" (it is `none`; with
+  `none` the workflow cannot even be loaded). That setting lets other repositories use Party's
+  actions and reusable workflows; it does not let them check out Party's files. (2) The checkouts
+  inside `graphify-refresh.yml` now take an optional `PARTY_READ_KEY` secret, but Games' pin
+  (`9cbce3a`, equal to `toolkit_revision` in Games' `.graphify.json`, which the Graphify check
+  enforces) predates it. Moving the pin to a Party `main` commit that has it, together with
+  `.graphify.json`, `test.yml` and `toolkit_ref`, and passing
+  `PARTY_READ_KEY: ${{ secrets.AVRANA_PARTY_READ_KEY }}`, is a separate step after this merges.
 - Known limit: a deploy key opens git, not the REST API. `tools/reconcile.py` (weekly, advisory,
   never fails) also reads the other repository's pull requests and branches through the API with
   the job token; against a private repository those reads are refused and the report records
