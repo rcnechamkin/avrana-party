@@ -1,5 +1,10 @@
 # Network: topology, checks, offline mode (canonical)
 
+**Channel, note 2026-10-12.** The access point was observed on **channel 36 (5180 MHz), 20 MHz** on 2026-10-12
+([baseline](../findings/2026-10-12-deployed-baseline.md)); the owner moved it from 149 on 2026-10-06. Every
+"channel 149" statement below is the 2026-09-24 reading and is stale. Record the channel in use with `iw dev wlan0 info`; changing it is a
+separate owner decision (AVR-299), never part of [offline-acceptance](offline-acceptance.md).
+
 The `tools/avrana-offline`, `tools/avrana-topology-check`, and `tools/radio-watch`
 helpers referenced below are on `main` (brought over from `docs/party-platform` on 2026-09-27).
 They are operator tools, not installed services: copy one to `~/avrana-lab/` and run it from
