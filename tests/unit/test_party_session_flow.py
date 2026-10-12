@@ -88,25 +88,13 @@ class LinkTimeouts(unittest.TestCase):
         from unittest import mock
         seen = []
 
-        class Reply:
-            status = 200
-
-            def read(self):
-                return b'{"ok": true}'
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        def urlopen(req, timeout):
-            seen.append((req.full_url, timeout))
-            return Reply()
+        def exchange(conn, path, data, seconds, headers):
+            seen.append((f'http://{conn.host}:{conn.port}{path}', seconds))
+            return sessions.Reply(True, 200, {'ok': True})
         eps = {'bluff': sessions.GameEndpoint('bluff', 'http://127.0.0.1:1', KEY),
                'arcade-gauntlet2': sessions.GameEndpoint('arcade-gauntlet2', 'http://127.0.0.1:2', KEY, 25)}
         link = sessions.HttpGameLink(eps, timeout=5)
-        with mock.patch.object(sessions.urllib.request, 'urlopen', urlopen):
+        with mock.patch.object(sessions, '_exchange', exchange):
             for gid in eps:
                 s = type('S', (), {'game_id': gid, 'id': 'session-' + 'a' * 32})()
                 self.assertEqual(link.launch(s, []), (True, None))
@@ -443,6 +431,26 @@ class Flow(ServiceCase):
         status, _ = self.game.report('aps0.' + 'A' * 9000 + '.AAAA')
         self.assertEqual(status, 413)
         self.assertEqual(self.svc.core.party.session.state, 'active')
+
+    # ---- Party Core restarts while the game runs (AVR-33) -------------------------------------------
+    def test_after_a_party_restart_phones_rejoin_and_the_next_launch_replaces_the_orphaned_session(self):
+        old_sid = self.launch()
+        _, t, _ = self.ticket(self.ben)
+        # the party process restarts: devices persist (cookies), the party and its session do not
+        self.svc.core = core.PartyCore(self.svc.core.clock, self.svc.core.games)
+        status, body, _ = self.ticket(self.ben)
+        self.assertEqual((status, body['error']), (403, 'not_member'))      # not a 500, not a ticket
+        _, v, _ = self.ben.state()
+        self.assertEqual((v['me'], v['state'], v['nav']['to']), (None, 'lobby', 'home'))
+        self.ana.post('join', {'name': 'Ana'})
+        self.ben.post('join', {'name': 'Ben'})
+        self.assertEqual(self.game.side.sid, old_sid)                      # the game still holds the old one
+        new_sid = self.launch()
+        self.assertNotEqual(new_sid, old_sid)
+        self.assertEqual(self.game.side.sid, new_sid)
+        with self.assertRaises(Invalid):
+            self.game.hello(t['ticket'])                                   # the pre-restart ticket is dead
+        self.game.hello(self.ticket(self.ben)[1]['ticket'])
 
     # ---- end for everyone ---------------------------------------------------------------------------
     def test_end_for_everyone_resets_the_game_and_kills_tickets(self):
