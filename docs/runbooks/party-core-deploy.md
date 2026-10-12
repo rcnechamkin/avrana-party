@@ -69,14 +69,19 @@ party, device identities survive), BLUFF rules changes, `.avrgame`.
    `avrana-party.nginx` and `arcade/nginx-site`, right after the
    `location = /party/api/origin.json` block. The two files stay identical (`cmp`; CI checks it).
    `tests/unit/test_nginx_site.py` runs CI's real nginx with the real party service behind that
-   block. From that merge until step 6 below, `main`'s site differs from the live site. That is
-   expected: the live site is installed only in step 6.
+   block. From that merge until the site file is installed, `main`'s site differs from the live
+   site. That is expected. Since AVR-271 a routine `ops/deploy.sh` run installs the site file of the
+   deployed commit itself ([deploy](deploy.md): read from Git, `nginx -t`, reload, the previous file
+   put back on any failure, the hash in the manifest); step 6 below is the same procedure by hand,
+   for a first-time install or a run with `--skip-nginx-site`.
    The site also carries the `/games/` rules (`deploy/games/`, AVR-259): BLUFF and EXPO by name
    to the LAN Games runtime on both server blocks; every other slug to a native game's socket or
    an nginx error over HTTPS, and a 404 on port 80, which serves no native game. The LAN Games
    hub page at `/` is no longer served. Install it only together with the web build of the same commit, whose
    catalog no longer offers the LAN Games titles those rules stop serving; installing either
-   alone leaves tiles that lead to an error, or routes with no tile.
+   alone leaves tiles that lead to an error, or routes with no tile. `ops/deploy.sh` installs both as
+   one unit and restores both together; `/party/api/status` reports `degraded` while the installed
+   site file differs from the deployed commit's.
 3. **CI green** on both repos.
 
 ## Deploy (owner, on the Pi, in this order)
@@ -125,6 +130,10 @@ sudo cp /home/cody/avrana-party/avrana-party.nginx /etc/nginx/sites-available/av
 sudo nginx -t && sudo systemctl reload nginx
 cmp /home/cody/avrana-party/avrana-party.nginx /etc/nginx/sites-available/avrana-party
 ```
+
+Routine deployments do not use step 6: `ops/deploy.sh` does the backup, install, `nginx -t` and reload
+(and restores on failure). Use these commands for the first install, or when a deploy ran with
+`--skip-nginx-site`.
 
 ## Verify
 
