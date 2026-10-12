@@ -204,9 +204,11 @@ as not installed ([deploy](deploy.md) "After"). Copy the status JSON into the re
 ## 3. nginx site file, including the AVR-314 cookie rule
 
 The web build and the site file of one commit are a single deployment unit (the catalog offers
-exactly the games the site routes; [deploy](deploy.md)). `ops/deploy.sh` never installs nginx, so
-install the site file **immediately** after step 2, still before any phone joins. Until then Party
-Home may show tiles that lead to nginx's own 502. In Session A Checkers is not provisioned and
+exactly the games the site routes; [deploy](deploy.md)). `ops/deploy.sh` installs the site file of the
+deployed commit itself (read from Git, `nginx -t`, reload, the previous file put back on any failure;
+`--skip-nginx-site` opts out), so step 2 already did it unless that flag was used; if it was, install the
+site file **immediately**, still before any phone joins, because until then Party Home may show tiles that
+lead to nginx's own 502. In Session A Checkers is not provisioned and
 Party Home may still list it (the catalog comes from the contracts): nobody taps it.
 
 **On the Pi:**
