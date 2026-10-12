@@ -91,8 +91,7 @@ python3 tools/contract_check.py --games ../avrana-party-games
 `timeout`, default 5 s; for `end`, 12 s). A game that starts something heavy on `launch` (the
 arcade) has a longer grant timeout, not a longer allowance for size. Do not put diagnostics,
 tracebacks or captured process output in the answer: `{"ok": true}` or `{"ok": false, "message":
-"one readable line"}`. Party Core treats anything else, and any `3xx`, as a failed call. How a refusal of an `end`
-is read is an observed convention, below.
+"one readable line"}`. Party Core treats anything else, and any `3xx`, as a failed call.
 
 **Is it a contract requirement?** It is declared Party-side behaviour, not a machine-checked
 requirement, and it stays out of `contracts/party-games.v0.json` for now.
@@ -104,12 +103,12 @@ requirement, and it stays out of `contracts/party-games.v0.json` for now.
 - *Why not add it anyway?* Nothing in Games would check it: Games' declaration has no field for a
   limit, so the number would be declared by Party and obeyed or not by each game, with no test on
   the other side. A limit that is declared on both sides, with a Games-side test, is a paired
-  change (a field in Games' `provider/avrana-contract.json` and a check in `contract_check.py`).
-  That belongs with the optional `state` probe proposal
-  ([proposals/2026-10-12-session-probe.md](proposals/2026-10-12-session-probe.md)), which needs a
-  paired Games change for the same reason.
+  change (a field in Games' `provider/avrana-contract.json` and a check in `contract_check.py`)
+  and an owner decision; it is not added.
 - *Old Games, new Party:* unchanged; the limit is behaviour Party already applies to every reply.
   *New Games, old Party:* a game that keeps inside the limit works with a Party that has none.
+- *Name resolution* is outside the deadline: a game is only addressed by a loopback IP literal or
+  a Unix socket path from the appliance's own grant, so no resolver is involved.
 
 **Measured headroom** (real calls, T1/T2, Games `origin/main` 2ee23e6 with this Party branch; the
 Windows host has no Unix sockets, so these are the same handlers without the socket):
@@ -133,11 +132,18 @@ Each is a boolean; anything else, or another key, stops the service at startup.
 | Key | Default | What it does |
 |---|---|---|
 | `end_orphan_on_start` | **false** | Party Core keeps a small durable record (`active-session.json` beside `devices.json`, or the path in `session_record`; `""`/false there means no record at all) of the sessions it started and has not seen the game reset. At startup it sends each game the signed `end` for them, five tries two seconds apart, then drops the entry. It stops a game (and the arcade/PS1 runtime) that a restarted Party Core would otherwise leave running. With it off nothing is written or sent. |
-| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding 10 s window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released. A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and the key below does not exist. |
+| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released. A miss is stamped when its check started. The window is 10 s, or 3 x the connect timeout + 2 s when that is longer (17 s at the default 5 s), so that three checks that each waited out a full timeout can still add up. A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and the key below does not exist. |
 | `end_not_held_is_ended` | **true** | An `end` the game refuses with the reason token below counts as ended, so the host's End and switch work after the game restarted. false: only `{"ok": true}` confirms, as before. |
 
 Why the first two are off: they change what the appliance does to a running game, and the owner
-has not decided. With both off the branch behaves as `fix/avr-33-bounded-link` does.
+has not decided. With both off, the branch behaves as `fix/avr-33-bounded-link` does except that
+`end_not_held_is_ended` (default on) is also in effect; set it false for exactly that behaviour.
+
+**What triggers the check.** Only a ticket request for the ACTIVE session, at most one check per 2 s.
+Nothing runs on a timer, so one idle follower never triggers it. In practice a game page that cannot
+reach its game keeps asking (each reconnect fetches a ticket) and a phone being sent into the game
+asks too; three attempts a few seconds apart, from one phone or several, are enough. If nobody tries
+to enter the game the session stays `active` until someone does or the host ends it.
 
 **Observed convention (not a declared field of v0).** `end_not_held_is_ended` reads exactly these
 two refusals, matched on the structured token and never on free text:

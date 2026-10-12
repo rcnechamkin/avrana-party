@@ -633,19 +633,21 @@ class PartyCore:
             record['data_schema'], record['data'] = checked['data_schema'], checked['data']
         s.result = record
 
-    def game_unreachable(self, session_id):
+    def game_unreachable(self, session_id, at=None, window=GAME_LOST_SPAN):
         """A check found the active session's game server not answering. One miss means nothing (a
         restart, a busy Pi). GAME_LOST_FAILS misses inside a sliding window of GAME_LOST_SPAN
         seconds, with no success between, close the session (see game_lost); a miss older than the
-        window no longer counts. Does nothing unless the `close_lost_game` switch is on. Returns
-        True when it closed."""
+        window no longer counts. `at` is when the check STARTED (a check that waited out a slow
+        connect is stamped before the wait, not after it) and `window` is at least GAME_LOST_SPAN:
+        the service widens it with the connect timeout so that three slow checks can still fit.
+        Does nothing unless the `close_lost_game` switch is on. Returns True when it closed."""
         self._timed()
         s = self.party.session
         if not self.close_lost_game or s is None or s.id != session_id or s.state != ACTIVE:
             return False
-        now = self.clock()
+        now = self.clock() if at is None else at
         sid, times = self._misses
-        times = [t for t in (times if sid == s.id else []) if now - t < GAME_LOST_SPAN] + [now]
+        times = [t for t in (times if sid == s.id else []) if now - t < window] + [now]
         self._misses = (s.id, times)
         if len(times) >= GAME_LOST_FAILS:
             return self.game_lost(session_id)

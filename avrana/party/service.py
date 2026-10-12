@@ -245,10 +245,13 @@ class PartyService:
         if reachable is None or not self.core.close_lost_game:
             return True
         with self.lock:
-            now = self.core.clock()
+            now = self.core.clock()          # when this check STARTS: that is when a miss is stamped
             if self._probed and self._probed[0] == s.id and now - self._probed[1] < PROBE_EVERY:
                 return True
             self._probed = (s.id, now)
+        ep = getattr(self.link, 'endpoints', {}).get(s.game_id)
+        timeout = (getattr(ep, 'timeout', None) or getattr(self.link, 'timeout', None) or 5.0)
+        window = max(core.GAME_LOST_SPAN, core.GAME_LOST_FAILS * timeout + PROBE_EVERY)
         up = reachable(s)
         if up is None:
             return True
@@ -256,7 +259,7 @@ class PartyService:
             if up:
                 self.core.game_reachable(s.id)
                 return True
-            lost = self.core.game_unreachable(s.id)
+            lost = self.core.game_unreachable(s.id, at=now, window=window)
             if lost:
                 self._notify()
         if lost:
@@ -272,9 +275,11 @@ class PartyService:
         not answer is tried `attempts` times, `delay` seconds apart (it may be starting beside
         Party Core), then given up on: its next launch replaces whatever it holds. Returns the list
         of what each game said ('ended', 'not_held', 'refused', 'unreachable'), or None when the
-        switch is off or there is nothing recorded. Safe beside a new launch: an `end` names its
-        session and a game never ends a newer one, and a launch adds its own entry to the record
-        instead of replacing one that is still waiting here."""
+        switch is off or there is nothing recorded. Beside a new launch: an `end` names its
+        session and a game never ends a newer one; a launch adds its own entry to the record
+        instead of replacing one still waiting here; and every update of the record, from this
+        thread, the request threads and the release thread, runs under the record's one lock, so
+        none overwrites another's."""
         found = self.record.read() if self.record is not None else []
         said = []
         for sid, game_id in found:

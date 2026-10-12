@@ -317,6 +317,19 @@ class GameLostRules(unittest.TestCase):
             self.assertEqual(v['nav']['from'], 'bluff')
         pc.launch('device-0', 'bluff', pc.party.version)         # and the host can simply start again
 
+    def test_checks_that_waited_out_a_slow_connect_are_stamped_at_their_start_and_fit_a_wider_window(self):
+        pc, clock, s = self.active()
+        base = clock()
+        # three checks of 5 s each, back to back, start at 0, 5 and 10
+        self.assertFalse(pc.game_unreachable(s.id, at=base, window=17.0))
+        self.assertFalse(pc.game_unreachable(s.id, at=base + 5, window=17.0))
+        self.assertTrue(pc.game_unreachable(s.id, at=base + 10, window=17.0))
+        pc, clock, s = self.active()
+        for t in (0, 5):
+            pc.game_unreachable(s.id, at=base + t)
+        self.assertFalse(pc.game_unreachable(s.id, at=base + 10),
+                         'with the plain 10 s window such checks could never add up')
+
     def test_with_the_switch_off_nothing_is_counted_closed_or_shown(self):
         pc, clock, s = self.active(close=False)
         for _ in range(10):
@@ -364,6 +377,42 @@ class SessionRecordFile(unittest.TestCase):
         self.assertEqual(len(self.rec.read()), record.MAX_KEPT)
         self.assertEqual(self.rec.read()[-1][0], 'session-' + str(record.MAX_KEPT + 2) * 32)
 
+    def test_a_write_and_a_clear_racing_each_other_never_lose_an_entry(self):
+        """clear(a) has read [a] and is about to save [] when write(b) comes in. Without one lock
+        around the read-modify-write, write(b) saves [a, b] and clear then saves [] over it."""
+        self.rec.write(self.a, 'bluff')
+        in_save, release, calls = threading.Event(), threading.Event(), []
+        real = self.rec._save
+
+        def save(entries):
+            calls.append(entries)
+            if len(calls) == 1:                    # the clear: hold it between its read and its save
+                in_save.set()
+                release.wait(5)
+            real(entries)
+        self.rec._save = save
+        clearing = threading.Thread(target=self.rec.clear, args=(self.a,))
+        writing = threading.Thread(target=self.rec.write, args=(self.b, 'bluff'))
+        clearing.start()
+        self.assertTrue(in_save.wait(5))
+        writing.start()
+        writing.join(0.3)                          # with the lock it waits here; without, it finishes
+        release.set()
+        clearing.join(5)
+        writing.join(5)
+        self.assertEqual(self.rec.read(), [(self.b, 'bluff')])
+
+    def test_a_file_that_is_not_ours_is_set_aside_and_the_record_starts_empty(self):
+        with open(self.path, 'w', encoding='utf-8') as f:
+            f.write('{"sess')
+        with self.assertLogs('avrana.party.record', level=logging.WARNING):
+            self.assertEqual(self.rec.read(), [])
+        names = os.listdir(self.tmp.name)
+        self.assertEqual([n for n in names if '.bad-' in n], [n for n in names])
+        self.assertEqual(len(names), 1)
+        self.rec.write(self.a, 'bluff')                   # and the next write is a clean file
+        self.assertEqual(self.rec.read(), [(self.a, 'bluff')])
+
     def test_a_cut_short_or_foreign_file_is_ignored_not_fatal(self):
         for bad in ('', '{"sess', 'not json', '[1]', '{"schema": "x"}',
                     '{"schema": "%s", "sessions": [{"session": 1, "game": "g"}]}' % record.SCHEMA,
@@ -399,6 +448,40 @@ class SessionRecordFile(unittest.TestCase):
         self.assertIsNone(service.session_record_path({}))
         for off in ('', False, None):                     # named but empty: no record, no fallback
             self.assertIsNone(service.session_record_path({'session_record': off, 'devices': '/d/devices.json'}))
+
+
+class SlowAccept(unittest.TestCase):
+    """A game whose accept queue is full: each check waits out the whole connect timeout and misses.
+    Injected clock, no sleeping."""
+
+    def test_three_slow_misses_still_close_the_session(self):
+        clock = Clock()
+
+        class Link:
+            timeout = 5.0
+            endpoints = {}
+
+            def reachable(self, session):
+                clock.advance(5.0)                  # the connect timed out
+                return False
+
+            def launch(self, session, roster):
+                return True, None
+
+            def end(self, session):
+                return True
+        svc = service.PartyService(identity.DeviceStore(None), {'bluff': BLUFF}, Link(), clock=clock,
+                                   close_lost_game=True)
+        svc.core.join('device-a', 'Ana')
+        s = svc.core.launch('device-a', 'bluff', svc.core.party.version)
+        svc.core.launch_accepted(s.id)
+        self.assertTrue(svc.game_up(s))              # started at 0, stamped 0
+        self.assertTrue(svc.game_up(s))              # started at 5
+        self.assertFalse(svc.game_up(s))             # started at 10: three inside 3 x 5 s + slack
+        self.assertEqual((s.state, s.reason), ('ended', 'game_lost'))
+        for thread in threading.enumerate():
+            if thread.name == service.RELEASE_THREAD:
+                thread.join(5)
 
 
 class RecoveryConfig(unittest.TestCase):
@@ -558,7 +641,7 @@ class RestartableGame:
         self.server = http.server.ThreadingHTTPServer(('127.0.0.1', self.port or 0), Handler)
         self.server.daemon_threads = True
         self.port = self.server.server_address[1]
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        threading.Thread(target=self.server.serve_forever, args=(0.02,), daemon=True).start()   # quick to stop
 
     @property
     def url(self):
