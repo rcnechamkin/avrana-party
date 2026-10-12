@@ -55,6 +55,18 @@ def checkout(sha, dirty=False, ref='main', path='/p', untracked=0):
     return {'sha': sha, 'short': sha[:12], 'dirty': dirty, 'untracked': untracked, 'ref': ref, 'checkout': path}
 
 
+class _WithRecord:
+    """Real certificate/record reading with every other probe faked."""
+    def __init__(self, real):
+        self.real, self.fake = real, FakeProbes()
+
+    def __getattr__(self, name):
+        return getattr(self.fake, name)
+
+    def certificate_not_after(self, path):
+        return self.real.certificate_not_after(path)
+
+
 class Document(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -126,6 +138,44 @@ class Document(unittest.TestCase):
             doc = status.build_status(dict(self.cfg, certificate='/x/fullchain.pem', web_root='/w'), probes, now=NOW)
         self.assertEqual(doc['certificate']['status'], 'unavailable')
         self.assertEqual(doc['manifest_error'], 'deployment manifest: unreadable (PermissionError)')
+
+    def test_an_unreadable_certificate_is_never_ok(self):
+        """AVR-31: the live appliance (Party c59f1c8) answered certificate `unavailable` with
+        summary `ok` while the served certificate was 75 days from its end. The service user cannot
+        read the root-only certificate directory, and nothing said so."""
+        manifest.write(self.manifest, sample())
+        both = {'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}
+        doc = self.build(FakeProbes(both, cert_days=None))
+        self.assertEqual(doc['certificate'], {'not_after': None, 'days_left': None, 'status': 'unavailable'})
+        self.assertEqual(doc['summary']['state'], 'unknown')
+        self.assertEqual(doc['summary']['reasons'], ['certificate expiry unavailable'])
+        # a readable certificate is still ok, an expiring or expired one still degrades
+        self.assertEqual(self.build(FakeProbes(both, cert_days=60))['summary']['state'], 'ok')
+        for days, word in ((5, 'expiring'), (-1, 'expired')):
+            doc = self.build(FakeProbes(both, cert_days=days))
+            self.assertEqual((doc['summary']['state'], doc['summary']['reasons']),
+                             ('degraded', [f'certificate {word}']))
+
+    def test_the_installers_expiry_record_stands_in_for_the_root_only_certificate(self):
+        record = Path(self.temp.name) / 'certificate-not-after'
+        record.write_text('notAfter=Dec 25 10:00:00 2026 GMT\n', encoding='ascii')
+        probes = status.Probes(certificate_record=str(record))
+        want = datetime(2026, 12, 25, 10, 0, tzinfo=timezone.utc)
+        # the certificate itself is out of reach (the service user), so the record answers
+        with mock.patch.object(Path, 'exists', side_effect=PermissionError(13, 'Permission denied')):
+            self.assertEqual(probes.certificate_not_after('/etc/avrana-party/tls/current/fullchain.pem'), want)
+        doc = status.build_status(dict(self.cfg, certificate='/nowhere/fullchain.pem'),
+                                  _WithRecord(probes), now=NOW)
+        self.assertEqual(doc['certificate']['status'], 'ok')
+        self.assertEqual(doc['certificate']['not_after'], '2026-12-25T10:00:00Z')
+        # no record, a garbled one, or the wrong thing in it: unavailable, never a crash or a guess
+        for text in (None, '', 'notAfter=tomorrow', 'garbage', 'notAfter'):
+            if text is None:
+                record.unlink()
+            else:
+                record.write_text(text, encoding='ascii')
+            self.assertIsNone(probes.certificate_not_after('/nowhere/fullchain.pem'), text)
+        self.assertNotIn(str(record), json.dumps(doc))                 # no filesystem path in public
 
     def test_malformed_manifest_is_reported_not_hidden(self):
         self.manifest.write_text('{"schema": "avrana.deployment/v0"}')

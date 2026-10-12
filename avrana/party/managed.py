@@ -42,6 +42,7 @@ IDLE, STARTING, RUNNING, STOPPING = 'idle', 'starting', 'running', 'stopping'
 START_TIMEOUT = 15.0            # s for the runtime to come up (the party's link waits longer)
 REPORT_TIMEOUT = 3.0            # s for one `ended` POST while the process is going down
 MAX_BODY = 8192
+MAX_WHY = 200                    # characters of a start failure the answer carries (Party reads 64 KiB)
 PROXY_HEADERS = ('x-forwarded-for', 'x-real-ip', 'forwarded')
 LOOPBACK = ('127.0.0.1', '::1')
 KEYS_ENV = 'AVRANA_PARTY_KEYS'
@@ -95,7 +96,7 @@ class ManagedRuntime:
                 log.error('[%s] start failed: %s', self.side.game, str(e) or type(e).__name__)
                 self.side.sid, self.side.roster = None, []
                 await self._halt()
-                why = 'it took too long' if isinstance(e, asyncio.TimeoutError) else str(e)
+                why = 'it took too long' if isinstance(e, asyncio.TimeoutError) else str(e)[:MAX_WHY]
                 return 200, {'ok': False, 'message': f'The game did not start ({why}).'}
             self.state = RUNNING
             log.info('[%s] party session started (%d on the roster)', self.side.game, len(roster))

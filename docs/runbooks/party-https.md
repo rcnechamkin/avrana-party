@@ -76,8 +76,110 @@ failures and remaining validity; an expired certificate ends trusted Full Mode.
 The timer is therefore optional on an appliance: it is installed only after the
 token exists. `python3 -m avrana.ops.smoke` and `/party/api/status` report it as
 not installed without failing, and fail it when it is installed but not active.
-Remaining validity is checked either way (failing below 21 days), which is the
-only guard while renewal is manual.
+Remaining validity is checked either way, and is the guard that still works when
+the timer is absent or the renewal service fails: below 21 days the status
+summary is `degraded` (reason `certificate expiring`) and the smoke check fails.
+Lego starts renewing at 30 days, so a renewal that keeps failing is visible for
+9 days before that. The service user cannot read the root-only certificate
+directory (ADR 0016), so the installer also writes the public expiry line to
+`/etc/avrana-party/certificate-not-after` and status and smoke read that. If it
+is missing the status reports the certificate `unavailable` and the summary
+`unknown` (reason `certificate expiry unavailable`): never `ok` (AVR-31).
+
+## Automatic renewal: enable, verify, recover
+
+Status: **units, scripts and tests are in the repository; nothing in this section has been run
+on the appliance.** Every step below is an owner step on the Pi (each needs `sudo`), in order.
+`REPO` is the clean production checkout that holds the reviewed commit; the scripts and units are
+copied, not linked, and `ops/deploy.sh` never touches them.
+
+1. Tools and state. Expect lego to print a version and the state to hold the issued pair:
+
+   ```sh
+   /usr/local/bin/lego --version
+   sudo ls /var/lib/avrana-party/lego/certificates/
+   readlink /etc/avrana-party/tls/current        # note it: step 4 must not change it
+   ```
+
+2. The token, typed by the owner into a root-only file (never on a command line, in chat or in
+   git). `CF_DNS_API_TOKEN` is scoped to the `avrana.net` zone, DNS edit plus zone read:
+
+   ```sh
+   sudo install -m 0600 -o root -g root /dev/null /etc/avrana-party/cloudflare.env
+   sudo nano /etc/avrana-party/cloudflare.env     # two lines: CF_DNS_API_TOKEN=...   ACME_EMAIL=...
+   ```
+
+3. Install the scripts and units (idempotent: re-running changes nothing new):
+
+   ```sh
+   REPO=/home/cody/avrana-party
+   sudo install -m 0755 "$REPO"/ops/install-party-certificate.sh "$REPO"/ops/renew-party-certificate.sh \
+        /usr/local/libexec/avrana-party/
+   sudo install -m 0644 "$REPO"/ops/avrana-party-certificate.service "$REPO"/ops/avrana-party-certificate.timer \
+        /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+
+4. The safe renewal run. The certificate is not within 30 days of its end, so lego orders nothing
+   and the installer finds the installed pair unchanged; this proves the token file, lego, the
+   state directory and the installer without touching Let's Encrypt's limits:
+
+   ```sh
+   sudo systemctl start avrana-party-certificate.service     # waits until it ends
+   systemctl show -p Result,ExecMainStatus avrana-party-certificate.service   # Result=success, ExecMainStatus=0
+   journalctl -u avrana-party-certificate.service -n 40 --no-pager
+   readlink /etc/avrana-party/tls/current                      # unchanged from step 1 (see below)
+   cat /etc/avrana-party/certificate-not-after                 # notAfter=... GMT, mode 0644
+   ```
+
+   The journal says lego did not renew (the days left against 30) and the installer printed
+   `Certificate is already installed`. `current` stays unchanged only if the lego state certificate is the
+   one already installed; if the installed certificate came from elsewhere, the installer switches to the
+   state certificate, and that is why the link changed (step 1 recorded the old target). If the unit failed, read the journal: a missing or wrong
+   token, lego unable to reach Cloudflare, or a clock that is far off are the usual causes. The
+   installed certificate is untouched in every failure.
+
+5. Enable the timer and read the status (Party Core must be the build that reads the expiry
+   record; redeploy `main` first if the Pi still runs an older one):
+
+   ```sh
+   sudo systemctl enable --now avrana-party-certificate.timer
+   systemctl list-timers avrana-party-certificate.timer         # a NEXT time within 26 hours
+   curl -s --noproxy '*' -H 'Host: party.avrana.net' http://127.0.0.1:8191/party/api/status | python3 -c \
+     'import json,sys; d=json.load(sys.stdin); print(d["certificate"], d["services"]["avrana-party-certificate.timer"], d["summary"]["state"])'
+   ```
+
+   Expect `status: ok` with `days_left` near the real figure, the timer `active` and the summary
+   `ok`. `python3 -m avrana.ops.smoke` on the Pi now has a passing `certificate` check instead of a
+   skip.
+
+6. The first real renewal is not rehearsed here: it happens by itself between 30 and 21 days
+   before the end. Check `journalctl -u avrana-party-certificate.service` and the status on the
+   first days of that window. Forcing one early (`lego renew --days 90`) orders a real certificate
+   and counts against Let's Encrypt's limits; do it only deliberately.
+
+**A renewal failed, or the status says `certificate expiring`.** Read
+`journalctl -u avrana-party-certificate.service -n 100`, fix the cause, and run
+`sudo systemctl start avrana-party-certificate.service` again. The installer validates host name,
+validity, chain, key pairing and `nginx -t` before it switches, and puts the previous certificate
+back on any failure, so a failed run never leaves nginx without a working certificate. If
+automatic renewal cannot be repaired in time, issue by hand (`lego --dns manual`, "Trust and key
+custody" above; the exact flags are what that lego version's `--help` says), then
+`sudo /usr/local/libexec/avrana-party/install-party-certificate.sh <fullchain> <key>`.
+
+**Roll back to the previous certificate.** The released directories are kept:
+
+```sh
+sudo ls -1 /etc/avrana-party/tls/releases/
+sudo ln -s releases/<previous> /etc/avrana-party/tls/.rollback-next
+sudo mv -Tf /etc/avrana-party/tls/.rollback-next /etc/avrana-party/tls/current
+sudo nginx -t && sudo systemctl reload nginx
+sudo sh -c 'openssl x509 -noout -enddate -in /etc/avrana-party/tls/current/fullchain.pem > /etc/avrana-party/certificate-not-after'
+```
+
+**Turn automatic renewal off** (the certificate stays and stays valid until it ends):
+`sudo systemctl disable --now avrana-party-certificate.timer`. To remove it entirely, delete the
+two unit files from `/etc/systemd/system/` and run `sudo systemctl daemon-reload`.
 
 ## Pre-deployment and backup
 

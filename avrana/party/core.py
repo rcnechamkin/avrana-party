@@ -214,6 +214,7 @@ class PartyCore:
             raise Refused('not_host', 'Only the host can do that.')
         if if_version != self.party.version:
             raise Refused('stale', 'The party changed. Have another look and try again.')
+        m.last_seen = self.clock()      # a host action is a party request: the host is here (AVR-33)
         return m
 
     def _live_session(self):
