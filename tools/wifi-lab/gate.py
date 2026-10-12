@@ -152,7 +152,13 @@ def run_gate(args, wl):
         wl.GATE_VERDICTS.append(v)
 
     wl.GATE_VERDICTS = []
-    wl.for_each_device(args, one)
+    try:
+        wl.for_each_device(args, one)
+    except (Exception, SystemExit) as e:
+        # "could not run" (no adb device, preflight crash, ssh down) must never share exit code 1 with WARN,
+        # which is what an uncaught exception or sys.exit("message") would give
+        print(f"FAIL: the gate could not run: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)
     code = {"PASS": 0, "WARN": 1, "FAIL": 2}[max(wl.GATE_VERDICTS, key=lambda x: RANK[x])] if wl.GATE_VERDICTS else 2
     sys.exit(code)
 

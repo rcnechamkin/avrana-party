@@ -25,7 +25,7 @@ the Avrana SSID, and the `party` ssh alias.
 | Recover after an interrupted qualification (lab only) | `python tools/wifi-lab/wifilab.py ap-recover --lab` (returns to the recorded pre-test state) |
 | Show / set / restore the AP channel (lab only) | `wifilab.py ap show`; `wifilab.py ap set --channel N --lab`; `wifilab.py ap restore --lab` |
 
-`gate` exits 0 PASS, 1 WARN, 2 FAIL. Run `baseline`/`loaded`/`gate` only when nobody is playing: they
+`gate` exits 0 PASS, 1 WARN, 2 FAIL; 2 also means the gate could not run (no device, preflight crash), never 1. Run `baseline`/`loaded`/`gate` only when nobody is playing: they
 generate load. `qualify` additionally disconnects every client at each step.
 
 ## Pi health states (`telemetry/pi-health-check.py`)

@@ -258,6 +258,15 @@ class Gate(unittest.TestCase):
         self.assertEqual(cm.exception.code, 2)
         self.assertEqual(wl.GATE_VERDICTS, ["FAIL"])
 
+    def test_a_gate_that_could_not_run_exits_2_never_the_warn_code(self):
+        wl = mock.MagicMock()
+        wl.CFG = json.loads((LAB / "config.json").read_text())
+        for boom in (RuntimeError("adb vanished"), SystemExit("no authorized adb device")):
+            wl.for_each_device.side_effect = boom
+            with self.assertRaises(SystemExit) as cm:
+                gate.run_gate(mock.MagicMock(all_devices=False), wl)
+            self.assertEqual(cm.exception.code, 2, boom)
+
     def test_render_lists_failures_first(self):
         text = gate.render("FAIL", [("PASS", "a ok"), ("FAIL", "b bad"), ("WARN", "c meh")])
         self.assertEqual(text.splitlines()[0], "FAIL")
