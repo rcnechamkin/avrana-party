@@ -40,6 +40,14 @@ Both name the same components:
   games declaration without it is refused;
 - **routes**: the party's ticket route, the party's loopback `ended` route, the game's launch
   and end routes under `/games/<slug>/`;
+- **reply limit** (Party-side behaviour declared here, **not** in `contracts/party-games.v0.json`):
+  Party reads at most 64 KiB of a game's reply to `launch` or `end`
+  (`avrana.party.sessions.MAX_REPLY_BYTES`) and gives each call one deadline, measured on the
+  monotonic clock from before the connection is made: the link timeout (the grant's `timeout`, else
+  5 s; an `end` waits at most `END_LINK_TIMEOUT`, 12 s). Every wait on the socket, the headers'
+  included, is cut to what is left of it, so a game cannot hold a Party Core request thread longer
+  by dripping bytes. An over-limit, late, redirected or non-object reply is a failed launch or end.
+  See [Reply limit: what it asks of a game](#reply-limit-what-it-asks-of-a-game) below.
 - **launch integration**: `avrana.lan-launch/v1`, the `avrana=1` marker, the fixed `/party/`
   return path, advertised at `/api/games`;
 - **environment**: `AVRANA_PARTY_KEYS` and `AVRANA_PARTY_URL`, set by the games service drop-in;
@@ -75,6 +83,46 @@ python3 tools/contract_check.py --games ../avrana-party-games
    would no longer work against the new Party. Additive, backwards-compatible changes keep v0.
 4. The deployment manifest and `/party/api/status` report the version Party implements; the
    status document also reports what the running games server advertises.
+
+## Reply limit: what it asks of a game
+
+**What a Games or SDK author must now guarantee (AVR-336, AVR-33).** The answer to `launch` and to
+`end` is one JSON object of at most 64 KiB, complete within the link timeout (the game's grant
+`timeout`, default 5 s; for `end`, 12 s). A game that starts something heavy on `launch` (the
+arcade) has a longer grant timeout, not a longer allowance for size. Do not put diagnostics,
+tracebacks or captured process output in the answer: `{"ok": true}` or `{"ok": false, "message":
+"one readable line"}`. Party Core treats anything else, and any `3xx`, as a failed call.
+
+**Is it a contract requirement?** It is declared Party-side behaviour, not a machine-checked
+requirement, and it stays out of `contracts/party-games.v0.json` for now.
+
+- *Additive?* Yes, as far as the checkers go. `tools/contract_check.py` reads named keys of each
+  declaration and compares named keys across them; an extra top-level `limits` block in Party's
+  JSON was run against Games `origin/main` (2ee23e6) and the deployed a448972 and both stayed
+  `compatible`. `avrana/contracts/party_games.py` and the status document read named keys too.
+- *Why not add it anyway?* Nothing in Games would check it: Games' declaration has no field for a
+  limit, so the number would be declared by Party and obeyed or not by each game, with no test on
+  the other side. A limit that is declared on both sides, with a Games-side test, is a paired
+  change (a field in Games' `provider/avrana-contract.json` and a check in `contract_check.py`)
+  and an owner decision; it is not added.
+- *Old Games, new Party:* unchanged; the limit is behaviour Party already applies to every reply.
+  *New Games, old Party:* a game that keeps inside the limit works with a Party that has none.
+- *Name resolution* is outside the deadline: a game is only addressed by a loopback IP literal or
+  a Unix socket path from the appliance's own grant, so no resolver is involved.
+
+**Measured headroom** (real calls, T1/T2, Games `origin/main` 2ee23e6 with this Party branch; the
+Windows host has no Unix sockets, so these are the same handlers without the socket):
+
+| Game | launch ok | launch refused | end ok | end, session not held |
+|---|---|---|---|---|
+| BLUFF (Games server) | 11 B | 43 B | 11 B | 42 B |
+| Checkers | 12 B | 55 B (one player) | 12 B | 57 B |
+| Hello Party | 12 B | 58 B (bad message) | 12 B | 57 B |
+| Managed provider (arcade, PS1) | 12 B | 58 B (forged message) | 12 B | 12 B (idle: answered ok) |
+
+Every reply is under 60 bytes, a thousandth of the limit. The one reply that could exceed it was
+the managed runtime's start failure, which carried the runtime's exception text: a 200 KB text
+produced a 200 054 byte reply; capped at 200 characters (`managed.MAX_WHY`) the same failure is a 254 byte reply.
 
 ## Not declared here
 

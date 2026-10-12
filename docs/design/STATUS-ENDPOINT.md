@@ -27,14 +27,15 @@ is cached for 5 seconds so phones cannot turn it into a `systemctl` storm.
 | `web_release` | `{build, commit}` of the installed `/party/` shell |
 | `contract` | `{party_games, party_session, lan_launch, games_advertises}`: what Party implements and what the games server advertises at `/api/games` |
 | `services` | each configured systemd unit: `active`, `inactive`, `failed`, `not-installed`, `unknown` or `unavailable` |
-| `certificate` | `{not_after, days_left, status}` with `ok`, `expiring` (< 21 days), `expired` or `unavailable` |
+| `certificate` | `{not_after, days_left, status}` with `ok`, `expiring` (< 21 days), `expired` or `unavailable`. The service user cannot read the root-only certificate directory, so the expiry comes from the public record `/etc/avrana-party/certificate-not-after` (the `openssl x509 -enddate` line, written by `ops/install-party-certificate.sh`); `unavailable` means neither could be read |
 | `party_core` | `{ok, uptime_s, members, session: {game, state} or null}` from inside the service |
 | `games_provider` | `{ok, integration, compatible}` from loopback `:8096/api/games` |
 | `arcade` | `{ok, state, players, max_players, party_managed, emulator_running, error, video_frames, sample_age_s}` from loopback `:8097/stats` |
 | `summary` | `{state: ok, degraded or unknown; reasons; notes}` |
 
-`unknown` means something could not be observed (no manifest yet, `systemctl` unavailable);
-it is never reported as `ok`. `degraded` lists its reasons. `notes` carries facts that are not
+`unknown` means something could not be observed (no manifest yet, `systemctl` unavailable, the
+certificate's expiry unavailable: reason `certificate expiry unavailable`, AVR-31); it is never
+reported as `ok`. `degraded` lists its reasons. `notes` carries facts that are not
 problems on an undeployed checkout (a dirty development tree).
 
 A unit that systemd does not know is `not-installed`. That degrades the summary, except for the
