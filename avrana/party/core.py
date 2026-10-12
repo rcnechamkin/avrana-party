@@ -62,8 +62,8 @@ HOST_GRACE = 30.0          # s an away host keeps the role before succession (PA
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
-GAME_LOST_FAILS = 3        # failed reachability checks in a row ...
-GAME_LOST_SPAN = 10.0      # ... spread over at least this many s, before an active session is closed
+GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
+GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
 NAME_MAX = 16
 RESERVED_NAMES = ('system', 'admin', 'host', 'avrana', 'moderator')
 AVATAR = re.compile(r'^gaze-\d\d$')     # a bundled DiceBear Gaze avatar id (web/party/avatars/)
@@ -190,12 +190,13 @@ class PartyCore:
     """One appliance, one party. Every public method applies due timers first, so a deadline
     holds at the moment someone acts, not only when the background tick runs (model rule R4)."""
 
-    def __init__(self, clock, games):
+    def __init__(self, clock, games, close_lost_game=False):
         self.clock = clock
+        self.close_lost_game = close_lost_game    # AVR-33 switch (session_recovery.close_lost_game)
         self.games = dict(games)        # game_id -> {'id', 'max_players', 'late_join'}
         self.party = Party(clock())
         self._shown = {}                # member_id -> presence last published (timer diffing)
-        self._unreachable = None        # (session id, failures, first failure) while a game is down
+        self._misses = (None, [])       # (session id, times of failed checks inside the window)
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
@@ -634,25 +635,26 @@ class PartyCore:
 
     def game_unreachable(self, session_id):
         """A check found the active session's game server not answering. One miss means nothing (a
-        restart, a busy Pi); GAME_LOST_FAILS misses in a row over at least GAME_LOST_SPAN seconds
-        close the session as `abandoned`, reason `game_lost` (see game_lost). Returns True when
-        it closed."""
+        restart, a busy Pi). GAME_LOST_FAILS misses inside a sliding window of GAME_LOST_SPAN
+        seconds, with no success between, close the session (see game_lost); a miss older than the
+        window no longer counts. Does nothing unless the `close_lost_game` switch is on. Returns
+        True when it closed."""
         self._timed()
         s = self.party.session
-        if s is None or s.id != session_id or s.state != ACTIVE:
+        if not self.close_lost_game or s is None or s.id != session_id or s.state != ACTIVE:
             return False
         now = self.clock()
-        seen = self._unreachable
-        _, fails, first = seen if seen and seen[0] == s.id else (s.id, 0, now)
-        self._unreachable = (s.id, fails + 1, first)
-        if fails + 1 >= GAME_LOST_FAILS and now - first >= GAME_LOST_SPAN:
+        sid, times = self._misses
+        times = [t for t in (times if sid == s.id else []) if now - t < GAME_LOST_SPAN] + [now]
+        self._misses = (s.id, times)
+        if len(times) >= GAME_LOST_FAILS:
             return self.game_lost(session_id)
         return False
 
     def game_reachable(self, session_id):
-        """The game answered: the count of misses starts again."""
-        if self._unreachable and self._unreachable[0] == session_id:
-            self._unreachable = None
+        """The game answered: the misses are forgotten."""
+        if self._misses[0] == session_id:
+            self._misses = (None, [])
 
     def game_lost(self, session_id):
         """The party's active session has no game any more. It ends as `abandoned` (the outcome a
@@ -663,7 +665,7 @@ class PartyCore:
             return False
         s.reason = 'game_lost'
         self._close(s, 'abandoned', 'The game stopped.')
-        self._unreachable = None
+        self._misses = (None, [])
         return True
 
     def _close(self, s, outcome, detail=None):
@@ -783,9 +785,11 @@ class PartyCore:
         if s is not None:
             mine = s.participants.get(me.id) if me else None
             session = {'id': s.id, 'game': s.game_id, 'state': s.state, 'outcome': s.outcome,
-                       'detail': s.detail, 'reason': s.reason,
+                       'detail': s.detail,
                        'players': sum(1 for p in s.participants.values() if p.role == 'player'),
                        'my_role': mine.role if mine else None}
+            if self.close_lost_game:         # an additive key, present only with the switch on (AVR-33)
+                session['reason'] = s.reason
             # Party Home's minimal platform result (AVR-238). The authenticated record and
             # game-owned data stay private; the closed bridge projection does not forward this.
             if me and not me.left and s.result is not None:

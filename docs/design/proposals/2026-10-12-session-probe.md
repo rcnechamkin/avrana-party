@@ -1,6 +1,6 @@
 # Session probe and orphaned-session lifecycle
 
-- **Status:** **PROPOSED (2026-10-12, AVR-33). Mostly not built.** Part A below is implemented in source on branch `fix/avr-33-session-recovery` (nothing is deployed). Part B is a proposal that decides nothing and changes no contract: it needs an owner decision and a paired Games change.
+- **Status:** **PROPOSED (2026-10-12, AVR-33). Mostly not built.** Part A below is implemented in source on branch `fix/avr-33-session-recovery` (nothing is deployed); two of its three behaviour changes are **off by default** behind switches (section 2). Part B is a proposal that decides nothing and changes no contract: it needs an owner decision and a paired Games change.
 - **Reads with:** [PARTY-GAMES-CONTRACT](../PARTY-GAMES-CONTRACT.md), [ADR 0006](../../adr/0006-party-session-protocol.md) (session protocol), [PARTY-LIFECYCLE](../PARTY-LIFECYCLE.md), [ADR 0016](../../adr/0016-service-identities-and-local-trust-boundary.md) (native games, socket activation).
 - **Not covered:** any UI. Part C is the contract the UI team needs (AVR-339); nobody here changes Party Home.
 
@@ -24,12 +24,12 @@ Party Core and a game server each hold the session in memory. When one of them l
 
 ## 2. Part A: implemented (no contract change)
 
-All of it uses messages and fields v0 already has.
+All of it uses messages and fields v0 already has. Switches (`session_recovery` in `party-core.json`; full table in [PARTY-GAMES-CONTRACT](../PARTY-GAMES-CONTRACT.md)): `end_orphan_on_start` **false**, `close_lost_game` **false**, `end_not_held_is_ended` **true**. Items 1, 2 and 6 are unconditional (they are on `fix/avr-33-bounded-link`); item 3 is `end_not_held_is_ended`, item 4 is `close_lost_game`, item 5 is `end_orphan_on_start`.
 
 1. **One deadline per game call** (`avrana/party/sessions.py`). Every `launch`/`end` is one request on a socket whose every wait is cut to what is left of a single monotonic deadline, started before the connection is made, over TCP and Unix sockets. A game that drips its headers, drips its body or stalls after its headers frees the caller within the link timeout. Before: a header drip held a request thread for 12 to 32 seconds in the tests (confirmed, T2). Redirects are no longer followed. A non-object JSON reply is a failed call, not an exception.
 2. **No lock across a game call.** Link calls were already made outside `PartyService.lock`; a test now holds a launch stuck at a stalling game while three phones poll `/party/api/state` (each answer under 0.5 s, the lock free).
 3. **An `end` the game answers "no such session" counts as ended.** Both refusal wordings in use are read (`{"reason": "session"}` and `{"error": "bad_message:session"}`). This is an observed convention of the games, not a field of v0; it is read-only and affects only whether Party treats a restarted game as having stopped.
-4. **A game that stays down closes the session.** When a phone is about to be sent to the active session's game (a ticket request), Party checks that a connection to it is accepted (no message sent; at most one check per 2 s). Three failures in a row spread over at least 10 s close the session: outcome `abandoned` (already in the vocabulary), `session.reason = "game_lost"`, `session.detail = "The game stopped."`, `nav` home, tickets and seats released as for any abandoned session, a best-effort `end` sent off the request thread. One success starts the count again. A game behind systemd socket activation accepts connections while its process is down, so this finds a game whose socket is gone, not one that restarted.
+4. **A game that stays down closes the session.** When a phone is about to be sent to the active session's game (a ticket request), Party checks that a connection to it is accepted (no message sent; at most one check per 2 s, waiting as long as a launch would). Three failed checks inside a sliding 10 s window, with no success between, close the session: outcome `abandoned` (already in the vocabulary), `session.reason = "game_lost"` (a key that exists only with the switch on), `session.detail = "The game stopped."`, `nav` home, tickets and seats released as for any abandoned session, a best-effort `end` sent off the request thread. One success starts the count again. A game behind systemd socket activation accepts connections while its process is down, so this finds a game whose socket is gone, not one that restarted.
 5. **A durable active-session record** (`avrana/party/record.py`, `active-session.json` beside `devices.json`, or `session_record` in the config): session id and game id only, written (temp file, fsync, rename) when a launch is sent and removed when an `end` for it is answered. At startup Party Core sends the game the signed `end` for the recorded session, up to five tries two seconds apart, then drops it. Safe beside a new launch: an `end` names its session and a game never ends a newer one (tested).
 6. **A managed runtime's failure text is capped at 200 characters** (`avrana/party/managed.py`), so Party's 64 KiB reply bound cannot turn the arcade's own explanation into "did not answer". Measured: a 200 KB exception text produced a 200 054 byte reply before.
 
@@ -63,7 +63,7 @@ Scenario 1 (and 3b) cannot be detected from Party's side with v0: the game answe
 |---|---|
 | `holds: true` | start the count again; nothing else |
 | `holds: false` for the asked session (an authentic, signed answer) | a miss; **2 in a row over at least 3 s** close the session (an authentic "no" is stronger evidence than silence) |
-| unreachable, or no answer within the deadline | a miss; **3 in a row over at least 10 s** (what Part A does) |
+| unreachable, or no answer within the deadline | a miss; **3 inside a 10 s window** (what Part A does) |
 | 404/405 from a game that declared the capability, an unsigned, malformed, wrong-nonce or wrong-session answer | ignore, log once; never counts as a miss; the game is probed by connection only until Party restarts |
 
 "Closed" means what Part A does: outcome `abandoned`, `reason "game_lost"`, `nav` home, tickets and seats released, a best-effort signed `end` afterwards. A held result cannot exist for an ACTIVE session (a result is reported by an `ended`, which already ended it). A game that flaps or answers slowly never reaches the thresholds, because any success resets the count.
@@ -83,7 +83,7 @@ Scenario 1 (and 3b) cannot be detected from Party's side with v0: the game answe
 
 No UI is changed here. `GET /party/api/state` carries, for every phone:
 
-- `session.outcome == "abandoned"` and `session.reason == "game_lost"` (new key, `null` for every other close) with `session.detail == "The game stopped."`; `session.state == "ended"`.
+- `session.outcome == "abandoned"` and `session.reason == "game_lost"` (new key, present only with `close_lost_game` on, `null` for every other close) with `session.detail == "The game stopped."`; `session.state == "ended"`.
 - `location.at == "home"` and `nav.to == "home"`, `nav.from` the game id. Party Home should therefore show "The game stopped" once (keyed on `session.id`) instead of bouncing, and offer Start to the host.
 - After a Party Core restart: `me: null` and `state: "lobby"` for a phone that has a device cookie. Party Home should treat this as "the party restarted, rejoining" and not as a new visitor; the host role is not restored (section 1).
 - A game page's bridge projection (`publicView`) is closed and does not forward `reason`; a game page only needs `location.at`, which already moves home.
@@ -92,4 +92,4 @@ No UI is changed here. `GET /party/api/state` carries, for every phone:
 
 1. Accept the optional `state` probe (Part B) as an additive addition to v0, with the capability in the Game Contract extension, a new `probe.py` and a paired Games change. Nothing else here depends on it.
 2. Accept that Party reads a refusal of `end` with reason `session` as "this game holds no such session" (Part A item 3). It is a convention of the games, not a declared field. If declined, scenario 1 returns to "End does not confirm and a switch is refused".
-3. Accept that a restarted Party Core ends the game it was running (a round in progress is lost). The alternative leaves an unmanaged arcade or PS1 runtime running.
+3. Switch `end_orphan_on_start` on: a restarted Party Core ends the game it was running (a round in progress is lost). The alternative leaves an unmanaged arcade or PS1 runtime running. Likewise `close_lost_game`.

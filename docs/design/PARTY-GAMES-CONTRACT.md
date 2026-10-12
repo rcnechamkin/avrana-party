@@ -91,9 +91,8 @@ python3 tools/contract_check.py --games ../avrana-party-games
 `timeout`, default 5 s; for `end`, 12 s). A game that starts something heavy on `launch` (the
 arcade) has a longer grant timeout, not a longer allowance for size. Do not put diagnostics,
 tracebacks or captured process output in the answer: `{"ok": true}` or `{"ok": false, "message":
-"one readable line"}`. Party Core treats anything else, and any `3xx`, as a failed call. A refusal of
-an `end` for a session the game does not hold should say `"reason": "session"` (or the Games
-server's `"error": "bad_message:session"`): Party reads that as "nothing left to stop".
+"one readable line"}`. Party Core treats anything else, and any `3xx`, as a failed call. How a refusal of an `end`
+is read is an observed convention, below.
 
 **Is it a contract requirement?** It is declared Party-side behaviour, not a machine-checked
 requirement, and it stays out of `contracts/party-games.v0.json` for now.
@@ -125,6 +124,43 @@ Windows host has no Unix sockets, so these are the same handlers without the soc
 Every reply is under 60 bytes, a thousandth of the limit. The one reply that could exceed it was
 the managed runtime's start failure, which carried the runtime's exception text: a 200 KB text
 produced a 200 054 byte reply; capped at 200 characters (`managed.MAX_WHY`) the same failure is a 254 byte reply.
+
+## Session recovery switches and an observed convention (AVR-33)
+
+Three keys under `session_recovery` in `party-core.json` (the example file spells all of them out).
+Each is a boolean; anything else, or another key, stops the service at startup.
+
+| Key | Default | What it does |
+|---|---|---|
+| `end_orphan_on_start` | **false** | Party Core keeps a small durable record (`active-session.json` beside `devices.json`, or the path in `session_record`; `""`/false there means no record at all) of the sessions it started and has not seen the game reset. At startup it sends each game the signed `end` for them, five tries two seconds apart, then drops the entry. It stops a game (and the arcade/PS1 runtime) that a restarted Party Core would otherwise leave running. With it off nothing is written or sent. |
+| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding 10 s window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released. A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and the key below does not exist. |
+| `end_not_held_is_ended` | **true** | An `end` the game refuses with the reason token below counts as ended, so the host's End and switch work after the game restarted. false: only `{"ok": true}` confirms, as before. |
+
+Why the first two are off: they change what the appliance does to a running game, and the owner
+has not decided. With both off the branch behaves as `fix/avr-33-bounded-link` does.
+
+**Observed convention (not a declared field of v0).** `end_not_held_is_ended` reads exactly these
+two refusals, matched on the structured token and never on free text:
+
+- `{"ok": false, "message": "Refused.", "reason": "session"}` with status 403 or 409: `avrana/party/managed.py` lines 88, 111 and 114 (the arcade and PS1 runtime), `avrana/games/standin/game.py` line 155, Checkers `checkers/server.py` line 171 (Games `origin/main` 2ee23e6; the reason is `str(Invalid)`, which is `session` when the session is not the one held).
+- `{"ok": false, "error": "bad_message:session"}` with status 403: Games `server.py` line 185 (2ee23e6).
+
+Both come from the shared `Invalid("session")` of the vendored protocol code. A game that rewords its
+refusal silently reverts to the old behaviour (End unconfirmed, a switch refused); nothing fails.
+
+**`session.reason` on `/party/api/state`.** An additive key of `session`, present only when
+`close_lost_game` is on: `"game_lost"` after the closure above, `null` for every other close. With
+the switch off the key does not exist. The current shell ignores it (`web/party/app.js` has no
+branch for it; the phone simply goes home because `location` and `nav` do). The UI contract for
+showing "the game stopped" is AVR-339; see
+[proposals/2026-10-12-session-probe.md](proposals/2026-10-12-session-probe.md) section 4.
+
+**Side effect of the connection check.** For a socket-activated native game
+(`deploy/games/avrana-game@.socket`) systemd accepts the connection while the process is down and
+starts the unit. That process holds no session, so it answers and refuses tickets: the session is
+not closed and this is the restarted-game case, not a lost game. The check finds a game whose
+socket is gone or whose unit cannot start. It does not find one that restarted; only the proposed
+`state` probe would.
 
 ## Not declared here
 

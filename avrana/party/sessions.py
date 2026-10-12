@@ -222,18 +222,20 @@ class GameEndpoint:
 # not stop in time is then reported as unconfirmed (and a pending switch says why) instead of the
 # party's timer closing the session first and dropping the switch silently (AVR-223).
 END_LINK_TIMEOUT = core.END_TIMEOUT - 3.0
-PROBE_TIMEOUT = 1.0     # s for a connection to a game to be accepted (the reachability check)
 
 
 class HttpGameLink:
     """Implements service.PartyService's GameLink with protocol messages. Every call has one
     deadline (`_exchange`) and a bounded reply; the service makes none of them under its lock."""
 
-    def __init__(self, endpoints, timeout=5.0, share=False):
+    def __init__(self, endpoints, timeout=5.0, share=False, end_not_held_is_ended=True):
         # game_id -> GameEndpoint. With share=True the caller's own dict is used, so a registry
         # reload (avrana.party.registry.apply) changes the link and the session routes together.
         self.endpoints = endpoints if share else dict(endpoints)
         self.timeout = timeout
+        # AVR-33 switch session_recovery.end_not_held_is_ended: an `end` the game refuses with the
+        # reason token "session" (see Reply.not_held) counts as ended. False: only {"ok": true} does.
+        self.end_not_held_is_ended = end_not_held_is_ended
 
     def _post(self, url, message, timeout=None, socket_path=None):
         """POST {"message": …} to `url`: loopback TCP at its address, or, with `socket_path`, that
@@ -280,16 +282,28 @@ class HttpGameLink:
     def end(self, session):
         """True when the game is not running this session any more: it reset, or it says it never
         held it (a game that restarted lost its session; there is nothing left to stop)."""
-        return self.end_outcome(session) in ('ended', 'not_held')
+        outcome = self.end_outcome(session)
+        return outcome == 'ended' or (outcome == 'not_held' and self.end_not_held_is_ended)
 
-    def reachable(self, session, seconds=PROBE_TIMEOUT):
+    def reachable(self, session, seconds=None):
         """Whether a connection to the session's game is accepted: True or False, or None when
-        this system cannot tell (no Unix sockets). A connection only; no message is sent. For a
-        socket-activated native game systemd accepts it even while the process is down (and
-        starts the process), so this finds a game whose socket is gone, not one that restarted."""
+        this system cannot tell (no Unix sockets). A connection only; no message is sent.
+
+        The wait is the game's own link timeout (the grant's `timeout`, else the link's 5 s), the
+        time a launch is given: a connection to a loopback or Unix socket is refused at once when
+        nothing listens, so a wait only happens when the game's accept queue is full, and a Pi
+        loaded by the arcade must not turn a slow accept into a "miss".
+
+        Side effect: for a socket-activated native game (deploy/games/avrana-game@.socket) systemd
+        accepts the connection while the process is down and STARTS the unit. That process holds no
+        session, so it answers and refuses the tickets: the session is not closed and this is
+        scenario 1, not a lost game. The check therefore finds a game whose socket is gone, or
+        whose unit cannot start; it does not find one that restarted."""
         ep = self.endpoints.get(session.game_id)
         if ep is None:
             return False
+        seconds = seconds or ep.timeout or self.timeout
+        sock = None
         try:
             if ep.socket_path:
                 if not hasattr(socket, 'AF_UNIX'):
@@ -302,7 +316,9 @@ class HttpGameLink:
                 sock = socket.create_connection((u.hostname, u.port or 80), timeout=seconds)
         except (OSError, ValueError, TypeError):
             return False
-        sock.close()
+        finally:
+            if sock is not None:
+                sock.close()                 # on the failed-connect path too
         return True
 
 

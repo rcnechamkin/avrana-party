@@ -80,12 +80,16 @@ class PartyService:
     """Thread-safe wrapper: one lock around the core, a condition for long polls, and game-link
     calls made outside the lock (a slow game must not freeze the party)."""
 
-    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, record=None):
+    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, record=None,
+                 end_orphan_on_start=False, close_lost_game=False):
         self.store = store
-        self.record = record                 # avrana.party.record.SessionRecord, or None (AVR-33)
+        # AVR-33, both switches off unless the appliance's config turns them on (recovery_config):
+        # `end_orphan_on_start` keeps the durable record and ends what it names at startup;
+        # `close_lost_game` lets a game that stays down close the active session.
+        self.record = record if end_orphan_on_start else None   # avrana.party.record.SessionRecord
         self._probed = None                  # (session id, when) of the last reachability check
         self.limited = limited or identity.LimitedStore()     # Limited Mode credentials (memory)
-        self.core = core.PartyCore(clock, games)
+        self.core = core.PartyCore(clock, games, close_lost_game=close_lost_game)
         self.link = link or NoGameLink()
         self.lock = threading.Lock()
         self.changed = threading.Condition(self.lock)
@@ -238,7 +242,7 @@ class PartyService:
         only after several over some seconds (core.GAME_LOST_FAILS, GAME_LOST_SPAN); until then the
         answer is True, as it was before this check existed. False means this call closed it."""
         reachable = getattr(self.link, 'reachable', None)
-        if reachable is None:
+        if reachable is None or not self.core.close_lost_game:
             return True
         with self.lock:
             now = self.core.clock()
@@ -262,33 +266,36 @@ class PartyService:
         return not lost
 
     def recover_orphan(self, attempts=5, delay=2.0, sleep=time.sleep):
-        """At startup: the party forgot the session it was running, but the record remembers it.
-        Send that game the signed `end` for it (a game that holds it resets; the arcade and PS1
-        stop their runtime; one that holds nothing says so) and drop the record. A game that does
+        """At startup: the party forgot the sessions it was running, but the record remembers them.
+        For each, send its game the signed `end` (a game that holds it resets; the arcade and PS1
+        stop their runtime; one that holds nothing says so) and drop the entry. A game that does
         not answer is tried `attempts` times, `delay` seconds apart (it may be starting beside
-        Party Core), then given up on: its next launch replaces whatever it holds. Returns what
-        the game said ('ended', 'not_held', 'refused', 'unreachable'), or None without a record.
-        Safe beside a new launch: an `end` names its session, and a game never ends a newer one."""
-        found = self.record.read() if self.record is not None else None
-        if found is None:
-            return None
-        with self.lock:
-            running = self.core.party.session
-            if running is not None and running.id == found[0]:
-                return None                  # this run started it: not an orphan
-        ghost = type('Orphan', (), {'id': found[0], 'game_id': found[1]})()
-        ask = getattr(self.link, 'end_outcome', None)
-        outcome = 'unreachable'
-        for attempt in range(attempts):
-            outcome = ask(ghost) if ask else ('ended' if self.link.end(ghost) else 'refused')
-            if outcome != 'unreachable':
-                break
-            if attempt + 1 < attempts:
-                sleep(delay)
-        log.warning('game %s: ended session %s left by the last run of Party Core (%s)',
-                    ghost.game_id, ghost.id, outcome)
-        self.record.clear(ghost.id)
-        return outcome
+        Party Core), then given up on: its next launch replaces whatever it holds. Returns the list
+        of what each game said ('ended', 'not_held', 'refused', 'unreachable'), or None when the
+        switch is off or there is nothing recorded. Safe beside a new launch: an `end` names its
+        session and a game never ends a newer one, and a launch adds its own entry to the record
+        instead of replacing one that is still waiting here."""
+        found = self.record.read() if self.record is not None else []
+        said = []
+        for sid, game_id in found:
+            with self.lock:
+                running = self.core.party.session
+                if running is not None and running.id == sid:
+                    continue                 # this run started it: not an orphan
+            ghost = type('Orphan', (), {'id': sid, 'game_id': game_id})()
+            ask = getattr(self.link, 'end_outcome', None)
+            outcome = 'unreachable'
+            for attempt in range(attempts):
+                outcome = ask(ghost) if ask else ('ended' if self.link.end(ghost) else 'refused')
+                if outcome != 'unreachable':
+                    break
+                if attempt + 1 < attempts:
+                    sleep(delay)
+            log.warning('game %s: ended session %s left by the last run of Party Core (%s)',
+                        game_id, sid, outcome)
+            self.record.clear(sid)
+            said.append(outcome)
+        return said or None
 
     def run_timer(self, stop, interval=1.0):
         while not stop.wait(interval):
@@ -652,11 +659,27 @@ def load_games(entries):
     return games
 
 
+RECOVERY_DEFAULTS = {'end_orphan_on_start': False, 'close_lost_game': False,
+                     'end_not_held_is_ended': True}
+
+
+def recovery_config(conf):
+    """The `session_recovery` switches of party-core.json (AVR-33), each a boolean:
+    end_orphan_on_start (default false), close_lost_game (default false) and
+    end_not_held_is_ended (default true). Anything else is refused at startup."""
+    block = conf.get('session_recovery', {})
+    if not isinstance(block, dict) or set(block) - set(RECOVERY_DEFAULTS) \
+            or not all(isinstance(v, bool) for v in block.values()):
+        raise SystemExit('party-core config: session_recovery: booleans named '
+                         + ', '.join(RECOVERY_DEFAULTS) + ' only')
+    return dict(RECOVERY_DEFAULTS, **block)
+
+
 def session_record_path(conf):
     """Where the active-session record lives: the config's `session_record`, else next to the
     device file (a folder the service already writes), else nowhere (no record, no recovery)."""
-    if conf.get('session_record'):
-        return conf['session_record']
+    if 'session_record' in conf:         # named: that path; "" or false: no record at all
+        return conf['session_record'] or None
     if conf.get('devices'):
         return os.path.join(os.path.dirname(conf['devices']), 'active-session.json')
     return None
@@ -683,8 +706,13 @@ def main(argv=None):
     # a restarted Party Core can end it. Next to the device file unless the config names a path.
     from avrana.party.record import SessionRecord
     record_path = session_record_path(conf)
-    service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True),
-                           record=SessionRecord(record_path) if record_path else None)
+    recovery = recovery_config(conf)
+    service = PartyService(store, games,
+                           sessions.HttpGameLink(endpoints, share=True,
+                                                 end_not_held_is_ended=recovery['end_not_held_is_ended']),
+                           record=SessionRecord(record_path) if record_path else None,
+                           end_orphan_on_start=recovery['end_orphan_on_start'],
+                           close_lost_game=recovery['close_lost_game'])
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True),
                  conf.get('game_origins'))
     extra, internal = sessions.routes(service, endpoints)
@@ -707,7 +735,8 @@ def main(argv=None):
         threading.Thread(target=limited_server.serve_forever, daemon=True).start()
     stop = threading.Event()
     threading.Thread(target=service.run_timer, args=(stop,), daemon=True).start()
-    threading.Thread(target=service.recover_orphan, daemon=True).start()     # AVR-33
+    if recovery['end_orphan_on_start']:
+        threading.Thread(target=service.recover_orphan, daemon=True).start()     # AVR-33
     # Native games report on a Unix socket: inherited from the systemd socket unit in production,
     # created here when the config names a path (ADR 0016 §4, AVR-258). The loopback route above
     # stays for the arcade and the LAN Games fork.
