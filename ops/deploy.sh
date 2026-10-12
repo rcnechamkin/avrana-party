@@ -110,6 +110,130 @@ link_release() {
 }
 build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 
+# ---- state, journal, traps ---------------------------------------------------------------------
+# One trap function owns every way out of this script, so the restore runs once and in order:
+#   - a failure (set -e), a `die`, or a signal (HUP/INT/TERM: the SSH session dying, Ctrl-C, kill)
+#     after the point where something may have changed (`armed`) and before the deployment is
+#     recorded (`committed`) puts everything back, exactly once (`rollback_done`);
+#   - after the commit point nothing is rolled back by a trap: the deployment is applied and only
+#     its smoke verdict is open (the journal says so);
+#   - the temporary Party/Games pair directory of the contract check is removed first, always.
+# SIGKILL and power loss cannot be trapped: the journal (below) is what the next run reads.
+stopped=() backup='' armed=0 committed=0 rollback_done=0 sig='' pair=''
+start_order=(avranaparty-games avranaparty-arcade avrana-party-core)   # providers first, then the party
+journal_file=$backup_root/deploy.journal
+declare -A J=()
+
+# The journal: where this run is, written atomically (temp file, fsync, rename) at every phase, as
+# KEY=VALUE lines that are only ever read as data. Terminal phases: smoke-passed, smoke-skipped,
+# smoke-failed, rolled-back, rollback-failed. Any other phase left behind means the run died.
+journal_write() {
+    [[ $dry_run -eq 1 || -z $backup ]] && return 0
+    local k tmp=$journal_file.tmp.$$
+    J[updated]=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    {
+        for k in "${!J[@]}"; do printf '%s=%s\n' "$k" "${J[$k]//$'\n'/ }"; done | sort > "$tmp" \
+            && { sync "$tmp" 2>/dev/null || true; } && mv -f "$tmp" "$journal_file"
+    } || { log "WARNING: could not write the deploy journal $journal_file"; rm -f "$tmp"; }
+}
+journal_note() { local kv; for kv in "$@"; do J[${kv%%=*}]=${kv#*=}; done; journal_write; }
+journal() { local phase=$1; shift; J[phase]=$phase; log "phase: $phase"; journal_note "$@"; }
+# TEST-ONLY hook: with AVRANA_DEPLOY_TEST_HOOK_DIR set (never in production), a file pause-at-<phase>
+# in that directory makes the run announce reached-<phase> and wait there until the file is removed,
+# so the tests can send a signal at a deterministic point. `wait` returns at once on a trapped signal.
+hook() {
+    local dir=${AVRANA_DEPLOY_TEST_HOOK_DIR:-}
+    [[ -n $dir && -e $dir/pause-at-$1 ]] || return 0
+    : > "$dir/reached-$1"
+    while [[ -e $dir/pause-at-$1 ]]; do sleep 0.1 & wait $!; done
+}
+
+# start_stopped <start|restart>: attempt EVERY unit this run stopped, providers first; non-zero when
+# any failed. (A unit that was started with the new code and must go back needs a restart.)
+start_stopped() {
+    local verb=$1 unit s rc=0
+    for unit in "${start_order[@]}"; do
+        for s in ${stopped[@]+"${stopped[@]}"}; do
+            if [[ $s == "$unit" ]]; then
+                if systemctl "$verb" "$unit"; then log "$verb $unit"; else log "FAILED to $verb $unit"; rc=1; fi
+            fi
+        done
+    done
+    return $rc
+}
+
+# report_units: which of the units are active now, printed and recorded; sets $down.
+down=()
+report_units() {
+    local unit up=()
+    down=()
+    for unit in "${start_order[@]}"; do
+        if systemctl is-active --quiet "$unit"; then up+=("$unit"); else down+=("$unit"); fi
+    done
+    log "units active at exit: ${up[*]:-none}"
+    [[ ${#down[@]} -eq 0 ]] || log "units NOT active at exit: ${down[*]}"
+    journal_note "active=${up[*]:-}" "inactive=${down[*]:-}"
+}
+
+# rollback_body <rc>: put back what this run changed. Never --force or reset --hard: local changes
+# (only possible with --allow-dirty) survive, and no branch was moved by this script, so returning
+# to the earlier ref restores the exact state. Sets $rollback_ok.
+rollback_ok=1
+rollback_body() {
+    local rc=$1 root before p
+    rollback_done=1
+    log "FAILED (exit $rc${sig:+, interrupted by SIG$sig}); rolling back"
+    journal rollback-started "exit=$rc" "signal=${sig:-}"
+    g "$party_checkout" checkout --quiet "$before_party_ref" || { log "ROLLBACK INCOMPLETE: party checkout not restored"; rollback_ok=0; }
+    g "$games_checkout" checkout --quiet "$before_games_ref" || { log "ROLLBACK INCOMPLETE: games checkout not restored"; rollback_ok=0; }
+    if [[ -f $backup/web-release-before ]] && [[ -d $(cat "$backup/web-release-before") ]]; then
+        { ln -sfn "$(cat "$backup/web-release-before")" "$web_root/current.new" && mv -Tf "$web_root/current.new" "$web_root/current"; } \
+            || { log "ROLLBACK INCOMPLETE: web release not restored"; rollback_ok=0; }
+    fi
+    for p in "party:$party_releases" "games:$games_releases"; do
+        root=${p#*:}; before=$backup/${p%%:*}-release-before
+        if [[ ! -f $before ]]; then
+            rm -f "$root/current"          # there was no release before this run: leave none behind
+        elif [[ -d $(cat "$before") ]]; then
+            { ln -sfn "$(cat "$before")" "$root/current.new" && mv -Tf "$root/current.new" "$root/current"; } \
+                || { log "ROLLBACK INCOMPLETE: $root/current not restored"; rollback_ok=0; }
+        fi
+    done
+    start_stopped restart || rollback_ok=0
+    log "after rollback: party $(g "$party_checkout" rev-parse HEAD), games $(g "$games_checkout" rev-parse HEAD)"
+    log "expected:       party $before_party, games $before_games. No manifest was written."
+}
+
+on_signal() { sig=$1; log "received SIG$1"; exit "$2"; }
+on_exit() {
+    local rc=$? u needs_human=0
+    set +e
+    trap '' HUP INT TERM        # a second signal must not interrupt the restore
+    trap - EXIT
+    [[ -z $pair ]] || rm -rf "$pair"
+    if [[ $armed -eq 1 && $committed -eq 0 && $rollback_done -eq 0 ]]; then rollback_body "$rc"; fi
+    if [[ $armed -eq 1 ]]; then
+        report_units
+        for u in ${stopped[@]+"${stopped[@]}"}; do
+            [[ " ${down[*]:-} " == *" $u "* ]] && needs_human=1
+        done
+        if [[ $rollback_done -eq 1 ]]; then
+            if [[ $rollback_ok -eq 1 && $needs_human -eq 0 ]]; then
+                journal rolled-back; rc=1
+            else
+                journal rollback-failed
+                log 'ROLLBACK DID NOT COMPLETE: this needs a person (docs/runbooks/deploy.md, "When it fails")'
+                rc=4
+            fi
+        fi
+    fi
+    exit "$rc"
+}
+trap 'on_signal HUP 129' HUP
+trap 'on_signal INT 130' INT
+trap 'on_signal TERM 143' TERM
+trap on_exit EXIT
+
 # ---- 1. refuse unsafe states -----------------------------------------------------------------
 if command -v flock >/dev/null; then
     # The braces keep 2>/dev/null from becoming this shell's stderr for the rest of the run.
@@ -155,8 +279,7 @@ pair='' contract_check=skipped       # recorded in the manifest: compatible | no
 if [[ $skip_contract -eq 1 ]]; then
     log 'WARNING: Party <-> Games contract check skipped (--skip-contract-check); the manifest says so'
 else
-    pair=$(mktemp -d)
-    trap 'rm -rf "${pair:-}"' EXIT      # on every way out, a failed archive included; the ERR rollback trap is separate
+    pair=$(mktemp -d)                   # removed by on_exit on every way out, a failed archive included
     mkdir "$pair/party" "$pair/games"
     g "$party_checkout" archive --format=tar "$party_sha" | tar -x -C "$pair/party" --no-same-owner
     g "$games_checkout" archive --format=tar "$games_sha" | tar -x -C "$pair/games" --no-same-owner
@@ -170,7 +293,7 @@ else
     else
         die "Party <-> Games contract: party $party_sha and games $games_sha disagree: $drift (re-pair them, or --skip-contract-check for a supervised test)"
     fi
-    rm -rf "$pair"; pair=''; trap - EXIT
+    rm -rf "$pair"; pair=''
 fi
 
 busy=$(curl -s -m 5 -H "Host: $party_host" "$party_core_url/party/api/state" \
@@ -222,37 +345,15 @@ py -m avrana.ops.manifest write --out "$backup/before.json" --party "$party_chec
 log "before-state recorded in $backup"
 
 # ---- 3. stop, update, start (with rollback) ---------------------------------------------------
-stopped=()
-rollback() {
-    local rc=$?
-    trap - ERR
-    log "FAILED (exit $rc); rolling back"
-    # Never --force or reset --hard: local changes (only possible with --allow-dirty) survive, and
-    # no branch was moved by this script, so returning to the earlier ref restores the exact state.
-    g "$party_checkout" checkout --quiet "$before_party_ref" || log "ROLLBACK INCOMPLETE: party checkout not restored"
-    g "$games_checkout" checkout --quiet "$before_games_ref" || log "ROLLBACK INCOMPLETE: games checkout not restored"
-    if [[ -f $backup/web-release-before ]] && [[ -d $(cat "$backup/web-release-before") ]]; then
-        ln -sfn "$(cat "$backup/web-release-before")" "$web_root/current.new" && mv -Tf "$web_root/current.new" "$web_root/current"
-    fi
-    local pair root before
-    for pair in "party:$party_releases" "games:$games_releases"; do
-        root=${pair#*:}; before=$backup/${pair%%:*}-release-before
-        if [[ ! -f $before ]]; then
-            rm -f "$root/current"          # there was no release before this run: leave none behind
-        elif [[ -d $(cat "$before") ]]; then
-            ln -sfn "$(cat "$before")" "$root/current.new" && mv -Tf "$root/current.new" "$root/current"
-        fi
-    done
-    for unit in ${stopped[@]+"${stopped[@]}"}; do systemctl start "$unit" || true; done
-    log "after rollback: party $(g "$party_checkout" rev-parse HEAD), games $(g "$games_checkout" rev-parse HEAD)"
-    log "expected:       party $before_party, games $before_games; services restarted. No manifest was written."
-    exit "$rc"
-}
-trap rollback ERR
+armed=1
+journal started "pid=$$" "backup=$backup" "party_target=$party_sha" "games_target=$games_sha"     "before_party=$before_party" "before_games=$before_games" "restart=${restart[*]:-}"
+hook started
 
 for unit in ${restart[@]+"${restart[@]}"}; do
-    systemctl stop "$unit"; stopped+=("$unit"); log "stopped $unit"
+    stopped+=("$unit")          # recorded first: a stop that fails half-way still gets restarted
+    systemctl stop "$unit"; log "stopped $unit"
 done
+journal stopped-services; hook stopped-services
 if [[ $party_changed -eq 1 ]]; then
     g "$party_checkout" checkout --quiet --detach "$party_sha"
     [[ $(g "$party_checkout" rev-parse HEAD) == "$party_sha" ]] || { log 'party checkout is not at the requested commit'; false; }
@@ -269,27 +370,28 @@ fi
 # The first run after this script learned to build code releases: nothing changed, none exists yet.
 [[ -e $party_releases/current ]] || build_release "$party_checkout" "$party_sha" "$party_releases"
 [[ -e $games_releases/current ]] || build_release "$games_checkout" "$games_sha" "$games_releases"
+journal switched; hook switched
 # Start order matters: providers first, then the party that launches into them.
-for unit in avranaparty-games avranaparty-arcade avrana-party-core; do
-    for s in ${stopped[@]+"${stopped[@]}"}; do
-        if [[ $s == "$unit" ]]; then systemctl start "$unit"; log "started $unit"; fi
-    done
-done
+start_stopped start || { log 'a unit did not start'; false; }
 for unit in ${restart[@]+"${restart[@]}"}; do
     sleep 1
     systemctl is-active --quiet "$unit" || { log "$unit did not stay active"; false; }
 done
-trap - ERR
+journal restarted; hook restarted
 
 # ---- 4. manifest -----------------------------------------------------------------------------
 py -m avrana.ops.manifest write --out "$manifest" --party "$party_checkout" --games "$games_checkout" \
     --web-root "$web_root" --tool-sha "$tool_sha" $([[ $allow_dirty -eq 1 ]] && echo --allow-dirty) \
     --restarted ${restart[@]+"${restart[@]}"}
+# The commit point: the manifest names the new revision, so a trap no longer rolls anything back.
+# Everything after this is a report, not a step that can undo the deployment.
+committed=1
+journal committed; hook committed
 # Say how the pair was judged (additive manifest field; --skip-contract-check is on the record).
 # A target whose tooling predates the subcommand cannot record it: warned about, not fatal.
 py -m avrana.ops.manifest contract-check "$manifest" "$contract_check" \
     || log 'WARNING: the manifest tooling of this release cannot record the contract check result'
-cp "$manifest" "$backup/after.json"
+cp "$manifest" "$backup/after.json" || log "WARNING: could not copy the manifest to $backup/after.json"
 # The manifest is public (0644; /party/api/status serves it), but on the appliance its directory
 # was created 0700 for the ACME state beside it, so no service user could reach the file. Grant
 # search (not listing) on the directory, and only while every subdirectory is closed to others.
@@ -305,15 +407,18 @@ log "deployment manifest written: $manifest"
 # ---- 5. smoke ---------------------------------------------------------------------------------
 if [[ $skip_smoke -eq 1 ]]; then
     py -m avrana.ops.manifest smoke "$manifest" skipped
+    journal smoke-skipped
     log 'smoke checks skipped (--skip-smoke); the manifest says so'
     exit 0
 fi
 sleep 2
 if py -m avrana.ops.smoke | tee "$backup/smoke.txt"; then
     py -m avrana.ops.manifest smoke "$manifest" passed
+    journal smoke-passed
     log 'deployment complete; smoke passed. Physical phone acceptance is still a human step.'
 else
     py -m avrana.ops.manifest smoke "$manifest" failed
+    journal smoke-failed
     log "deployment applied but smoke FAILED (see $backup/smoke.txt); decide: fix forward or roll back with"
     log "  sudo bash $party_checkout/ops/deploy.sh --party $before_party --games $before_games"
     exit 2

@@ -3,6 +3,7 @@ runs as root on the Pi (docs/runbooks/deploy.md); nothing here touches services.
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -166,9 +167,11 @@ class DeployScript(unittest.TestCase):
 
 
 SYSTEMCTL_SHIM = """#!/usr/bin/env bash
-# Records every call; `is-active` fails for the unit named in $FAIL_UNIT (to exercise rollback).
+# Records every call. `is-active` fails for the unit named in $FAIL_UNIT (a unit that does not come
+# back); `start` and `restart` fail for the unit named in $FAIL_START (a unit that will not start).
 echo "$*" >> "$SHIM_LOG"
 if [[ $1 == is-active && -n ${FAIL_UNIT:-} && " $* " == *" $FAIL_UNIT "* ]]; then exit 3; fi
+if [[ $1 == start || $1 == restart ]] && [[ -n ${FAIL_START:-} && " $* " == *" $FAIL_START "* ]]; then exit 1; fi
 exit 0
 """
 
@@ -210,7 +213,10 @@ class Harness(unittest.TestCase):
                         AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_WEB_ROOT=str(self.web),
                         AVRANA_DEPLOYMENT_MANIFEST=str(self.manifest_path), AVRANA_BACKUP_ROOT=str(root / 'backups'),
                         AVRANA_DEPLOY_UNPRIVILEGED='1', AVRANA_SYSTEMCTL=str(shim), SHIM_LOG=str(self.log),
-                        AVRANA_PARTY_RELEASES=str(root / 'opt-party'), AVRANA_GAMES_RELEASES=str(root / 'opt-games'))
+                        AVRANA_PARTY_RELEASES=str(root / 'opt-party'), AVRANA_GAMES_RELEASES=str(root / 'opt-games'),
+                        AVRANA_DEPLOY_DETACH='0')
+        self.hooks = root / 'hooks'
+        self.hooks.mkdir()
         self.party_release, self.games_release = root / 'opt-party' / 'current', root / 'opt-games' / 'current'
 
     def run_git(self, repo, *args):
@@ -222,6 +228,38 @@ class Harness(unittest.TestCase):
 
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def starts(self):
+        """Every attempt to bring a unit up: a plain start, or the restart a rollback uses."""
+        return [c for c in self.calls() if c.startswith(('start ', 'restart '))]
+
+    def journal(self):
+        path = Path(self.temp.name) / 'backups' / 'deploy.journal'
+        if not path.exists():
+            return None
+        return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line)
+
+    def deploy_interrupted(self, party, games, phase, signum, *flags, release=False, **env):
+        """Run a deployment, hold it at `phase` (the test-only hook), send it `signum`, return the
+        finished process and its output. With release=True the pause is lifted instead."""
+        import time
+        (self.hooks / f'pause-at-{phase}').write_text('')
+        proc = subprocess.Popen([BASH, str(SCRIPT), '--party', party, '--games', games, *flags],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=dict(self.env, AVRANA_DEPLOY_TEST_HOOK_DIR=str(self.hooks), **env))
+        deadline = time.time() + 120
+        while not (self.hooks / f'reached-{phase}').exists():
+            if proc.poll() is not None or time.time() > deadline:
+                out = proc.communicate()[0] if proc.poll() is not None else ''
+                proc.kill()
+                self.fail(f'the deployment never reached {phase}: {out}')
+            time.sleep(0.05)
+        if release:
+            (self.hooks / f'pause-at-{phase}').unlink()
+        else:
+            proc.send_signal(signum)
+        out = proc.communicate(timeout=120)[0]
+        return proc.returncode, out
 
 
 class RealRun(Harness):
@@ -290,8 +328,7 @@ class RealRun(Harness):
         self.assertEqual(self.run_git(self.party, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main')   # same branch as before
         self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.before_games)
         self.assertFalse(self.manifest_path.exists())
-        starts = [c for c in self.calls() if c.startswith('start ')]
-        self.assertEqual(len(starts), 6)                    # started once, then again by the rollback
+        self.assertEqual(len(self.starts()), 6)             # started once, then again by the rollback
 
     def test_failed_smoke_is_reported_loudly_and_recorded(self):
         from avrana.ops import manifest
@@ -333,6 +370,81 @@ class RealRun(Harness):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(state.stat().st_mode & 0o777, 0o700)
         self.assertIn('left as it is', r.stdout)
+
+
+class Interrupted(Harness):
+    """AVR-271: the SSH session dies (SIGHUP), the operator presses Ctrl-C (SIGINT) or something
+    sends SIGTERM at each phase of a deployment. The restore runs exactly once, everything that
+    was stopped is started again, and the journal says what happened."""
+
+    def assert_restored(self, code, out, phase, signame, stopped_units):
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.count('rolling back'), 1, out)               # once, never twice
+        self.assertIn(f'interrupted by SIG{signame}', out)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party, out)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main')
+        self.assertEqual(self.run_git(self.games, 'rev-parse', 'HEAD'), self.before_games, out)
+        self.assertFalse(self.manifest_path.exists())
+        self.assertFalse(self.party_release.is_symlink() or self.games_release.is_symlink())
+        restarted = sorted(c.split()[1] for c in self.calls() if c.startswith('restart '))
+        self.assertEqual(restarted, sorted(stopped_units), out)
+        journal = self.journal()
+        self.assertEqual((journal['phase'], journal['signal']), ('rolled-back', signame), journal)
+
+    def test_a_signal_at_every_phase_before_the_commit_restores_everything_once(self):
+        everything = ['avrana-party-core', 'avranaparty-arcade', 'avranaparty-games']
+        for phase, signame, stopped_units in (
+                ('started', 'TERM', []), ('stopped-services', 'TERM', everything),
+                ('switched', 'HUP', everything), ('restarted', 'INT', everything)):
+            with self.subTest(phase=phase, signal=signame):
+                self.setUp()
+                code, out = self.deploy_interrupted(self.target_party, self.target_games, phase,
+                                                    getattr(signal, 'SIG' + signame), '--skip-smoke')
+                self.assert_restored(code, out, phase, signame, stopped_units)
+                self.assertIn(f'phase: {phase}', out)
+
+    def test_a_signal_after_the_commit_point_rolls_nothing_back(self):
+        code, out = self.deploy_interrupted(self.target_party, self.target_games, 'committed', signal.SIGTERM, '--skip-smoke')
+        self.assertEqual(code, 143, out)
+        self.assertNotIn('rolling back', out)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.target_party)
+        self.assertTrue(self.manifest_path.exists())
+        self.assertEqual(self.journal()['phase'], 'committed')          # the next run reads "smoke never ran"
+
+    def test_every_unit_is_attempted_and_a_failed_start_is_reported_as_needing_a_person(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_START='avranaparty-games')
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.count('rolling back'), 1)
+        self.assertIn('FAILED to start avranaparty-games', r.stdout)
+        self.assertIn('ROLLBACK DID NOT COMPLETE', r.stdout)
+        attempted = [c for c in self.starts() if c.startswith('start ')]
+        self.assertEqual(sorted(attempted), sorted(f'start {u}' for u in
+                                                   ('avrana-party-core', 'avranaparty-arcade', 'avranaparty-games')))
+        rollback = [c for c in self.starts() if c.startswith('restart ')]
+        self.assertEqual(len(rollback), 3, rollback)                    # the others were still restarted
+        self.assertEqual(self.journal()['phase'], 'rollback-failed')
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+
+    def test_units_active_at_exit_are_printed_and_recorded(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_UNIT='avrana-party-core')
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertIn('units NOT active at exit: avrana-party-core', r.stdout)
+        self.assertIn('units active at exit: avranaparty-games avranaparty-arcade', r.stdout)
+        self.assertEqual(self.journal()['inactive'], 'avrana-party-core')
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.journal()['inactive'], '')
+        self.assertEqual(self.journal()['phase'], 'smoke-skipped')
+
+    def test_the_journal_names_each_phase_of_a_normal_run(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        phases = [l.split('phase: ')[1] for l in r.stdout.splitlines() if 'phase: ' in l]
+        self.assertEqual(phases, ['started', 'stopped-services', 'switched', 'restarted', 'committed', 'smoke-skipped'])
+        j = self.journal()
+        self.assertEqual((j['party_target'], j['games_target'], j['before_party']),
+                         (self.target_party, self.target_games, self.before_party))
+        self.assertFalse(list((Path(self.temp.name) / 'backups').glob('deploy.journal.tmp.*')))
 
 
 class FirstRunFromACheckoutWithoutTheTooling(Harness):
@@ -385,7 +497,7 @@ class FirstRunFromACheckoutWithoutTheTooling(Harness):
         self.assertFalse(self.manifest_path.exists())
         # no release ran before this deployment, so none is left looking current
         self.assertFalse(self.party_release.is_symlink() or self.games_release.is_symlink())
-        self.assertEqual(len([c for c in self.calls() if c.startswith('start ')]), 6)
+        self.assertEqual(len(self.starts()), 6)
 
     def test_going_back_to_that_commit_uses_the_tooling_of_the_release_that_was_running(self):
         from avrana.ops import manifest
