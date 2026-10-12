@@ -17,7 +17,8 @@ NOW = datetime(2026, 10, 3, 0, 0, tzinfo=timezone.utc)
 
 
 class FakeProbes:
-    def __init__(self, checkouts=None, units=None, cert_days=90, games=None, arcade=None, web=None):
+    def __init__(self, checkouts=None, units=None, cert_days=90, games=None, arcade=None, web=None, nginx='match'):
+        self.nginx = nginx
         self.checkouts = checkouts or {}
         self.units = units or {}
         self.cert_days = cert_days
@@ -32,6 +33,9 @@ class FakeProbes:
 
     def web_release(self, root):
         return self.web
+
+    def nginx_site(self, installed, sources):
+        return self.nginx
 
     def unit_state(self, unit):
         return self.units.get(unit, 'active')
@@ -164,6 +168,40 @@ class Document(unittest.TestCase):
             self.assertNotIn(forbidden, text)
         self.assertEqual(doc['web_release'], {'build': 'b', 'commit': SHA_A})
         self.assertEqual(doc['deployment']['party']['sha'], SHA_A)      # the build identity stays
+
+    def test_web_build_from_another_commit_degrades(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)},
+                            web={'path': '/w', 'build': 'b', 'commit': SHA_B})
+        doc = self.build(probes)
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertIn('web build is from a different commit than the deployed Party', doc['summary']['reasons'])
+        probes.web = {'path': '/w', 'build': 'b', 'commit': SHA_A}
+        self.assertEqual(self.build(probes)['summary']['state'], 'ok')
+
+    def test_nginx_site_drift_degrades_and_unreadable_is_unknown(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}, nginx='differs')
+        doc = self.build(probes)
+        self.assertEqual(doc['nginx_site'], {'status': 'differs'})
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertTrue(any(r.startswith('nginx site file differs') for r in doc['summary']['reasons']))
+        probes.nginx = 'unavailable'
+        self.assertEqual(self.build(probes)['summary']['state'], 'unknown')
+        probes.nginx = 'match'
+        self.assertEqual(self.build(probes)['summary']['state'], 'ok')
+
+    def test_real_probe_compares_installed_site_with_first_readable_source(self):
+        root = Path(self.temp.name)
+        installed, new, old = root / 'installed', root / 'new', root / 'old'
+        installed.write_text('server {}')
+        new.write_text('server {}')
+        old.write_text('server { old }')
+        probe = status.Probes().nginx_site
+        self.assertEqual(probe(installed, [root / 'missing', new]), 'match')
+        self.assertEqual(probe(installed, [old, new]), 'differs')        # first readable source wins
+        self.assertEqual(probe(installed, [root / 'missing']), 'unavailable')
+        self.assertEqual(probe(root / 'missing', [new]), 'unavailable')
 
     def test_dirty_deployment_and_untracked_files_are_reported_accurately(self):
         dirty = sample()

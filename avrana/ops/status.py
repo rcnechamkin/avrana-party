@@ -19,6 +19,8 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     deployment    the manifest without paths/operator (or null) and manifest_error
     party, games  {deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}
     web_release   {build, commit} or null
+    nginx_site    {status: match|differs|unavailable}: the installed site file against the one in
+                  the deployed Party release (AVR-271; deploy, web build and site file are one unit)
     contract      versions Party implements (+ games_advertises from /api/games)
     services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
@@ -27,6 +29,7 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     summary       ok|degraded|unknown with reasons
 """
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -50,6 +53,11 @@ DEFAULT_CONFIG = {
     'games_checkout': '/home/cody/avrana-party-games',
     'web_root': '/var/www/avrana-party/web',
     'certificate': '/etc/avrana-party/tls/current/fullchain.pem',
+    # The installed nginx site and where the deployed commit's copy lives (tried in order). ops/deploy.sh
+    # never installs the site file (an owner step); this is how a drift between the two is noticed.
+    'nginx_site': '/etc/nginx/sites-available/avrana-party',
+    'nginx_site_sources': ['/opt/avrana-party/current/avrana-party.nginx',
+                           '/home/cody/avrana-party/avrana-party.nginx'],
     'games_url': 'http://127.0.0.1:8096',
     'arcade_url': 'http://127.0.0.1:8097',      # the arcade's web port serves /stats; :8098 is its Party link
     'units': ['avrana-party-core', 'avranaparty-games', 'avranaparty-arcade', 'nginx',
@@ -120,6 +128,21 @@ class Probes:
             return datetime.strptime(text[len('notAfter='):], '%b %d %H:%M:%S %Y %Z').replace(tzinfo=timezone.utc)
         except ValueError:
             return None
+
+    def nginx_site(self, installed, sources):
+        """match|differs|unavailable: the installed nginx site file byte for byte against the first
+        readable source. Unreadable on either side is unavailable, never a match."""
+        try:
+            have = hashlib.sha256(Path(installed).read_bytes()).hexdigest()
+        except OSError:
+            return 'unavailable'
+        for source in sources:
+            try:
+                want = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+            except OSError:
+                continue
+            return 'match' if have == want else 'differs'
+        return 'unavailable'
 
     def get_json(self, url):
         """A small JSON document from loopback, or None. Never raises."""
@@ -222,6 +245,18 @@ def build_status(config=None, probes=None, party_core=None, now=None):
             notes.append(f'{unit} is not installed (optional)')
         elif state in ('failed', 'inactive', 'not-installed'):
             reasons.append(f'{unit} is {state.replace("-", " ")}')
+    web = probes.web_release(cfg['web_root'])
+    # One deployment unit (AVR-271): the web build must be the deployed Party commit, and the
+    # installed nginx site file must be that commit's. Either drift degrades the appliance.
+    expected = (deployed['party']['sha'] if deployed else party['checkout_sha'])
+    web_commit = web.get('commit') if isinstance(web, dict) else None
+    if web_commit and expected and web_commit != expected:
+        reasons.append('web build is from a different commit than the deployed Party')
+    nginx_site = probes.nginx_site(cfg['nginx_site'], cfg['nginx_site_sources'])
+    if nginx_site == 'differs':
+        reasons.append('nginx site file differs from the deployed commit (install avrana-party.nginx, docs/runbooks/deploy.md)')
+    elif nginx_site == 'unavailable':
+        reasons.append('nginx site file unavailable to compare')
     certificate = _certificate(probes.certificate_not_after(cfg['certificate']), now)
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
@@ -243,7 +278,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         except Exception:  # the status page must not take the party down
             core = {'ok': False}
             reasons.append('party core view failed')
-    unknown = any(s == 'unavailable' for s in services.values()) or deployed is None
+    unknown = any(s == 'unavailable' for s in services.values()) or deployed is None or nginx_site == 'unavailable'
     summary = 'degraded' if [r for r in reasons if 'unavailable' not in r and 'no deployment' not in r] else (
         'unknown' if unknown else 'ok')
     return {
@@ -254,7 +289,8 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         'manifest_error': manifest_error,
         'party': party,
         'games': games,
-        'web_release': _public_web(probes.web_release(cfg['web_root'])),
+        'web_release': _public_web(web),
+        'nginx_site': {'status': nginx_site},
         'contract': dict(contract, games_advertises=provider['integration']),
         'services': services,
         'certificate': certificate,

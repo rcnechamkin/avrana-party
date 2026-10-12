@@ -189,6 +189,9 @@ class DevProbes:
     def unit_state(self, unit):
         return 'unavailable'
 
+    def nginx_site(self, installed, sources):
+        return 'unavailable'
+
     def certificate_not_after(self, path):
         return None
 

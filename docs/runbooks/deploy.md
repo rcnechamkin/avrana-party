@@ -71,8 +71,15 @@ commit offers exactly the games its site file routes. `ops/deploy.sh` installs t
 never the site file, so a deploy that crosses AVR-259 is followed at once by the site file of
 the same commit (the nginx step in [party-core-deploy](party-core-deploy.md)). Web build alone:
 the retired LAN Games tiles disappear and their old routes still answer. Site file alone: the
-old Party Home shows tiles that lead to nginx's 502. Neither is checked by a script.
-Those remain the first-time runbooks' owner steps.
+old Party Home shows tiles that lead to nginx's 502. Since AVR-271 both are checked: `/party/api/status`
+(and so the step 5 smoke) is `degraded`, and the deploy exits 2 with `smoke FAILED`, while the installed
+`/etc/nginx/sites-available/avrana-party` differs byte for byte from the deployed commit's
+`avrana-party.nginx`, or the live web build is from a different commit than the deployed Party. The
+deploy still does not install the site file (that stays the owner step in
+[party-core-deploy](party-core-deploy.md)); when the reason reads `nginx site file differs`, install it
+(`cmp` first, then `nginx -t`, then reload, as there), and re-run `python3 -m avrana.ops.smoke` from
+`/opt/avrana-party/current` and `python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed`.
+If the service user cannot read the site file the reason says `unavailable` and the state is `unknown`, never `ok`.
 
 ## After
 
