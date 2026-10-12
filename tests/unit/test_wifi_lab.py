@@ -7,6 +7,7 @@ shells out runs `bash` against the installer's `--print-sudoers` (skipped where 
 import importlib.machinery
 import importlib.util
 import json
+import shlex
 import shutil
 import socket
 import subprocess
@@ -501,6 +502,26 @@ class ApHelper(unittest.TestCase):
         self.assertNotEqual(bad.returncode, 0)
 
 
+class OwnClientGuard(unittest.TestCase):
+    MAC = "aa:bb:cc:dd:ee:01"
+
+    def run_guard(self, stations_text):
+        snap = "@@stations\n" + stations_text + "\n@@survey\n"
+        with mock.patch.object(wifilab, "tablet_snapshot", return_value={"mac": self.MAC}), \
+                mock.patch.object(wifilab, "pi_snapshot", return_value=snap):
+            wifilab.require_only_own_client()
+
+    def test_empty_listing_fails_closed(self):
+        with self.assertRaises(wifilab.TrialRefused):
+            self.run_guard("")
+
+    def test_other_station_refused_and_only_own_client_allowed(self):
+        own = f"Station {self.MAC} (on wlan0)\n\ttx failed: 0"
+        with self.assertRaises(wifilab.TrialRefused):
+            self.run_guard(own + "\nStation aa:bb:cc:dd:ee:02 (on wlan0)\n\ttx failed: 0")
+        self.run_guard(own)
+
+
 class Multi(unittest.TestCase):
     def test_stats_and_labels(self):
         s = multi.rtt_stats([10.0, 20.0, 30.0], 4, reconnects=1)
@@ -578,6 +599,11 @@ class Multi(unittest.TestCase):
         self.assertGreater(st["sent"], 30)
         self.assertLessEqual(st["sent"] - st["received"], 2, st)
         self.assertEqual(st["reconnects"], 0)
+
+    def test_echo_command_quotes_the_target(self):
+        cmd = multi.echo_command(5301, 100, "10.42.0.1; touch /tmp/x")
+        self.assertEqual(shlex.split(cmd)[-1], "10.42.0.1; touch /tmp/x")
+        self.assertEqual(len(shlex.split(cmd)), 5)
 
     def test_synthetic_client_counts_reconnects_when_server_vanishes(self):
         out = []

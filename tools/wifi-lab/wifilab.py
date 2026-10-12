@@ -519,7 +519,11 @@ def require_only_own_client():
     """Tool-side guard beside the helper's: the only associated station must be this client.
     `--lab` tells the helper "the associated station is mine"; this check makes that true."""
     mac = tablet_snapshot()["mac"].lower()
-    others = [m for m in parse_station_dump(parse_sections(pi_snapshot()).get("stations", "")) if m.lower() != mac]
+    seen = [m.lower() for m in parse_station_dump(parse_sections(pi_snapshot()).get("stations", ""))]
+    if mac not in seen:  # our own client must be listed; an empty or unparsable listing is not "nobody else"
+        raise TrialRefused("the Pi's station listing is empty or does not include this client; cannot confirm that "
+                           "no other station is associated, so not changing the channel")
+    others = [m for m in seen if m != mac]
     if others:
         raise TrialRefused(f"{len(others)} other station(s) are associated; a channel change would disconnect them. "
                            "Never change channels while people are connected.")
