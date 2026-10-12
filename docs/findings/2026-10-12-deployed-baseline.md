@@ -47,7 +47,12 @@ observation of the appliance; none of it is T4 (no real phone).
 | Summary | `ok`, with the note "avrana-party-certificate.timer is not installed (optional)" |
 
 The served certificate (`openssl s_client`, not the status block): issuer Let's Encrypt (CN `YE1`),
-notBefore 2026-09-26T00:11:17Z, notAfter 2026-12-25T00:11:16Z.
+notBefore 2026-09-26T00:11:17Z, notAfter 2026-12-25T00:11:16Z. Its subjectAltName is `DNS:party.avrana.net` only
+(`openssl x509 -noout -ext subjectAltName`, read 2026-10-12). `main`'s nginx site adds a
+`games.avrana.net` server block that names the same certificate file, so `nginx -t` would pass after a
+deploy of `main`, but a phone opening the game origin would get a certificate-name error until a two-name
+certificate is issued ([game-origin runbook](../runbooks/game-origin.md), AVR-319). Party itself is
+unaffected.
 
 **The status block says `unavailable` while the certificate is valid.** `avrana/ops/status.py` reads
 `/etc/avrana-party/tls/current/fullchain.pem`, a root-only directory, from inside an unprivileged
@@ -139,14 +144,15 @@ dispatch; none has phone or Pi evidence):
 | Ref | Branch | What it changes |
 |---|---|---|
 | Party #108 | `fix/avr-31-certificate-renewal` (5599e72) | status reads an expiry record so the certificate is visible; renewal runbook section "Automatic renewal: enable, verify, recover"; the renewal service and installer get small changes |
-| Party #109 | `fix/avr-33-party-recovery-hardening` (a3edbb0) | a host action counts as presence; a damaged `devices.json` is set aside and no longer stops Party Core; device store and manifest are fsynced before rename |
+| Party #109 | `fix/avr-33-party-recovery-hardening` (1b2ee8c) | a host action counts as presence; a damaged `devices.json` is set aside and no longer stops Party Core; device store and manifest are fsynced before rename; and (added 2026-10-12) Party Core reads a game's launch or end reply under one overall deadline and a 64 KiB limit (AVR-336) |
 | Party #110 | `fix/avr-271-nginx-web-deploy-unit` (cf06a0d) | status and smoke detect a stale nginx site file or a web build from another commit. Must merge after #108 (one-line conflict in `avrana/ops/status.py`) |
-| Party #111 and Games #61 | `fix/avr-428-ci-private-repo-auth` (009be3c / 63296b8) | CI reads the now-private repositories with read-only deploy keys; the secret is not yet created |
+| Party #111 and Games #61 | `fix/avr-428-ci-private-repo-auth` (496ad66 / 67710e3) | CI reads the now-private repositories with read-only deploy keys; the keys are not yet created, so every cross-repository job is not run |
 | Party #85 | `feat/avr-296-wifi-qualification` (fe2fe67) | `tools/wifi-lab` qualification harness, Pi health check, restricted AP-control helper, channel policy; none installed. Based on `c59f1c8`; was CONFLICTING with main |
 | Party #86 | `docs/avr-53-messaging-architecture` | messaging proposal for owner review (docs); conflicting |
 | Party #106, #107, #112 | drafts | design foundation (AVR-424), Flutter owner-app experiment (AVR-424), Home and Library coherence (AVR-429); UI-team work, not touched here |
-| Unreleased | `fix/avr-336-bounded-game-replies` (b898de3) | bounds what Party Core reads from a game's launch or end reply |
-| Unreleased | `fix/avr-336-deploy-contract-check` (7e2cc57) | runs the Party/Games contract checker before a deploy |
+| Unreleased | `fix/avr-271-deploy-hardening` (6d2dbb0) | `ops/deploy.sh` installs the nginx site file with validation and restore, journals each phase, restores on interruption, records a last known good, offers `--rollback` / `--recover` / `--status`, prunes old releases, and runs the Party/Games contract check before a deploy; contains #108, #110 and `fix/avr-336-deploy-contract-check`. Never run on the appliance |
+| Unreleased | `fix/avr-33-session-recovery` (b4c8d12) | on top of #109: optional, off-by-default handling of a game that stays down and of a game orphaned by a Party Core restart; a proposal for an optional state probe (`docs/design/proposals/2026-10-12-session-probe.md`). Owner decisions pending |
+| Superseded | `fix/avr-336-bounded-game-replies` (b898de3), `fix/avr-336-deploy-contract-check` (7e2cc57) | carried by #109 and by `fix/avr-271-deploy-hardening` respectively |
 
 ## 4. Deployment history gaps found while reconciling SYSTEM
 

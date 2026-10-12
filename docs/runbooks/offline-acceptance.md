@@ -167,7 +167,7 @@ deployments. Do the destructive-feeling tests last within a session (power inter
 | C-05 Client capacity 1 to N | | | #85 | NOT RUN | | |
 | C-06 Pi health check states | | | #85 (AVR-297 install) | NOT RUN | | |
 | C-07 Quiet host keeps the seat; stale nginx detected | | | #109, #110 | NOT RUN | | |
-| C-08 Game process failure after session-recovery work | | | none exists yet | NOT RUN | | |
+| C-08 Game process failure after session-recovery work | | | none; behaviour exists only on an unmerged branch | NOT RUN | | |
 
 ---
 
@@ -667,6 +667,12 @@ deployments. Do the destructive-feeling tests last within a session (power inter
 
 # Session B: after deploying main
 
+**Prerequisite found 2026-10-12 (read-only):** the certificate the Pi serves names `party.avrana.net` only
+([baseline](../findings/2026-10-12-deployed-baseline.md)). Native games that run on the game origin
+(`games.avrana.net`, for example Checkers in B-01 and B-02) will show a certificate-name error on phones
+until the two-name certificate is issued and installed per [game-origin](game-origin.md). Do that before
+this session, or record B-01 and B-02 as `NOT RUN: game-origin certificate missing`.
+
 Preconditions: the owner has deployed `origin/main` Party and Games with explicit full SHAs (friend-ready
 steps 2 and 3, which also cover the nginx site file and its cookie rule), and, for B-01 to B-04, applied the
 service-user migration, `prepare-native-games` and the game origin (friend-ready step 4, runbooks
@@ -889,8 +895,22 @@ service-users-migration, prepare-native-games, game-origin). None of that is don
 
 ## C-08 Game process failure after session-recovery work
 
-- No branch implements it (see A-25). This row exists so the work, when it lands, has a test slot. **Status:**
-  `NOT RUN`.
+- **Serves:** AVR-33. **Revision:** needs branch `fix/avr-33-session-recovery` merged and deployed, with
+  `session_recovery.close_lost_game` set to `true` in the Party Core configuration (it is `false` by
+  default; with it off the behaviour is A-25's). Not merged, not deployed, owner decision pending.
+- **Prerequisites:** four phones in a party, a game running, a shell on the Pi with sudo.
+- **Steps:** stop the game's unit and keep it down (`sudo systemctl stop <unit>`, and mask or stop its
+  socket if it is socket-activated, otherwise the next connection restarts it); on a follower phone go back
+  to the game twice within ten seconds.
+- **Expected after that work:** within about ten seconds of the third failed attempt every phone is on
+  Party Home, `/party/api/state` shows the session ended with outcome `abandoned` and `reason: game_lost`,
+  and the host can start another game without pressing End. A game that is only restarted (it answers but
+  has forgotten the session) is NOT closed: the host must press End, which now succeeds.
+- **Evidence:** screen recording of one follower and the host; `curl` of `/party/api/state` before and
+  after; `journalctl -u avrana-party-core` lines for the close.
+- **Pass:** all phones home without host action, no phone left on a dead game page. **Fail:** any phone
+  bouncing between Party Home and the game, or a healthy game closed.
+- **Status:** `NOT RUN`.
 
 ---
 
