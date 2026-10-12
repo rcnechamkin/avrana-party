@@ -230,17 +230,17 @@ class HttpGameLink:
         self.endpoints = endpoints if share else dict(endpoints)
         self.timeout = timeout
 
-    def _post(self, ep, route, message, timeout=None):
-        """POST {"message": …} to the game's `route`: loopback TCP at the endpoint's URL, or its
+    def _post(self, url, message, timeout=None, socket_path=None):
+        """POST {"message": …} to `url`: loopback TCP at its address, or, with `socket_path`, that
         Unix socket (same path under /games/<id>, same message). Returns a Reply."""
         data = json.dumps({'message': message}).encode()
         headers = {'Content-Type': 'application/json'}
         seconds = timeout or self.timeout
-        u = urlsplit(ep.url + route)
-        if ep.socket_path:
+        u = urlsplit(url)
+        if socket_path:
             if not hasattr(socket, 'AF_UNIX'):
                 return Reply(False, detail='This system has no Unix sockets.')
-            return _exchange(UnixHTTPConnection(ep.socket_path, seconds), u.path, data, seconds,
+            return _exchange(UnixHTTPConnection(socket_path, seconds), u.path, data, seconds,
                              dict(headers, Host='localhost'))
         try:
             conn = BoundedConnection(u.hostname, u.port or 80, seconds)
@@ -253,7 +253,7 @@ class HttpGameLink:
         if ep is None:
             return False, 'That game has no server here.'
         msg = protocol.launch_message(ep.key, ep.game_id, session.id, roster)
-        r = self._post(ep, LAUNCH_PATH, msg, ep.timeout)
+        r = self._post(ep.url + LAUNCH_PATH, msg, ep.timeout, ep.socket_path)
         return r.ok, (None if r.ok else r.message or r.detail or 'The game refused to start.')
 
     def end_outcome(self, session):
@@ -264,7 +264,8 @@ class HttpGameLink:
         if ep is None:
             return 'unreachable'
         msg = protocol.end_message(ep.key, ep.game_id, session.id)
-        r = self._post(ep, END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT))
+        r = self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
+                       ep.socket_path)
         if r.ok:
             return 'ended'
         if r.not_held:
