@@ -213,11 +213,29 @@ def write(path, doc):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + '.new')
-    temporary.write_text(json.dumps(doc, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    with open(temporary, 'w', encoding='utf-8', newline='') as f:
+        f.write(json.dumps(doc, indent=2, sort_keys=True) + '\n')
+        f.flush()
+        os.fsync(f.fileno())            # on disk before the rename: no empty file under the real name
     if os.name == 'posix':
         os.chmod(temporary, 0o644)
     os.replace(temporary, path)
+    _fsync_dir(path.parent)
     return path
+
+
+def _fsync_dir(directory):
+    """Best effort: flush the rename to disk. Not possible everywhere (Windows); never fails a write."""
+    try:
+        fd = os.open(directory, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def read(path):

@@ -268,5 +268,29 @@ class Cli(unittest.TestCase):
         self.assertIn('no deployment manifest', r.stderr)
 
 
+
+
+class Durability(unittest.TestCase):
+    def test_fsync_of_the_temp_file_comes_before_the_replace_and_a_failing_dir_sync_is_harmless(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'manifest.json'
+            events = []
+            real_fsync, real_replace = os.fsync, os.replace
+
+            def fsync(fd):
+                events.append('fsync')
+                real_fsync(fd)
+                if events.count('fsync') > 1:
+                    raise OSError('no directory sync here')
+
+            def replace(a, b):
+                events.append('replace')
+                real_replace(a, b)
+
+            with mock.patch.object(os, 'fsync', fsync), mock.patch.object(os, 'replace', replace):
+                manifest.write(path, sample())
+            self.assertEqual(events[:2], ['fsync', 'replace'])
+            self.assertIsNotNone(manifest.read(path))
 if __name__ == '__main__':
     unittest.main()

@@ -41,8 +41,15 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           ALLOW: ${{ contains(github.event.pull_request.labels.*.name, 'historical-edit') && '--allow-historical' || '' }}
+          # This repository is private and checkout runs with persist-credentials: false, so the
+          # fetch authenticates with the job's own read-only token, passed to this step only and
+          # never written to .git/config (AVR-428).
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch --no-tags --depth=200 origin "$BASE" || git fetch --no-tags origin "$BASE"
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          gitx() { git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" "$@"; }
+          gitx fetch --no-tags --depth=200 origin "$BASE" || gitx fetch --no-tags origin "$BASE"
           python3 tools/repo-check.py --changed-since "$BASE" $ALLOW
 
       - name: Party side of the Party <-> Games contract declaration
