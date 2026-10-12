@@ -84,15 +84,29 @@ jobs:
         with:
           path: party
           persist-credentials: false
+      - name: Require the cross-repository read token
+        env:
+          CROSS_TOKEN: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
+        run: |
+          # Both repositories are private (AVR-428); the job's own token reads only its own repository.
+          if [ -z "$CROSS_TOKEN" ]; then
+            echo "::error::secret AVRANA_CROSS_REPO_READ_TOKEN is not set for this repository; see docs/CROSS-REPO.md (Private repositories and the read token)"
+            exit 1
+          fi
       - name: Resolve the matching Games branch
         id: peer
         shell: bash
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          CROSS_TOKEN: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
         run: |
           # A failure to list the other repository's branches must fail this job: falling back to
           # main would report compatibility that was never checked against the paired branch.
-          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
+          auth=$(printf 'x-access-token:%s' "$CROSS_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          heads=$(git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git \
+            | awk '{print $2}' | sed 's#refs/heads/##')
           [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
           avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
           ref=main; why='no AVR id in this branch name'
@@ -112,6 +126,7 @@ jobs:
           repository: rcnechamkin/avrana-party-games
           ref: ${{ steps.peer.outputs.ref }}
           path: games
+          token: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
           persist-credentials: false
       - name: Checkers - prepare, provision-game, a complete game, a Host-ended session, the boundary, remove
         run: sudo AVRANA_CHECKERS_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/checkers-proof.sh
@@ -130,15 +145,29 @@ jobs:
         with:
           path: party
           persist-credentials: false
+      - name: Require the cross-repository read token
+        env:
+          CROSS_TOKEN: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
+        run: |
+          # Both repositories are private (AVR-428); the job's own token reads only its own repository.
+          if [ -z "$CROSS_TOKEN" ]; then
+            echo "::error::secret AVRANA_CROSS_REPO_READ_TOKEN is not set for this repository; see docs/CROSS-REPO.md (Private repositories and the read token)"
+            exit 1
+          fi
       - name: Resolve the matching Games branch
         id: peer
         shell: bash
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          CROSS_TOKEN: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
         run: |
           # A failure to list the other repository's branches must fail this job: falling back to
           # main would report compatibility that was never checked against the paired branch.
-          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
+          auth=$(printf 'x-access-token:%s' "$CROSS_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          heads=$(git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git \
+            | awk '{print $2}' | sed 's#refs/heads/##')
           [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
           avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
           ref=main; why='no AVR id in this branch name'
@@ -158,6 +187,7 @@ jobs:
           repository: rcnechamkin/avrana-party-games
           ref: ${{ steps.peer.outputs.ref }}
           path: games
+          token: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
           persist-credentials: false
       - name: Package - build, refusals, install-game, two sessions, the boundary, remove, re-install
         run: sudo AVRANA_PACKAGE_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-proof.sh

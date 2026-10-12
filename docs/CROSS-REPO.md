@@ -52,3 +52,30 @@ python3 tools/contract_check.py --games ../avrana-party-games
 AVRANA_PARTY_REPO=../avrana-party python -m pytest tests/test_party_session_cross_repo.py   # in Games
 AVRANA_GAMES_REPO=../avrana-party-games npx playwright test -c playwright.provider.config.ts  # in Party
 ```
+
+## Private repositories and the read token (AVR-428)
+
+Both repositories are private, so a workflow in one cannot read the other anonymously, and the
+job's own `github.token` reaches only its own repository. Same-repository git operations (the
+base-commit fetch in `offline-checks.yml`) use `github.token`, passed to that one step and never
+written to `.git/config`. Every read of the other repository (branch listing with `git ls-remote`,
+and `actions/checkout`) uses one secret, `AVRANA_CROSS_REPO_READ_TOKEN`. If it is missing the job
+fails first, with an error naming it; a failure to list the other repository's branches still fails
+the job (no fallback to `main`). Secrets are not given to workflows run from forks; every PR here
+is from a branch of the same repository.
+
+Owner setup (once, then on rotation):
+
+1. GitHub, Settings, Developer settings, Personal access tokens, **Fine-grained tokens**, Generate.
+   Resource owner `rcnechamkin`; Repository access: **Only select repositories**, both
+   `avrana-party` and `avrana-party-games`; Repository permissions: **Contents: Read-only**,
+   **Metadata: Read-only**; nothing else. Choose an expiry (90 days or less is sensible).
+2. Store it in both repositories, reading the value from the prompt (never paste it in chat or a file):
+
+   ```sh
+   gh secret set AVRANA_CROSS_REPO_READ_TOKEN --repo rcnechamkin/avrana-party
+   gh secret set AVRANA_CROSS_REPO_READ_TOKEN --repo rcnechamkin/avrana-party-games
+   ```
+
+3. Rotation: when the token nears its expiry, generate a new one with the same scope and rerun both
+   commands. An expired token shows as the same checkout or `ls-remote` authentication failure.

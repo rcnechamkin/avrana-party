@@ -21,11 +21,20 @@ jobs:
         with:
           path: party
           persist-credentials: false
+      - name: Require the cross-repository read token
+        env:
+          CROSS_TOKEN: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
+        run: |
+          if [ -z "$CROSS_TOKEN" ]; then
+            echo "::error::secret AVRANA_CROSS_REPO_READ_TOKEN is not set for this repository; see docs/CROSS-REPO.md (Private repositories and the read token)"
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           repository: rcnechamkin/avrana-party-games
           ref: main
           path: games
+          token: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
