@@ -97,7 +97,8 @@ class DeployScript(unittest.TestCase):
 
     def test_test_only_settings_are_refused_unless_testing_on_a_scratch_root(self):
         for var in ('AVRANA_NGINX', 'AVRANA_SYSTEMCTL', 'AVRANA_DEPLOY_SMOKE', 'AVRANA_DEPLOY_TEST_HOOK_DIR',
-                    'AVRANA_DEPLOY_UNPRIVILEGED', 'AVRANA_OPENSSL', 'AVRANA_DEPLOY_FAIL_STEP'):
+                    'AVRANA_DEPLOY_UNPRIVILEGED', 'AVRANA_OPENSSL', 'AVRANA_DEPLOY_FAIL_STEP',
+                    'AVRANA_DEPLOY_UNIT_GRACE', 'AVRANA_DEPLOY_SMOKE_PAUSE'):
             for testing in ('', '1'):          # TESTING=1 is not enough while the production roots are in use
                 env = dict(self.env, **{var: '1'})
                 if testing:
@@ -107,6 +108,12 @@ class DeployScript(unittest.TestCase):
                 self.assertEqual(r.returncode, 1, (var, testing, r.stdout, r.stderr))
                 self.assertIn(var, r.stderr)
                 self.assertIn('test-only', r.stderr)
+
+    def test_the_production_waits_are_the_defaults_and_only_the_gated_settings_shorten_them(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        self.assertIn('${AVRANA_DEPLOY_UNIT_GRACE:-1}', text)      # one second before each unit is checked
+        self.assertIn('${AVRANA_DEPLOY_SMOKE_PAUSE:-2}', text)     # two seconds before the first smoke
+        self.assertRegex(text, r'for unit in [^\n]*restart[^\n]*; do\r?\n\s+sleep "\$unit_grace"')
 
     @unittest.skipUnless(shutil.which('flock'), 'flock not available')
     def test_the_internal_arguments_are_not_for_operators(self):
@@ -240,9 +247,10 @@ import json, sys
 line = sys.argv[1]
 names = ['units', 'status', 'certificate', 'games']
 failing = set(names) if line == 'fail' else set(line.split(':', 1)[1].split(',')) if line.startswith('fail:') else set()
-checks = [{'name': n, 'status': 'fail' if n in failing else 'pass', 'detail': ''} for n in names]
-print(json.dumps({'ok': not failing, 'counts': {'pass': len(names) - len(failing), 'fail': len(failing), 'skip': 0},
-                  'checks': checks}))
+skipped = set(line.split(':', 1)[1].split(',')) if line.startswith('skip:') else set()      # `skip:name`: not checked
+checks = [{'name': n, 'status': 'fail' if n in failing else 'skip' if n in skipped else 'pass', 'detail': ''} for n in names]
+print(json.dumps({'ok': not failing, 'counts': {'pass': len(names) - len(failing) - len(skipped), 'fail': len(failing),
+                  'skip': len(skipped)}, 'checks': checks}))
 sys.exit(1 if failing else 0)
 EOF
 """
@@ -322,7 +330,8 @@ class Harness(unittest.TestCase):
                         AVRANA_PARTY_RELEASES=str(root / 'opt-party'), AVRANA_GAMES_RELEASES=str(root / 'opt-games'),
                         AVRANA_NGINX_SITE=str(self.site), AVRANA_NGINX=str(nginx), NGINX_LOG=str(self.nginx_log),
                         AVRANA_NGINX_ENABLED=str(root / 'nginx' / 'enabled'), AVRANA_DEPLOY_DETACH='0',
-                        AVRANA_DEPLOY_TESTING='1', AVRANA_DEPLOY_SMOKE_SETTLE='0', AVRANA_DEPLOY_LOCK=str(root / 'deploy.lock'))
+                        AVRANA_DEPLOY_TESTING='1', AVRANA_DEPLOY_SMOKE_SETTLE='0',
+                        AVRANA_DEPLOY_UNIT_GRACE='0', AVRANA_DEPLOY_SMOKE_PAUSE='0', AVRANA_DEPLOY_LOCK=str(root / 'deploy.lock'))
         self.hooks = root / 'hooks'
         self.hooks.mkdir()
         self.party_release, self.games_release = root / 'opt-party' / 'current', root / 'opt-games' / 'current'
@@ -1149,6 +1158,22 @@ class BaselineAutoRollback(Harness):
                 self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
                 self.assertEqual(self.deploy(self.target_party, self.target_games, '--skip-smoke').returncode, 0)
 
+    def test_a_check_that_was_skipped_before_and_fails_after_is_not_called_pre_existing(self):
+        self.good_first()
+        self.smoke('skip:games', 'fail:games')
+        r = self.deploy(self.before_party, self.before_games, '--auto-rollback')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('NOT CHECKED BEFORE THE DEPLOY, FAILING AFTER: games', r.stdout)
+        self.assertNotIn('PRE-EXISTING', r.stdout)
+        self.assertNotIn('AUTOMATIC ROLLBACK', r.stdout)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)       # kept
+        self.assertEqual(self.record()['party_sha'], self.target_party)                           # never the last known good
+        self.smoke('pass')                                                                       # the cause is fixed
+        r = self.script('--finish')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.journal()['phase'], 'smoke-passed')
+        self.assertEqual(self.record()['party_sha'], self.before_party)                          # now it is
+
     def test_skip_nginx_site_with_a_differing_live_file_does_not_roll_back(self):
         self.good_first()
         self.site.write_bytes(self.site_before)                                       # live no longer equals the deployed commit's
@@ -1272,6 +1297,86 @@ class NginxBaselineAndCertificateNames(Harness):
         self.assertEqual(self.nginx_calls(), ['nginx -t'])
         self.assertEqual(self.calls(), [])
         self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+
+    def leftovers(self):
+        root = Path(self.temp.name)
+        backups = [p.name for p in (root / 'backups').glob('deploy-*') if p.is_dir()] if (root / 'backups').exists() else []
+        staged = [str(p) for base in ('opt-party', 'opt-games') if (root / base / 'releases').exists()
+                  for p in (root / base / 'releases').iterdir()]
+        return backups + staged
+
+    def test_a_refusal_after_the_backup_was_made_leaves_no_backup_and_no_staged_release(self):
+        self.site.write_bytes(self.site_before + b'# FAKE-NGINX-REJECT\n')
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('nothing changed', r.stderr)
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_refusal_for_the_certificate_names_leaves_nothing_behind_either(self):
+        self.fake_openssl()
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', '--require-cert-names')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('nothing changed', r.stderr)
+        self.assertEqual(self.leftovers(), [])
+
+    def test_require_cert_names_is_enforced_when_the_site_file_already_matches_too(self):
+        self.site.write_bytes(self.target_site())
+        self.fake_openssl()
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', '--require-cert-names')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('--require-cert-names', r.stderr)
+        self.assertEqual(self.calls(), [])
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')                  # without the flag it is a warning
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def commit_site(self, text):
+        data = text.encode()
+        for name in ('avrana-party.nginx', 'arcade/nginx-site'):
+            (self.origin / name).write_bytes(data)
+        self.run_git(self.origin, 'commit', '-q', '-am', 'a site file')
+        return self.run_git(self.origin, 'rev-parse', 'HEAD')
+
+    def test_only_port_443_counts_as_a_tls_listener_for_the_certificate_names(self):
+        self.fake_openssl()
+        for listen, mismatch in (('listen 8443 ssl;', []), ('listen [::]:8443 ssl http2;', []),
+                                 ('listen 443 ssl;', ['games.avrana.net']), ('listen [::]:443 ssl http2;', ['games.avrana.net']),
+                                 ('listen 0.0.0.0:443 ssl;', ['games.avrana.net'])):
+            with self.subTest(listen=listen):
+                sha = self.commit_site('server { listen 443 ssl; server_name party.avrana.net; ssl_certificate /c.pem; }\n'
+                                       f'server {{ {listen} server_name games.avrana.net; ssl_certificate /c.pem; }}\n')
+                r = self.deploy(sha, self.target_games, '--skip-smoke')
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.manifest()['nginx_site']['cert_name_mismatch'], mismatch, r.stdout)
+
+    def test_a_failing_baseline_does_not_stop_recover_or_rollback_from_putting_the_known_good_site_back(self):
+        import time
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)        # the last known good
+        (self.hooks / 'pause-at-site-installed').write_text('')
+        proc = subprocess.Popen([BASH, str(SCRIPT), '--party', self.before_party, '--games', self.before_games, '--skip-smoke'],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=dict(self.env, AVRANA_DEPLOY_TEST_HOOK_DIR=str(self.hooks)))
+        deadline = time.time() + 120
+        while not (self.hooks / 'reached-site-installed').exists():
+            self.assertLess(time.time(), deadline)
+            time.sleep(0.05)
+        proc.kill()                                                                              # died with the site file replaced
+        proc.communicate()
+        time.sleep(1)
+        self.site.write_bytes(self.site.read_bytes() + b'# FAKE-NGINX-REJECT\n')                  # and nginx rejects what is live
+        self.smoke('pass')
+        r = self.script('--recover')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('nginx -t fails', r.stdout)
+        self.assertEqual(self.site.read_bytes(), self.target_site())                             # the known good site file, validated
+        self.assertEqual(self.journal()['phase'], 'smoke-passed')
+        # the same for --rollback: running something else, live site file rejected
+        self.assertEqual(self.deploy(self.before_party, self.before_games, '--skip-smoke').returncode, 0)
+        self.site.write_bytes(self.site.read_bytes() + b'# FAKE-NGINX-REJECT\n')
+        self.smoke('pass')
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.site.read_bytes(), self.target_site())
 
     def fake_openssl(self):
         shim = Path(self.temp.name) / 'fake-openssl'
