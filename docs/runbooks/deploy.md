@@ -28,10 +28,15 @@ task or in this document authorizes it. Merged is not deployed; deployed is not 
    certificate for the wrong name (phones get a name-mismatch error on the game origin; Party itself is
    unaffected). The deploy checks this before changing anything (`openssl x509 -checkhost` for each
    `server_name` of each `listen 443 ssl` block, as root), prints a `WARNING` naming the host and records it
-   (`nginx_site.cert_name_mismatch`), and still deploys; `--require-cert-names` refuses instead. Install a
-   certificate with both names first: [game-origin](game-origin.md).
+   (`nginx_site.cert_name_mismatch`), and still deploys; `--require-cert-names` refuses instead, whenever the flag
+   is given (also when the live site file already equals the deployed one). Only a listener on exactly port 443
+   counts, and a parsing failure never blocks a deploy by default. Install a certificate with both names first:
+   [game-origin](game-origin.md).
 7. `nginx -t` must already pass on the running configuration: the deploy tests it before replacing the
-   site file and refuses (exit 1, nothing changed) when it fails.
+   site file and refuses (exit 1, nothing changed) when it fails. `--recover` and `--rollback` are the exception:
+   a dead run may have left a site file nginx rejects, which is exactly the state they exist for, so they print a
+   warning, install the site file of the pair they return to and validate that; only if nginx rejects that one
+   too does the restore fail (exit 4, a person is needed).
 8. Scope: the unit list is fixed (`avrana-party-core`, `avranaparty-arcade`, `avranaparty-games`). Units that
    a newer revision adds (`avrana-party-core.socket`, `avrana-game@*`, the service-user migration) are
    **not** installed, enabled, stopped or started by this script; their runbooks own them
@@ -109,6 +114,9 @@ The real run:
 | 4 | write the [deployment manifest](../design/DEPLOYMENT-MANIFEST.md) (**the commit point**), record the contract-check result, the nginx site file's hash and every flag of the run; grant search (`o+x`, not listing) on the manifest directory so the service user can read it, unless a subdirectory there is open to group or other | |
 | 5 | smoke (`python3 -m avrana.ops.smoke`) with a settle window: a failing result is retried every 3 s for up to 90 s (`--smoke-settle`, `AVRANA_DEPLOY_SMOKE_SETTLE`; the arcade's RetroArch and the games provider need tens of seconds on a Pi 4 and each check already waits 5 s), then `passed`/`failed` is recorded. Passed: record the **last known good** and prune. Failed: exit 2 with the one command back (`sudo bash .../deploy.sh --rollback`); with `--auto-rollback`, roll back only what the deploy broke (below) | |
 
+A refusal before step 3b (it says `nothing changed`) also removes the backup directory and the staged release this
+run created, so it leaves nothing behind; a release that already existed is never removed.
+
 Keys, certificates, NetworkManager, systemd unit files and drop-ins are never touched. The
 installed site file is the one thing under `/etc` this script writes, and only that one file.
 
@@ -132,7 +140,9 @@ back: `sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback` (the explicit
 not cause. With it, the script smokes the running appliance **before anything is stopped** (the baseline, saved as
 `smoke-baseline.json` and listed in the journal) and, after the deploy, rolls back **only if a check that passed in the
 baseline now fails**. Checks that already failed before (an expiring certificate, a web build that was stale, a differing
-site file) are reported as `PRE-EXISTING, NOT CAUSED BY THIS DEPLOY` and the run exits 2 without moving anything. When
+site file) are reported as `PRE-EXISTING, NOT CAUSED BY THIS DEPLOY` and the run exits 2 without moving anything. A
+check that the baseline *skipped* and that fails now is reported as `NOT CHECKED BEFORE THE DEPLOY, FAILING AFTER`
+(there is nothing to compare with): also exit 2, no automatic rollback. When
 there is a regression and a last known good that is not the failed pair, the script runs itself as a nested rollback
 deployment of that pair (code releases, checkouts, web build and site file together), runs smoke again and prints both
 results: `DEPLOYMENT FAILED, ROLLED BACK` (exit 3) when the rolled-back revision passes, `ROLLBACK APPLIED BUT ITS SMOKE
@@ -155,8 +165,8 @@ and says so, when there is no baseline to measure against (the first deployment,
 | `--no-auto-rollback` | accepted, does nothing (the default) | n/a |
 | `--smoke-settle N` (`AVRANA_DEPLOY_SMOKE_SETTLE`) | seconds a failing smoke may still turn passing after the restart (default 90; 0 = one attempt) | not recorded |
 | `--require-cert-names` | refuse when the certificate a 443 server block names does not cover its `server_name` | `nginx_site.cert_name_mismatch` lists the mismatches either way |
-| `--finish` | close a run that died after the commit point (journal `committed` or `post-commit-failed`): smoke it, record the result, record the last known good only if it passed | n/a |
-| `--force` | with `--recover` only: also act on a journal that is not open | n/a |
+| `--finish` | close a run that died after the commit point, or a kept revision (journal `committed`, `post-commit-failed` or `smoke-failed`): smoke it, record the result, record the last known good only if it passed. It does not prune; the next passing deploy does | n/a |
+| `--force` | with `--recover` only: also act on a journal that is not open (a revision kept on purpose); the default refuses | n/a |
 | `--skip-nginx-site` | do not touch the nginx site file. **A host without nginx, or an emergency only**: when the live file differs from the deployed commit's, `/party/api/status` stays `degraded`, so the smoke fails (exit 2, revision kept) unless paired with `--skip-smoke` | `skip_nginx_site`; `nginx_site.status: skipped` |
 | `--keep N` (`AVRANA_DEPLOY_KEEP`) | keep the newest N code releases, web releases and deploy backups (default 5, minimum 2) | not recorded |
 | `--no-prune` | prune nothing | not recorded |
@@ -178,7 +188,7 @@ and says so, when there is no baseline to measure against (the first deployment,
 | 1 | Refused before anything changed, **or** failed and the restore finished (checkouts, links, site file back; units started). The log names the step | Fix the stated reason and run again. Nothing is half-done. For `nginx -t` read the printed `MISSING PREREQUISITE` lines |
 | 2 | Applied and kept, but something failed after the switch: smoke **failed** (including failures that already existed before the deploy), or a step after the commit point failed (the output says which; the journal ends `post-commit-failed`) | Read `smoke.txt` in the backup directory and `/party/api/status`. Fix forward, or `sudo bash .../deploy.sh --rollback` / the explicit SHAs it prints |
 | 3 | Applied, smoke failed, **rolled back** to the last known good, whose smoke passed | The deployment failed and the party is safe on the old revision. Read the failed run's `smoke.txt` and `failed-manifest.json` in its backup directory |
-| 4 | **A person is needed**: a restore step failed, a unit is down, or the rolled-back revision also fails smoke | `--status`, `journalctl -u <unit> -n 50`, then `--recover` (below). The output lists the units that are not active |
+| 4 | **A person is needed**: a restore step failed, a unit is down, or the rolled-back revision also fails smoke | `--status`, `journalctl -u <unit> -n 50`, fix the named cause, then `--rollback` (it re-applies the last known good completely; `--recover --force` if it refuses). The output lists the units that are not active |
 | 129, 130, 143 | The run itself was signalled (SIGHUP, SIGINT, SIGTERM) **after** step 4, the commit point: nothing was rolled back. Before it the restore runs and the code is 1 or 4 | `--status`; the manifest says what is running; smoke is the open question: `--finish` |
 | 130 (terminal) | You pressed Ctrl-C on the command you typed: it only *followed* the log and detached; the deployment continues | `--status`, `tail -f` the log named at the start |
 | 137 / no exit code | The deployment was SIGKILLed or the machine lost power: no trap ran | the journal is open: `--status`, then `--recover` (before the commit point) or `--finish` (after it) |
@@ -197,7 +207,7 @@ with no live process, means the run died (SIGKILL, power loss) and nothing resto
 | `post-commit-failed` | Terminal. The revision is applied and kept, but a step after the switch failed (named in the output and the journal) | Fix the cause, then `--finish` to re-run smoke and record the result; or `--rollback` |
 | `auto-rollback` | The automatic rollback was running when the run died | `--recover` |
 | `smoke-passed` / `smoke-skipped` | A finished run | nothing |
-| `smoke-failed` | Smoke failed, revision kept (exit 2) | as exit 2 |
+| `smoke-failed` | Smoke failed, revision kept (exit 2) | fix the cause, then `--finish`; or `--rollback` |
 | `auto-rolled-back` | Exit 3 | as exit 3 |
 | `rolled-back` | The pre-commit restore finished (exit 1) | as exit 1 |
 | `rollback-failed` | Exit 4 | as exit 4 |
@@ -219,6 +229,65 @@ ordinary deploy refuses with the phase it found. `--recover` re-applies everythi
 build are re-linked, the site file is installed, and **all** units are restarted. Without a
 last-known-good record it returns to the before-state the dead run wrote in its journal. It needs both
 commits to still exist in the checkouts; if one is gone, deploy explicit SHAs.
+
+### Which command next
+
+One table, keyed on the journal phase `--status` shows and the exit code you saw. When the two disagree, trust the phase.
+
+| Journal phase | Exit code seen | Run next |
+|---|---|---|
+| none, `smoke-passed` | 0 | nothing |
+| `smoke-skipped` | 0 | nothing (it is not the last known good; deploy again without `--skip-smoke` to make it one) |
+| `started`, `site-installed`, `stopped-services`, `switched`, `restarted`, `auto-rollback` and no live process | none, 137, or the connection was lost | `--recover` |
+| `rolled-back` | 1 | nothing: everything was put back; fix the stated reason and deploy again |
+| `committed`, no live process | none, 129, 130 (the run, not the terminal), 137, 143 | `--finish` (or `--rollback`) |
+| `post-commit-failed` | 2 | fix the named step, then `--finish` (or `--rollback`) |
+| `smoke-failed` | 2 | fix the cause, then `--finish`; or `--rollback` |
+| `auto-rolled-back` | 3 | nothing: the last known good is running and its smoke passed |
+| `rollback-failed` | 4 | fix what the output names, then `--rollback` (`--recover --force` if it refuses) |
+
+### A deploy made while a check already fails for an unrelated reason
+
+Example: the served certificate is `expiring` (or the web build was already stale). The deploy does not cause it
+and cannot cure it, so smoke fails after the deploy too.
+
+- Without `--auto-rollback` (the default) the run ends with exit 2, `smoke-failed`, the new revision running, and the
+  command back printed.
+- With `--auto-rollback` the baseline shows the check failing before, so the output says `PRE-EXISTING, NOT CAUSED BY
+  THIS DEPLOY` and the exit code is 2; nothing is rolled back. (A check the baseline skipped says `NOT CHECKED BEFORE
+  THE DEPLOY, FAILING AFTER` instead.)
+- Such a deploy is **never the last known good** and **prunes nothing**: both need a passed smoke, and the failing
+  check keeps it from passing.
+
+```bash
+sudo bash /home/cody/avrana-party/ops/deploy.sh --status      # confirm: phase smoke-failed, last known good unchanged
+# fix the cause (renew the certificate, rebuild the web release, ...), then:
+sudo bash /home/cody/avrana-party/ops/deploy.sh --finish      # smoke again; if it passes: manifest says passed, last known good recorded
+sudo bash /home/cody/avrana-party/ops/deploy.sh --party <PARTY_SHA> --games <GAMES_SHA>   # the next passing deploy also prunes
+sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback    # or: decide to go back instead
+```
+
+### After a rollback: which smoke `--status` shows
+
+A rollback (`--rollback`, or the automatic one) is a complete deployment of the last known good pair, so it has its own
+smoke. `--status` and the manifest show **that** result, for the pair that is running: after a passing rollback the
+journal ends `smoke-passed` (manual) or `auto-rolled-back` (automatic, exit 3) and `smoke: passed` belongs to the old
+pair. The failed attempt is not lost: `last_attempt` in the manifest and in `/party/api/status` names the pair that failed,
+its outcome (`rolled-back`) and its backup directory, whose `smoke.txt` and `failed-manifest.json` hold its result.
+"Good" means every smoke check passed for that pair at that moment; it does not mean a phone was tried
+([After](#after)).
+
+### The first supervised run on the appliance
+
+**No version of this script has run on the appliance.** Everything above is proved by the unit suite on Linux
+runners and by reading, not by a deployment. So the first run is supervised by the owner:
+
+1. `sudo bash /home/cody/avrana-party/ops/deploy.sh --party <SHA> --games <SHA> --dry-run`. Read the plan, the
+   site-file difference summary (`live N lines, deployed M; +A -R`), the certificate-name `WARNING` and the prune list.
+2. A normal run **without** `--auto-rollback` (the default): `sudo bash .../deploy.sh --party <SHA> --games <SHA>`.
+3. Afterwards `sudo bash /home/cody/avrana-party/ops/deploy.sh --status`, then phone acceptance.
+
+Add `--auto-rollback` only after one run has behaved as described.
 
 ### Going back by hand
 
@@ -342,8 +411,11 @@ Defaults match SYSTEM; environment variables override them for a dev/test tree:
 `AVRANA_LAST_KNOWN_GOOD` (default: `last-known-good.json` beside the manifest), `AVRANA_DEPLOY_LOCK`,
 `AVRANA_DEPLOY_KEEP`, `AVRANA_DEPLOY_SMOKE_SETTLE`, `AVRANA_DEPLOY_DETACH=0`, `AVRANA_DEPLOY_PYTHON` (the
 interpreter for the contract checker). `AVRANA_SYSTEMCTL`, `AVRANA_NGINX`, `AVRANA_OPENSSL`, `AVRANA_DEPLOY_SMOKE`,
-`AVRANA_DEPLOY_UNPRIVILEGED`, `AVRANA_DEPLOY_TEST_HOOK_DIR` and `AVRANA_DEPLOY_FAIL_STEP` exist only for
+`AVRANA_DEPLOY_UNPRIVILEGED`, `AVRANA_DEPLOY_TEST_HOOK_DIR`, `AVRANA_DEPLOY_FAIL_STEP`, `AVRANA_DEPLOY_UNIT_GRACE`
+and `AVRANA_DEPLOY_SMOKE_PAUSE` (the production waits of 1 s per restarted unit and 2 s before the first smoke) exist only for
 `tests/unit/test_deploy_script.py`: they are honoured only with `AVRANA_DEPLOY_TESTING=1` on a scratch root (none of the
 production paths in use), and anywhere else their presence is a refusal naming the variable. The script's own
-re-executions use hidden `--internal-*` arguments, not environment variables, and refuse to be typed by hand. A real run needs root (the
+re-executions use hidden `--internal-*` arguments, not environment variables. `--internal-nested` and
+`--internal-rollback-kind` refuse to be typed by hand; `--internal-detached` only means "do not detach again" and is
+harmless when typed. A real run needs root (the
 services, the web root and the site file); a run without it refuses before touching anything.
