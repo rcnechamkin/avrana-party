@@ -530,6 +530,38 @@ class Multi(unittest.TestCase):
         self.assertGreaterEqual(st["received"], 15)
         self.assertEqual(st["loss_pct"], 0.0)
 
+    def test_one_late_reply_costs_one_message_not_the_rest_of_the_run(self):
+        # Regression: a reply that arrived after the timeout used to be read as the answer to the NEXT message,
+        # leaving the client one reply behind for the rest of the run (measured 93% loss from a single delay).
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(4)
+        port = srv.getsockname()[1]
+
+        def serve():
+            c, _ = srv.accept()
+            n = 0
+            try:
+                while True:
+                    d = c.recv(4096)
+                    if not d:
+                        break
+                    n += 1
+                    if n == 5:
+                        time.sleep(0.6)  # one reply later than the client's 0.3 s timeout
+                    c.sendall(d)
+            except OSError:
+                pass
+            c.close()
+        threading.Thread(target=serve, daemon=True).start()
+        out = []
+        multi.synthetic_client(1, "127.0.0.1", port, 3, 20, 0.3, out)
+        srv.close()
+        st = out[0]["stats"]
+        self.assertGreater(st["sent"], 30)
+        self.assertLessEqual(st["sent"] - st["received"], 2, st)
+        self.assertEqual(st["reconnects"], 0)
+
     def test_synthetic_client_counts_reconnects_when_server_vanishes(self):
         out = []
         multi.synthetic_client(2, "127.0.0.1", 9, 1.2, 20, 0.3, out)  # port 9: nothing listens
