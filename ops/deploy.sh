@@ -898,8 +898,8 @@ fi
 journal switched; hook switched
 # Start order matters: providers first, then the party that launches into them.
 start_stopped start || { log 'a unit did not start'; false; }
+[[ ${#restart[@]} -eq 0 ]] || sleep 1          # a unit that dies at once is caught here; slower failures by the smoke settle window
 for unit in ${restart[@]+"${restart[@]}"}; do
-    sleep 1
     systemctl is-active --quiet "$unit" || { log "$unit did not stay active"; false; }
 done
 journal restarted; hook restarted
@@ -963,7 +963,6 @@ if [[ $skip_smoke -eq 1 ]]; then
     log 'smoke checks skipped (--skip-smoke); the manifest says so; the last known good is NOT updated; old releases are NOT pruned'
     close_run 0
 fi
-sleep 2
 if run_smoke_settled; then
     smoke_recorded=1
     { inject smoke-record && py -m avrana.ops.manifest smoke "$manifest" passed; } || { smoke_recorded=0; post_err 'recording the passed smoke in the manifest'; }
