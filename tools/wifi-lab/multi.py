@@ -99,14 +99,19 @@ def synthetic_client(idx, host, port, seconds, hz, reply_timeout, out):
             msg = (f"{idx}:{sent}:".encode()).ljust(63, b"x") + b"\n"
             t_send = time.perf_counter()
             sock.sendall(msg)
-            while b"\n" not in buf:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    raise ConnectionError("closed by peer")
-                buf += chunk
-            line, _, buf = buf.partition(b"\n")
-            if line.startswith(f"{idx}:{sent}:".encode()):
-                rtts.append((time.perf_counter() - t_send) * 1000.0)
+            want = f"{idx}:{sent}:".encode()
+            while True:
+                while b"\n" not in buf:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        raise ConnectionError("closed by peer")
+                    buf += chunk
+                line, _, buf = buf.partition(b"\n")
+                if line.startswith(want):
+                    rtts.append((time.perf_counter() - t_send) * 1000.0)
+                    break
+                # a stale reply to an earlier message (already counted lost): discard it and keep waiting for this
+                # message's own reply; otherwise one late reply leaves the client a reply behind for the whole run
         except socket.timeout:
             buf = b""  # an unanswered message counts as lost; keep the connection
         except OSError as e:
