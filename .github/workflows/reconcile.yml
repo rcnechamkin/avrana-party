@@ -21,20 +21,19 @@ jobs:
         with:
           path: party
           persist-credentials: false
-      - name: Require the cross-repository read token
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
         env:
-          CROSS_TOKEN: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
-        run: |
-          if [ -z "$CROSS_TOKEN" ]; then
-            echo "::error::secret AVRANA_CROSS_REPO_READ_TOKEN is not set for this repository; see docs/CROSS-REPO.md (Private repositories and the read token)"
-            exit 1
-          fi
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
+        run: bash party/.github/ci/peer-access.sh
       - uses: actions/checkout@v7
         with:
           repository: rcnechamkin/avrana-party-games
           ref: main
           path: games
-          token: ${{ secrets.AVRANA_CROSS_REPO_READ_TOKEN }}
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:

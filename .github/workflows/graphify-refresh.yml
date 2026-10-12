@@ -12,6 +12,10 @@ on:
     secrets:
       LINEAR_API_KEY:
         required: false
+      # Read-only deploy key for avrana-party, for a caller in another private repository (Games);
+      # empty in Party's own run, where the job token reads this repository (AVR-428).
+      PARTY_READ_KEY:
+        required: false
 permissions:
   contents: read
 jobs:
@@ -28,6 +32,7 @@ jobs:
           repository: rcnechamkin/avrana-party
           ref: ${{ inputs.toolkit_ref }}
           path: toolkit
+          ssh-key: ${{ secrets.PARTY_READ_KEY }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -38,6 +43,7 @@ jobs:
           repository: rcnechamkin/avrana-party
           ref: main
           path: party-docs
+          ssh-key: ${{ secrets.PARTY_READ_KEY }}
           persist-credentials: false
       - name: Install pinned local AST extractor (no model extras)
         run: python -m pip install graphifyy==0.9.74

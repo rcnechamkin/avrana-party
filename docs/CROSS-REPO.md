@@ -53,29 +53,80 @@ AVRANA_PARTY_REPO=../avrana-party python -m pytest tests/test_party_session_cros
 AVRANA_GAMES_REPO=../avrana-party-games npx playwright test -c playwright.provider.config.ts  # in Party
 ```
 
-## Private repositories and the read token (AVR-428)
+## Private repositories and the read keys (AVR-428)
 
-Both repositories are private, so a workflow in one cannot read the other anonymously, and the
-job's own `github.token` reaches only its own repository. Same-repository git operations (the
-base-commit fetch in `offline-checks.yml`) use `github.token`, passed to that one step and never
-written to `.git/config`. Every read of the other repository (branch listing with `git ls-remote`,
-and `actions/checkout`) uses one secret, `AVRANA_CROSS_REPO_READ_TOKEN`. If it is missing the job
-fails first, with an error naming it; a failure to list the other repository's branches still fails
-the job (no fallback to `main`). Secrets are not given to workflows run from forks; every PR here
-is from a branch of the same repository.
+Both repositories are private. The job's own `github.token` reaches only the repository the workflow
+runs in, so every read of the *other* repository uses a **read-only deploy key** over SSH, one per
+direction, each valid for exactly one repository, bound to no user and without an expiry:
 
-Owner setup (once, then on rotation):
+| Secret | Stored in | Private half of a deploy key that is added (read-only) to |
+|---|---|---|
+| `AVRANA_GAMES_READ_KEY` | `avrana-party` | `avrana-party-games` |
+| `AVRANA_PARTY_READ_KEY` | `avrana-party-games` | `avrana-party` |
 
-1. GitHub, Settings, Developer settings, Personal access tokens, **Fine-grained tokens**, Generate.
-   Resource owner `rcnechamkin`; Repository access: **Only select repositories**, both
-   `avrana-party` and `avrana-party-games`; Repository permissions: **Contents: Read-only**,
-   **Metadata: Read-only**; nothing else. Choose an expiry (90 days or less is sensible).
-2. Store it in both repositories, reading the value from the prompt (never paste it in chat or a file):
+How the jobs use them:
 
-   ```sh
-   gh secret set AVRANA_CROSS_REPO_READ_TOKEN --repo rcnechamkin/avrana-party
-   gh secret set AVRANA_CROSS_REPO_READ_TOKEN --repo rcnechamkin/avrana-party-games
-   ```
+- Every job that reads the other repository starts with a step named *Access check - read the ...
+  repository*, which runs `.github/ci/peer-access.sh` (the same file in both repositories). It
+  lists the other repository's branches over SSH with the key, which proves access, and picks the
+  paired branch. A failure there is printed as `ACCESS PROBLEM (credentials, not a test failure)`,
+  names the secret and this section, and says which case it is: secret empty or unset, secret from a
+  fork run (GitHub withholds secrets from forks), key rejected or not a deploy key on that
+  repository, secret not a usable key, or the pinned GitHub host keys out of date. Those steps come
+  before any test step, so a red job whose first red step is the access check is never a test result.
+- `actions/checkout` then reads the same repository with `ssh-key:`, `persist-credentials: false`
+  (the key is removed from the runner when the step ends). The script keeps the key in a private
+  temporary directory it deletes on exit. GitHub's SSH host keys are pinned in the script
+  (`https://api.github.com/meta`, `ssh_keys`); nothing is trusted on first use.
+- Same-repository operations use `github.token` (the base-commit fetch in `offline-checks.yml`, passed to
+  that one step as a masked header, never written to `.git/config`).
+- Games' `graphify.yml` calls Party's reusable `graphify-refresh.yml` at a pinned commit and passes
+  `AVRANA_PARTY_READ_KEY` as its `PARTY_READ_KEY` secret. That call also needs Party's
+  Settings, Actions, General, **Access** set to "Accessible from repositories owned by 'rcnechamkin' user"
+  (below): without it the workflow cannot be loaded at all. That setting lets other repositories
+  use Party's actions and reusable workflows; it does not let them check out Party's files.
+- Known limit: a deploy key opens git, not the REST API. `tools/reconcile.py` (weekly, advisory,
+  never fails) also reads the other repository's pull requests and branches through the API with
+  the job token; against a private repository those reads are refused and the report records
+  "GitHub unreachable or refused" instead of the PR/branch checks.
 
-3. Rotation: when the token nears its expiry, generate a new one with the same scope and rerun both
-   commands. An expired token shows as the same checkout or `ls-remote` authentication failure.
+### Who can run what
+
+| Who | Pull request or push in this repository | Cross-repository lanes |
+|---|---|---|
+| The owner, and anyone pushing a branch of the repository (agents included) | everything runs | run, with the secrets of that repository |
+| A contributor from a **fork** (future) | `Offline checks` and `Test` jobs that read only their own repository run; secrets are absent | the access check fails fast with the fork message above; the rest of that job does not run |
+
+For a fork contribution a maintainer reviews the diff, then pushes it as a branch of the repository
+(or asks the contributor to rebase onto a branch the maintainer creates) so the cross-repository
+lanes run with secrets. These workflows never use `pull_request_target`, so a fork's code is never
+run with a secret; do not add it. Whether the `.avrgame` development contract is open to third
+parties while Party internals stay proprietary (AVR-420, AVR-421) is **undecided**; this section
+describes only how CI behaves today.
+
+### Owner setup (once; run on your own machine, values never in chat, a file in the repository or a ticket)
+
+```sh
+cd "$(mktemp -d)"
+ssh-keygen -q -t ed25519 -N '' -C avrana-ci-read-games -f games_read
+ssh-keygen -q -t ed25519 -N '' -C avrana-ci-read-party -f party_read
+# public halves become READ-ONLY deploy keys (gh adds a read-only key unless you pass --allow-write)
+gh repo deploy-key add games_read.pub -R rcnechamkin/avrana-party-games -t "CI read from avrana-party"
+gh repo deploy-key add party_read.pub -R rcnechamkin/avrana-party -t "CI read from avrana-party-games"
+# private halves become secrets, read from the file, not typed or printed
+gh secret set AVRANA_GAMES_READ_KEY -R rcnechamkin/avrana-party < games_read
+gh secret set AVRANA_PARTY_READ_KEY -R rcnechamkin/avrana-party-games < party_read
+# let Games load Party's reusable workflow (graphify)
+gh api -X PUT repos/rcnechamkin/avrana-party/actions/permissions/access -f access_level=user
+rm -f games_read games_read.pub party_read party_read.pub
+```
+
+Verify: re-run the failed jobs of Party PR "AVR-428" (`Cross-repo contract`, `Service trust proof`)
+and Games PR `Test`; green means the *Access check* step prints "Access to ... verified" and the
+later steps run. Then `gh workflow run graphify.yml -R rcnechamkin/avrana-party-games` and
+`gh workflow run reconcile.yml -R rcnechamkin/avrana-party`.
+
+Rotation and revocation: there is no expiry. To rotate or if a key may have leaked, delete the
+deploy key (`gh repo deploy-key list -R <repo>`, then `gh repo deploy-key delete <id> -R <repo>`),
+delete the secret, and repeat the setup for that direction. Deleting the deploy key revokes it at
+once; all jobs of that direction then fail at the access check.
