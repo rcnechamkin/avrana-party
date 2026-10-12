@@ -25,6 +25,7 @@ Reference: experiment/party-service identity.py (tested there); this is its prod
 """
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -38,6 +39,7 @@ HOST_COOKIE = '__Host-avrana_device'      # production: host-only by the browser
 MAX_AGE = 400 * 24 * 3600            # browsers cap cookie lifetimes near 400 days anyway
 LIMITED_COOKIE = 'avrana_limited'         # Limited Mode: plain HTTP, readable on the Wi-Fi
 LIMITED_MAX_AGE = 12 * 3600               # so it lasts a party, not a phone's lifetime
+log = logging.getLogger('avrana.party.identity')
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{43}$')
 
 
@@ -54,14 +56,30 @@ class DeviceStore:
         self.lock = threading.Lock()
         self.by_hash = {}
         if path and os.path.exists(path):
-            with open(path, encoding='utf-8') as f:
-                data = json.load(f)
-            if not isinstance(data, dict) or not all(
-                    isinstance(k, str) and re.fullmatch(r'[0-9a-f]{64}', k)
-                    and isinstance(v, str) and re.fullmatch(r'device-[0-9a-f]{32}', v)
-                    for k, v in data.items()):
-                raise ValueError(f'{path}: not a device store')
-            self.by_hash = data
+            try:
+                self.by_hash = self._load(path)
+            except (ValueError, OSError) as e:
+                # A power cut can leave the file empty or cut short. Refusing to start would
+                # leave the whole party down; phones are issued new identities instead, and the
+                # file is kept aside for whoever wants to look (AVR-33).
+                aside = f'{path}.bad-{int(time.time())}'
+                log.warning('device store %s unreadable (%s); starting empty, kept as %s',
+                            path, type(e).__name__, aside)
+                try:
+                    os.replace(path, aside)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _load(path):
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not all(
+                isinstance(k, str) and re.fullmatch(r'[0-9a-f]{64}', k)
+                and isinstance(v, str) and re.fullmatch(r'device-[0-9a-f]{32}', v)
+                for k, v in data.items()):
+            raise ValueError('not a device store')
+        return data
 
     def issue(self):
         """Mint a token for a new device. Returns (token, device_id); only the hash is kept."""
@@ -69,7 +87,7 @@ class DeviceStore:
         device_id = f'device-{secrets.token_hex(16)}'
         with self.lock:
             self.by_hash[token_hash(token)] = device_id
-            self._save()
+            self._save_or_log()
         return token, device_id
 
     def resolve(self, token):
@@ -82,8 +100,16 @@ class DeviceStore:
     def revoke(self, token):
         with self.lock:
             gone = self.by_hash.pop(token_hash(token), None) if isinstance(token, str) else None
-            self._save()
+            self._save_or_log()
         return gone is not None
+
+    def _save_or_log(self):
+        """A store that cannot be written (disk full, a missing folder) still serves this run:
+        phones keep their identity until the next restart instead of failing to join (AVR-33)."""
+        try:
+            self._save()
+        except OSError as e:
+            log.warning('device store %s not saved (%s)', self.path, type(e).__name__)
 
     def _save(self):
         if not self.path:

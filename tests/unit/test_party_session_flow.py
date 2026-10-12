@@ -444,6 +444,26 @@ class Flow(ServiceCase):
         self.assertEqual(status, 413)
         self.assertEqual(self.svc.core.party.session.state, 'active')
 
+    # ---- Party Core restarts while the game runs (AVR-33) -------------------------------------------
+    def test_after_a_party_restart_phones_rejoin_and_the_next_launch_replaces_the_orphaned_session(self):
+        old_sid = self.launch()
+        _, t, _ = self.ticket(self.ben)
+        # the party process restarts: devices persist (cookies), the party and its session do not
+        self.svc.core = core.PartyCore(self.svc.core.clock, self.svc.core.games)
+        status, body, _ = self.ticket(self.ben)
+        self.assertEqual((status, body['error']), (403, 'not_member'))      # not a 500, not a ticket
+        _, v, _ = self.ben.state()
+        self.assertEqual((v['me'], v['state'], v['nav']['to']), (None, 'lobby', 'home'))
+        self.ana.post('join', {'name': 'Ana'})
+        self.ben.post('join', {'name': 'Ben'})
+        self.assertEqual(self.game.side.sid, old_sid)                      # the game still holds the old one
+        new_sid = self.launch()
+        self.assertNotEqual(new_sid, old_sid)
+        self.assertEqual(self.game.side.sid, new_sid)
+        with self.assertRaises(Invalid):
+            self.game.hello(t['ticket'])                                   # the pre-restart ticket is dead
+        self.game.hello(self.ticket(self.ben)[1]['ticket'])
+
     # ---- end for everyone ---------------------------------------------------------------------------
     def test_end_for_everyone_resets_the_game_and_kills_tickets(self):
         sid = self.launch()
