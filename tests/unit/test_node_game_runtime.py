@@ -12,6 +12,7 @@ import io
 import json
 import os
 import shutil
+import socket
 import stat
 import subprocess
 import tarfile
@@ -19,6 +20,7 @@ import tempfile
 import threading
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 
 from avrana import REPO_ROOT
@@ -34,6 +36,7 @@ from test_install_game import Base, REPO
 
 FIXTURE = REPO_ROOT / 'tests' / 'fixtures' / 'node-game'
 NODE = '/opt/avrana-runtimes/node-22.22.2/bin/node'
+HEAP = '--max-old-space-size=192'           # the appliance's option of Node, before the package entry
 LIFECYCLE_MARK = 'avr68-lifecycle-ran'
 PACKAGE_JSON = json.dumps({'name': 'dep', 'version': '1.0.0', 'type': 'module', 'exports': './index.js',
                            'scripts': {'preinstall': 'node lifecycle.cjs', 'install': 'node lifecycle.cjs',
@@ -271,9 +274,11 @@ class InstallTests(Base):
         self.assertTrue(lines[0].startswith('hello: installed 0.1.0'))
         dropin = self.layout.provision.dropin('hello').read_text(encoding='utf-8')
         record = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
-        self.assertIn(f'ExecStart="{NODE}" "server/main.mjs"\n', dropin)
+        self.assertEqual(pin.OPTIONS, (HEAP,))
+        self.assertIn(f'ExecStart="{NODE}" "{HEAP}" "server/main.mjs"\n', dropin)
         self.assertIn(f'WorkingDirectory={record["root"]}\n', dropin)
-        self.assertEqual(record['grant']['runtime'], {'command': [NODE, 'server/main.mjs'], 'working_directory': record['root']})
+        self.assertEqual(record['grant']['runtime'],
+                         {'command': [NODE, HEAP, 'server/main.mjs'], 'working_directory': record['root']})
         self.assertIn(NODE, self.trusted_paths)                       # root-owned code all the way up, as for python3
         staged = self.layout.on_disk(record['root'])
         self.assertEqual((staged / 'node_modules/dep/package.json').read_bytes(), PACKAGE_JSON)
@@ -303,10 +308,15 @@ class InstallTests(Base):
         self.remove()
         self.install()
         python_unit = self.layout.provision.dropin('hello').read_text(encoding='utf-8')
+        own = pg.NODE_UNIT.splitlines()                               # what a Node unit says and a Python unit does not
 
         def rest(text):
-            return [line for line in text.splitlines() if not line.startswith(('ExecStart=', 'WorkingDirectory='))]
+            return [line for line in text.splitlines()
+                    if not line.startswith(('ExecStart=', 'WorkingDirectory=')) and line not in own]
         self.assertEqual(rest(node_unit), rest(python_unit))
+        self.assertEqual(own[-1], 'UnsetEnvironment=NODE_OPTIONS NODE_PATH')
+        self.assertIn(own[-1], node_unit.splitlines())                # nothing but the command says what Node runs or loads
+        self.assertNotIn('UnsetEnvironment', python_unit)
         for line in ('MemoryMax=256M', 'TasksMax=64', 'CPUQuota=100%', 'CapabilityBoundingSet=', 'PrivateNetwork=yes',
                      'RestrictNamespaces=yes', 'StateDirectory='):
             self.assertIn(line, node_unit.splitlines())
@@ -315,6 +325,32 @@ class InstallTests(Base):
         # directive is relaxed for Node. If one of these appears, the Node proof must be read again.
         for directive in ('MemoryDenyWriteExecute', 'SystemCallFilter', 'NoExecPaths', 'ExecPaths'):
             self.assertNotIn(directive, template + node_unit)
+        # the old-generation heap is capped under the unit's memory ceiling, so V8 collects first;
+        # past the ceiling the cgroup kills the process and the template's restart policy applies.
+        self.assertLess(int(HEAP.split('=')[1]), 256)
+        self.assertIn('Restart=on-failure', template.splitlines())
+        for line in (template + node_unit).splitlines():              # and neither sets the two variables Node obeys
+            if line.startswith('Environment='):
+                self.assertNotIn('NODE_', line)
+
+    def test_the_options_of_node_are_the_appliances_and_a_package_or_a_record_cannot_change_them(self):
+        self.install(self.node_package(), present=lambda path: True)
+        good = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
+        bad = {'no option': [NODE, 'server/main.mjs'], 'a larger heap': [NODE, '--max-old-space-size=4096', 'server/main.mjs'],
+               'the option twice': [NODE, HEAP, HEAP, 'server/main.mjs'],
+               'another option after it': [NODE, HEAP, '--jitless', 'server/main.mjs'],
+               'the option after the entry only': [NODE, 'server/main.mjs', HEAP]}
+        for label, command in bad.items():
+            doc = json.loads(json.dumps(good))
+            doc['grant']['runtime']['command'] = command
+            with self.assertRaises(installed.RecordError, msg=label):
+                installed.validate_record(doc, 'hello', REPO, games_root=self.layout.root_text())
+        # a manifest cannot ask for an option at all: the first argument is the entry
+        self.assertTrue(problems_of(node_manifest([HEAP, 'server/main.mjs'])))
+        self.remove()
+        self.install()                                                # python3 gets no option of anybody's
+        python = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
+        self.assertEqual(python['grant']['runtime']['command'], ['/usr/bin/python3', '-m', 'game_pkg'])
 
     def test_a_record_cannot_make_node_run_anything_but_an_entry_of_the_package(self):
         self.install(self.node_package(), present=lambda path: True)
@@ -325,7 +361,7 @@ class InstallTests(Base):
                'a traversal': ['../x.mjs'], 'nothing': []}
         for label, args in bad.items():
             doc = json.loads(json.dumps(good))
-            doc['grant']['runtime']['command'] = [NODE, *args]
+            doc['grant']['runtime']['command'] = [NODE, HEAP, *args]
             with self.assertRaises(installed.RecordError, msg=label):
                 installed.validate_record(doc, 'hello', REPO, games_root=self.layout.root_text())
         doc = json.loads(json.dumps(good))
@@ -504,13 +540,110 @@ class RuntimeToolTests(unittest.TestCase):
         self.assertTrue(nr.problems(self.final, 'arm64', archives=self.archives))      # a tree of the other architecture
         self.assertIn('not owned by uid', ' '.join(nr.problems(self.final, 'x64', owner=2 ** 31 - 7, archives=self.archives)))
 
+    def test_the_tarball_is_read_once_and_a_file_swapped_in_after_the_check_is_never_unpacked_or_run(self):
+        good = self.tarball.read_bytes()
+        evil = self.tmp / 'evil.tar.xz'
+        runtime_tarball(evil, node_bytes=b'\x7fELF swapped in\n')
+        real_check, opened, ran = nr.check_archive, [], []
+        real_open = os.open
+
+        def counting_open(path, *a, **kw):
+            if os.path.abspath(os.fspath(path)) == os.path.abspath(self.tarball):
+                opened.append(path)
+            return real_open(path, *a, **kw)
+
+        def check_then_swap(*a, **kw):
+            digest = real_check(*a, **kw)                             # the bytes are proven ...
+            os.replace(evil, self.tarball)                            # ... and now another file has that name
+            return digest
+
+        def version(executable):
+            ran.append(Path(executable).read_bytes())                 # what would have been executed
+            return f'v{pin.VERSION}'
+        with mock.patch.object(nr, 'check_archive', check_then_swap), mock.patch.object(nr.os, 'open', counting_open):
+            self.install(version_of=version)
+        self.assertNotEqual(self.tarball.read_bytes(), good)          # the swap did happen
+        self.assertEqual(len(opened), 1)                              # one open of that path, before the check
+        self.assertEqual(ran, [b'\x7fELF fake node\n'])
+        self.assertEqual((self.final / 'bin' / 'node').read_bytes(), b'\x7fELF fake node\n')
+        doc = json.loads((self.final / 'avrana-runtime.json').read_text(encoding='utf-8'))
+        self.assertEqual(doc['archive_sha256'], hashlib.sha256(good).hexdigest())
+        self.assertEqual(doc['node_sha256'], hashlib.sha256(b'\x7fELF fake node\n').hexdigest())
+        self.assertFalse([p for p in self.opt.rglob('*') if p.is_file() and b'swapped in' in p.read_bytes()])
+        # and the swapped file itself, offered as the tarball, is refused before anything is written
+        nr.remove(self.runtimes, None)
+        with self.assertRaises(nr.Refused):
+            self.install()
+        self.assertEqual(self.tree(), [])
+
+    def test_the_tarball_is_gone_after_the_check_and_the_install_still_completes_from_the_checked_bytes(self):
+        real_check = nr.check_archive
+
+        def check_then_delete(*a, **kw):
+            digest = real_check(*a, **kw)
+            self.tarball.unlink()
+            return digest
+        with mock.patch.object(nr, 'check_archive', check_then_delete):
+            self.install()
+        self.assertFalse(self.tarball.exists())
+        self.assertEqual(nr.problems(self.final, 'x64', archives=self.archives), [])
+
+    @unittest.skipUnless(hasattr(os, 'O_NOFOLLOW') and hasattr(os, 'symlink'), 'needs O_NOFOLLOW')
+    def test_a_symbolic_link_to_the_tarball_is_refused(self):
+        link = self.tmp / 'link.tar.xz'
+        os.symlink(self.tarball, link)
+        with self.assertRaises(nr.Refused) as ctx:
+            self.install(link)
+        self.assertIn('symbolic link', str(ctx.exception))
+        self.assertEqual(self.tree(), [])
+
+    def test_an_oversized_or_non_regular_tarball_is_refused(self):
+        with mock.patch.object(nr, 'MAX_ARCHIVE_BYTES', 16), self.assertRaises(nr.Refused) as ctx:
+            self.install()
+        self.assertIn('larger than 16 bytes', str(ctx.exception))
+        with self.assertRaises(nr.Refused):
+            self.install(self.tmp)                                    # a directory
+        self.assertEqual(self.tree(), [])
+
+    def test_the_build_is_chosen_by_the_machine_and_arm64_takes_the_arm64_pin(self):
+        self.assertEqual((nr.machine_arch('aarch64'), nr.machine_arch('arm64'), nr.machine_arch('x86_64')),
+                         ('arm64', 'arm64', 'x64'))
+        with self.assertRaises(nr.Refused):
+            nr.machine_arch('armv7l')                                 # a 32-bit Pi OS: no pinned build
+        arm = self.tmp / 'arm.tar.xz'
+        with self.assertRaises(nr.Refused) as ctx:                    # the x64 tarball on the appliance
+            self.install(self.tarball, arch='arm64')
+        self.assertIn('this machine is arm64', str(ctx.exception))
+        self.assertIn(pin.ARCHIVES['arm64'][0], str(ctx.exception))
+        self.assertEqual(self.tree(), [])
+        self.install(arm, arch='arm64')
+        self.assertEqual((self.final / 'bin' / 'node').read_bytes(), b'\x7fELF fake arm node\n')
+        doc = json.loads((self.final / 'avrana-runtime.json').read_text(encoding='utf-8'))
+        self.assertEqual((doc['arch'], doc['archive'], doc['archive_sha256']),
+                         ('arm64', 'node-v%s-linux-arm64.tar.xz' % pin.VERSION, self.archives['arm64'][1]))
+        self.assertEqual(nr.problems(self.final, 'arm64', archives=self.archives), [])
+        self.assertTrue(nr.problems(self.final, 'x64', archives=self.archives))
+        # the command line picks the pin from the machine it is told it runs on, with the real pins
+        (self.tmp / 'junk.tar.xz').write_bytes(b'not node')
+        for machine, arch in (('aarch64', 'arm64'), ('x86_64', 'x64')):
+            err = io.StringIO()
+            code = nr.main(['install', str(self.tmp / 'junk.tar.xz'), '--runtimes-root', str(self.tmp / 'r'), '--machine', machine],
+                           is_root=True, out=io.StringIO(), err=err)
+            self.assertEqual(code, 1)
+            self.assertIn(f'node-v{pin.VERSION}-linux-{arch}.tar.xz ({pin.ARCHIVES[arch][1]})', err.getvalue())
+            self.assertNotIn(pin.ARCHIVES['x64' if arch == 'arm64' else 'arm64'][1], err.getvalue())
+
+    def records(self, **docs):
+        records = self.tmp / 'packages.d'
+        records.mkdir(exist_ok=True)
+        for name, command in docs.items():
+            (records / f'{name}.json').write_text(json.dumps({'grant': {'runtime': {'command': command}}}))
+        return records
+
     def test_remove_is_refused_while_a_package_runs_on_the_runtime(self):
         self.install()
-        records = self.tmp / 'packages.d'
-        records.mkdir()
-        (records / 'tanks.json').write_text(json.dumps({'grant': {'runtime': {'command': [NODE, 'server/main.mjs']}}}))
-        (records / 'hello.json').write_text(json.dumps({'grant': {'runtime': {'command': ['/usr/bin/python3', '-m', 'x']}}}))
-        (records / 'broken.json').write_text('{')
+        records = self.records(tanks=[NODE, HEAP, 'server/main.mjs'], hello=['/usr/bin/python3', '-m', 'x'])
+        (records / '.tmp-other.json').write_text('{')                 # an installer's temporary file is not a record
         with self.assertRaises(nr.Refused) as ctx:
             nr.remove(self.runtimes, records)
         self.assertIn('tanks', str(ctx.exception))
@@ -522,6 +655,88 @@ class RuntimeToolTests(unittest.TestCase):
         self.assertIn('removed', nr.remove(self.runtimes, records)[0])
         self.assertEqual(self.tree(), [])
         self.assertIn('nothing to remove', nr.remove(self.runtimes, records)[0])
+
+    def test_remove_is_refused_loudly_while_a_record_cannot_be_read(self):
+        self.install()
+        records = self.records(hello=['/usr/bin/python3', '-m', 'x'])
+        cases = {'not JSON': '{', 'no command': json.dumps({'grant': {}}), 'an empty command': json.dumps(
+                     {'grant': {'runtime': {'command': []}}}), 'a list': '[]',
+                 'oversized': json.dumps({'grant': {'runtime': {'command': [NODE]}}, 'pad': 'x' * (installed.MAX_RECORD_BYTES + 1)})}
+        for label, text in cases.items():
+            (records / 'broken.json').write_text(text)
+            for dry in (True, False):
+                with self.assertRaises(nr.Refused, msg=label) as ctx:
+                    nr.remove(self.runtimes, records, dry_run=dry)
+                self.assertIn('broken.json', str(ctx.exception), label)
+                self.assertIn('cannot be read as an install record', str(ctx.exception), label)
+            self.assertEqual(nr.problems(self.final, 'x64', archives=self.archives), [], label)     # nothing was touched
+        out, err = io.StringIO(), io.StringIO()
+        code = nr.main(['remove', '--runtimes-root', str(self.runtimes), '--records-dir', str(records), '--machine', 'x86_64'],
+                       is_root=True, out=out, err=err)
+        self.assertEqual((code, out.getvalue()), (1, ''))
+        self.assertIn('install-node-runtime: refused:', err.getvalue())
+        self.assertIn('broken.json', err.getvalue())
+        (records / 'broken.json').unlink()
+        self.assertIn('removed', nr.remove(self.runtimes, records)[0])
+
+    def test_remove_always_clears_what_a_killed_install_left(self):
+        records = self.records()                                      # .staging-dead: as a killed install leaves it
+        for installed_first in (False, True):
+            if installed_first:
+                self.install()
+                (self.runtimes / '.staging-dead').mkdir()
+                (self.runtimes / '.staging-dead' / 'bin').mkdir()
+                (self.runtimes / '.staging-dead' / 'bin' / 'node').write_bytes(b'half')
+            else:
+                self.runtimes.mkdir()
+                (self.runtimes / '.staging-dead').mkdir()
+                (self.runtimes / '.staging-dead' / 'LICENSE').write_bytes(b'half')
+            dry = nr.remove(self.runtimes, records, dry_run=True)
+            self.assertTrue(any('.staging-dead' in line and 'would remove' in line for line in dry), dry)
+            self.assertTrue((self.runtimes / '.staging-dead').is_dir())
+            lines = nr.remove(self.runtimes, records)
+            self.assertTrue(any('.staging-dead' in line and 'interrupted install' in line for line in lines), lines)
+            self.assertEqual(len(lines), 2 if installed_first else 1)
+            self.assertEqual(self.tree(), [])                         # the runtimes directory went too: nothing was left in it
+        self.assertEqual(nr.remove(self.runtimes, records), [f'node {pin.VERSION}: nothing to remove'])
+
+    def test_a_tree_of_an_earlier_pin_can_be_removed_by_version_once_nothing_runs_on_it(self):
+        self.install()
+        old = self.runtimes / 'node-20.1.0'                           # as an earlier pin of this tool left it
+        shutil.copytree(self.final, old)
+        doc = json.loads((old / 'avrana-runtime.json').read_text(encoding='utf-8'))
+        (old / 'avrana-runtime.json').write_text(json.dumps({**doc, 'version': '20.1.0'}))
+        records = self.records(old=['/opt/avrana-runtimes/node-20.1.0/bin/node', 'server/main.mjs'])
+        with self.assertRaises(nr.Refused) as ctx:                    # a record still names the old executable
+            nr.remove(self.runtimes, records, '20.1.0')
+        self.assertIn('old', str(ctx.exception))
+        self.assertIn('removed', nr.remove(self.runtimes, records)[0])       # the pinned one is not what that record runs
+        self.assertTrue(old.is_dir())
+        self.install()
+        (records / 'old.json').unlink()
+        self.assertEqual(nr.remove(self.runtimes, records, '20.1.0', dry_run=True), [f'node 20.1.0: would remove {old}'])
+        out = io.StringIO()
+        code = nr.main(['remove', '--version', '20.1.0', '--runtimes-root', str(self.runtimes), '--records-dir', str(records),
+                        '--machine', 'x86_64'], is_root=True, out=out, err=io.StringIO())
+        self.assertEqual(code, 0)
+        self.assertIn(f'node 20.1.0: removed {old}', out.getvalue())
+        self.assertFalse(old.exists())
+        self.assertEqual(nr.problems(self.final, 'x64', archives=self.archives), [])       # the pinned tree is untouched
+        # only a tree this tool made, and only a name that is a version
+        foreign = self.runtimes / 'node-19.0.0'
+        (foreign / 'bin').mkdir(parents=True)
+        (foreign / 'bin' / 'node').write_bytes(b'someone else')
+        with self.assertRaises(nr.Refused) as ctx:
+            nr.remove(self.runtimes, records, '19.0.0')
+        self.assertIn('not a runtime tree this tool made', str(ctx.exception))
+        (foreign / 'avrana-runtime.json').write_text(json.dumps({**doc, 'version': '20.1.0'}))     # says another version
+        with self.assertRaises(nr.Refused):
+            nr.remove(self.runtimes, records, '19.0.0')
+        self.assertTrue((foreign / 'bin' / 'node').is_file())
+        for name in ('../../etc', '..', '', '20', '20.1.0/../x', 'v20.1.0', '20.1.0\n'):
+            with self.assertRaises(nr.Refused, msg=name):
+                nr.remove(self.runtimes, records, name)
+        self.assertEqual(nr.remove(self.runtimes, records, '18.0.0'), ['node 18.0.0: nothing to remove'])
 
     def test_the_command_line_needs_root_and_dry_run_changes_nothing(self):
         common = ['--runtimes-root', str(self.runtimes), '--records-dir', str(self.tmp / 'none'), '--machine', 'x86_64']
@@ -539,11 +754,38 @@ class RuntimeToolTests(unittest.TestCase):
         self.assertEqual(self.install(dry_run=True)[0].split(': ')[1].split(' ')[0:2], ['would', 'install'])
         self.assertEqual(self.tree(), [])
 
-    def test_the_tool_and_the_library_never_open_a_network_connection(self):
-        for path in (REPO_ROOT / 'avrana' / 'ops' / 'node_runtime.py', REPO_ROOT / 'avrana' / 'avrgame' / 'node_pin.py'):
-            text = path.read_text(encoding='utf-8')
-            for word in ('urllib', 'http.client', 'import socket', 'requests', 'curl', 'wget', 'https://'):
-                self.assertNotIn(word, text, f'{path.name}: {word}')
+    def test_the_tool_opens_no_socket_and_resolves_no_name_whatever_it_is_asked_to_do(self):
+        def refuse(*a, **kw):
+            raise AssertionError('the runtime tool touched the network')
+        names = ('socket', 'create_connection', 'getaddrinfo', 'gethostbyname', 'socketpair')
+        patches = [mock.patch.object(socket, name, refuse) for name in names if hasattr(socket, name)]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        with self.assertRaises(AssertionError):                       # the guard is live
+            socket.create_connection(('127.0.0.1', 9))
+        records = self.records(hello=['/usr/bin/python3', '-m', 'x'])
+        common = ['--runtimes-root', str(self.runtimes), '--records-dir', str(records), '--machine', 'aarch64']
+        with self.assertRaises(nr.Refused):
+            self.install(self.tmp / 'arm.tar.xz')                     # a refusal
+        with self.assertRaises(nr.Refused):
+            self.install(self.tmp / 'nope.tar.xz')
+        self.install()                                                # read, check, unpack, record
+        self.assertEqual(nr.problems(self.final, 'x64', archives=self.archives), [])
+        self.install()                                                # the already-installed path
+        nr.remove(self.runtimes, records, dry_run=True)
+        nr.remove(self.runtimes, records)
+        for argv in (['install', str(self.tarball)], ['install', str(self.tarball), '--dry-run'], ['verify'], ['remove'],
+                     ['remove', '--version', '20.1.0', '--dry-run']):
+            nr.main([*argv, *common], is_root=True, out=io.StringIO(), err=io.StringIO())
+        # the one program the real tool starts is the binary it has just checked: `<staged>/bin/node --version`
+        ran = []
+        with mock.patch.object(nr.subprocess, 'run', lambda argv, **kw: ran.append(list(argv)) or mock.Mock(
+                returncode=0, stdout=f'v{pin.VERSION}\n', stderr='')):
+            self.install(version_of=nr.real_version)
+        self.assertEqual(len(ran), 1)
+        self.assertEqual(ran[0][1:], ['--version'])
+        self.assertTrue(Path(ran[0][0]).parent.parent.name.startswith('.staging-'))
 
     def test_party_core_never_imports_or_runs_node(self):
         for path in sorted((REPO_ROOT / 'avrana' / 'party').glob('*.py')) + sorted((REPO_ROOT / 'avrana' / 'web').glob('*.py')):
@@ -591,6 +833,23 @@ class FixtureTests(unittest.TestCase):
             data = path.read_bytes()
             self.assertNotIn(b'\r', data, path.name)
             self.assertNotIn(b'\x00', data, path.name)
+
+    @unittest.skipUnless(shutil.which('node'), 'no node on PATH (the real-systemd CI job runs the pinned build)')
+    def test_a_real_node_keeps_the_appliance_heap_cap_whatever_its_environment_says(self):
+        probe = 'console.log(Math.round(require("node:v8").getHeapStatistics().heap_size_limit / 1048576))'
+
+        def limit(options, **extra):
+            env = {k: v for k, v in os.environ.items() if not k.startswith(('NODE_', 'npm_'))}
+            done = subprocess.run([shutil.which('node'), *options, '-e', probe], capture_output=True, text=True,
+                                  timeout=60, env={**env, **extra}, check=True)
+            return int(done.stdout.strip())
+        capped = limit(pin.OPTIONS)
+        self.assertLess(capped, 256)                                  # under the unit's MemoryMax=256M
+        self.assertGreaterEqual(capped, 192)
+        # an option on the command line wins over NODE_OPTIONS; the unit clears the variable anyway,
+        # because it can also carry options the command line does not answer (--require, --import)
+        self.assertEqual(limit(pin.OPTIONS, NODE_OPTIONS='--max-old-space-size=4096'), capped)
+        self.assertGreater(limit((), NODE_OPTIONS='--max-old-space-size=4096'), 256)
 
     @unittest.skipUnless(shutil.which('node'), 'no node on PATH (the real-systemd CI job runs the pinned build)')
     def test_a_real_node_serves_the_party_protocol_from_the_unpacked_package(self):

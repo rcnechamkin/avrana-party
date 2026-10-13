@@ -33,7 +33,7 @@ from pathlib import PurePosixPath
 
 from avrana.contracts import appliance, game, strictjson, vocabulary
 
-from . import node
+from . import node, node_pin
 from .common import FORMAT, MAX_FILES, MAX_FILE_BYTES, MANIFEST_NAME, check_json_depth, name_problem, text_ok
 from .manifest import INTERPRETERS, MAX_ARG, MAX_ARGS, VERSION, module_form
 
@@ -115,12 +115,13 @@ def build_grant(package, granted, root, interpreters=INTERPRETERS):
     """The appliance's grant for a package: community tier, the permissions the operator allowed
     (and the contract requested), and the command the template unit runs in the staged tree."""
     server = package.manifest['server']
+    options = node_pin.OPTIONS if server['interpreter'] == node.NAME else ()     # the appliance's, never the package's
     return {
         'game': package.id,
         'entry': entry_path(package.id),
         'tier': TIER,
         'permissions_granted': sorted(granted),
-        'runtime': {'command': [interpreters[server['interpreter']], *server['args']],
+        'runtime': {'command': [interpreters[server['interpreter']], *options, *server['args']],
                     'working_directory': root},
     }
 
@@ -192,6 +193,10 @@ def _runtime_problems(grant, root, interpreters, files=None):
     if command[0] == INTERPRETERS.get('python3') and not module_form(args):
         p.append('grant.runtime.command: python3 runs only ["-m", "<module>", ...]')
     if command[0] == interpreters.get(node.NAME):
+        fixed = list(node_pin.OPTIONS)
+        if args[:len(fixed)] != fixed:
+            p.append(f'grant.runtime.command: node runs with exactly the options of this appliance first ({" ".join(fixed)})')
+        args = args[len(fixed):]                             # what the package asked for
         if not node.entry_form(args):
             p.append('grant.runtime.command: node runs only ["<entry>.mjs", ...], an ES module file of the package')
         elif isinstance(files, list) and args[0] not in [f.get('path') for f in files if isinstance(f, dict)]:
@@ -201,7 +206,7 @@ def _runtime_problems(grant, root, interpreters, files=None):
     for i, arg in enumerate(args):
         if not text_ok(arg, 1, MAX_ARG) or arg.startswith(('/', '\\')) or re.match(r'^[A-Za-z]:', arg) \
                 or '..' in arg.split('/'):
-            p.append(f'grant.runtime.command[{i + 1}]: a package argument has no absolute path or ".."')
+            p.append(f'grant.runtime.command: package argument {i + 1} has an absolute path or "..", or is not printable')
     return p
 
 

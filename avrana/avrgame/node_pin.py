@@ -10,8 +10,11 @@ version. A package only says `"interpreter": "node"`; the path is the appliance'
 
 Moving the pin: change VERSION and both digests here (from nodejs.org/dist/v<VERSION>/SHASUMS256.txt),
 the `node` path of INTERPRETERS, and the revision of the developer tools export, which states the
-interpreters (tools/build_avrgame_tools.py). A package installed under the old version keeps naming
-the old directory until it is installed again.
+interpreters (tools/build_avrgame_tools.py). This is not transparent to what is installed: a record
+written under the old pin names the old executable, which is no longer one of INTERPRETERS, so the
+record is refused when records are loaded and its game is not offered until the operator removes it
+(`install-game remove <id>`) and installs the package again. The same holds for OPTIONS. The old
+tree stays on disk until `install-node-runtime remove --version <old>`.
 """
 from types import MappingProxyType
 
@@ -28,6 +31,14 @@ ARCHIVES = MappingProxyType({
             '88fd1ce767091fd8d4a99fdb2356e98c819f93f3b1f8663853a2dee9b438068a'),
 })
 MACHINES = MappingProxyType({'aarch64': 'arm64', 'arm64': 'arm64', 'x86_64': 'x64', 'amd64': 'x64'})
+
+# Options of Node itself, set by the appliance and never by a package: they stand between the
+# executable and the package entry in every Node command. The old-generation heap is capped below
+# the unit's MemoryMax=256M (avrana.ops.provision_game.COMMUNITY_UNIT), so V8 collects, and at
+# worst fails an allocation, before the cgroup kills the process. It is a cap on one heap space,
+# not on the process: a process that still outgrows the unit is killed and restarted by the unit's
+# Restart=on-failure, like any other game.
+OPTIONS = ('--max-old-space-size=192',)
 
 
 def arch_of(machine):

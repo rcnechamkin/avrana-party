@@ -2,7 +2,7 @@
 
     python3 -m avrana.ops.node_runtime install <node-v<version>-linux-<arch>.tar.xz> [--dry-run]
     python3 -m avrana.ops.node_runtime verify
-    python3 -m avrana.ops.node_runtime remove [--dry-run]
+    python3 -m avrana.ops.node_runtime remove [--version X.Y.Z] [--dry-run]
 
 NOT an SDK, NOT stable, NOT run on the appliance (docs/runbooks/install-game.md). The appliance
 does not need Node: Party Core never imports, runs or looks for it, and Python packages are the
@@ -11,10 +11,12 @@ same with or without it. Only a package whose manifest says `"interpreter": "nod
 
 What `install` does, as root, OFFLINE: it never opens a network connection. The operator brings
 the official tarball of exactly the pinned version (avrana.avrgame.node_pin: VERSION and one SHA-256
-per architecture, from nodejs.org's SHASUMS256.txt). The file is read once, bounded; its SHA-256
-must equal the pin for THIS machine's architecture, whatever the file is called. Then exactly two
-members are taken out of it, `bin/node` and `LICENSE`: no npm, npx or corepack, no headers, no
-symbolic link. They are written under a staging name, root-owned, `bin/node` 0755 and the rest
+per architecture, from nodejs.org's SHASUMS256.txt). The file is opened ONCE (never through a
+symbolic link) and read whole, bounded, through that one descriptor; the bytes in memory are what is
+hashed and what is unpacked, so nobody can put another file at that path between the check and the
+use. Their SHA-256 must equal the pin for THIS machine's architecture, whatever the file is called.
+Then exactly two members are taken out of them, `bin/node` and `LICENSE`: no npm, npx or corepack, no
+headers, no symbolic link. They are written under a staging name, root-owned, `bin/node` 0755 and the rest
 0644, the binary is asked for its version (it must answer the pinned one), and the directory is
 renamed to
 
@@ -23,17 +25,22 @@ renamed to
 The record file says which archive it came from and the SHA-256 of the binary; `verify` checks the
 tree against it (owner root, nothing group- or world-writable, no link, nothing extra, the binary
 unchanged, the archive digest still the pin). A second `install` of a tree that verifies changes
-nothing. `remove` is refused while an install record names the runtime.
+nothing. `remove` is refused while an install record names the runtime, and also while a file in the
+records directory cannot be read as a record (it cannot be shown not to); it always clears the
+staging directories a killed install left. After the pin moves, `remove --version <old>` takes a
+tree of an earlier pin away, provided its own record says this tool made it.
 
 Every path and effect is an argument of the core (`install`, `verify`, `remove`), so it is tested
 in scratch directories on any OS; `main` supplies the real ones.
 """
 import argparse
 import hashlib
+import io
 import json
 import lzma
 import os
 import platform
+import re
 import secrets
 import shutil
 import stat
@@ -53,6 +60,7 @@ MAX_NODE_BYTES = 384 * 1024 * 1024         # bin/node is about 120 MB
 MAX_LICENSE_BYTES = 4 * 1024 * 1024
 MEMBERS = (('bin/node', 0o755, MAX_NODE_BYTES), ('LICENSE', 0o644, MAX_LICENSE_BYTES))
 CHUNK = 1024 * 1024
+VERSION_RX = re.compile(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
 
 
 class Refused(Exception):
@@ -80,33 +88,51 @@ def machine_arch(machine=None):
     return arch
 
 
-def check_archive(path, arch, archives=pin.ARCHIVES):
-    """The SHA-256 of the tarball at `path`, which must be the pinned build for `arch`. The name of
-    the file is not evidence of anything; the digest is."""
+def read_archive(path):
+    """The bytes of the tarball at `path`: one open (refusing a symbolic link), one bounded read
+    through that descriptor. Everything after this works on the bytes, never on the path again."""
+    flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0)
     try:
-        st = os.lstat(path)
+        fd = os.open(path, flags)
     except OSError:
-        raise Refused(f'{path}: does not exist or cannot be read') from None
-    if not stat.S_ISREG(st.st_mode):
-        raise Refused(f'{path}: not a regular file')
-    digest = _sha256_file(path, MAX_ARCHIVE_BYTES)
+        raise Refused(f'{path}: does not exist or cannot be read (a symbolic link is refused)') from None
+    with os.fdopen(fd, 'rb') as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise Refused(f'{path}: not a regular file')
+        data = f.read(MAX_ARCHIVE_BYTES + 1)
+    if len(data) > MAX_ARCHIVE_BYTES:
+        raise Refused(f'{path}: larger than {MAX_ARCHIVE_BYTES} bytes; not an official Node build')
+    return data
+
+
+def check_archive(data, arch, archives=pin.ARCHIVES, shown='the tarball'):
+    """The SHA-256 of the tarball bytes `data`, which must be the pinned build for `arch`. The
+    name of the file is not evidence of anything; the digest is."""
+    digest = hashlib.sha256(data).hexdigest()
     name, want = archives[arch]
     if digest == want:
         return digest
     for other, (other_name, other_digest) in sorted(archives.items()):
         if digest == other_digest:
-            raise Refused(f'{path}: this is {other_name} (the {other} build); this machine is {arch} and needs {name}')
-    raise Refused(f'{path}: its SHA-256 is {digest}, not the one pinned for {name} ({want}); only the official '
+            raise Refused(f'{shown}: this is {other_name} (the {other} build); this machine is {arch} and needs {name}')
+    raise Refused(f'{shown}: its SHA-256 is {digest}, not the one pinned for {name} ({want}); only the official '
                   f'Node {pin.VERSION} build is accepted. Nothing was installed')
 
 
-def _extract(path, arch, staging, archives=pin.ARCHIVES):
-    """Write the two wanted members of the verified tarball under `staging`; returns the SHA-256 of bin/node."""
+def verified_archive(path, arch, archives=pin.ARCHIVES):
+    """(digest, bytes) of the tarball at `path`, read once and proven to be the pinned build."""
+    data = read_archive(path)
+    return check_archive(data, arch, archives, str(path)), data
+
+
+def _extract(data, arch, staging, archives=pin.ARCHIVES, path='the tarball'):
+    """Write the two wanted members of the verified tarball bytes `data` under `staging`; returns
+    the SHA-256 of bin/node. `path` is only what messages call it: no file is opened here."""
     prefix = archives[arch][0][:-len('.tar.xz')]
     wanted = {f'{prefix}/{rel}': (rel, mode, limit) for rel, mode, limit in MEMBERS}
     digests = {}
     try:
-        with tarfile.open(path, 'r:xz') as tar:
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as tar:
             for member in tar:
                 if member.name not in wanted:
                     continue
@@ -228,7 +254,7 @@ def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version
             raise Refused(f'{final} exists and is not the runtime this tool installs ({"; ".join(wrong[:3])}); '
                           'run "install-node-runtime remove" first')
         return [f'node {pin.VERSION} ({arch}): already installed at {final}; nothing changed']
-    digest = check_archive(archive_path, arch, archives)
+    digest, data = verified_archive(archive_path, arch, archives)      # the one read of the file
     parent = runtimes_root if os.path.isdir(runtimes_root) else runtimes_root.parent
     if os.path.islink(runtimes_root) or (os.path.lexists(runtimes_root) and not os.path.isdir(runtimes_root)):
         raise Refused(f'{runtimes_root} is not a plain directory')
@@ -243,7 +269,7 @@ def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version
     staging = runtimes_root / f'{STAGING_PREFIX}{secrets.token_hex(8)}'
     try:
         os.mkdir(staging, 0o700)
-        node_sha = _extract(archive_path, arch, staging, archives)
+        node_sha = _extract(data, arch, staging, archives, str(archive_path))
         said = version_of(staging / 'bin' / 'node')
         if said != f'v{pin.VERSION}':
             raise Refused(f'the unpacked binary says it is {said!r}, not v{pin.VERSION}; nothing was installed')
@@ -273,48 +299,90 @@ def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version
 
 def users(records_dir, executable):
     """The ids of the install records whose command runs `executable`. A record is read as plain
-    JSON here: a damaged one that names the runtime still counts."""
+    JSON here, not validated: a damaged one that names the runtime still counts. A file that cannot
+    be read as a record at all (oversized, not JSON, no command) is Refused, loudly: it cannot be
+    shown not to run on the runtime, and removing a runtime under a game is not a guess to make."""
     found = []
     if not records_dir or not os.path.isdir(records_dir):
         return found
     for name in sorted(os.listdir(records_dir)):
         if name.startswith('.') or not name.endswith('.json'):
-            continue
+            continue                                         # an installer's temporary file, or not a record
+        path = os.path.join(records_dir, name)
         try:
-            with open(os.path.join(records_dir, name), 'rb') as f:
-                doc = json.loads(f.read(installed.MAX_RECORD_BYTES + 1).decode('utf-8'))
-            command = doc['grant']['runtime']['command']
+            with open(path, 'rb') as f:
+                raw = f.read(installed.MAX_RECORD_BYTES + 1)
+            if len(raw) > installed.MAX_RECORD_BYTES:
+                raise ValueError('too large')
+            command = json.loads(raw.decode('utf-8'))['grant']['runtime']['command']
+            if not isinstance(command, list) or not command or not isinstance(command[0], str):
+                raise ValueError('no command')
         except (OSError, ValueError, KeyError, TypeError):
-            continue
-        if isinstance(command, list) and command and command[0] == executable:
+            raise Refused(f'{path} cannot be read as an install record, so it cannot be shown not to run on this '
+                          f'runtime; clear it first (install-game remove {name[:-5]}), then remove the runtime') from None
+        if command[0] == executable:
             found.append(name[:-5])
     return found
 
 
-def remove(runtimes_root, records_dir, executable=pin.EXECUTABLE, dry_run=False):
-    """Take the runtime off this host. Refused while an installed package runs on it."""
+def _made_by_this_tool(tree, version):
+    """True when `tree` is a plain directory whose own record says it is the node runtime of `version`."""
+    try:
+        st = os.lstat(tree)
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+            return False
+        record = os.lstat(tree / RECORD_NAME)
+        if not stat.S_ISREG(record.st_mode) or record.st_size > 65536:
+            return False
+        doc = json.loads((tree / RECORD_NAME).read_bytes().decode('utf-8'))
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and (doc.get('record'), doc.get('runtime'), doc.get('version')) == (RECORD, node.NAME, version)
+
+
+def remove(runtimes_root, records_dir, version=pin.VERSION, dry_run=False, visible_root=pin.RUNTIMES_ROOT):
+    """Take the runtime of `version` (default: the pinned one) off this host, and always the staging
+    directories a killed install left. Refused while an installed package runs on that version, or
+    while a record cannot be read. A version other than the pinned one (the tree of an earlier pin)
+    is removed only when its own record says this tool made it. `visible_root` is how install
+    records spell the runtimes directory (a test's scratch directory is somewhere else)."""
+    if not isinstance(version, str) or not VERSION_RX.fullmatch(version):
+        raise Refused(f'{version!r} is not a Node version (like {pin.VERSION})')
     runtimes_root = Path(runtimes_root)
-    final = runtimes_root / f'node-{pin.VERSION}'
-    using = users(records_dir, executable)
+    final = runtimes_root / f'node-{version}'
+    using = users(records_dir, f'{visible_root}/node-{version}/bin/node')
     if using:
         raise Refused(f'installed packages run on this runtime ({", ".join(using)}); remove them first '
                       '(install-game remove <id>)')
-    if not os.path.lexists(final):
-        return [f'node {pin.VERSION}: nothing to remove']
+    present = os.path.lexists(final)
+    if present and version != pin.VERSION and not _made_by_this_tool(final, version):
+        raise Refused(f'{final} is not a runtime tree this tool made (its {RECORD_NAME} does not say node {version}); '
+                      'delete it by hand if it is yours')
+    stale = []
+    if os.path.isdir(runtimes_root) and not os.path.islink(runtimes_root):
+        stale = [runtimes_root / entry for entry in sorted(os.listdir(runtimes_root)) if entry.startswith(STAGING_PREFIX)]
+    word = 'would remove' if dry_run else 'removed'
+    lines = ([f'node {version}: {word} {final}'] if present else []) \
+        + [f'node {version}: {word} {path} (left by an interrupted install)' for path in stale]
+    if not lines:
+        return [f'node {version}: nothing to remove']
     if dry_run:
-        return [f'node {pin.VERSION}: would remove {final}']
-    if os.path.islink(final):
-        os.unlink(final)
-    else:
-        shutil.rmtree(final)
-    for entry in sorted(os.listdir(runtimes_root)):
-        if entry.startswith(STAGING_PREFIX):                 # what a killed install left
-            shutil.rmtree(runtimes_root / entry, ignore_errors=True)
+        return lines
+    if present:
+        if os.path.islink(final):
+            os.unlink(final)
+        else:
+            shutil.rmtree(final)
+    for path in stale:
+        if os.path.islink(path):
+            os.unlink(path)
+        else:
+            shutil.rmtree(path, ignore_errors=True)
     try:
         os.rmdir(runtimes_root)                              # only when nothing else is in it
     except OSError:
         pass
-    return [f'node {pin.VERSION}: removed {final}']
+    return lines
 
 
 # ---- the command line -------------------------------------------------------------------------------
@@ -327,6 +395,8 @@ def _parser():
     i.add_argument('archive', help=f'node-v{pin.VERSION}-linux-<arch>.tar.xz')
     sub.add_parser('verify', help='check the installed runtime against its record and the pin')
     r = sub.add_parser('remove', help='remove the runtime; refused while a package runs on it (root)')
+    r.add_argument('--version', default=None, metavar='X.Y.Z',
+                   help='the tree of an earlier pin, after the pinned version moved (default: the pinned version)')
     for p in (i, r):
         p.add_argument('--dry-run', action='store_true', help='show what would change; change nothing')
     for p in (i, r, sub.choices['verify']):
@@ -361,7 +431,7 @@ def main(argv=None, *, is_root=None, trusted=None, version_of=real_version, out=
         if not is_root and not a.dry_run:
             raise Refused('must run as root (use sudo)')
         if a.command == 'remove':
-            lines = remove(runtimes_root, records_dir, dry_run=a.dry_run)
+            lines = remove(runtimes_root, records_dir, a.version or pin.VERSION, a.dry_run)
         else:
             if trusted is None and real:
                 from avrana.ops import provision_game
