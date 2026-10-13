@@ -87,6 +87,24 @@ jobs:
           command -v logrotate >/dev/null || [ -x /usr/sbin/logrotate ] || { sudo apt-get update -q && sudo apt-get install -y -q logrotate; }
           python3 -m unittest discover -s tests/unit -v
 
+      # AVR-59: the EXPERIMENTAL .avrgame developer tools export (validator + packer, stdlib only). Built from
+      # this commit, unpacked and run from a clean directory (PYTHONPATH cleared, outside any repository) on a
+      # fixture game, and compared byte for byte with this repository's own tool. The zip is kept as a workflow
+      # artifact for the owner to hand out; nothing is published and no secret is used. Its sha256 is printed so
+      # a build on another machine can be compared (the bytes do not depend on the platform).
+      - name: Build and verify the .avrgame tools export
+        run: |
+          python3 tools/build_avrgame_tools.py --out "$RUNNER_TEMP/avrgame-tools"
+          cat "$RUNNER_TEMP"/avrgame-tools/*.sha256
+
+      - name: Keep the .avrgame tools export as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avrgame-tools-export
+          path: ${{ runner.temp }}/avrgame-tools/
+          if-no-files-found: error
+          retention-days: 14
+
       # The browser modules (capability probe, seat evaluation, keep-awake, service worker) in Node.
       - name: Browser module unit tests
         run: node --test 'tests/offline/*.test.mjs'
