@@ -606,6 +606,27 @@ class RealRun(Harness):
         self.assertEqual(state.stat().st_mode & 0o777, 0o700)
         self.assertIn('left as it is', r.stdout)
 
+    def test_the_public_catalog_directory_does_not_keep_the_manifest_directory_closed(self):
+        """AVR-337: the effective catalog lives in /var/lib/avrana-party/catalog (0755, served by nginx); only a
+        writable one, or any other open directory, is a reason to leave the manifest directory as it is."""
+        state = self.manifest_path.parent
+        state.mkdir()
+        (state / 'lego').mkdir()
+        (state / 'catalog').mkdir()
+        state.chmod(0o700)
+        (state / 'lego').chmod(0o700)
+        (state / 'catalog').chmod(0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o711)
+        self.assertEqual((state / 'catalog').stat().st_mode & 0o777, 0o755)
+        (state / 'catalog').chmod(0o775)                      # writable by a group: not a public directory any more
+        state.chmod(0o700)
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
 
 class CatalogOverlayOnReleaseChanges(Harness):
     """AVR-337: an effective catalog left behind by another web release is never served after a deployment, a

@@ -992,9 +992,11 @@ for n in ${cert_mismatch[@]+"${cert_mismatch[@]}"}; do info+=(--cert-name-mismat
 { inject copy-manifest && cp "$manifest" "$backup/after.json"; } || post_err "copying the manifest to $backup/after.json"
 # The manifest is public (0644; /party/api/status serves it), but on the appliance its directory
 # was created 0700 for the ACME state beside it, so no service user could reach the file. Grant
-# search (not listing) on the directory, and only while every subdirectory is closed to others.
+# search (not listing) on the directory, and only while every subdirectory is closed to others. The one
+# exception is `catalog`, the effective game catalog (AVR-337): public by design (nginx serves it, root writes it),
+# 0755 so that nginx can read it through this directory; it is exempt only while nobody but root can write to it.
 manifest_dir=$(dirname "$manifest")
-if [[ -n $(find "$manifest_dir" -mindepth 1 -maxdepth 1 -type d -perm /077 -print -quit) ]]; then
+if [[ -n $(find "$manifest_dir" -mindepth 1 -maxdepth 1 -type d -perm /077 ! \( -name catalog ! -perm /022 \) -print -quit) ]]; then
     log "WARNING: a directory in $manifest_dir is open to group or other; $manifest_dir left as it is."
     log "         /party/api/status cannot name this deployment until its service user can read the manifest."
 else
