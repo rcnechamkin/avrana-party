@@ -1,3 +1,5 @@
+# Workflow v3: fast PR checks, full suite only when explicitly dispatched.
+# Run full verification before merging high-risk code and for release candidates.
 # Offline CI lane: checks that need no Pi, phones, Party Wi-Fi, HDMI, Bluetooth,
 # streaming/emulator hardware or power telemetry (Tier 1 and the simulated-Party
 # Tier 2). The live-appliance Playwright suite (`npm test`, soak, fault) stays
@@ -9,6 +11,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: offline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -62,6 +68,7 @@ jobs:
           python3 tools/graphify_context.py check-semantic
 
       - name: Deterministic Graphify AST smoke check (no model backend)
+        if: github.event_name == 'workflow_dispatch'
         run: |
           python3 -m pip install graphifyy==0.9.74
           python3 tools/graphify_context.py refresh --architecture
@@ -75,10 +82,16 @@ jobs:
       - name: nginx site files are identical
         run: cmp avrana-party.nginx arcade/nginx-site
 
+      - name: Fast Python protocol and session regression smoke
+        run: |
+          python3 -m unittest discover -s tests/unit -p test_party_protocol.py -q
+          python3 -m unittest discover -s tests/unit -p test_party_session_flow.py -q
+
       # Tier 1: platform contracts, provider adapters, arcade wiring (GStreamer stubbed), web build
       # and install script. Tier 2 inside the same run: a real nginx with the committed site on high
       # ports (captive probe unchanged on HTTP, /party/ shell on HTTPS). Stdlib Python only.
       - name: Python unit tests
+        if: github.event_name == 'workflow_dispatch'
         env:
           AVRANA_REQUIRE_NGINX: '1'
           AVRANA_REQUIRE_LOGROTATE: '1'
@@ -94,6 +107,7 @@ jobs:
       # decides, and an artifact is downloadable by anyone with read access. The sha256 and the file list are
       # printed so a build on another machine can be compared (the bytes do not depend on the platform).
       - name: Build and verify the .avrgame tools export (nothing is kept or published)
+        if: github.event_name == 'workflow_dispatch'
         run: python3 tools/build_avrgame_tools.py --out "$RUNNER_TEMP/avrgame-tools"
 
       # The browser modules (capability probe, seat evaluation, keep-awake, service worker) in Node.
@@ -102,11 +116,14 @@ jobs:
 
       # Tier 2: real Chromium against a simulated Party on 127.0.0.1 (a secure context).
       - name: Install Chromium for the offline browser suite
+        if: github.event_name == 'workflow_dispatch'
         run: npx playwright install --with-deps chromium
 
       - name: Offline browser tests
+        if: github.event_name == 'workflow_dispatch'
         run: npx playwright test -c playwright.offline.config.ts
 
       # Tier 2: several browser contexts (phones) against a real Party Core behind the dev server.
       - name: Multi-client Party browser tests
+        if: github.event_name == 'workflow_dispatch'
         run: npx playwright test -c playwright.party.config.ts
