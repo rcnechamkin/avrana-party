@@ -213,6 +213,7 @@ def run_absent(args):
 
 
 def main(argv=None):
+    global GAME, GAME_BASE
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--end', action='store_true', help='a session the Host ends from Party')
@@ -227,7 +228,6 @@ def main(argv=None):
     ap.add_argument('--during-live', nargs=argparse.REMAINDER, default=None,
                     help='with --end: a command to run (and expect refused) while the session is live; last option')
     args = ap.parse_args(argv)
-    global GAME, GAME_BASE
     GAME, GAME_BASE = args.game, f'/games/{args.game}'
     if args.game_socket is None:
         args.game_socket = f'/run/avrana-games/{args.game}.sock'
