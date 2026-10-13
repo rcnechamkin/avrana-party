@@ -10,7 +10,7 @@ foundation merged in PR #3; deployment is a separate action.
 | `games/<id>.json` | `avrana.game/v0` (Game Contract) | `avrana/contracts/game.py` |
 | `appliances/<id>.json` | `avrana.appliance/v0` | `avrana/contracts/appliance.py` |
 | `vectors/evaluate.v0.json` | shared test vectors | `tests/unit/test_evaluate.py`, `tests/offline/evaluate.test.mjs` |
-| `vectors/party-session.v0.json` | session protocol vectors (ADR 0006) | `tests/unit/test_party_protocol.py`; vendored by Games |
+| `vectors/party-session.v0.json` | session protocol vectors (ADR 0006): tokens that verify, tokens that must be refused, replays that must fail | `tests/unit/test_party_protocol.py`; vendored by Games |
 | `vectors/party-bridge.v1.json` | `avrana.party-bridge/v1`: the postMessage contract between a game page and the Party bridge frame (ADR 0013) | `tests/offline/party-bridge.test.mjs`; vendored by Games with the shim |
 | `vectors/game-result.v1.json` | `avrana.game-result/v1` cases (ADR 0015) | `tests/unit/test_party_result.py`; vendored by Games |
 | `party-games.v0.json` | Party ↔ Games contract declaration | `tools/contract_check.py` |

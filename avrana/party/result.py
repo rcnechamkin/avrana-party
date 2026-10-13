@@ -45,8 +45,9 @@ MODES = ('competitive', 'cooperative')
 STANDINGS = ('won', 'lost', 'draw')
 GAME_ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')
 PID = re.compile(r'^participant-[0-9a-f]{32}$')
-TAG = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$')              # build and content ids
-DATA_SCHEMA = re.compile(r'^[a-z][a-z0-9_.-]{0,39}/v[0-9]{1,3}$')
+# `\Z`, not `$`: `$` also matches before a trailing newline, so "v1\n" passed (AVR-465).
+TAG = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}\Z')             # build and content ids
+DATA_SCHEMA = re.compile(r'^[a-z][a-z0-9_.-]{0,39}/v[0-9]{1,3}\Z')
 
 
 class Refused(Exception):

@@ -66,6 +66,26 @@ class Build(unittest.TestCase):
                              [{'participant': p, 'standing': 'draw'} for p in self.P], self.P, **kwargs)
             self.assertEqual(str(refused.exception), reason)
 
+    def test_a_tag_or_data_schema_followed_by_a_newline_is_refused(self):
+        """`$` matched before a trailing newline, so "1.0\\n" and "a.b/v1\\n" passed (AVR-465)."""
+        standings = [{'participant': p, 'standing': 'draw'} for p in self.P]
+        good = result.build('bluff', '1.0', 'competitive', standings, self.P,
+                            data_schema='a.b/v1', data={'x': 1}, content='base')
+        for field, reason in (('build', 'game'), ('content', 'game')):
+            bad = json.loads(json.dumps(good))
+            bad['game'][field] += '\n'
+            with self.subTest(field), self.assertRaises(result.Refused) as refused:
+                result.check(bad, 'bluff', self.P)
+            self.assertEqual(str(refused.exception), reason)
+        bad = dict(good, data_schema='a.b/v1\n')
+        with self.assertRaises(result.Refused) as refused:
+            result.check(bad, 'bluff', self.P)
+        self.assertEqual(str(refused.exception), 'data_schema')
+        self.assertEqual(result.check(good, 'bluff', self.P), good)
+        for pattern, text in ((result.TAG, '1.0'), (result.DATA_SCHEMA, 'a.b/v1')):
+            self.assertTrue(pattern.match(text))
+            self.assertIsNone(pattern.match(text + '\n'))
+
     def test_no_member_or_device_identity_has_a_place_in_the_envelope(self):
         """Per-participant entries take participant, standing and rank; nothing else."""
         for extra in ({'member': 'member-' + 'a' * 32}, {'device': 'device-' + 'a' * 32}, {'name': 'Ana'}):

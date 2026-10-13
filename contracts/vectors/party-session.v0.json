@@ -1,6 +1,6 @@
 {
   "protocol": "avrana.party-session/v0",
-  "note": "Pins the aps0 envelope across repositories. key = bytes 0..31; verify at now = 2000000010.",
+  "note": "Pins the aps0 envelope across repositories. key = bytes 0..31; verify at now = 2000000010. `vectors` must verify and re-seal to the same characters. `refused` must each be refused with `reason` when opened as `typ` for `aud`. `replays`: open `first` (it is accepted; for a ticket, in running session `sid`, and spend it), then `then` must be refused with `reason` by the same ledger or replay guard. The rules behind the negative cases (one canonical base64url spelling per part; numbers every language reads alike; length in characters) are in docs/design/PARTY-GAMES-CONTRACT.md.",
   "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
   "now": 2000000010,
   "vectors": [
@@ -116,6 +116,252 @@
         "host": true
       },
       "token": "aps0.eyJhdWQiOiJleHBvIiwiZXhwIjoyMDAwMDAwMDMwLCJob3N0Ijp0cnVlLCJpYXQiOjIwMDAwMDAwMDAsImlzcyI6InBhcnR5Iiwibm9uY2UiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQiLCJwaWQiOiJwYXJ0aWNpcGFudC0yMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJob3N0X2lzIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.NZECZXpLDCzSo0niXx8jKrufyqB4NcuB6SpqXaKhP-A"
+    }
+  ],
+  "refused": [
+    {
+      "name": "ticket-mac-respelled-1",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDV",
+      "reason": "encoding",
+      "why": "the MAC ends in a character whose two unused bits are 01; it decodes to the same 32 bytes as the canonical ticket"
+    },
+    {
+      "name": "ticket-mac-respelled-2",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDW",
+      "reason": "encoding",
+      "why": "the same, unused bits 10"
+    },
+    {
+      "name": "ticket-mac-respelled-3",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDX",
+      "reason": "encoding",
+      "why": "the same, unused bits 11"
+    },
+    {
+      "name": "ticket-payload-respelled",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifR.8jOaEeq_C54eZv9GQvvWr_hbGqbL92FW6EhoG1hB88U",
+      "reason": "encoding",
+      "why": "the payload part ends in non-zero unused bits and the MAC is CORRECT for these exact characters: a key holder respelling a payload is refused too"
+    },
+    {
+      "name": "ticket-mac-padded",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU=",
+      "reason": "encoding",
+      "why": "padding is never on the wire"
+    },
+    {
+      "name": "ticket-payload-padded",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ==.PeTPQ4fj4yCddEsSFyEEA7eHmfoy79TUa-p8Qg8OS9U",
+      "reason": "encoding",
+      "why": "the payload part carries its = padding and the MAC is correct for these exact characters"
+    },
+    {
+      "name": "ticket-mac-standard-alphabet",
+      "typ": "ticket",
+      "aud": "expo",
+      "token": "aps0.eyJhdWQiOiJleHBvIiwiZXhwIjoyMDAwMDAwMTIwLCJob3N0Ijp0cnVlLCJpYXQiOjIwMDAwMDAwMDAsImlzcyI6InBhcnR5IiwianRpIjoiMDEyMzQ1Njc4OWFiY2RlZiIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InNwZWN0YXRvciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ./bb3gblKuLMYw9ieAevcGP1ZPzF19obC6HhSgoMs+eQ",
+      "reason": "encoding",
+      "why": "the MAC written in the standard alphabet (+ and /) instead of the URL-safe one (- and _)"
+    },
+    {
+      "name": "ticket-trailing-newline",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU\n",
+      "reason": "encoding",
+      "why": "whitespace after the token"
+    },
+    {
+      "name": "ticket-inner-space",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0. eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU",
+      "reason": "encoding",
+      "why": "whitespace inside the token"
+    },
+    {
+      "name": "ticket-mac-impossible-length",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDUAA",
+      "reason": "encoding",
+      "why": "a part whose length is 1 modulo 4 encodes nothing"
+    },
+    {
+      "name": "ticket-mac-not-ascii",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDé",
+      "reason": "encoding",
+      "why": "a character outside ASCII"
+    },
+    {
+      "name": "launch-mac-respelled",
+      "typ": "launch",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicm9zdGVyIjpbeyJuYW1lIjoiWm_DqyIsInBhcnRpY2lwYW50IjoicGFydGljaXBhbnQtMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJyb2xlIjoicGxheWVyIn1dLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoibGF1bmNoIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.-4cUiBpqOr4MKO372CyW-sU87LOMl2gAAUrJxmAZcaZ",
+      "reason": "encoding",
+      "why": "messages follow the same rule as tickets: a respelled MAC on a launch"
+    },
+    {
+      "name": "ended-mac-respelled",
+      "typ": "ended",
+      "aud": "party",
+      "token": "aps0.eyJhdWQiOiJwYXJ0eSIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJibHVmZiIsIm5vbmNlIjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwib3V0Y29tZSI6ImNvbXBsZXRlZCIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJlbmRlZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.LiYReIkg0tzKQcIr_qZQuW-WEnHODHcO_bYkLb3Rvgb",
+      "reason": "encoding",
+      "why": "a respelled MAC on a game report"
+    },
+    {
+      "name": "end-iat-written-as-a-fraction",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLjAsImlzcyI6InBhcnR5Iiwibm9uY2UiOiJlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoiZW5kIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.IIN38jH1Vkx34yRRLFrJzg0J-SZjXKlDnuTeEwMGzNs",
+      "reason": "expired",
+      "why": "the MAC is correct; the payload was written by hand as \"iat\":2000000000.0: a claim must be an integer literal, whatever value the text names"
+    },
+    {
+      "name": "end-exp-written-with-an-exponent",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6Mi4wMDAwMDAwM2U5LCJpYXQiOjIwMDAwMDAwMDAsImlzcyI6InBhcnR5Iiwibm9uY2UiOiJlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoiZW5kIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.Lq07SQCShzJXNasrpJZV0FcUpU9bLVPSL_BZB0Ha-34",
+      "reason": "expired",
+      "why": "the MAC is correct; the payload was written by hand as \"exp\":2.00000003e9, which names the integer 2000000030"
+    },
+    {
+      "name": "end-payload-after-a-byte-order-mark",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.77u_eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.jcRDsPaBpP_m3J1HbpxZ4lPlxW8akb09_TNcfp0Z1v0",
+      "reason": "payload",
+      "why": "the payload bytes start with EF BB BF; a decoder must not strip it"
+    },
+    {
+      "name": "end-exp-beyond-the-safe-range",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MTE1MjkyMTUwNDYwNjg0Njk3NiwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.HWIvNZmSSVxUyzyUKj3XugNzUAzydaHR82lr9LV9-UM",
+      "reason": "payload",
+      "why": "the MAC is correct; the payload was written by hand as \"exp\":2^60: an integer literal outside -(2^53-1)..2^53-1 anywhere in a payload"
+    },
+    {
+      "name": "end-exp-just-beyond-the-safe-range",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6OTAwNzE5OTI1NDc0MDk5MiwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.bPb-g-TnYDxM3feYFRVxfOcVJk50JAMjFEsmr8lo1AA",
+      "reason": "payload",
+      "why": "the same at 2^53 exactly"
+    },
+    {
+      "name": "end-integer-of-5000-digits",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCIsIm4iOjk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5fQ.UOAXRnR4sB-4pdRYgXNQmY5pv00bK6ViIB6EwWMBTwQ",
+      "reason": "payload",
+      "why": "a field that is not a claim holds an integer literal of 5000 digits"
+    },
+    {
+      "name": "end-exp-nan",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6TmFOLCJpYXQiOjIwMDAwMDAwMDAsImlzcyI6InBhcnR5Iiwibm9uY2UiOiJlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoiZW5kIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.hk1Ncv6CUVB6aJn6-nYEjo6Nq0jr-xQsHKe81Z6Tkdw",
+      "reason": "payload",
+      "why": "NaN is not JSON"
+    },
+    {
+      "name": "end-field-infinity",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCIsIm4iOkluZmluaXR5fQ.4fZAG4TX7qbk2uA0FZtTnTTroTnSSJGs9zG10TsX5IU",
+      "reason": "payload",
+      "why": "Infinity is not JSON"
+    },
+    {
+      "name": "end-field-too-large-to-be-finite",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCIsIm4iOjFlOTk5fQ.56mqF6ATCoZlz4ipXlnziFNv_iY2_YqcYDFZUF_PGRM",
+      "reason": "payload",
+      "why": "a number literal that no reader can hold as a finite number"
+    },
+    {
+      "name": "end-nested-33-deep",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCIsIm4iOltbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV19.BlEpC2KKl499U3c5PtbbLKD6cB9CFcaZPqZllM1ToeA",
+      "reason": "payload",
+      "why": "containers nested 33 deep, the payload object included; the limit is 32"
+    },
+    {
+      "name": "token-of-astral-characters",
+      "typ": "ticket",
+      "aud": "bluff",
+      "token": "aps0.😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀.AAAA",
+      "reason": "encoding",
+      "why": "4510 characters, under the 8192 limit, but 9010 UTF-16 units: the limit counts characters (code points), so this is refused for its alphabet and not for its length"
+    }
+  ],
+  "replays": [
+    {
+      "name": "ticket-replayed",
+      "typ": "ticket",
+      "aud": "bluff",
+      "sid": "session-11111111111111111111111111111111",
+      "first": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU",
+      "then": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU",
+      "reason": "replay",
+      "why": "a ticket is single-use"
+    },
+    {
+      "name": "ticket-replayed-with-respelled-mac",
+      "typ": "ticket",
+      "aud": "bluff",
+      "sid": "session-11111111111111111111111111111111",
+      "first": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU",
+      "then": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDV",
+      "reason": "encoding",
+      "why": "AVR-465: a spent ticket presented again under another spelling of its MAC is not a second ticket"
+    },
+    {
+      "name": "ticket-replayed-with-respelled-payload",
+      "typ": "ticket",
+      "aud": "bluff",
+      "sid": "session-11111111111111111111111111111111",
+      "first": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU",
+      "then": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifR.8jOaEeq_C54eZv9GQvvWr_hbGqbL92FW6EhoG1hB88U",
+      "reason": "encoding",
+      "why": "the same for the payload part, signed by a key holder"
+    },
+    {
+      "name": "launch-replayed",
+      "typ": "launch",
+      "aud": "bluff",
+      "sid": "session-11111111111111111111111111111111",
+      "first": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicm9zdGVyIjpbeyJuYW1lIjoiWm_DqyIsInBhcnRpY2lwYW50IjoicGFydGljaXBhbnQtMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJyb2xlIjoicGxheWVyIn1dLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoibGF1bmNoIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.-4cUiBpqOr4MKO372CyW-sU87LOMl2gAAUrJxmAZcaY",
+      "then": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicm9zdGVyIjpbeyJuYW1lIjoiWm_DqyIsInBhcnRpY2lwYW50IjoicGFydGljaXBhbnQtMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJyb2xlIjoicGxheWVyIn1dLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoibGF1bmNoIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.-4cUiBpqOr4MKO372CyW-sU87LOMl2gAAUrJxmAZcaY",
+      "reason": "replay",
+      "why": "a message nonce is accepted once"
+    },
+    {
+      "name": "launch-replayed-with-respelled-mac",
+      "typ": "launch",
+      "aud": "bluff",
+      "sid": "session-11111111111111111111111111111111",
+      "first": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicm9zdGVyIjpbeyJuYW1lIjoiWm_DqyIsInBhcnRpY2lwYW50IjoicGFydGljaXBhbnQtMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJyb2xlIjoicGxheWVyIn1dLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoibGF1bmNoIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.-4cUiBpqOr4MKO372CyW-sU87LOMl2gAAUrJxmAZcaY",
+      "then": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicm9zdGVyIjpbeyJuYW1lIjoiWm_DqyIsInBhcnRpY2lwYW50IjoicGFydGljaXBhbnQtMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJyb2xlIjoicGxheWVyIn1dLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoibGF1bmNoIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.-4cUiBpqOr4MKO372CyW-sU87LOMl2gAAUrJxmAZcaa",
+      "reason": "encoding",
+      "why": "a respelled message is refused for its spelling before its nonce is looked at"
     }
   ],
   "game_token": {

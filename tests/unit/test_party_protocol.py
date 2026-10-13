@@ -1,4 +1,5 @@
 """Party session protocol v0 (avrana.party.protocol): envelope, tickets, messages, GameSide."""
+import base64
 import json
 import os
 import struct
@@ -37,6 +38,251 @@ class Vectors(unittest.TestCase):
                                       now=doc['now'])['host'], True)
         g = doc['game_token']
         self.assertEqual(P.game_token(key, g['sid'], g['participant']), g['token'])
+
+    def test_refused_vectors(self):
+        """The negative cases hold every implementation to one spelling per token (AVR-465)."""
+        doc = json.loads((CONTRACTS_DIR / 'vectors' / 'party-session.v0.json').read_text('utf-8'))
+        key = bytes.fromhex(doc['key_hex'])
+        self.assertGreaterEqual(len(doc['refused']), 10)
+        for v in doc['refused']:
+            with self.subTest(v['name']), self.assertRaises(Invalid) as e:
+                P.unseal(key, v['token'], v['typ'], v['aud'], now=doc['now'])
+            self.assertEqual(str(e.exception), v['reason'], v['name'])
+
+    def test_replay_vectors(self):
+        doc = json.loads((CONTRACTS_DIR / 'vectors' / 'party-session.v0.json').read_text('utf-8'))
+        key, now = bytes.fromhex(doc['key_hex']), doc['now']
+        self.assertEqual({v['typ'] for v in doc['replays']}, {'ticket', 'launch'})
+        for v in doc['replays']:
+            with self.subTest(v['name']):
+                if v['typ'] == 'ticket':
+                    side = P.GameSide(key, v['aud'])
+                    side.sid = v['sid']
+                    opened = lambda token: side.present(token, now=now)
+                else:
+                    guard = P.ReplayGuard()
+                    opened = lambda token: P.open_message(key, token, v['typ'], v['aud'], guard, now=now)
+                opened(v['first'])
+                with self.assertRaises(Invalid) as e:
+                    opened(v['then'])
+                self.assertEqual(str(e.exception), v['reason'])
+
+
+ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+
+
+def respellings(part):
+    """Every other base64url spelling of one part: the same bytes, non-zero unused bits."""
+    spare = {0: 0, 2: 4, 3: 2}[len(part) % 4]
+    at = ALPHABET.index(part[-1])
+    return [part[:-1] + ALPHABET[at + n] for n in range(1, 1 << spare)]
+
+
+def lenient(text):
+    """The decoder as it was before AVR-465: any spelling of the same bytes."""
+    return base64.urlsafe_b64decode(text + '=' * (-len(text) % 4))
+
+
+def ticket_with_spare_bits():
+    """A sealed ticket whose payload part does not end on a byte boundary, so that part has other
+    spellings too (only a key holder can sign one)."""
+    for n in range(3):
+        t = P.seal(KEY, {'v': P.VERSION, 'typ': 'ticket', 'iss': 'party', 'aud': 'bluff', 'sid': SID,
+                         'iat': NOW, 'exp': NOW + 120, 'pid': PID, 'role': 'player', 'jti': 'a' * n})
+        if respellings(t.split('.')[1]):
+            return t
+
+
+def resigned(body):
+    head = f'aps0.{body}'
+    return f'{head}.{P._b64(P._mac(KEY, head))}'
+
+
+class OneSpelling(unittest.TestCase):
+    """AVR-465: a 32-byte MAC is 43 base64url characters and the last one carries two unused bits,
+    so each token had four spellings that all verified, and the single-use ledger, keyed on the
+    characters, admitted one ticket four times. Now a token has one spelling."""
+
+    def launched(self):
+        side = P.GameSide(KEY, 'bluff')
+        side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW), now=NOW)
+        return side
+
+    def test_a_mac_has_three_other_spellings_and_every_one_is_refused(self):
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        head, mac = t.rsplit('.', 1)
+        others = respellings(mac)
+        self.assertEqual(len(others), 3)
+        for other in others:
+            self.assertEqual(lenient(other), lenient(mac))        # the same 32 bytes
+            with self.subTest(other=other[-1]), self.assertRaises(Invalid) as e:
+                P.verify_ticket(KEY, f'{head}.{other}', 'bluff', SID, now=NOW)
+            self.assertEqual(str(e.exception), 'encoding')
+        self.assertEqual(P.verify_ticket(KEY, t, 'bluff', SID, now=NOW)['participant'], PID)
+
+    def test_one_ticket_is_admitted_once_whatever_its_spelling(self):
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        head, mac = t.rsplit('.', 1)
+        side.admit(t, now=NOW + 1)
+        for other in respellings(mac):
+            with self.subTest(other=other[-1]), self.assertRaises(Invalid):
+                side.admit(f'{head}.{other}', now=NOW + 1)
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 1)
+        self.assertEqual(str(e.exception), 'replay')
+        self.assertEqual(len(side.spent.spent), 1)
+
+    def test_a_respelling_presented_first_neither_admits_nor_spends_the_ticket(self):
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        head, mac = t.rsplit('.', 1)
+        for other in respellings(mac):
+            with self.assertRaises(Invalid):
+                side.admit(f'{head}.{other}', now=NOW + 1)
+        self.assertEqual(side.spent.spent, {})
+        self.assertEqual(side.admit(t, now=NOW + 1), (P.game_token(KEY, SID, PID), 'player'))
+
+    def test_a_respelled_payload_is_refused_even_when_its_mac_is_right(self):
+        """Only a key holder can do this (the MAC covers the characters); refused all the same."""
+        t = ticket_with_spare_bits()
+        self.assertEqual(P.verify_ticket(KEY, t, 'bluff', SID, now=NOW)['participant'], PID)
+        for other in respellings(t.split('.')[1]):
+            with self.subTest(other=other[-1]), self.assertRaises(Invalid) as e:
+                P.verify_ticket(KEY, resigned(other), 'bluff', SID, now=NOW)
+            self.assertEqual(str(e.exception), 'encoding')
+
+    def test_padding_other_alphabets_whitespace_and_non_ascii_are_refused(self):
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        a, body, mac = t.split('.')
+        bad = [t + '=', t + '\n', ' ' + t, t + ' ', f'{a}.{body}=.{mac}', f'{a}.{body}.{mac[:-1]}+',
+               f'{a}.{body}.{mac[:-1]}/', f'{a}.{body}é.{mac}', f'{a}.{body}.{mac}AA', t.upper()]
+        for token in bad:
+            with self.subTest(token=ascii(token[-12:])), self.assertRaises(Invalid):
+                P.verify_ticket(KEY, token, 'bluff', SID, now=NOW)
+        with self.assertRaises(Invalid) as e:
+            P.verify_ticket(KEY, f'{a}.{body}é.{mac}', 'bluff', SID, now=NOW)
+        self.assertEqual(str(e.exception), 'encoding')       # once a UnicodeEncodeError (AVR-320)
+
+    def test_the_ledger_alone_knows_a_ticket_by_its_payload(self):
+        """Defence in depth: with the decoder as lenient as it used to be, the ledger still counts
+        every spelling of a ticket, in either part, as that one ticket."""
+        strict, P._unb64 = P._unb64, lenient
+        try:
+            side = self.launched()
+            t = ticket_with_spare_bits()
+            a, body, mac = t.split('.')
+            side.admit(t, now=NOW + 1)
+            again = [f'{a}.{body}.{m}' for m in respellings(mac)] + [resigned(b) for b in respellings(body)]
+            self.assertGreater(len(again), 3)
+            for token in again:
+                P.verify_ticket(KEY, token, 'bluff', SID, now=NOW + 1)     # the old decoder verifies it
+                with self.subTest(token=token[-6:]), self.assertRaises(Invalid) as e:
+                    side.admit(token, now=NOW + 1)
+                self.assertEqual(str(e.exception), 'replay')
+        finally:
+            P._unb64 = strict
+
+    def test_a_fresh_ticket_for_the_same_seat_still_admits(self):
+        """Reconnect and reload: every fetch mints a new ticket (new `jti`), so the same participant
+        comes back to the same seat while each ticket is still spent once."""
+        side = self.launched()
+        first = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        seat = side.admit(first, now=NOW + 1)
+        for later in (NOW, NOW + 1, NOW + 60):
+            fresh = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=later)
+            self.assertEqual(side.admit(fresh, now=later + 1), seat)
+            with self.assertRaises(Invalid):
+                side.admit(fresh, now=later + 1)
+
+    def test_messages_have_one_spelling_and_their_replay_guard_never_depended_on_it(self):
+        guard = P.ReplayGuard()
+        for typ, aud, msg in (('launch', 'bluff', P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW)),
+                              ('end', 'bluff', P.end_message(KEY, 'bluff', SID, now=NOW)),
+                              ('ended', 'party', P.ended_message(KEY, 'bluff', SID, 'completed', now=NOW)),
+                              ('host', 'party', P.host_question(KEY, 'bluff', SID, PID, now=NOW))):
+            head, mac = msg.rsplit('.', 1)
+            for other in respellings(mac):
+                with self.subTest(typ=typ), self.assertRaises(Invalid) as e:
+                    P.open_message(KEY, f'{head}.{other}', typ, aud, guard, now=NOW)
+                self.assertEqual(str(e.exception), 'encoding')
+            P.open_message(KEY, msg, typ, aud, guard, now=NOW)
+            strict, P._unb64 = P._unb64, lenient          # the nonce, not the characters, is remembered
+            try:
+                for token in [msg] + [f'{head}.{other}' for other in respellings(mac)]:
+                    with self.subTest(typ=typ, lenient=True), self.assertRaises(Invalid) as e:
+                        P.open_message(KEY, token, typ, aud, guard, now=NOW)
+                    self.assertEqual(str(e.exception), 'replay')
+            finally:
+                P._unb64 = strict
+
+    def test_a_respelled_host_answer_is_not_an_answer(self):
+        side = self.launched()
+        q = side.ask_host(PID, now=NOW)
+        answer = P.host_answer(KEY, P.open_message(KEY, q, 'host', 'party', P.ReplayGuard(), now=NOW), True, now=NOW)
+        head, mac = answer.rsplit('.', 1)
+        for other in respellings(mac):
+            with self.assertRaises(Invalid):
+                side.host_is(q, f'{head}.{other}', now=NOW)
+        self.assertIs(side.host_is(q, answer, now=NOW), True)
+
+    def test_an_id_has_one_spelling_too(self):
+        """`$` matched before a trailing newline, so Python alone accepted an id followed by one."""
+        for pattern, good in ((P.SID, SID), (P.PID, PID), (P.GAME_ID, 'bluff')):
+            self.assertTrue(pattern.match(good))
+            for bad in (good + '\n', good.upper(), ' ' + good):
+                self.assertIsNone(pattern.match(bad), bad)
+        with self.assertRaises(Invalid) as e:
+            P.unseal(KEY, P.seal(KEY, {'v': P.VERSION, 'typ': 'end', 'iss': 'party', 'aud': 'bluff',
+                                       'sid': SID + '\n', 'iat': NOW, 'exp': NOW + 30}), 'end', 'bluff', now=NOW)
+        self.assertEqual(str(e.exception), 'session')
+
+    def test_numbers_are_read_the_same_in_every_language(self):
+        """The payload is written by hand here, as a key holder in another language might write it."""
+        def signed(text):
+            return resigned(P._b64(text if isinstance(text, bytes) else text.encode('utf-8')))
+
+        def body(iat=str(NOW), exp=str(NOW + 30), extra=''):
+            return ('{"aud":"bluff","exp":%s,"iat":%s,"iss":"party","nonce":"%s","sid":"%s","typ":"end",'
+                    '"v":"avrana.party-session/v0"%s}' % (exp, iat, 'a' * 24, SID, extra))
+
+        self.assertEqual(P.unseal(KEY, signed(body()), 'end', 'bluff', now=NOW)['exp'], NOW + 30)
+        big = str(2 ** 53 - 1)
+        self.assertEqual(P.unseal(KEY, signed(body(exp=big, extra=',"n":-' + big)), 'end', 'bluff', now=NOW)['n'], -(2 ** 53 - 1))
+        self.assertEqual(P.unseal(KEY, signed(body(extra=',"share":0.5,"e":1e3')), 'end', 'bluff', now=NOW)['share'], 0.5)
+        deepest = ',"n":' + '[' * (P.MAX_DEPTH - 1) + ']' * (P.MAX_DEPTH - 1)      # the payload object is level 1
+        self.assertIn('n', P.unseal(KEY, signed(body(extra=deepest)), 'end', 'bluff', now=NOW))
+        cases = {
+            'expired': [body(iat='%d.0' % NOW), body(exp='%d.0' % (NOW + 30)), body(exp='2.00000003e9'),
+                        body(iat='2e9'), body(iat='true'), body(exp='"%d"' % (NOW + 30)), body(exp='null')],
+            'payload': [b'\xef\xbb\xbf' + body().encode(), body(exp=str(2 ** 60)), body(exp=str(2 ** 53)),
+                        body(exp='9' * 5000), body(extra=',"n":' + '9' * 5000), body(extra=',"n":-' + str(2 ** 53)),
+                        body(exp='NaN'), body(exp='Infinity'), body(extra=',"n":NaN'), body(extra=',"n":-Infinity'),
+                        body(extra=',"n":1e999'), body(extra=',"n":-1e999'), body(extra=',"n":' + '[' * 5000),
+                        body(extra=',"n":' + '[' * P.MAX_DEPTH + ']' * P.MAX_DEPTH),
+                        body(extra=',"n":' + '[' * 1500 + ']' * 1500),
+                        body(extra=',"n":' + '{"a":' * P.MAX_DEPTH + '1' + '}' * P.MAX_DEPTH)],
+        }
+        for reason, bodies in cases.items():
+            for text in bodies:
+                with self.subTest(reason=reason, text=text[:60] + text[-40:]), self.assertRaises(Invalid) as e:
+                    P.unseal(KEY, signed(text), 'end', 'bluff', now=NOW)
+                self.assertEqual(str(e.exception), reason)
+
+    def test_a_token_is_measured_in_characters(self):
+        astral = 'aps0.' + '\U0001f600' * 4500 + '.AAAA'      # 4510 characters, 9010 UTF-16 units
+        with self.assertRaises(Invalid) as e:
+            P.unseal(KEY, astral, 'ticket', 'bluff', now=NOW)
+        self.assertEqual(str(e.exception), 'encoding')
+        with self.assertRaises(Invalid) as e:
+            P.unseal(KEY, 'aps0.' + '\U0001f600' * 8192 + '.AAAA', 'ticket', 'bluff', now=NOW)
+        self.assertEqual(str(e.exception), 'shape')
+
+    def test_times_are_integers_not_booleans(self):
+        with self.assertRaises(Invalid) as e:
+            P.unseal(KEY, P.seal(KEY, {'v': P.VERSION, 'typ': 'end', 'iss': 'party', 'aud': 'bluff',
+                                       'sid': SID, 'iat': True, 'exp': NOW + 30}), 'end', 'bluff', now=NOW)
+        self.assertEqual(str(e.exception), 'expired')
 
 
 class Encoding(unittest.TestCase):
@@ -289,16 +535,66 @@ class GameSideLifecycle(unittest.TestCase):
         side = self.launched()
         t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
         side.admit(t, now=NOW + 1)
+        side.on_launch(P.launch_message(KEY, 'bluff', SID2, ROSTER, now=NOW + 2), now=NOW + 2)
+        self.assertEqual(side.spent.spent, {})               # a NEW session: a fresh ledger
+        side.admit(P.mint_ticket(KEY, 'bluff', SID2, PID, 'player', now=NOW + 2), now=NOW + 3)
+
+    def test_a_second_launch_of_the_same_session_keeps_its_tickets_spent(self):
+        """Was: any launch cleared the ledger, so a relaunch of the same sid made every spent
+        ticket of that session good again (AVR-465 review)."""
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
         side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW + 2), now=NOW + 2)
-        self.assertEqual(side.spent.spent, {})
-        side.admit(t, now=NOW + 3)
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 3)
+        self.assertEqual(str(e.exception), 'replay')
+        side.on_end(P.end_message(KEY, 'bluff', SID, now=NOW + 4), now=NOW + 4)      # ended, then launched again
+        side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW + 5), now=NOW + 5)
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 6)
+        self.assertEqual(str(e.exception), 'replay')
+        fresh = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 5)
+        self.assertEqual(side.admit(fresh, now=NOW + 6), (P.game_token(KEY, SID, PID), 'player'))
+
+    def test_a_clock_that_steps_back_does_not_bring_a_forgotten_ticket_back(self):
+        """Was: admitted at NOW+1, pruned by a later call at NOW+201, the wall clock stepped back
+        to NOW+4, and the same ticket (still inside its `exp` by that clock) was admitted again."""
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
+        later = P.mint_ticket(KEY, 'bluff', SID, PID2, 'player', now=NOW + 200)
+        side.admit(later, now=NOW + 201)                      # prunes the first entry
+        self.assertEqual(len(side.spent.spent), 1)
+        P.verify_ticket(KEY, t, 'bluff', SID, now=NOW + 4)   # the stepped-back clock still verifies it
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 4)
+        self.assertEqual(str(e.exception), 'expired')
+        self.assertEqual(side.spent.clock, NOW + 201)        # time never moves back in the ledger
+        with self.assertRaises(Invalid) as e:
+            side.spent.spend(later, NOW + 320, now=NOW + 4)   # and what it still remembers stays spent
+        self.assertEqual(str(e.exception), 'replay')
+        ahead = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 150)
+        with self.assertRaises(Invalid):
+            side.admit(ahead, now=NOW + 4)                    # 'clock': minted ahead of the stepped-back time
+        back = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 100)
+        side.spent.spend(back, NOW + 220, now=NOW + 100)     # one that outlives the high-water mark is spent as usual
+        side.on_launch(P.launch_message(KEY, 'bluff', SID2, ROSTER, now=NOW + 4), now=NOW + 4)
+        self.assertEqual(side.spent.clock, float('-inf'))    # a new session starts the ledger's time again
+        side.admit(P.mint_ticket(KEY, 'bluff', SID2, PID, 'player', now=NOW + 4), now=NOW + 5)
 
     def test_standalone_spent_tickets(self):
         s = P.SpentTickets()
-        s.spend('x', NOW + 5, now=NOW)
-        with self.assertRaises(Invalid):
-            s.spend('x', NOW + 5, now=NOW + 1)
-        s.spend('x', NOW + 50, now=NOW + 5)
+        x = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        s.spend(x, NOW + 5, now=NOW)
+        with self.assertRaises(Invalid) as e:
+            s.spend(x, NOW + 5, now=NOW + 1)
+        self.assertEqual(str(e.exception), 'replay')
+        s.spend(x, NOW + 50, now=NOW + 5)
+        for not_a_ticket in ('x', 'a.b', None, 7):          # spend comes after verification
+            with self.assertRaises(Invalid) as e:
+                s.spend(not_a_ticket, NOW + 50, now=NOW)
+            self.assertEqual(str(e.exception), 'shape')
 
     def test_ended_report_closes_admission(self):
         side = P.GameSide(KEY, 'bluff')
