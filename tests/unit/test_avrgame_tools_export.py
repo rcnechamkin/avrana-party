@@ -7,7 +7,8 @@ developer can validate and pack a game without a checkout. These tests pin what 
 allowlist), that it builds the same bytes anywhere, that its tool behaves exactly like this repository's
 (packed bytes, refusals, extract), that the copied code is the repository's code (only comments and
 docstrings that name internal material are removed, proven by comparing syntax trees), and that nothing
-platform-, key- or install-related leaks into it (a content gate with an explicit allow-list). They run the
+platform-, key- or install-related leaks into it (a deny-list content gate; every match is declared in the builder's ALLOW
+table, NOTICE.md is generated from it, and a second, independently written pattern set checks the same files). They run the
 exported tool in a subprocess with a clean path, so an in-repo change that makes the packer import something new
 fails here (and in the build itself) until the export is deliberately extended.
 """
@@ -197,6 +198,30 @@ class ContentsTests(Built):
         self.assertEqual(set(loaded.device), set(real['device']))
         self.assertEqual(set(loaded.runtime), set(real['runtime']))
 
+    def test_the_readme_gives_every_capability_name_a_meaning_and_the_build_checks_it(self):
+        shipped = json.loads(self.plain['contracts/capabilities.v0.json'])
+        names = [n for scope in ('device', 'runtime') for n in shipped[scope]]
+        readme = self.plain['README.md'].decode('utf-8')
+        table = tools.capability_table(readme)
+        self.assertEqual(sorted(table), sorted(names))
+        for name, meaning in table.items():
+            self.assertGreater(len(meaning), 20, name)
+        self.assertIn('A `browser_native` game needs none of the `runtime.*`, `input.*` or `presentation.*` names',
+                      re.sub(r'\s+', ' ', readme.replace('**', '')))
+        tools.check_capability_table(readme, names)
+        with self.assertRaises(tools.ExportError) as ctx:
+            tools.check_capability_table(readme, names + ['brand.new'])
+        self.assertIn('brand.new', str(ctx.exception))
+        with self.assertRaises(tools.ExportError):
+            tools.check_capability_table(readme.replace('| `touch` |', '| `tou` |'), names)
+        # the meanings are written for this export, not copied from the in-repo vocabulary
+        real = json.loads((CONTRACTS_DIR / 'capabilities.v0.json').read_text(encoding='utf-8'))
+        for scope in ('device', 'runtime'):
+            for name, entry in real[scope].items():
+                for field in ('label', 'summary', 'missing'):
+                    if isinstance(entry.get(field), str) and len(entry[field]) > 25:
+                        self.assertNotIn(entry[field], readme, (name, field))
+
     def test_copied_code_is_the_repositorys_code_and_only_internal_comments_and_docstrings_are_gone(self):
         manifest = json.loads(self.plain['MANIFEST.json'])
         scrubbed = []
@@ -265,32 +290,94 @@ class ContentsTests(Built):
             self.assertRegex(target, r'^https?://')
 
 
-class ContentGateTests(Built):
-    def test_the_shipped_text_matches_no_deny_pattern_except_the_listed_exceptions(self):
-        problems, used = tools.content_gate(self.plain)
-        self.assertEqual(problems, [])
-        self.assertEqual(used, set(range(len(tools.ALLOW))))         # no stale exception
+# A second set of patterns, written out here on purpose and NOT imported from the builder: a gap in either list is
+# caught by the other. Case-insensitive unless the pattern says otherwise.
+BROAD = [(r'\bpi\b', re.I), (r'\bRPi\b', 0), (r'\bPi\d', 0), (r'\bavr-\d+', re.I), (r'\bADR[- ]?\d+', re.I),
+         (r'h\.?264', re.I), (r'Debian', re.I), (r'systemd', re.I), (r'LoadCredential', 0), (r'DynamicUser', 0),
+         (r'AVRANA_[A-Z_]+', 0), (r'Party Core', re.I), (r'provision-game', re.I), (r'hdmi', re.I), (r'hw_encoder', re.I),
+         (r'net\.avrana', re.I), (r'\bTUF\b', 0), (r'arm64', re.I),
+         # more: the platform's own vocabulary and the internal names the owner listed
+         (r'install[-_ ]game', re.I), (r'lift_manifest|shared_video', re.I), (r'emulat', re.I), (r'arcade', re.I),
+         (r'linux/(arm|amd)', re.I), (r'\b[0-9a-f]{40}\b', 0), (r'/usr/', 0), (r'libretro|retroarch|raspberry', re.I),
+         (r'lan[ _]games', re.I), (r'\bbluff\b|\bexpo\b|spades|gauntlet|checkers', re.I), (r'webrtc|webgpu|wake_lock', re.I),
+         (r'freeze|separate lane|party service', re.I), (r'owned by root|as root', re.I)]
 
-    def test_every_exception_has_a_reason_and_a_description_that_passes_the_gate(self):
+
+class ContentGateTests(Built):
+    def covered(self, path, line):
+        return any(path in entry['files'] and re.search(entry['line'], line) for entry in tools.ALLOW)
+
+    def test_the_shipped_text_matches_no_pattern_except_the_declared_places(self):
+        problems, used = tools.content_gate(self.plain, skip=('NOTICE.md',))
+        self.assertEqual(problems, [])
+        required = {i for i, entry in enumerate(tools.ALLOW) if not entry.get('optional')}
+        self.assertLessEqual(required, used)                               # no stale declaration
+        self.assertEqual(tools.unseen_terms(self.plain), [])
+
+    def test_a_second_independent_and_broader_pattern_set_finds_nothing_outside_the_declared_places(self):
+        found = 0
+        for path, data in sorted(self.plain.items()):
+            if path == 'NOTICE.md':
+                continue                                                   # it is the declaration itself
+            for number, line in enumerate(data.decode('utf-8').splitlines(), 1):
+                for source, flags in BROAD:
+                    if re.search(source, line, flags):
+                        found += 1
+                        self.assertTrue(self.covered(path, line), f'{path}:{number} {source!r}: {line.strip()[:100]}')
+        self.assertGreater(found, 20)                                      # the patterns do find the declared places
+
+    def test_every_declared_term_occurs_in_a_shipped_file_and_is_printed_in_notice(self):
+        notice = self.plain['NOTICE.md'].decode('utf-8')
+        others = {n: d.decode('utf-8') for n, d in self.plain.items() if n != 'NOTICE.md'}
         for entry in tools.ALLOW:
             self.assertGreater(len(entry['reason']), 20)
-            self.assertEqual(tools.content_gate({'x': entry['describe'].encode()})[0], [], entry['describe'])
-            self.assertIn(entry['file'], ALLOWED)
-        notice = self.plain['NOTICE.md'].decode('utf-8')
-        for entry in tools.ALLOW:
+            for name in entry['files']:
+                self.assertIn(name, ALLOWED)
             self.assertIn(entry['describe'], notice)
+            for term in entry['terms']:
+                self.assertTrue(any(term in others[name] for name in entry['files']), (entry['describe'][:40], term))
+                self.assertIn(f'`{term}`', notice)
+        # everything the owner listed as shipping is named in NOTICE (read from here, not from the builder)
+        for term in ('install-game', 'run by the appliance owner as root', 'home', 'party', 'admin', 'shared', 'diag', 'api',
+                     'emulated', 'arcade', 'emulator_profile', 'emulator_slot', 'hw_encoder', 'host_rendering', 'hdmi',
+                     'linux/arm64', 'linux/amd64', 'webrtc', 'video.h264', 'presentation.shared_stream',
+                     'presentation.personal_viewport.crop', 'presentation.tv', 'input.virtual_gamepad', 'wake_lock', 'webgpu',
+                     'lift_manifest_v0', 'shared_video', 'TUF', 'net.avrana.example', 'source_commit', 'deny list',
+                     'no system-call filter', 'no disk quota', 'world-readable', 'file descriptor 3', 'no IP networking'):
+            self.assertIn(term, notice)
+        self.assertNotIn('found only', notice)
+        self.assertIn('not a proof', notice)
+
+    def test_notice_lists_a_term_only_because_a_declaration_exists_and_the_gate_fails_without_one(self):
+        with mock.patch.object(tools, 'ALLOW', tools.ALLOW[:-2]):
+            problems, _ = tools.content_gate(self.plain, skip=('NOTICE.md',))
+        self.assertTrue(any('net.avrana' in p for p in problems) or any('TUF' in p for p in problems), problems)
+        stale = dict(files=('README.md',), line='this line is in no file', terms=(), describe='x', reason='y' * 30)
+        with mock.patch.object(tools, 'ALLOW', (*tools.ALLOW, stale)):
+            with self.assertRaises(tools.ExportError):
+                tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False)
+        gone = dict(tools.ALLOW[-3], terms=('a term that is nowhere',))
+        with mock.patch.object(tools, 'ALLOW', (*tools.ALLOW[:-3], gone, *tools.ALLOW[-2:])):
+            self.assertTrue(tools.unseen_terms(self.plain))
 
     def test_each_denied_kind_of_text_is_caught(self):
-        samples = ['AVR-123', 'ADR 0016', 'the BLUFF game', 'Spades', 'Gauntlet', 'Checkers', 'EXPO', 'RetroArch', 'libretro',
-                   'LAN Games', 'Raspberry Pi', 'on the Pi now', 'H.264', '/etc/passwd', '/opt/games', '/var/lib', '/run/x.sock',
-                   '10.0.0.142', '192.168.1.1', 'party.local', 'party.avrana.net', 'docs/design/X.md', 'docs/research/Y.md',
-                   'docs/findings/Z.md', 'docs/runbooks/a.md', 'docs/adr/0001.md', 'avrana/ops/x.py', 'deploy/games',
-                   '-----BEGIN PRIVATE KEY-----', 'rcnechamkin', 'cnechamkin', 'BEACNpool', 'appliance.py', 'tests/unit',
-                   'tools/x.py', 'web/party/x', 'experiments/native-game']
+        samples = ['AVR-123', 'avr-12', 'ADR 0016', 'ADR-0016', 'the BLUFF game', 'Spades', 'Gauntlet', 'Checkers', 'EXPO',
+                   'RetroArch', 'libretro', 'LAN Games', 'Raspberry Pi', 'on the Pi now', 'H.264', '/etc/passwd', '/opt/games',
+                   '/var/lib', '/run/x.sock', '10.0.0.142', '192.168.1.1', 'party.local', 'party.avrana.net', 'docs/design/X.md',
+                   'docs/research/Y.md', 'docs/findings/Z.md', 'docs/runbooks/a.md', 'docs/adr/0001.md', 'avrana/ops/x.py',
+                   'deploy/games', '-----BEGIN PRIVATE KEY-----', 'rcnechamkin', 'cnechamkin', 'BEACNpool', 'appliance.py',
+                   'tests/unit', 'tools/x.py', 'web/party/x', 'experiments/native-game', 'the freeze gates are unmet',
+                   'a separate lane', '(default: the repository\'s)', 'while the party service moves over',
+                   # platform vocabulary (declared or refused)
+                   'install-game', 'install_game', 'run as root', 'RESERVED_IDS', 'an emulated game', 'arcade', 'emulator_slot',
+                   'hw_encoder', 'hdmi', 'linux/arm64', '/usr/bin/python3', 'lift_manifest_v0', 'shared_video', 'TUF orders',
+                   'net.avrana.example', '0123456789abcdef0123456789abcdef01234567', 'webrtc', 'video.h264', 'wake_lock',
+                   'presentation.tv', 'input.virtual_gamepad', 'runtime.retroarch']
         for text in samples:
             problems, _ = tools.content_gate({'doc.md': f'a line {text} here\n'.encode()})
             self.assertTrue(problems, text)
-        for clean in ('The appliance runs your game.', 'pipe', 'a separate pi', 'operations and options', 'the Party'):
+        for clean in ('The appliance runs your game.', 'pipe', 'operations and options', 'the Party', 'a pip install',
+                      'the number 10.5', 'a hash of 64 hex digits ' + '0123456789abcdef' * 4):
             self.assertEqual(tools.content_gate({'doc.md': clean.encode()})[0], [], clean)
 
     def test_a_new_leak_in_a_shipped_file_or_the_manifest_fails_the_build(self):
@@ -306,6 +393,17 @@ class ContentGateTests(Built):
             path.write_bytes(path.read_bytes() + b"\nNOTE = 'ask rcnechamkin'\n")
             with self.assertRaises(tools.ExportError):
                 tools.build_bytes(tree, commit=COMMIT, dirty=False)
+            tree = copy_inputs(Path(tmp) / 'three')                         # new platform vocabulary in code is refused too
+            path = tree / 'avrana/avrgame/archive.py'
+            path.write_bytes(path.read_bytes() + b"\nNOTE = 'systemd-run and provision-game'\nHW = 'hdmi'\n")
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build_bytes(tree, commit=COMMIT, dirty=False)
+            self.assertIn('hdmi', str(ctx.exception))
+
+    def test_notice_text_that_is_fixed_in_the_template_passes_the_gate_without_the_declarations(self):
+        values = {k: 'x' for k in re.findall(r'\{\{([A-Z_]+)\}\}', (REPO_ROOT / tools.TEMPLATES['NOTICE.md']).read_text(encoding='utf-8'))}
+        fixed = tools.fill((REPO_ROOT / tools.TEMPLATES['NOTICE.md']).read_bytes().replace(b'\r\n', b'\n'), {**values, 'REVEALED': ''}, 'n')
+        self.assertEqual(tools.content_gate({'NOTICE.md': fixed})[0], [])
 
 
 class ScrubTests(unittest.TestCase):
@@ -365,6 +463,63 @@ def g():
             tools.prove_same_code(helped, scrubbed, 'cli.py')
         self.assertIn('__doc__', str(ctx.exception))
 
+    INDENTED = ('def f():\n    """First paragraph keeps its layout.\n\n        Indented example stays   as it is.\n    \n'
+                '    Second mentions AVR-5 and more text after. And a clean sentence.\n\n    Last paragraph, untouched.\n    """\n'
+                '    return 1\n')
+
+    def test_unflagged_paragraphs_of_an_indented_docstring_and_blank_lines_are_kept_verbatim(self):
+        scrubbed, stats = tools.scrub_python(self.INDENTED)
+        tools.prove_same_code(self.INDENTED, scrubbed, 'x.py')
+        self.assertEqual(stats['docstrings'], 1)
+        self.assertEqual(scrubbed, ('def f():\n    """First paragraph keeps its layout.\n\n        Indented example stays   as it is.\n    \n'
+                                    '    And a clean sentence.\n\n    Last paragraph, untouched.\n    """\n    return 1\n'))
+        # a flagged one-line paragraph that has to be wrapped keeps the docstring's indentation
+        long = ('class C:\n    """Intro.\n\n    ' + ' '.join(['word'] * 40) + ' AVR-3 and more. ' + ' '.join(['tail'] * 40) + '.\n    """\n')
+        scrubbed, _ = tools.scrub_python(long)
+        tools.prove_same_code(long, scrubbed, 'y.py')
+        wrapped = [l for l in scrubbed.split('\n') if 'word' in l or 'tail' in l]
+        self.assertTrue(wrapped and all(l.startswith('    ') and not l.startswith('     ') for l in wrapped), wrapped)
+        self.assertNotIn('AVR-3', scrubbed)
+
+    def test_a_shebang_and_an_encoding_cookie_are_never_removed(self):
+        for head in ('#!/usr/bin/env python3\n', '# -*- coding: utf-8 -*-\n', '#!/usr/bin/python\n# vim: set fileencoding=utf-8 :\n'):
+            source = head + '# internal note about AVR-9\nX = 1\n'
+            scrubbed, stats = tools.scrub_python(source)
+            self.assertEqual(scrubbed, head + 'X = 1\n')
+            tools.prove_same_code(source, scrubbed, 'x.py')
+            with self.assertRaises(tools.ExportError):                      # the proof notices if one were dropped
+                tools.prove_same_code(source, scrubbed[len(head.split('\n')[0]) + 1:], 'x.py')
+        with self.assertRaises(tools.ExportError):                          # and a flagged one cannot be scrubbed
+            tools.scrub_python('# -*- coding: utf-8 -*- AVR-1\nX = 1\n')
+        block = '# coding: utf-8\n# harmless\n# about AVR-2\nX = 1\n'                 # the block starts after the cookie
+        self.assertEqual(tools.scrub_python(block)[0], '# coding: utf-8\nX = 1\n')
+
+    def test_docstring_readers_block_a_scrub_unless_the_reader_reads_only_its_own_unchanged_docstring(self):
+        own = '"""Help for AVR-1."""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n'
+        other = 'import m\nTEXT = m.__doc__\n'
+        via_getattr = 'import m\nTEXT = getattr(m, "__doc__")\n'
+        via_inspect = 'import inspect\nimport m\nTEXT = inspect.getdoc(m)\n'
+        dirty_doc = '"""Mentions AVR-2 here."""\nX = 1\n'
+        clean_own = '"""Clean help."""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n'
+
+        def pair(text):
+            scrubbed, stats = tools.scrub_python(text)
+            return (text, scrubbed, stats['docstrings'])
+        tools.check_doc_readers({'a.py': pair(dirty_doc), 'b.py': pair(clean_own)})        # unchanged own reader: fine
+        tools.check_doc_readers({'a.py': pair('X = 1\n'), 'b.py': pair(other)})           # nothing scrubbed anywhere: fine
+        for reader in (other, via_getattr, via_inspect):
+            with self.assertRaises(tools.ExportError, msg=reader) as ctx:
+                tools.check_doc_readers({'a.py': pair(dirty_doc), 'b.py': pair(reader)})
+            self.assertIn('b.py', str(ctx.exception))
+        with self.assertRaises(tools.ExportError):                                       # an own reader whose file changed
+            tools.check_doc_readers({'a.py': pair(dirty_doc), 'b.py': pair(own)})
+        changed_comment = '# note for AVR-5\n' + clean_own
+        with self.assertRaises(tools.ExportError):                                       # not byte-identical (comment removed)
+            tools.check_doc_readers({'a.py': pair(dirty_doc), 'b.py': pair(changed_comment)})
+        kinds = lambda text: tools.doc_reads(ast.parse(text))
+        self.assertEqual((kinds(own), kinds(other), kinds(via_getattr), kinds(via_inspect), kinds(dirty_doc)),
+                         ({'own'}, {'other'}, {'other'}, {'other'}, set()))
+
     def test_a_clean_file_is_returned_byte_for_byte(self):
         clean = '"""Clean."""\n# fine\nX = 1  # also fine\n'
         self.assertEqual(tools.scrub_python(clean)[0], clean)
@@ -398,7 +553,7 @@ class ReproducibilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tree = copy_inputs(tmp)
             path = tree / 'avrana/avrgame/common.py'
-            path.write_bytes(path.read_bytes().replace(b'MAX_FILES = 2000', b'MAX_FILES = 2001'))
+            path.write_bytes(path.read_bytes() + b'\n# a harmless comment\n')
             self.assertNotEqual(tools.build_bytes(tree, commit=COMMIT, dirty=False),
                                 tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False))
 
@@ -447,8 +602,16 @@ class BuildHygieneTests(unittest.TestCase):
                 path, checksum, digest = tools.build(Path(tmp) / 'a', REPO_ROOT, commit=COMMIT, dirty=dirty, allow_dirty=True)
                 self.assertEqual(path.name, f'{tools.NAME}{suffix}.zip')
                 self.assertTrue(checksum.name.startswith(path.name))
+                with zipfile.ZipFile(path) as z:                      # the unpacked directory says it too
+                    self.assertEqual({n.split('/')[0] for n in z.namelist()}, {f'{tools.NAME}{suffix}'})
+                root = tools.unpack(path, Path(tmp) / ('unpacked' + suffix))
+                self.assertEqual(root.name, f'{tools.NAME}{suffix}')
+                self.assertTrue((root / 'README.md').is_file())
+                self.assertEqual(json.loads((root / 'MANIFEST.json').read_text(encoding='utf-8'))['source_dirty'], dirty)
             path, _, _ = tools.build(Path(tmp) / 'a', REPO_ROOT, commit=COMMIT, dirty=False)
             self.assertEqual(path.name, tools.ZIP_NAME)
+            with zipfile.ZipFile(path) as z:
+                self.assertEqual({n.split('/')[0] for n in z.namelist()}, {tools.NAME})
 
     def test_an_existing_file_is_replaced_only_when_identical_or_forced(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -475,6 +638,35 @@ class BuildHygieneTests(unittest.TestCase):
             path.write_bytes(path.read_bytes().replace(b"VERSION = 'avrana.party-session/v0'", b"VERSION = 'avrana.party-session/v1'"))
             with self.assertRaises(tools.ExportError):
                 tools.build_bytes(tree, commit=COMMIT, dirty=False)
+
+    def test_the_build_fails_when_a_limit_a_permission_an_interpreter_a_ceiling_or_a_capability_moves_without_a_bump(self):
+        def changed(rel, old, new, label):
+            with tempfile.TemporaryDirectory() as tmp:
+                tree = copy_inputs(tmp)
+                path = tree / rel
+                data = path.read_bytes()
+                self.assertEqual(data.count(old), 1, label)
+                path.write_bytes(data.replace(old, new))
+                with self.assertRaises(tools.ExportError, msg=label) as ctx:
+                    tools.build_bytes(tree, commit=COMMIT, dirty=False)
+                self.assertIn('TOOLS_REVISION', str(ctx.exception), label)
+        changed('avrana/avrgame/common.py', b'MAX_FILES = 2000', b'MAX_FILES = 2001', 'a limit')
+        changed('avrana/avrgame/manifest.py', b'MAX_ARG = 200', b'MAX_ARG = 201', 'a manifest limit')
+        changed('avrana/contracts/game.py', b"'party_roster', 'controllers'", b"'party_roster', 'jukebox', 'controllers'", 'a permission')
+        changed('avrana/avrgame/manifest.py', b"{'python3': '/usr/bin/python3'}", b"{'python3': '/usr/bin/python3', 'node': '/usr/bin/node'}", 'an interpreter')
+        changed('avrana/ops/provision_game.py', b'MemoryMax=256M', b'MemoryMax=512M', 'a ceiling')
+        vocab = json.loads((REPO_ROOT / 'contracts/capabilities.v0.json').read_text(encoding='utf-8'))
+        vocab['device']['brand_new'] = vocab['device']['touch']
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = copy_inputs(tmp)
+            (tree / 'contracts/capabilities.v0.json').write_text(json.dumps(vocab, indent=2) + '\n', encoding='utf-8')
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build_bytes(tree, commit=COMMIT, dirty=False)
+            self.assertIn('TOOLS_REVISION', str(ctx.exception))
+        with mock.patch.object(tools, 'SPEAKS_DIGEST', '0' * 12):                 # and the recorded digest is what is compared
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False)
+        self.assertIn('TOOLS_REVISION', str(ctx.exception))
 
 
 class SameBehaviourTests(Built):
@@ -677,7 +869,7 @@ class SameBehaviourTests(Built):
         self.assertEqual(json.loads(a.stdout)['bridge'], [json.loads((CONTRACTS_DIR / 'party-games.v0.json').read_text())['bridge']['protocol']])
 
     def test_validation_verdicts_and_messages_about_capabilities_are_identical(self):
-        # a requirement naming an unknown capability, and one naming a real one: the message lists the real names
+        # a requirement naming an unknown capability, and one naming a real one: the verdicts and messages are identical
         for name in ('no.such.capability', 'websocket'):
             manifest = good_manifest()
             manifest['game']['presentations'][0]['requires'] = {'device': [name]}
@@ -694,6 +886,8 @@ class SameBehaviourTests(Built):
         a, b = self.exported(['validate', path]), self.run_in_repo(['validate', path], self.work)
         self.assertEqual(b.returncode, 1)
         self.assertEqual((a.returncode, a.stdout, a.stderr), (b.returncode, b.stdout, b.stderr))
+        self.assertIn("unknown 'no.such.capability'", a.stderr)
+        self.assertNotIn('websocket', a.stderr)                  # the message does not list the valid names: the README does
 
     def test_from_another_working_directory_with_the_export_on_pythonpath(self):
         done = self.exported(['--help'], cwd=self.work)

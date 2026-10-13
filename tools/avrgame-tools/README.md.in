@@ -165,8 +165,10 @@ Validation lists **every** problem it finds, one per line on stderr, and exits 1
   absolute path or contain `..`.
 - **`client.root`** is a relative directory inside the package and must contain `index.html`.
 - **Capability names**: the Game Contract's `requires` and `optional` lists may use only names from the
-  capability vocabulary. The file `contracts/capabilities.v0.json` in this export lists the real names; its
-  labels, summaries and probe kinds are placeholders, because the tools never read them.
+  capability vocabulary, listed with a one-line meaning in the section "Capability names" below. The file
+  `contracts/capabilities.v0.json` in this export holds the same names; its labels, summaries and probe
+  kinds are placeholders, because the tools never read them. The validator's message for any other name
+  says only that the name is unknown; it does not list the valid ones, so use the table.
 
 ### Reading the refusal messages
 
@@ -174,6 +176,49 @@ The messages are the project's own, unchanged, so some say "this appliance" (for
 implements [...], not ..."). In these tools that means **these tools**: the value your package asks for is
 not one that this export of the tools speaks. The usual fix is to build your game for the versions in the
 table below, or, if the game is newer than the tools, to ask whoever gave you this export for a newer one.
+
+## Capability names
+
+A presentation in the Game Contract says what a phone, or the appliance, must be able to do for that
+presentation to work, by naming capabilities in `requires` (and `optional`). These are all the names
+the validator accepts, and what a game is saying when it lists one. The first group are features of the
+phone's browser (named after the Web platform feature of the same name); the second group are
+things the appliance provides to a game, and apply only to games whose picture or input does not come
+from the phone's browser alone. **A `browser_native` game needs none of the `runtime.*`, `input.*` or
+`presentation.*` names.**
+
+| Name | What a game is saying by requiring it |
+|---|---|
+| `secure_context` | The page is served over HTTPS (or from localhost), which the browser demands before it offers several other features. |
+| `service_worker` | The browser can register a service worker (a background script that can cache the game for offline use). |
+| `cache_storage` | The browser offers the Cache Storage API for keeping downloaded files. |
+| `websocket` | The browser can open a WebSocket, a two-way connection to the game's server. |
+| `webrtc` | The browser supports WebRTC peer connections (live audio, video and data between endpoints). |
+| `webrtc.data_channel` | The browser can open a WebRTC data channel (low-latency messages without a server in between). |
+| `video.h264` | The browser can play video compressed with the common AVC codec. |
+| `web_audio` | The browser offers the Web Audio API for generating and mixing sound. |
+| `gamepad` | The browser reports a connected game controller through the Gamepad API. |
+| `wake_lock` | The browser can keep the screen from switching off (Screen Wake Lock API). |
+| `web_crypto` | The browser offers the Web Crypto API (hashing, random values and encryption in the page). |
+| `storage.local` | The browser offers `localStorage` for small values kept on the device. |
+| `storage.indexeddb` | The browser offers IndexedDB for larger structured data kept on the device. |
+| `storage.persistent` | The browser will let a page ask that its stored data is not cleared when space runs low. |
+| `webgl` | The browser can draw 3D graphics with WebGL. |
+| `webgl2` | The browser can draw 3D graphics with WebGL 2. |
+| `webgpu` | The browser can draw and compute on the graphics chip with WebGPU. |
+| `fullscreen` | The browser lets the page fill the whole screen (Fullscreen API). |
+| `vibration` | The browser can make the phone vibrate (Vibration API). |
+| `media_devices` | The browser can list and open cameras and microphones (`navigator.mediaDevices`). |
+| `microphone` | The page may listen through the device's microphone, if the player allows it. |
+| `camera` | The page may use the device's camera, if the player allows it. |
+| `touch` | The device has a touch screen. |
+| `runtime.lan_games` | The game is a module of the platform's older built-in game server rather than a program of its own. |
+| `runtime.retroarch` | The game is an emulator session of the RetroArch kind, run by the appliance. |
+| `input.virtual_gamepad` | The appliance offers the player an on-screen game controller whose buttons it passes to the game. |
+| `presentation.shared_stream` | The game's picture is one video stream shown the same way to every phone. |
+| `presentation.personal_viewport.crop` | Each player sees their own cut-out of one shared picture. |
+| `presentation.personal_viewport.dedicated_stream` | Each player receives a video stream of their own. |
+| `presentation.tv` | The game's picture is shown on the shared television or screen, while phones act as controllers. |
 
 ## Permissions
 

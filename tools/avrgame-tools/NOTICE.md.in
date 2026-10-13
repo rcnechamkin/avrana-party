@@ -24,10 +24,26 @@ building on it.
 
 ## Things this export reveals about the platform
 
-Besides what any reader of the README learns (the package format, its limits, the conditions a game runs
-under on an appliance, the protocol version strings and the fact that a Party exists), a build-time check
-looked for names of internal material (tracker ids, decision numbers, other games, hardware, paths,
-addresses, people) and found only these places where the tool itself needs them:
+**What the README says on purpose.** It states the weaknesses and limits of the conditions a game runs under on
+the appliance, not only the strengths: there is no system-call filter and no disk quota, a game can read every
+world-readable file on the machine, granted permissions are not checked when a session starts (only
+`persistent_storage` is enforced, through the state directory), the process ceilings are {{MEMORY_MAX}} of memory,
+{{TASKS_MAX}} tasks and {{CPU_QUOTA}} of one CPU, the game is started through file descriptor 3 by socket
+activation, and it has no IP networking. Those are facts about the platform, and they leave with the export.
+
+**What a check can and cannot show.** The builder runs a **deny list** over every shipped file: patterns for tracker
+ids, decision numbers, other games, hardware, paths, addresses and people, and a second set of patterns for platform
+vocabulary that the tools genuinely need. A deny list finds only what it was told to look for; it is **not a proof
+that nothing else about the platform is in these files**. What it does guarantee is mechanical: the build fails if a
+pattern of either set matches anywhere that is not declared below, and fails if a declaration below matches nothing,
+so this list is generated from the same table that the check uses, and cannot drift from it. A second, separately
+written and broader set of patterns is run over the shipped files by the project's tests, with the same rule. The
+words of the platform's ordinary architecture (appliance, Party, Games, game server, tier, grant, provider, installer,
+session, roster, seat, presentation, socket activation) occur throughout the README, the copied code and its messages
+and are not listed one by one.
+
+**The declared platform-specific terms.** Every one of these occurs in a shipped file, in code the validator runs
+(so removing it would change what the tool accepts or prints) or in documentation:
 
 {{REVEALED}}
 
