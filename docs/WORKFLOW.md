@@ -1,142 +1,106 @@
-# Development workflow: from decision to deployed, with agents in the loop
+# Development workflow v2: ship small, verify deliberately
 
-This is how a change moves through Avrana Party, which systems hold which truth, and where a
-human must act. [AGENTS](../AGENTS.md) is the agent entry point; this page is the whole loop.
-Linear workflow details that only the owner can change are marked **(manual)**.
-
-## Source-of-truth hierarchy
-
-Highest authority first. When two disagree, the higher one wins for its own question; most
-apparent conflicts are different questions (merged source may be ahead of production).
-
-1. Code and automated tests on GitHub `main` (what is implemented)
-2. Canonical repository documentation (manifest class `canonical`, status `current`)
-3. Accepted ADRs (`docs/adr/`, reading each status and amendment)
-4. The current Linear issue (the desired delta: what should change, and how success is judged)
-5. Draft/proposed documentation (direction, not contract)
-6. Historical documentation: findings, archives, old handoffs (evidence of what was true when written)
-
-An accepted ADR whose status says "not implemented" (0012–0014 as of 2026-10-02: Limited Mode,
-separate Party and game origins, isolated native games with LAN Games retiring) is the direction
-new work must respect, not a description of code or of the appliance. Rows 1 and 2 say what
-exists; such an ADR says where it is going.
-
-The deployed appliance is authoritative about what is running: the
-[deployment manifest](design/DEPLOYMENT-MANIFEST.md) and `/party/api/status`
-([STATUS-ENDPOINT](design/STATUS-ENDPOINT.md)). Chat history is never a source of truth.
+Avrana Party is a one-owner product with AI help, not a staffed engineering department.
+Every step must either produce behavior, detect a meaningful defect, or keep the release
+safe. If a step does none of these, it is optional. [AGENTS.md](../AGENTS.md) owns the
+agent's entry rules. This workflow also applies to the Games repository.
 
 ## The loop
 
-| # | Step | Who | Where it is recorded |
-|---|---|---|---|
-| 1 | Product discussion | Cody (+ assistants) | nowhere authoritative |
-| 2 | Decision becomes a Linear issue and, for architecture, an ADR | Cody | Linear; `docs/adr/` |
-| 3 | Issue reaches **Ready for Agent** (see states below) | Cody | Linear state |
-| 4 | Agent receives only the AVR number | Cody | the task |
-| 5 | Agent reads the issue, source, tests, relevant canonical docs, `/party/api/status` | agent | [AGENTS](../AGENTS.md) §Starting work |
-| 6 | Agent implements and tests on `type/avr-N-desc` branches (paired across repos when needed) | agent | branches, [CROSS-REPO](CROSS-REPO.md) |
-| 7 | PR opens with the [implementation report](agents/IMPLEMENTATION-REPORT.md); issue moves to **In Review** | agent | GitHub PR, Linear |
-| 8 | CI validates the repository and the Party ↔ Games contract against the paired branch | CI | GitHub checks |
-| 9 | Review and merge | Cody | GitHub |
-| 10 | Deterministic deploy of named SHAs | Cody, on the Pi | `ops/deploy.sh` ([runbook](runbooks/deploy.md)) |
-| 11 | The Pi writes the deployment manifest | `ops/deploy.sh` | `/var/lib/avrana-party/deployment.json` |
-| 12 | Smoke checks run and are recorded in the manifest | `ops/deploy.sh` | manifest `smoke`, backup dir |
-| 13 | Issue moves to **Ready for Playtest** | Cody | Linear |
-| 14 | Physical test on real phones | Cody | findings when noteworthy |
-| 15 | Findings become a new issue, or the issue becomes **Done** | Cody | Linear |
-| 16 | Scheduled reconciliation catches drift between Linear, GitHub, docs and the deployed build | CI (weekly) | `Drift reconciliation` workflow report |
+1. **Decide:** The owner gives one outcome, constraints and an observable acceptance test
+   (a short prompt or existing AVR issue is enough). Ask only about blocking decisions.
+2. **Implement:** One agent reads the touched code and tests, works on one branch and
+   runs small, relevant local tests. No default orchestration, committee of subagents,
+   Graphify refresh, status sweeps or large report.
+3. **Verify:** Fix focused-test failures locally. For risky changes, run the affected
+   integration/regression tests and use an independent reviewer. Do not present
+   simulations as proof of physical behavior.
+4. **Reviewable PR:** Push only when ready. One concise PR description with changed
+   behavior, test evidence, risks, and owner action. Let GitHub CI run; do not
+   manually dispatch repeats or keep pushing intermediate exploration.
+5. **Merge:** The owner reviews and merges, coordinating Party/Games pairs where
+   required. A green PR is not authorization to deploy.
+6. **Accept:** The owner deploys deliberately, verifies the Pi and real phones,
+   and marks the feature accepted or files one specific defect.
 
-Steps 1 to 4, 9, 10, 13 to 15 are deliberately human. Everything else should need no manual
-translation between systems.
+**Default WIP:** one feature under active implementation across Party/Games. At most
+one additional independent investigation when authorized. Existing PRs can be
+triaged separately; do not open new work to fill imaginary agent capacity.
 
-## Linear states
+## Two risk lanes
 
-Team AvranaKern today: `Backlog`, `Todo`, `In Progress`, `In Review`, `Done`, `Canceled`,
-`Duplicate`. The loop uses them as:
+| Routine | High risk |
+|---|---|
+| UI, copy, isolated bugfix, docs | Identity/auth, trust, private data, protocol/contract, persistence, install/deploy, systemd, Wi-Fi, system lifecycle |
+| One implementing agent | One implementing agent; independent reviewer after code is ready |
+| Focused tests while editing | Focused tests plus relevant contract, security and integration proofs |
+| Short PR description and owner review | Explicit acceptance evidence, paired PRs if required, owner review |
+| Physical acceptance if user-visible | Physical/on-appliance acceptance before considered done |
 
-| Loop state | Linear today | Meaning |
-|---|---|---|
-| Needs Cody | `Backlog` (or `Todo` with unresolved **Open Decisions**) | not ready for an agent |
-| Ready for Agent | `Todo` with an empty **Open Decisions** section | an agent may start |
-| In Progress | `In Progress` | someone is working it |
-| PR / CI | `In Review` | PR open, CI/review pending |
-| Ready for Playtest | `In Review` + label `Human Validation` | merged (and usually deployed); phones pending |
-| Done | `Done` | acceptance criteria met with evidence |
+An agent does not self-upgrade routine work into a multi-agent sprint. If the change
+crosses into a high-risk category, stop and get the owner's scope decision.
 
-**(manual)** Linear's connected MCP cannot create workflow states or issue templates. If the
-owner wants the names to match, add states `Ready for Agent` (type unstarted, after `Todo`) and
-`Ready for Playtest` (type started, after `In Review`) in Team settings → Workflow, then update
-this table. Until then the mapping above is the contract.
+## CI cost and test policy
 
-The rule either way: **an issue is not Ready for Agent while its Open Decisions section holds an
-unresolved product decision.** An agent that finds one stops and asks instead of guessing.
+- **Local iteration:** Run affected lint/unit/module tests after edits. Run a full
+  local suite only if the change demands it or before a significant handoff.
+- **Hosted CI:** Do not dispatch workflows during development. Use GitHub PR CI on
+  a stable candidate. Cancel superseded PR runs; never rerun a green job merely
+  to get another green job. Re-run failed checks only after identifying why.
+- **Risk and release:** Keep contract checks, trust-boundary proofs, real-browser
+  evidence and clean-room checks when applicable. A release may need a complete
+  regression run, but ordinary UI changes do not justify repeated full
+  systemd/game-package proof.
+- **Reality check:** Linux CI cannot prove Pi Wi-Fi, iOS captive portal, real
+  multi-phone play or hardware performance. Keep that work in a physical
+  acceptance checklist.
+- **Cost limit:** No agent may change billing/spending limits, launch an
+  expensive manual matrix, or introduce scheduled workflows without the owner's
+  explicit approval.
+- **Transition:** Existing CI definitions may still execute broad suites on PRs.
+  Do not weaken a required status check until a replacement quick/full split
+  has been verified against the existing checks and repository settings.
 
-## Implementation issue structure
+## Context, review and documentation
 
-Every implementation issue carries these sections (the team document *Issue templates* in
-Linear mirrors this; the `avr-issue` skill writes them). An agent treats the issue as the desired
-delta, not as a second architecture document: canonical docs and code describe the present.
+Read current code and nearest tests before scanning the whole documentation tree.
+Canonical architecture and ADRs matter when the touched behavior depends on them.
+Graphify is optional search assistance; never auto-run it before every shell command.
 
-- **Outcome**: the desired end state, one paragraph.
-- **Acceptance Criteria**: observable conditions; each becomes evidence in the report.
-- **Out of Scope**: what must not change.
-- **Repositories**: `avrana-party`, `avrana-party-games`, or both (paired PRs).
-- **Tests Required**: the behavioral/integration tests that must exist or pass.
-- **Dependencies**: AVR issues (`blockedBy` relations), PRs, contract versions, infrastructure.
-- **Open Decisions**: questions for Cody. Must be empty for Ready for Agent.
+Review routine diffs in the same session; for high-risk changes, use a fresh
+independent reviewer who did not author the code. A separate verification agent
+is not required when test outputs already provide the evidence.
 
-Research and Human Validation issues keep their own templates (Question / Method / Decision
-criterion; Build under test / Steps / Evidence boundary).
+There is one authoritative status per concern:
+- **Code and tests:** GitHub.
+- **Requested behavior and owner decisions:** Linear when an issue exists; the
+  current owner prompt may scope a routine task.
+- **Architecture:** canonical docs and accepted ADRs.
+- **Deployed reality:** `/party/api/status`, deployment manifest and actual device.
+- **Human acceptance:** explicit phone/Pi observations.
 
-## Branches, PRs and pairing
+Update Linear once when the PR is ready and once after acceptance if necessary.
+Do not create issues for every interesting tangent. Do not repeat the entire PR
+description in chat, Linear and a final sprint report. For an ordinary task the
+handoff should fit in approximately five lines.
 
-`type/avr-N-short-description` in both repositories. CI pairs branches by the `avr-N` token;
-without a match the other repository is `main`. PR bodies link their pair and name the merge
-order. See [CROSS-REPO](CROSS-REPO.md). Never force-push; never merge your own PR as an agent.
+## Safety stays non-negotiable
 
-## What CI enforces (agent-neutral)
+Agents do not merge or deploy without express permission. They never write
+secrets, alter production Pi services, silently change a public contract, or
+claim a test that did not run. Incompatible Party/Games changes are paired.
+Any destructive, security-sensitive or product-direction decision belongs to
+the owner. See [AGENTS](../AGENTS.md), [REVIEW](../REVIEW.md),
+[CROSS-REPO](CROSS-REPO.md), [TESTING](TESTING.md), and the
+[deploy runbook](runbooks/deploy.md).
 
-| Check | Where | Fails when |
-|---|---|---|
-| Repository integrity: manifest, links, classes, generated freshness, nginx pair, agent layers | `npm run check:repo` (offline lane) | structure or authority rules break |
-| Historical documents edited without intent | offline lane, PRs only | `docs/archive/**` or an existing finding is modified and the PR lacks the `historical-edit` label |
-| Unit, module and offline browser suites | offline lane | behavior regresses |
-| Party ↔ Games contract and session protocol | `Cross-repo contract` (Party), `cross-repo` (Games) | declarations drift from code or from each other; the real-service test fails or would skip |
-| Deployment manifest / status schemas | unit tests | shapes change without tests |
-| Drift report | `Drift reconciliation`, weekly and on demand | never fails the build; publishes actionable / informational / could-not-run |
+## Measure whether the reset works
 
-Documentation staleness (`last_verified`) is reported, never enforced.
+For the next three completed features record only:
+- elapsed time from request to reviewable change;
+- hosted CI minutes and avoidable reruns;
+- agent usage/time spent coordinating versus implementing;
+- actual Pi/phone acceptance and regressions.
 
-## Deployment and physical testing
-
-`sudo bash ops/deploy.sh --party <sha> --games <sha>` is the only deployment path for routine
-releases ([runbook](runbooks/deploy.md)). It refuses dirty or unexpected state, restarts only
-what changed, writes the manifest and runs the smoke checks. First-time installation steps
-(units, keys, nginx, certificates) stay in their runbooks. Real phones, Party Wi-Fi, streaming
-and power remain Tier 3 evidence that only a human produces ([TESTING](TESTING.md)).
-
-## Field reports
-
-`https://party.avrana.net/party/diag/` shows the running build (Party and Games SHAs, contract,
-service summary, browser, time) with a copy button. Nothing is uploaded; the person pastes it
-into the issue.
-
-## Agent tooling (convenience, never enforcement)
-
-`python tools/avr_context.py AVR-N` prints the issue's sections, the paired branches and PRs in
-both repositories and the deployed build, read-only, and says plainly what it could not reach.
-For Claude Code, `.claude/settings.json` runs `tools/claude_gate.py` before Bash and edit tools:
-a merge, force-push, history rewrite or production command becomes a question to the person at
-the keyboard, and editing a contract file, a generated file, an existing historical document, an
-existing decision record, a deployment file or (on a fix branch) an existing test adds a
-reminder. The same file pre-approves the safe inner loop (status, diff, commit, push, the
-repository's own checks) so a session does not wait on a prompt for them. Two subagents ship in
-`.claude/agents/`: `verifier` runs the checks on a finished branch, and `reviewer` reviews a
-change against [REVIEW](../REVIEW.md); neither wrote the change and neither fixes it. Every rule it mentions is enforced elsewhere (branch protection and review for
-merges, the owner's sudo for the Pi, CI for contracts, generated files and history).
-
-## Derived context
-
-Graphify ([GRAPHIFY](GRAPHIFY.md)) indexes code and current documentation and excludes findings,
-archives and research by configuration, so default retrieval returns current architecture. It is
-navigation, never authority: verify in code, tests and canonical docs.
+Success means lower overhead **without** less reliable integration and security.
+If an added process does not improve those outcomes, remove it.
