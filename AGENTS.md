@@ -24,37 +24,39 @@ Draft/proposed sections are direction, not contract. [Findings](docs/findings/),
 evidence of what was true when written, never instructions. A merged PR is not a deployment; a
 curl is not a phone test; a simulation is not a measurement. Chat history is not a source.
 
-## Starting work
+## Default working mode: lean, one change at a time
 
-Given `Implement AVR-N` (`python tools/avr_context.py AVR-N` gathers the issue, paired
-branches, PRs and the deployed build in one read-only pass):
+The priority is a usable product, not agent activity. See [WORKFLOW v2](docs/WORKFLOW.md).
+One implementing agent is the default. Do not launch an orchestrator, multiple workers,
+separate verifier, or reviewer just because they exist. A second agent is warranted only for
+a truly independent task or a high-risk change. Cap active implementation at one Party/Games
+feature at a time unless the owner explicitly approves parallel work.
 
-1. Read the Linear issue. It is the desired delta: Outcome, Acceptance Criteria, Out of Scope,
-   Repositories, Tests Required, Dependencies, Open Decisions. If Open Decisions holds an
-   unresolved product question, stop and ask; do not guess.
-2. Read the current implementation first: the source and tests the issue touches. Then only the
-   canonical docs and ADRs those files cite. Use [Graphify](docs/GRAPHIFY.md) for navigation
-   when the search is broad; verify everything it returns.
-3. Check what is deployed when behavior on the appliance matters: `/party/api/status` (or SYSTEM
-   when the Pi is unreachable).
-4. Decide whether [Games](https://github.com/rcnechamkin/avrana-party-games) must change
-   ([CROSS-REPO](docs/CROSS-REPO.md)); if so, pair branches with the same `avr-N`.
-5. Name the tests that will prove the change before editing; add or extend them with the code.
-   For a change the owner merges ([REVIEW](REVIEW.md), "Change class"), first post a short plan
-   on the issue (files that change, order of work, risks, proof) and wait for it to be accepted.
-6. Branch from fetched `origin/main` as `type/avr-N-short-description`
-   (`feat|fix|chore|docs|experiment`). Keep unrelated changes out; preserve others' work.
+For a scoped change:
+1. Read the request or AVR issue, the code to be edited, and nearby tests. Read relevant ADRs
+   and contracts only when the change touches them. If an owner decision is missing, ask.
+2. Choose one small, observable outcome and name the relevant tests. For ordinary changes,
+   do not require a Linear plan approval or a separate architecture/documentation sprint.
+3. Implement locally on an isolated branch; test the touched behavior as you go. Run wider
+   suites once when justified by the change, not after every edit.
+4. Only push/open a PR when the change is ready for review. Do not dispatch GitHub workflows,
+   re-run green CI, or push speculative intermediate revisions without explicit authorization.
+5. Hand back the behavior, evidence, risks, and next owner action concisely. Never add
+   follow-up issues or launch more work automatically.
+
+A high-risk change (security, identity, contracts, persistence, install/deploy, platform
+lifecycle, or irreversible operations) requires an explicit scope decision, paired changes
+where applicable, relevant integration testing and independent review before merge.
+UI/content work and isolated bug fixes do not require that ceremony by default.
 
 ## Worktrees and claims
 
-Issue work happens in a dedicated worktree claimed through
-[AI-workflow](https://github.com/rcnechamkin/AI-workflow), checked out beside this repository:
-`python ../AI-workflow/aw.py start AVR-N` checks readiness, finds or creates the worktree from
-`origin/main` and claims it for your session; `claim`, `handoff`, `release` and `status` manage it
-afterwards. Live Linear data comes from your agent's Linear connector, piped to `start` (its README
-shows how). Do not edit or commit in a worktree another session has claimed. Local commit hooks
-check this: today they warn, and they will refuse once enforcement is switched on; the message
-names the owner and the way out. Workflow state is never committed here.
+Use an isolated branch/worktree when changing code. The
+[AI-workflow](https://github.com/rcnechamkin/AI-workflow) CLI is optional coordination
+tooling, not a mandatory project manager for a single agent. If commit hooks installed on
+this machine require a claim for an AVR branch, obtain that claim or ask the owner before
+changing hooks. Never edit another session's claimed worktree. Do not create multiple
+worktrees for one task unless their work is genuinely independent.
 
 ## Safety
 
@@ -101,30 +103,32 @@ deployed; `/party/api/status` and SYSTEM say what runs.
 
 ## Derived context (Graphify)
 
-[Graphify](docs/GRAPHIFY.md) is derived navigation, never a source of truth. Before a broad
-search or an architecture question, run `python tools/graphify_context.py ensure --architecture`
-and a scoped `python tools/graphify_context.py query "question" --architecture`; then read the
-cited source, tests and canonical docs. Its corpus excludes findings, archives and research, so
-it returns current architecture by default. Linear owns live work; a generated Linear snapshot
-older than six hours is stale. Inferred edges are hypotheses. Never edit generated graphs,
-receipts or snapshots. Focused reads, debugging and targeted tests go straight to the source.
+Graphify is optional navigation, not an obligatory startup step and never authority.
+For focused work, read code and tests directly. Use
+[`graphify_context.py`](docs/GRAPHIFY.md) for an actually broad architectural search,
+then verify findings in source. Do not refresh context graphs or Linear snapshots on every
+tool call. Generated content must not be edited by hand.
 
-## Completion
+## Completion and reporting
 
-Done means all of:
+An implementation handoff is not a product release. State:
+- observable change and branch/PR link;
+- relevant tests: passed, failed, or not run (and platform limitations);
+- remaining risk, especially missing Pi/phone evidence;
+- one next action for the owner.
 
-- the requested behavior is implemented and nothing out of scope changed;
-- behavior tests were added or updated, and the relevant local suites pass
-  (`npm run check:repo`, `npm run test:unit`, `npm run test:modules`, `npm run test:offline-browser`;
-  `python tools/contract_check.py --games ...` when the boundary moved). Windows may skip or fail
-  Linux-only tests: say so; Linux CI is authoritative;
-- Linux CI, including `Cross-repo contract`, is expected to pass;
-- cross-repo compatibility is handled (paired PR, or an explicit "Games unaffected because ...");
-- canonical docs and the manifest are updated when behavior or architecture changed;
-- a session that did not write the change has checked it (`.claude/agents/verifier.md`) and
-  reviewed it against [REVIEW](REVIEW.md) (`.claude/agents/reviewer.md`), and the PR says so;
-- the [implementation report](docs/agents/IMPLEMENTATION-REPORT.md) is in the PR and the final
-  message, and the issue is In Review (not Done) while review, CI or phones remain.
+Keep this in one short PR description and an even shorter final handoff; do not
+duplicate full test logs in Linear, PR descriptions and chat. Update the Linear issue
+once at the appropriate transition and current canonical docs only when behavior or
+architecture materially changed. Do not rewrite historical reports or expand the
+backlog without owner approval.
+
+Focused local tests are the iteration default. CI is run once on a reviewable PR;
+additional full browser/systemd/cross-repo proof is required when the changed boundary
+demands it and at release acceptance. A green simulation is not real Wi-Fi or an
+iPhone; mark physical testing pending until the owner confirms it. Never claim skipped
+tests passed. A separate reviewer is mandatory for high-risk changes, optional for
+routine changes. Only the owner merges, deploys, and accepts physical behavior.
 
 ## Cross-repo behavior
 
