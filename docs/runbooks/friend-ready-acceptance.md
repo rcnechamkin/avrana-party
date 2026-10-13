@@ -79,6 +79,8 @@ Each defect becomes its own scoped Linear issue with the evidence; fixing it is 
 
 ## 0. The release pair, and how to verify it
 
+**Note 2026-10-12: these pins are stale.** Party `origin/main` was `04c5844` and Games `origin/main` `2ee23e6` on 2026-10-12, and the Pi runs Party `c59f1c8` / Games `a448972` ([baseline](../findings/2026-10-12-deployed-baseline.md)). Read the deployed and target SHAs from `/party/api/status` and `git ls-remote` at run time, and do not copy any pin below without re-checking its CI. Also stale: "AVR-319 is not merged" (the game origin deployable change is on main as Party #100). See [offline-acceptance](offline-acceptance.md) for the broader tests that reuse this packet's steps.
+
 Pinned for this packet (checked 2026-10-09 local, 2026-10-10 UTC; Party `main` was `defd4a2` and Games `main` was `fb711d9`):
 
 | Repository | SHA (pass the full 40 characters; `ops/deploy.sh` refuses short ones) | Evidence on that SHA |
@@ -465,8 +467,8 @@ sudo tail -n 60 /var/log/avrana/pi-throttle.jsonl
 curl -s https://party.avrana.net/party/api/status | python3 -m json.tool
 ```
 
-The journal is persistent on the Pi with caps ([logs-and-retention](logs-and-retention.md)), so it survives the
-reboots in this session; copy it before any later reboot anyway. BLUFF's `EVENT {...}` lifecycle lines are the join, rejoin and disconnect record
+The journal on the Pi is **volatile** (correction 2026-10-12; [logs-and-retention](logs-and-retention.md)), so the journal does **not** survive the
+reboots in this session: copy the excerpt above before every reboot or power cut. BLUFF's `EVENT {...}` lifecycle lines are the join, rejoin and disconnect record
 (no tokens). **Never** attach or paste: Wi-Fi names or passwords, keys or credentials (`/etc/avrana-party/game-keys`, `LoadCredential`), cookies, tickets, device ids,
 raw nginx access logs (they carry URLs and client addresses), lease files, the TLS or NetworkManager backups, or a raw journal. Read the excerpt first and redact. Keep raw files on the Pi or laptop, outside Git.
 
