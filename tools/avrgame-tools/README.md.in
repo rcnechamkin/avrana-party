@@ -32,7 +32,7 @@ every file with its sha256 and the source commit it came from.
   shipped code parses with the Python 3.10 grammar (checked when the export is built), so 3.10 is the
   floor **by inspection**; 3.10 and 3.11 have **not** been run. Newer than 3.12 is untested.
 - The commands say `python`; on Linux and macOS use `python3`. macOS is expected to work and is untested.
-- Nothing else: no pip, no packages, no network, no Raspberry Pi, no Party running.
+- Nothing else: no pip, no packages, no network, no appliance hardware, no Party running.
 
 ## Unpack and check
 
@@ -51,7 +51,7 @@ PYTHONPATH=/path/to/{{NAME}} python3 -m avrana.avrgame inspect game.avrgame
 # PowerShell:  $env:PYTHONPATH = "C:\path\to\{{NAME}}"; python -m avrana.avrgame inspect game.avrgame
 ```
 
-The tools read `contracts/capabilities.v0.json` (the capability vocabulary) from the `contracts/`
+The tools read `contracts/capabilities.v0.json` (the capability names; see below) from the `contracts/`
 directory beside `avrana/`; keep the two together.
 
 ## Using it with the Games developer kit bundle
@@ -164,6 +164,16 @@ Validation lists **every** problem it finds, one per line on stderr, and exits 1
   is imported). `-c`, a script path and other interpreter options are refused. No argument may be an
   absolute path or contain `..`.
 - **`client.root`** is a relative directory inside the package and must contain `index.html`.
+- **Capability names**: the Game Contract's `requires` and `optional` lists may use only names from the
+  capability vocabulary. The file `contracts/capabilities.v0.json` in this export lists the real names; its
+  labels, summaries and probe kinds are placeholders, because the tools never read them.
+
+### Reading the refusal messages
+
+The messages are the project's own, unchanged, so some say "this appliance" (for example "this appliance
+implements [...], not ..."). In these tools that means **these tools**: the value your package asks for is
+not one that this export of the tools speaks. The usual fix is to build your game for the versions in the
+table below, or, if the game is newer than the tools, to ask whoever gave you this export for a newer one.
 
 ## Permissions
 
@@ -209,16 +219,17 @@ for, not as a promise.
   its own port.
 - **No network at install or play.** The installer reads the `.avrgame` file it is given and fetches
   nothing; your game cannot fetch anything either. Ship everything it needs inside the package.
-- **The package is read-only.** The working directory is the unpacked package, owned by root and not
-  writable by your game. Python bytecode is not written. `/tmp` is private to the running game and is
-  discarded when it stops.
+- **The package is read-only by ownership.** The working directory is the unpacked package: its files are
+  owned by root and your game runs as another user, so it cannot change them. There is no separate
+  filesystem sandbox directive, so your game can still read other files on the machine that anyone may read.
+  Python bytecode is not written. `/tmp` is private to the running game and is discarded when it stops.
 - **No persistent state unless granted.** A directory that survives restarts exists only when the
   appliance owner **granted** `persistent_storage`; without it there is none and no `$STATE_DIRECTORY`.
   Granted storage has no quota. Keep state you cannot lose small and recoverable.
 - **Resource ceilings (provisional, may change).** At present a package's process gets a memory limit of
   {{MEMORY_MAX}}, at most {{TASKS_MAX}} tasks (threads and processes) and {{CPU_QUOTA}} of one CPU; it also
   runs with no extra privileges (an empty capability set). There is no system-call filter and no disk quota
-  yet. These values are conservative guesses, not measured on a real game or on the Pi, and going over them stops **your
+  yet. These values are conservative guesses, not measured on a real game or on real appliance hardware, and going over them stops **your
   process**, not the appliance.
 - **`party_roster` is mandatory in this experimental format.** The Party hands every game the roster of its
   session at launch (each participant's id, display name and role), so the installer refuses a package that
@@ -251,13 +262,16 @@ for, not as a promise.
 
 ## What is in this export
 
-`avrana/avrgame/` (the tools), `avrana/contracts/` (the Game Contract validator and its strict JSON
-reader), `avrana/party/` and `avrana/contracts/party_games.py` (**generated stand-in modules**, each holding
-only a version string; the Party's session protocol, result implementation and its Party-to-Games
-declaration are **not** in this export), `contracts/` (the capability vocabulary the validator reads),
-this README, `NOTICE.md`, `AVRGAME-PACKAGE-FORMAT.md` (a snapshot of the
-format description) and `MANIFEST.json` (every file's sha256 and where it came from, the format the
+`avrana/avrgame/` (the tools) and `avrana/contracts/` (the Game Contract validator and its strict JSON
+reader): the project's own code, **code unchanged**. Comments and docstrings that named internal material
+of the project were removed from these copies, and `MANIFEST.json` flags every file where that happened (the
+build checks that the code is identical once docstrings are stripped). `avrana/party/`,
+`avrana/contracts/party_games.py` and `avrana/__init__.py` are **generated stand-in modules**, each holding
+only a version string or a path; the Party's session protocol, result implementation and its
+Party-to-Games declaration are **not** in this export. `contracts/` holds the capability names the
+validator accepts. Also in this export: this README, `NOTICE.md`, `AVRGAME-PACKAGE-FORMAT.md` (a snapshot of
+the format description) and `MANIFEST.json` (every file's sha256 and where it came from, the format the
 tools speak and the source commit, marked `source_dirty` when the tree had uncommitted changes).
 
 Read `NOTICE.md` before passing this on: the terms under which these files may be redistributed are an
-open owner decision.
+open owner decision, and it lists what the export reveals about the platform.

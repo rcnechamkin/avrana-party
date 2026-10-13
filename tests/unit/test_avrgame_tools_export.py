@@ -5,29 +5,35 @@
 The export is a zip of the validator and packer with exactly the files they need, so an outside
 developer can validate and pack a game without a checkout. These tests pin what is in it (an explicit
 allowlist), that it builds the same bytes anywhere, that its tool behaves exactly like this repository's
-(packed bytes and refusals), and that nothing platform-, key- or install-related leaks into it. They run
-the exported tool in a subprocess with a clean path, so an in-repo change that makes the packer import
-something new fails here (and in the build itself) until the export is deliberately extended.
+(packed bytes, refusals, extract), that the copied code is the repository's code (only comments and
+docstrings that name internal material are removed, proven by comparing syntax trees), and that nothing
+platform-, key- or install-related leaks into it (a content gate with an explicit allow-list). They run the
+exported tool in a subprocess with a clean path, so an in-repo change that makes the packer import something new
+fails here (and in the build itself) until the export is deliberately extended.
 """
 import ast
 import hashlib
 import importlib.util
 import io
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from avrana import REPO_ROOT, CONTRACTS_DIR
 from avrana import avrgame
+from avrana.contracts import vocabulary
 from avrana.party import protocol, result
 
-from test_avrgame_package import BASE_FILES, good_manifest, make_zip, mjson
+from test_avrgame_package import BASE_FILES, good_manifest, make_zip, mjson, patch_central
 
 spec = importlib.util.spec_from_file_location('build_avrgame_tools', REPO_ROOT / 'tools/build_avrgame_tools.py')
 tools = importlib.util.module_from_spec(spec)
@@ -65,6 +71,8 @@ for argv in json.loads(sys.argv[1]):
 print(json.dumps({"codes": codes, "modules": sorted(n for n in sys.modules if n == "avrana" or n.startswith("avrana."))}))
 '''
 
+clean_env = tools.clean_env          # PYTHONPATH and friends removed; optionally set to one directory
+
 
 def lf(path):
     return path.read_bytes().replace(b'\r\n', b'\n')
@@ -75,19 +83,18 @@ def read_zip(data_or_path):
         return {i.filename: z.read(i) for i in z.infolist()}, z.infolist()
 
 
-def copy_inputs(dest, crlf=False):
-    """The repository files the export is made from, copied into `dest` (optionally with CRLF line endings)."""
+def copy_inputs(dest, eol=b'\n'):
+    """The repository files the export is made from, copied into `dest` (optionally with other line endings)."""
     for rel in tools.input_paths():
-        data = (REPO_ROOT / rel).read_bytes().replace(b'\r\n', b'\n')
-        if crlf:
-            data = data.replace(b'\n', b'\r\n')
+        data = (REPO_ROOT / rel).read_bytes().replace(b'\r\n', b'\n').replace(b'\n', eol)
         target = Path(dest) / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     return Path(dest)
 
 
-clean_env = tools.clean_env          # PYTHONPATH and friends removed; optionally set to one directory
+def strip_docs(source):
+    return ast.dump(tools.strip_docstrings(ast.parse(source)))
 
 
 class Built(unittest.TestCase):
@@ -104,13 +111,14 @@ class Built(unittest.TestCase):
             f'{hashlib.sha256(cls.data).hexdigest()}  {tools.ZIP_NAME}\n'.encode('ascii'))
         cls.root = tools.unpack(cls.zip_path, cls.tmp / 'unpacked')
         cls.files, cls.infos = read_zip(cls.data)
+        cls.plain = {n[len(TOP) + 1:]: d for n, d in cls.files.items()}
 
     @classmethod
     def tearDownClass(cls):
         cls._tmp.cleanup()
 
     def names(self):
-        return {n[len(TOP) + 1:] for n in self.files}
+        return set(self.plain)
 
     def run_exported(self, args, cwd=None, env=None):
         return subprocess.run([sys.executable, '-m', 'avrana.avrgame', *map(str, args)], cwd=str(cwd or self.root),
@@ -119,6 +127,12 @@ class Built(unittest.TestCase):
     def run_in_repo(self, args, cwd):
         return subprocess.run([sys.executable, '-m', 'avrana.avrgame', *map(str, args)], cwd=str(cwd),
                               env=clean_env(REPO_ROOT), capture_output=True, text=True, timeout=180)
+
+    def fixture(self, dest):
+        common = tools.constants((self.root / 'avrana/avrgame/common.py').read_text(encoding='utf-8'))
+        requires = {k: v[0] for k, v in avrgame.supported_requires().items()}
+        return tools.fixture_game(Path(dest) / 'game', {'format': common['FORMAT'], 'recipe': common['RECIPE_FORMAT'],
+                                                         'requires': requires})
 
 
 class ContentsTests(Built):
@@ -144,7 +158,7 @@ class ContentsTests(Built):
             for banned in ('ops/', 'installed', 'appliance', 'sessions', 'service', 'core', 'nginx', 'deploy', 'tests/',
                            '.pem', '.key', '.env', 'id_rsa', 'catalog', 'web/', 'providers', 'identity'):
                 self.assertNotIn(banned, name, name)
-        for name, data in self.files.items():
+        for name, data in self.plain.items():
             text = data.decode('utf-8')
             self.assertNotIn('PRIVATE KEY', text, name)
             self.assertNotRegex(text, r'(?m)^\s*(import|from)\s+(hmac|secrets)\b', name)
@@ -152,7 +166,7 @@ class ContentsTests(Built):
     def test_the_protocol_and_result_implementations_are_not_shipped_only_one_constant_each(self):
         for rel, constant, real in (('avrana/party/protocol.py', 'VERSION', protocol.VERSION),
                                     ('avrana/party/result.py', 'SCHEMA', result.SCHEMA)):
-            text = self.files[f'{TOP}/{rel}'].decode('utf-8')
+            text = self.plain[rel].decode('utf-8')
             body = [n for n in ast.parse(text).body if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))]
             self.assertEqual(len(body), 1, rel)
             self.assertEqual(ast.literal_eval(body[0].value), real)
@@ -160,76 +174,200 @@ class ContentsTests(Built):
             self.assertNotIn('hmac', text)
 
     def test_the_party_games_declaration_is_not_shipped_only_the_one_value_the_packer_reads(self):
-        for name, data in self.files.items():
+        for name, data in self.plain.items():
             for leaked in ('reference_sha256', 'party_ended', '/internal/', 'keys_dir', 'AVRANA_PARTY_KEYS', 'vectors_sha256'):
                 self.assertNotIn(leaked, data.decode('utf-8'), name)
-        shim = self.files[f'{TOP}/avrana/contracts/party_games.py'].decode('utf-8')
         namespace = {}
-        exec(compile(shim, 'party_games_shim', 'exec'), namespace)
+        exec(compile(self.plain['avrana/contracts/party_games.py'].decode('utf-8'), 'party_games_shim', 'exec'), namespace)
         declared = json.loads((CONTRACTS_DIR / 'party-games.v0.json').read_text())
         self.assertEqual(namespace['load'](), {'bridge': {'protocol': declared['bridge']['protocol']}})
         self.assertEqual(sorted(n for n in namespace if not n.startswith('__')), ['_DECLARATION', 'load'])
 
-    def test_the_capability_vocabulary_is_shipped_whole_and_holds_only_names_and_words(self):
-        data = json.loads(self.files[f'{TOP}/contracts/capabilities.v0.json'])
-        self.assertEqual(set(data), {'schema', 'note', 'device', 'runtime'})
+    def test_the_capability_vocabulary_has_the_real_names_and_only_placeholders_for_the_rest(self):
+        shipped = json.loads(self.plain['contracts/capabilities.v0.json'])
+        real = json.loads((CONTRACTS_DIR / 'capabilities.v0.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(shipped), {'schema', 'note', 'device', 'runtime'})
         for scope in ('device', 'runtime'):
-            for entry in data[scope].values():
-                self.assertLessEqual(set(entry), {'probe', 'summary', 'label', 'missing'})
+            self.assertEqual(list(shipped[scope]), list(real[scope]), scope)         # the names, in order
+            for name, entry in shipped[scope].items():
+                self.assertEqual(entry['label'], 'Placeholder label.')
+                self.assertEqual(entry['summary'], 'Placeholder summary.')
+                self.assertNotIn(real[scope][name]['summary'], json.dumps(shipped))
+        loaded = vocabulary.load(self.root / 'contracts/capabilities.v0.json')        # the unchanged validator accepts it
+        self.assertEqual(set(loaded.device), set(real['device']))
+        self.assertEqual(set(loaded.runtime), set(real['runtime']))
 
-    def test_the_package_root_is_a_stand_in_that_only_names_the_contracts_directory(self):
-        text = self.files[f'{TOP}/avrana/__init__.py'].decode('utf-8')
-        self.assertIn("CONTRACTS_DIR = TOOLS_ROOT / 'contracts'", text)
-        self.assertNotIn('WEB_DIR', text)
-
-    def test_copied_files_are_the_repositorys_own_bytes_with_lf_line_endings(self):
+    def test_copied_code_is_the_repositorys_code_and_only_internal_comments_and_docstrings_are_gone(self):
+        manifest = json.loads(self.plain['MANIFEST.json'])
+        scrubbed = []
         for rel in tools.COPIED:
-            self.assertEqual(self.files[f'{TOP}/{rel}'], lf(REPO_ROOT / rel), rel)
+            original = lf(REPO_ROOT / rel).decode('utf-8')
+            shipped = self.plain[rel].decode('utf-8')
+            self.assertEqual(strip_docs(original), strip_docs(shipped), rel)             # identical code
+            flags = manifest['files'][rel]
+            self.assertEqual(flags['origin'], 'copied; code unchanged')
+            self.assertEqual(flags['scrubbed'], shipped != original, rel)
+            if shipped != original:
+                scrubbed.append(rel)
+            # no comment or docstring that survives is one the scrub should have removed
+            for _, expr in tools._docstring_nodes(ast.parse(shipped)):
+                self.assertFalse(tools.flagged(expr.value.value), rel)
+        self.assertTrue(scrubbed)                                                         # something was scrubbed
+        self.assertEqual(self.plain['avrana/avrgame/__main__.py'], lf(REPO_ROOT / 'avrana/avrgame/__main__.py'))
+        self.assertEqual(self.plain['avrana/contracts/strictjson.py'], lf(REPO_ROOT / 'avrana/contracts/strictjson.py'))
+        # the CLI help text comes from the module docstring of __main__, which is untouched
+        self.assertIn('__doc__', self.plain['avrana/avrgame/__main__.py'].decode('utf-8'))
 
     def test_every_file_has_its_hash_in_the_manifest_and_the_manifest_says_what_it_speaks(self):
-        manifest = json.loads(self.files[f'{TOP}/MANIFEST.json'])
+        manifest = json.loads(self.plain['MANIFEST.json'])
         self.assertEqual(set(manifest['files']), ALLOWED - {'MANIFEST.json'})
         for name, info in manifest['files'].items():
-            data = self.files[f'{TOP}/{name}']
+            data = self.plain[name]
             self.assertEqual((info['sha256'], info['bytes']), (hashlib.sha256(data).hexdigest(), len(data)), name)
+            self.assertIn('origin', info)
         self.assertEqual(manifest['package_format'], avrgame.FORMAT)
         self.assertEqual(manifest['recipe_format'], avrgame.RECIPE_FORMAT)
-        self.assertEqual({k: manifest['requires_spoken'][k] for k in ('session', 'bridge', 'result')},
-                         {k: v[0] for k, v in avrgame.supported_requires().items()})
-        self.assertEqual((manifest['source_commit'], manifest['source_dirty'], manifest['experimental']),
-                         (COMMIT, False, True))
+        self.assertEqual(manifest['requires_spoken'], {k: v[0] for k, v in avrgame.supported_requires().items()})
+        self.assertEqual(tools.SPEAKS, {'package_format': avrgame.FORMAT, 'recipe_format': avrgame.RECIPE_FORMAT,
+                                        **manifest['requires_spoken']})
+        self.assertEqual((manifest['source_commit'], manifest['source_dirty'], manifest['experimental']), (COMMIT, False, True))
         self.assertEqual(manifest['tools_version'], 'experimental.1')
+        self.assertRegex(manifest['speaks_digest'], r'^[0-9a-f]{12}$')
 
     def test_the_documents_are_complete_experimental_and_say_what_is_open(self):
-        readme = self.files[f'{TOP}/README.md'].decode('utf-8')
-        notice = self.files[f'{TOP}/NOTICE.md'].decode('utf-8')
-        snapshot = self.files[f'{TOP}/AVRGAME-PACKAGE-FORMAT.md'].decode('utf-8')
+        readme = self.plain['README.md'].decode('utf-8')
+        notice = self.plain['NOTICE.md'].decode('utf-8')
+        snapshot = self.plain['AVRGAME-PACKAGE-FORMAT.md'].decode('utf-8')
         for name, text in (('README', readme), ('NOTICE', notice), ('snapshot', snapshot)):
             self.assertNotIn('{{', text, name)
             self.assertIn('EXPERIMENTAL', text.upper(), name)
-        plain = re.sub(r'[\s*]+', ' ', readme)
         self.assertIn('What your game will run under on an appliance', readme)
         self.assertNotIn('<!--', readme)
         self.assertNotIn('provision_game', readme)
+        plain = re.sub(r'[\s*]+', ' ', readme)
         for phrase in ('experimental and not deployed', 'provisional, may change', 'party_roster', 'No IP networking',
-                       'socket-activated', 'read-only', 'no compatibility promise', 'no signing', 'not trusted', 'does not install', 'python3'):
+                       'socket-activated', 'read-only by ownership', 'filesystem sandbox directive',
+                       'no compatibility promise', 'no signing', 'not trusted', 'does not install', 'python3',
+                       'Reading the refusal messages', 'this appliance', 'these tools', 'code unchanged'):
             self.assertIn(phrase, plain)
         self.assertIn('open owner decision', notice)
+        self.assertIn('Things this export reveals about the platform', notice)
+        self.assertIn('`extract`', notice)
         for word in ('python3', 'persistent_storage', str(avrgame.MAX_FILES), avrgame.FORMAT):
             self.assertIn(word, readme)
         for interpreter in avrgame.INTERPRETERS:
             self.assertIn(f'`{interpreter}`', readme)
         self.assertIn('Snapshot', snapshot)
         self.assertIn(COMMIT, snapshot)
-        # no markdown link into the repository: only http(s) links, if any
+        self.assertNotIn('Freeze gates', snapshot)
+        self.assertIn('not frozen; may change without notice', snapshot)
         for target in re.findall(r'\]\(([^)\s]*)\)', readme + snapshot + notice):
             self.assertRegex(target, r'^https?://')
 
-    def fixture(self, dest):
-        common = tools.constants((self.root / 'avrana/avrgame/common.py').read_text(encoding='utf-8'))
-        requires = {k: v[0] for k, v in avrgame.supported_requires().items()}
-        return tools.fixture_game(Path(dest) / 'game', {'format': common['FORMAT'], 'recipe': common['RECIPE_FORMAT'],
-                                                         'requires': requires})
+
+class ContentGateTests(Built):
+    def test_the_shipped_text_matches_no_deny_pattern_except_the_listed_exceptions(self):
+        problems, used = tools.content_gate(self.plain)
+        self.assertEqual(problems, [])
+        self.assertEqual(used, set(range(len(tools.ALLOW))))         # no stale exception
+
+    def test_every_exception_has_a_reason_and_a_description_that_passes_the_gate(self):
+        for entry in tools.ALLOW:
+            self.assertGreater(len(entry['reason']), 20)
+            self.assertEqual(tools.content_gate({'x': entry['describe'].encode()})[0], [], entry['describe'])
+            self.assertIn(entry['file'], ALLOWED)
+        notice = self.plain['NOTICE.md'].decode('utf-8')
+        for entry in tools.ALLOW:
+            self.assertIn(entry['describe'], notice)
+
+    def test_each_denied_kind_of_text_is_caught(self):
+        samples = ['AVR-123', 'ADR 0016', 'the BLUFF game', 'Spades', 'Gauntlet', 'Checkers', 'EXPO', 'RetroArch', 'libretro',
+                   'LAN Games', 'Raspberry Pi', 'on the Pi now', 'H.264', '/etc/passwd', '/opt/games', '/var/lib', '/run/x.sock',
+                   '10.0.0.142', '192.168.1.1', 'party.local', 'party.avrana.net', 'docs/design/X.md', 'docs/research/Y.md',
+                   'docs/findings/Z.md', 'docs/runbooks/a.md', 'docs/adr/0001.md', 'avrana/ops/x.py', 'deploy/games',
+                   '-----BEGIN PRIVATE KEY-----', 'rcnechamkin', 'cnechamkin', 'BEACNpool', 'appliance.py', 'tests/unit',
+                   'tools/x.py', 'web/party/x', 'experiments/native-game']
+        for text in samples:
+            problems, _ = tools.content_gate({'doc.md': f'a line {text} here\n'.encode()})
+            self.assertTrue(problems, text)
+        for clean in ('The appliance runs your game.', 'pipe', 'a separate pi', 'operations and options', 'the Party'):
+            self.assertEqual(tools.content_gate({'doc.md': clean.encode()})[0], [], clean)
+
+    def test_a_new_leak_in_a_shipped_file_or_the_manifest_fails_the_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = copy_inputs(tmp)
+            path = tree / 'tools/avrgame-tools/README.md.in'
+            path.write_bytes(path.read_bytes() + b'\nSee AVR-999 and the Pi.\n')
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build_bytes(tree, commit=COMMIT, dirty=False)
+            self.assertIn('AVR-999', str(ctx.exception))
+            tree = copy_inputs(Path(tmp) / 'two')
+            path = tree / 'avrana/avrgame/archive.py'
+            path.write_bytes(path.read_bytes() + b"\nNOTE = 'ask rcnechamkin'\n")
+            with self.assertRaises(tools.ExportError):
+                tools.build_bytes(tree, commit=COMMIT, dirty=False)
+
+
+class ScrubTests(unittest.TestCase):
+    SOURCE = '''"""Does the thing.
+
+Sentence one stays (see docs/design/X.md). Sentence two names AVR-12 and goes.
+"""
+import os
+
+# A harmless comment.
+# Limits for a Pi: generous.
+# (this block goes whole)
+VALUE = 3  # on the Pi
+
+
+def f(x):
+    """Return x (AVR-9)."""
+    return x  # fine
+
+
+def g():
+    """A clean docstring.
+
+        With    spacing kept."""
+    return os
+'''
+
+    def test_flagged_comments_and_docstring_parts_are_removed_and_the_code_is_untouched(self):
+        scrubbed, stats = tools.scrub_python(self.SOURCE)
+        tools.prove_same_code(self.SOURCE, scrubbed, 'x.py')
+        self.assertNotRegex(scrubbed, r'AVR-|\bPi\b|docs/design')
+        self.assertIn('Sentence one stays.', scrubbed)
+        self.assertIn('VALUE = 3\n', scrubbed)
+        self.assertIn('return x  # fine', scrubbed)                      # unflagged comments stay
+        self.assertIn('A clean docstring.\n\n        With    spacing kept.', scrubbed)      # unflagged docstrings byte for byte
+        self.assertNotIn('A harmless comment', scrubbed)                  # the whole block around a flagged line goes
+        self.assertGreaterEqual(stats['docstrings'], 2)
+        self.assertEqual(ast.parse(scrubbed).body[0].value.value.split('\n')[0], 'Does the thing.')
+
+    def test_a_docstring_whose_first_paragraph_vanishes_gets_the_neutral_sentence(self):
+        scrubbed, _ = tools.scrub_python('"""See AVR-1.\n\nSecond paragraph stays."""\nX = 1\n')
+        doc = ast.get_docstring(ast.parse(scrubbed))
+        self.assertTrue(doc.startswith(tools.NEUTRAL_DOCSTRING))
+        self.assertIn('Second paragraph stays.', doc)
+
+    def test_the_proof_fails_when_code_changes_or_a_help_text_docstring_would_change(self):
+        scrubbed, _ = tools.scrub_python(self.SOURCE)
+        with self.assertRaises(tools.ExportError):
+            tools.prove_same_code(self.SOURCE, scrubbed.replace('VALUE = 3', 'VALUE = 4'), 'x.py')
+        with self.assertRaises(tools.ExportError):
+            tools.prove_same_code(self.SOURCE, scrubbed.replace('return x ', 'return x + 1 '), 'x.py')
+        with self.assertRaises(tools.ExportError):
+            tools.prove_same_code(self.SOURCE, scrubbed.replace('A clean docstring.', 'Changed.'), 'x.py')
+        helped = '"""Help text for AVR-3."""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n'
+        scrubbed, _ = tools.scrub_python(helped)
+        with self.assertRaises(tools.ExportError) as ctx:
+            tools.prove_same_code(helped, scrubbed, 'cli.py')
+        self.assertIn('__doc__', str(ctx.exception))
+
+    def test_a_clean_file_is_returned_byte_for_byte(self):
+        clean = '"""Clean."""\n# fine\nX = 1  # also fine\n'
+        self.assertEqual(tools.scrub_python(clean)[0], clean)
 
 
 class ReproducibilityTests(unittest.TestCase):
@@ -237,7 +375,7 @@ class ReproducibilityTests(unittest.TestCase):
         a = tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False)
         b = tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False)
         self.assertEqual(a, b)
-        _, infos = read_zip(a)
+        files, infos = read_zip(a)
         names = [i.filename for i in infos]
         self.assertEqual(names, sorted(names))
         for i in infos:
@@ -246,17 +384,15 @@ class ReproducibilityTests(unittest.TestCase):
             self.assertEqual(i.create_system, 3)
             self.assertEqual(i.external_attr >> 16, 0o100644)
             self.assertFalse(i.filename.endswith('/'))
-            self.assertNotIn(b'\r', read_zip(a)[0][i.filename], i.filename)
+            self.assertNotIn(b'\r', files[i.filename], i.filename)
 
-    def test_a_crlf_checkout_gives_the_same_bytes_as_an_lf_checkout(self):
+    def test_crlf_and_lone_cr_checkouts_give_the_same_bytes_as_an_lf_checkout(self):
+        reference = tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False)
         with tempfile.TemporaryDirectory() as tmp:
-            lf_tree = copy_inputs(Path(tmp) / 'lf')
-            crlf_tree = copy_inputs(Path(tmp) / 'crlf', crlf=True)
-            self.assertIn(b'\r\n', (crlf_tree / 'avrana/avrgame/common.py').read_bytes())
-            a = tools.build_bytes(lf_tree, commit=COMMIT, dirty=False)
-            b = tools.build_bytes(crlf_tree, commit=COMMIT, dirty=False)
-            self.assertEqual(a, b)
-            self.assertEqual(a, tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False))
+            for label, eol in (('lf', b'\n'), ('crlf', b'\r\n'), ('cr', b'\r')):
+                tree = copy_inputs(Path(tmp) / label, eol)
+                self.assertIn(eol, (tree / 'avrana/avrgame/common.py').read_bytes())
+                self.assertEqual(tools.build_bytes(tree, commit=COMMIT, dirty=False), reference, label)
 
     def test_a_changed_source_changes_the_bytes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -293,6 +429,54 @@ class ReproducibilityTests(unittest.TestCase):
             self.assertEqual(tools.source_commit(own), (head, False))
 
 
+class BuildHygieneTests(unittest.TestCase):
+    def test_an_output_directory_inside_the_repository_is_refused(self):
+        out = REPO_ROOT / 'build-export-test-should-not-exist'
+        with self.assertRaises(tools.ExportError) as ctx:
+            tools.build(out, REPO_ROOT, commit=COMMIT, dirty=False)
+        self.assertIn('inside the repository', str(ctx.exception))
+        self.assertFalse(out.exists())
+        with self.assertRaises(tools.ExportError):
+            tools.build(REPO_ROOT, REPO_ROOT, commit=COMMIT, dirty=False)
+
+    def test_a_dirty_or_unverifiable_tree_is_refused_unless_allowed_and_then_the_name_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for dirty, suffix in ((True, '-dirty'), (None, '-unverified')):
+                with self.assertRaises(tools.ExportError):
+                    tools.build(Path(tmp) / 'a', REPO_ROOT, commit=COMMIT, dirty=dirty)
+                path, checksum, digest = tools.build(Path(tmp) / 'a', REPO_ROOT, commit=COMMIT, dirty=dirty, allow_dirty=True)
+                self.assertEqual(path.name, f'{tools.NAME}{suffix}.zip')
+                self.assertTrue(checksum.name.startswith(path.name))
+            path, _, _ = tools.build(Path(tmp) / 'a', REPO_ROOT, commit=COMMIT, dirty=False)
+            self.assertEqual(path.name, tools.ZIP_NAME)
+
+    def test_an_existing_file_is_replaced_only_when_identical_or_forced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path, checksum, digest = tools.build(tmp, REPO_ROOT, commit=COMMIT, dirty=False)
+            again = tools.build(tmp, REPO_ROOT, commit=COMMIT, dirty=False)           # identical: fine
+            self.assertEqual(again[2], digest)
+            path.write_bytes(b'something else')
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build(tmp, REPO_ROOT, commit=COMMIT, dirty=False)
+            self.assertIn('--force', str(ctx.exception))
+            self.assertEqual(path.read_bytes(), b'something else')
+            tools.build(tmp, REPO_ROOT, commit=COMMIT, dirty=False, force=True)
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
+
+    def test_the_build_fails_when_what_the_tools_speak_moves_without_a_revision_bump(self):
+        moved = dict(tools.SPEAKS, session='avrana.party-session/v1')
+        with mock.patch.object(tools, 'SPEAKS', moved):
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build_bytes(REPO_ROOT, commit=COMMIT, dirty=False)
+        self.assertIn('TOOLS_REVISION', str(ctx.exception))
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = copy_inputs(tmp)
+            path = tree / 'avrana/party/protocol.py'
+            path.write_bytes(path.read_bytes().replace(b"VERSION = 'avrana.party-session/v0'", b"VERSION = 'avrana.party-session/v1'"))
+            with self.assertRaises(tools.ExportError):
+                tools.build_bytes(tree, commit=COMMIT, dirty=False)
+
+
 class SameBehaviourTests(Built):
     """The exported tool and this repository's tool give the same answers for the same input."""
 
@@ -314,6 +498,11 @@ class SameBehaviourTests(Built):
     def exported(self, args, cwd=None):
         return self.run_exported(args, cwd or self.work, clean_env(self.root))
 
+    def same(self, args, label=''):
+        """Run `args` through both tools; paths under the work directory are made comparable."""
+        a, b = self.exported(args), self.run_in_repo(args, self.work)
+        return a, b
+
     def test_packed_bytes_are_identical_stored_and_deflated(self):
         root = self.make_tree()
         recipe = root / 'avrgame.build.json'
@@ -325,6 +514,39 @@ class SameBehaviourTests(Built):
             self.assertEqual(mine.read_bytes(), theirs.read_bytes(), extra)
             self.assertEqual(a.stdout.replace(str(mine), '-'), b.stdout.replace(str(theirs), '-'))
         self.assertEqual(avrgame.read(mine).sha256, hashlib.sha256(mine.read_bytes()).hexdigest())
+
+    def test_pack_is_identical_on_a_second_fixture_with_several_include_roots_and_unusual_names(self):
+        root = self.work / 'second'
+        files = {
+            'alpha/__init__.py': b'', 'alpha/__main__.py': b'print("a")\r\nprint("b")\n',
+            'alpha/web/index.html': b'<!doctype html>\n', 'alpha/web/a+b@c=d~e.txt': b'plus at equals tilde\n',
+            'alpha/web/UPPER.TXT': b'upper\n', 'alpha/web/empty.dat': b'', 'alpha/web/bin.dat': bytes(range(256)),
+            'beta/Mixed-Case_1/x.y.z': b'dots\n', 'beta/' + '/'.join(['d'] * 12) + '/deep.txt': b'deep\n',
+            'gamma/only.txt': b'only\n', 'top.txt': b'a single file include\n', 'z_last.txt': b'last\n',
+            'alpha/.hidden': b'skipped\n', 'alpha/__pycache__/m.cpython-312.pyc': b'\0skipped',
+            'beta/skipme.pyc': b'\0skipped',
+        }
+        for rel, data in files.items():
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+        manifest = good_manifest(server={'interpreter': 'python3', 'args': ['-m', 'alpha']}, client={'root': 'alpha/web'})
+        (root / 'avrgame.json').write_bytes(mjson(manifest))
+        (root / 'avrgame.build.json').write_text(json.dumps({
+            'recipe': avrgame.RECIPE_FORMAT, 'manifest': 'avrgame.json', 'root': '.',
+            'include': ['z_last.txt', 'gamma', 'beta', 'alpha', 'top.txt']}))
+        recipe = root / 'avrgame.build.json'
+        for extra in ((), ('--deflate',)):
+            mine, theirs = self.work / 'mine2.avrgame', self.work / 'theirs2.avrgame'
+            a = self.exported(['pack', recipe, '--out', mine, *extra])
+            b = self.run_in_repo(['pack', recipe, '--out', theirs, *extra], self.work)
+            self.assertEqual((a.returncode, b.returncode), (0, 0), a.stderr + b.stderr)
+            self.assertEqual(mine.read_bytes(), theirs.read_bytes(), extra)
+        listed = avrgame.read(self.work / 'mine2.avrgame')
+        names = [f.path for f in listed.files]
+        self.assertNotIn('alpha/.hidden', names)
+        self.assertFalse([n for n in names if n.endswith('.pyc')])
+        self.assertIn('alpha/web/a+b@c=d~e.txt', names)
 
     def test_validate_inspect_and_extract_agree(self):
         recipe = self.make_tree() / 'avrgame.build.json'
@@ -341,33 +563,106 @@ class SameBehaviourTests(Built):
         self.assertEqual(sorted(p.relative_to(self.work / 'e1').as_posix() for p in (self.work / 'e1').rglob('*')),
                          sorted(p.relative_to(self.work / 'e2').as_posix() for p in (self.work / 'e2').rglob('*')))
 
-    def test_refusals_are_the_same_text_and_status(self):
-        bad_manifest = good_manifest(format='avrana.avrgame/v9')
-        reserved = good_manifest(signature='x')
-        dup_keys = b'{"format": "a", "format": "b"}'
+    def hostile_archives(self):
+        attr = lambda kind, perm=0o644: (kind | perm) << 16
         cases = {
-            'dotdot': make_zip(extra=[('../evil.py', b'x')]),
-            'absolute': make_zip(extra=[('/abs', b'x')]),
-            'backslash': make_zip(extra=[('a\\b.py', b'x')]),
-            'bytecode': make_zip(extra=[('game_pkg/m.pyc', b'x')]),
+            'dotdot': make_zip(extra=[('../evil.py', b'x')]), 'absolute': make_zip(extra=[('/abs', b'x')]),
+            'drive letter': make_zip(extra=[('C:/evil.txt', b'x')]), 'backslash': make_zip(extra=[('a\\b.py', b'x')]),
+            'nul': make_zip(extra=[('game_pkg/evil\x00.py', b'x')]), 'unicode': make_zip(extra=[('game_pkg/caf\u00e9.py', b'x')]),
+            'dotfile': make_zip(extra=[('game_pkg/.hidden', b'x')]), 'device CON': make_zip(extra=[('game_pkg/CON', b'x')]),
+            'device nul.txt': make_zip(extra=[('game_pkg/nul.txt', b'x')]), 'device COM1': make_zip(extra=[('game_pkg/Com1.txt', b'x')]),
+            'too deep': make_zip(extra=[('d/' * 16 + 'f.txt', b'x')]),
+            'duplicate name': make_zip(extra=[('game_pkg/web/app.js', b'evil')]),
+            'case collision': make_zip(extra=[('game_pkg/web/APP.js', b'evil')]),
+            'case collision dir': make_zip(extra=[('Game_Pkg/x.py', b'evil')]),
+            'file and directory': make_zip(extra=[('game_pkg/web/app.js/x', b'evil')]),
+            'symlink': make_zip(extra=[('game_pkg/x', b'target', attr(stat.S_IFLNK, 0o777))]),
+            'fifo': make_zip(extra=[('game_pkg/x', b'', attr(stat.S_IFIFO))]),
+            'setuid': make_zip(extra=[('game_pkg/x', b'x', attr(stat.S_IFREG, 0o4755))]),
+            'reparse point': make_zip(extra=[('game_pkg/x', b'x', 0x400)]),
+            'encrypted': patch_central(make_zip(), 'game_pkg/__main__.py', 8, '<H', 1),
+            'strong encryption': patch_central(make_zip(), 'game_pkg/__main__.py', 8, '<H', 0x40),
+            'bzip2': make_zip(method=zipfile.ZIP_BZIP2), 'lzma': make_zip(method=zipfile.ZIP_LZMA),
+            'bytecode': make_zip(extra=[('game_pkg/mod.pyc', b'\0')]),
             'key material': make_zip(extra=[('game_pkg/server.key', b'x')]),
-            'symlink': make_zip(extra=[('game_pkg/link', b'x', 0o120777 << 16)]),
-            'setuid': make_zip(extra=[('game_pkg/su', b'x', 0o104755 << 16)]),
-            'no manifest': make_zip(with_manifest=False),
-            'wrong format': make_zip(manifest=mjson(bad_manifest)),
-            'reserved key': make_zip(manifest=mjson(reserved)),
-            'duplicate json keys': make_zip(manifest=dup_keys),
+            'bomb': make_zip(extra=[(f'bomb{i}.bin', bytes(15 * 1024 * 1024)) for i in range(5)]),
+            'one file too big': make_zip(extra=[('one.bin', bytes(avrgame.MAX_FILE_BYTES + 1))]),
+            'size header lies': patch_central(make_zip(extra=[('z.bin', bytes(1024 * 1024))]), 'z.bin', 24, '<I', 10),
+            'size header huge': patch_central(make_zip(extra=[('z.bin', bytes(1024 * 1024))]), 'z.bin', 24, '<I', 200 * 1024 * 1024),
+            'no manifest': make_zip(with_manifest=False), 'duplicate manifest': make_zip(extra=[('avrgame.json', mjson())]),
+            'bad json': make_zip(manifest=b'{"format": "a", "format": "b"}'),
+            'wrong format': make_zip(manifest=mjson(good_manifest(format='avrana.avrgame/v9'))),
+            'reserved key': make_zip(manifest=mjson(good_manifest(signature='x'))),
             'missing module': make_zip(files={'game_pkg/web/index.html': b'x'}),
-            'not a zip': b'this is not a zip file',
+            'directory with content': make_zip(extra=[('weird/', b'content', (stat.S_IFDIR | 0o755) << 16)]),
+            'not a zip': b'this is not a zip file', 'empty file': b'',
+            'truncated': make_zip()[:-30],
         }
-        for label, data in cases.items():
+        return cases
+
+    def test_extract_refuses_the_whole_hostile_set_like_the_repository_tool_and_creates_nothing(self):
+        for label, data in self.hostile_archives().items():
             path = self.work / 'case.avrgame'
             path.write_bytes(data)
-            for command in ('validate', 'inspect'):
-                a, b = self.exported([command, path]), self.run_in_repo([command, path], self.work)
-                self.assertEqual(b.returncode, 1, (label, b.stderr))
-                self.assertNotEqual(b.stderr.strip(), '', label)
-                self.assertEqual((a.returncode, a.stdout, a.stderr), (b.returncode, b.stdout, b.stderr), (label, command))
+            dest_a, dest_b = self.work / 'out-a', self.work / 'out-b'
+            a = self.exported(['extract', path, dest_a])
+            b = self.run_in_repo(['extract', path, dest_b], self.work)
+            norm = lambda text, dest: text.replace(str(dest), '<dest>')
+            self.assertEqual(b.returncode, 1, (label, b.stderr))
+            self.assertNotEqual(b.stderr.strip(), '', label)
+            self.assertEqual((a.returncode, norm(a.stdout, dest_a), norm(a.stderr, dest_a)),
+                             (b.returncode, norm(b.stdout, dest_b), norm(b.stderr, dest_b)), label)
+            self.assertFalse(dest_a.exists(), label)
+            self.assertFalse(dest_b.exists(), label)
+            for command in ('validate',):
+                x, y = self.exported([command, path]), self.run_in_repo([command, path], self.work)
+                self.assertEqual((x.returncode, x.stdout, x.stderr), (y.returncode, y.stdout, y.stderr), (label, command))
+
+    def test_extract_destination_rules_match(self):
+        good = self.work / 'good.avrgame'
+        good.write_bytes(make_zip())
+
+        def setup(label, base):
+            """A fresh destination of the given kind under `base`; returns (dest, the directory a link points to)."""
+            base.mkdir()
+            dest, target = base / 'dest', base / 'link-target'
+            target.mkdir()
+            if label == 'not empty':
+                dest.mkdir()
+                (dest / 'keep.txt').write_text('mine')
+            elif label == 'a file':
+                dest.write_text('x')
+            elif label == 'empty directory':
+                dest.mkdir()
+            elif label == 'symbolic link to a directory':
+                os.symlink(target, dest, target_is_directory=True)
+            elif label == 'missing parent':
+                dest = base / 'no' / 'such' / 'dir'
+            return dest, target
+
+        labels = ['not empty', 'a file', 'empty directory', 'missing parent']
+        try:
+            os.symlink(self.work, self.work / 'probe-link', target_is_directory=True)
+            labels.append('symbolic link to a directory')
+        except (OSError, NotImplementedError):
+            pass                                                             # this host cannot create symbolic links
+        for label in labels:
+            dest_a, target_a = setup(label, self.work / ('a-' + label.replace(' ', '-')))
+            dest_b, target_b = setup(label, self.work / ('b-' + label.replace(' ', '-')))
+            a = self.exported(['extract', good, dest_a])
+            b = self.run_in_repo(['extract', good, dest_b], self.work)
+            norm = lambda text, d: text.replace(str(d), '<dest>')
+            self.assertEqual((a.returncode, norm(a.stdout, dest_a), norm(a.stderr, dest_a)),
+                             (b.returncode, norm(b.stdout, dest_b), norm(b.stderr, dest_b)), label)
+            self.assertEqual(sorted(p.name for p in target_a.iterdir()), sorted(p.name for p in target_b.iterdir()), label)
+            if label in ('not empty', 'a file'):
+                self.assertEqual(a.returncode, 1, label)
+            if label == 'not empty':
+                self.assertEqual(sorted(p.name for p in dest_a.iterdir()), ['keep.txt'])
+            if label == 'a file':
+                self.assertEqual(dest_a.read_text(), 'x')
+            if label == 'empty directory':
+                self.assertEqual(a.returncode, 0, a.stderr)
 
     def test_usage_errors_and_help_match(self):
         for args in ([], ['frobnicate'], ['validate'], ['pack', 'a', '--bogus'], ['--help'], ['pack', '--help']):
@@ -381,6 +676,25 @@ class SameBehaviourTests(Built):
         self.assertEqual(a.stdout, b.stdout)
         self.assertEqual(json.loads(a.stdout)['bridge'], [json.loads((CONTRACTS_DIR / 'party-games.v0.json').read_text())['bridge']['protocol']])
 
+    def test_validation_verdicts_and_messages_about_capabilities_are_identical(self):
+        # a requirement naming an unknown capability, and one naming a real one: the message lists the real names
+        for name in ('no.such.capability', 'websocket'):
+            manifest = good_manifest()
+            manifest['game']['presentations'][0]['requires'] = {'device': [name]}
+            data = make_zip(manifest=mjson(manifest))
+            path = self.work / 'cap.avrgame'
+            path.write_bytes(data)
+            a, b = self.exported(['validate', path]), self.run_in_repo(['validate', path], self.work)
+            self.assertEqual((a.returncode, a.stdout, a.stderr), (b.returncode, b.stdout, b.stderr), name)
+        self.assertEqual(a.returncode, 0)
+        manifest = good_manifest()
+        manifest['game']['presentations'][0]['requires'] = {'device': ['no.such.capability'], 'runtime': ['runtime.nothing']}
+        path = self.work / 'cap2.avrgame'
+        path.write_bytes(make_zip(manifest=mjson(manifest)))
+        a, b = self.exported(['validate', path]), self.run_in_repo(['validate', path], self.work)
+        self.assertEqual(b.returncode, 1)
+        self.assertEqual((a.returncode, a.stdout, a.stderr), (b.returncode, b.stdout, b.stderr))
+
     def test_from_another_working_directory_with_the_export_on_pythonpath(self):
         done = self.exported(['--help'], cwd=self.work)
         self.assertEqual(done.returncode, 0, done.stderr)
@@ -391,7 +705,7 @@ class ClosureCheckTests(unittest.TestCase):
     """The build refuses to produce an export that would not be self-contained."""
 
     def files(self):
-        files, _ = tools.collect(REPO_ROOT, COMMIT)
+        files, _, _, _ = tools.collect(REPO_ROOT, COMMIT)
         return {k: v for k, v in files.items() if k.endswith('.py')}
 
     def test_this_commit_is_self_contained(self):
@@ -403,24 +717,30 @@ class ClosureCheckTests(unittest.TestCase):
             tools.check_closure(files, REPO_ROOT)
         self.assertIn(expect, str(ctx.exception))
 
+    def with_extra(self, body, path='avrana/avrgame/manifest.py'):
+        files = self.files()
+        files[path] += ('\n\n' + body + '\n').encode()
+        return files
+
     def test_a_new_import_of_a_repository_module_is_refused_even_when_lazy(self):
-        files = self.files()
-        files['avrana/avrgame/manifest.py'] += b'\n\ndef extra():\n    from avrana.ops import install_game\n'
-        self.refused(files, 'avrana.ops')
-        files = self.files()
-        files['avrana/avrgame/build.py'] += b'\n\ndef extra():\n    from avrana.avrgame import installed\n'
-        self.refused(files, 'avrana.avrgame.installed')
-        files = self.files()
-        files['avrana/avrgame/build.py'] += b'\n\nfrom . import installed\n'
-        self.refused(files, 'avrana.avrgame.installed')
+        self.refused(self.with_extra('def extra():\n    from avrana.ops import install_game'), 'avrana.ops')
+        self.refused(self.with_extra('def extra():\n    from avrana.avrgame import installed', 'avrana/avrgame/build.py'),
+                     'avrana.avrgame.installed')
+        self.refused(self.with_extra('from . import installed', 'avrana/avrgame/build.py'), 'avrana.avrgame.installed')
+        self.refused(self.with_extra('from avrana.party import sessions'), 'sessions')
 
     def test_reading_more_of_the_protocol_than_its_version_is_refused(self):
-        files = self.files()
-        files['avrana/avrgame/manifest.py'] += b'\n\ndef extra():\n    from avrana.party import protocol\n    return protocol.seal\n'
-        self.refused(files, 'avrana.party.protocol.seal')
-        files = self.files()
-        files['avrana/avrgame/manifest.py'] += b'\n\nfrom avrana.party.result import validate\n'
-        self.refused(files, 'avrana.party.result.validate')
+        self.refused(self.with_extra('def extra():\n    from avrana.party import protocol\n    return protocol.seal'),
+                     'avrana.party.protocol.seal')
+        self.refused(self.with_extra('from avrana.party.result import validate'), 'avrana.party.result.validate')
+
+    def test_aliases_of_a_stand_in_module_and_getattr_through_it_are_refused(self):
+        self.refused(self.with_extra('def extra():\n    from avrana.party import protocol\n    alias = protocol\n    return alias.seal'),
+                     'other than as `protocol.NAME`')
+        self.refused(self.with_extra('def extra():\n    from avrana.party import protocol\n    return getattr(protocol, "seal")'),
+                     'other than as `protocol.NAME`')
+        self.refused(self.with_extra('def extra():\n    from avrana.party import protocol as p\n    return p'),
+                     'other than as `p.NAME`')
 
     def test_reading_more_of_the_declaration_than_the_bridge_protocol_is_refused(self):
         use = 'from avrana.contracts import party_games'
@@ -428,15 +748,25 @@ class ClosureCheckTests(unittest.TestCase):
                              ("party_games.load()['bridge']['frame']", "['frame']"),
                              ("party_games.load()", 'party_games.load()'),
                              ("party_games.versions()", 'versions')):
-            files = self.files()
-            extra = '\n\ndef extra():\n    ' + use + '\n    return ' + expr + '\n'
-            files['avrana/avrgame/manifest.py'] += extra.encode()
-            self.refused(files, expect)
+            self.refused(self.with_extra('def extra():\n    ' + use + '\n    return ' + expr), expect)
+
+    def test_things_that_hide_imports_are_refused(self):
+        self.refused(self.with_extra('x = __import__("os")'), '__import__')
+        self.refused(self.with_extra('import importlib'), 'importlib')
+        self.refused(self.with_extra('import runpy'), 'runpy')
+        self.refused(self.with_extra('import sys\nx = sys.modules'), 'sys.modules')
+        self.refused(self.with_extra('from os import *'), 'import *')
+        self.refused(self.with_extra('eval("1")'), 'eval')
+        self.refused(self.with_extra('exec("x = 1")'), 'exec')
+
+    def test_reading_more_of_the_capability_vocabulary_than_its_names_is_refused(self):
+        self.refused(self.with_extra('def extra(vocab):\n    return vocab.label("x")'), 'label')
+        self.refused(self.with_extra('def extra(vocab):\n    return vocab.missing("x")'), 'missing')
+        self.refused(self.with_extra('def extra(vocab):\n    return vocab.device.items()', 'avrana/contracts/game.py'), 'beyond their names')
+        self.refused(self.with_extra('def extra(vocab):\n    return vocab.runtime["x"]', 'avrana/contracts/game.py'), 'beyond their names')
 
     def test_a_third_party_import_is_refused(self):
-        files = self.files()
-        files['avrana/avrgame/common.py'] += b'\nimport requests\n'
-        self.refused(files, 'requests')
+        self.refused(self.with_extra('import requests', 'avrana/avrgame/common.py'), 'requests')
 
     def test_the_build_fails_on_a_tree_whose_packer_needs_more(self):
         with tempfile.TemporaryDirectory() as tmp:
