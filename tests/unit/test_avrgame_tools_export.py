@@ -206,7 +206,7 @@ class ContentsTests(Built):
         self.assertEqual(sorted(table), sorted(names))
         for name, meaning in table.items():
             self.assertGreater(len(meaning), 20, name)
-        self.assertIn('A `browser_native` game needs none of the `runtime.*`, `input.*` or `presentation.*` names',
+        self.assertIn('A `browser_native` presentation needs none of the `runtime.*`, `input.*` or `presentation.*` names',
                       re.sub(r'\s+', ' ', readme.replace('**', '')))
         tools.check_capability_table(readme, names)
         with self.assertRaises(tools.ExportError) as ctx:
@@ -300,12 +300,26 @@ BROAD = [(r'\bpi\b', re.I), (r'\bRPi\b', 0), (r'\bPi\d', 0), (r'\bavr-\d+', re.I
          (r'install[-_ ]game', re.I), (r'lift_manifest|shared_video', re.I), (r'emulat', re.I), (r'arcade', re.I),
          (r'linux/(arm|amd)', re.I), (r'\b[0-9a-f]{40}\b', 0), (r'/usr/', 0), (r'libretro|retroarch|raspberry', re.I),
          (r'lan[ _]games', re.I), (r'\bbluff\b|\bexpo\b|spades|gauntlet|checkers', re.I), (r'webrtc|webgpu|wake_lock', re.I),
-         (r'freeze|separate lane|party service', re.I), (r'owned by root|as root', re.I)]
+         (r'freeze|lane\b|party service', re.I), (r'owned by root|as root', re.I),
+         # paths, addresses, units: as strong as the builder's own deny list on these
+         (r'\.service\b|systemctl', re.I), (r'/etc/|/opt/|/var/|/run/', 0), (r'\b10\.\d+\.\d+\.\d+|192\.168\.', 0),
+         (r'\.local\b|avrana\.net', re.I), (r'deploy/|\bops/|docs/|\btests/|\btools/', 0), (r'PRIVATE KEY', 0),
+         (r'cnechamkin|BEACNpool', re.I)]
 
 
 class ContentGateTests(Built):
-    def covered(self, path, line):
-        return any(path in entry['files'] and re.search(entry['line'], line) for entry in tools.ALLOW)
+    def covered(self, path, line, span):
+        """Written here, not shared with the builder: the match must lie inside a declared term (or span) of an entry
+        for this file, on a line that entry names."""
+        for entry in tools.ALLOW:
+            if path not in entry['files'] or not re.search(entry['line'], line):
+                continue
+            words = [re.escape(t) for t in entry['terms']] + list(entry.get('spans', ()))
+            for word in words:
+                for found in re.finditer(word, line, re.I):
+                    if found.start() <= span[0] and span[1] <= found.end():
+                        return True
+        return False
 
     def test_the_shipped_text_matches_no_pattern_except_the_declared_places(self):
         problems, used = tools.content_gate(self.plain, skip=('NOTICE.md',))
@@ -321,10 +335,53 @@ class ContentGateTests(Built):
                 continue                                                   # it is the declaration itself
             for number, line in enumerate(data.decode('utf-8').splitlines(), 1):
                 for source, flags in BROAD:
-                    if re.search(source, line, flags):
+                    for match in re.finditer(source, line, flags):
                         found += 1
-                        self.assertTrue(self.covered(path, line), f'{path}:{number} {source!r}: {line.strip()[:100]}')
+                        self.assertTrue(self.covered(path, line, match.span()),
+                                        f'{path}:{number} {source!r}: {line.strip()[:100]}')
         self.assertGreater(found, 20)                                      # the patterns do find the declared places
+
+    def test_a_declaration_covers_only_the_matched_text_not_the_rest_of_its_line(self):
+        line = 'run install-game; it reads /etc/avrana/keys on the Pi, AVR-12, 10.0.0.142'
+        problems, _ = tools.content_gate({'README.md': line.encode()})
+        self.assertTrue(problems)
+        for needle in ('/etc/', 'Pi', 'AVR-12', '10.0.0.142'):
+            self.assertTrue(any(needle in p for p in problems), (needle, problems))
+        self.assertFalse(any('install-game' in p.split('): ')[0] for p in problems))        # the declared term itself passes
+        self.assertEqual(tools.content_gate({'README.md': b'run install-game; done'})[1], {0})
+        for match in re.finditer('install-game|/etc/|Pi|AVR-12|10[.]0[.]0[.]142', line):
+            expected = match.group() == 'install-game'
+            self.assertEqual(self.covered('README.md', line, match.span()), expected, match.group())
+        # a declared word cannot hide a longer undeclared one (RetroArch is only declared inside `runtime.retroarch`)
+        self.assertTrue(tools.content_gate({'README.md': b'`runtime.retroarch` runs RetroArch'})[0])
+
+    def test_the_unit_claims_of_the_readme_are_tied_to_the_unit_text(self):
+        units = tools.unit_texts(REPO_ROOT)
+        tools.check_unit_claims(units)
+        for bad in (dict(units, COMMUNITY_UNIT=units['COMMUNITY_UNIT'] + 'SystemCallFilter=@system-service\n'),
+                    dict(units, COMMUNITY_UNIT=units['COMMUNITY_UNIT'].replace('PrivateNetwork=yes\n', '')),
+                    dict(units, COMMUNITY_UNIT=units['COMMUNITY_UNIT'].replace('CapabilityBoundingSet=\n', '')),
+                    dict(units, COMMUNITY_UNIT=units['COMMUNITY_UNIT'] + 'ProtectSystem=strict\n'),
+                    dict(units, NO_STATE='StateDirectory=party\n')):
+            with self.assertRaises(tools.ExportError):
+                tools.check_unit_claims(bad)
+        with tempfile.TemporaryDirectory() as tmp:                      # and any change of the text moves the digest
+            tree = copy_inputs(tmp)
+            path = tree / 'avrana/ops/provision_game.py'
+            path.write_bytes(path.read_bytes().replace(b"'ProtectClock=yes\\n'", b"'ProtectClock=no\\n'"))
+            with self.assertRaises(tools.ExportError) as ctx:
+                tools.build_bytes(tree, commit=COMMIT, dirty=False)
+            self.assertIn('TOOLS_REVISION', str(ctx.exception))
+
+    def test_the_snapshot_has_no_lane_bookkeeping_and_notice_names_the_run_time_conditions(self):
+        snapshot = self.plain['AVRGAME-PACKAGE-FORMAT.md'].decode('utf-8')
+        self.assertNotRegex(snapshot, r'(?i)\blanes?\b')
+        self.assertIn("the appliance owner's installer stages it", snapshot)
+        notice = re.sub(r'\s+', ' ', self.plain['NOTICE.md'].decode('utf-8'))
+        for phrase in ('throwaway unprivileged identity with its own key', "Party's internal socket", 'private `/tmp`',
+                       '`party_roster`', 'What your game will run under on an appliance', 'separately written set'):
+            self.assertIn(phrase, notice)
+        self.assertNotIn('broader', notice)
 
     def test_every_declared_term_occurs_in_a_shipped_file_and_is_printed_in_notice(self):
         notice = self.plain['NOTICE.md'].decode('utf-8')
@@ -517,6 +574,11 @@ def g():
         with self.assertRaises(tools.ExportError):                                       # not byte-identical (comment removed)
             tools.check_doc_readers({'a.py': pair(dirty_doc), 'b.py': pair(changed_comment)})
         kinds = lambda text: tools.doc_reads(ast.parse(text))
+        for reader in ('import ast\nTEXT = ast.get_docstring(None)\n', 'from ast import get_docstring\nTEXT = get_docstring(None)\n',
+                       'import cmd\nclass Shell(cmd.Cmd):\n    pass\n', 'from cmd import Cmd\nclass Shell(Cmd):\n    pass\n'):
+            with self.assertRaises(tools.ExportError, msg=reader):
+                tools.check_doc_readers({'a.py': pair(dirty_doc), 'b.py': pair(reader)})
+            self.assertEqual(kinds(reader), {'other'}, reader)
         self.assertEqual((kinds(own), kinds(other), kinds(via_getattr), kinds(via_inspect), kinds(dirty_doc)),
                          ({'own'}, {'other'}, {'other'}, {'other'}, set()))
 

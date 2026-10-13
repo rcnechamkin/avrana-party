@@ -29,7 +29,12 @@ the appliance, not only the strengths: there is no system-call filter and no dis
 world-readable file on the machine, granted permissions are not checked when a session starts (only
 `persistent_storage` is enforced, through the state directory), the process ceilings are {{MEMORY_MAX}} of memory,
 {{TASKS_MAX}} tasks and {{CPU_QUOTA}} of one CPU, the game is started through file descriptor 3 by socket
-activation, and it has no IP networking. Those are facts about the platform, and they leave with the export.
+activation, it has no IP networking, it runs as a throwaway unprivileged identity with its own key and talks to
+the Party's internal socket with that key, it has a private `/tmp`, and it must request `party_roster` (the roster
+of its session). The same section of the README, "What your game will run under on an appliance", states the other
+conditions too. Those are facts about the platform, and they leave with the export. The build ties the statements
+about the unit (no system-call filter, no filesystem sandbox directive, an empty capability set, an empty network
+namespace, no state directory without the grant) to the unit text: it fails if that text changes or contradicts them.
 
 **What a check can and cannot show.** The builder runs a **deny list** over every shipped file: patterns for tracker
 ids, decision numbers, other games, hardware, paths, addresses and people, and a second set of patterns for platform
@@ -37,7 +42,7 @@ vocabulary that the tools genuinely need. A deny list finds only what it was tol
 that nothing else about the platform is in these files**. What it does guarantee is mechanical: the build fails if a
 pattern of either set matches anywhere that is not declared below, and fails if a declaration below matches nothing,
 so this list is generated from the same table that the check uses, and cannot drift from it. A second, separately
-written and broader set of patterns is run over the shipped files by the project's tests, with the same rule. The
+written set of patterns is run over the shipped files by the project's tests, with the same rule. The
 words of the platform's ordinary architecture (appliance, Party, Games, game server, tier, grant, provider, installer,
 session, roster, seat, presentation, socket activation) occur throughout the README, the copied code and its messages
 and are not listed one by one.

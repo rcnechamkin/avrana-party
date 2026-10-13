@@ -47,8 +47,8 @@ side is covered by `verify`: the unpacked tool is exercised from a clean place a
 byte for byte with this repository's tool. A content gate then refuses any shipped file that matches the DENY list
 (internal material) or the PLATFORM list (platform vocabulary the tools genuinely ship) unless the place is declared
 in ALLOW; NOTICE.md prints that declaration, generated from ALLOW. The gate is a deny list: it is NOT a proof that
-nothing else about the platform is in the export, and NOTICE.md says so. The tests run a second, independently
-written and broader pattern set over the shipped files with the same rule.
+nothing else about the platform is in the export, and NOTICE.md says so. The tests run a second, separately
+written pattern set over the shipped files with the same rule.
 """
 import argparse
 import ast
@@ -87,7 +87,7 @@ SPEAKS = {
     'bridge': 'avrana.party-bridge/v1',
     'result': 'avrana.game-result/v1',
 }
-SPEAKS_DIGEST = 'd6be918e27ca'
+SPEAKS_DIGEST = 'fc02d7517e23'
 
 # Code copied from the repository (LF-normalised, internal comments and docstrings scrubbed).
 COPIED = (
@@ -120,6 +120,7 @@ DROPPED_PARAGRAPH = '**Run the tooling from the Party checkout, or from the expe
 # Exact phrases of the note that name internal material; each must occur exactly once, so a changed note fails the build.
 SNAPSHOT_SUBSTITUTIONS = (
     ('(grant, tier, sandbox, ADR 0016)', '(grant, tier, sandbox)'),
+    ('an installer (later lane) stages it', "the appliance owner's installer stages it"),
     ('each must equal what this Party implements (read from `avrana/party/protocol.py`, `avrana/party/result.py` and '
      '`contracts/party-games.v0.json`)', 'each must equal a value this Party implements (listed in the README)'),
 )
@@ -146,7 +147,7 @@ DENY = (
     (r'appliance\.py', 0), (r'contracts/README', 0), (r'\bexperiments?/', 0), (r'\btests/', 0), (r'\btools/', 0),
     (r'web/party', 0), (r'\.md\.in\b', 0),
     # internal bookkeeping words that only comments and docstrings used
-    (r'freeze[- ]gates?', I), (r'separate lane', I), (r'default: the repository', I), (r'party service', I),
+    (r'freeze[- ]gates?', I), (r'\b(later |separate )?lanes?\b', I), (r'default: the repository', I), (r'party service', I),
 )
 PLATFORM = (
     (r'install[-_]game', I), (r'(run as|owned by) root', I), (r'RESERVED_IDS|home, party, admin', 0),
@@ -172,13 +173,13 @@ ALLOW = (
          describe="the name of the platform's installer command (run by the appliance owner as root on the appliance; "
                   "`README.md` says so) and the fact that an installed package's files are owned by root:",
          reason='documentation of the conditions a game runs under; the README states them on purpose'),
-    dict(files=('avrana/contracts/game.py', 'avrana/avrgame/manifest.py'), line=r'RESERVED_IDS|home, party, admin',
+    dict(files=('avrana/contracts/game.py', 'avrana/avrgame/manifest.py'), line=r'RESERVED_IDS|home, party, admin', spans=(r'RESERVED_IDS', r'home, party, admin'),
          terms=('home', 'party', 'admin', 'shared', 'diag', 'api'),
          describe='the game ids the platform reserves for itself (a game may not use them; the validator refuses and '
                   'its message lists them):',
          reason='a constant and a message of the validator; changing the code would change what it accepts and prints'),
     dict(files=('avrana/contracts/game.py', 'avrana/avrgame/manifest.py', 'README.md', FORMAT_NOTE),
-         line=r'emulat|arcade|lan_games_module|LAN Games',
+         line=r'emulat|arcade|lan_games_module|LAN Games', spans=(r'emulat\w*', r'arcade', r'lan_games_module', r'LAN Games'),
          terms=('emulated', 'emulator_profile', 'lan_games_module', 'arcade', 'LAN Games', 'emulation'),
          describe='the other kinds of game and runtime that the Game Contract validator knows (the packer refuses all of '
                   'them; only a native game can be packaged): emulated games, an emulator profile runtime, arcade '
@@ -219,7 +220,7 @@ ALLOW = (
          describe="one validation message about extension keys gives an example name in the platform's reverse-DNS "
                   'namespace:',
          reason='the message is output of the validator; the exported tool must print what the in-repo tool prints'),
-    dict(files=('MANIFEST.json', FORMAT_NOTE), line=r'source_commit|source commit', terms=(), optional=True,
+    dict(files=('MANIFEST.json', FORMAT_NOTE), line=r'source_commit|source commit', terms=(), spans=(r'\b[0-9a-f]{40}\b',), optional=True,
          describe="the full commit id of the private repository that this export was built from (`source_commit` in "
                   '`MANIFEST.json`, and in the header of the format snapshot).',
          reason='provenance: the manifest says exactly which source the files are made from'),
@@ -230,26 +231,35 @@ class ExportError(Exception):
     """The export cannot be built or does not verify; the message names the file and the remedy."""
 
 
-def _entry_covers(entry, path, line):
-    return path in entry['files'] and re.search(entry['line'], line) is not None
+def _declared_spans(entry, line):
+    """(start, end) of every occurrence in `line` of a declared term or span of the entry."""
+    expressions = [re.escape(term) for term in entry['terms']] + list(entry.get('spans', ()))
+    return [m.span() for rx in expressions for m in re.finditer(rx, line, re.IGNORECASE)]
+
+
+def _covers(entry, path, line, span):
+    """The entry declares the matched text: the file and line fit, and the whole match lies inside one declared term
+    (so an exempted line cannot also carry some other, undeclared match)."""
+    return (path in entry['files'] and re.search(entry['line'], line) is not None
+            and any(start <= span[0] and span[1] <= end for start, end in _declared_spans(entry, line)))
 
 
 def content_gate(files, skip=()):
     """(problems, used): every DENY or PLATFORM match in the text of `files` that is not declared in ALLOW, and the
-    indexes of the ALLOW entries that were used. NOTICE.md is checked separately (it is where the declaration is
-    printed): see `check_notice_template`."""
+    indexes of the ALLOW entries that were used. A declaration covers only the matched text, not its line. NOTICE.md
+    is checked separately (it is where the declaration is printed): see `collect`."""
     problems, used = [], set()
     for path in sorted(files):
         if path in skip:
             continue
         for number, line in enumerate(files[path].decode('utf-8').splitlines(), 1):
             for source, rx in GATE_RX:
-                if not rx.search(line):
-                    continue
-                covering = {index for index, entry in enumerate(ALLOW) if _entry_covers(entry, path, line)}
-                used |= covering
-                if not covering:
-                    problems.append(f'{path}:{number}: matches the pattern {source!r}: {line.strip()[:100]}')
+                for match in rx.finditer(line):
+                    covering = {i for i, entry in enumerate(ALLOW) if _covers(entry, path, line, match.span())}
+                    used |= covering
+                    if not covering:
+                        problems.append(f'{path}:{number}: matches the pattern {source!r} ({match.group()!r}): '
+                                        f'{line.strip()[:100]}')
     return problems, used
 
 
@@ -468,22 +478,26 @@ def prove_same_code(original, scrubbed, path):
         raise ExportError(f'{path}: scrubbing changed the shebang or encoding cookie')
 
 
+DOC_MODULES = ('inspect', 'pydoc', 'doctest', 'cmd')       # `cmd.Cmd` prints method docstrings as help
+
+
 def doc_reads(tree):
     """How a module can read docstrings at run time: 'own' for a bare `__doc__` name, 'other' for `x.__doc__`, the
-    string `'__doc__'` (getattr and friends), `help`, or the doc helpers of `inspect`, `pydoc` and `doctest`."""
+    string `'__doc__'` (getattr and friends), `help`, or the doc helpers of `inspect`, `pydoc`, `doctest` and `cmd`, and
+    `ast.get_docstring`."""
     kinds = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id == '__doc__':
             kinds.add('own')
-        elif isinstance(node, ast.Name) and node.id in ('help', 'getdoc', 'cleandoc'):
+        elif isinstance(node, ast.Name) and node.id in ('help', 'getdoc', 'cleandoc', 'get_docstring'):
             kinds.add('other')
-        elif isinstance(node, ast.Attribute) and node.attr in ('__doc__', 'getdoc', 'cleandoc'):
+        elif isinstance(node, ast.Attribute) and node.attr in ('__doc__', 'getdoc', 'cleandoc', 'get_docstring'):
             kinds.add('other')
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and '__doc__' in node.value:
             kinds.add('other')
-        elif isinstance(node, ast.Import) and any(a.name.split('.')[0] in ('inspect', 'pydoc', 'doctest') for a in node.names):
+        elif isinstance(node, ast.Import) and any(a.name.split('.')[0] in DOC_MODULES for a in node.names):
             kinds.add('other')
-        elif isinstance(node, ast.ImportFrom) and (node.module or '').split('.')[0] in ('inspect', 'pydoc', 'doctest'):
+        elif isinstance(node, ast.ImportFrom) and (node.module or '').split('.')[0] in DOC_MODULES:
             kinds.add('other')
     return kinds
 
@@ -833,6 +847,32 @@ def community_ceilings(source):
     return {key: ceilings[key] for key in ('MemoryMax', 'TasksMax', 'CPUQuota')}
 
 
+def unit_texts(source):
+    """The community-tier unit text and the no-state text, which the README describes in words."""
+    provision = constants(read_text_file(source, PROVISION_SOURCE).decode())
+    texts = {name: provision.get(name) for name in ('COMMUNITY_UNIT', 'NO_STATE')}
+    if not all(isinstance(text, str) for text in texts.values()):
+        raise ExportError(f'{PROVISION_SOURCE}: COMMUNITY_UNIT or NO_STATE is not a string constant; the README states them')
+    return texts
+
+
+UNIT_DENIED = r'(SystemCall\w*|ProtectSystem|ProtectHome|ReadOnlyPaths|ReadWritePaths|InaccessiblePaths|TemporaryFileSystem|LimitFSIZE)='
+UNIT_REQUIRED = ('CapabilityBoundingSet=', 'PrivateNetwork=yes')
+
+
+def check_unit_claims(units):
+    """The README says: no system-call filter, no filesystem sandbox directive or disk quota, an empty capability
+    set, an empty network namespace, and no state directory without the grant. Fail unless the unit text agrees."""
+    lines = units['COMMUNITY_UNIT'].splitlines()
+    directives = [l for l in lines if l and not l.startswith('#')]
+    wrong = [f'{l!r} contradicts the README' for l in directives if re.match(UNIT_DENIED, l)]
+    wrong += [f'{d!r} is missing, but the README says it is there' for d in UNIT_REQUIRED if d not in directives]
+    if 'StateDirectory=' not in units['NO_STATE'].splitlines():
+        wrong.append("NO_STATE no longer resets 'StateDirectory=', but the README says there is no state directory")
+    if wrong:
+        raise ExportError('the community unit no longer matches what the README says about it:\n  ' + '\n  '.join(wrong))
+
+
 def speaks_facts(files, source):
     """Everything the shipped tools say or enforce that a game developer relies on: the protocol version strings, and
     the limits, permission names, interpreter names, community-tier ceilings and capability names that the README
@@ -853,6 +893,7 @@ def speaks_facts(files, source):
         'permissions': list(constants(files['avrana/contracts/game.py'].decode())['PERMISSIONS']),
         'interpreters': interpreter_names(manifest_text),
         'ceilings': community_ceilings(source),
+        'unit': unit_texts(source),
         'capabilities': {scope: list(vocabulary_names[scope]) for scope in ('device', 'runtime')},
     }
 
@@ -864,12 +905,13 @@ def speaks_digest(facts):
 def check_speaks(files, source):
     """What the tools speak must be what SPEAKS and SPEAKS_DIGEST record for this TOOLS_REVISION."""
     facts = speaks_facts(files, source)
+    check_unit_claims(facts['unit'])
     if facts['versions'] != SPEAKS:
         raise ExportError(f"the tools now speak {facts['versions']}, not {SPEAKS}: a different tool would carry the file "
                           f'name {ZIP_NAME}. Bump TOOLS_REVISION and update SPEAKS in {SELF} together')
     digest = speaks_digest(facts)
     if digest != SPEAKS_DIGEST:
-        raise ExportError(f'a limit, permission name, interpreter name, community-tier ceiling or capability name changed '
+        raise ExportError(f'a limit, permission name, interpreter name, community-tier unit text or ceiling, or capability name changed '
                           f'(speaks digest {digest}, recorded {SPEAKS_DIGEST}): a different tool would carry the file name '
                           f'{ZIP_NAME}. Bump TOOLS_REVISION and update SPEAKS_DIGEST in {SELF} together')
     return digest

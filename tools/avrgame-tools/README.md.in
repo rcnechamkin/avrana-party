@@ -183,8 +183,8 @@ A presentation in the Game Contract says what a phone, or the appliance, must be
 presentation to work, by naming capabilities in `requires` (and `optional`). These are all the names
 the validator accepts, and what a game is saying when it lists one. The first group are features of the
 phone's browser (named after the Web platform feature of the same name); the second group are
-things the appliance provides to a game, and apply only to games whose picture or input does not come
-from the phone's browser alone. **A `browser_native` game needs none of the `runtime.*`, `input.*` or
+things the appliance may have available, and matter only to a presentation whose picture or input does not
+come from the phone's browser alone. **A `browser_native` presentation needs none of the `runtime.*`, `input.*` or
 `presentation.*` names.**
 
 | Name | What a game is saying by requiring it |
@@ -197,28 +197,28 @@ from the phone's browser alone. **A `browser_native` game needs none of the `run
 | `webrtc.data_channel` | The browser can open a WebRTC data channel (low-latency messages without a server in between). |
 | `video.h264` | The browser can play video compressed with the common AVC codec. |
 | `web_audio` | The browser offers the Web Audio API for generating and mixing sound. |
-| `gamepad` | The browser reports a connected game controller through the Gamepad API. |
+| `gamepad` | The browser has the Gamepad API (this does not mean that a controller is connected). |
 | `wake_lock` | The browser can keep the screen from switching off (Screen Wake Lock API). |
 | `web_crypto` | The browser offers the Web Crypto API (hashing, random values and encryption in the page). |
 | `storage.local` | The browser offers `localStorage` for small values kept on the device. |
 | `storage.indexeddb` | The browser offers IndexedDB for larger structured data kept on the device. |
-| `storage.persistent` | The browser will let a page ask that its stored data is not cleared when space runs low. |
+| `storage.persistent` | The browser has already marked this site's storage as persistent (the page does not ask for it). |
 | `webgl` | The browser can draw 3D graphics with WebGL. |
 | `webgl2` | The browser can draw 3D graphics with WebGL 2. |
 | `webgpu` | The browser can draw and compute on the graphics chip with WebGPU. |
 | `fullscreen` | The browser lets the page fill the whole screen (Fullscreen API). |
 | `vibration` | The browser can make the phone vibrate (Vibration API). |
-| `media_devices` | The browser can list and open cameras and microphones (`navigator.mediaDevices`). |
-| `microphone` | The page may listen through the device's microphone, if the player allows it. |
-| `camera` | The page may use the device's camera, if the player allows it. |
+| `media_devices` | The browser offers the call that opens cameras and microphones (the check opens nothing). |
+| `microphone` | The player has already granted the page permission to use the microphone. |
+| `camera` | The player has already granted the page permission to use the camera. |
 | `touch` | The device has a touch screen. |
-| `runtime.lan_games` | The game is a module of the platform's older built-in game server rather than a program of its own. |
-| `runtime.retroarch` | The game is an emulator session of the RetroArch kind, run by the appliance. |
-| `input.virtual_gamepad` | The appliance offers the player an on-screen game controller whose buttons it passes to the game. |
-| `presentation.shared_stream` | The game's picture is one video stream shown the same way to every phone. |
-| `presentation.personal_viewport.crop` | Each player sees their own cut-out of one shared picture. |
-| `presentation.personal_viewport.dedicated_stream` | Each player receives a video stream of their own. |
-| `presentation.tv` | The game's picture is shown on the shared television or screen, while phones act as controllers. |
+| `runtime.lan_games` | The appliance has its older built-in game server installed. This describes the appliance, not your game. |
+| `runtime.retroarch` | The appliance has its emulator runtime available. This describes the appliance, not your game. |
+| `input.virtual_gamepad` | The appliance can turn phone input into a virtual game controller for each player. |
+| `presentation.shared_stream` | The appliance can send one video stream of the whole picture to every phone. |
+| `presentation.personal_viewport.crop` | The appliance can give each player a cut-out of one shared picture. |
+| `presentation.personal_viewport.dedicated_stream` | The appliance can render and send each player a video stream of their own. |
+| `presentation.tv` | The appliance can show the game on a shared screen or television, while phones act as controllers. |
 
 ## Permissions
 
