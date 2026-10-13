@@ -93,7 +93,9 @@ class StaticRules(unittest.TestCase):
         rules = '\n'.join(line for line in (native + legacy).splitlines() if not line.lstrip().startswith('#'))
         self.assertEqual(re.findall(r'/(?:etc|run|var|srv|home|usr|opt|tmp)/[^\s;:]*', rules),
                          ['/run/avrana-games/$native_game.sock'])
-        self.assertNotIn('if (', native + legacy)
+        # the one condition in the game rules reads a request header (AVR-135, below), never a file
+        self.assertEqual(re.findall(r'\bif\s*\(([^)]*)\)', rules), ['$http_service_worker != ""'])
+        self.assertNotIn('if (', legacy)
         self.assertNotIn('try_files', native + legacy)
         # nothing hands a request over to another server: no named location, no error_page
         self.assertNotIn('location @', SITE)
@@ -107,6 +109,33 @@ class StaticRules(unittest.TestCase):
              '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"', '/games/', '= /games']
 
     HUB = ['= /', '^~ /shared/hub.html']
+
+    def test_no_game_controls_a_service_worker_and_the_party_keeps_its_own(self):
+        """AVR-135: in the shared native-game rule of BOTH blocks that serve native games, a request
+        that carries the Service-Worker header is refused before the game is asked and a game's
+        Service-Worker-Allowed is hidden. No other location has either line."""
+        native = (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
+        slug = '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"'
+        refuse = ['if', '($http_service_worker', '!=', '"")', '{', 'return', '403;', '}']
+        blocks = server_blocks(SITE)
+        for block in blocks[1:]:                               # party.avrana.net and games.avrana.net
+            self.assertEqual(block.count(native), 1)
+            rule = [line for line in location_body(block, slug).splitlines() if not line.lstrip().startswith('#')]
+            words = ' '.join(rule).split()
+            self.assertEqual(words[:len(refuse)], refuse)      # first: nothing is proxied before it
+            self.assertEqual(words[len(refuse):len(refuse) + 2], ['proxy_hide_header', 'Service-Worker-Allowed;'])
+            self.assertLess(words.index('proxy_hide_header'), words.index('proxy_pass'))
+            self.assertEqual(block.count('$http_service_worker'), 1)
+            self.assertEqual(block.count('proxy_hide_header'), 1)
+        self.assertNotIn('$http_service_worker', blocks[0])    # plain HTTP serves no native game at all
+        # the Party's own worker, its shell and its API are other locations and carry neither line
+        party = blocks[1]
+        for name in ('/party/', '= /party/bridge.html', '= /party/catalog.json', '/party/api/', '/arcade/', '/',
+                     '~ "^/games/(bluff|expo)(/(?!avrana/)|$)"'):
+            body = location_body(party, name)
+            self.assertNotIn('service_worker', body, name)
+            self.assertNotIn('proxy_hide_header', body, name)
+        self.assertIn('alias /var/www/avrana-party/web/current/;', location_body(party, '/party/'))
 
     def test_port_80_keeps_the_captive_probe_and_serves_no_native_game(self):
         self.assertIn('listen 80 default_server;', self.http)
@@ -200,6 +229,23 @@ def native_game(path):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             seen.append(self.path)
+            if self.path.endswith('.js'):               # a script file: a dedicated Worker's, or a would-be Service Worker's
+                script = b'onmessage = (e) => postMessage(e.data);\n'
+                if self.headers.get('If-None-Match') == '"worker-1"':      # the phone has these bytes
+                    self.send_response(304)
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('ETag', '"worker-1"')
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/javascript')
+                self.send_header('Content-Length', str(len(script)))
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('ETag', '"worker-1"')
+                self.send_header('Service-Worker-Allowed', '/')        # an untrusted game asks for the whole origin
+                self.end_headers()
+                self.wfile.write(script)
+                return
             body = json.dumps({'upstream': 'native', 'path': self.path, 'host': self.headers.get('Host'),
                                'proto': self.headers.get('X-Forwarded-Proto'),
                                'forwarded_for': self.headers.get('X-Forwarded-For'),
@@ -533,6 +579,71 @@ http {{
         self.assertTrue(got['forwarded_for'])              # the game can tell a proxied request
         res, body = self.request('GET', '/games/demo/ws', extra={'Upgrade': 'websocket', 'Connection': 'Upgrade'})
         self.assertEqual(json.loads(body)['upgrade'], 'websocket')
+
+    # ---- AVR-135: no game-controlled Service Worker, through real nginx ------------------------
+    SCRIPT = b'onmessage = (e) => postMessage(e.data);\n'
+
+    def test_a_dedicated_worker_script_is_served_from_a_game_on_both_hosts(self):
+        """A Worker script is an ordinary request (a browser sends no Service-Worker header for it):
+        it reaches the game, and the game's validators pass through for the browser's cache."""
+        for host in ('party.avrana.net', 'games.avrana.net'):
+            seen = len(self.native.seen)
+            res, body = self.on(host, '/games/demo/web/think.worker.js')
+            self.assertEqual((res.status, body), (200, self.SCRIPT), host)
+            self.assertEqual((res.getheader('Cache-Control'), res.getheader('ETag')), ('no-cache', '"worker-1"'), host)
+            self.assertEqual(self.native.seen[seen:], ['/games/demo/web/think.worker.js'], host)
+            # what the game said about a worker's scope never reaches the phone
+            self.assertIsNone(res.getheader('Service-Worker-Allowed'), host)
+            # a phone that kept the file revalidates it through nginx: the game's 304 is the answer
+            res, body = self.on(host, '/games/demo/web/think.worker.js', extra={'If-None-Match': '"worker-1"'})
+            self.assertEqual((res.status, body, res.getheader('ETag'), res.getheader('Cache-Control')),
+                             (304, b'', '"worker-1"', 'no-cache'), host)
+            res, body = self.on(host, '/games/demo/web/think.worker.js', extra={'If-None-Match': '"worker-0"'})
+            self.assertEqual((res.status, body), (200, self.SCRIPT), host)
+
+    def test_a_service_worker_script_fetch_is_refused_before_any_game_on_both_hosts(self):
+        """The same script, asked for as a browser asks when it is about to register or update a
+        Service Worker (`Service-Worker: script`): nginx's own 403, and the game is never asked."""
+        seen = len(self.native.seen)
+        for host in ('party.avrana.net', 'games.avrana.net'):
+            for path in ('/games/demo/web/think.worker.js', '/games/demo/sw.js', '/games/demo/', '/games/demo/play?x=1',
+                         '/games/nosuch/sw.js', '/games/dead/sw.js', '/games//demo/./sw.js', '/games/demo/%73w.js'):
+                for value in ('script', 'SCRIPT', '0', 'anything else'):
+                    for method in ('GET', 'POST'):
+                        res, body = self.on(host, path, method, {'Service-Worker': value},
+                                            body={'x': 1} if method == 'POST' else None)
+                        self.assertEqual(res.status, 403, (host, path, value, method))
+                        self.assertNotIn(b'upstream', body)
+                        self.assertNotEqual(body, self.SCRIPT)
+                        self.assertIsNone(res.getheader('Service-Worker-Allowed'))
+        self.assertEqual(len(self.native.seen), seen)
+        # the include, as another server block takes it, refuses the same way
+        conn = http.client.HTTPConnection('127.0.0.1', self.pgames, timeout=5)
+        conn.request('GET', '/games/demo/sw.js', headers={'Host': 'games.avrana.net', 'Service-Worker': 'script'})
+        res = conn.getresponse()
+        res.read()
+        conn.close()
+        self.assertEqual(res.status, 403)
+        self.assertEqual(len(self.native.seen), seen)
+
+    def test_the_partys_own_service_worker_is_still_served_when_a_browser_registers_it(self):
+        """The refusal belongs to the native-game rule only. The Party shell's worker is fetched
+        with the same header and is served as before, with no scope header; so is everything else
+        on the Party host that is not a native game."""
+        res, body = self.on('party.avrana.net', '/party/sw.js', extra={'Service-Worker': 'script'})
+        self.assertEqual(res.status, 200)
+        self.assertIn(b"const BUILD = 'nginxtest';", body)
+        self.assertEqual(res.getheader('Cache-Control'), 'no-cache')
+        self.assertIsNone(res.getheader('Service-Worker-Allowed'))
+        res, body = self.on('party.avrana.net', '/party/', extra={'Service-Worker': 'script'})
+        self.assertEqual(res.status, 200)
+        self.assertIn(b'<title>Avrana Party</title>', body)
+        self.assertEqual(self.on('party.avrana.net', '/party/api/state', extra={'Service-Worker': 'script'})[0].status, 200)
+        # the two games of the retiring runtime are another rule and answer as before
+        res, body = self.on('party.avrana.net', '/games/bluff/sw.js', extra={'Service-Worker': 'script'})
+        self.assertEqual((res.status, json.loads(body)['upstream']), (200, 'lan'))
+        # on the game origin nothing but a native game exists, with or without the header
+        self.assertEqual(self.on('games.avrana.net', '/party/sw.js', extra={'Service-Worker': 'script'})[0].status, 404)
 
     def test_control_paths_are_refused_before_any_game(self):
         before_native, before_lan = len(self.native.seen), self.lan_paths()

@@ -284,6 +284,7 @@ events {}
 http {
   include $mime;
   default_type application/octet-stream;
+  gzip on;      # as a stock Debian /etc/nginx/nginx.conf has it: text/html is compressed, which weakens a game's ETag (checked below)
   access_log $work/access.log;
   client_body_temp_path $work/tmp-body; proxy_temp_path $work/tmp-proxy; fastcgi_temp_path $work/tmp-fastcgi;
   uwsgi_temp_path $work/tmp-uwsgi; scgi_temp_path $work/tmp-scgi;
@@ -328,6 +329,114 @@ t 'it lists the game last, installed, at /games/hello/, native, and every first-
 capture "$tree/ops/catalog-overlay" check
 show 'catalog-overlay check' "$out"
 check 'ops/catalog-overlay check says the overlay is current' 0 "$rc"
+
+# ---- the browser client contract (AVR-135): the installed package, asked through the committed nginx ------------------------
+# No game controls a Service Worker: nginx refuses a request that carries the Service-Worker header on the native-game
+# rule of both hosts, before the game is asked. The same file asked for plainly (as a page, a module or a dedicated
+# Worker asks) is served. The Party shell's own worker is another location and is still served to a registering browser.
+code() { curl -sk -o /dev/null -w '%{http_code}' --max-time 30 "$@"; }
+head_of() { curl -sk -D - -o /dev/null --max-time 30 "$@" | tr -d '\r'; }
+for host in games.avrana.net party.avrana.net; do
+    t "a script file of the installed package is served on $host (200)" 0 \
+        test "$(code "https://$host/games/hello/web/hello.mjs")" = 200
+    t "the same file asked for as a Service Worker script is refused by nginx on $host (403)" 0 \
+        test "$(code -H 'Service-Worker: script' "https://$host/games/hello/web/hello.mjs")" = 403
+    t "and so is the game's page, and a path the game does not serve, with that header on $host (403, never the game's answer)" 0 \
+        test "$(code -H 'Service-Worker: script' "https://$host/games/hello/")$(code -H 'Service-Worker: script' "https://$host/games/hello/sw.js")" = 403403
+done
+# Hello Party never sends Service-Worker-Allowed, so it cannot show that nginx hides it. A stand-in upstream that DOES
+# send it (as an untrusted package's server could) listens on a socket of its own in the games directory; the committed
+# rule routes /games/swprobe/ to it like any other slug. Asked directly it shows the header; through nginx it must not.
+probe_sock=/run/avrana-games/swprobe.sock
+rm -f "$probe_sock"
+python3 - "$probe_sock" <<'PY' &
+import os, socketserver, sys
+from http.server import BaseHTTPRequestHandler
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b'probe'
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/javascript')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Service-Worker-Allowed', '/')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def address_string(self):
+        return 'unix'
+
+    def log_message(self, *args):
+        pass
+
+server = socketserver.UnixStreamServer(sys.argv[1], Handler)
+os.chmod(sys.argv[1], 0o666)
+server.serve_forever()
+PY
+probe_pid=$!
+for _ in $(seq 1 50); do [[ -S $probe_sock ]] && break; sleep 0.1; done
+probe_direct() {  # the stand-in itself: curl must succeed, the body is its own, and the header IS there
+    curl -fsS --max-time 10 --unix-socket "$probe_sock" -D "$work/probe-direct.head" -o "$work/probe-direct.body" \
+        http://localhost/games/swprobe/worker.js || return 1
+    [[ $(cat "$work/probe-direct.body") == probe ]] || return 1
+    grep -qi '^service-worker-allowed: /' "$work/probe-direct.head"
+}
+probe_through() {  # probe_through <host>: the same answer through nginx (curl must succeed, the body is the stand-in's): the header is gone
+    curl -fsSk --max-time 30 -D "$work/probe-$1.head" -o "$work/probe-$1.body" "https://$1/games/swprobe/worker.js" || return 1
+    [[ $(cat "$work/probe-$1.body") == probe ]] || return 1
+    ! grep -qi '^service-worker-allowed' "$work/probe-$1.head"
+}
+t 'a stand-in game that sends Service-Worker-Allowed: / really sends it (asked on its own socket)' 0 probe_direct
+for host in games.avrana.net party.avrana.net; do
+    t "through nginx on $host the stand-in's answer arrives and its Service-Worker-Allowed does not" 0 probe_through "$host"
+done
+kill "$probe_pid" 2>/dev/null || true
+wait "$probe_pid" 2>/dev/null || true
+rm -f "$probe_sock"
+t "the Party shell's own service worker is still served to a browser that registers it (200)" 0 \
+    test "$(code -H 'Service-Worker: script' https://party.avrana.net/party/sw.js)" = 200
+# The cache classes and the build identity are the game kit's half. They are checked here only when the Games checkout
+# this run was given has them (a Party branch may be proven against a Games main that does not yet).
+if grep -q 'def client_build' "$games_repo/avrana_gamekit/app.py" 2>/dev/null; then
+    asset=https://games.avrana.net/games/hello/web/hello.mjs
+    head_of "$asset" > "$work/asset.head" || true
+    etag=$(awk 'tolower($1)=="etag:"{print $2}' "$work/asset.head")
+    t 'a client file of the package reaches the phone as no-cache with a strong ETag, through nginx' 0 \
+        sh -c "grep -qi '^cache-control: no-cache\$' '$work/asset.head' && printf %s '$etag' | grep -qE '^\"[0-9a-f]{32}\"\$'"
+    t 'a phone that kept the file is answered 304 through nginx, and one with other bytes gets the file (200)' 0 \
+        test "$(code -H "If-None-Match: $etag" "$asset")$(code -H 'If-None-Match: "other"' "$asset")" = 304200
+    # The page is text/html, which this nginx compresses for a client that accepts gzip (as a browser does). nginx then
+    # weakens the validator (W/"..."): what the phone holds is not the game's strong ETag. The contract is that the
+    # revalidation still works: the phone sends back exactly what it saw, and the game compares weakly.
+    page=https://games.avrana.net/games/hello/
+    page_seen() {  # what a browser sees of the page: curl must succeed; the encoding and the validator are kept
+        curl -fsSk --max-time 30 -H 'Accept-Encoding: gzip' -D "$work/page.head" -o /dev/null "$page" || return 1
+        tr -d '\r' < "$work/page.head" > "$work/page.head.lf"
+        page_etag=$(awk 'tolower($1)=="etag:"{print $2}' "$work/page.head.lf")
+        page_encoding=$(awk 'tolower($1)=="content-encoding:"{print $2}' "$work/page.head.lf")
+        grep -qi '^cache-control: no-cache$' "$work/page.head.lf"
+    }
+    page_etag=''; page_encoding=''
+    set +e; page_seen; page_rc=$?; set -e
+    check 'the page reaches a browser that accepts gzip, as no-cache' 0 "$page_rc"
+    echo "OBSERVE     the page as a gzip-accepting browser sees it: Content-Encoding ${page_encoding:-none}, ETag ${page_etag:-none}"
+    t 'nginx compressed the page and so weakened its validator: the phone holds W/"<32 hex>", not the strong ETag' 0 \
+        sh -c "test '$page_encoding' = gzip && printf %s '$page_etag' | grep -qE '^W/\"[0-9a-f]{32}\"\$'"
+    t 'revalidating with exactly the weakened validator the phone saw is answered 304 through nginx' 0 \
+        test "$(code -H 'Accept-Encoding: gzip' -H "If-None-Match: $page_etag" "$page")" = 304
+    t 'and a script file, which this nginx does not compress, keeps its strong ETag for the same browser' 0 \
+        sh -c "curl -fsSk --max-time 30 -H 'Accept-Encoding: gzip' -D - -o /dev/null '$asset' | tr -d '\\r' | grep -qE '^[Ee][Tt]ag: \"[0-9a-f]{32}\"\$'"
+    curl -sk --max-time 30 https://games.avrana.net/games/hello/ > "$work/page.html" || true
+    page_build=$(sed -n 's/.*<meta name="avrana-build" content="\([^"]*\)">.*/\1/p' "$work/page.html" | head -1)
+    t "the served page carries its build identity (<id>-<version>-<sha12>): ${page_build:-none}" 0 \
+        sh -c "printf %s '$page_build' | grep -qE '^hello-[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{12}\$'"
+    curl -sk --max-time 30 -D "$work/api.head" -o "$work/api.json" -H 'Content-Type: application/json' \
+        -d '{"ticket":"not-a-ticket"}' https://games.avrana.net/games/hello/api/redeem || true
+    t 'an API answer (a refused ticket) is no-store, has no ETag, and names the same build' 0 \
+        sh -c "tr -d '\\r' < '$work/api.head' | grep -qi '^cache-control: no-store\$' && ! grep -qi '^etag:' '$work/api.head' && grep -qF '\"build\": \"$page_build\"' '$work/api.json'"
+else
+    echo 'OBSERVE  n/a  cache classes and build identity: this Games checkout predates AVR-135 (avrana_gamekit has no client_build); only the nginx refusal was checked'
+fi
 
 # ---- f. the browsers: play the installed package --------------------------------------------------------------------
 runuser -u "$pwuser" -- mkdir -p "$out_dir"      # created by the user who will write to it, parents included

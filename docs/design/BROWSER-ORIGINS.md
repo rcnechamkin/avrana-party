@@ -272,3 +272,9 @@ Record the phone models, OS versions and the result of each line in a dated find
 
 A CSP `sandbox` tier (later, for community games); iframes for the games themselves; any change to
 tickets, keys or the session protocol; a per-game service worker policy.
+
+**Update 2026-10-13 (AVR-135, experimental, in source, not deployed):** there is still no per-game
+policy. Instead no native game controls a Service Worker at all: the shared native-game rule
+refuses a request that carries the `Service-Worker` header, on both hosts. Storage on the game
+origin is shared between all games, a temporary limitation stated in
+[AVRGAME-PACKAGE](AVRGAME-PACKAGE.md#browser-client-contract-experimental-avr-135).
