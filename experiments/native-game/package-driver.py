@@ -220,11 +220,17 @@ def main(argv=None):
     mode.add_argument('--absent', action='store_true', help='check Party Core does not offer the game')
     ap.add_argument('--party-host', default='127.0.0.1')
     ap.add_argument('--party-port', type=int, default=8191)
-    ap.add_argument('--game-socket', default='/run/avrana-games/hello.sock')
+    ap.add_argument('--game', default=GAME, help='the id of the installed package (default: hello). A package that plays '
+                    'by the rules of Hello Party under another id, such as the Node fixture, is driven the same way')
+    ap.add_argument('--game-socket', default=None, help='default: /run/avrana-games/<game>.sock')
     ap.add_argument('--cwd', default=None, help='where --during-live runs')
     ap.add_argument('--during-live', nargs=argparse.REMAINDER, default=None,
                     help='with --end: a command to run (and expect refused) while the session is live; last option')
     args = ap.parse_args(argv)
+    global GAME, GAME_BASE
+    GAME, GAME_BASE = args.game, f'/games/{args.game}'
+    if args.game_socket is None:
+        args.game_socket = f'/run/avrana-games/{args.game}.sock'
     try:
         (run_absent if args.absent else run_offered if args.offered else run_end if args.end else run_full)(args)
         return 0

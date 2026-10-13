@@ -429,6 +429,8 @@ t 'the drop-in hands the game the Party origin from party-core.json' 0 \
     grep -qxF 'Environment=AVRANA_PARTY_ORIGIN=http://party.ci.test' "$dropin_dir/exec.conf"
 t 'the socket unit is enabled and active; the game is socket-activated (service not yet running)' 0 \
     bash -c 'systemctl is-enabled --quiet "$1" && systemctl is-active --quiet "$1" && ! systemctl is-active --quiet "$2"' _ "$gsock" "$game"
+t 'this appliance has no Node runtime, and the Python package installed all the same (AVR-68: Node is optional)' nonzero \
+    test -e /opt/avrana-runtimes
 t 'install-game reloaded Party Core and did not restart it (same process, same activation time)' 0 \
     test "$(pid)" = "$pid_before" -a "$(entered "$party")" = "$since_before"
 run_driver 'Party Core (reloaded) now offers the game, known only through its install record' --offered
