@@ -1,0 +1,10 @@
+{
+  "recipe": "avrana.avrgame-build/experimental.1",
+  "manifest": "avrgame.json",
+  "root": ".",
+  "include": [
+    "server",
+    "web",
+    "node_modules"
+  ]
+}
