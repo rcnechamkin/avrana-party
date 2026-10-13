@@ -62,9 +62,43 @@ async def origin():
 async def arcade():
     return JSONResponse({'players': 0, 'max_players': 4, 'emulator_running': True})
 
+# AVR-339: a game origin that accepts the connection and never answers (a hung top-level navigation).
+# Off until a test turns it on; only the game origin's BLUFF page; the connection is held, not refused.
+# Turning it off answers every held request at once; `dropped` counts the held requests whose client gave up
+# (a navigation cancelled by the browser closes its connection), which is how a test sees from outside that the
+# page stopped waiting.
+hang = {'on': False, 'seen': 0, 'dropped': 0}
+HANG_CAP_S = 300          # a safety net only: a test that forgets to release does not hold a connection forever
+released = {'event': None}
+
+@donor.app.post('/__harness__/hang-game')
+async def hang_game(on: int = 1):
+    if released['event'] is not None:
+        released['event'].set()                                        # whatever was held is answered now
+    hang['on'] = bool(on)
+    if on:
+        hang['seen'] = hang['dropped'] = 0
+        released['event'] = asyncio.Event()
+    return JSONResponse({'on': hang['on']})
+
+@donor.app.get('/__harness__/hang-game')
+async def hang_seen():
+    return JSONResponse(hang)
+
 @donor.app.middleware('http')
 async def shell_headers(request, call_next):
     path = request.url.path
+    if args.game_origin and hang['on'] and request.headers.get('host') == GAMES_HOST and path.startswith('/games/bluff/'):
+        hang['seen'] += 1
+        event, waited = released['event'], 0.0
+        while not event.is_set() and waited < HANG_CAP_S:
+            if await request.is_disconnected():
+                hang['dropped'] += 1
+                return JSONResponse({'error': 'gone'}, status_code=499)   # nobody is listening any more
+            try:
+                await asyncio.wait_for(event.wait(), 0.25)
+            except asyncio.TimeoutError:
+                waited += 0.25
     if args.game_origin and request.headers.get('host') == GAMES_HOST and path.startswith('/party'):
         return JSONResponse({'error': 'not_found'}, status_code=404)   # the game origin serves no Party
     response = await call_next(request)

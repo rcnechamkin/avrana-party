@@ -46,6 +46,13 @@ export function locationOf(view) {
   return loc && typeof loc.at === 'string' ? loc : { at: HOME, game: null, session: null };
 }
 
+/** Which move of the Party this is: a phone that gave up on the way to a round (the going screen's
+ * "Back to Party") stays on Party Home for exactly this one, never for the next. */
+export function moveKey(view) {
+  const loc = locationOf(view);
+  return `${view && view.party}:${view && view.nav ? view.nav.seq : ''}:${loc.at}:${loc.game}:${loc.session}`;
+}
+
 /** The round this phone remembers having played ({ game, session }), or null. Only a member who
  * plays it (Party Core's own role for this member: `session.my_role`; the owner, 2026-10-06: a
  * round someone only watched is not in their "recently played"), and only while the round is on:

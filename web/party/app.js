@@ -25,9 +25,10 @@ import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
 import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
-import { HOME, destination, locationOf, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
+import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { createGameOrigins, gameAddress } from './lib/game-origins.js';
+import { createGoingWatchdog } from './lib/going-watchdog.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
 import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
@@ -46,7 +47,7 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
   // round: the briefing on screen (its id)
-  screen: 'main', round: null, game: null, back: null, rulesGame: null,
+  screen: 'main', declined: null, round: null, game: null, back: null, rulesGame: null,
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
   // box: the status document, asked for by the Host only; entries: the shelf as last drawn
@@ -854,6 +855,7 @@ function show(which, round = null) {
   $('going').hidden = which !== 'going';
   $('skip').hidden = which !== 'main';
   document.documentElement.dataset.screen = which;
+  if (which !== 'going') { goingWatch.cancel(); goingStuck(false); }   // no longer on the way: no timer, no way out left over
   if (!moved) return;
   renderTop();
   renderLimited();
@@ -875,10 +877,10 @@ function onPartyView(view, previous = null) {
   state.gamesKey = gamesKey;
   // Until Party Core's answer is known the address is the same-origin path; the phone does not
   // leave on that guess (leaveForRound waits), and once it is known, refusing it keeps Party Home.
-  const url = destination(view, HOME, state.catalog, gameOrigins.isSettled() ? addressOf : null);
+  const url = state.declined === moveKey(view) ? null      // this phone went back to Party Home from this move
+    : destination(view, HOME, state.catalog, gameOrigins.isSettled() ? addressOf : null);
   if (url) {                                  // the party is in a round: this phone goes there
-    const g = partyGame(state.catalog, locationOf(view).game);
-    $('going-text').textContent = `Taking you to ${g ? g.name : 'your party'}…`;
+    if (!goingWatch.gaveUp) $('going-text').textContent = `Taking you to ${gameName(view)}…`;   // not over the way out
     show('going');
     leaveForRound();
     return;
@@ -915,10 +917,29 @@ function leaveForRound() {
       const g = partyGame(state.catalog, locationOf(view).game);
       const round = roundToRemember(view);     // a round this phone plays, while it is on
       if (g && round) recordRound(g, round);   // only once it is really going there
-      location.replace(to);
+      if (goingWatch.arm(to)) {                       // not again for a target already on its way, or given up on
+        goingStuck(false);                            // a new target: no way out left over from the last one
+        $('going-text').textContent = `Taking you to ${gameName(view)}…`;
+        location.replace(to);
+      }
     }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
+}
+
+/** The navigation to the round has not arrived (lib/going-watchdog.js): one retry has been made, and
+ * now the going screen offers the way on and the way back, so nobody waits on it forever. */
+function gameName(view) {
+  const g = view ? partyGame(state.catalog, locationOf(view).game) : null;
+  return g ? g.name : 'your party';
+}
+
+function goingStuck(on) {
+  $('going-stuck').hidden = !on;
+  $('going-wait').hidden = on;
+  if (!on) return;
+  $('going-text').textContent = `Can’t reach ${gameName(party.view())}.`;
+  $('going-retry').focus({ preventScroll: true });
 }
 
 async function renderGames(refresh = true) {
@@ -1210,6 +1231,20 @@ function syncPresence() {
 }
 const party = createPartyClient({ onView: onPartyView, onLink });
 const gameOrigins = createGameOrigins();
+const goingWatch = createGoingWatchdog({ retry: (to) => location.replace(to), giveUp: () => goingStuck(true) });
+$('going-retry').onclick = () => {
+  goingStuck(false);
+  $('going-text').textContent = `Taking you to ${gameName(party.view())}…`;
+  $('going-text').focus({ preventScroll: true });   // the button that had focus is gone: its words are what changed
+  goingWatch.again();
+};
+$('going-back').onclick = () => {
+  const view = party.view();
+  if (!view) return;
+  state.declined = moveKey(view);
+  window.stop();                              // the navigation that never arrived must not arrive later and take this phone away
+  onPartyView(view, view);                    // Party Home, which show() moves to; the timer is cancelled there
+};
 $('net-retry').onclick = tryAgain;
 $('scene-retry').onclick = tryAgain;
 $('host-now-x').onclick = () => {
