@@ -51,8 +51,8 @@ PYTHONPATH=/path/to/{{NAME}} python3 -m avrana.avrgame inspect game.avrgame
 # PowerShell:  $env:PYTHONPATH = "C:\path\to\{{NAME}}"; python -m avrana.avrgame inspect game.avrgame
 ```
 
-The tools read `contracts/capabilities.v0.json` and `contracts/party-games.v0.json` from the
-`contracts/` directory beside `avrana/`; keep the two together. Do not move one without the other.
+The tools read `contracts/capabilities.v0.json` (the capability vocabulary) from the `contracts/`
+directory beside `avrana/`; keep the two together.
 
 ## Using it with the Games developer kit bundle
 
@@ -186,6 +186,57 @@ the session); the kit's scaffold does.
 A value the Party does not implement is refused ("compatibility fails closed"), so a package built for
 another version is stopped at validation rather than at the party. The kit writes the right values.
 
+## What your game will run under on an appliance
+
+<!-- Sources, not shipped (checked 2026-10-12 against this tree):
+     deploy/games/avrana-game@.service and avrana-game@.socket (RestrictAddressFamilies, Restart, DynamicUser,
+     LoadCredential, PYTHONDONTWRITEBYTECODE); avrana/ops/provision_game.py COMMUNITY_UNIT (the ceilings, read at
+     build time; PrivateNetwork, CapabilityBoundingSet) and NO_STATE; docs/design/AVRGAME-PACKAGE.md "What an
+     installed package can and cannot do" and "party_roster is mandatory"; avrana/ops/install_game.py (grant
+     rules); ADR 0016 section 4 (socket activation, stops itself when idle). -->
+
+These are the conditions the project's installer and unit templates set up **in code**. They are
+**experimental and not deployed**: they were exercised on a throwaway test machine in the project's CI,
+never on a real appliance, and **this export does not verify any of it**. Treat them as what to design
+for, not as a promise.
+
+- **One way to start.** `python3 -m <module>`, from the package root, with the appliance's system Python
+  and the **standard library only**. No other interpreter, no script path, no installing packages.
+- **No IP networking at all.** The process may use Unix sockets only (it cannot open a TCP or UDP socket,
+  and runs in an empty network namespace). It is **socket-activated**: the platform
+  creates the listening socket and starts your process on the first connection, handing the socket over as
+  file descriptor 3 (the kit's runtime does this for you). Your server must accept that socket and not bind
+  its own port.
+- **No network at install or play.** The installer reads the `.avrgame` file it is given and fetches
+  nothing; your game cannot fetch anything either. Ship everything it needs inside the package.
+- **The package is read-only.** The working directory is the unpacked package, owned by root and not
+  writable by your game. Python bytecode is not written. `/tmp` is private to the running game and is
+  discarded when it stops.
+- **No persistent state unless granted.** A directory that survives restarts exists only when the
+  appliance owner **granted** `persistent_storage`; without it there is none and no `$STATE_DIRECTORY`.
+  Granted storage has no quota. Keep state you cannot lose small and recoverable.
+- **Resource ceilings (provisional, may change).** At present a package's process gets a memory limit of
+  {{MEMORY_MAX}}, at most {{TASKS_MAX}} tasks (threads and processes) and {{CPU_QUOTA}} of one CPU; it also
+  runs with no extra privileges (an empty capability set). There is no system-call filter and no disk quota
+  yet. These values are conservative guesses, not measured on a real game or on the Pi, and going over them stops **your
+  process**, not the appliance.
+- **`party_roster` is mandatory in this experimental format.** The Party hands every game the roster of its
+  session at launch (each participant's id, display name and role), so the installer refuses a package that
+  does not request `party_roster` and an install that does not grant it. What the permission should cover
+  is still open and may change.
+- **Grants are recorded; few are enforced.** The owner decides which requested permissions to grant, and
+  the grant is written in a record next to the install. The platform does **not** check granted
+  permissions when a session starts: of them only `persistent_storage` is enforced (by the unit, as above).
+  For that reason the installer refuses to grant any permission it cannot enforce, which today is every
+  permission except `persistent_storage` and `party_roster`. A package may validate while asking for a
+  permission (such as `camera` or `internet`) that no install can be granted today.
+- **The platform starts, restarts and stops your process.** It is started on demand, restarted if it
+  exits with a failure, and is expected to **stop itself when idle** (no session, no report pending) and
+  on a termination signal; the kit's runtime does both. A game that never exits holds its memory.
+- **Your game is not trusted.** It runs as a throwaway unprivileged identity with its own key; it can
+  read world-readable files on the machine and talk to the Party's internal socket with that key only. It
+  cannot act as another game.
+
 ## What it cannot do
 
 - **It does not install anything.** Installation is the appliance owner's action (`install-game`, run as
@@ -201,9 +252,10 @@ another version is stopped at validation rather than at the party. The kit write
 ## What is in this export
 
 `avrana/avrgame/` (the tools), `avrana/contracts/` (the Game Contract validator and its strict JSON
-reader), `avrana/party/` (two **generated stand-in modules**, each holding one version string; the
-Party's session protocol and result implementation are **not** in this export), `contracts/` (two JSON
-files the validator reads), this README, `NOTICE.md`, `AVRGAME-PACKAGE-FORMAT.md` (a snapshot of the
+reader), `avrana/party/` and `avrana/contracts/party_games.py` (**generated stand-in modules**, each holding
+only a version string; the Party's session protocol, result implementation and its Party-to-Games
+declaration are **not** in this export), `contracts/` (the capability vocabulary the validator reads),
+this README, `NOTICE.md`, `AVRGAME-PACKAGE-FORMAT.md` (a snapshot of the
 format description) and `MANIFEST.json` (every file's sha256 and where it came from, the format the
 tools speak and the source commit, marked `source_dirty` when the tree had uncommitted changes).
 

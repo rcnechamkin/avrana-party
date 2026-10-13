@@ -17,8 +17,8 @@ What is in the export, and why (standard library only, nothing executed from the
 
   copied unchanged (LF-normalised) from this repository
       avrana/avrgame/{__init__,archive,build,common,manifest,__main__}.py
-      avrana/contracts/{strictjson,game,vocabulary,party_games}.py
-      contracts/capabilities.v0.json, contracts/party-games.v0.json
+      avrana/contracts/{strictjson,game,vocabulary}.py
+      contracts/capabilities.v0.json    the public capability vocabulary a manifest author must use
 
   generated stand-ins, because the real modules carry more than the packer needs
       avrana/__init__.py            CONTRACTS_DIR only (the real one also names web and provider code)
@@ -27,6 +27,9 @@ What is in the export, and why (standard library only, nothing executed from the
       avrana/party/protocol.py      VERSION only: manifest.supported_requires() reads nothing else of
                                     the session protocol; the HMAC ticket implementation is NOT shipped
       avrana/party/result.py        SCHEMA only: likewise for the result envelope
+      avrana/contracts/party_games.py  load() returning only {'bridge': {'protocol': ...}}: the one key the
+                                    packer reads of the Party <-> Games declaration. The declaration file itself
+                                    (internal routes, reference hashes) is NOT shipped
 
 The build fails (it does not guess) when a shipped module imports anything that is not the standard
 library or inside the export, or reads a name the stand-ins do not define: an in-repo change that
@@ -62,17 +65,22 @@ COPIED = (
     'avrana/avrgame/__init__.py', 'avrana/avrgame/archive.py', 'avrana/avrgame/build.py',
     'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py', 'avrana/avrgame/__main__.py',
     'avrana/contracts/strictjson.py', 'avrana/contracts/game.py', 'avrana/contracts/vocabulary.py',
-    'avrana/contracts/party_games.py',
-    'contracts/capabilities.v0.json', 'contracts/party-games.v0.json',
+    'contracts/capabilities.v0.json',
 )
 PROTOCOL_SOURCE = 'avrana/party/protocol.py'     # read for VERSION only; never shipped
 RESULT_SOURCE = 'avrana/party/result.py'         # read for SCHEMA only; never shipped
+PARTY_GAMES_JSON = 'contracts/party-games.v0.json'   # read for bridge.protocol only; never shipped
+PARTY_GAMES_SOURCE = 'avrana/contracts/party_games.py'   # replaced by a stand-in; listed so a change marks the tree dirty
+PROVISION_SOURCE = 'avrana/ops/provision_game.py'    # read for the community-tier ceilings (README text); never shipped
 FORMAT_DOC = 'docs/design/AVRGAME-PACKAGE.md'
 TEMPLATES = {'README.md': 'tools/avrgame-tools/README.md.in', 'NOTICE.md': 'tools/avrgame-tools/NOTICE.md.in'}
 SELF = 'tools/build_avrgame_tools.py'
 
 # What the generated stand-ins define, and so what shipped code may read from them.
-SHIMMED = {'avrana.party.protocol': ('VERSION',), 'avrana.party.result': ('SCHEMA',)}
+SHIMMED = {'avrana.party.protocol': ('VERSION',), 'avrana.party.result': ('SCHEMA',),
+           'avrana.contracts.party_games': ('load',)}
+# What the stand-in party_games.load() returns; shipped code may subscript only down to a leaf (None) of this.
+REDUCED_SHAPE = {'bridge': {'protocol': None}}
 
 # Sections of the format note that the snapshot keeps, in order (by heading text).
 KEEP_SECTIONS = ('What a package is', 'Archive', 'Manifest `avrgame.json`', 'Build recipe (developer convenience)',
@@ -109,7 +117,8 @@ def read_text_file(source, rel):
 
 def input_paths():
     """Every repository file the export is made from (also what decides "dirty")."""
-    return sorted({*COPIED, PROTOCOL_SOURCE, RESULT_SOURCE, FORMAT_DOC, SELF, *TEMPLATES.values()})
+    return sorted({*COPIED, PROTOCOL_SOURCE, RESULT_SOURCE, PARTY_GAMES_JSON, PARTY_GAMES_SOURCE, PROVISION_SOURCE,
+                   FORMAT_DOC, SELF, *TEMPLATES.values()})
 
 
 def _const_eval(node):
@@ -147,6 +156,10 @@ def string_constant(text, name, where):
 def generated_files(source):
     protocol_version = string_constant(read_text_file(source, PROTOCOL_SOURCE).decode(), 'VERSION', PROTOCOL_SOURCE)
     result_schema = string_constant(read_text_file(source, RESULT_SOURCE).decode(), 'SCHEMA', RESULT_SOURCE)
+    declaration = json.loads(read_text_file(source, PARTY_GAMES_JSON))
+    bridge_protocol = declaration.get('bridge', {}).get('protocol')
+    if not isinstance(bridge_protocol, str):
+        raise ExportError(f'{PARTY_GAMES_JSON}: no bridge.protocol string; the export reads it for the stand-in module')
     texts = {
         'avrana/__init__.py': (
             '"""Minimal `avrana` package root of the EXPERIMENTAL .avrgame developer tools export.\n\n'
@@ -164,6 +177,13 @@ def generated_files(source):
             'Generated. The .avrgame tools only need the session protocol\'s version string (to check a package\'s\n'
             '`requires.session`). The protocol implementation itself is not part of this export.\n"""\n'
             f'VERSION = {protocol_version!r}\n'),
+        'avrana/contracts/party_games.py': (
+            '"""Stand-in for `avrana.contracts.party_games` in the EXPERIMENTAL .avrgame developer tools export.\n\n'
+            'Generated. The .avrgame tools only need the bridge protocol version string of the Party <-> Games\n'
+            'declaration (to check a package\'s `requires.bridge`). The declaration file is not part of this export.\n"""\n'
+            f'_DECLARATION = {{"bridge": {{"protocol": {bridge_protocol!r}}}}}\n\n\n'
+            'def load(path=None):\n'
+            '    return {"bridge": dict(_DECLARATION["bridge"])}\n'),
         'avrana/party/result.py': (
             '"""Stand-in for `avrana.party.result` in the EXPERIMENTAL .avrgame developer tools export.\n\n'
             'Generated. The .avrgame tools only need the game-result schema string (to check a package\'s\n'
@@ -221,7 +241,12 @@ def template_values(source, files):
     common = constants(files['avrana/avrgame/common.py'].decode())
     manifest = constants(files['avrana/avrgame/manifest.py'].decode())
     game = constants(files['avrana/contracts/game.py'].decode())
-    bridge = json.loads(files['contracts/party-games.v0.json'])['bridge']['protocol']
+    bridge = json.loads(read_text_file(source, PARTY_GAMES_JSON))['bridge']['protocol']
+    unit = constants(read_text_file(source, PROVISION_SOURCE).decode()).get('COMMUNITY_UNIT')
+    ceilings = dict(line.split('=', 1) for line in (unit or '').splitlines() if '=' in line and not line.startswith('#'))
+    for key in ('MemoryMax', 'TasksMax', 'CPUQuota'):
+        if not ceilings.get(key):
+            raise ExportError(f'{PROVISION_SOURCE}: COMMUNITY_UNIT has no {key}=; the README states the ceilings')
     mib, kib = 1024 * 1024, 1024
     return {
         'NAME': NAME, 'TOOLS_VERSION': TOOLS_VERSION, 'FORMAT': common['FORMAT'], 'RECIPE_FORMAT': common['RECIPE_FORMAT'],
@@ -233,11 +258,12 @@ def template_values(source, files):
         'REQ_SESSION': string_constant(read_text_file(source, PROTOCOL_SOURCE).decode(), 'VERSION', PROTOCOL_SOURCE),
         'REQ_RESULT': string_constant(read_text_file(source, RESULT_SOURCE).decode(), 'SCHEMA', RESULT_SOURCE),
         'REQ_BRIDGE': bridge,
+        'MEMORY_MAX': ceilings['MemoryMax'], 'TASKS_MAX': ceilings['TasksMax'], 'CPU_QUOTA': ceilings['CPUQuota'],
     }
 
 
 def fill(template, values, where):
-    text = template.decode('utf-8')
+    text = re.sub(r'<!--.*?-->\n?', '', template.decode('utf-8'), flags=re.S)       # comments in a template are not shipped
     unknown = sorted(set(re.findall(r'\{\{([A-Z_]+)\}\}', text)) - set(values))
     if unknown:
         raise ExportError(f'{where}: unknown placeholder(s) {unknown}')
@@ -339,6 +365,40 @@ def check_closure(files, source):
                 module = bound[node.value.id]
                 if node.attr not in SHIMMED[module]:
                     problems.append(f'{path}: reads {module}.{node.attr}; the stand-in defines only {SHIMMED[module]}')
+    for path in sorted(files):
+        if not path.endswith('.py'):
+            continue
+        tree = ast.parse(files[path].decode('utf-8'), filename=path)
+        here, is_pkg = _module_name(path)
+        package = here if is_pkg else here.rpartition('.')[0]
+        bound = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                base = node.module or ''
+                if node.level:
+                    parts = package.split('.') if package else []
+                    base = '.'.join(parts[:len(parts) - (node.level - 1)] + ([node.module] if node.module else []))
+                for a in node.names:
+                    if f'{base}.{a.name}' == 'avrana.contracts.party_games':
+                        bound[a.asname or a.name] = f'{base}.{a.name}'
+        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'load'
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id in bound):
+                continue
+            keys, current = [], node
+            while isinstance(parents.get(id(current)), ast.Subscript) and parents[id(current)].value is current:
+                current = parents[id(current)]
+                keys.append(current.slice.value if isinstance(current.slice, ast.Constant) else None)
+            shape = REDUCED_SHAPE
+            for key in keys:
+                shape = shape.get(key, 'missing') if isinstance(shape, dict) else 'missing'
+                if shape == 'missing':
+                    break
+            if shape is not None:
+                shown = ''.join('[' + repr(k) + ']' for k in keys)
+                problems.append(f'{path}: reads party_games.load(){shown}; the stand-in holds only {REDUCED_SHAPE} '
+                                'and must be read down to one of its values')
     for module in SHIMMED:
         if module not in modules:
             problems.append(f'stand-in {module} missing')

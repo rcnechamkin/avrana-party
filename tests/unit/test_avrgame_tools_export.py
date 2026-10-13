@@ -46,7 +46,7 @@ ALLOWED = {
     'avrana/contracts/__init__.py', 'avrana/contracts/game.py', 'avrana/contracts/party_games.py',
     'avrana/contracts/strictjson.py', 'avrana/contracts/vocabulary.py',
     'avrana/party/__init__.py', 'avrana/party/protocol.py', 'avrana/party/result.py',
-    'contracts/capabilities.v0.json', 'contracts/party-games.v0.json',
+    'contracts/capabilities.v0.json',
 }
 ALLOWED_MODULES = {
     'avrana', 'avrana.avrgame', 'avrana.avrgame.__main__', 'avrana.avrgame.archive', 'avrana.avrgame.build',
@@ -159,6 +159,24 @@ class ContentsTests(Built):
             self.assertLess(len(text), 600, rel)
             self.assertNotIn('hmac', text)
 
+    def test_the_party_games_declaration_is_not_shipped_only_the_one_value_the_packer_reads(self):
+        for name, data in self.files.items():
+            for leaked in ('reference_sha256', 'party_ended', '/internal/', 'keys_dir', 'AVRANA_PARTY_KEYS', 'vectors_sha256'):
+                self.assertNotIn(leaked, data.decode('utf-8'), name)
+        shim = self.files[f'{TOP}/avrana/contracts/party_games.py'].decode('utf-8')
+        namespace = {}
+        exec(compile(shim, 'party_games_shim', 'exec'), namespace)
+        declared = json.loads((CONTRACTS_DIR / 'party-games.v0.json').read_text())
+        self.assertEqual(namespace['load'](), {'bridge': {'protocol': declared['bridge']['protocol']}})
+        self.assertEqual(sorted(n for n in namespace if not n.startswith('__')), ['_DECLARATION', 'load'])
+
+    def test_the_capability_vocabulary_is_shipped_whole_and_holds_only_names_and_words(self):
+        data = json.loads(self.files[f'{TOP}/contracts/capabilities.v0.json'])
+        self.assertEqual(set(data), {'schema', 'note', 'device', 'runtime'})
+        for scope in ('device', 'runtime'):
+            for entry in data[scope].values():
+                self.assertLessEqual(set(entry), {'probe', 'summary', 'label', 'missing'})
+
     def test_the_package_root_is_a_stand_in_that_only_names_the_contracts_directory(self):
         text = self.files[f'{TOP}/avrana/__init__.py'].decode('utf-8')
         self.assertIn("CONTRACTS_DIR = TOOLS_ROOT / 'contracts'", text)
@@ -190,7 +208,11 @@ class ContentsTests(Built):
             self.assertNotIn('{{', text, name)
             self.assertIn('EXPERIMENTAL', text.upper(), name)
         plain = re.sub(r'[\s*]+', ' ', readme)
-        for phrase in ('no compatibility promise', 'no signing', 'not trusted', 'does not install', 'python3'):
+        self.assertIn('What your game will run under on an appliance', readme)
+        self.assertNotIn('<!--', readme)
+        self.assertNotIn('provision_game', readme)
+        for phrase in ('experimental and not deployed', 'provisional, may change', 'party_roster', 'No IP networking',
+                       'socket-activated', 'read-only', 'no compatibility promise', 'no signing', 'not trusted', 'does not install', 'python3'):
             self.assertIn(phrase, plain)
         self.assertIn('open owner decision', notice)
         for word in ('python3', 'persistent_storage', str(avrgame.MAX_FILES), avrgame.FORMAT):
@@ -399,6 +421,17 @@ class ClosureCheckTests(unittest.TestCase):
         files = self.files()
         files['avrana/avrgame/manifest.py'] += b'\n\nfrom avrana.party.result import validate\n'
         self.refused(files, 'avrana.party.result.validate')
+
+    def test_reading_more_of_the_declaration_than_the_bridge_protocol_is_refused(self):
+        use = 'from avrana.contracts import party_games'
+        for expr, expect in (("party_games.load()['routes']", "['routes']"),
+                             ("party_games.load()['bridge']['frame']", "['frame']"),
+                             ("party_games.load()", 'party_games.load()'),
+                             ("party_games.versions()", 'versions')):
+            files = self.files()
+            extra = '\n\ndef extra():\n    ' + use + '\n    return ' + expr + '\n'
+            files['avrana/avrgame/manifest.py'] += extra.encode()
+            self.refused(files, expect)
 
     def test_a_third_party_import_is_refused(self):
         files = self.files()
