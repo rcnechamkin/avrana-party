@@ -253,7 +253,7 @@ def _write_record(layout, package_id, doc):
 # ---- the lock ---------------------------------------------------------------------------------------
 
 @contextlib.contextmanager
-def locked(path):
+def locked(path, wait=0):
     """One install, remove or repair at a time. Where `fcntl` does not exist (Windows, where the
     tests run) there is nothing to lock. The lock dies with the process, so a crash never leaves
     it held."""
@@ -264,10 +264,15 @@ def locked(path):
         return
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise Refused('another install-game is running (the lock is held); wait for it') from None
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise Refused('another install-game is running (the lock is held); wait for it') from None
+                time.sleep(0.2)
         yield
     finally:
         os.close(fd)

@@ -26,6 +26,9 @@ The rules, each tested:
   renamed, and the directory fsynced. Same inputs, same bytes (no timestamp). A reader sees the old
   file or the new one, never a part. If anything goes wrong while refreshing, the overlay is
   removed before the error is raised: absent and regenerable, never stale or half-written.
+- `refresh` repeats (at most MAX_BASE_MOVES times) when the release catalog changed while it ran, so an
+  install that read the old release and finishes after a deploy switched `current` cannot leave an overlay of
+  the old release behind. `refresh --wait N` waits up to N seconds for a running install-game (deploy hooks).
 - The overlay is derived from the release catalog, so a new release or a rollback of the web shell
   makes it stale. `ops/install-party-web.sh` runs `refresh` after it switches `current`, `ops/deploy.sh`
   (`settle_catalog`) refreshes or removes it after every move of the web release it makes, including its
@@ -34,6 +37,7 @@ The rules, each tested:
 Everything that touches the host is an argument, so the tests run in scratch directories.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -51,6 +55,7 @@ DEFAULT_DIR = '/var/lib/avrana-party/catalog'
 FILE_NAME = 'catalog.json'
 DEFAULT_BASE = '/var/www/avrana-party/web/current/catalog.json'
 MAX_BASE_BYTES = 4 * 1024 * 1024
+MAX_BASE_MOVES = 3          # a refresh repeats at most this often when the release catalog moves under it
 MAX_OVERLAY_BYTES = 5 * 1024 * 1024
 MAX_ROW_BYTES = 4096
 MAX_NAME, MAX_SUMMARY, MAX_STRING = 60, 400, 200
@@ -212,6 +217,13 @@ def remove(path):
     return gone
 
 
+def _digest(path):
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 def refresh(out_dir, base_path, records_dir, **kw):
     """Make the overlay match the install records: write it, or remove it when no package is to be
     listed. Returns (listed ids, problems). On any failure the overlay is removed first and the
@@ -219,12 +231,18 @@ def refresh(out_dir, base_path, records_dir, **kw):
     can be run again."""
     target = Path(out_dir) / FILE_NAME
     try:
-        text, listed, problems = effective(base_path, records_dir, **kw)
-        if text is None:
-            remove(target)
-        else:
-            write_atomic(target, text)
-        return listed, problems
+        for _ in range(MAX_BASE_MOVES):
+            seen = _digest(base_path)
+            text, listed, problems = effective(base_path, records_dir, **kw)
+            if text is None:
+                remove(target)
+            else:
+                write_atomic(target, text)
+            if _digest(base_path) == seen:
+                return listed, problems
+            # The web release moved while this ran (a deploy switched `current`): what was just written was
+            # derived from the release that is no longer served. Derive it again, from the one that is.
+        raise OverlayError('the release catalog kept changing while the effective catalog was written')
     except BaseException as exc:
         try:
             remove(target)
@@ -314,6 +332,8 @@ def main(argv=None, out=None, err=None):
     ap.add_argument('--records-dir', default=installed.DEFAULT_RECORDS_DIR)
     ap.add_argument('--games-root', default=installed.DEFAULT_GAMES_ROOT)
     ap.add_argument('--lock-file', default='/run/avrana-install-game.lock', help=argparse.SUPPRESS)
+    ap.add_argument('--wait', type=float, default=0, metavar='SECONDS',
+                    help='refresh: wait up to this long for a running install-game instead of refusing (default: do not wait)')
     a = ap.parse_args(argv)
     kw = {'games_root': a.games_root}
     try:
@@ -337,7 +357,7 @@ def main(argv=None, out=None, err=None):
             print('catalog-overlay: refresh must run as root (use sudo)', file=err)
             return 1
         from avrana.ops import install_game      # the same lock as install and remove (taken here, never inside them)
-        with install_game.locked(a.lock_file):
+        with install_game.locked(a.lock_file, wait=a.wait):
             listed, problems = refresh(a.out_dir, a.base, a.records_dir, **kw)
         print('catalog-overlay: lists ' + (', '.join(listed) if listed else 'no package (overlay removed)'), file=out)
         for p in problems:

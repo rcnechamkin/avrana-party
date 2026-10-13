@@ -319,6 +319,79 @@ class PackageControlledFields(OverlayBase):
         self.assertEqual(self.overlay.stat().st_mode & 0o777, 0o644)
 
 
+class ReleaseMovesDuringARefresh(OverlayBase):
+    """A deploy switches the web release while an install is publishing: the overlay it writes must not be the old
+    release's (AVR-337, review of PR #115)."""
+
+    def newer(self):
+        newer = json.loads(COMMITTED.read_text(encoding='utf-8'))
+        extra = copy.deepcopy(newer['games'][0])
+        extra.update({'id': 'newgame', 'name': 'A new first-party game'})
+        newer['games'].append(extra)
+        return json.dumps(newer)
+
+    def test_a_refresh_that_read_the_old_release_runs_again_for_the_new_one(self):
+        self.install()
+        path = self.root / 'base.json'
+        path.write_text(COMMITTED.read_text(encoding='utf-8'), encoding='utf-8')
+        real, moved = co.write_atomic, []
+
+        def write_then_switch(target, text):
+            real(target, text)                      # the install wrote the overlay of the OLD release ...
+            if not moved:
+                moved.append(1)
+                path.write_text(self.newer(), encoding='utf-8')      # ... and the deploy switched `current` meanwhile
+
+        with mock.patch.object(co, 'write_atomic', write_then_switch):
+            self.refresh(base=path)
+        self.assertEqual([g['id'] for g in self.doc()['games']][-2:], ['newgame', 'hello'])
+        self.assertEqual(co.check(self.out_dir, path, self.layout.records_dir, **self.kw()), [])
+
+    def test_a_release_that_never_stops_moving_removes_the_overlay_and_says_so(self):
+        self.install()
+        path = self.root / 'base.json'
+        path.write_text(COMMITTED.read_text(encoding='utf-8'), encoding='utf-8')
+        real, count = co.write_atomic, []
+
+        def always_moving(target, text):
+            real(target, text)
+            count.append(1)
+            path.write_text(self.newer().replace('A new first-party game', f'A new first-party game {len(count)}'), encoding='utf-8')
+
+        with mock.patch.object(co, 'write_atomic', always_moving):
+            with self.assertRaises(co.OverlayError):
+                self.refresh(base=path)
+        self.assertEqual(len(count), co.MAX_BASE_MOVES)
+        self.assertFalse(self.overlay.exists())
+
+
+class WaitingForAnInstall(OverlayBase):
+    @unittest.skipUnless(os.name == 'posix', 'needs flock')
+    def test_refresh_waits_for_a_running_install_and_without_wait_it_refuses(self):
+        import threading
+        lock = str(self.root / 'install.lock')
+        held, release = threading.Event(), threading.Event()
+
+        def hold():
+            with ig.locked(lock):
+                held.set()
+                release.wait(20)
+
+        holder = threading.Thread(target=hold)
+        holder.start()
+        self.addCleanup(holder.join)
+        self.addCleanup(release.set)
+        self.assertTrue(held.wait(10))
+        out, err = io.StringIO(), io.StringIO()
+        args = ['refresh', '--base', str(self.base), '--out-dir', str(self.out_dir), '--records-dir', str(self.layout.records_dir),
+                '--games-root', '/opt/avrana-games', '--lock-file', lock]
+        with mock.patch('os.geteuid', return_value=0, create=True):
+            self.assertEqual(co.main(args, out=out, err=err), 1, 'without --wait a held lock is a refusal')
+            self.assertIn('lock is held', err.getvalue())
+            threading.Timer(1.0, release.set).start()
+            self.assertEqual(co.main([*args, '--wait', '15'], out=out, err=io.StringIO()), 0, out.getvalue())
+
+
 class ShellHook(unittest.TestCase):
     """ops/install-party-web.sh refresh_catalog: any failure removes the overlay (never left built
     from the previous release) and says how to repair. Real bash, a python3 that fails."""

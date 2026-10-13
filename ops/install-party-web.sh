@@ -40,7 +40,7 @@ refresh_catalog() {
     local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
     [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
     tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd) || tree=.
-    if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
+    if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --wait 30 --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
         # Owner decision 2026-10-10: a read-only consistency check, WARNING ONLY. It never changes the exit
         # status of this script, the deploy, smoke, the manifest or /party/api/status.
         local note rc=0
