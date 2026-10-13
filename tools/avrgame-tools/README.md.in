@@ -1,0 +1,322 @@
+# Avrana `.avrgame` developer tools: experimental export ({{TOOLS_VERSION}})
+
+**EXPERIMENTAL. Not an SDK, not "v0", not stable, not frozen.** The `.avrgame` package format, these
+tools and every limit below may change or disappear without notice. There is **no compatibility
+promise** and **no signing**: nothing in a package is signed, and nothing here checks who made it.
+**A package that passes `validate` is well-formed, not trusted.** Validation reads bytes and checks
+data; it says nothing about whether the game is safe, honest or good, and the publisher and licence
+fields in a manifest are claims that nobody verified.
+
+## What this is
+
+The validator and packer that the Avrana Party project uses for `.avrgame` files, taken out of the
+project's (private) repository so that you can use them without a checkout:
+
+```text
+python -m avrana.avrgame validate <file.avrgame | directory-with-avrgame.build.json | recipe.json>
+python -m avrana.avrgame pack <path/to/avrgame.build.json> [--out FILE] [--deflate]
+python -m avrana.avrgame inspect <file.avrgame> [--json]
+python -m avrana.avrgame extract <file.avrgame> <new-or-empty-dir>
+```
+
+Standard library only; no network, no installation, no root. It never imports, runs or evaluates
+anything from a package. A `.avrgame` is one ZIP file holding a native Avrana game (its Python server
+process and its phone-browser client); see `AVRGAME-PACKAGE-FORMAT.md` in this export for the format.
+
+This export is built from the project's source by a script and is reproducible: `MANIFEST.json` lists
+every file with its sha256 and the source commit it came from.
+
+## Requirements
+
+- **A stock Python 3.** Verified on **Python 3.12** only (Windows, and Linux in the project's CI). The
+  shipped code parses with the Python 3.10 grammar (checked when the export is built), so 3.10 is the
+  floor **by inspection**; 3.10 and 3.11 have **not** been run. Newer than 3.12 is untested.
+- The commands say `python`; on Linux and macOS use `python3`. macOS is expected to work and is untested.
+- Nothing else: no pip, no packages, no network, no appliance hardware, no Party running.
+
+## Unpack and check
+
+```text
+sha256sum -c {{NAME}}.zip.sha256          # PowerShell: Get-FileHash -Algorithm SHA256 {{NAME}}.zip
+python -m zipfile -e {{NAME}}.zip .
+cd {{NAME}}
+python -m avrana.avrgame --help
+```
+
+The tools find the `avrana` package next to your working directory, so either run them from this
+directory, or point `PYTHONPATH` at it and run them from anywhere:
+
+```text
+PYTHONPATH=/path/to/{{NAME}} python3 -m avrana.avrgame inspect game.avrgame
+# PowerShell:  $env:PYTHONPATH = "C:\path\to\{{NAME}}"; python -m avrana.avrgame inspect game.avrgame
+```
+
+The tools read `contracts/capabilities.v0.json` (the capability names; see below) from the `contracts/`
+directory beside `avrana/`; keep the two together.
+
+## Using it with the Games developer kit bundle
+
+You need the Games repository's bundle `avrana-gamekit-experimental.1.zip` (the kit, a scaffold, a
+conformance run and the Hello Party example). It does not contain the packer; this export does. Unpack
+both **side by side**:
+
+```text
+work/
+  avrana-gamekit-experimental.1/            the kit bundle, unpacked
+  {{NAME}}/   this export, unpacked
+```
+
+From the **kit** directory (`cd work/avrana-gamekit-experimental.1`), write and pre-flight a game, then
+pack it and run the kit's conformance on the packed file:
+
+```text
+python -m avrana_gamekit new sparkle sparkle --title "Sparkle Time"
+python -m avrana_gamekit check sparkle
+
+PYTHONPATH=../{{NAME}} python3 -m avrana.avrgame validate sparkle/avrgame.build.json
+PYTHONPATH=../{{NAME}} python3 -m avrana.avrgame pack sparkle/avrgame.build.json --out out/sparkle-0.1.0.avrgame
+PYTHONPATH=../{{NAME}} python3 -m avrana.avrgame inspect out/sparkle-0.1.0.avrgame
+
+python -m avrana_gamekit.conformance out/sparkle-0.1.0.avrgame
+```
+
+In PowerShell, set the variable for the three packer commands and remove it afterwards (the
+conformance run starts your game as the appliance would and should not have the tools on its path):
+
+```text
+$env:PYTHONPATH = "$PWD\..\{{NAME}}"
+python -m avrana.avrgame validate sparkle/avrgame.build.json
+python -m avrana.avrgame pack sparkle/avrgame.build.json --out out/sparkle-0.1.0.avrgame
+python -m avrana.avrgame inspect out/sparkle-0.1.0.avrgame
+Remove-Item Env:PYTHONPATH
+python -m avrana_gamekit.conformance out/sparkle-0.1.0.avrgame
+```
+
+`validate` prints the id, version, file count, size and the archive's sha256; `pack` prints the file it
+wrote and the same sha256; `inspect` also prints the manifest summary and every file (publisher and
+licence marked as claims). The sha256 is identical for the same inputs on every machine, because `pack`
+sorts the entries, fixes the timestamps and modes and stores the files uncompressed.
+
+**A package can validate and still fail to start.** Validation checks bytes and that the `-m` module
+exists inside the package; it does not run your game. The gate that does is the kit's conformance run on
+the packed file (the last command above). If it fails, fix the game or the build recipe (the usual cause
+is a module the game imports that the recipe does not include) and pack again.
+
+The kit's own README and walkthrough describe writing and testing the game itself.
+
+## The build recipe
+
+`pack` and `validate` take a **build recipe**, `avrgame.build.json`, which the kit generates for you:
+
+```json
+{"recipe": "{{RECIPE_FORMAT}}", "manifest": "avrgame.json", "root": "..", "include": ["sparkle", "..."]}
+```
+
+`manifest` and `root` are relative to the recipe file (defaults `avrgame.json` and `.`); each `include`
+entry is relative to `root`, may not leave it, and directories are included recursively. Unknown keys
+are refused. The recipe is a convenience for the packer and is **not** inside the `.avrgame`.
+
+## Limits (experimental values)
+
+| Limit | Value |
+|---|---|
+| Format string, exactly | `{{FORMAT}}` |
+| Files (entries) in a package | {{MAX_FILES}} |
+| One file, unpacked | {{MAX_FILE_MIB}} MiB |
+| All files, unpacked | {{MAX_TOTAL_MIB}} MiB |
+| The archive file | {{MAX_ARCHIVE_MIB}} MiB |
+| `avrgame.json` | {{MAX_MANIFEST_KIB}} KiB |
+| A file name | {{MAX_NAME_LENGTH}} characters, {{MAX_DEPTH}} path segments |
+| `server.args` | 1 to {{MAX_ARGS}} strings, each 1 to {{MAX_ARG}} printable characters |
+
+Sizes are checked against the bytes actually read, not only the sizes an archive claims.
+
+## What is refused, and why
+
+Validation lists **every** problem it finds, one per line on stderr, and exits 1. Exit 0 is success and
+2 is a usage error.
+
+- **File names**: relative, `/` separated, ASCII letters, digits and `. _ + @ = ~ -` only; no empty, `.`
+  or `..` segment, no backslash, drive letter, `:` or control character, no dotfile, no segment ending in
+  `.` or a space, no Windows device name (`CON`, `NUL`, `COM1` ...), no two names differing only by case.
+  (So the package unpacks the same on every platform and cannot write outside its own directory.)
+- **Key material**: any file named `*.key`, `*.pem`, `*.p12`, `*.pfx`, `id_rsa*`, `*.env` or `.env`.
+  Secrets must never travel in a package; `pack` refuses it as well as the validator.
+- **Not plain files**: symbolic links, devices, FIFOs, sockets, setuid/setgid/sticky bits, encrypted
+  entries and compression other than stored or deflate. **Python bytecode** (`*.pyc`, `__pycache__`),
+  because bytecode cannot be reviewed as source. Inside a directory the packer skips hidden files,
+  `__pycache__`, `*.pyc` and `avrgame.build.json` by itself.
+- **The manifest** (`avrgame.json`, strict JSON: duplicate keys, `NaN`, a byte-order mark or an unknown key
+  anywhere is an error): `format` must be exactly the string above, so a format this tool does not know
+  is refused rather than guessed at.
+- **Appliance-owned names**: the manifest may not carry a tier, entry path, health check, granted
+  permission, key, socket, command, environment or absolute path. A package **requests**; the
+  appliance owner **decides**. These are refused by name.
+- **Reserved**: top-level `signature`, `provenance`, `entitlement` and `publisher_key` are refused as
+  "not implemented", so an ignored signature can never look like a checked one.
+- **Which games can be packaged**: only a `native` game with `runtime.type` `external` and `start`
+  `service`. Emulated, LAN-module and arcade games are not packageable. The game's own contract must be
+  a complete `avrana.game/v0` Game Contract; `game.package` is not allowed (use the manifest's `package`
+  block); `game.id` is the package id.
+- **`server.interpreter`** is a **name** from the appliance's list, today only `python3`, never a path.
+  `server.args` for `python3` must be exactly `["-m", "<dotted module>", ...]`, and the module must
+  exist in the package as `NAME/__main__.py` or `NAME.py` (checked by reading the file list; nothing
+  is imported). `-c`, a script path and other interpreter options are refused. No argument may be an
+  absolute path or contain `..`.
+- **`client.root`** is a relative directory inside the package and must contain `index.html`.
+- **Capability names**: the Game Contract's `requires` and `optional` lists may use only names from the
+  capability vocabulary, listed with a one-line meaning in the section "Capability names" below. The file
+  `contracts/capabilities.v0.json` in this export holds the same names; its labels, summaries and probe
+  kinds are placeholders, because the tools never read them. The validator's message for any other name
+  says only that the name is unknown; it does not list the valid ones, so use the table.
+
+### Reading the refusal messages
+
+The messages are the project's own, unchanged, so some say "this appliance" (for example "this appliance
+implements [...], not ..."). In these tools that means **these tools**: the value your package asks for is
+not one that this export of the tools speaks. The usual fix is to build your game for the versions in the
+table below, or, if the game is newer than the tools, to ask whoever gave you this export for a newer one.
+
+## Capability names
+
+A presentation in the Game Contract says what a phone, or the appliance, must be able to do for that
+presentation to work, by naming capabilities in `requires` (and `optional`). These are all the names
+the validator accepts, and what a game is saying when it lists one. The first group are features of the
+phone's browser (named after the Web platform feature of the same name); the second group are
+things the appliance may have available, and matter only to a presentation whose picture or input does not
+come from the phone's browser alone. **A `browser_native` presentation needs none of the `runtime.*`, `input.*` or
+`presentation.*` names.**
+
+| Name | What a game is saying by requiring it |
+|---|---|
+| `secure_context` | The page is served over HTTPS (or from localhost), which the browser demands before it offers several other features. |
+| `service_worker` | The browser can register a service worker (a background script that can cache the game for offline use). |
+| `cache_storage` | The browser offers the Cache Storage API for keeping downloaded files. |
+| `websocket` | The browser can open a WebSocket, a two-way connection to the game's server. |
+| `webrtc` | The browser supports WebRTC peer connections (live audio, video and data between endpoints). |
+| `webrtc.data_channel` | The browser can open a WebRTC data channel (low-latency messages without a server in between). |
+| `video.h264` | The browser can play video compressed with the common AVC codec. |
+| `web_audio` | The browser offers the Web Audio API for generating and mixing sound. |
+| `gamepad` | The browser has the Gamepad API (this does not mean that a controller is connected). |
+| `wake_lock` | The browser can keep the screen from switching off (Screen Wake Lock API). |
+| `web_crypto` | The browser offers the Web Crypto API (hashing, random values and encryption in the page). |
+| `storage.local` | The browser offers `localStorage` for small values kept on the device. |
+| `storage.indexeddb` | The browser offers IndexedDB for larger structured data kept on the device. |
+| `storage.persistent` | The browser has already marked this site's storage as persistent (the page does not ask for it). |
+| `webgl` | The browser can draw 3D graphics with WebGL. |
+| `webgl2` | The browser can draw 3D graphics with WebGL 2. |
+| `webgpu` | The browser can draw and compute on the graphics chip with WebGPU. |
+| `fullscreen` | The browser lets the page fill the whole screen (Fullscreen API). |
+| `vibration` | The browser can make the phone vibrate (Vibration API). |
+| `media_devices` | The browser offers the call that opens cameras and microphones (the check opens nothing). |
+| `microphone` | The player has already granted the page permission to use the microphone. |
+| `camera` | The player has already granted the page permission to use the camera. |
+| `touch` | The device has a touch screen. |
+| `runtime.lan_games` | The appliance has its older built-in game server installed. This describes the appliance, not your game. |
+| `runtime.retroarch` | The appliance has its emulator runtime available. This describes the appliance, not your game. |
+| `input.virtual_gamepad` | The appliance can turn phone input into a virtual game controller for each player. |
+| `presentation.shared_stream` | The appliance can send one video stream of the whole picture to every phone. |
+| `presentation.personal_viewport.crop` | The appliance can give each player a cut-out of one shared picture. |
+| `presentation.personal_viewport.dedicated_stream` | The appliance can render and send each player a video stream of their own. |
+| `presentation.tv` | The appliance can show the game on a shared screen or television, while phones act as controllers. |
+
+## Permissions
+
+`game.runtime.permissions` in the Game Contract is a **request**. The names this version knows are:
+{{PERMISSIONS}}. An unknown name is refused. Whether any of them is granted is the appliance owner's
+decision, per install; a package cannot grant itself anything, and validation grants nothing. The
+experimental installer today additionally requires a package to request `party_roster` (the roster of
+the session); the kit's scaffold does.
+
+## What `requires` means
+
+`requires` states which protocol versions the game was built for, and **all three are mandatory**:
+
+| Key | Value this export accepts |
+|---|---|
+| `session` | `{{REQ_SESSION}}` |
+| `bridge` | `{{REQ_BRIDGE}}` |
+| `result` | `{{REQ_RESULT}}` |
+
+A value the Party does not implement is refused ("compatibility fails closed"), so a package built for
+another version is stopped at validation rather than at the party. The kit writes the right values.
+
+## What your game will run under on an appliance
+
+<!-- Sources, not shipped (checked 2026-10-12 against this tree):
+     deploy/games/avrana-game@.service and avrana-game@.socket (RestrictAddressFamilies, Restart, DynamicUser,
+     LoadCredential, PYTHONDONTWRITEBYTECODE); avrana/ops/provision_game.py COMMUNITY_UNIT (the ceilings, read at
+     build time; PrivateNetwork, CapabilityBoundingSet) and NO_STATE; docs/design/AVRGAME-PACKAGE.md "What an
+     installed package can and cannot do" and "party_roster is mandatory"; avrana/ops/install_game.py (grant
+     rules); ADR 0016 section 4 (socket activation, stops itself when idle). -->
+
+These are the conditions the project's installer and unit templates set up **in code**. They are
+**experimental and not deployed**: they were exercised on a throwaway test machine in the project's CI,
+never on a real appliance, and **this export does not verify any of it**. Treat them as what to design
+for, not as a promise.
+
+- **One way to start.** `python3 -m <module>`, from the package root, with the appliance's system Python
+  and the **standard library only**. No other interpreter, no script path, no installing packages.
+- **No IP networking at all.** The process may use Unix sockets only (it cannot open a TCP or UDP socket,
+  and runs in an empty network namespace). It is **socket-activated**: the platform
+  creates the listening socket and starts your process on the first connection, handing the socket over as
+  file descriptor 3 (the kit's runtime does this for you). Your server must accept that socket and not bind
+  its own port.
+- **No network at install or play.** The installer reads the `.avrgame` file it is given and fetches
+  nothing; your game cannot fetch anything either. Ship everything it needs inside the package.
+- **The package is read-only by ownership.** The working directory is the unpacked package: its files are
+  owned by root and your game runs as another user, so it cannot change them. There is no separate
+  filesystem sandbox directive, so your game can still read other files on the machine that anyone may read.
+  Python bytecode is not written. `/tmp` is private to the running game and is discarded when it stops.
+- **No persistent state unless granted.** A directory that survives restarts exists only when the
+  appliance owner **granted** `persistent_storage`; without it there is none and no `$STATE_DIRECTORY`.
+  Granted storage has no quota. Keep state you cannot lose small and recoverable.
+- **Resource ceilings (provisional, may change).** At present a package's process gets a memory limit of
+  {{MEMORY_MAX}}, at most {{TASKS_MAX}} tasks (threads and processes) and {{CPU_QUOTA}} of one CPU; it also
+  runs with no extra privileges (an empty capability set). There is no system-call filter and no disk quota
+  yet. These values are conservative guesses, not measured on a real game or on real appliance hardware, and going over them stops **your
+  process**, not the appliance.
+- **`party_roster` is mandatory in this experimental format.** The Party hands every game the roster of its
+  session at launch (each participant's id, display name and role), so the installer refuses a package that
+  does not request `party_roster` and an install that does not grant it. What the permission should cover
+  is still open and may change.
+- **Grants are recorded; few are enforced.** The owner decides which requested permissions to grant, and
+  the grant is written in a record next to the install. The platform does **not** check granted
+  permissions when a session starts: of them only `persistent_storage` is enforced (by the unit, as above).
+  For that reason the installer refuses to grant any permission it cannot enforce, which today is every
+  permission except `persistent_storage` and `party_roster`. A package may validate while asking for a
+  permission (such as `camera` or `internet`) that no install can be granted today.
+- **The platform starts, restarts and stops your process.** It is started on demand, restarted if it
+  exits with a failure, and is expected to **stop itself when idle** (no session, no report pending) and
+  on a termination signal; the kit's runtime does both. A game that never exits holds its memory.
+- **Your game is not trusted.** It runs as a throwaway unprivileged identity with its own key; it can
+  read world-readable files on the machine and talk to the Party's internal socket with that key only. It
+  cannot act as another game.
+
+## What it cannot do
+
+- **It does not install anything.** Installation is the appliance owner's action (`install-game`, run as
+  root on the appliance, with the owner's grants). Nothing in this export talks to an appliance, and
+  nothing here is deployed anywhere.
+- It does not **sign** or **verify the publisher** of a package, and it does not judge whether a game
+  is safe. A valid package is untrusted input.
+- It does not prove that your game **starts**, only that the package is well-formed. Run the kit's
+  conformance on the packed file.
+- It is not the kit: it does not scaffold, play or test a game.
+- It does not publish or upload the `.avrgame`. Handing the file to the appliance owner is up to you.
+
+## What is in this export
+
+`avrana/avrgame/` (the tools) and `avrana/contracts/` (the Game Contract validator and its strict JSON
+reader): the project's own code, **code unchanged**. Comments and docstrings that named internal material
+of the project were removed from these copies, and `MANIFEST.json` flags every file where that happened (the
+build checks that the code is identical once docstrings are stripped). `avrana/party/`,
+`avrana/contracts/party_games.py` and `avrana/__init__.py` are **generated stand-in modules**, each holding
+only a version string or a path; the Party's session protocol, result implementation and its
+Party-to-Games declaration are **not** in this export. `contracts/` holds the capability names the
+validator accepts. Also in this export: this README, `NOTICE.md`, `AVRGAME-PACKAGE-FORMAT.md` (a snapshot of
+the format description) and `MANIFEST.json` (every file's sha256 and where it came from, the format the
+tools speak and the source commit, marked `source_dirty` when the tree had uncommitted changes).
+
+Read `NOTICE.md` before passing this on: the terms under which these files may be redistributed are an
+open owner decision, and it lists what the export reveals about the platform.
