@@ -22,6 +22,17 @@
     # is sent nowhere else. nginx reads no registry here; telling "not provisioned" from "down"
     # is left to the game registry (AVR-236).
     location ~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/" {
+        # No game controls a Service Worker in this experimental version (AVR-135). A browser marks
+        # the fetch of a worker script it is about to register or update with the request header
+        # "Service-Worker: script"; a request that carries that header is refused here, before any
+        # game is asked, and a Service-Worker-Allowed header from a game (it would widen a
+        # worker's scope) never reaches a phone. This is nginx's to enforce because a package's
+        # server is not trusted to refrain. The Party's own worker is served by /party/, not by
+        # this rule; a dedicated Worker script is an ordinary request and is served.
+        if ($http_service_worker != "") {
+            return 403;
+        }
+        proxy_hide_header Service-Worker-Allowed;
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
