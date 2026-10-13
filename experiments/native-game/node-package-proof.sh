@@ -232,6 +232,9 @@ install -d -m 0711 -o root -g root /var/lib/avrana-party
 mkdir -m 0755 "$work"
 nodebin=$(cd "$tree" && python3 -c 'from avrana.avrgame import node_pin; print(node_pin.EXECUTABLE)')
 nodeversion=$(cd "$tree" && python3 -c 'from avrana.avrgame import node_pin; print(node_pin.VERSION)')
+# The appliance's own options of Node (never a package's), between the executable and the entry.
+nodeopts=$(cd "$tree" && python3 -c 'from avrana.avrgame import node_pin; print(" ".join(node_pin.OPTIONS))')
+[[ $nodeopts == --max-old-space-size=* && $nodeopts != *' '* ]] || { echo "unexpected options of Node: '$nodeopts'" >&2; exit 2; }
 noderoot=$(dirname "$(dirname "$nodebin")")
 echo "OBSERVE     the pinned runtime is Node $nodeversion at $nodebin"
 
@@ -421,8 +424,10 @@ t 'the staged tree holds the entry and the vendored dependency' 0 \
 t 'the staged tree is root-owned, nothing in it is group or world writable or executable, and it holds no link' 0 \
     test -z "$(find "$groot" \( -not -user root -o -perm /022 -o -type l -o \( -type f -perm /111 \) \) -print -quit)"
 t 'install-game verify: every staged file matches the record' 0 inst verify "$id"
-t 'the exec drop-in runs the pinned node BY ABSOLUTE PATH on the package entry, from the staged tree' 0 \
-    bash -c 'grep -qxF "ExecStart=\"$3\" \"server/main.mjs\"" "$1/exec.conf" && grep -qxF "WorkingDirectory=$2" "$1/exec.conf"' _ "$dropin_dir" "$staged" "$nodebin"
+t 'the exec drop-in runs the pinned node BY ABSOLUTE PATH, with the appliance heap cap, on the package entry, from the staged tree' 0 \
+    bash -c 'grep -qxF "ExecStart=\"$3\" \"$4\" \"server/main.mjs\"" "$1/exec.conf" && grep -qxF "WorkingDirectory=$2" "$1/exec.conf"' _ "$dropin_dir" "$staged" "$nodebin" "$nodeopts"
+t 'the drop-in clears NODE_OPTIONS and NODE_PATH, and nothing in it sets a variable Node obeys' 0 \
+    bash -c 'grep -qxF "UnsetEnvironment=NODE_OPTIONS NODE_PATH" "$1/exec.conf" && ! grep -E "^Environment=.*NODE_" "$1/exec.conf"' _ "$dropin_dir"
 t 'the drop-in carries MemoryMax=256M, TasksMax=64 and the confinement of every package' 0 \
     bash -c 'for l in MemoryMax=256M TasksMax=64 CPUQuota=100% CapabilityBoundingSet= PrivateNetwork=yes ProtectProc=invisible RestrictNamespaces=yes; do grep -qxF "$l" "$1/exec.conf" || { echo "missing $l"; exit 1; }; done' _ "$dropin_dir"
 t 'no install script of the vendored package.json ran (preinstall, install, postinstall would each leave a mark)' 0 test -z "$(marks)"
@@ -440,8 +445,16 @@ run_driver 'session 1: two players and a watcher, private secret words, hello ov
 t 'the game (socket-activated) is running' 0 systemctl is-active --quiet "$game"
 gpid=$(prop MainPID)
 t 'the game process IS the pinned node (/proc/<pid>/exe)' 0 test "$(readlink -f "/proc/$gpid/exe")" = "$nodebin"
-t 'its command line is node and the entry, nothing else' 0 \
-    test "$(tr '\0' ' ' < "/proc/$gpid/cmdline")" = "$nodebin server/main.mjs "
+t 'its command line is node, the appliance heap cap and the entry, nothing else (/proc/<pid>/cmdline)' 0 \
+    test "$(tr '\0' ' ' < "/proc/$gpid/cmdline")" = "$nodebin $nodeopts server/main.mjs "
+echo "OBSERVE     the unit's effective ExecStart: $(prop ExecStart)"
+t 'the effective command line of the unit, as systemd holds it, is exactly that (systemctl show -p ExecStart)' 0 \
+    grep -qF "argv[]=$nodebin $nodeopts server/main.mjs ;" <<<"$(prop ExecStart)"
+t 'the unit unsets NODE_OPTIONS and NODE_PATH (systemctl show -p UnsetEnvironment)' 0 \
+    bash -c 'u=" $(systemctl show -p UnsetEnvironment --value "$1") "; [[ $u == *" NODE_OPTIONS "* && $u == *" NODE_PATH "* ]]' _ "$game"
+t 'the process has neither variable in its environment (/proc/<pid>/environ)' 1 \
+    bash -c 'tr "\0" "\n" < "/proc/$1/environ" | grep -qE "^NODE_(OPTIONS|PATH)="' _ "$gpid"
+t 'past MemoryMax the cgroup kills the process and the template restarts it (Restart=on-failure)' 0 test "$(prop Restart)" = on-failure
 t 'it runs from the STAGED package tree (/proc/<pid>/cwd)' 0 test "$(readlink -f "/proc/$gpid/cwd")" = "$(readlink -f "$staged")"
 t 'it runs as a systemd DynamicUser and not as root' 0 \
     bash -c 'test "$(systemctl show -p DynamicUser --value "$1")" = yes && test "$(ps -o uid= -p "$2" | tr -d " ")" != 0' _ "$game" "$gpid"
@@ -476,7 +489,12 @@ journalctl --sync >/dev/null 2>&1 || true
 start_line=$(journalctl -u "$game" --no-pager -o cat 2>/dev/null | grep -F 'serving /games/' | tail -n1 || true)
 echo "OBSERVE     the fixture at start: $start_line"
 t 'V8 compiled and ran machine code inside the sandbox (the fixture logs: jit ok)' 0 grep -qF 'jit ok' <<<"$start_line"
-t 'the process runs the pinned version with no extra option of Node' 0 grep -qF "node v$nodeversion" <<<"$start_line"
+t 'the process runs the pinned version with the appliance options of Node and no other' 0 \
+    bash -c 'grep -qF "node v$2" <<<"$1" && grep -qF "execArgv [$3]" <<<"$1"' _ "$start_line" "$nodeversion" "$nodeopts"
+heap_mib=$(sed -n 's/.*heap limit \([0-9][0-9]*\) MiB.*/\1/p' <<<"$start_line")
+echo "MEASURE     V8 heap limit inside the unit with $nodeopts: ${heap_mib:-unknown} MiB (MemoryMax 256M)"
+t 'the V8 heap limit is below the MemoryMax of the unit, so V8 collects before the cgroup kills' 0 \
+    test -n "$heap_mib" -a "${heap_mib:-999}" -lt 256
 t 'the game received the signed launch (journal)' 0 journal_has "$game" 'launched ('
 t 'the game reported its signed ended and the party accepted the result (journal)' 0 journal_has "$game" 'the party accepted the result'
 t 'no install script ran at any point' 0 test -z "$(marks)"

@@ -79,7 +79,10 @@ roster whatever was granted), so `party_roster` not being granted does not stop 
 
    It refuses any file whose SHA-256 is not the pin, downloads nothing, and leaves
    `/opt/avrana-runtimes/node-<version>/` (root; `bin/node`, `LICENSE`, `avrana-runtime.json`; no npm).
-   Reverse: `sudo ops/install-node-runtime remove` (refused while a package runs on it). An appliance
+   Reverse: `sudo ops/install-node-runtime remove` (refused while a package runs on it, or while a file in
+   `packages.d` cannot be read as a record; it also clears what a killed install left). After the pinned
+   version moves, Node packages installed before are refused until removed and installed again, and the
+   old tree goes with `sudo ops/install-node-runtime remove --version <old version>`. An appliance
    without it runs Python packages exactly as before and refuses a Node package with a message naming
    this step. Not run on the Pi or on arm64.
 
