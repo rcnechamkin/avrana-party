@@ -82,6 +82,11 @@ jobs:
       - name: nginx site files are identical
         run: cmp avrana-party.nginx arcade/nginx-site
 
+      - name: Fast Python protocol and session regression smoke
+        run: |
+          python3 -m unittest discover -s tests/unit -p test_party_protocol.py -q
+          python3 -m unittest discover -s tests/unit -p test_party_session_flow.py -q
+
       # Tier 1: platform contracts, provider adapters, arcade wiring (GStreamer stubbed), web build
       # and install script. Tier 2 inside the same run: a real nginx with the committed site on high
       # ports (captive probe unchanged on HTTP, /party/ shell on HTTPS). Stdlib Python only.
