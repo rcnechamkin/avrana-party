@@ -27,6 +27,15 @@ counted one token as four. Nothing in this protocol tells tokens apart by their 
 more: tickets are remembered by their decoded payload (SpentTickets), messages by their nonce
 (ReplayGuard).
 
+Numbers (AVR-465): a payload is JSON that every language reads the same way. A number written as
+NaN or Infinity, a number too large to be finite, or an integer literal outside -(2^53-1) ..
+2^53-1 makes the whole payload Invalid('payload'). The claims `iat` and `exp` must moreover be
+written as integer literals: `1700000000.0` and `1.7e9` are refused (Invalid('expired')) although
+they name an integer, because a language without a separate integer type cannot tell them from
+one after parsing unless it looks at the text. A byte-order mark before the payload is not JSON
+and is refused ('payload'). Elsewhere in a payload (a result's game data) a finite fraction is
+allowed.
+
 Every payload carries:
     v    "avrana.party-session/v0"
     typ  "ticket" | "launch" | "end" | "ended" | "host" | "host_is"
@@ -61,7 +70,10 @@ a fresh ticket. The policy for handling steps is AVR-79, not this file.
 Tickets are single-use at the game side (SpentTickets, used by GameSide.admit): the second
 presentation of the same ticket is Invalid('replay'). "The same ticket" means the same decoded
 payload, never the same characters, so the ledger would hold even against a decoder that let a
-second spelling through. Reconnects fetch a fresh ticket.
+second spelling through. Reconnects fetch a fresh ticket. The ledger forgets a ticket only when
+the latest time it has ever been shown passes the ticket's `exp`, and refuses a ticket that
+expired by that time ('expired'), so a wall clock that steps BACKWARD cannot bring a forgotten
+ticket back. It lasts as long as its session: a second launch of the same session id keeps it.
 
 The host claim: a ticket may carry `host`, true or false: whether its participant was the Party
 Host when the party minted it. The party is the only authority for its host (succession
@@ -100,6 +112,7 @@ TICKET_TTL = 120            # s: long enough to reach the game's hello; a reconn
 MESSAGE_TTL = 30            # s for server-to-server messages
 MAX_TOKEN = 8192
 CLOCK_SKEW = 5              # s: future-`iat` tolerance; beyond it the refusal is 'clock'
+MAX_SAFE_INT = 2 ** 53 - 1  # the largest integer every JSON reader holds exactly
 TYPES = ('ticket', 'launch', 'end', 'ended', 'host', 'host_is')
 ROLES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned')
@@ -205,6 +218,32 @@ def _unb64(text):
     return data
 
 
+def _int(text):
+    """An integer literal of a payload, or ValueError when it is outside the range every JSON
+    reader holds exactly. The length test comes first: it keeps a 5000-digit literal from being
+    converted at all."""
+    if len(text) > 17 or abs(int(text)) > MAX_SAFE_INT:
+        raise ValueError('integer out of range')
+    return int(text)
+
+
+def _float(text):
+    value = float(text)
+    if value != value or value in (float('inf'), float('-inf')):
+        raise ValueError('number out of range')
+    return value
+
+
+def _constant(text):
+    raise ValueError('not JSON')                  # NaN, Infinity, -Infinity
+
+
+def _loads(body):
+    """The payload object of one token part, read strictly (the Numbers rule of the module
+    docstring). ValueError for anything else, a byte-order mark included."""
+    return json.loads(body.decode('utf-8'), parse_int=_int, parse_float=_float, parse_constant=_constant)
+
+
 def _mac(key, signed):
     return hmac.new(key, signed.encode('ascii'), hashlib.sha256).digest()
 
@@ -219,7 +258,7 @@ def unseal(key, token, typ, aud, now=None):
     """Verify spelling, signature, version, type, audience and time. Returns the payload or
     raises Invalid. Both parts must be canonical base64url ('encoding') before the signature is
     checked, and the signature is checked before anything in the payload is trusted."""
-    if not isinstance(token, str) or len(token) > MAX_TOKEN:
+    if not isinstance(token, str) or len(token) > MAX_TOKEN:      # in characters (code points)
         raise Invalid('shape')
     parts = token.split('.')
     if len(parts) != 3 or parts[0] != PREFIX:
@@ -229,8 +268,8 @@ def unseal(key, token, typ, aud, now=None):
     if not hmac.compare_digest(_mac(key, head), mac):
         raise Invalid('signature')
     try:
-        payload = json.loads(body.decode('utf-8'))
-    except ValueError:
+        payload = _loads(body)
+    except (ValueError, RecursionError):
         raise Invalid('payload')
     if not isinstance(payload, dict) or payload.get('v') != VERSION:
         raise Invalid('version')
@@ -240,7 +279,7 @@ def unseal(key, token, typ, aud, now=None):
         raise Invalid('audience')
     now = time.time() if now is None else now
     iat, exp = payload.get('iat'), payload.get('exp')
-    if type(iat) is not int or type(exp) is not int:      # not a float, and not true/false
+    if type(iat) is not int or type(exp) is not int:      # an integer literal: not 1.0, not true
         raise Invalid('expired')
     if iat > now + CLOCK_SKEW:
         raise Invalid('clock')
@@ -391,24 +430,36 @@ class SpentTickets:
     The ledger is keyed on the decoded payload bytes and not on the ticket's characters (AVR-465):
     the payload is what the MAC vouches for and what `jti` makes unique, so no respelling of a
     ticket, in either part, is a second ticket here. That is defence in depth: _unb64 already
-    refuses every spelling but one."""
+    refuses every spelling but one.
+
+    Time only moves forward here. `clock` is the latest `now` this ledger was ever shown; entries
+    are pruned against it, and a ticket whose `exp` is not after it is Invalid('expired') even if
+    the wall clock has since stepped back and unseal accepted it. Otherwise a ticket spent, then
+    forgotten at its `exp`, would be a fresh ticket again after a backward step. The price: after
+    a backward step of S seconds, tickets minted on the new time are refused here for up to S
+    seconds, or until the next session (GameSide starts a new ledger for a new session id)."""
 
     def __init__(self):
         self.spent = {}
+        self.clock = float('-inf')
 
     def spend(self, ticket, exp, now=None):
         now = time.time() if now is None else now
-        self.spent = {h: e for h, e in self.spent.items() if e > now}
+        self.clock = max(self.clock, now)
+        self.spent = {h: e for h, e in self.spent.items() if e > self.clock}
         parts = ticket.split('.') if isinstance(ticket, str) else ()
         if len(parts) != 3:
             raise Invalid('shape')
         digest = hashlib.sha256(_unb64(parts[1])).hexdigest()
         if digest in self.spent:
             raise Invalid('replay')
+        if exp <= self.clock:
+            raise Invalid('expired')
         self.spent[digest] = exp
 
     def clear(self):
         self.spent.clear()
+        self.clock = float('-inf')
 
 
 def open_message(key, token, typ, aud, guard, now=None):
@@ -463,11 +514,14 @@ class GameSide:
         self.roster = []
         self.guard = ReplayGuard()
         self.spent = SpentTickets()       # tickets already presented (single-use)
+        self.spent_sid = None             # the session that ledger belongs to
 
     def on_launch(self, message, now=None):
         p = open_message(self.key, message, 'launch', self.game, self.guard, now)
         self.sid, self.roster = p['sid'], p['roster']          # a newer launch replaces the old
-        self.spent.clear()                                      # new session: fresh ticket ledger
+        if p['sid'] != self.spent_sid:                          # a NEW session: a fresh ticket ledger.
+            self.spent.clear()                                  # A second launch of the same session
+            self.spent_sid = p['sid']                           # keeps it: its tickets stay spent.
         return self.roster
 
     def on_end(self, message, now=None):

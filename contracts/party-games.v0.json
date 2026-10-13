@@ -6,16 +6,16 @@
     "version": "avrana.party-session/v0",
     "prefix": "aps0",
     "reference": "avrana/party/protocol.py",
-    "reference_sha256": "b3689600fff7b312738a45f619e5dd265dc785ffd204f8ae4ee3c0fdc43c7e46",
+    "reference_sha256": "bfa3b596730c306d7e22ddca632b3efc317c309f12174767523dbde145d654d9",
     "vectors": "contracts/vectors/party-session.v0.json",
-    "vectors_sha256": "fadc27f3146425258bf5887dff2f78b349dc68660c261948624ae565f91348f3",
+    "vectors_sha256": "f9de36c5ee5ecce1cadca777e4771949a019475df96e5ce9d313526b831520bd",
     "decision": "docs/adr/0006-party-session-protocol.md"
   },
   "result": {
     "schema": "avrana.game-result/v1",
     "carried_by": "ended.result",
     "reference": "avrana/party/result.py",
-    "reference_sha256": "bbc883a589056348cb540e32027b98822e8f17299f2e18b746c60fe9486c1ccc",
+    "reference_sha256": "c12cebcb0aad1491048111a8841ac37fa41b1f5f2783316dd6802b1f5528e0c7",
     "vectors": "contracts/vectors/game-result.v1.json",
     "vectors_sha256": "ddf391e061ae3a831347e56954fed744abc1c294f9e3a7a995d53f7d576d2f48",
     "decision": "docs/adr/0015-game-result-envelope.md"

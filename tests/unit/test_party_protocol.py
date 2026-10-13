@@ -237,6 +237,42 @@ class OneSpelling(unittest.TestCase):
                                        'sid': SID + '\n', 'iat': NOW, 'exp': NOW + 30}), 'end', 'bluff', now=NOW)
         self.assertEqual(str(e.exception), 'session')
 
+    def test_numbers_are_read_the_same_in_every_language(self):
+        """The payload is written by hand here, as a key holder in another language might write it."""
+        def signed(text):
+            return resigned(P._b64(text if isinstance(text, bytes) else text.encode('utf-8')))
+
+        def body(iat=str(NOW), exp=str(NOW + 30), extra=''):
+            return ('{"aud":"bluff","exp":%s,"iat":%s,"iss":"party","nonce":"%s","sid":"%s","typ":"end",'
+                    '"v":"avrana.party-session/v0"%s}' % (exp, iat, 'a' * 24, SID, extra))
+
+        self.assertEqual(P.unseal(KEY, signed(body()), 'end', 'bluff', now=NOW)['exp'], NOW + 30)
+        big = str(2 ** 53 - 1)
+        self.assertEqual(P.unseal(KEY, signed(body(exp=big, extra=',"n":-' + big)), 'end', 'bluff', now=NOW)['n'], -(2 ** 53 - 1))
+        self.assertEqual(P.unseal(KEY, signed(body(extra=',"share":0.5,"e":1e3')), 'end', 'bluff', now=NOW)['share'], 0.5)
+        cases = {
+            'expired': [body(iat='%d.0' % NOW), body(exp='%d.0' % (NOW + 30)), body(exp='2.00000003e9'),
+                        body(iat='2e9'), body(iat='true'), body(exp='"%d"' % (NOW + 30)), body(exp='null')],
+            'payload': [b'\xef\xbb\xbf' + body().encode(), body(exp=str(2 ** 60)), body(exp=str(2 ** 53)),
+                        body(exp='9' * 5000), body(extra=',"n":' + '9' * 5000), body(extra=',"n":-' + str(2 ** 53)),
+                        body(exp='NaN'), body(exp='Infinity'), body(extra=',"n":NaN'), body(extra=',"n":-Infinity'),
+                        body(extra=',"n":1e999'), body(extra=',"n":-1e999'), body(extra=',"n":' + '[' * 5000)],
+        }
+        for reason, bodies in cases.items():
+            for text in bodies:
+                with self.subTest(reason=reason, text=text[:60] + text[-40:]), self.assertRaises(Invalid) as e:
+                    P.unseal(KEY, signed(text), 'end', 'bluff', now=NOW)
+                self.assertEqual(str(e.exception), reason)
+
+    def test_a_token_is_measured_in_characters(self):
+        astral = 'aps0.' + '\U0001f600' * 4500 + '.AAAA'      # 4510 characters, 9010 UTF-16 units
+        with self.assertRaises(Invalid) as e:
+            P.unseal(KEY, astral, 'ticket', 'bluff', now=NOW)
+        self.assertEqual(str(e.exception), 'encoding')
+        with self.assertRaises(Invalid) as e:
+            P.unseal(KEY, 'aps0.' + '\U0001f600' * 8192 + '.AAAA', 'ticket', 'bluff', now=NOW)
+        self.assertEqual(str(e.exception), 'shape')
+
     def test_times_are_integers_not_booleans(self):
         with self.assertRaises(Invalid) as e:
             P.unseal(KEY, P.seal(KEY, {'v': P.VERSION, 'typ': 'end', 'iss': 'party', 'aud': 'bluff',
@@ -494,9 +530,53 @@ class GameSideLifecycle(unittest.TestCase):
         side = self.launched()
         t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
         side.admit(t, now=NOW + 1)
+        side.on_launch(P.launch_message(KEY, 'bluff', SID2, ROSTER, now=NOW + 2), now=NOW + 2)
+        self.assertEqual(side.spent.spent, {})               # a NEW session: a fresh ledger
+        side.admit(P.mint_ticket(KEY, 'bluff', SID2, PID, 'player', now=NOW + 2), now=NOW + 3)
+
+    def test_a_second_launch_of_the_same_session_keeps_its_tickets_spent(self):
+        """Was: any launch cleared the ledger, so a relaunch of the same sid made every spent
+        ticket of that session good again (AVR-465 review)."""
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
         side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW + 2), now=NOW + 2)
-        self.assertEqual(side.spent.spent, {})
-        side.admit(t, now=NOW + 3)
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 3)
+        self.assertEqual(str(e.exception), 'replay')
+        side.on_end(P.end_message(KEY, 'bluff', SID, now=NOW + 4), now=NOW + 4)      # ended, then launched again
+        side.on_launch(P.launch_message(KEY, 'bluff', SID, ROSTER, now=NOW + 5), now=NOW + 5)
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 6)
+        self.assertEqual(str(e.exception), 'replay')
+        fresh = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 5)
+        self.assertEqual(side.admit(fresh, now=NOW + 6), (P.game_token(KEY, SID, PID), 'player'))
+
+    def test_a_clock_that_steps_back_does_not_bring_a_forgotten_ticket_back(self):
+        """Was: admitted at NOW+1, pruned by a later call at NOW+201, the wall clock stepped back
+        to NOW+4, and the same ticket (still inside its `exp` by that clock) was admitted again."""
+        side = self.launched()
+        t = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW)
+        side.admit(t, now=NOW + 1)
+        later = P.mint_ticket(KEY, 'bluff', SID, PID2, 'player', now=NOW + 200)
+        side.admit(later, now=NOW + 201)                      # prunes the first entry
+        self.assertEqual(len(side.spent.spent), 1)
+        P.verify_ticket(KEY, t, 'bluff', SID, now=NOW + 4)   # the stepped-back clock still verifies it
+        with self.assertRaises(Invalid) as e:
+            side.admit(t, now=NOW + 4)
+        self.assertEqual(str(e.exception), 'expired')
+        self.assertEqual(side.spent.clock, NOW + 201)        # time never moves back in the ledger
+        with self.assertRaises(Invalid) as e:
+            side.spent.spend(later, NOW + 320, now=NOW + 4)   # and what it still remembers stays spent
+        self.assertEqual(str(e.exception), 'replay')
+        ahead = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 150)
+        with self.assertRaises(Invalid):
+            side.admit(ahead, now=NOW + 4)                    # 'clock': minted ahead of the stepped-back time
+        back = P.mint_ticket(KEY, 'bluff', SID, PID, 'player', now=NOW + 100)
+        side.spent.spend(back, NOW + 220, now=NOW + 100)     # one that outlives the high-water mark is spent as usual
+        side.on_launch(P.launch_message(KEY, 'bluff', SID2, ROSTER, now=NOW + 4), now=NOW + 4)
+        self.assertEqual(side.spent.clock, float('-inf'))    # a new session starts the ledger's time again
+        side.admit(P.mint_ticket(KEY, 'bluff', SID2, PID, 'player', now=NOW + 4), now=NOW + 5)
 
     def test_standalone_spent_tickets(self):
         s = P.SpentTickets()

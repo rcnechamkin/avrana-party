@@ -152,6 +152,24 @@ replay as `replay`, the respelled replay as `encoding`). `tests/unit/test_party_
 `tests/test_party_session.py` in Games and the JavaScript helper's `node --test` suite in Games
 all run them, and `tools/contract_check.py` refuses a vector file without them.
 
+**Numbers every language reads alike.** A payload is refused as `payload` when it holds `NaN`,
+`Infinity`, a number too large to be finite, or an integer literal outside −(2^53−1) … 2^53−1,
+anywhere in it; or when its bytes start with a byte-order mark. The claims `iat` and `exp` must be
+written as integer literals: `1700000000.0` and `1.7e9` are refused as `expired`. Python and
+JavaScript disagreed on each of these before (one accepted what the other refused), and each is a
+vector now. A finite fraction elsewhere in a payload (a result's game data) is allowed. The 8192
+limit on a token counts characters (code points), not UTF-16 units.
+
+**The ledger's time only moves forward.** A spent ticket is forgotten when the latest time the
+ledger has been shown passes its `exp`, and a ticket whose `exp` is not after that time is refused
+as `expired`. A wall clock that steps back therefore cannot make a forgotten ticket new again. The
+cost is deliberate: after a backward step of S seconds a game refuses tickets minted on the new
+time for up to S seconds, or until its next session. The ledger belongs to a session id: a new
+session starts a new one, and a second launch of the same session keeps its tickets spent.
+The message replay guard still forgets a nonce by the wall clock; a replay through that needs a
+captured loopback message and a backward step inside the message's 30 seconds, and closing it the
+same way would make Party Core refuse every game's reports after a backward step. Left as is.
+
 **Audit of the rest of the protocol** (same question: is there a second spelling, and does anything
 count by spelling?):
 
@@ -163,12 +181,18 @@ count by spelling?):
 | Payload JSON (key order, whitespace, duplicate keys, escapes) | a receiver does not re-derive canonical JSON, but the MAC covers the characters of part 1, so only a holder of the game's key can write a variant, and a key holder can mint outright (ADR 0006, symmetric keys). Both guards read decoded content. A receiver that re-serialised would have to agree with every other language on number formatting | no change, deliberately |
 | Non-ASCII in the payload part | reached the MAC as a `UnicodeEncodeError`, not a refusal (worked around in Games as AVR-320) | **fixed**: `encoding` |
 | Ids (`sid`, `pid`, game id) | the patterns ended in `$`, which in Python also matches before a trailing newline: `session-…\n` passed in Python only. Signed content, and Party compares `iss` and `sid` exactly afterwards | not exploitable; **fixed** (`\Z`) so implementations agree |
-| `iat`, `exp` | `true` counted as an integer in Python | **fixed**: integers only |
+| `iat`, `exp` | `true` counted as an integer in Python; `1.7e9` counted as one in JavaScript | **fixed**: integer literals only, in both |
+| Numbers, byte-order mark | Python accepted `NaN`, `Infinity` and integers beyond 2^53 that JavaScript cannot hold; JavaScript stripped a byte-order mark Python refused | **fixed**: one rule, above |
+| Token length | counted in characters by Python and in UTF-16 units by JavaScript, so one token was `encoding` to one and `shape` to the other | **fixed**: characters |
+| Ledger pruning | by the wall clock, so a backward step revived a forgotten ticket | **fixed**: high-water time |
+| Relaunch | any launch cleared the ledger, the same session's included | **fixed**: cleared for a new session id only |
 | Case | base64url is case-sensitive by definition; nonces, ids and key files are lower-case only | nothing to fix |
 | Game token (`game_token`) | derived from `sid` and `pid`, never from a ticket's characters | unaffected |
 
-`avrana/party/result.py` has the same `$` patterns; a result arrives inside a signed `ended` and
-is checked against the roster by equality, so it is left for its own change (it is vendored too).
+`avrana/party/result.py` had the same `$`: a build, content or data-schema tag followed by a
+newline passed; those two patterns now end in `\Z`. Its game-id and participant patterns keep
+`$` on purpose: the first is followed by an equality check, and the second drives the scan that
+keeps a participant id outside the roster out of game data, which a stricter pattern would loosen.
 
 ## Not declared here
 
