@@ -76,13 +76,17 @@ test('the host starts a round: two phones on Party Home go to the game origin; a
  * and a way back. Simulated here by the harness's own game origin (tests/provider/server.py
  * /__harness__/hang-game), which accepts the connection for BLUFF's page and holds it. The waits are real (8 s
  * each, lib/going-watchdog.js); the page's own timers are left alone because Party polling runs on them.
- * Whether the hang seen on WebKit is a WebKit or a runner fault is not settled by this.
+ * Whether the hang seen on WebKit is a WebKit or a runner fault is not settled by this. Both projects below are
+ * Chromium (`iphone-size` is Chromium at an iPhone's size, and these tests run on `android-size` only): there is no
+ * WebKit and no iPhone evidence in this file.
  */
 async function hangGameOrigin(p: Phone) {
   const hang = `${LOOPBACK}/__harness__/hang-game`;
   expect((await p.page.request.post(`${hang}?on=1`)).ok()).toBe(true);
   return {
     seen: async (): Promise<number> => (await (await p.page.request.get(hang)).json()).seen,
+    /** held requests whose client gave up: the browser cancelled that navigation */
+    dropped: async (): Promise<number> => (await (await p.page.request.get(hang)).json()).dropped,
     release: async () => { expect((await p.page.request.post(`${hang}?on=0`)).ok()).toBe(true); },
   };
 }
@@ -95,6 +99,7 @@ async function hangGameOrigin(p: Phone) {
 // first half of each test asserts (one retry about 8 s after the first request, then nothing more). The page is
 // read only after the person's "Stop" (Page.stopLoading cancels the pending navigation and leaves the document
 // as it is), through the DevTools protocol. Chromium only, like the rest of this suite.
+type Spot = { x: number; y: number; w: number; h: number };
 async function eyes(p: Phone) {
   const cdp = await p.context.newCDPSession(p.page);
   const run = async (expression: string) => {
@@ -104,16 +109,40 @@ async function eyes(p: Phone) {
   };
   return {
     stop: () => cdp.send('Page.stopLoading'),
+    /** Where the going screen's two buttons are, measured BEFORE the hang (the page cannot be read during it): the
+     * screen is shown for a moment exactly as it is when the way out is offered, then put back as it was. */
+    layout: () => run(`(() => {
+      const el = (id) => document.getElementById(id), root = document.documentElement;
+      const ids = ['main', 'going', 'going-stuck', 'going-wait'], was = ids.map((id) => el(id).hidden);
+      const text = el('going-text').textContent, screen = root.dataset.screen;
+      el('main').hidden = true; el('going').hidden = false; el('going-stuck').hidden = false; el('going-wait').hidden = true;
+      el('going-text').textContent = 'Can’t reach BLUFF.'; root.dataset.screen = 'going';
+      const at = (id) => { const r = el(id).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, h: r.height }; };
+      const out = { retry: at('going-retry'), back: at('going-back') };
+      ids.forEach((id, i) => { el(id).hidden = was[i]; });
+      el('going-text').textContent = text; root.dataset.screen = screen;
+      return out;
+    })()`) as Promise<{ retry: Spot; back: Spot }>,
+    /** A thumb: real input at a point, which the page receives without anyone reading it. */
+    tap: async ({ x, y }: Spot) => {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    },
     going: () => run(`(() => { const el = (id) => document.getElementById(id);
       return { screen: document.documentElement.dataset.screen, stuck: !el('going-stuck').hidden, text: el('going-text').textContent }; })()`) as Promise<{ screen: string; stuck: boolean; text: string }>,
     press: (id: string) => run(`document.getElementById(${JSON.stringify(id)}).click()`),
   };
 }
 
-/** Start BLUFF for the party against a game origin that never answers, and follow what the page does to it. */
-async function hungStart(p: Phone) {
+/** Start BLUFF for the party against a game origin that never answers, and wait past the way out (16 s) with the
+ * navigation still pending. Where the buttons are is measured first, while the page can still be read. */
+async function hungWait(p: Phone) {
   const game = await hangGameOrigin(p);
   const see = await eyes(p);
+  const spots = await see.layout();
+  expect(spots.retry.w, 'the buttons were measured on a laid-out screen').toBeGreaterThan(40);
+  expect(spots.back.y).toBeGreaterThan(spots.retry.y);
   await startForEveryone(p.page, 'bluff');
   await expect.poll(game.seen, { timeout: 15_000, intervals: [250] }).toBeGreaterThanOrEqual(1);
   const first = Date.now();
@@ -123,10 +152,16 @@ async function hungStart(p: Phone) {
   expect(gap).toBeLessThan(14_000);
   await p.page.waitForTimeout(Math.max(0, 24_000 - (Date.now() - first)));       // past the way out (16 s), with room
   expect(await game.seen(), 'one retry and nothing more: it cannot loop').toBe(2);
-  await see.stop();                                                           // the person presses Stop: the page is still the old one
+  return { game, see, spots };
+}
+
+/** The same, then the person presses Stop: the pending navigation is cancelled and the page is the old one. */
+async function hungStart(p: Phone) {
+  const { game, see, spots } = await hungWait(p);
+  await see.stop();
   await expect.poll(() => see.going().then((s) => s.stuck), { timeout: 10_000 }).toBe(true);
   expect((await see.going()).text).toContain('Can’t reach');
-  return { game, see };
+  return { game, see, spots };
 }
 
 // never leave the shared game origin hanging, whatever the test did (its page may be closed by now)
@@ -156,5 +191,37 @@ test('a game page that never answers: Back to Party stays on Party Home, with no
   await ana.page.waitForTimeout(3000);
   expect(await game.seen()).toBe(requests);
   await expect(ana.page).toHaveURL(AT_HOME);
+  await ana.context.close();
+});
+
+// Input does not wait for the page: a thumb on the buttons while the navigation is STILL pending (nothing stops it).
+test('a game page that never answers: Try again, tapped while the navigation is still pending, goes again at once and gets there', async ({ browser, request }) => {
+  expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
+  const ana = await phone(browser, 0);
+  await joinParty(ana.page, 'Ana');
+  const { game, see, spots } = await hungWait(ana);
+  await see.tap(spots.retry);
+  // the automatic retry is limited to one and has happened: a third request now is the person's own
+  await expect.poll(game.seen, { timeout: 5000, intervals: [100] }).toBe(3);
+  await game.release();                                                    // the game origin answers; the held request is served
+  await expect(ana.page).toHaveURL(IN_GAME);
+  await ana.context.close();
+});
+
+test('a game page that never answers: Back to Party, tapped while the navigation is still pending, cancels it for good', async ({ browser, request }) => {
+  expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
+  const ana = await phone(browser, 1);
+  await joinParty(ana.page, 'Ana');
+  const { game, see, spots } = await hungWait(ana);
+  const before = await game.dropped();                                     // the first request, cancelled by the retry
+  await see.tap(spots.back);
+  // window.stop(): the pending navigation is cancelled, so its connection is closed, while the game origin still hangs
+  await expect.poll(game.dropped, { timeout: 5000, intervals: [100] }).toBe(before + 1);
+  await game.release();                                                    // a navigation that was still pending would be answered now, and arrive
+  await ana.page.waitForTimeout(3000);
+  expect(await game.seen(), 'no further request for the game').toBe(2);
+  await expect(ana.page).toHaveURL(AT_HOME);
+  await expect.poll(() => see.going().then((s) => s.screen), { timeout: 10_000 }).toBe('main');
+  expect((await see.going()).stuck).toBe(false);
   await ana.context.close();
 });
