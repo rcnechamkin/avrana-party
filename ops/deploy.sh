@@ -94,7 +94,7 @@ if [[ ${AVRANA_DEPLOY_TESTING:-0} == 1 && $backup_root != /var/backups/avrana-pa
         && $games_releases != /opt/avrana-party-games && $web_root != /var/www/avrana-party/web \
         && $manifest != /var/lib/avrana-party/deployment.json ]]; then testing=1; fi
 for v in AVRANA_DEPLOY_SMOKE AVRANA_NGINX AVRANA_SYSTEMCTL AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_UNPRIVILEGED \
-        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE AVRANA_DEPLOY_CATALOG_OWNER_UID AVRANA_CATALOG_SETTLE_WAIT; do
+        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE AVRANA_DEPLOY_CATALOG_OWNER_UID AVRANA_CATALOG_SETTLE_WAIT AVRANA_CATALOG_PYTHON; do
     if [[ -n ${!v:-} && $testing -eq 0 ]]; then
         die "$v is a test-only setting; it is honoured only with AVRANA_DEPLOY_TESTING=1 on a scratch root (never on the appliance). Unset it"
     fi
@@ -297,10 +297,10 @@ build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 # before it returns); this function's refresh, which waits for that install, replaces it within the wait, and until then
 # phones are served that install's catalog (the old release's rows plus the package) or, when removed, the release's own.
 settle_catalog() {
-    local overlay=/var/lib/avrana-party/catalog/catalog.json records=/etc/avrana-party/packages.d tree why wait=30
+    local overlay=/var/lib/avrana-party/catalog/catalog.json records=/etc/avrana-party/packages.d tree why wait=30 python=python3
     if [[ $testing -eq 1 ]]; then       # the paths are fixed (this removes a file): only the test harness may move them
         overlay=${AVRANA_CATALOG_OVERLAY:-$overlay}; records=${AVRANA_PACKAGE_RECORDS:-$records}
-        wait=${AVRANA_CATALOG_SETTLE_WAIT:-30}
+        wait=${AVRANA_CATALOG_SETTLE_WAIT:-30}; python=${AVRANA_CATALOG_PYTHON:-python3}     # deploy.sh puts /usr/bin first on PATH
     fi
     [[ -e $overlay || -L $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
     if [[ ${1:-} == remove ]]; then
@@ -312,7 +312,7 @@ settle_catalog() {
     tree=$(readlink -f "$party_releases/current" 2>/dev/null || true)
     if [[ -z $tree || ! -f $tree/avrana/ops/catalog_overlay.py ]]; then why='the running code release has no overlay code'
     elif [[ ! -f $web_root/current/catalog.json ]]; then why='the web release has no catalog.json'
-    elif why=$(cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh \
+    elif why=$(cd "$tree" && PYTHONDONTWRITEBYTECODE=1 "$python" -m avrana.ops.catalog_overlay refresh \
             --wait "$wait" --base "$web_root/current/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records" 2>&1); then
         log "catalog: the effective catalog matches web release $(basename "$(readlink -f "$web_root/current")")"
         return 0

@@ -99,7 +99,7 @@ class DeployScript(unittest.TestCase):
         for var in ('AVRANA_NGINX', 'AVRANA_SYSTEMCTL', 'AVRANA_DEPLOY_SMOKE', 'AVRANA_DEPLOY_TEST_HOOK_DIR',
                     'AVRANA_DEPLOY_UNPRIVILEGED', 'AVRANA_OPENSSL', 'AVRANA_DEPLOY_FAIL_STEP',
                     'AVRANA_DEPLOY_UNIT_GRACE', 'AVRANA_DEPLOY_SMOKE_PAUSE', 'AVRANA_DEPLOY_CATALOG_OWNER_UID',
-                    'AVRANA_CATALOG_SETTLE_WAIT'):
+                    'AVRANA_CATALOG_SETTLE_WAIT', 'AVRANA_CATALOG_PYTHON'):
             for testing in ('', '1'):          # TESTING=1 is not enough while the production roots are in use
                 env = dict(self.env, **{var: '1'})
                 if testing:
@@ -829,8 +829,8 @@ class CatalogOverlayOnReleaseChanges(Harness):
 class CatalogSettleCallSites(Harness):
     """AVR-337: one test per call site of settle_catalog that fails when that call is deleted. The tool runs as "root"
     through a shim (a test user is not root, so the real one only ever removes) and writes a marker naming the web
-    release it was derived from; the hook of install-party-web.sh is made a no-op, so only deploy.sh's own call can
-    produce the file."""
+    release it was derived from; the hook of install-party-web.sh runs the real tool as the test user, which refuses to
+    write, so only deploy.sh's own call can produce the file."""
 
     def setUp(self):
         super().setUp()
@@ -841,8 +841,10 @@ class CatalogSettleCallSites(Harness):
         (root / 'records' / 'hello.json').write_text('{}')            # a package is installed: the settle has work to do
         shim = catalog_tool_shim(root / 'shim')
         self.env.update(AVRANA_CATALOG_OVERLAY=str(self.overlay), AVRANA_PACKAGE_RECORDS=str(root / 'records'),
-                        PATH=f'{shim}{os.pathsep}{os.environ["PATH"]}', SETTLE_STUB='1', SETTLE_SKIP_HOOK='1',
-                        SETTLE_LOCK=str(root / 'install.lock'))
+                        AVRANA_CATALOG_PYTHON=str(shim / 'python3'), SETTLE_STUB='1', SETTLE_LOCK=str(root / 'install.lock'))
+        # (ops/deploy.sh and install-party-web.sh put /usr/bin first on PATH, so a shim there would never be found:
+        # deploy.sh's settle takes its interpreter from the test-only AVRANA_CATALOG_PYTHON. The hook of
+        # install-party-web.sh runs the real tool as the test user, which refuses to write: only settle can.)
 
     def marker(self):
         return 'EFFECTIVE-FOR ' + (self.web / 'current' / 'catalog.json').read_text()
@@ -850,6 +852,7 @@ class CatalogSettleCallSites(Harness):
     def test_a_deployment_regenerates_the_overlay_for_the_web_release_it_installed(self):
         r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(self.overlay.exists(), r.stdout)
         self.assertEqual(self.overlay.read_text(), self.marker(), r.stdout)
         self.assertEqual(r.stdout.count('the effective catalog matches web release'), 1)       # and settled once
 
@@ -860,6 +863,7 @@ class CatalogSettleCallSites(Harness):
                                             during=lambda: self.overlay.write_text('STALE: the failed release'))
         self.assertNotEqual(code, 0, out)
         self.assertIn('rolling back', out)
+        self.assertTrue(self.overlay.exists(), out)
         self.assertEqual(self.overlay.read_text(), before, out)
         self.assertLess(out.index('catalog: the effective catalog was removed until'),
                         out.index('the effective catalog matches web release', out.index('rolling back')))
