@@ -262,7 +262,11 @@ def locked(path, wait=0):
     except ImportError:
         yield
         return
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as exc:
+        raise Refused(f'the lock file {path} cannot be opened ({type(exc).__name__}: {exc.strerror}); '
+                      'is this running as root?') from None
     try:
         deadline = time.monotonic() + wait
         while True:

@@ -114,22 +114,28 @@ manifest and smoke are unaffected, and the first-party catalog is served until `
 to regenerate it: the overlay is removed, the first-party catalog is served, and installed packages have no tile (they
 stay installed; the log says `WARNING: catalog:`). The next forward deploy brings the tiles back. To bring them back
 sooner, run the tool of any newer code release, which finds the live web release by itself:
-`sudo /opt/avrana-party/releases/<newer sha>/ops/catalog-overlay refresh`.
+`sudo /opt/avrana-party/releases/<newer sha>/ops/catalog-overlay refresh`. That works only while such a release still
+exists: `ops/deploy.sh --keep` prunes old code releases after a passed smoke, so use one that is listed in
+`/opt/avrana-party/releases/`, or wait for the next forward deploy.
 
-**Concurrent installs.** A deploy's refresh waits up to 30 seconds for a running `install-game` (lock order: the
-deploy lock, then the install lock; `install-game` never takes the deploy lock). A refresh also repeats itself when the
-release catalog changed while it ran, so an install that was in flight during a web switch cannot leave an overlay of
-the old release behind.
+**Concurrent installs.** `ops/deploy.sh` waits up to 30 seconds, once, for a running `install-game` before it refreshes
+the catalog (lock order: the deploy lock, then the install lock; `install-game` never takes the deploy lock). On a
+deployment that wait happens with the units stopped, so a running install delays it by at most 30 seconds; after a
+failed or interrupted run the file is removed at once and the site file and units are put back first, and only then does
+the refresh wait. A refresh also repeats itself (at most three times) when the release catalog changed while it ran. An
+install that was in flight during a web switch can still publish the previous release's catalog for a short window (a
+switch after its last check and before it returns); the deploy's own refresh, which waits for that install, replaces it
+within its wait. Until then phones are served that install's catalog, or the first-party catalog when it was removed. If
+the wait runs out, the overlay is removed with a `WARNING: catalog:` line that names the reason.
 
 **Known limit.** Neither `/party/api/status`, the smoke checks nor the deployment manifest look at the effective
 catalog: an overlay that disagrees with the install records (by hand edit, a failed refresh that could not remove it)
-shows only in `ops/catalog-overlay check`, which a deploy runs as a warning and an operator can run at any time. This
-is deliberate for now (owner decision 2026-10-10: warning only); status integration is not part of AVR-337. A web deploy while an install is running makes the hook's refresh refuse (the lock is non-blocking): the overlay is removed with a warning, and the install republishes it when it finishes. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
-deploy). The hook is decided (owner decision 2026-10-10). After it regenerates the overlay, `ops/install-party-web.sh` also
-runs the read-only `catalog-overlay check` and **prints a clearly marked WARNING** with the remedy if the overlay is
-stale or a package row was dropped; run `sudo ops/catalog-overlay refresh` if it does. The warning is output only: it
-never changes the exit status of the web install, the deploy, smoke, the deployment manifest or `/party/api/status`,
-and it is silent when no package records and no overlay exist. `catalog-overlay check` can also be run by hand at any time.
+shows only in `ops/catalog-overlay check`, which `ops/install-party-web.sh` runs as a warning after it refreshes and an
+operator can run at any time. This is deliberate for now (owner decision 2026-10-10: warning only); status integration is
+not part of AVR-337. If a refresh fails the overlay is removed and the web install prints a loud warning (it never fails
+the deploy). The warning is output only: it never changes the exit status of the web install, the deploy, smoke, the
+deployment manifest or `/party/api/status`, and it is silent when no package records and no overlay exist.
+`catalog-overlay check` can also be run by hand at any time.
 
 Party Core is **reloaded, never restarted**: at reload it reads the records again, re-validates each, and
 gets the game's contract from the record. A record that fails validation is refused by itself and

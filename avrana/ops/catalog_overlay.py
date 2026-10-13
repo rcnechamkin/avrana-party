@@ -26,9 +26,11 @@ The rules, each tested:
   renamed, and the directory fsynced. Same inputs, same bytes (no timestamp). A reader sees the old
   file or the new one, never a part. If anything goes wrong while refreshing, the overlay is
   removed before the error is raised: absent and regenerable, never stale or half-written.
-- `refresh` repeats (at most MAX_BASE_MOVES times) when the release catalog changed while it ran, so an
-  install that read the old release and finishes after a deploy switched `current` cannot leave an overlay of
-  the old release behind. `refresh --wait N` waits up to N seconds for a running install-game (deploy hooks).
+- `refresh` repeats (at most MAX_BASE_MOVES times) when the release catalog changed while it ran. An install
+  that read the old release can still publish the old release's overlay if the switch comes after its last
+  check and before it returns; the deploy's own refresh (`refresh --wait N` waits up to N seconds for a running
+  install-game) replaces it within that wait, and until then phones are served that overlay, or the release
+  catalog when it was removed.
 - The overlay is derived from the release catalog, so a new release or a rollback of the web shell
   makes it stale. `ops/install-party-web.sh` runs `refresh` after it switches `current`, `ops/deploy.sh`
   (`settle_catalog`) refreshes or removes it after every move of the web release it makes, including its
@@ -218,10 +220,13 @@ def remove(path):
 
 
 def _digest(path):
+    """A digest of the release catalog, read with the same bound as _base; None when it cannot be read."""
     try:
-        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        with open(path, 'rb') as f:
+            raw = f.read(MAX_BASE_BYTES + 1)
     except OSError:
         return None
+    return hashlib.sha256(raw).hexdigest()
 
 
 def refresh(out_dir, base_path, records_dir, **kw):

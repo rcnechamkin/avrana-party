@@ -38,9 +38,11 @@ esac
 refresh_catalog() {
     local tree overlay=${AVRANA_CATALOG_OVERLAY:-/var/lib/avrana-party/catalog/catalog.json}
     local records=${AVRANA_PACKAGE_RECORDS:-/etc/avrana-party/packages.d}
+    local wait=${AVRANA_CATALOG_WAIT:-30}      # seconds to wait for a running install-game; ops/deploy.sh passes 0 and waits itself, once
+    [[ $wait =~ ^[0-9]+$ ]] || wait=30
     [[ -e $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
     tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd) || tree=.
-    if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --wait 30 --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
+    if (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh --wait "$wait" --base "$1/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records"); then
         # Owner decision 2026-10-10: a read-only consistency check, WARNING ONLY. It never changes the exit
         # status of this script, the deploy, smoke, the manifest or /party/api/status.
         local note rc=0

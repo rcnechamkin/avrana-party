@@ -94,7 +94,7 @@ if [[ ${AVRANA_DEPLOY_TESTING:-0} == 1 && $backup_root != /var/backups/avrana-pa
         && $games_releases != /opt/avrana-party-games && $web_root != /var/www/avrana-party/web \
         && $manifest != /var/lib/avrana-party/deployment.json ]]; then testing=1; fi
 for v in AVRANA_DEPLOY_SMOKE AVRANA_NGINX AVRANA_SYSTEMCTL AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_UNPRIVILEGED \
-        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE AVRANA_DEPLOY_CATALOG_OWNER_UID; do
+        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE AVRANA_DEPLOY_CATALOG_OWNER_UID AVRANA_CATALOG_SETTLE_WAIT; do
     if [[ -n ${!v:-} && $testing -eq 0 ]]; then
         die "$v is a test-only setting; it is honoured only with AVRANA_DEPLOY_TESTING=1 on a scratch root (never on the appliance). Unset it"
     fi
@@ -271,7 +271,7 @@ link_release() {
 }
 build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 
-# settle_catalog: after the web release `current` points to has changed (a deployment, the nested rollback, a
+# settle_catalog [remove]: after the web release `current` points to has changed (a deployment, the nested rollback, a
 # --recover, or the undo of a failed run), make the effective game catalog (AVR-337, EXPERIMENTAL; nginx serves
 # it at /party/catalog.json in place of the release's own when the file exists) match THAT release, or take it
 # away. The overlay is derived from the release catalog, so one built for another release is stale. It uses the
@@ -280,30 +280,48 @@ build_release() { stage_release "$1" "$2" "$3"; link_release "$2" "$3"; }
 # rollback_body it is the earlier one, already put back. The target of a rollback may predate the overlay (its own
 # install-party-web.sh would not refresh it, hence this function); then there is no such code, the file is removed,
 # and the first-party catalog is served with no tile for installed packages until `sudo ops/catalog-overlay refresh`
-# or the next forward deploy. The same happens when the refresh fails. WARNING ONLY (owner decision 2026-10-10):
-# this never fails the run, the rollback, the manifest or the smoke. Nothing to do on an appliance with no package
-# and no overlay. On a deployment it makes the refresh in install-party-web.sh redundant (that hook stays for
-# standalone runs of the script). It waits up to 30 s for a running install-game (lock order: the deploy lock, then
-# the install lock; install-game never takes the deploy lock, so there is no cycle), and a refresh repeats itself if
-# the release catalog moved while it ran, so an install that was in flight cannot publish an overlay of the old release.
+# or the next forward deploy. The same happens when the refresh fails (the reason is logged). WARNING ONLY (owner
+# decision 2026-10-10): this never fails the run, the rollback, the manifest or the smoke. Nothing to do on an appliance
+# with no package and no overlay. `settle_catalog remove` only removes the file, at once and without any lock: it is
+# what keeps a stale overlay from being served while a rollback still has units to restart.
+#
+# Waiting. The refresh waits up to 30 s for a running install-game (lock order: the deploy lock, then the install lock;
+# install-game never takes the deploy lock, so there is no cycle). Worst-case delay a running install adds, per path:
+#   deployment, nested rollback, --recover: 30 s, once, with the units stopped (the hook in install-party-web.sh is told
+#     not to wait here: AVRANA_CATALOG_WAIT=0, so this is the only wait; the hook then removes the overlay and this
+#     function regenerates it);
+#   undo of a failed run: 0 s before the site file and the units are put back (the file is only removed), then up to
+#     30 s after they are back; nothing waits with a unit down.
+# A refresh repeats itself if the release catalog moved while it ran. An install that was in flight during a web switch
+# can therefore still publish the overlay of the OLD release for a short window (a switch after its last check and
+# before it returns); this function's refresh, which waits for that install, replaces it within the wait, and until then
+# phones are served that install's catalog (the old release's rows plus the package) or, when removed, the release's own.
 settle_catalog() {
-    local overlay=/var/lib/avrana-party/catalog/catalog.json records=/etc/avrana-party/packages.d tree
+    local overlay=/var/lib/avrana-party/catalog/catalog.json records=/etc/avrana-party/packages.d tree why wait=30
     if [[ $testing -eq 1 ]]; then       # the paths are fixed (this removes a file): only the test harness may move them
         overlay=${AVRANA_CATALOG_OVERLAY:-$overlay}; records=${AVRANA_PACKAGE_RECORDS:-$records}
+        wait=${AVRANA_CATALOG_SETTLE_WAIT:-30}
     fi
     [[ -e $overlay || -L $overlay || -n $(ls -A "$records" 2>/dev/null) ]] || return 0
-    tree=$(readlink -f "$party_releases/current" 2>/dev/null || true)
-    if [[ -n $tree && -f $tree/avrana/ops/catalog_overlay.py && -f $web_root/current/catalog.json ]] \
-            && (cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh \
-                --wait 30 --base "$web_root/current/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records") >/dev/null 2>&1; then
-        log "catalog: the effective catalog matches web release $(basename "$(readlink -f "$web_root/current")")"
+    if [[ ${1:-} == remove ]]; then
+        rm -f -- "$overlay" 2>/dev/null || true
+        if [[ -e $overlay || -L $overlay ]]; then log "WARNING: catalog: $overlay could NOT be removed: phones may be served a STALE catalog. Run: sudo rm $overlay"
+        else log 'catalog: the effective catalog was removed until the web release is settled (the first-party catalog is served)'; fi
         return 0
     fi
+    tree=$(readlink -f "$party_releases/current" 2>/dev/null || true)
+    if [[ -z $tree || ! -f $tree/avrana/ops/catalog_overlay.py ]]; then why='the running code release has no overlay code'
+    elif [[ ! -f $web_root/current/catalog.json ]]; then why='the web release has no catalog.json'
+    elif why=$(cd "$tree" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.ops.catalog_overlay refresh \
+            --wait "$wait" --base "$web_root/current/catalog.json" --out-dir "$(dirname "$overlay")" --records-dir "$records" 2>&1); then
+        log "catalog: the effective catalog matches web release $(basename "$(readlink -f "$web_root/current")")"
+        return 0
+    else why=$(printf '%s' "$why" | tail -n 1 | cut -c1-300); fi
     rm -f -- "$overlay" 2>/dev/null || true
     if [[ -e $overlay || -L $overlay ]]; then
-        log "WARNING: catalog: the effective catalog could NOT be regenerated for web release $(basename "$(readlink -f "$web_root/current" 2>/dev/null || echo -)") AND $overlay could NOT be removed: phones may be served a STALE catalog. Run: sudo rm $overlay && sudo ops/catalog-overlay refresh"
+        log "WARNING: catalog: the effective catalog could NOT be regenerated ($why) AND $overlay could NOT be removed: phones may be served a STALE catalog. Run: sudo rm $overlay && sudo ops/catalog-overlay refresh"
     else
-        log "WARNING: catalog: the effective catalog could not be regenerated for this web release; it was removed, so the first-party catalog is served and installed .avrgame packages have no tile. Run: sudo ops/catalog-overlay refresh"
+        log "WARNING: catalog: the effective catalog could not be regenerated ($why); it was removed, so the first-party catalog is served and installed .avrgame packages have no tile. Run: sudo ops/catalog-overlay refresh"
     fi
     return 0
 }
@@ -706,9 +724,10 @@ rollback_body() {
                 || { log "ROLLBACK INCOMPLETE: $root/current not restored"; rollback_ok=0; }
         fi
     done
-    settle_catalog      # the web release is back to the earlier one: the overlay built for the failed one goes with it
+    settle_catalog remove   # the web release is back: the overlay built for the failed one must not be served meanwhile
     restore_site
     start_stopped restart || rollback_ok=0
+    settle_catalog      # regenerate for the earlier release now that nothing is down (it may wait for an install-game)
     log "after rollback: party $(g "$party_checkout" rev-parse HEAD), games $(g "$games_checkout" rev-parse HEAD)"
     log "expected:       party $before_party, games $before_games. No manifest was written."
 }
@@ -944,8 +963,8 @@ if [[ $party_changed -eq 1 ]]; then
     [[ $(g "$party_checkout" rev-parse HEAD) == "$party_sha" ]] || { log 'party checkout is not at the requested commit'; false; }
     log "party at $party_sha"
     build_release "$party_checkout" "$party_sha" "$party_releases"
-    AVRANA_ALLOW_DIRTY=$allow_dirty AVRANA_WEB_KEEP=$keep AVRANA_WEB_PRUNE=0 bash "$party_checkout/ops/install-party-web.sh" "$party_checkout"
-    settle_catalog      # the target's own install-party-web.sh may predate the overlay (a rollback); this knows how
+    AVRANA_ALLOW_DIRTY=$allow_dirty AVRANA_WEB_KEEP=$keep AVRANA_WEB_PRUNE=0 AVRANA_CATALOG_WAIT=0 bash "$party_checkout/ops/install-party-web.sh" "$party_checkout"
+    settle_catalog      # the target's install-party-web.sh may predate the overlay (a rollback), and does not wait: this does, once
 fi
 if [[ $games_changed -eq 1 ]]; then
     g "$games_checkout" checkout --quiet --detach "$games_sha"
