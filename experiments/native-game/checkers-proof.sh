@@ -41,8 +41,8 @@
 #   /opt/avrana-party              releases/ci (a copy of avrana/, contracts/, deploy/games,
 #                                  deploy/party-core, ops/provision-game, ops/prepare-native-games)
 #                                  and the symlink current
-#   /opt/avrana-party-games        releases/ci (a copy of checkers/, core/, web/ of the Games
-#                                  checkout) and the symlink current
+#   /opt/avrana-party-games        releases/ci (a copy of checkers/, avrana_gamekit/, core/, web/
+#                                  of the Games checkout) and the symlink current
 #   /etc/systemd/system            avrana-party-core.{service,socket}, avrana-game@.{socket,service},
 #                                  avrana-game@checkers.service.d/, the .wants symlinks
 #   /var/backups/avrana-party      the before-state prepare-native-games keeps
@@ -62,8 +62,9 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'systemd is not running here' >&2; exit 2; }
 command -v curl >/dev/null || { echo 'curl not found' >&2; exit 2; }
 games_repo=${AVRANA_GAMES_REPO:-}
-[[ -n $games_repo && -f $games_repo/checkers/__main__.py && -f $games_repo/core/party_protocol.py && -f $games_repo/web/avrana-party-bridge.js ]] \
-    || { echo 'set AVRANA_GAMES_REPO to a checkout of avrana-party-games (checkers/, core/, web/)' >&2; exit 2; }
+[[ -n $games_repo && -f $games_repo/checkers/__main__.py && -f $games_repo/avrana_gamekit/__init__.py \
+    && -f $games_repo/core/party_protocol.py && -f $games_repo/web/avrana-party-bridge.js ]] \
+    || { echo 'set AVRANA_GAMES_REPO to a checkout of avrana-party-games (checkers/, avrana_gamekit/, core/, web/)' >&2; exit 2; }
 games_repo=$(cd "$games_repo" && pwd)
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
@@ -214,7 +215,10 @@ chown -R root:root /opt/avrana-party
 chmod -R u=rwX,go=rX /opt/avrana-party
 ln -sfn "$rel" "$tree"
 install -d -m 0755 /opt/avrana-party-games /opt/avrana-party-games/releases "$grel"
-cp -r "$games_repo/checkers" "$games_repo/core" "$games_repo/web" "$grel/"           # what python3 -m checkers imports and serves
+# What python3 -m checkers imports and serves: checkers/ itself, the shared kit it imports
+# (avrana_gamekit/; on Games main Checkers does not import it yet, the directory is there already),
+# core/ (the protocol modules) and web/ (the vendored bridge shim).
+cp -r "$games_repo/checkers" "$games_repo/avrana_gamekit" "$games_repo/core" "$games_repo/web" "$grel/"
 find "$grel" -name __pycache__ -type d -prune -exec rm -rf {} +
 chown -R root:root /opt/avrana-party-games
 chmod -R u=rwX,go=rX /opt/avrana-party-games
@@ -223,8 +227,8 @@ t 'the Party release tree is root-owned and not group or world writable' 0 \
     test -z "$(find /opt/avrana-party -not -type l \( -not -user root -o -perm /022 \) -print -quit)"
 t 'the Games release tree is root-owned and not group or world writable' 0 \
     test -z "$(find /opt/avrana-party-games -not -type l \( -not -user root -o -perm /022 \) -print -quit)"
-t 'the Games tree holds what the real grant runs: checkers/__main__.py, core/ and the vendored bridge shim' 0 \
-    test -f "$gtree/checkers/__main__.py" -a -f "$gtree/core/party_protocol.py" -a -f "$gtree/web/avrana-party-bridge.js"
+t 'the Games tree holds what the real grant runs: checkers/__main__.py, avrana_gamekit/, core/ and the vendored bridge shim' 0 \
+    test -f "$gtree/checkers/__main__.py" -a -f "$gtree/avrana_gamekit/__init__.py" -a -f "$gtree/core/party_protocol.py" -a -f "$gtree/web/avrana-party-bridge.js"
 mkdir -p -m 0700 "$work"
 
 # ---- b. the real appliance grant for Checkers --------------------------------------------------------

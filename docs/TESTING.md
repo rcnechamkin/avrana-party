@@ -94,7 +94,7 @@ From any fresh checkout or worktree, run `npm ci` before Playwright commands.
 
 ### Native Checkers integration (AVR-238 branch)
 
-`AVRANA_GAMES_REPO` must name the paired Games checkout containing top-level `checkers/`.
+`AVRANA_GAMES_REPO` must name the paired Games checkout containing top-level `checkers/`, `avrana_gamekit/`, `core/` and `web/` (the real-systemd proof, `experiments/native-game/checkers-proof.sh`, copies those four into its Games release tree).
 On Linux, run `AVRANA_REQUIRE_NATIVE=1 python3 -m unittest discover -s tests/unit -p
 test_native_checkers.py -v` with that variable set. The cross-repo CI job requires these tests:
 the generic provider launcher inherits a real Unix listening socket into the grant-declared
