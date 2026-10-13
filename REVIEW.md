@@ -1,51 +1,32 @@
 # Review instructions
 
-Every pull request is reviewed by a session or subagent that did not write it
-(`.claude/agents/reviewer.md`). The author never reviews their own change, and a reviewer who
-fixes a finding is no longer that change's reviewer. Review informs the merge; it does not
-perform it. [AGENTS.md](AGENTS.md) holds the rules this file checks against.
+Use risk-based review. Routine UI/content/isolated bugfix work needs one
+focused diff review by the implementing session and passing relevant tests.
+High-risk changes (security/trust, identity, protocol/contract, persistence,
+deployment, lifecycle) **require** a reviewer who did not write the change.
+A reviewer who fixes a finding is no longer independent. Only the owner
+merges or deploys. See [AGENTS.md](AGENTS.md) and [WORKFLOW](docs/WORKFLOW.md).
 
-## Passes
+## High-risk review passes
 
-Run three passes and tag each finding with its pass.
+- **Bugs:** logic errors, broken edge cases, regressions, weakened tests.
+- **Trust:** identity, origin, cookie, listener, Unix-socket, secrets and data boundaries
+  in ADRs 0006, 0013 and 0016; paired Party/Games compatibility.
+- **Fit:** explicit acceptance criteria, accepted ADRs, true deployed state,
+  and no out-of-scope work.
 
-- **Bugs**: logic errors, broken edge cases, regressions, a test that cannot fail, a test
-  weakened to make a change pass.
-- **Trust**: anything that moves a boundary in ADR
-  [0006](docs/adr/0006-party-session-protocol.md), [0013](docs/adr/0013-party-and-game-browser-origins.md)
-  or [0016](docs/adr/0016-service-identities-and-local-trust-boundary.md): who may call what,
-  cookies and origins, key files and their modes, listeners and sockets, what a game can make
-  the Party do. Secrets or private data in logs, fixtures or docs.
-- **Fit**: the change does what the Linear issue's acceptance criteria and the approved plan
-  say and nothing outside them; it agrees with accepted ADRs; `docs/SYSTEM.md` still describes
-  deployed reality only; a contract change has its paired change in Games
-  ([CROSS-REPO](docs/CROSS-REPO.md)).
-
-## What Important means here
-
-Reserve Important for a finding that would break behavior, weaken a trust boundary, change an
-accepted decision without an amendment, describe something as deployed or validated that is
-not, or land one half of a paired cross-repo change. Naming, wording and style are nits.
+Tag only actionable findings. Important means broken behavior, weakened
+security, false validation/deployment claims, or incompatible paired changes.
+Cap style nits at five; do not restate what CI already proves.
 
 ## Change class
 
-End every review by naming the class, because it decides who merges.
+**Owner attention required:** an architecture/ADR decision, security or trust
+change, public protocol/contract, operations/deploy/nginx changes, product
+decision, or anything explicitly marked Needs Cody.
 
-- **Owner merges**: an architecture or ADR change; a security or trust change; a Party and
-  Games protocol or contract change; anything under `deploy/`, `ops/` or the nginx site files;
-  a product decision; anything marked Needs Cody.
-- **Routine**: everything else. Docs-only, current with `main` and green may merge without the
-  owner once branch protection and required checks exist.
+**Routine:** everything else. Owner still authorizes merge; agent does not
+treat theoretical auto-merge eligibility as permission.
 
-A paired change is one merge set: name both pull requests and say whether both are open, green
-and current. Never call one half mergeable alone.
-
-## Cap the nits
-
-Report at most five nits; give the rest as a count.
-
-## Do not report
-
-Generated files ([GENERATED](docs/GENERATED.md)), anything `npm run check:repo` or CI already
-enforces, historical documents under `docs/archive/` and `docs/findings/`, and Windows-only
-test failures that Linux CI does not show.
+Paired Party/Games work is a single merge set. Say which PRs are open,
+which checks passed, and the merge order. Do not call one half ready alone.
