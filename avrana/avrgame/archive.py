@@ -12,7 +12,7 @@ import zipfile
 import zlib
 from dataclasses import dataclass
 
-from . import common
+from . import common, node
 from .common import MANIFEST_NAME, Problems, Refused, bytecode, clip, name_problem, secret_problem
 from .manifest import client_index, entry_problem, parse, validate_manifest
 
@@ -96,9 +96,10 @@ def _entry_problem(info):
 
 
 def _stream(zf, info, limit_file, total_left):
-    """(size, sha256 hex) of the ACTUAL bytes of an entry, refusing past either limit."""
+    """(size, sha256 hex, first bytes) of the ACTUAL bytes of an entry, refusing past either limit."""
     h = hashlib.sha256()
     n = 0
+    head = b''
     try:
         with zf.open(info) as f:
             while True:
@@ -110,10 +111,12 @@ def _stream(zf, info, limit_file, total_left):
                     raise Refused(f'entry {clip(info.orig_filename)}: more than {limit_file} bytes once unpacked')
                 if n > total_left:
                     raise Refused(f'archive: more than {common.MAX_TOTAL_BYTES} bytes once unpacked')
+                if len(head) < node.MAGIC_BYTES:
+                    head += chunk[:node.MAGIC_BYTES - len(head)]
                 h.update(chunk)
     except _DAMAGE as exc:
         raise Refused(f'entry {clip(info.orig_filename)}: damaged ({type(exc).__name__})') from None
-    return n, h.hexdigest()
+    return n, h.hexdigest(), head
 
 
 def _open_zip(data):
@@ -202,14 +205,26 @@ def scan(data, vocab=None):
         missing = entry_problem(manifest, names)
         if missing:
             problems.add(missing)
+    # A Node package ships source only: compiled code is refused by name here and by content below.
+    node_package = manifest is not None and manifest['server']['interpreter'] == node.NAME
+    if node_package:
+        for name in sorted(names):
+            native = node.native_name_problem(name)
+            if native:
+                problems.add(native)
     problems.raise_if_any()
 
     listing = []
     total = 0
     for info in sorted(files, key=lambda i: i.orig_filename):
-        size, digest = _stream(zf, info, max_file, max_total - total)
+        size, digest, head = _stream(zf, info, max_file, max_total - total)
         total += size
+        if node_package:
+            native = node.native_content_problem(info.orig_filename, head)
+            if native:
+                problems.add(native)
         listing.append(PackageFile(info.orig_filename, size, digest))
+    problems.raise_if_any()
     package = Package(manifest=manifest, game=manifest['game'], id=manifest['game']['id'],
                       version=manifest['package']['version'], sha256=hashlib.sha256(data).hexdigest(),
                       size=len(data), files=tuple(listing), total_bytes=total)

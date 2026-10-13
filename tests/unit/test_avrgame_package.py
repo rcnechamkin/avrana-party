@@ -258,7 +258,8 @@ class ManifestTests(unittest.TestCase):
             self.assertIn(f"requires: missing '{key}'", problems_of(m))
 
     def test_server_names_an_interpreter_never_a_path(self):
-        self.assertEqual(dict(avrgame.INTERPRETERS), {'python3': '/usr/bin/python3'})
+        self.assertEqual(avrgame.INTERPRETERS['python3'], '/usr/bin/python3')
+        self.assertEqual(sorted(avrgame.INTERPRETERS), ['node', 'python3'])       # node: tests/unit/test_node_game_runtime.py
         with self.assertRaises(TypeError):
             avrgame.INTERPRETERS['sh'] = '/bin/sh'
         for interp in ('/usr/bin/python3', 'python', 'sh', '', None, ['python3']):
