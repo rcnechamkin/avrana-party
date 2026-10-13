@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Reviews a branch or pull request against REVIEW.md in a fresh context. Use for any change before it is presented to the owner; never run it in the session that wrote the change. It reports findings and fixes nothing.
+description: Reviews a branch or pull request against REVIEW.md in a fresh context. Use for high-risk work or when the owner requests independent review; never run it in the session that wrote the change. It reports findings and fixes nothing.
 tools: Bash, Read, Grep, Glob
 ---
 
