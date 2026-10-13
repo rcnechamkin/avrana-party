@@ -108,7 +108,23 @@ new first-party games. `ops/deploy.sh` does the same on every path that moves th
 deployment, the nested `--rollback`/`--auto-rollback` and `--recover` (using the code release that is running, because the
 target commit may predate the overlay), and when a failed or interrupted run puts the earlier web release back. Where the overlay
 cannot be regenerated it is removed, with a `WARNING: catalog:` line in the log: warning only, the deployment, rollback,
-manifest and smoke are unaffected, and the first-party catalog is served until `sudo ops/catalog-overlay refresh`. A web deploy while an install is running makes the hook's refresh refuse (the lock is non-blocking): the overlay is removed with a warning, and the install republishes it when it finishes. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
+manifest and smoke are unaffected, and the first-party catalog is served until `sudo ops/catalog-overlay refresh`.
+
+**After a rollback to a commit that predates the overlay** (no `avrana/ops/catalog_overlay.py` in it) there is no code
+to regenerate it: the overlay is removed, the first-party catalog is served, and installed packages have no tile (they
+stay installed; the log says `WARNING: catalog:`). The next forward deploy brings the tiles back. To bring them back
+sooner, run the tool of any newer code release, which finds the live web release by itself:
+`sudo /opt/avrana-party/releases/<newer sha>/ops/catalog-overlay refresh`.
+
+**Concurrent installs.** A deploy's refresh waits up to 30 seconds for a running `install-game` (lock order: the
+deploy lock, then the install lock; `install-game` never takes the deploy lock). A refresh also repeats itself when the
+release catalog changed while it ran, so an install that was in flight during a web switch cannot leave an overlay of
+the old release behind.
+
+**Known limit.** Neither `/party/api/status`, the smoke checks nor the deployment manifest look at the effective
+catalog: an overlay that disagrees with the install records (by hand edit, a failed refresh that could not remove it)
+shows only in `ops/catalog-overlay check`, which a deploy runs as a warning and an operator can run at any time. This
+is deliberate for now (owner decision 2026-10-10: warning only); status integration is not part of AVR-337. A web deploy while an install is running makes the hook's refresh refuse (the lock is non-blocking): the overlay is removed with a warning, and the install republishes it when it finishes. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
 deploy). The hook is decided (owner decision 2026-10-10). After it regenerates the overlay, `ops/install-party-web.sh` also
 runs the read-only `catalog-overlay check` and **prints a clearly marked WARNING** with the remedy if the overlay is
 stale or a package row was dropped; run `sudo ops/catalog-overlay refresh` if it does. The warning is output only: it

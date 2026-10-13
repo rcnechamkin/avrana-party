@@ -98,7 +98,7 @@ class DeployScript(unittest.TestCase):
     def test_test_only_settings_are_refused_unless_testing_on_a_scratch_root(self):
         for var in ('AVRANA_NGINX', 'AVRANA_SYSTEMCTL', 'AVRANA_DEPLOY_SMOKE', 'AVRANA_DEPLOY_TEST_HOOK_DIR',
                     'AVRANA_DEPLOY_UNPRIVILEGED', 'AVRANA_OPENSSL', 'AVRANA_DEPLOY_FAIL_STEP',
-                    'AVRANA_DEPLOY_UNIT_GRACE', 'AVRANA_DEPLOY_SMOKE_PAUSE'):
+                    'AVRANA_DEPLOY_UNIT_GRACE', 'AVRANA_DEPLOY_SMOKE_PAUSE', 'AVRANA_DEPLOY_CATALOG_OWNER_UID'):
             for testing in ('', '1'):          # TESTING=1 is not enough while the production roots are in use
                 env = dict(self.env, **{var: '1'})
                 if testing:
@@ -239,18 +239,34 @@ class SettleCatalog(unittest.TestCase):
         shim = self.root / 'bin'
         shim.mkdir()
         python = Path(sys.executable).as_posix()
-        (shim / 'python3').write_text(f'#!/bin/sh\nexec "{python}" "$@"\n', newline='\n')
+        # `python3 -m avrana.ops.catalog_overlay ...` as the script runs it, but as "root" (the tool refuses to refresh
+        # as anybody else, and a test user is not root on Linux) with a lock file of its own; with
+        # SETTLE_STUB the effective catalog is a marker naming the release catalog it was derived from.
+        wrapper = (
+            'import os, sys\n'
+            'os.geteuid = lambda: 0\n'
+            'from avrana.ops import catalog_overlay as co\n'
+            'assert sys.argv[1] == "-m" and sys.argv[2] == "avrana.ops.catalog_overlay", sys.argv\n'
+            'if os.environ.get("SETTLE_STUB"):\n'
+            '    from pathlib import Path\n'
+            '    co.effective = lambda base, records, **kw: ("EFFECTIVE-FOR " + Path(base).read_text(), ["hello"], [])\n'
+            'sys.exit(co.main(sys.argv[3:] + ["--lock-file", os.environ["SETTLE_LOCK"]]))\n')
+        (shim / 'wrap.py').write_text(wrapper, newline='\n')
+        (shim / 'python3').write_text(f'#!/bin/sh\nexec "{python}" "{(shim / "wrap.py").as_posix()}" "$@"\n', newline='\n')
         (shim / 'python3').chmod(0o755)
         self.shim = shim
 
-    def settle(self):
+    def settle(self, stub=False):
         text = SCRIPT.read_text(encoding='utf-8')
         start = text.index('\nsettle_catalog() {')
         body = text[start:text.index('\n}\n', start) + 3]
         script = ('set -Eeuo pipefail\nlog() { echo "$*"; }\ntesting=1\n'
                   f'party_releases={(self.root / "opt").as_posix()}\nweb_root={self.web.as_posix()}\n{body}\nsettle_catalog\n')
         env = dict(os.environ, PATH=f'{self.shim.as_posix()}{os.pathsep}{os.environ["PATH"]}', PYTHONPATH=str(REPO_ROOT),
-                   AVRANA_CATALOG_OVERLAY=self.overlay.as_posix(), AVRANA_PACKAGE_RECORDS=self.records.as_posix())
+                   AVRANA_CATALOG_OVERLAY=self.overlay.as_posix(), AVRANA_PACKAGE_RECORDS=self.records.as_posix(),
+                   SETTLE_LOCK=(self.root / 'install.lock').as_posix())
+        if stub:
+            env['SETTLE_STUB'] = '1'
         return subprocess.run([BASH, '-c', script], capture_output=True, text=True, env=env, timeout=120)
 
     def code(self):
@@ -265,6 +281,25 @@ class SettleCatalog(unittest.TestCase):
         self.assertFalse(self.overlay.exists())                # no package is installed: the release catalog is served
         self.assertIn('matches web release', r.stdout)
         self.assertEqual(list(self.overlay.parent.iterdir()), [])
+
+    def test_the_overlay_is_rewritten_for_each_release_that_becomes_current(self):
+        """Not vacuous: with a package to list, settle writes the effective catalog derived from the web release that
+        is current NOW, and a later switch changes it with the release (it is neither left alone nor removed)."""
+        self.code()
+        self.overlay.write_text('STALE: built for another release')
+        for release in ('{"release": "one"}', '{"release": "two"}'):
+            (self.web / 'current' / 'catalog.json').write_text(release)
+            r = self.settle(stub=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(self.overlay.read_text(), 'EFFECTIVE-FOR ' + release)
+            self.assertIn('matches web release', r.stdout)
+
+    def test_the_refresh_waits_for_a_running_install_instead_of_giving_up(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        start = text.index('\nsettle_catalog() {')
+        body = text[start:text.index('\n}\n', start)]
+        self.assertRegex(body, r'catalog_overlay refresh[\s\\]+--wait 30 ')
+        self.assertRegex((REPO_ROOT / 'ops/install-party-web.sh').read_text(encoding='utf-8'), r'catalog_overlay refresh --wait 30 ')
 
     def test_when_the_overlay_cannot_be_made_it_is_removed_and_the_run_goes_on(self):
         for label, prepare in (('no overlay code in the running release', lambda: None),
@@ -627,6 +662,38 @@ class RealRun(Harness):
         self.assertEqual(state.stat().st_mode & 0o777, 0o700)
         self.assertIn('left as it is', r.stdout)
 
+    def _state(self, **dirs):
+        """The manifest's directory 0700 with the named subdirectories (name=mode); returns it."""
+        state = self.manifest_path.parent
+        state.mkdir()
+        for name, mode in dirs.items():
+            (state / name).mkdir()
+            (state / name).chmod(mode)
+        state.chmod(0o700)
+        return state
+
+    def test_a_catalog_directory_of_another_owner_does_not_keep_the_exemption(self):
+        state = self._state(lego=0o700, catalog=0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', AVRANA_DEPLOY_CATALOG_OWNER_UID=str(os.getuid() + 1))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+    def test_another_open_directory_beside_the_catalog_still_keeps_it_closed(self):
+        state = self._state(lego=0o700, catalog=0o755, other=0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+    def test_a_link_named_catalog_is_never_exempt(self):
+        state = self._state(lego=0o700, elsewhere=0o700)
+        (state / 'catalog').symlink_to(state / 'elsewhere')
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
 
 class CatalogOverlayOnReleaseChanges(Harness):
     """AVR-337: an effective catalog left behind by another web release is never served after a deployment, a
@@ -674,6 +741,24 @@ class CatalogOverlayOnReleaseChanges(Harness):
         self.smoke('pass')
         r = self.script('--rollback')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.overlay.exists(), r.stdout)
+
+    def test_a_rollback_to_a_commit_that_predates_the_overlay_removes_it_and_still_succeeds(self):
+        """The release `current` points to after the rollback has no overlay code at all: the first-party catalog is
+        served (packages have no tile until the next forward deploy), and the rollback's exit status is unchanged."""
+        self.run_git(self.origin, 'rm', '-q', 'avrana/ops/catalog_overlay.py')
+        self.run_git(self.origin, 'commit', '-q', '-m', 'a commit that predates the overlay')
+        old = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        self.smoke('pass')
+        self.assertEqual(self.deploy(old, self.before_games).returncode, 0)           # the last known good
+        self.assertFalse((self.party_release.resolve() / 'avrana/ops/catalog_overlay.py').exists())
+        self.assertEqual(self.deploy(self.target_party, self.target_games, '--skip-smoke').returncode, 0)
+        self.assertTrue((self.party_release.resolve() / 'avrana/ops/catalog_overlay.py').exists())
+        self.plant()
+        self.smoke('pass')
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), old)
         self.assertFalse(self.overlay.exists(), r.stdout)
 
 
