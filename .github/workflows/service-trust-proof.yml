@@ -160,32 +160,22 @@ jobs:
         with:
           path: party
           persist-credentials: false
-      - name: Resolve the matching Games branch
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
         id: peer
-        shell: bash
         env:
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
           BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
-          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
-          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
-          ref=main; why='no AVR id in this branch name'
-          if [ -n "$avr" ]; then
-            why="no Games branch carries $avr"
-            if echo "$heads" | grep -qxF "$BRANCH"; then
-              ref=$BRANCH; why='same branch name'
-            else
-              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
-              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
-            fi
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash party/.github/ci/peer-access.sh
       - uses: actions/checkout@v7
         with:
           repository: rcnechamkin/avrana-party-games
           ref: ${{ steps.peer.outputs.ref }}
           path: games
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
