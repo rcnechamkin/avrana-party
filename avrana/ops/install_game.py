@@ -9,7 +9,9 @@ NOT an SDK, NOT stable, NOT run on the appliance (docs/runbooks/install-game.md)
 explicit act by root. A package that validates is still NOT trusted: installing it makes the
 appliance run third-party code as an isolated systemd DynamicUser, in the hardened shared template
 unit, with its own key and its own Unix socket, nothing more (ADR 0016). This tool never imports,
-executes or evaluates anything from a package.
+executes or evaluates anything from a package. A package runs on python3 or on the optional pinned
+node runtime (avrana.avrgame.node, AVR-68); one that names a runtime this appliance lacks is refused
+before anything is written, and nothing is fetched or built for either: no npm, no install script.
 
 There is ONE way a native game gets onto this appliance: `avrana.ops.provision_game`. This tool
 does not fork it. It validates the archive (avrana.avrgame.read), stages its files into a
@@ -411,8 +413,23 @@ def _check_permissions(contract, allow):
     return granted, notes
 
 
+def runtime_present(executable):
+    """Whether an optional runtime is on this host: its executable is a regular file."""
+    return os.path.isfile(executable)
+
+
+def check_runtime(name, executable, present=runtime_present):
+    """Refuse a package whose runtime this appliance does not have (AVR-68). Only the optional
+    runtimes are looked for: python3 is part of the appliance."""
+    if name in avrgame.OPTIONAL_RUNTIMES and not present(executable):
+        raise Refused(f'this package runs on the {name} runtime, which this appliance does not have '
+                      f'({executable} is missing); nothing was installed. Install the runtime first '
+                      f'(sudo ops/install-{name}-runtime <official tarball>; docs/runbooks/install-game.md), '
+                      'then install the package again. Packages of other runtimes are not affected')
+
+
 def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpreters=avrgame.INTERPRETERS,
-                 now=None, read=avrgame.read, owner=None):
+                 now=None, read=avrgame.read, owner=None, present=runtime_present):
     """Every refusal, in one place, before anything is written. Returns a Plan."""
     try:
         package = read(path)
@@ -447,6 +464,7 @@ def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpret
         raise Refused(f'{pid} is already provisioned by other means ({", ".join(left)}); '
                       'a package never takes over an existing game')
     interpreter = interpreters[package.manifest['server']['interpreter']]
+    check_runtime(package.manifest['server']['interpreter'], interpreter, present)
     if trusted is not None:
         trusted(interpreter)
     root = layout.tree_text(pid, package.version, package.sha256)
@@ -503,12 +521,13 @@ def _undo_provision(package_id, layout, run):
 
 
 def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=(), owner=None,
-            interpreters=avrgame.INTERPRETERS, now=None, extract=avrgame.extract, read=avrgame.read):
+            interpreters=avrgame.INTERPRETERS, now=None, extract=avrgame.extract, read=avrgame.read,
+            present=runtime_present):
     """Install the package at `path`. Returns the lines to show. On any failure the host is put
     back as it was (see the module docstring) and the original failure is raised;
     RollbackIncomplete when the undo itself could not finish. `owner` is the uid the staged tree
     must belong to (0 in real use); None skips that check (tests as a normal user)."""
-    plan = plan_install(path, layout, repo_contracts, allow, trusted, interpreters, now, read, owner)
+    plan = plan_install(path, layout, repo_contracts, allow, trusted, interpreters, now, read, owner, present)
     package, pid = plan.package, plan.package.id
     final = layout.on_disk(plan.root)
     ledger = _Ledger()
