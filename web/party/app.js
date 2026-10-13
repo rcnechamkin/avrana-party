@@ -1242,6 +1242,7 @@ $('going-back').onclick = () => {
   const view = party.view();
   if (!view) return;
   state.declined = moveKey(view);
+  window.stop();                              // the navigation that never arrived must not arrive later and take this phone away
   onPartyView(view, view);                    // Party Home, which show() moves to; the timer is cancelled there
 };
 $('net-retry').onclick = tryAgain;
