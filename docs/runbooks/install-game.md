@@ -18,9 +18,10 @@ reload). It adds no second way to start a game.
 Validation only checks bytes. **Installing a package makes this appliance run third-party code**, as an
 isolated systemd `DynamicUser=` instance, as root's explicit decision. The package cannot grant itself
 anything: tier is always `community`; permissions are granted only by `--grant` and only when the
-contract requested them; the entry path is always `/games/<id>/`; the command is an interpreter name
-mapped by the appliance (`python3` becomes `/usr/bin/python3`) with the package's arguments, run in the
-staged tree. Publisher, license and source are **unverified claims** shown as such (`list`); there is no
+contract requested them; the entry path is always `/games/<id>/`; the command is a runtime name
+mapped by the appliance (`python3` becomes `/usr/bin/python3`; `node` becomes the pinned build under
+`/opt/avrana-runtimes/`, when the owner installed it) with the package's arguments, run in the
+staged tree. Nothing is fetched, built or run at install for either runtime: no `npm install`, no install script. Publisher, license and source are **unverified claims** shown as such (`list`); there is no
 signature, publisher identity or provenance yet (AVR-58).
 
 **What an installed package can and cannot do** (from [`deploy/games/avrana-game@.service`](../../deploy/games/avrana-game@.service) and ADR 0016; the unit is the only protection):
@@ -65,6 +66,23 @@ roster whatever was granted), so `party_roster` not being granted does not stop 
    catalog file is written, but nothing serves it. The web release (`/var/www/avrana-party/web/current`)
    must exist: the effective catalog is the release's `catalog.json` plus the package rows.
 
+7. **Only for a package whose runtime is `node`** (`install-game install --dry-run` says so; AVR-68,
+   EXPERIMENTAL, optional): the pinned Node build. On another machine, download the official tarball for
+   the appliance's architecture (`node-v<version>-linux-arm64.tar.xz` for the Pi; the version and its
+   SHA-256 are in `avrana/avrgame/node_pin.py`), copy it to the appliance, then, offline:
+
+   ```
+   sudo /opt/avrana-party/current/ops/install-node-runtime install node-v<version>-linux-arm64.tar.xz --dry-run
+   sudo /opt/avrana-party/current/ops/install-node-runtime install node-v<version>-linux-arm64.tar.xz
+        /opt/avrana-party/current/ops/install-node-runtime verify
+   ```
+
+   It refuses any file whose SHA-256 is not the pin, downloads nothing, and leaves
+   `/opt/avrana-runtimes/node-<version>/` (root; `bin/node`, `LICENSE`, `avrana-runtime.json`; no npm).
+   Reverse: `sudo ops/install-node-runtime remove` (refused while a package runs on it). An appliance
+   without it runs Python packages exactly as before and refuses a Node package with a message naming
+   this step. Not run on the Pi or on arm64.
+
 ## Commands (root unless noted)
 
 ```
@@ -82,7 +100,7 @@ runs every check that changes nothing and prints what would change.
 `install` refuses, before writing anything: not root; an archive that fails validation (hostile entries,
 bad hashes, unsupported `format` or `requires`: compatibility fails closed); an id that is a first-party
 game, reserved, already installed (any version: "remove it first"; upgrade and rollback are not
-implemented, AVR-58 and AVR-60), or already provisioned by other means; an interpreter that is missing or
+implemented, AVR-58 and AVR-60), or already provisioned by other means; a runtime that is missing (a `node` package without step 7) or
 not root-owned; a games root that is not trusted; a leftover from an interrupted run (see below).
 `--grant` names a permission the operator allows; the grant is requested ∩ allowed. Party Core does not
 enforce grants at launch, so the installer fails closed (AVR-336): it refuses `--grant` of a permission the
