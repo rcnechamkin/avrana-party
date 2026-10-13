@@ -25,7 +25,9 @@ is cached for 5 seconds so phones cannot turn it into a `systemctl` storm.
 | `deployment` | the [deployment manifest](DEPLOYMENT-MANIFEST.md) without filesystem paths and operator login, or `null`; `manifest_error` says why when malformed |
 | `party`, `games` | `{deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}`: what the manifest says was deployed versus what is on disk now. `dirty` = tracked files modified now; `untracked` = count of untracked, non-ignored files; `deployed_dirty` = the deployment itself was made with `--allow-dirty` |
 | `web_release` | `{build, commit}` of the installed `/party/` shell |
-| `nginx_site` | `{status}`: `match`, `differs` or `unavailable`: the installed nginx site file against the deployed Party release's `avrana-party.nginx`, byte for byte (AVR-271). `differs` degrades; `unavailable` makes the summary `unknown`. The web build's `commit` must also equal the deployed Party SHA, else `degraded` |
+| `nginx_site` | `{status, sha256}`: `status` is `match`, `differs` or `unavailable`: the installed nginx site file against the deployed Party release's `avrana-party.nginx`, byte for byte (AVR-271); `sha256` is the hash of the installed file, or `null`. `ops/deploy.sh` installs that file with the deployment; this is the independent check. `differs` degrades; `unavailable` makes the summary `unknown`. The web build's `commit` must also equal the deployed Party SHA, else `degraded` |
+| `last_attempt` | `{party_sha, games_sha, at, outcome, backup}` or `null`, from the manifest: how the last `ops/deploy.sh` run ended (`ok`, `smoke-failed-kept`, `rolled-back`, `rollback-failed`, `interrupted-restored`, `refused`, `post-commit-failed`). An outcome other than `ok` adds a `summary.notes` entry and never degrades by itself: after a rollback the running pair is the last known good and this names the attempt that failed |
+| `last_known_good` | `{party_sha, games_sha, smoke_at, recorded_at, nginx_site_sha256}` or `null`: the last deployment whose smoke checks passed, the pair `ops/deploy.sh --rollback` returns to ([manifest](DEPLOYMENT-MANIFEST.md#last-known-good-record)). Informational: it never changes `summary` |
 | `contract` | `{party_games, party_session, lan_launch, games_advertises}`: what Party implements and what the games server advertises at `/api/games` |
 | `services` | each configured systemd unit: `active`, `inactive`, `failed`, `not-installed`, `unknown` or `unavailable` |
 | `certificate` | `{not_after, days_left, status}` with `ok`, `expiring` (< 21 days), `expired` or `unavailable`. The service user cannot read the root-only certificate directory, so the expiry comes from the public record `/etc/avrana-party/certificate-not-after` (the `openssl x509 -enddate` line, written by `ops/install-party-certificate.sh`); `unavailable` means neither could be read |
@@ -55,7 +57,7 @@ arcade `peers` list is dropped on purpose. `tests/unit/test_ops_status.py` asser
 
 Optional `"status"` block in `/etc/avrana-party/party-core.json`
 ([example](../../deploy/party-core/party-core.example.json)): `manifest`, `party_checkout`,
-`games_checkout`, `web_root`, `certificate`, `games_url`, `arcade_url`, `units`, `nginx_site`, `nginx_site_sources`. Unknown keys are
+`games_checkout`, `web_root`, `certificate`, `games_url`, `arcade_url`, `units`, `nginx_site`, `nginx_site_sources`, `last_known_good` (default: `last-known-good.json` beside the manifest). Unknown keys are
 ignored; defaults match the appliance layout in SYSTEM.
 
 ## Consumers

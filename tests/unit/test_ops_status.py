@@ -233,13 +233,57 @@ class Document(unittest.TestCase):
         manifest.write(self.manifest, sample())
         probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}, nginx='differs')
         doc = self.build(probes)
-        self.assertEqual(doc['nginx_site'], {'status': 'differs'})
+        self.assertEqual(doc['nginx_site'], {'status': 'differs', 'sha256': None})
         self.assertEqual(doc['summary']['state'], 'degraded')
         self.assertTrue(any(r.startswith('nginx site file differs') for r in doc['summary']['reasons']))
         probes.nginx = 'unavailable'
         self.assertEqual(self.build(probes)['summary']['state'], 'unknown')
         probes.nginx = 'match'
         self.assertEqual(self.build(probes)['summary']['state'], 'ok')
+
+    def test_a_last_attempt_that_did_not_end_ok_is_a_note_not_a_fault(self):
+        attempt = {'party_sha': SHA_B, 'games_sha': SHA_A, 'at': '2026-10-12T00:00:00Z', 'outcome': 'rolled-back',
+                   'backup': 'deploy-20261012T000000Z'}
+        manifest.write(self.manifest, sample(last_attempt=attempt))
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)})
+        doc = self.build(probes)
+        self.assertEqual(doc['last_attempt'], attempt)
+        self.assertEqual(doc['summary']['state'], 'ok')                         # the machine runs the good pair
+        self.assertTrue(any('ended rolled-back' in n for n in doc['summary']['notes']), doc['summary'])
+        manifest.write(self.manifest, sample(last_attempt=dict(attempt, outcome='ok')))
+        doc = self.build(probes)
+        self.assertEqual(doc['last_attempt']['outcome'], 'ok')
+        self.assertFalse(any('last deployment attempt' in n for n in doc['summary']['notes']))
+        manifest.write(self.manifest, sample())                                 # an old manifest without the field
+        self.assertIsNone(self.build(probes)['last_attempt'])
+
+    def test_the_installed_site_hash_and_the_last_known_good_are_reported_additively(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)})
+        self.assertIsNone(self.build(probes)['last_known_good'])
+        probes.nginx_site_sha256 = lambda path: 'ab' * 32
+        probes.last_known_good = lambda path: {'party_sha': SHA_A, 'games_sha': SHA_B, 'smoke_at': '2026-10-12T00:00:00Z',
+                                               'recorded_at': '2026-10-12T00:00:01Z', 'nginx_site_sha256': 'ab' * 32,
+                                               'web_release': {'build': 'x'}, 'seeded_from_running_deployment': True}
+        doc = self.build(probes)
+        self.assertEqual(doc['nginx_site'], {'status': 'match', 'sha256': 'ab' * 32})
+        self.assertEqual(doc['last_known_good'], {'party_sha': SHA_A, 'games_sha': SHA_B, 'smoke_at': '2026-10-12T00:00:00Z',
+                                                  'recorded_at': '2026-10-12T00:00:01Z', 'nginx_site_sha256': 'ab' * 32})
+        self.assertEqual(doc['summary']['state'], 'ok')                    # informational: never a fault by itself
+
+    def test_the_real_probes_read_the_site_hash_and_the_record_beside_the_manifest(self):
+        import hashlib
+        root = Path(self.temp.name)
+        site = root / 'site'
+        site.write_text('server {}')
+        self.assertEqual(status.Probes().nginx_site_sha256(site), hashlib.sha256(b'server {}').hexdigest())
+        self.assertIsNone(status.Probes().nginx_site_sha256(root / 'missing'))
+        record = root / 'last-known-good.json'
+        self.assertIsNone(status.Probes().last_known_good(record))
+        record.write_text('{"schema": "avrana.last-known-good/v0", "party_sha": "%s", "games_sha": "%s"}' % (SHA_A, SHA_B))
+        self.assertEqual(status.Probes().last_known_good(record)['party_sha'], SHA_A)
+        record.write_text('not json')
+        self.assertIsNone(status.Probes().last_known_good(record))          # unreadable is absent, never a crash
 
     def test_real_probe_compares_installed_site_with_first_readable_source(self):
         root = Path(self.temp.name)

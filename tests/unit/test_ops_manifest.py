@@ -118,6 +118,105 @@ class Files(unittest.TestCase):
         if os.name == 'posix':
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o644)
 
+    def test_cert_name_mismatches_and_the_last_attempt_are_recorded_and_validated(self):
+        manifest.write(self.path, sample())
+        manifest.record_deploy_info(self.path, 'installed', None, [], None, now='2026-10-12T00:00:00Z',
+                                    cert_name_mismatch=['games.avrana.net', 'games.avrana.net'])
+        self.assertEqual(manifest.read(self.path)['nginx_site']['cert_name_mismatch'], ['games.avrana.net'])
+        self.assertNotIn('last_attempt', manifest.read(self.path))                 # older manifests stay valid
+        for outcome in manifest.ATTEMPT_OUTCOMES:
+            manifest.record_last_attempt(self.path, SHA_A, SHA_B, outcome, 'deploy-20261012T000000Z')
+            self.assertEqual(manifest.read(self.path)['last_attempt']['outcome'], outcome)
+        with self.assertRaises(manifest.ManifestError):
+            manifest.record_last_attempt(self.path, SHA_A, SHA_B, 'fine', 'x')
+        self.assertTrue(manifest.validate(dict(sample(), last_attempt={'outcome': 'ok'})))
+        self.assertIsNone(manifest.record_last_attempt(Path(self.temp.name) / 'none.json', SHA_A, SHA_B, 'ok', 'x'))
+        self.assertEqual(manifest.main(['last-attempt', str(self.path), '--party', SHA_A, '--games', SHA_B,
+                                        '--outcome', 'rolled-back', '--backup', 'deploy-x']), 0)
+        self.assertEqual(manifest.read(self.path)['last_attempt']['outcome'], 'rolled-back')
+
+    def test_the_last_known_good_is_recorded_only_after_a_passed_smoke(self):
+        out = Path(self.temp.name) / 'last-known-good.json'
+        manifest.write(self.path, sample())                                  # smoke pending
+        for status in ('pending', 'failed', 'skipped'):
+            manifest.record_smoke(self.path, status)
+            with self.assertRaises(manifest.ManifestError):
+                manifest.record_last_known_good(self.path, out)
+            self.assertFalse(out.exists())
+        manifest.record_smoke(self.path, 'passed')
+        manifest.record_deploy_info(self.path, 'installed', 'cd' * 32)
+        manifest.record_last_known_good(self.path, out, now='2026-10-12T01:00:00Z')
+        rec = manifest.read_last_known_good(out)
+        self.assertEqual((rec['party_sha'], rec['games_sha']), (SHA_A, SHA_B))
+        self.assertEqual((rec['nginx_site_sha256'], rec['web_release']['commit']), ('cd' * 32, SHA_A))
+        self.assertFalse(rec['seeded_from_running_deployment'])
+        self.assertIsNone(manifest.read_last_known_good(Path(self.temp.name) / 'absent.json'))
+        out.write_text('{"schema": "other"}')
+        with self.assertRaises(manifest.ManifestError):
+            manifest.read_last_known_good(out)
+
+    def test_seeding_needs_a_passed_smoke_and_checkouts_still_at_the_manifest_commits(self):
+        party, games = git_repo(self.temp.name, 'party'), git_repo(self.temp.name, 'games')
+        p, g = manifest.observe_checkout(party), manifest.observe_checkout(games)
+        out = Path(self.temp.name) / 'last-known-good.json'
+        manifest.write(self.path, manifest.build(p, g, None, restarted=[], deployed_by='cody'))
+        with self.assertRaises(manifest.ManifestError):                         # smoke is still pending
+            manifest.seed_last_known_good(self.path, out, party, games)
+        manifest.record_smoke(self.path, 'passed')
+        manifest.seed_last_known_good(self.path, out, party, games, 'ab' * 32)
+        rec = manifest.read_last_known_good(out)
+        self.assertEqual((rec['party_sha'], rec['games_sha'], rec['seeded_from_running_deployment']),
+                         (p['sha'], g['sha'], True))
+        (games / 'file').write_text('two\n')                                    # the checkout moved on
+        subprocess.run(['git', '-C', str(games), '-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-qam', 'two'],
+                       check=True, capture_output=True)
+        out.unlink()
+        with self.assertRaises(manifest.ManifestError):
+            manifest.seed_last_known_good(self.path, out, party, games)
+        self.assertFalse(out.exists())
+
+    def test_the_nginx_site_and_the_flags_are_recorded_additively_and_validated(self):
+        """AVR-271: which site file is live (its hash), and every flag the deployment ran with."""
+        manifest.write(self.path, sample())
+        doc = manifest.read(self.path)
+        self.assertNotIn('nginx_site', doc)                                  # older manifests stay valid
+        self.assertNotIn('deploy_options', doc)
+        digest = 'ab' * 32
+        manifest.record_deploy_info(self.path, 'installed', digest, ['skip_smoke', 'force_busy'], 'auto',
+                                    now='2026-10-12T00:00:00Z')
+        doc = manifest.read(self.path)
+        self.assertEqual(doc['nginx_site'], {'status': 'installed', 'sha256': digest, 'at': '2026-10-12T00:00:00Z',
+                                             'cert_name_mismatch': []})
+        self.assertEqual({k for k, v in doc['deploy_options'].items() if v is True}, {'skip_smoke', 'force_busy'})
+        self.assertEqual(doc['deploy_options']['rollback'], 'auto')
+        self.assertEqual(set(doc['deploy_options']) - {'rollback'}, set(manifest.OPTION_NAMES))
+        for bad in (dict(doc, nginx_site={'status': 'maybe', 'sha256': None, 'at': '2026-10-12T00:00:00Z'}),
+                    dict(doc, nginx_site={'status': 'installed', 'sha256': 'xyz', 'at': '2026-10-12T00:00:00Z'}),
+                    dict(doc, deploy_options={'skip_smoke': 'yes'}),
+                    dict(doc, deploy_options={'rollback': 'sideways'}),
+                    dict(doc, deploy_options={'invented': True})):
+            self.assertTrue(manifest.validate(bad), bad)
+        self.assertEqual(manifest.main(['deploy-info', str(self.path), '--nginx-status', 'skipped',
+                                        '--option', 'skip_nginx_site', '--option', 'no_auto_rollback']), 0)
+        doc = manifest.read(self.path)
+        self.assertEqual((doc['nginx_site']['status'], doc['nginx_site']['sha256']), ('skipped', None))
+        self.assertTrue(doc['deploy_options']['skip_nginx_site'] and doc['deploy_options']['no_auto_rollback'])
+        self.assertIsNone(doc['deploy_options']['rollback'])
+
+    def test_the_contract_check_is_recorded_additively_and_validated(self):
+        manifest.write(self.path, sample())
+        self.assertNotIn('contract_check', manifest.read(self.path))       # older manifests stay valid
+        for status in manifest.CONTRACT_CHECK_STATES:
+            manifest.record_contract_check(self.path, status, now='2026-10-12T00:00:00Z')
+            self.assertEqual(manifest.read(self.path)['contract_check'],
+                             {'status': status, 'at': '2026-10-12T00:00:00Z'})
+        with self.assertRaises(manifest.ManifestError):
+            manifest.record_contract_check(self.path, 'fine')
+        bad = dict(sample(), contract_check={'status': 'maybe', 'at': None})
+        self.assertTrue(any('contract_check' in e for e in manifest.validate(bad)))
+        self.assertEqual(manifest.main(['contract-check', str(self.path), 'skipped']), 0)
+        self.assertEqual(manifest.read(self.path)['contract_check']['status'], 'skipped')
+
     def test_missing_is_none_and_malformed_is_an_error(self):
         self.assertIsNone(manifest.read(self.path))
         self.path.parent.mkdir(parents=True)

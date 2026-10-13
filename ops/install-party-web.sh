@@ -8,7 +8,7 @@
 #
 # Static files only: no service, port or reload. nginx serves $dest/current (see the /party/
 # locations in avrana-party.nginx, which must be deployed once, owner-approved). Each release is a
-# new directory; "current" switches atomically; the five newest releases are kept for rollback.
+# new directory; "current" switches atomically; the newest AVRANA_WEB_KEEP (default 5) are kept for rollback.
 # Only committed files are used: the commit is exported with `git archive` and built from there,
 # so ignored or untracked files (and the checkout's working tree) never reach the web root.
 # One exception, by the owner's decision (AVR-306): game covers, which are never committed. They
@@ -21,7 +21,8 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 dest=${AVRANA_WEB_ROOT:-/var/www/avrana-party/web}
 covers=${AVRANA_COVERS_DIR:-/srv/avrana/covers}
 [[ $covers == /* ]] || covers=$PWD/$covers      # the build runs in another directory
-keep=5
+keep=${AVRANA_WEB_KEEP:-5}      # the same count ops/deploy.sh keeps of code releases and deploy backups (--keep)
+[[ $keep =~ ^[0-9]+$ && $keep -ge 2 ]] || { echo "AVRANA_WEB_KEEP must be a number of at least 2 (the current release and the one before it)" >&2; exit 2; }
 mode=install
 kill_flag=()
 case ${1:-} in
@@ -79,7 +80,9 @@ fi
 mv -T "$work/out" "$release"
 switch_to "$release"
 
-# Keep the newest $keep releases, never the one "current" points to.
+# Keep the newest $keep releases, never the one "current" points to. ops/deploy.sh sets AVRANA_WEB_PRUNE=0 and
+# prunes them itself, once the deployment's smoke checks have passed (never while a failure could still need them).
+[[ ${AVRANA_WEB_PRUNE:-1} == 1 ]] || exit 0
 now=$(readlink -f "$dest/current")
 find "$dest/releases" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | sort -r | tail -n +$((keep + 1)) |
     while IFS= read -r old; do

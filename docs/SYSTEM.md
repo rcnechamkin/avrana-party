@@ -26,7 +26,7 @@ and branches).
 
 | Repository | Deployed (Pi, manifest read 2026-10-12) | `origin/main` (2026-10-12) | Unmerged |
 |---|---|---|---|
-| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed | `14a0278` plus the merges of #86 and this document's PR #113; 157 commits ahead of `c59f1c8` at `14a0278`. PRs #85, #86 and #108 to #111 merged on 2026-10-12, after the [baseline](findings/2026-10-12-deployed-baseline.md) was written | Draft PRs #106, #107, #112 and #114 (deploy hardening) and the branch `fix/avr-33-session-recovery` |
+| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed | `14a0278` plus the merges of #86 and this document's PR #113; 157 commits ahead of `c59f1c8` at `14a0278`. PRs #85, #86 and #108 to #111 merged on 2026-10-12, after the [baseline](findings/2026-10-12-deployed-baseline.md) was written | Draft PRs #106, #107 and #112 and the branch `fix/avr-33-session-recovery`. PR #114 (deploy hardening: `ops/deploy.sh` installs the nginx site, journals, recovers and rolls back) merged after the others on 2026-10-12; that script has never run on the Pi |
 | Games | `a448972` (clean, no mismatch) | `282c620` (Games #61 merged 2026-10-12) | none |
 
 **Main is ahead of production, and unmerged work is ahead of main.** Main's extra commits include native
