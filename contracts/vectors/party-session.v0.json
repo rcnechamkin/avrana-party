@@ -296,6 +296,14 @@
       "why": "a number literal that no reader can hold as a finite number"
     },
     {
+      "name": "end-nested-33-deep",
+      "typ": "end",
+      "aud": "bluff",
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCIsIm4iOltbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV19.BlEpC2KKl499U3c5PtbbLKD6cB9CFcaZPqZllM1ToeA",
+      "reason": "payload",
+      "why": "containers nested 33 deep, the payload object included; the limit is 32"
+    },
+    {
       "name": "token-of-astral-characters",
       "typ": "ticket",
       "aud": "bluff",

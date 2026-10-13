@@ -250,13 +250,18 @@ class OneSpelling(unittest.TestCase):
         big = str(2 ** 53 - 1)
         self.assertEqual(P.unseal(KEY, signed(body(exp=big, extra=',"n":-' + big)), 'end', 'bluff', now=NOW)['n'], -(2 ** 53 - 1))
         self.assertEqual(P.unseal(KEY, signed(body(extra=',"share":0.5,"e":1e3')), 'end', 'bluff', now=NOW)['share'], 0.5)
+        deepest = ',"n":' + '[' * (P.MAX_DEPTH - 1) + ']' * (P.MAX_DEPTH - 1)      # the payload object is level 1
+        self.assertIn('n', P.unseal(KEY, signed(body(extra=deepest)), 'end', 'bluff', now=NOW))
         cases = {
             'expired': [body(iat='%d.0' % NOW), body(exp='%d.0' % (NOW + 30)), body(exp='2.00000003e9'),
                         body(iat='2e9'), body(iat='true'), body(exp='"%d"' % (NOW + 30)), body(exp='null')],
             'payload': [b'\xef\xbb\xbf' + body().encode(), body(exp=str(2 ** 60)), body(exp=str(2 ** 53)),
                         body(exp='9' * 5000), body(extra=',"n":' + '9' * 5000), body(extra=',"n":-' + str(2 ** 53)),
                         body(exp='NaN'), body(exp='Infinity'), body(extra=',"n":NaN'), body(extra=',"n":-Infinity'),
-                        body(extra=',"n":1e999'), body(extra=',"n":-1e999'), body(extra=',"n":' + '[' * 5000)],
+                        body(extra=',"n":1e999'), body(extra=',"n":-1e999'), body(extra=',"n":' + '[' * 5000),
+                        body(extra=',"n":' + '[' * P.MAX_DEPTH + ']' * P.MAX_DEPTH),
+                        body(extra=',"n":' + '[' * 1500 + ']' * 1500),
+                        body(extra=',"n":' + '{"a":' * P.MAX_DEPTH + '1' + '}' * P.MAX_DEPTH)],
         }
         for reason, bodies in cases.items():
             for text in bodies:

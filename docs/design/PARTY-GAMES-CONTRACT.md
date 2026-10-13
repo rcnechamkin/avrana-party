@@ -154,7 +154,8 @@ all run them, and `tools/contract_check.py` refuses a vector file without them.
 
 **Numbers every language reads alike.** A payload is refused as `payload` when it holds `NaN`,
 `Infinity`, a number too large to be finite, or an integer literal outside −(2^53−1) … 2^53−1,
-anywhere in it; or when its bytes start with a byte-order mark. The claims `iat` and `exp` must be
+anywhere in it; when its bytes start with a byte-order mark; or when it nests containers more
+than 32 deep, the payload object included (parsers give up at different depths). The claims `iat` and `exp` must be
 written as integer literals: `1700000000.0` and `1.7e9` are refused as `expired`. Python and
 JavaScript disagreed on each of these before (one accepted what the other refused), and each is a
 vector now. A finite fraction elsewhere in a payload (a result's game data) is allowed. The 8192

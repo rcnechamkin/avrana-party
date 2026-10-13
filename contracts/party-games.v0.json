@@ -6,9 +6,9 @@
     "version": "avrana.party-session/v0",
     "prefix": "aps0",
     "reference": "avrana/party/protocol.py",
-    "reference_sha256": "bfa3b596730c306d7e22ddca632b3efc317c309f12174767523dbde145d654d9",
+    "reference_sha256": "0ccbb006db4d9565fb14fe128995d5dbdd0d2cc50beab5cd32823f17cfcb36b5",
     "vectors": "contracts/vectors/party-session.v0.json",
-    "vectors_sha256": "f9de36c5ee5ecce1cadca777e4771949a019475df96e5ce9d313526b831520bd",
+    "vectors_sha256": "9796379d396620ad983b34cca6d4e2e58836f4ec3eb1e86ffbf7da7b99f9f021",
     "decision": "docs/adr/0006-party-session-protocol.md"
   },
   "result": {

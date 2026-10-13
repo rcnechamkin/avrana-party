@@ -33,8 +33,9 @@ NaN or Infinity, a number too large to be finite, or an integer literal outside 
 written as integer literals: `1700000000.0` and `1.7e9` are refused (Invalid('expired')) although
 they name an integer, because a language without a separate integer type cannot tell them from
 one after parsing unless it looks at the text. A byte-order mark before the payload is not JSON
-and is refused ('payload'). Elsewhere in a payload (a result's game data) a finite fraction is
-allowed.
+and is refused ('payload'), and so is a payload nested more than MAX_DEPTH containers deep, the
+payload object included (parsers give up at different depths; this one number is the same
+everywhere). Elsewhere in a payload (a result's game data) a finite fraction is allowed.
 
 Every payload carries:
     v    "avrana.party-session/v0"
@@ -113,6 +114,7 @@ MESSAGE_TTL = 30            # s for server-to-server messages
 MAX_TOKEN = 8192
 CLOCK_SKEW = 5              # s: future-`iat` tolerance; beyond it the refusal is 'clock'
 MAX_SAFE_INT = 2 ** 53 - 1  # the largest integer every JSON reader holds exactly
+MAX_DEPTH = 32              # containers nested in a payload, the payload object included
 TYPES = ('ticket', 'launch', 'end', 'ended', 'host', 'host_is')
 ROLES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned')
@@ -238,10 +240,19 @@ def _constant(text):
     raise ValueError('not JSON')                  # NaN, Infinity, -Infinity
 
 
+def _shallow(value, left):
+    if not isinstance(value, (dict, list)):
+        return True
+    return left > 0 and all(_shallow(v, left - 1) for v in (value.values() if isinstance(value, dict) else value))
+
+
 def _loads(body):
     """The payload object of one token part, read strictly (the Numbers rule of the module
     docstring). ValueError for anything else, a byte-order mark included."""
-    return json.loads(body.decode('utf-8'), parse_int=_int, parse_float=_float, parse_constant=_constant)
+    payload = json.loads(body.decode('utf-8'), parse_int=_int, parse_float=_float, parse_constant=_constant)
+    if not _shallow(payload, MAX_DEPTH):
+        raise ValueError('nested too deep')
+    return payload
 
 
 def _mac(key, signed):
