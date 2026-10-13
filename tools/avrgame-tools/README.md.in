@@ -158,11 +158,19 @@ Validation lists **every** problem it finds, one per line on stderr, and exits 1
   `service`. Emulated, LAN-module and arcade games are not packageable. The game's own contract must be
   a complete `avrana.game/v0` Game Contract; `game.package` is not allowed (use the manifest's `package`
   block); `game.id` is the package id.
-- **`server.interpreter`** is a **name** from the appliance's list, today only `python3`, never a path.
-  `server.args` for `python3` must be exactly `["-m", "<dotted module>", ...]`, and the module must
-  exist in the package as `NAME/__main__.py` or `NAME.py` (checked by reading the file list; nothing
-  is imported). `-c`, a script path and other interpreter options are refused. No argument may be an
+- **`server.interpreter`** is the runtime, a **name** from the appliance's list, `python3` or `node`,
+  never a path. `server.args` for `python3` must be exactly `["-m", "<dotted module>", ...]`, and the
+  module must exist in the package as `NAME/__main__.py` or `NAME.py` (checked by reading the file list;
+  nothing is imported). `-c`, a script path and other interpreter options are refused. For `node` it must
+  be `["<entry>.mjs", ...]`: the first argument is the entry, an ES module file of the package ending in
+  `.mjs` (not `.js` or `.cjs`), outside any `node_modules`, and never an option of Node (`--eval`,
+  `--require` and the like are refused); the arguments after it reach your script. No argument may be an
   absolute path or contain `..`.
+- **A `node` package ships source only.** Dependencies are vendored under `node_modules` as plain files
+  (no symbolic links, no dot entries such as `node_modules/.bin`; the usual limits apply, so bundle a
+  large dependency tree). Native addons (`*.node`), shared libraries and executables are refused, by
+  name and by content; WebAssembly is allowed. Nothing is installed, built or run for a package: the
+  `scripts` of a vendored `package.json` are never read.
 - **`client.root`** is a relative directory inside the package and must contain `index.html`.
 - **Capability names**: the Game Contract's `requires` and `optional` lists may use only names from the
   capability vocabulary, listed with a one-line meaning in the section "Capability names" below. The file
@@ -255,8 +263,11 @@ These are the conditions the project's installer and unit templates set up **in 
 never on a real appliance, and **this export does not verify any of it**. Treat them as what to design
 for, not as a promise.
 
-- **One way to start.** `python3 -m <module>`, from the package root, with the appliance's system Python
-  and the **standard library only**. No other interpreter, no script path, no installing packages.
+- **One way to start, per runtime.** `python3 -m <module>`, from the package root, with the appliance's
+  system Python and the **standard library only**; or `node <entry>.mjs`, from the package root, with the
+  appliance's one pinned Node build and only what the package vendors. The Node runtime is **optional**:
+  an appliance whose owner has not installed it refuses a `node` package at install. No other interpreter,
+  no script path, no installing packages, no install script.
 - **No IP networking at all.** The process may use Unix sockets only (it cannot open a TCP or UDP socket,
   and runs in an empty network namespace). It is **socket-activated**: the platform
   creates the listening socket and starts your process on the first connection, handing the socket over as

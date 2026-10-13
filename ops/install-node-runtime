@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Install, verify or remove the OPTIONAL pinned Node.js runtime of EXPERIMENTAL .avrgame packages
+# (AVR-68). Run as root from the deployed code tree; see avrana/ops/node_runtime.py:
+#
+#   sudo /opt/avrana-party/current/ops/install-node-runtime install <node-v<version>-linux-<arch>.tar.xz> [--dry-run]
+#   /opt/avrana-party/current/ops/install-node-runtime verify
+#   sudo /opt/avrana-party/current/ops/install-node-runtime remove [--dry-run]
+#
+# Offline: the tarball is one you bring; it is accepted only when its SHA-256 is the one pinned in
+# avrana/avrgame/node_pin.py. Nothing is downloaded.
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+cd "$tree"
+PYTHONDONTWRITEBYTECODE=1 exec python3 -m avrana.ops.node_runtime "$@"

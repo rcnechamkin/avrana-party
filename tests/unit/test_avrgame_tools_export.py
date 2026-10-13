@@ -49,7 +49,7 @@ ALLOWED = {
     'AVRGAME-PACKAGE-FORMAT.md', 'MANIFEST.json', 'NOTICE.md', 'README.md',
     'avrana/__init__.py',
     'avrana/avrgame/__init__.py', 'avrana/avrgame/__main__.py', 'avrana/avrgame/archive.py',
-    'avrana/avrgame/build.py', 'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py',
+    'avrana/avrgame/build.py', 'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py', 'avrana/avrgame/node.py',
     'avrana/contracts/__init__.py', 'avrana/contracts/game.py', 'avrana/contracts/party_games.py',
     'avrana/contracts/strictjson.py', 'avrana/contracts/vocabulary.py',
     'avrana/party/__init__.py', 'avrana/party/protocol.py', 'avrana/party/result.py',
@@ -57,7 +57,7 @@ ALLOWED = {
 }
 ALLOWED_MODULES = {
     'avrana', 'avrana.avrgame', 'avrana.avrgame.__main__', 'avrana.avrgame.archive', 'avrana.avrgame.build',
-    'avrana.avrgame.common', 'avrana.avrgame.manifest', 'avrana.contracts', 'avrana.contracts.game',
+    'avrana.avrgame.common', 'avrana.avrgame.manifest', 'avrana.avrgame.node', 'avrana.contracts', 'avrana.contracts.game',
     'avrana.contracts.party_games', 'avrana.contracts.strictjson', 'avrana.contracts.vocabulary',
     'avrana.party', 'avrana.party.protocol', 'avrana.party.result',
 }
@@ -256,7 +256,7 @@ class ContentsTests(Built):
         self.assertEqual(tools.SPEAKS, {'package_format': avrgame.FORMAT, 'recipe_format': avrgame.RECIPE_FORMAT,
                                         **manifest['requires_spoken']})
         self.assertEqual((manifest['source_commit'], manifest['source_dirty'], manifest['experimental']), (COMMIT, False, True))
-        self.assertEqual(manifest['tools_version'], 'experimental.1')
+        self.assertEqual(manifest['tools_version'], 'experimental.2')
         self.assertRegex(manifest['speaks_digest'], r'^[0-9a-f]{12}$')
 
     def test_the_documents_are_complete_experimental_and_say_what_is_open(self):
@@ -715,7 +715,7 @@ class BuildHygieneTests(unittest.TestCase):
         changed('avrana/avrgame/common.py', b'MAX_FILES = 2000', b'MAX_FILES = 2001', 'a limit')
         changed('avrana/avrgame/manifest.py', b'MAX_ARG = 200', b'MAX_ARG = 201', 'a manifest limit')
         changed('avrana/contracts/game.py', b"'party_roster', 'controllers'", b"'party_roster', 'jukebox', 'controllers'", 'a permission')
-        changed('avrana/avrgame/manifest.py', b"{'python3': '/usr/bin/python3'}", b"{'python3': '/usr/bin/python3', 'node': '/usr/bin/node'}", 'an interpreter')
+        changed('avrana/avrgame/manifest.py', b"{'python3': '/usr/bin/python3', ", b"{'python3': '/usr/bin/python3', 'deno': '/usr/bin/deno', ", 'an interpreter')
         changed('avrana/ops/provision_game.py', b'MemoryMax=256M', b'MemoryMax=512M', 'a ceiling')
         vocab = json.loads((REPO_ROOT / 'contracts/capabilities.v0.json').read_text(encoding='utf-8'))
         vocab['device']['brand_new'] = vocab['device']['touch']

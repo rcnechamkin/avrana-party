@@ -17,8 +17,8 @@ Party Core, provisioning and the catalog read this directory as an overlay on th
 `contracts/games/` and `contracts/appliances/<id>.json`: `load` returns the contracts and grants
 of the installed games. A record is NEVER trusted because root wrote it. Every record is checked
 again, whole, on every load: its contract with the existing Game Contract validator, its grant
-against the appliance grant rules, its tier, entry path, working directory and interpreter against
-what an installer can have produced, and its id against the repository's first-party games. A
+against the appliance grant rules, its tier, entry path, working directory and runtime (python3 or
+node, and the form of its command) against what an installer can have produced, and its id against the repository's first-party games. A
 record that fails is refused by itself, with a named problem; the other records and the
 repository's games are not affected. Nothing here imports, executes or evaluates package content.
 
@@ -33,6 +33,7 @@ from pathlib import PurePosixPath
 
 from avrana.contracts import appliance, game, strictjson, vocabulary
 
+from . import node, node_pin
 from .common import FORMAT, MAX_FILES, MAX_FILE_BYTES, MANIFEST_NAME, check_json_depth, name_problem, text_ok
 from .manifest import INTERPRETERS, MAX_ARG, MAX_ARGS, VERSION, module_form
 
@@ -114,12 +115,13 @@ def build_grant(package, granted, root, interpreters=INTERPRETERS):
     """The appliance's grant for a package: community tier, the permissions the operator allowed
     (and the contract requested), and the command the template unit runs in the staged tree."""
     server = package.manifest['server']
+    options = node_pin.OPTIONS if server['interpreter'] == node.NAME else ()     # the appliance's, never the package's
     return {
         'game': package.id,
         'entry': entry_path(package.id),
         'tier': TIER,
         'permissions_granted': sorted(granted),
-        'runtime': {'command': [interpreters[server['interpreter']], *server['args']],
+        'runtime': {'command': [interpreters[server['interpreter']], *options, *server['args']],
                     'working_directory': root},
     }
 
@@ -177,7 +179,7 @@ def _files_problems(files, package_id):
     return p
 
 
-def _runtime_problems(grant, root, interpreters):
+def _runtime_problems(grant, root, interpreters, files=None):
     p = appliance.runtime_problems(grant.get('runtime'), 'grant.runtime')
     if p:
         return p
@@ -190,12 +192,21 @@ def _runtime_problems(grant, root, interpreters):
     args = command[1:]
     if command[0] == INTERPRETERS.get('python3') and not module_form(args):
         p.append('grant.runtime.command: python3 runs only ["-m", "<module>", ...]')
+    if command[0] == interpreters.get(node.NAME):
+        fixed = list(node_pin.OPTIONS)
+        if args[:len(fixed)] != fixed:
+            p.append(f'grant.runtime.command: node runs with exactly the options of this appliance first ({" ".join(fixed)})')
+        args = args[len(fixed):]                             # what the package asked for
+        if not node.entry_form(args):
+            p.append('grant.runtime.command: node runs only ["<entry>.mjs", ...], an ES module file of the package')
+        elif isinstance(files, list) and args[0] not in [f.get('path') for f in files if isinstance(f, dict)]:
+            p.append('grant.runtime.command: the node entry is not one of the files of the record')
     if not 1 <= len(args) <= MAX_ARGS:
         p.append(f'grant.runtime.command: 1-{MAX_ARGS} arguments after the interpreter')
     for i, arg in enumerate(args):
         if not text_ok(arg, 1, MAX_ARG) or arg.startswith(('/', '\\')) or re.match(r'^[A-Za-z]:', arg) \
                 or '..' in arg.split('/'):
-            p.append(f'grant.runtime.command[{i + 1}]: a package argument has no absolute path or ".."')
+            p.append(f'grant.runtime.command: package argument {i + 1} has an absolute path or "..", or is not printable')
     return p
 
 
@@ -285,7 +296,7 @@ def validate_record(doc, name, repo_contracts, vocab=None, interpreters=INTERPRE
                          'so a package record must carry it; a record from before this rule is refused: run '
                          f'"install-game remove {pid}" and install the package again with --grant {ALWAYS_PROVIDED}')
         if isinstance(root, str):
-            p += _runtime_problems(grant, root, interpreters)
+            p += _runtime_problems(grant, root, interpreters, doc['files'])
     claims = doc['package']
     if not isinstance(claims, dict) or set(claims) - set(CLAIMS) or not {'publisher', 'license'} <= set(claims) \
             or not all(text_ok(v, 1, 200) for v in claims.values()):

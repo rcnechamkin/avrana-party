@@ -201,6 +201,16 @@ COMMUNITY_UNIT = (
 NO_STATE = '# persistent_storage was not granted: no state directory\nStateDirectory=\n'
 
 
+# A Node process reads two variables that change what it runs or loads. Nothing sets them (a unit's
+# environment is the template's and this drop-in's), and this keeps it so whatever the manager passes on.
+NODE_UNIT = '# Node: nothing but the command above says what it runs or where it finds modules\nUnsetEnvironment=NODE_OPTIONS NODE_PATH\n'
+
+
+def _runs_node(runtime):
+    from avrana.avrgame import node_pin
+    return runtime['command'][0] == node_pin.EXECUTABLE
+
+
 def dropin_text(runtime, origin, tier=None, granted=()):
     """The exec.conf for a validated `runtime` and the Party's `origin`. Refuses any control
     character itself, since the text goes into a unit file where a newline would add a directive.
@@ -216,6 +226,7 @@ def dropin_text(runtime, origin, tier=None, granted=()):
             f"ExecStart={' '.join(quote_exec(a) for a in runtime['command'])}\n"
             f"WorkingDirectory={runtime['working_directory'].replace('%', '%%')}\n"
             f'Environment={PARTY_ORIGIN_ENV}={origin}\n'
+            + (NODE_UNIT if _runs_node(runtime) else '')
             + ((COMMUNITY_UNIT + ('' if 'persistent_storage' in granted else NO_STATE)) if tier == COMMUNITY_TIER else ''))
 
 

@@ -1,0 +1,13 @@
+{
+  "name": "avr-fixture-dep",
+  "version": "1.0.0",
+  "description": "A vendored dependency of the Node fixture game (AVR-68). Its lifecycle scripts must never run: nothing runs npm at install.",
+  "type": "module",
+  "exports": "./index.js",
+  "scripts": {
+    "preinstall": "node lifecycle.cjs preinstall",
+    "install": "node lifecycle.cjs install",
+    "postinstall": "node lifecycle.cjs postinstall"
+  },
+  "license": "MIT"
+}
