@@ -73,20 +73,23 @@ test('the host starts a round: two phones on Party Home go to the game origin; a
 /**
  * AVR-339: a navigation to the game origin that never completes (seen once in about 13 WebKit runs in CI,
  * ~22 s of silence and then a browser error). The going screen tries once more and then gives the phone a way on
- * and a way back. Simulated here by a game origin that accepts the request and never answers; the waits are
+ * and a way back. Simulated here by the harness's game origin, which accepts the request and never answers; the waits are
  * real (8 s each, lib/going-watchdog.js). Whether the hang is a WebKit or a runner fault is not settled by this.
  */
 // The waits are real: 2 x 8 s of visible time before the way out, so the expectations below allow 45 s
 // (a loaded runner); the page's own timers are left alone because Party polling runs on them.
+// The game origin is the harness's own server (tests/provider/server.py /__harness__/hang-game): it accepts the
+// connection for BLUFF's page and holds it. (A Playwright route that never fulfils is not the same thing: the
+// request is paused inside the browser's own fetch interception.) `requests` is what the server has seen.
 async function hangGameOrigin(p: Phone) {
-  const seen = { requests: 0, hang: true };
-  await p.context.route((url) => url.origin === GAMES && url.pathname.startsWith('/games/bluff/'), (route) => {
-    seen.requests += 1;
-    if (!seen.hang) return route.continue();
-    // neither fulfilled, continued nor aborted: the request is simply never answered
-  });
-  return seen;
+  const hang = `${LOOPBACK}/__harness__/hang-game`;
+  expect((await p.page.request.post(`${hang}?on=1`)).ok()).toBe(true);
+  return {
+    seen: async (): Promise<number> => (await (await p.page.request.get(hang)).json()).seen,
+    release: async () => { expect((await p.page.request.post(`${hang}?on=0`)).ok()).toBe(true); },
+  };
 }
+type Hung = Awaited<ReturnType<typeof hangGameOrigin>>;
 
 // While a top-level navigation is pending, Playwright holds EVERY call that needs the frame, page.evaluate
 // included ("waiting for <url> navigation to finish"; CI run 38338301123 showed the evaluate calls queued for
@@ -109,11 +112,11 @@ async function eyes(p: Phone) {
 }
 type Eyes = Awaited<ReturnType<typeof eyes>>;
 /** TEMPORARY diagnostics (AVR-339 CI iteration): the going screen once a second, in the job log. */
-function timeline(see: Eyes, game: { requests: number }, label: string) {
+function timeline(see: Eyes, game: Hung, label: string) {
   const t0 = Date.now();
   const timer = setInterval(async () => {
     const s = await see.going().catch((e) => `evaluate failed: ${String(e).slice(0, 80)}`);
-    console.log(`TL ${label} +${Math.round((Date.now() - t0) / 1000)}s requests=${game.requests} ${JSON.stringify(s)}`);
+    console.log(`TL ${label} +${Math.round((Date.now() - t0) / 1000)}s requests=${await game.seen().catch(() => '?')} ${JSON.stringify(s)}`);
   }, 2000);
   return () => clearInterval(timer);
 }
@@ -130,9 +133,9 @@ test('a game page that never answers: the going screen retries once, then offers
   expect((await see.going()).stuck).toBe(false);                       // not at once: the wait is bounded, not nervous
   await expect.poll(() => see.going().then((s) => s.stuck), { timeout: 45_000 }).toBe(true);
   stop();
-  expect(game.requests).toBeGreaterThanOrEqual(2);                           // the first navigation and its retry
+  expect(await game.seen()).toBeGreaterThanOrEqual(2);                           // the first navigation and its retry
   expect((await see.going()).text).toContain('Can’t reach');
-  game.hang = false;                                                       // the game origin answers again
+  await game.release();                                                    // the game origin answers again
   await see.press('going-retry');
   await expect(ana.page).toHaveURL(IN_GAME);
   await ana.context.close();
@@ -151,10 +154,10 @@ test('a game page that never answers: Back to Party stops the pending navigation
   await see.press('going-back');
   await expect.poll(() => see.going().then((s) => s.screen)).toBe('main');
   expect((await see.going()).stuck).toBe(false);
-  const requests = game.requests;
-  game.hang = false;                                                       // even if the game origin answers now, the stopped navigation does not come back
+  const requests = await game.seen();
+  await game.release();                                                       // even if the game origin answers now, the stopped navigation does not come back
   await ana.page.waitForTimeout(3000);
-  expect(game.requests).toBe(requests);
+  expect(await game.seen()).toBe(requests);
   await expect(ana.page).toHaveURL(AT_HOME);
   await ana.context.close();
 });
