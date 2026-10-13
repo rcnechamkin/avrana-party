@@ -329,6 +329,46 @@ capture "$tree/ops/catalog-overlay" check
 show 'catalog-overlay check' "$out"
 check 'ops/catalog-overlay check says the overlay is current' 0 "$rc"
 
+# ---- the browser client contract (AVR-135): the installed package, asked through the committed nginx ------------------------
+# No game controls a Service Worker: nginx refuses a request that carries the Service-Worker header on the native-game
+# rule of both hosts, before the game is asked. The same file asked for plainly (as a page, a module or a dedicated
+# Worker asks) is served. The Party shell's own worker is another location and is still served to a registering browser.
+code() { curl -sk -o /dev/null -w '%{http_code}' --max-time 30 "$@"; }
+head_of() { curl -sk -D - -o /dev/null --max-time 30 "$@" | tr -d '\r'; }
+for host in games.avrana.net party.avrana.net; do
+    t "a script file of the installed package is served on $host (200)" 0 \
+        test "$(code "https://$host/games/hello/web/hello.mjs")" = 200
+    t "the same file asked for as a Service Worker script is refused by nginx on $host (403)" 0 \
+        test "$(code -H 'Service-Worker: script' "https://$host/games/hello/web/hello.mjs")" = 403
+    t "and so is the game's page, and a path the game does not serve, with that header on $host (403, never the game's answer)" 0 \
+        test "$(code -H 'Service-Worker: script' "https://$host/games/hello/")$(code -H 'Service-Worker: script' "https://$host/games/hello/sw.js")" = 403403
+    t "no answer from the game on $host carries Service-Worker-Allowed" nonzero \
+        sh -c "curl -sk -D - -o /dev/null --max-time 30 https://$host/games/hello/web/hello.mjs | grep -qi '^service-worker-allowed:'"
+done
+t "the Party shell's own service worker is still served to a browser that registers it (200)" 0 \
+    test "$(code -H 'Service-Worker: script' https://party.avrana.net/party/sw.js)" = 200
+# The cache classes and the build identity are the game kit's half. They are checked here only when the Games checkout
+# this run was given has them (a Party branch may be proven against a Games main that does not yet).
+if grep -q 'def client_build' "$games_repo/avrana_gamekit/app.py" 2>/dev/null; then
+    asset=https://games.avrana.net/games/hello/web/hello.mjs
+    head_of "$asset" > "$work/asset.head" || true
+    etag=$(awk 'tolower($1)=="etag:"{print $2}' "$work/asset.head")
+    t 'a client file of the package reaches the phone as no-cache with a strong ETag, through nginx' 0 \
+        sh -c "grep -qi '^cache-control: no-cache\$' '$work/asset.head' && printf %s '$etag' | grep -qE '^\"[0-9a-f]{32}\"\$'"
+    t 'a phone that kept the file is answered 304 through nginx, and one with other bytes gets the file (200)' 0 \
+        test "$(code -H "If-None-Match: $etag" "$asset")$(code -H 'If-None-Match: "other"' "$asset")" = 304200
+    curl -sk --max-time 30 https://games.avrana.net/games/hello/ > "$work/page.html" || true
+    page_build=$(sed -n 's/.*<meta name="avrana-build" content="\([^"]*\)">.*/\1/p' "$work/page.html" | head -1)
+    t "the served page carries its build identity (<id>-<version>-<sha12>): ${page_build:-none}" 0 \
+        sh -c "printf %s '$page_build' | grep -qE '^hello-[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{12}\$'"
+    curl -sk --max-time 30 -D "$work/api.head" -o "$work/api.json" -H 'Content-Type: application/json' \
+        -d '{"ticket":"not-a-ticket"}' https://games.avrana.net/games/hello/api/redeem || true
+    t 'an API answer (a refused ticket) is no-store, has no ETag, and names the same build' 0 \
+        sh -c "tr -d '\\r' < '$work/api.head' | grep -qi '^cache-control: no-store\$' && ! grep -qi '^etag:' '$work/api.head' && grep -qF '\"build\": \"$page_build\"' '$work/api.json'"
+else
+    echo 'OBSERVE  n/a  cache classes and build identity: this Games checkout predates AVR-135 (avrana_gamekit has no client_build); only the nginx refusal was checked'
+fi
+
 # ---- f. the browsers: play the installed package --------------------------------------------------------------------
 runuser -u "$pwuser" -- mkdir -p "$out_dir"      # created by the user who will write to it, parents included
 pw() {  # pw <project> <spec>: Playwright as the unprivileged user, from the checkout; its output is kept in $work/pw-*.out
