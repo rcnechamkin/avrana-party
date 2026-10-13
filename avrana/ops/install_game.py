@@ -47,6 +47,7 @@ from pathlib import Path, PurePosixPath
 from avrana import avrgame
 from avrana.avrgame import installed
 from avrana.contracts import game as game_contract
+from avrana.ops import catalog_overlay
 from avrana.ops import provision_game as pg
 
 Refused = pg.Refused
@@ -252,7 +253,7 @@ def _write_record(layout, package_id, doc):
 # ---- the lock ---------------------------------------------------------------------------------------
 
 @contextlib.contextmanager
-def locked(path):
+def locked(path, wait=0):
     """One install, remove or repair at a time. Where `fcntl` does not exist (Windows, where the
     tests run) there is nothing to lock. The lock dies with the process, so a crash never leaves
     it held."""
@@ -261,12 +262,21 @@ def locked(path):
     except ImportError:
         yield
         return
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise Refused('another install-game is running (the lock is held); wait for it') from None
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as exc:
+        raise Refused(f'the lock file {path} cannot be opened ({type(exc).__name__}: {exc.strerror}); '
+                      'is this running as root?') from None
+    try:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise Refused('another install-game is running (the lock is held); wait for it') from None
+                time.sleep(0.2)
         yield
     finally:
         os.close(fd)
@@ -748,7 +758,7 @@ def _parser():
         p.add_argument('--party-url', default=pg.DEFAULT_PARTY_URL, help=f'Party Core on loopback (default {pg.DEFAULT_PARTY_URL})')
     for p in (i, r, sub.choices['list'], sub.choices['verify']):
         for name in ('key-dir', 'registry-dir', 'socket-dir', 'state-dir', 'unit-dir', 'template-dir',
-                     'party-config', 'records-dir', 'games-root', 'lock-file', 'visible-root'):
+                     'party-config', 'records-dir', 'games-root', 'lock-file', 'visible-root', 'catalog-dir', 'catalog-base'):
             p.add_argument(f'--{name}', help=argparse.SUPPRESS)
     return ap
 
@@ -812,6 +822,7 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
             from avrana.contracts import party_config
             contracts = party_config.load_contracts()
         owner = 0 if real else None
+        catalog_dir = a.catalog_dir if getattr(a, 'catalog_dir', None) else (catalog_overlay.DEFAULT_DIR if real else None)
         conf = a.party_config if getattr(a, 'party_config', None) else pg.PARTY_CONFIG
         if a.command == 'list':
             rows, problems = listing(layout, contracts, owner=owner)
@@ -837,9 +848,21 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
                     print(f'{a.id}: nothing to remove', file=out)
                 return 0
             with interrupts_as_exceptions(), locked(layout.lock_file):
-                changes = remove(a.id, layout, contracts, run, active, a.keep_state, owner)
-            for item in changes:
-                print(f'{a.id}: removed {item}', file=out)
+                try:
+                    changes = remove(a.id, layout, contracts, run, active, a.keep_state, owner)
+                except BaseException:
+                    if catalog_dir:                  # AVR-337: the record may be gone already; never leave a tile for it
+                        with shielded():
+                            catalog_overlay.best_effort(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
+                                                        catalog_dir, owner, repo_contracts=contracts)
+                    raise
+                for item in changes:                 # said first: the removal is done whatever the catalog does next
+                    print(f'{a.id}: removed {item}', file=out)
+                with shielded():
+                    lines = catalog_overlay.after_change(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
+                                                         catalog_dir, owner, repo_contracts=contracts) if catalog_dir else []
+            for line in lines:
+                print(line, file=out)
             if not changes:
                 print(f'{a.id}: nothing to remove', file=out)
             return 0
@@ -858,6 +881,11 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
             return 0
         with interrupts_as_exceptions(), locked(layout.lock_file):
             lines = install(a.package, layout, contracts, run, own, origin, trusted, a.grant, owner)
+            if catalog_dir:                          # AVR-337: fail closed, the install is undone if the catalog cannot be written
+                with shielded():                     # installed already: a signal must not cut the publish or its undo short
+                    lines += catalog_overlay.publish_or_undo(
+                        layout, a.catalog_base or catalog_overlay.DEFAULT_BASE, catalog_dir, owner, lines[0].split(':', 1)[0],
+                        undo=lambda pid: remove(pid, layout, contracts, run, None, False, owner), repo_contracts=contracts)
         for line in lines:
             print(line, file=out)
         return 0
@@ -876,6 +904,9 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
         return 1
     except Refused as e:
         print(f'install-game: refused: {e}', file=err)
+        return 1
+    except catalog_overlay.OverlayError as e:
+        print(f'install-game: the effective catalog: {e}', file=err)
         return 1
     except subprocess.CalledProcessError as e:
         print(f'install-game: failed: {" ".join(map(str, e.cmd))} exited {e.returncode}; nothing is left installed', file=err)

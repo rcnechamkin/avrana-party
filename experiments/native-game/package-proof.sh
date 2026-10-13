@@ -30,7 +30,9 @@
 #   4. `install-game install --grant party_roster`: dry run changes nothing; the run exits 0; the
 #      record and the staged tree are root-owned and not writable by others; the registry entry, key
 #      and drop-in exist; Party Core (reloaded, NOT restarted) offers the game; the generated
-#      catalog (--packages) lists it installed, and a second install is refused;
+#      catalog (--packages) lists it installed, and a second install is refused; (AVR-337) the
+#      EFFECTIVE catalog nginx would serve at /party/catalog.json exists, holds every first-party row
+#      byte-identical and first and the package last, and the release catalog is unchanged;
 #   5. session 1: two players and a watcher through Party Core's public API and the game's Unix
 #      socket (package-driver.py): the socket-activated process runs from the STAGED tree as a
 #      DynamicUser, each seat holds a secret word only it sees, each says hello over the game's HTTP
@@ -38,12 +40,16 @@
 #      Core accepts; the boundary checker (phase 2) while it runs;
 #   6. session 2: `install-game remove` is REFUSED during the live session, then the Host ends it;
 #   7. `install-game remove hello`: nothing is left (record, tree, key, entry, drop-in, socket,
-#      state), Party Core no longer offers it and was not restarted, a second remove is a clean
-#      no-op, a re-install works, and is removed again.
+#      state, effective catalog), Party Core no longer offers it and was not restarted, a second
+#      remove is a clean no-op, an install whose effective catalog cannot be written is refused and
+#      undone (fail closed), a re-install works, and is removed again.
 #
 # It CREATES (and removes again on exit, whatever happened): the same users, groups, /etc, /opt,
 # units and runtime directories as checkers-proof.sh, plus /opt/avrana-games (the staged trees),
-# /etc/avrana-party/packages.d (the install records) and /run/avrana-package-proof (scratch).
+# /etc/avrana-party/packages.d (the install records), /run/avrana-package-proof (scratch) and, for the
+# effective catalog (AVR-337), a stand-in web release /var/www/avrana-party/web/current -> releases/ci
+# holding the committed catalog.json, and /var/lib/avrana-party (the overlay directory). nginx is not
+# part of this proof: serving the overlay is tests/unit/test_nginx_site.py's, on a real nginx.
 # Services it runs: avrana-party-core (the real unit) and avrana-game@hello.
 #
 # Output: one line per check. CHECK lines are assumptions the design depends on (a FAIL exits 1).
@@ -78,6 +84,8 @@ keydir=/etc/avrana-party/game-keys
 key=$keydir/hello.key
 entry=/etc/avrana-party/games.d/hello.json
 packages=/etc/avrana-party/packages.d
+web=/var/www/avrana-party/web
+overlay=/var/lib/avrana-party/catalog/catalog.json
 record=$packages/hello.json
 groot=/opt/avrana-games
 backups=/var/backups/avrana-party
@@ -95,7 +103,7 @@ fails=0
 # of this script (a crash, then a re-run on the same machine) says the leftovers are ours.
 if [[ ! -e $marker ]]; then
     for p in /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /opt/avrana-games /var/backups/avrana-party \
-        /var/lib/avrana-party-core /var/lib/avrana-games; do
+        /var/lib/avrana-party-core /var/lib/avrana-games /var/lib/avrana-party /var/www/avrana-party; do
         [[ ! -e $p ]] || { echo "refusing: $p exists and this script did not create it" >&2; exit 2; }
     done
     for n in avrana-party avrana-front avrana-games; do
@@ -115,7 +123,8 @@ cleanup() {
         "$unit_dir/$party" "$unit_dir/$psock"
     rm -rf /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /opt/avrana-games /var/backups/avrana-party \
         /var/lib/avrana-party-core /var/lib/private/avrana-party-core /var/lib/avrana-games \
-        /var/lib/private/avrana-games /run/avrana-games /run/avrana-party /run/avrana-install-game.lock "$work"
+        /var/lib/private/avrana-games /run/avrana-games /run/avrana-party /run/avrana-install-game.lock "$work" \
+        /var/lib/avrana-party /var/www/avrana-party
     systemctl daemon-reload 2>/dev/null
     systemctl reset-failed "$game" "$party" "$psock" 2>/dev/null
     userdel avrana-party 2>/dev/null
@@ -130,6 +139,7 @@ leftovers() {  # what the cleanup should have removed and has not (empty when th
     local p
     for p in /etc/avrana-party /opt/avrana-party /opt/avrana-party-games /opt/avrana-games /var/backups/avrana-party \
         /run/avrana-games /run/avrana-party "$work" /var/lib/avrana-games /var/lib/private/avrana-games \
+        /var/lib/avrana-party /var/www/avrana-party \
         "$unit_dir/$party" "$unit_dir/$psock" "$unit_dir/avrana-game@.socket" "$unit_dir/avrana-game@.service" "$dropin_dir"; do
         [[ ! -e $p ]] || echo "$p"
     done
@@ -223,6 +233,7 @@ install -m 0644 "$repo/deploy/party-core/avrana-party-core.service" "$repo/deplo
 install -m 0755 "$repo/ops/provision-game" "$rel/ops/provision-game"
 install -m 0755 "$repo/ops/prepare-native-games" "$rel/ops/prepare-native-games"
 install -m 0755 "$repo/ops/install-game" "$rel/ops/install-game"
+install -m 0755 "$repo/ops/catalog-overlay" "$rel/ops/catalog-overlay"
 rm -f "$rel/contracts/games/hello.json"                    # the point: only the package can make Party know this game
 find "$rel" -name __pycache__ -type d -prune -exec rm -rf {} +
 chown -R root:root /opt/avrana-party
@@ -235,6 +246,12 @@ t 'the Party release tree has NO contract for the game (contracts/games/hello.js
 t 'and the real appliance profile does not mention the game at all' nonzero grep -q hello "$appliance"
 # The owner's prerequisite for packages: an empty root-owned games root (docs/runbooks/install-game.md).
 install -d -m 0755 -o root -g root "$groot"
+# The served web release (ops/install-party-web.sh makes the real one) and the state directory
+# ops/deploy.sh makes (0711): the effective catalog is derived from the first and written under the second.
+install -d -m 0755 -o root -g root /var/www/avrana-party "$web" "$web/releases" "$web/releases/ci"
+install -m 0644 -o root -g root "$repo/web/party/catalog.json" "$web/releases/ci/catalog.json"
+ln -sfn "$web/releases/ci" "$web/current"
+install -d -m 0711 -o root -g root /var/lib/avrana-party
 mkdir -m 0755 "$work"
 
 # ---- b. identities, as ADR 0016 phase 1 (ops/migrate-service-users.sh) --------------------------------
@@ -442,6 +459,18 @@ capture bash -c 'cd "$1" && PYTHONDONTWRITEBYTECODE=1 python3 -m avrana.contract
 check 'catalog --packages without an explicit --out is refused (exit 2): the committed catalog is never the target' 0 "$([[ $rc == 2 ]] && echo 0 || echo 1)"
 t 'the committed web/party/catalog.json is byte-identical before and after' 0 test "$(sha_of "$repo/web/party/catalog.json")" = "$catalog_sha"
 
+# ---- g2. the EFFECTIVE catalog (AVR-337): what nginx serves at /party/catalog.json when it exists --------------------------------
+t 'the effective catalog exists, is root:root 0644, and is the only file in its directory' 0 \
+    bash -c 'test "$(stat -c "%U:%G %a" "$1")" = "root:root 644" && test "$(ls -A "$(dirname "$1")")" = catalog.json' _ "$overlay"
+t 'the overlay directory is traversable by nginx (the state directory is 0711, the catalog directory 0755)' 0 \
+    test "$(stat -c %a /var/lib/avrana-party)" = 711 -a "$(stat -c %a "$(dirname "$overlay")")" = 755
+t 'it holds every release row byte-identical and first, then hello last, installed, at /games/hello/' 0 \
+    python3 -c 'import json,sys; b=json.load(open(sys.argv[1])); e=json.load(open(sys.argv[2])); n=len(b["games"]); assert e["schema"]=="avrana.catalog/v0" and e["games"][:n]==b["games"], "first-party rows moved"; r=e["games"][n:]; assert [g["id"] for g in r]==["hello"], r; h=r[0]; assert h["installed"] is True and h["entry"]=="/games/hello/" and h["provider"]=="native" and h["playableHere"] is True, h; assert all(e["labels"][k]==v for k,v in b["labels"].items())' "$web/current/catalog.json" "$overlay"
+t 'the release catalog nginx falls back to is byte-identical to the committed one (nothing rewrote it)' 0 \
+    cmp -s "$repo/web/party/catalog.json" "$web/current/catalog.json"
+t 'ops/catalog-overlay check says the overlay is current' 0 "$tree/ops/catalog-overlay" check
+t 'and refresh rewrites identical bytes' 0 bash -c 'a=$(sha256sum "$2" | cut -d" " -f1); "$1/ops/catalog-overlay" refresh && test "$a" = "$(sha256sum "$2" | cut -d" " -f1)"' _ "$tree" "$overlay"
+
 host_installed=$(host_state)
 capture inst install "$build/a.avrgame" --grant party_roster
 refused 'a second install of the same id is refused ("remove it first")' 'remove it first'
@@ -571,6 +600,9 @@ t 'the socket unit is neither enabled nor active, the service is not active' non
 t 'Party Core is still active and was never restarted since the first install' 0 \
     test "$(pid)" = "$pid_before" -a "$(entered "$party")" = "$since_before"
 run_driver 'Party Core no longer offers the game' --absent
+t 'the effective catalog is gone with the package: the committed catalog is what the appliance serves' 0 \
+    bash -c '[[ ! -e $1 && -z $(ls -A "$(dirname "$1")") ]] && cmp -s "$2/web/party/catalog.json" "$3/current/catalog.json"' _ "$overlay" "$repo" "$web"
+t 'ops/catalog-overlay check agrees' 0 "$tree/ops/catalog-overlay" check
 capture catalog "$work/catalog-without.json"
 t 'the generated catalog no longer lists the game' 0 \
     python3 -c 'import json,sys; g={x["id"] for x in json.load(open(sys.argv[1]))["games"]}; assert "hello" not in g, g' "$work/catalog-without.json"
@@ -580,6 +612,14 @@ show 'second remove' "$out"
 check 'a second remove is a clean no-op' 0 "$([[ $rc == 0 && $out == *'nothing to remove'* ]] && echo 0 || echo 1)"
 
 # ---- k. install again, then remove again --------------------------------------------------------------------------------------------
+# Fail closed (AVR-337): when the effective catalog cannot be made, the install is refused and undone, not left half done.
+mv "$web/current" "$web/current.away"
+capture inst install "$build/a.avrgame" --grant party_roster
+mv "$web/current.away" "$web/current"
+show 'install without a release catalog' "$out"
+refused 'an install whose effective catalog cannot be written fails (exit 1) and says so' 'the effective catalog'
+t 'and it is undone: nothing of the game is left' 0 test -z "$(nothing_of_hello)"
+t 'and there is no overlay' nonzero test -e "$overlay"
 capture inst install "$build/a.avrgame" --grant party_roster
 check 're-installing after a removal works' 0 "$rc"
 run_driver 'Party Core offers the re-installed game' --offered

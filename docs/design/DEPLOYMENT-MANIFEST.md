@@ -19,7 +19,10 @@ state; documentation is updated *from* it.
 directory also holds the root-only ACME state (`lego/`, 0700) and was created 0700, so
 `ops/deploy.sh` grants search without listing on it (0711) for the service user that serves
 `/party/api/status`; it leaves the directory closed, with a warning, when a subdirectory there
-is open to group or other. Every
+is open to group or other, except `catalog/` (the public effective game catalog of installed
+`.avrgame` packages, AVR-337) while it is a real directory owned by root that only root can write to (a link named
+`catalog` is never exempt). The manifest and status do not describe the effective catalog: see the known limit in
+[install-game](../runbooks/install-game.md). Every
 deployment also keeps `before.json`, `after.json` and `smoke.txt` under
 `/var/backups/avrana-party/deploy-<UTC stamp>/`, and beside the manifest the
 [last-known-good record](#last-known-good-record).

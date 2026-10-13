@@ -58,6 +58,12 @@ roster whatever was granted), so `party_roster` not being granted does not stop 
    `"packages": "/etc/avrana-party/packages.d"` (absent = the feature is off and Party Core behaves
    exactly as before). `install-game` refuses to run when the key is missing, and never edits the file.
 5. The deployed code tree has `ops/install-game` (this change); run it from there.
+6. For the package to have a tile on a phone (AVR-337): `avrana-party.nginx` deployed with its exact
+   `location = /party/catalog.json` (an owner deploy of the nginx site; `nginx -t`, reload), and
+   `/var/lib/avrana-party` present (`ops/deploy.sh` makes it, root, `0711`; `install-game` creates the
+   `catalog/` directory below it, `0755`). Without the nginx deploy the install still works and the
+   catalog file is written, but nothing serves it. The web release (`/var/www/avrana-party/web/current`)
+   must exist: the effective catalog is the release's `catalog.json` plus the package rows.
 
 ## Commands (root unless noted)
 
@@ -66,6 +72,8 @@ sudo /opt/avrana-party/current/ops/install-game install FILE.avrgame [--grant PE
 sudo /opt/avrana-party/current/ops/install-game remove ID [--keep-state] [--dry-run]
      /opt/avrana-party/current/ops/install-game list [--json]
      /opt/avrana-party/current/ops/install-game verify ID
+sudo /opt/avrana-party/current/ops/catalog-overlay refresh   # rewrite (or remove) the effective catalog
+     /opt/avrana-party/current/ops/catalog-overlay check|show   # stale? / print what it would serve
 ```
 
 Exit 0 done, 1 refused or failed (reason on stderr, never a key), 2 usage. Always `--dry-run` first: it
@@ -89,7 +97,45 @@ output and do not stop the install.
 |---|---|
 | `/opt/avrana-games/<id>/<version>-<sha12>/` | the package files, `root:root`, directories `0755`, files `0644`, no links |
 | `/etc/avrana-party/packages.d/<id>.json` | the install record (`root`, `0644`, no secret): id, version, archive sha256, per-file sha256, the validated Game Contract, the grant, the publisher/license claims |
+| `/var/lib/avrana-party/catalog/catalog.json` | the **effective catalog** (`root`, `0644`): the release catalog plus a row per installed package, appended after the first-party rows; absent when no package is installed |
 | `/etc/avrana-party/game-keys/<id>.key`, `games.d/<id>.json`, `avrana-game@<id>.service.d/exec.conf`, `avrana-game@<id>.socket` | what `provision-game` makes for any native game |
+
+Install and remove then regenerate the effective catalog. **Fail closed:** if it cannot be written (no
+release catalog, a full disk) the install is undone and exits 1; a failed regeneration removes the overlay,
+so the appliance serves the committed catalog (no package tile) until `catalog-overlay refresh` works.
+A new web release or a rollback (`ops/install-party-web.sh`) regenerates it too, so a deploy never hides
+new first-party games. `ops/deploy.sh` does the same on every path that moves the web release: after the web install of a
+deployment, the nested `--rollback`/`--auto-rollback` and `--recover` (using the code release that is running, because the
+target commit may predate the overlay), and when a failed or interrupted run puts the earlier web release back. Where the overlay
+cannot be regenerated it is removed, with a `WARNING: catalog:` line in the log: warning only, the deployment, rollback,
+manifest and smoke are unaffected, and the first-party catalog is served until `sudo ops/catalog-overlay refresh`.
+
+**After a rollback to a commit that predates the overlay** (no `avrana/ops/catalog_overlay.py` in it) there is no code
+to regenerate it: the overlay is removed, the first-party catalog is served, and installed packages have no tile (they
+stay installed; the log says `WARNING: catalog:`). The next forward deploy brings the tiles back. To bring them back
+sooner, run the tool of any newer code release, which finds the live web release by itself:
+`sudo /opt/avrana-party/releases/<newer sha>/ops/catalog-overlay refresh`. That works only while such a release still
+exists: `ops/deploy.sh --keep` prunes old code releases after a passed smoke, so use one that is listed in
+`/opt/avrana-party/releases/`, or wait for the next forward deploy.
+
+**Concurrent installs.** `ops/deploy.sh` waits up to 30 seconds, once, for a running `install-game` before it refreshes
+the catalog (lock order: the deploy lock, then the install lock; `install-game` never takes the deploy lock). On a
+deployment that wait happens with the units stopped, so a running install delays it by at most 30 seconds; after a
+failed or interrupted run the file is removed at once and the site file and units are put back first, and only then does
+the refresh wait. A refresh also repeats itself (at most three times) when the release catalog changed while it ran. An
+install that was in flight during a web switch can still publish the previous release's catalog for a short window (a
+switch after its last check and before it returns); the deploy's own refresh, which waits for that install, replaces it
+within its wait. Until then phones are served that install's catalog, or the first-party catalog when it was removed. If
+the wait runs out, the overlay is removed with a `WARNING: catalog:` line that names the reason.
+
+**Known limit.** Neither `/party/api/status`, the smoke checks nor the deployment manifest look at the effective
+catalog: an overlay that disagrees with the install records (by hand edit, a failed refresh that could not remove it)
+shows only in `ops/catalog-overlay check`, which `ops/install-party-web.sh` runs as a warning after it refreshes and an
+operator can run at any time. This is deliberate for now (owner decision 2026-10-10: warning only); status integration is
+not part of AVR-337. If a refresh fails the overlay is removed and the web install prints a loud warning (it never fails
+the deploy). The warning is output only: it never changes the exit status of the web install, the deploy, smoke, the
+deployment manifest or `/party/api/status`, and it is silent when no package records and no overlay exist.
+`catalog-overlay check` can also be run by hand at any time.
 
 Party Core is **reloaded, never restarted**: at reload it reads the records again, re-validates each, and
 gets the game's contract from the record. A record that fails validation is refused by itself and
@@ -122,9 +168,8 @@ reload). It leaves nothing for that id. The shared template units stay (other ga
 ## Limitations (known, deliberate)
 
 - Not run on the Pi. No upgrade, rollback, signing, repository or permission prompts.
-- The phone's Party Home lists games from a **static, generated `web/party/catalog.json`**. Installing a
-  package does not change it, so on an appliance today a package is *provisioned and offered by Party
-  Core* but has **no tile and no navigation** in the phone UI until a catalog that includes it is served.
-  `python3 -m avrana.contracts.catalog --packages DIR --out FILE` generates one; where it is served from
-  is an owner decision (see [AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md)).
+- The committed `web/party/catalog.json` is never changed by an install. A package's tile comes from the
+  effective catalog above (see [AVRGAME-PACKAGE](../design/AVRGAME-PACKAGE.md)), and only once the nginx
+  location is deployed; it shows the game's kind icon, not the package's own `web/icon.svg` (custom package
+  icons are deferred and the CSP is not relaxed: owner decision 2026-10-10).
 - The community-tier ceilings are provisional values, to be revisited with measurements; there is no syscall filter (deferred) and no disk quota; the tree is only as trustworthy as the person who installed it.

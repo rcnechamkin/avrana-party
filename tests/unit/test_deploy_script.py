@@ -98,7 +98,8 @@ class DeployScript(unittest.TestCase):
     def test_test_only_settings_are_refused_unless_testing_on_a_scratch_root(self):
         for var in ('AVRANA_NGINX', 'AVRANA_SYSTEMCTL', 'AVRANA_DEPLOY_SMOKE', 'AVRANA_DEPLOY_TEST_HOOK_DIR',
                     'AVRANA_DEPLOY_UNPRIVILEGED', 'AVRANA_OPENSSL', 'AVRANA_DEPLOY_FAIL_STEP',
-                    'AVRANA_DEPLOY_UNIT_GRACE', 'AVRANA_DEPLOY_SMOKE_PAUSE'):
+                    'AVRANA_DEPLOY_UNIT_GRACE', 'AVRANA_DEPLOY_SMOKE_PAUSE', 'AVRANA_DEPLOY_CATALOG_OWNER_UID',
+                    'AVRANA_CATALOG_SETTLE_WAIT', 'AVRANA_CATALOG_PYTHON'):
             for testing in ('', '1'):          # TESTING=1 is not enough while the production roots are in use
                 env = dict(self.env, **{var: '1'})
                 if testing:
@@ -216,6 +217,193 @@ class DeployScript(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn('dry run: nothing changed', r.stdout)
         self.assertEqual(list(tmp.iterdir()), [])
+
+
+def catalog_tool_shim(directory):
+    """A directory with a `python3` that runs `-m avrana.ops.catalog_overlay ...` as the scripts do, but as "root" (the tool
+    refuses to refresh as anybody else, and a test user is not root on Linux), from the tree it is run in, with a lock
+    file of its own ($SETTLE_LOCK). Every other python3 call is the real interpreter. With $SETTLE_STUB the effective
+    catalog is a marker naming the release catalog it was derived from; with $SETTLE_SKIP_HOOK a `--wait 0` call (the
+    hook in install-party-web.sh when ops/deploy.sh runs it) does nothing and succeeds."""
+    directory.mkdir()
+    python = Path(sys.executable).as_posix()
+    wrapper = (
+        'import os, sys\n'
+        'if sys.argv[1:3] != ["-m", "avrana.ops.catalog_overlay"]:\n'
+        '    os.execv(sys.executable, [sys.executable] + sys.argv[1:])\n'
+        'sys.path.insert(0, os.getcwd())\n'
+        'os.geteuid = lambda: 0\n'
+        'from avrana.ops import catalog_overlay as co\n'
+        'args = sys.argv[3:]\n'
+        'if os.environ.get("SETTLE_SKIP_HOOK") and args[:1] == ["refresh"] and "--wait" in args and args[args.index("--wait") + 1] == "0":\n'
+        '    sys.exit(0)\n'
+        'if os.environ.get("SETTLE_STUB"):\n'
+        '    from pathlib import Path\n'
+        '    co.effective = lambda base, records, **kw: ("EFFECTIVE-FOR " + Path(base).read_text(), ["hello"], [])\n'
+        'sys.exit(co.main(args + ["--lock-file", os.environ["SETTLE_LOCK"]]))\n')
+    (directory / 'wrap.py').write_text(wrapper, newline='\n')
+    (directory / 'python3').write_text(f'#!/bin/sh\nexec "{python}" "{(directory / "wrap.py").as_posix()}" "$@"\n', newline='\n')
+    (directory / 'python3').chmod(0o755)
+    return directory
+
+
+class SettleCatalog(unittest.TestCase):
+    """AVR-337 on the deploy path: the effective game catalog is derived from the web release, so every way the web
+    release changes (deployment, nested rollback, --recover, a run that is undone) must refresh or remove it, and
+    nothing about it may fail a deployment. The function is run on its own, against scratch directories, so this
+    holds wherever bash and python are (the full paths are in CatalogOverlayOnReleaseChanges, Linux only)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.overlay = self.root / 'overlay' / 'catalog.json'
+        self.overlay.parent.mkdir()
+        self.records = self.root / 'records'
+        self.records.mkdir()
+        self.release = self.root / 'opt' / 'current'            # a directory stands in for the `current` link
+        (self.release / 'avrana' / 'ops').mkdir(parents=True)
+        self.web = self.root / 'web'
+        (self.web / 'current').mkdir(parents=True)
+        self.shim = catalog_tool_shim(self.root / 'bin')
+
+    def settle(self, stub=False, wait=None, arg=''):
+        text = SCRIPT.read_text(encoding='utf-8')
+        start = text.index('\nsettle_catalog() {')
+        body = text[start:text.index('\n}\n', start) + 3]
+        script = ('set -Eeuo pipefail\nlog() { echo "$*"; }\ntesting=1\n'
+                  f'party_releases={(self.root / "opt").as_posix()}\nweb_root={self.web.as_posix()}\n{body}\nsettle_catalog {arg}\n')
+        env = dict(os.environ, PATH=f'{self.shim.as_posix()}{os.pathsep}{os.environ["PATH"]}', PYTHONPATH=str(REPO_ROOT),
+                   AVRANA_CATALOG_OVERLAY=self.overlay.as_posix(), AVRANA_PACKAGE_RECORDS=self.records.as_posix(),
+                   SETTLE_LOCK=(self.root / 'install.lock').as_posix())
+        if stub:
+            env['SETTLE_STUB'] = '1'
+        if wait is not None:
+            env['AVRANA_CATALOG_SETTLE_WAIT'] = str(wait)
+        return subprocess.run([BASH, '-c', script], capture_output=True, text=True, env=env, timeout=120)
+
+    def code(self):
+        (self.release / 'avrana' / 'ops' / 'catalog_overlay.py').write_text('')
+
+    def test_a_stale_overlay_is_regenerated_or_removed_for_the_release_that_is_now_current(self):
+        self.code()
+        (self.web / 'current' / 'catalog.json').write_bytes((REPO_ROOT / 'web/party/catalog.json').read_bytes())
+        self.overlay.write_text('STALE: built for another release')
+        r = self.settle()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.overlay.exists())                # no package is installed: the release catalog is served
+        self.assertIn('matches web release', r.stdout)
+        self.assertEqual(list(self.overlay.parent.iterdir()), [])
+
+    def test_the_overlay_is_rewritten_for_each_release_that_becomes_current(self):
+        """Not vacuous: with a package to list, settle writes the effective catalog derived from the web release that
+        is current NOW, and a later switch changes it with the release (it is neither left alone nor removed)."""
+        self.code()
+        self.overlay.write_text('STALE: built for another release')
+        for release in ('{"release": "one"}', '{"release": "two"}'):
+            (self.web / 'current' / 'catalog.json').write_text(release)
+            r = self.settle(stub=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(self.overlay.read_text(), 'EFFECTIVE-FOR ' + release)
+            self.assertIn('matches web release', r.stdout)
+
+    def hold_install_lock(self, release_after):
+        """Hold the install lock (the file settle's tool locks) from a thread; release it after `release_after` seconds,
+        or never (None) until the test ends."""
+        import fcntl
+        import threading
+        fd = os.open(self.root / 'install.lock', os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        self.addCleanup(os.close, fd)
+        if release_after is not None:
+            threading.Timer(release_after, lambda: fcntl.flock(fd, fcntl.LOCK_UN)).start()
+
+    @unittest.skipUnless(sys.platform == 'linux', 'needs flock')
+    def test_a_running_install_is_waited_for_and_the_overlay_is_then_regenerated(self):
+        self.code()
+        (self.web / 'current' / 'catalog.json').write_text('{"release": "one"}')
+        self.overlay.write_text('STALE: built for another release')
+        self.hold_install_lock(release_after=1.0)
+        r = self.settle(stub=True, wait=20)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.overlay.read_text(), 'EFFECTIVE-FOR {"release": "one"}')
+
+    @unittest.skipUnless(sys.platform == 'linux', 'needs flock')
+    def test_an_install_that_outlasts_the_wait_removes_the_overlay_with_a_warning_that_names_the_reason(self):
+        self.code()
+        (self.web / 'current' / 'catalog.json').write_text('{"release": "one"}')
+        self.overlay.write_text('STALE: built for another release')
+        self.hold_install_lock(release_after=None)
+        r = self.settle(stub=True, wait=1)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)             # warning only
+        self.assertFalse(self.overlay.exists())
+        self.assertIn('WARNING: catalog:', r.stdout)
+        self.assertIn('another install-game is running', r.stdout)
+
+    def test_the_reason_is_logged_when_the_tool_fails(self):
+        self.code()
+        (self.web / 'current' / 'catalog.json').write_text('not json')
+        self.overlay.write_text('STALE')
+        r = self.settle()
+        self.assertFalse(self.overlay.exists())
+        self.assertRegex(r.stdout, r'WARNING: catalog: the effective catalog could not be regenerated \(.+\)')
+
+    def test_remove_mode_only_removes_and_does_not_need_the_tool_or_a_lock(self):
+        self.overlay.write_text('STALE')
+        r = self.settle(arg='remove')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.overlay.exists())
+        self.assertIn('removed until the web release is settled', r.stdout)
+
+    def test_a_deployment_waits_for_a_running_install_once_and_only_in_its_own_settle(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        self.assertIn('AVRANA_CATALOG_WAIT=0 bash "$party_checkout/ops/install-party-web.sh"', text)      # the hook does not wait
+        self.assertIn('--wait "$wait"', text)                                                               # settle does
+        hook = (REPO_ROOT / 'ops/install-party-web.sh').read_text(encoding='utf-8')
+        self.assertIn('local wait=${AVRANA_CATALOG_WAIT:-30}', hook)             # and standalone it still waits 30 s
+
+    def test_when_the_overlay_cannot_be_made_it_is_removed_and_the_run_goes_on(self):
+        for label, prepare in (('no overlay code in the running release', lambda: None),
+                               ('the release catalog is missing', self.code)):
+            with self.subTest(label):
+                prepare()
+                self.overlay.write_text('STALE: built for another release')
+                r = self.settle()
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)          # warning only: never a failed deployment
+                self.assertFalse(self.overlay.exists())
+                self.assertIn('WARNING: catalog:', r.stdout)
+                self.assertIn('first-party catalog is served', r.stdout)
+
+    def test_nothing_is_done_or_said_on_an_appliance_without_packages_or_overlay(self):
+        r = self.settle()
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, ''), r.stdout + r.stderr)
+
+    def test_a_package_record_alone_is_enough_to_look(self):
+        (self.records / 'hello.json').write_text('{}')
+        r = self.settle()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('WARNING: catalog:', r.stdout)
+
+    def test_the_paths_are_fixed_and_only_the_test_harness_may_move_them(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        start = text.index('\nsettle_catalog() {')
+        body = text[start:text.index('\n}\n', start)]
+        self.assertIn('overlay=/var/lib/avrana-party/catalog/catalog.json', body)       # the nginx location names this file
+        self.assertRegex(body, r'if \[\[ \$testing -eq 1 \]\]; then[^\n]*\n\s+overlay=\$\{AVRANA_CATALOG_OVERLAY')
+
+    def test_it_runs_after_the_web_install_and_before_the_site_file_and_services_are_put_back(self):
+        text = SCRIPT.read_text(encoding='utf-8')
+        install = text.index('bash "$party_checkout/ops/install-party-web.sh"')
+        call = text.index('\n    settle_catalog', install)
+        self.assertLess(call, text.index('\njournal switched', install))
+        body = text[text.index('\nrollback_body() {'):text.index('\non_signal()')]
+        self.assertIn('web-release-before', body)
+        removed = body.index('settle_catalog remove')
+        self.assertLess(body.index('web-release-before'), removed)                  # the stale file goes as soon as the link is back,
+        self.assertLess(removed, body.index('restore_site\n'))                      # before the site file and the units, with no wait
+        final = body.rindex('settle_catalog')
+        self.assertGreater(final, body.index('start_stopped restart'))              # and the refresh that may wait comes after every unit is back
+        self.assertEqual(body.count('settle_catalog'), 2)
 
 
 SYSTEMCTL_SHIM = """#!/usr/bin/env bash
@@ -383,7 +571,7 @@ class Harness(unittest.TestCase):
             return None
         return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line)
 
-    def deploy_interrupted(self, party, games, phase, signum, *flags, release=False, **env):
+    def deploy_interrupted(self, party, games, phase, signum, *flags, release=False, during=None, **env):
         """Run a deployment, hold it at `phase` (the test-only hook), send it `signum`, return the
         finished process and its output. With release=True the pause is lifted instead."""
         import time
@@ -398,6 +586,8 @@ class Harness(unittest.TestCase):
                 proc.kill()
                 self.fail(f'the deployment never reached {phase}: {out}')
             time.sleep(0.05)
+        if during:
+            during()                # the deployment is held at `phase`: change the machine under it
         if release:
             (self.hooks / f'pause-at-{phase}').unlink()
         else:
@@ -514,6 +704,169 @@ class RealRun(Harness):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(state.stat().st_mode & 0o777, 0o700)
         self.assertIn('left as it is', r.stdout)
+
+    def test_the_public_catalog_directory_does_not_keep_the_manifest_directory_closed(self):
+        """AVR-337: the effective catalog lives in /var/lib/avrana-party/catalog (0755, served by nginx); only a
+        writable one, or any other open directory, is a reason to leave the manifest directory as it is."""
+        state = self.manifest_path.parent
+        state.mkdir()
+        (state / 'lego').mkdir()
+        (state / 'catalog').mkdir()
+        state.chmod(0o700)
+        (state / 'lego').chmod(0o700)
+        (state / 'catalog').chmod(0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o711)
+        self.assertEqual((state / 'catalog').stat().st_mode & 0o777, 0o755)
+        (state / 'catalog').chmod(0o775)                      # writable by a group: not a public directory any more
+        state.chmod(0o700)
+        r = self.deploy(self.before_party, self.before_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+    def _state(self, **dirs):
+        """The manifest's directory 0700 with the named subdirectories (name=mode); returns it."""
+        state = self.manifest_path.parent
+        state.mkdir()
+        for name, mode in dirs.items():
+            (state / name).mkdir()
+            (state / name).chmod(mode)
+        state.chmod(0o700)
+        return state
+
+    def test_a_catalog_directory_of_another_owner_does_not_keep_the_exemption(self):
+        state = self._state(lego=0o700, catalog=0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', AVRANA_DEPLOY_CATALOG_OWNER_UID=str(os.getuid() + 1))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+    def test_another_open_directory_beside_the_catalog_still_keeps_it_closed(self):
+        state = self._state(lego=0o700, catalog=0o755, other=0o755)
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+    def test_a_link_named_catalog_is_never_exempt(self):
+        state = self._state(lego=0o700, elsewhere=0o700)
+        (state / 'catalog').symlink_to(state / 'elsewhere')
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertIn('left as it is', r.stdout)
+
+
+class CatalogOverlayOnReleaseChanges(Harness):
+    """AVR-337: an effective catalog left behind by another web release is never served after a deployment, a
+    rollback or a run that is undone. As root the overlay is regenerated; as the test's user it is removed: both end
+    with no stale file, and neither fails the run."""
+
+    def setUp(self):
+        super().setUp()
+        root = Path(self.temp.name)
+        self.overlay = root / 'catalog' / 'catalog.json'
+        self.overlay.parent.mkdir()
+        (root / 'records').mkdir()
+        self.env.update(AVRANA_CATALOG_OVERLAY=str(self.overlay), AVRANA_PACKAGE_RECORDS=str(root / 'records'))
+
+    def plant(self):
+        self.overlay.write_text('STALE: built for another release')
+
+    def test_a_deployment_does_not_leave_the_overlay_of_the_previous_release(self):
+        self.plant()
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)         # warning only, never a failed deployment
+        self.assertFalse(self.overlay.exists(), r.stdout)
+
+    def test_a_deployment_that_is_undone_does_not_leave_the_overlay_of_the_failed_release(self):
+        """The overlay appears while the failed release is the web release (after it was switched in); the undo
+        puts the earlier web release back and must take the file with it."""
+        code, out = self.deploy_interrupted(self.target_party, self.target_games, 'switched', signal.SIGTERM,
+                                            '--skip-smoke', during=self.plant)
+        self.assertNotEqual(code, 0, out)
+        self.assertIn('rolling back', out)
+        self.assertFalse(self.overlay.exists(), out)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), self.before_party)
+
+    def test_a_unit_that_does_not_come_back_leaves_no_stale_overlay(self):
+        self.plant()
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke', FAIL_UNIT='avrana-party-core')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(self.overlay.exists(), r.stdout)
+
+    def test_a_rollback_leaves_no_stale_overlay(self):
+        self.smoke('pass')
+        self.assertEqual(self.deploy(self.target_party, self.target_games).returncode, 0)
+        self.assertEqual(self.deploy(self.before_party, self.before_games, '--skip-smoke').returncode, 0)
+        self.plant()
+        self.smoke('pass')
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.overlay.exists(), r.stdout)
+
+    def test_a_rollback_to_a_commit_that_predates_the_overlay_removes_it_and_still_succeeds(self):
+        """The release `current` points to after the rollback has no overlay code at all: the first-party catalog is
+        served (packages have no tile until the next forward deploy), and the rollback's exit status is unchanged."""
+        self.run_git(self.origin, 'rm', '-q', 'avrana/ops/catalog_overlay.py')
+        self.run_git(self.origin, 'commit', '-q', '-m', 'a commit that predates the overlay')
+        old = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        self.smoke('pass')
+        self.assertEqual(self.deploy(old, self.before_games).returncode, 0)           # the last known good
+        self.assertFalse((self.party_release.resolve() / 'avrana/ops/catalog_overlay.py').exists())
+        self.assertEqual(self.deploy(self.target_party, self.target_games, '--skip-smoke').returncode, 0)
+        self.assertTrue((self.party_release.resolve() / 'avrana/ops/catalog_overlay.py').exists())
+        self.plant()
+        self.smoke('pass')
+        r = self.script('--rollback')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.run_git(self.party, 'rev-parse', 'HEAD'), old)
+        self.assertFalse(self.overlay.exists(), r.stdout)
+
+
+class CatalogSettleCallSites(Harness):
+    """AVR-337: one test per call site of settle_catalog that fails when that call is deleted. The tool runs as "root"
+    through a shim (a test user is not root, so the real one only ever removes) and writes a marker naming the web
+    release it was derived from; the hook of install-party-web.sh runs the real tool as the test user, which refuses to
+    write, so only deploy.sh's own call can produce the file."""
+
+    def setUp(self):
+        super().setUp()
+        root = Path(self.temp.name)
+        self.overlay = root / 'catalog' / 'catalog.json'
+        self.overlay.parent.mkdir()
+        (root / 'records').mkdir()
+        (root / 'records' / 'hello.json').write_text('{}')            # a package is installed: the settle has work to do
+        shim = catalog_tool_shim(root / 'shim')
+        self.env.update(AVRANA_CATALOG_OVERLAY=str(self.overlay), AVRANA_PACKAGE_RECORDS=str(root / 'records'),
+                        AVRANA_CATALOG_PYTHON=str(shim / 'python3'), SETTLE_STUB='1', SETTLE_LOCK=str(root / 'install.lock'))
+        # (ops/deploy.sh and install-party-web.sh put /usr/bin first on PATH, so a shim there would never be found:
+        # deploy.sh's settle takes its interpreter from the test-only AVRANA_CATALOG_PYTHON. The hook of
+        # install-party-web.sh runs the real tool as the test user, which refuses to write: only settle can.)
+
+    def marker(self):
+        return 'EFFECTIVE-FOR ' + (self.web / 'current' / 'catalog.json').read_text()
+
+    def test_a_deployment_regenerates_the_overlay_for_the_web_release_it_installed(self):
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(self.overlay.exists(), r.stdout)
+        self.assertEqual(self.overlay.read_text(), self.marker(), r.stdout)
+        self.assertEqual(r.stdout.count('the effective catalog matches web release'), 1)       # and settled once
+
+    def test_an_undone_deployment_regenerates_the_overlay_for_the_release_that_was_put_back(self):
+        self.assertEqual(self.deploy(self.target_party, self.target_games, '--skip-smoke').returncode, 0)
+        before = self.marker()
+        code, out = self.deploy_interrupted(self.before_party, self.target_games, 'switched', signal.SIGTERM, '--skip-smoke',
+                                            during=lambda: self.overlay.write_text('STALE: the failed release'))
+        self.assertNotEqual(code, 0, out)
+        self.assertIn('rolling back', out)
+        self.assertTrue(self.overlay.exists(), out)
+        self.assertEqual(self.overlay.read_text(), before, out)
+        self.assertLess(out.index('catalog: the effective catalog was removed until'),
+                        out.index('the effective catalog matches web release', out.index('rolling back')))
 
 
 class Interrupted(Harness):
