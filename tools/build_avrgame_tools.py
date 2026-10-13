@@ -17,7 +17,7 @@ no signing. Format validation is not publisher trust.
 What is in the export (standard library only; nothing from a package is ever executed):
 
   code copied from this repository: the code is unchanged, LF-normalised
-      avrana/avrgame/{__init__,archive,build,common,manifest,__main__}.py
+      avrana/avrgame/{__init__,archive,build,common,manifest,node,__main__}.py
       avrana/contracts/{strictjson,game,vocabulary}.py
     Comments and docstrings that name internal material (the DENY list below) are removed from the
     exported copy only, by `tokenize` and `ast` (whole comment blocks, and the flagged sentences of a
@@ -69,7 +69,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 EXPORT_FORMAT = 'avrana.avrgame-tools-export/experimental.1'
-TOOLS_REVISION = 1
+TOOLS_REVISION = 2
 TOOLS_VERSION = f'experimental.{TOOLS_REVISION}'
 NAME = f'avrana-avrgame-tools-{TOOLS_VERSION}'
 ZIP_NAME = f'{NAME}.zip'
@@ -87,12 +87,12 @@ SPEAKS = {
     'bridge': 'avrana.party-bridge/v1',
     'result': 'avrana.game-result/v1',
 }
-SPEAKS_DIGEST = 'fc02d7517e23'
+SPEAKS_DIGEST = '80d21bea6809'
 
 # Code copied from the repository (LF-normalised, internal comments and docstrings scrubbed).
 COPIED = (
     'avrana/avrgame/__init__.py', 'avrana/avrgame/archive.py', 'avrana/avrgame/build.py',
-    'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py', 'avrana/avrgame/__main__.py',
+    'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py', 'avrana/avrgame/node.py', 'avrana/avrgame/__main__.py',
     'avrana/contracts/strictjson.py', 'avrana/contracts/game.py', 'avrana/contracts/vocabulary.py',
 )
 PROTOCOL_SOURCE = 'avrana/party/protocol.py'       # read for VERSION only; never shipped
@@ -197,6 +197,11 @@ ALLOW = (
          terms=('/usr/bin/python3',),
          describe="the path of the appliance's Python interpreter, which `server.interpreter: python3` stands for:",
          reason='a constant of the manifest validator and its documentation; changing the code would change behaviour'),
+    dict(files=('avrana/avrgame/manifest.py',), line=r'/opt/avrana-runtimes',
+         terms=('/opt/avrana-runtimes',),
+         describe="the directory of the appliance's optional Node.js runtime, which `server.interpreter: node` stands "
+                  'for (one pinned official build, named after its version; an appliance may not have it):',
+         reason='a constant of the manifest validator; changing the code would change behaviour'),
     dict(files=('avrana/contracts/game.py',), line=r'lift_manifest_v0|shared_video', terms=('lift_manifest_v0', 'shared_video'),
          describe="a converter from the platform's earlier, pre-contract game manifest (`lift_manifest_v0`, not used by the "
                   'packer; it is still in the Game Contract module) and that earlier manifest\'s `shared_video` flag:',

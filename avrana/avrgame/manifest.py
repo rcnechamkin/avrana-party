@@ -20,7 +20,9 @@ from .common import FORMAT, MAX_MANIFEST_BYTES, Problems, Refused, check_json_de
 
 # Runtime NAME -> absolute executable. The appliance owns this mapping; a package only picks a
 # name. The installer sets the working directory to the staged package root.
-INTERPRETERS = MappingProxyType({'python3': '/usr/bin/python3', node.NAME: node.EXECUTABLE})
+# A literal on purpose (the developer tools export reads it as data). The node path is the pinned
+# build of node_pin.EXECUTABLE; a unit test holds the two equal.
+INTERPRETERS = MappingProxyType({'python3': '/usr/bin/python3', 'node': '/opt/avrana-runtimes/node-22.22.2/bin/node'})
 # Runtimes an appliance may not have: the installer refuses a package that names a missing one.
 # Nothing else depends on them (AVR-68).
 OPTIONAL_RUNTIMES = frozenset({node.NAME})

@@ -7,7 +7,7 @@
 #   sudo /opt/avrana-party/current/ops/install-node-runtime remove [--dry-run]
 #
 # Offline: the tarball is one you bring; it is accepted only when its SHA-256 is the one pinned in
-# avrana/avrgame/node.py. Nothing is downloaded.
+# avrana/avrgame/node_pin.py. Nothing is downloaded.
 set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)

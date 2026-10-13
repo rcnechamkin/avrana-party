@@ -10,7 +10,7 @@ explicit act by root. A package that validates is still NOT trusted: installing 
 appliance run third-party code as an isolated systemd DynamicUser, in the hardened shared template
 unit, with its own key and its own Unix socket, nothing more (ADR 0016). This tool never imports,
 executes or evaluates anything from a package. A package runs on python3 or on the optional pinned
-node runtime (avrana.avrgame.node, AVR-68); one that names a runtime this appliance lacks is refused
+node runtime (avrana.avrgame.node_pin, AVR-68); one that names a runtime this appliance lacks is refused
 before anything is written, and nothing is fetched or built for either: no npm, no install script.
 
 There is ONE way a native game gets onto this appliance: `avrana.ops.provision_game`. This tool

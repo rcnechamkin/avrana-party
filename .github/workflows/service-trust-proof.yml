@@ -208,7 +208,7 @@ jobs:
 
   # (AVR-68, EXPERIMENTAL) A package whose server is a Node.js process. Node is optional on the appliance
   # and is never downloaded there: here the runner fetches the official build, the step below and then
-  # `ops/install-node-runtime` itself check it against the SHA-256 pinned in avrana/avrgame/node.py, and the
+  # `ops/install-node-runtime` itself check it against the SHA-256 pinned in avrana/avrgame/node_pin.py, and the
   # tool installs it inside a network namespace with no interface. The fixture game needs no Games checkout.
   # Runner only: x86-64, not the Pi (docs/TESTING.md tiers); the measurements are of this runner.
   node-package:
@@ -221,8 +221,8 @@ jobs:
       - name: Fetch the pinned Node build and check it against the pin of the repository
         run: |
           set -euo pipefail
-          read -r name sha < <(python3 -c 'from avrana.avrgame import node; print(*node.ARCHIVES["x64"])')
-          version=$(python3 -c 'from avrana.avrgame import node; print(node.VERSION)')
+          read -r name sha < <(python3 -c 'from avrana.avrgame import node_pin; print(*node_pin.ARCHIVES["x64"])')
+          version=$(python3 -c 'from avrana.avrgame import node_pin; print(node_pin.VERSION)')
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/$name" "https://nodejs.org/dist/v$version/$name"
           echo "$sha  $RUNNER_TEMP/$name" | sha256sum -c -
           echo "AVRANA_NODE_TARBALL=$RUNNER_TEMP/$name" >> "$GITHUB_ENV"

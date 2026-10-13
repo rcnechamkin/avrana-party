@@ -10,7 +10,7 @@ same with or without it. Only a package whose manifest says `"interpreter": "nod
 `install-game` refuses such a package while the runtime is missing.
 
 What `install` does, as root, OFFLINE: it never opens a network connection. The operator brings
-the official tarball of exactly the pinned version (avrana.avrgame.node: VERSION and one SHA-256
+the official tarball of exactly the pinned version (avrana.avrgame.node_pin: VERSION and one SHA-256
 per architecture, from nodejs.org's SHASUMS256.txt). The file is read once, bounded; its SHA-256
 must equal the pin for THIS machine's architecture, whatever the file is called. Then exactly two
 members are taken out of it, `bin/node` and `LICENSE`: no npm, npx or corepack, no headers, no
@@ -43,6 +43,7 @@ import tarfile
 from pathlib import Path
 
 from avrana.avrgame import installed, node
+from avrana.avrgame import node_pin as pin
 
 RECORD = 'avrana.runtime/experimental.1'
 RECORD_NAME = 'avrana-runtime.json'
@@ -72,14 +73,14 @@ def _sha256_file(path, limit=None):
 
 
 def machine_arch(machine=None):
-    arch = node.arch_of(platform.machine() if machine is None else machine)
-    if arch is None or arch not in node.ARCHIVES:
+    arch = pin.arch_of(platform.machine() if machine is None else machine)
+    if arch is None or arch not in pin.ARCHIVES:
         raise Refused(f'this machine ({platform.machine() if machine is None else machine}) has no pinned Node build; '
-                      f'pinned: {", ".join(sorted(node.ARCHIVES))}')
+                      f'pinned: {", ".join(sorted(pin.ARCHIVES))}')
     return arch
 
 
-def check_archive(path, arch, archives=node.ARCHIVES):
+def check_archive(path, arch, archives=pin.ARCHIVES):
     """The SHA-256 of the tarball at `path`, which must be the pinned build for `arch`. The name of
     the file is not evidence of anything; the digest is."""
     try:
@@ -96,10 +97,10 @@ def check_archive(path, arch, archives=node.ARCHIVES):
         if digest == other_digest:
             raise Refused(f'{path}: this is {other_name} (the {other} build); this machine is {arch} and needs {name}')
     raise Refused(f'{path}: its SHA-256 is {digest}, not the one pinned for {name} ({want}); only the official '
-                  f'Node {node.VERSION} build is accepted. Nothing was installed')
+                  f'Node {pin.VERSION} build is accepted. Nothing was installed')
 
 
-def _extract(path, arch, staging, archives=node.ARCHIVES):
+def _extract(path, arch, staging, archives=pin.ARCHIVES):
     """Write the two wanted members of the verified tarball under `staging`; returns the SHA-256 of bin/node."""
     prefix = archives[arch][0][:-len('.tar.xz')]
     wanted = {f'{prefix}/{rel}': (rel, mode, limit) for rel, mode, limit in MEMBERS}
@@ -142,8 +143,8 @@ def real_version(executable):
     return done.stdout.strip()
 
 
-def record_doc(arch, archive_sha256, node_sha256, archives=node.ARCHIVES):
-    return {'record': RECORD, 'runtime': node.NAME, 'version': node.VERSION, 'arch': arch,
+def record_doc(arch, archive_sha256, node_sha256, archives=pin.ARCHIVES):
+    return {'record': RECORD, 'runtime': node.NAME, 'version': pin.VERSION, 'arch': arch,
             'archive': archives[arch][0], 'archive_sha256': archive_sha256, 'node_sha256': node_sha256}
 
 
@@ -151,7 +152,7 @@ def _dumps(doc):
     return (json.dumps(doc, indent=2, sort_keys=True) + '\n').encode('utf-8')
 
 
-def problems(root, arch, owner=None, modes=None, archives=node.ARCHIVES):
+def problems(root, arch, owner=None, modes=None, archives=pin.ARCHIVES):
     """Why the tree at `root` is not the runtime this tool installs for `arch`, as sentences; []
     when it is. `owner` (a uid) additionally requires that owner; `modes` (default on POSIX) that
     nothing is group- or world-writable and that bin/node can be executed."""
@@ -194,7 +195,7 @@ def problems(root, arch, owner=None, modes=None, archives=node.ARCHIVES):
         return [f'{RECORD_NAME}: not an object']
     node_sha = doc.get('node_sha256')
     if doc != record_doc(arch, archives[arch][1], node_sha, archives):
-        found.append(f'{RECORD_NAME}: does not describe the pinned Node {node.VERSION} build for {arch}')
+        found.append(f'{RECORD_NAME}: does not describe the pinned Node {pin.VERSION} build for {arch}')
     elif _sha256_file(root / 'bin' / 'node') != node_sha:
         found.append('bin/node: changed since it was installed')
     if modes and not os.lstat(root / 'bin' / 'node').st_mode & 0o111:
@@ -213,20 +214,20 @@ def _fsync_dir(path):
 
 
 def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version_of=real_version,
-            archives=node.ARCHIVES, dry_run=False):
+            archives=pin.ARCHIVES, dry_run=False):
     """Install the pinned runtime from the tarball at `archive_path` into <runtimes_root>/node-<version>.
     Returns the lines to show. Refused, changing nothing, for a tarball that is not the pinned
     build of `arch`; an existing tree that verifies is left alone, one that does not is refused
     (remove it first: it is never repaired in place). `trusted(path)` raises unless a path is
     root-owned all the way up; `owner` is the uid the tree must belong to (0 in real use)."""
     runtimes_root = Path(runtimes_root)
-    final = runtimes_root / f'node-{node.VERSION}'
+    final = runtimes_root / f'node-{pin.VERSION}'
     if os.path.lexists(final):
         wrong = problems(final, arch, owner, archives=archives)
         if wrong:
             raise Refused(f'{final} exists and is not the runtime this tool installs ({"; ".join(wrong[:3])}); '
                           'run "install-node-runtime remove" first')
-        return [f'node {node.VERSION} ({arch}): already installed at {final}; nothing changed']
+        return [f'node {pin.VERSION} ({arch}): already installed at {final}; nothing changed']
     digest = check_archive(archive_path, arch, archives)
     parent = runtimes_root if os.path.isdir(runtimes_root) else runtimes_root.parent
     if os.path.islink(runtimes_root) or (os.path.lexists(runtimes_root) and not os.path.isdir(runtimes_root)):
@@ -234,7 +235,7 @@ def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version
     if trusted is not None:
         trusted(str(parent))
     if dry_run:
-        return [f'node {node.VERSION} ({arch}): would install {archives[arch][0]} (sha256 {digest[:12]}...) at {final}']
+        return [f'node {pin.VERSION} ({arch}): would install {archives[arch][0]} (sha256 {digest[:12]}...) at {final}']
     made_root = not os.path.isdir(runtimes_root)
     if made_root:
         os.mkdir(runtimes_root, 0o755)
@@ -244,8 +245,8 @@ def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version
         os.mkdir(staging, 0o700)
         node_sha = _extract(archive_path, arch, staging, archives)
         said = version_of(staging / 'bin' / 'node')
-        if said != f'v{node.VERSION}':
-            raise Refused(f'the unpacked binary says it is {said!r}, not v{node.VERSION}; nothing was installed')
+        if said != f'v{pin.VERSION}':
+            raise Refused(f'the unpacked binary says it is {said!r}, not v{pin.VERSION}; nothing was installed')
         record = staging / RECORD_NAME
         record.write_bytes(_dumps(record_doc(arch, digest, node_sha, archives)))
         os.chmod(record, 0o644)
@@ -266,8 +267,8 @@ def install(archive_path, runtimes_root, arch, trusted=None, owner=None, version
             except OSError:
                 pass
         raise
-    return [f'node {node.VERSION} ({arch}): installed from {archives[arch][0]} (sha256 {digest[:12]}...)',
-            f'node {node.VERSION} ({arch}): {final / "bin" / "node"} (sha256 {node_sha[:12]}...)']
+    return [f'node {pin.VERSION} ({arch}): installed from {archives[arch][0]} (sha256 {digest[:12]}...)',
+            f'node {pin.VERSION} ({arch}): {final / "bin" / "node"} (sha256 {node_sha[:12]}...)']
 
 
 def users(records_dir, executable):
@@ -290,18 +291,18 @@ def users(records_dir, executable):
     return found
 
 
-def remove(runtimes_root, records_dir, executable=node.EXECUTABLE, dry_run=False):
+def remove(runtimes_root, records_dir, executable=pin.EXECUTABLE, dry_run=False):
     """Take the runtime off this host. Refused while an installed package runs on it."""
     runtimes_root = Path(runtimes_root)
-    final = runtimes_root / f'node-{node.VERSION}'
+    final = runtimes_root / f'node-{pin.VERSION}'
     using = users(records_dir, executable)
     if using:
         raise Refused(f'installed packages run on this runtime ({", ".join(using)}); remove them first '
                       '(install-game remove <id>)')
     if not os.path.lexists(final):
-        return [f'node {node.VERSION}: nothing to remove']
+        return [f'node {pin.VERSION}: nothing to remove']
     if dry_run:
-        return [f'node {node.VERSION}: would remove {final}']
+        return [f'node {pin.VERSION}: would remove {final}']
     if os.path.islink(final):
         os.unlink(final)
     else:
@@ -313,7 +314,7 @@ def remove(runtimes_root, records_dir, executable=node.EXECUTABLE, dry_run=False
         os.rmdir(runtimes_root)                              # only when nothing else is in it
     except OSError:
         pass
-    return [f'node {node.VERSION}: removed {final}']
+    return [f'node {pin.VERSION}: removed {final}']
 
 
 # ---- the command line -------------------------------------------------------------------------------
@@ -323,7 +324,7 @@ def _parser():
                                  description='Install, verify or remove the optional pinned Node.js runtime (EXPERIMENTAL).')
     sub = ap.add_subparsers(dest='command', required=True)
     i = sub.add_parser('install', help='install from an official tarball you supply; offline (root)')
-    i.add_argument('archive', help=f'node-v{node.VERSION}-linux-<arch>.tar.xz')
+    i.add_argument('archive', help=f'node-v{pin.VERSION}-linux-<arch>.tar.xz')
     sub.add_parser('verify', help='check the installed runtime against its record and the pin')
     r = sub.add_parser('remove', help='remove the runtime; refused while a package runs on it (root)')
     for p in (i, r):
@@ -345,17 +346,17 @@ def main(argv=None, *, is_root=None, trusted=None, version_of=real_version, out=
         if is_root is None:
             is_root = hasattr(os, 'geteuid') and os.geteuid() == 0
         real = a.runtimes_root is None
-        runtimes_root = a.runtimes_root or node.RUNTIMES_ROOT
+        runtimes_root = a.runtimes_root or pin.RUNTIMES_ROOT
         records_dir = a.records_dir or installed.DEFAULT_RECORDS_DIR
         arch = machine_arch(a.machine)
         owner = 0 if real else None
         if a.command == 'verify':
-            wrong = problems(Path(runtimes_root) / f'node-{node.VERSION}', arch, owner)
+            wrong = problems(Path(runtimes_root) / f'node-{pin.VERSION}', arch, owner)
             for item in wrong:
-                print(f'node {node.VERSION}: {item}', file=err)
+                print(f'node {pin.VERSION}: {item}', file=err)
             if wrong:
                 return 1
-            print(f'node {node.VERSION} ({arch}): installed and unchanged ({runtimes_root}/node-{node.VERSION}/bin/node)', file=out)
+            print(f'node {pin.VERSION} ({arch}): installed and unchanged ({runtimes_root}/node-{pin.VERSION}/bin/node)', file=out)
             return 0
         if not is_root and not a.dry_run:
             raise Refused('must run as root (use sudo)')

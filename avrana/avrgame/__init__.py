@@ -13,7 +13,7 @@ Public API
 ----------
 FORMAT                       'avrana.avrgame/experimental.1'
 INTERPRETERS                 read-only mapping, runtime name -> absolute executable (python3, and
-                             the optional pinned node of avrana.avrgame.node); the appliance owns it
+                             the optional pinned node of avrana.avrgame.node_pin); the appliance owns it
 OPTIONAL_RUNTIMES            the names an appliance may lack ({'node'}); see avrana.ops.node_runtime
 Refused(problems: list[str]) the one exception; `.problems` lists every reason
 validate_manifest(obj, vocab=None) -> dict

@@ -23,7 +23,7 @@ from pathlib import Path
 
 from avrana import REPO_ROOT
 from avrana import avrgame
-from avrana.avrgame import installed, node
+from avrana.avrgame import installed, node_pin as pin
 from avrana.ops import install_game as ig
 from avrana.ops import node_runtime as nr
 from avrana.ops import provision_game as pg
@@ -70,6 +70,7 @@ class ManifestTests(unittest.TestCase):
     def test_a_manifest_may_name_the_node_runtime_and_the_appliance_owns_its_path(self):
         self.assertEqual(dict(avrgame.INTERPRETERS), {'python3': '/usr/bin/python3', 'node': NODE})
         self.assertEqual(avrgame.OPTIONAL_RUNTIMES, frozenset({'node'}))
+        self.assertEqual(avrgame.INTERPRETERS['node'], pin.EXECUTABLE)      # the literal of the manifest module is the pin
         out = avrgame.validate_manifest(node_manifest())
         self.assertEqual(out['server'], {'interpreter': 'node', 'args': ['server/main.mjs']})
         avrgame.validate_manifest(node_manifest(['main.mjs']))
@@ -361,7 +362,7 @@ class InstallTests(Base):
 
 def runtime_tarball(path, arch='x64', node_bytes=b'\x7fELF fake node\n', extra=True, prefix=None):
     """A tarball shaped like the official one: bin/node, LICENSE, and what must NOT be taken."""
-    prefix = prefix or node.ARCHIVES[arch][0][:-len('.tar.xz')]
+    prefix = prefix or pin.ARCHIVES[arch][0][:-len('.tar.xz')]
     with tarfile.open(path, 'w:xz') as tar:
         def add(name, data, mode=0o644):
             info = tarfile.TarInfo(f'{prefix}/{name}')
@@ -387,16 +388,16 @@ class RuntimeToolTests(unittest.TestCase):
         self.opt = self.tmp / 'opt'
         self.opt.mkdir()
         self.runtimes = self.opt / 'avrana-runtimes'
-        self.final = self.runtimes / f'node-{node.VERSION}'
-        self.tarball = self.tmp / node.ARCHIVES['x64'][0]
+        self.final = self.runtimes / f'node-{pin.VERSION}'
+        self.tarball = self.tmp / pin.ARCHIVES['x64'][0]
         digest = runtime_tarball(self.tarball)
         other = runtime_tarball(self.tmp / 'arm.tar.xz', 'arm64', b'\x7fELF fake arm node\n')
-        self.archives = {'x64': (node.ARCHIVES['x64'][0], digest), 'arm64': (node.ARCHIVES['arm64'][0], other)}
+        self.archives = {'x64': (pin.ARCHIVES['x64'][0], digest), 'arm64': (pin.ARCHIVES['arm64'][0], other)}
         self.versions = []
 
     def version(self, executable):
         self.versions.append(Path(executable))
-        return f'v{node.VERSION}'
+        return f'v{pin.VERSION}'
 
     def install(self, path=None, arch='x64', **kw):
         kw.setdefault('version_of', self.version)
@@ -406,25 +407,25 @@ class RuntimeToolTests(unittest.TestCase):
         return sorted(p.relative_to(self.opt).as_posix() for p in self.opt.rglob('*'))
 
     def test_the_pins_are_the_official_builds_of_one_version_for_both_architectures(self):
-        self.assertGreaterEqual(int(node.VERSION.split('.')[0]), 22)
-        self.assertEqual(sorted(node.ARCHIVES), ['arm64', 'x64'])
-        for arch, (name, digest) in node.ARCHIVES.items():
-            self.assertEqual(name, f'node-v{node.VERSION}-linux-{arch}.tar.xz')
+        self.assertGreaterEqual(int(pin.VERSION.split('.')[0]), 22)
+        self.assertEqual(sorted(pin.ARCHIVES), ['arm64', 'x64'])
+        for arch, (name, digest) in pin.ARCHIVES.items():
+            self.assertEqual(name, f'node-v{pin.VERSION}-linux-{arch}.tar.xz')
             self.assertRegex(digest, r'^[0-9a-f]{64}\Z')
-        self.assertEqual(len({d for _, d in node.ARCHIVES.values()}), 2)
-        self.assertEqual(node.EXECUTABLE, f'/opt/avrana-runtimes/node-{node.VERSION}/bin/node')
-        self.assertEqual((node.arch_of('aarch64'), node.arch_of('x86_64'), node.arch_of('armv7l')), ('arm64', 'x64', None))
+        self.assertEqual(len({d for _, d in pin.ARCHIVES.values()}), 2)
+        self.assertEqual(pin.EXECUTABLE, f'/opt/avrana-runtimes/node-{pin.VERSION}/bin/node')
+        self.assertEqual((pin.arch_of('aarch64'), pin.arch_of('x86_64'), pin.arch_of('armv7l')), ('arm64', 'x64', None))
 
     def test_install_takes_exactly_the_binary_and_the_license_and_records_what_it_came_from(self):
         lines = self.install()
         self.assertIn('installed from', lines[0])
-        base = f'avrana-runtimes/node-{node.VERSION}'
+        base = f'avrana-runtimes/node-{pin.VERSION}'
         self.assertEqual(self.tree(), ['avrana-runtimes', base, f'{base}/LICENSE', f'{base}/avrana-runtime.json',
                                        f'{base}/bin', f'{base}/bin/node'])        # no npm, npx, corepack, headers or link
         self.assertEqual((self.final / 'bin' / 'node').read_bytes(), b'\x7fELF fake node\n')
         doc = json.loads((self.final / 'avrana-runtime.json').read_text(encoding='utf-8'))
-        self.assertEqual(doc, {'record': 'avrana.runtime/experimental.1', 'runtime': 'node', 'version': node.VERSION,
-                               'arch': 'x64', 'archive': node.ARCHIVES['x64'][0], 'archive_sha256': self.archives['x64'][1],
+        self.assertEqual(doc, {'record': 'avrana.runtime/experimental.1', 'runtime': 'node', 'version': pin.VERSION,
+                               'arch': 'x64', 'archive': pin.ARCHIVES['x64'][0], 'archive_sha256': self.archives['x64'][1],
                                'node_sha256': hashlib.sha256(b'\x7fELF fake node\n').hexdigest()})
         self.assertEqual(nr.problems(self.final, 'x64', archives=self.archives), [])
         self.assertEqual(len(self.versions), 1)                       # asked once, while still under the staging name
@@ -457,14 +458,14 @@ class RuntimeToolTests(unittest.TestCase):
             self.assertEqual(self.tree(), [], label)
         self.assertEqual(self.versions, [])                          # nothing unverified was ever run
         shutil.copy(wrong, self.tmp / 'renamed')
-        os.replace(self.tmp / 'renamed', wrong.with_name(node.ARCHIVES['x64'][0] + '.copy'))
+        os.replace(self.tmp / 'renamed', wrong.with_name(pin.ARCHIVES['x64'][0] + '.copy'))
         with self.assertRaises(nr.Refused):                           # the name of the file is not evidence
-            self.install(wrong.with_name(node.ARCHIVES['x64'][0] + '.copy'))
+            self.install(wrong.with_name(pin.ARCHIVES['x64'][0] + '.copy'))
 
     def test_the_real_pins_refuse_a_made_up_tarball(self):
         with self.assertRaises(nr.Refused) as ctx:
             nr.install(self.tarball, self.runtimes, 'x64', version_of=self.version)
-        self.assertIn(node.ARCHIVES['x64'][1], str(ctx.exception))
+        self.assertIn(pin.ARCHIVES['x64'][1], str(ctx.exception))
         self.assertEqual(self.tree(), [])
 
     def test_a_binary_that_does_not_say_the_pinned_version_or_an_incomplete_tarball_leaves_nothing(self):
@@ -473,18 +474,18 @@ class RuntimeToolTests(unittest.TestCase):
         self.assertIn("'v20.0.0'", str(ctx.exception))
         self.assertEqual(self.tree(), [])
         bare = self.tmp / 'bare.tar.xz'
-        self.archives['x64'] = (node.ARCHIVES['x64'][0], runtime_tarball(bare, node_bytes=None))
+        self.archives['x64'] = (pin.ARCHIVES['x64'][0], runtime_tarball(bare, node_bytes=None))
         with self.assertRaises(nr.Refused) as ctx:
             self.install(bare)
         self.assertIn('has no bin/node', str(ctx.exception))
         self.assertEqual(self.tree(), [])
         linked = self.tmp / 'linked.tar.xz'
-        prefix = node.ARCHIVES['x64'][0][:-len('.tar.xz')]
+        prefix = pin.ARCHIVES['x64'][0][:-len('.tar.xz')]
         with tarfile.open(linked, 'w:xz') as tar:
             info = tarfile.TarInfo(f'{prefix}/bin/node')
             info.type, info.linkname = tarfile.SYMTYPE, '/bin/sh'
             tar.addfile(info)
-        self.archives['x64'] = (node.ARCHIVES['x64'][0], hashlib.sha256(linked.read_bytes()).hexdigest())
+        self.archives['x64'] = (pin.ARCHIVES['x64'][0], hashlib.sha256(linked.read_bytes()).hexdigest())
         with self.assertRaises(nr.Refused):
             self.install(linked)
         self.assertEqual(self.tree(), [])
@@ -539,7 +540,7 @@ class RuntimeToolTests(unittest.TestCase):
         self.assertEqual(self.tree(), [])
 
     def test_the_tool_and_the_library_never_open_a_network_connection(self):
-        for path in (REPO_ROOT / 'avrana' / 'ops' / 'node_runtime.py', REPO_ROOT / 'avrana' / 'avrgame' / 'node.py'):
+        for path in (REPO_ROOT / 'avrana' / 'ops' / 'node_runtime.py', REPO_ROOT / 'avrana' / 'avrgame' / 'node_pin.py'):
             text = path.read_text(encoding='utf-8')
             for word in ('urllib', 'http.client', 'import socket', 'requests', 'curl', 'wget', 'https://'):
                 self.assertNotIn(word, text, f'{path.name}: {word}')

@@ -230,8 +230,8 @@ install -m 0644 -o root -g root "$repo/web/party/catalog.json" "$web/releases/ci
 ln -sfn "$web/releases/ci" "$web/current"
 install -d -m 0711 -o root -g root /var/lib/avrana-party
 mkdir -m 0755 "$work"
-nodebin=$(cd "$tree" && python3 -c 'from avrana.avrgame import node; print(node.EXECUTABLE)')
-nodeversion=$(cd "$tree" && python3 -c 'from avrana.avrgame import node; print(node.VERSION)')
+nodebin=$(cd "$tree" && python3 -c 'from avrana.avrgame import node_pin; print(node_pin.EXECUTABLE)')
+nodeversion=$(cd "$tree" && python3 -c 'from avrana.avrgame import node_pin; print(node_pin.VERSION)')
 noderoot=$(dirname "$(dirname "$nodebin")")
 echo "OBSERVE     the pinned runtime is Node $nodeversion at $nodebin"
 
