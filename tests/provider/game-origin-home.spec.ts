@@ -76,6 +76,8 @@ test('the host starts a round: two phones on Party Home go to the game origin; a
  * and a way back. Simulated here by a game origin that accepts the request and never answers; the waits are
  * real (8 s each, lib/going-watchdog.js). Whether the hang is a WebKit or a runner fault is not settled by this.
  */
+// The waits are real: 2 x 8 s of visible time before the way out, so the expectations below allow 45 s
+// (a loaded runner); the page's own timers are left alone because Party polling runs on them.
 async function hangGameOrigin(p: Phone) {
   const seen = { requests: 0, hang: true };
   await p.context.route((url) => url.origin === GAMES && url.pathname.startsWith('/games/bluff/'), (route) => {
@@ -94,7 +96,7 @@ test('a game page that never answers: the going screen retries once, then offers
   await startForEveryone(ana.page, 'bluff');
   await expect(ana.page.locator('#going')).toBeVisible();
   await expect(ana.page.locator('#going-stuck')).toBeHidden();               // not at once: the wait is bounded, not nervous
-  await expect(ana.page.locator('#going-stuck')).toBeVisible({ timeout: 30_000 });
+  await expect(ana.page.locator('#going-stuck')).toBeVisible({ timeout: 45_000 });
   expect(game.requests).toBeGreaterThanOrEqual(2);                           // the first navigation and its retry
   await expect(ana.page.locator('#going-text')).toContainText('Can’t reach');
   game.hang = false;                                                       // the game origin answers again
@@ -109,7 +111,7 @@ test('a game page that never answers: Back to Party leaves the going screen and 
   await joinParty(ana.page, 'Ana');
   const game = await hangGameOrigin(ana);
   await startForEveryone(ana.page, 'bluff');
-  await expect(ana.page.locator('#going-stuck')).toBeVisible({ timeout: 30_000 });
+  await expect(ana.page.locator('#going-stuck')).toBeVisible({ timeout: 45_000 });
   await ana.page.locator('#going-back').click();
   await expect(ana.page.locator('#going')).toBeHidden();
   await expect(ana.page.locator('#going-stuck')).toBeHidden();

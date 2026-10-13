@@ -1,17 +1,20 @@
 // The way to a game, watched (AVR-339). Party Home takes a phone to a game's own origin with one
 // top-level navigation (ADR 0013). A page cannot see that navigation hang, only that it is still
-// alive and looking at the going screen after a while. A hung navigation was seen once in about 13
-// WebKit runs in CI (no response for ~22 s, then a browser error); this makes sure nobody is
-// stranded: one more try, then a plain way out.
+// alive and looking at the going screen after a while. A hung navigation was seen in about 1 in 13
+// WebKit runs on a CI runner (no response for ~22 s, then a browser error; not seen on a phone);
+// this makes sure nobody is stranded: one more try, then a plain way out.
 //
 //   const watch = createGoingWatchdog({ retry: (to) => location.replace(to), giveUp: (to) => ... });
 //   if (watch.arm(to)) location.replace(to);   // true: this target is new, go now
 //   watch.again();                             // "Try again": a fresh round of waits
 //   watch.cancel();                            // the phone is no longer on the going screen
 //
-// The wait only counts while the page is visible, so a locked phone, another tab or a page frozen
-// in the back/forward cache never looks like a hung navigation; a page that is leaving (pagehide)
-// is disarmed, because then the navigation has arrived.
+// The wait only counts VISIBLE time, and starts over each time the page becomes visible again, so a
+// locked phone, another tab or a page frozen in the back/forward cache never looks like a hung
+// navigation; the price is that a page that keeps flapping hidden/visible can wait longer than the
+// 16 s below. A page that is leaving (pagehide) stops its timer, because then the navigation has
+// arrived. If the same document is shown again (pageshow, not from the cache) the waits start
+// over; from the back/forward cache the shell starts afresh (boot), so the target is forgotten.
 export const WAIT_MS = 8000;   // twice the shell's own 4 s asks; a LAN page loads in about one; under the ~22 s a hung one took to die
 export const RETRIES = 1;      // one more navigation, then the way out: 2 x 8 s = 16 s, before the browser gives up by itself
 
@@ -43,7 +46,13 @@ export function createGoingWatchdog({ retry, giveUp, doc = globalThis.document, 
   }
 
   if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', start);
-  if (win && win.addEventListener) win.addEventListener('pagehide', () => cancel());
+  if (win && win.addEventListener) {
+    win.addEventListener('pagehide', stop);
+    win.addEventListener('pageshow', (event) => {
+      if (event && event.persisted) cancel();            // back from the cache: the shell decides again
+      else if (target !== null && !gaveUp) { tries = 0; start(); }   // the same document, shown again: not left
+    });
+  }
 
   function cancel() { stop(); target = null; tries = 0; gaveUp = false; }
 

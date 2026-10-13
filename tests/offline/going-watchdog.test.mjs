@@ -31,7 +31,7 @@ function rig(options = {}) {
   };
   const hide = () => { doc.visibilityState = 'hidden'; handlers.doc.visibilitychange(); };
   const show = () => { doc.visibilityState = 'visible'; handlers.doc.visibilitychange(); };
-  return { watch, log, advance, hide, show, timers, leave: () => handlers.win.pagehide() };
+  return { watch, log, advance, hide, show, timers, leave: () => handlers.win.pagehide(), back: (persisted) => handlers.win.pageshow({ persisted }) };
 }
 
 test('a navigation that never completes: one retry after the wait, then the way out, and nothing more', () => {
@@ -58,7 +58,44 @@ test('a navigation that completes leaves nothing behind: the page is leaving, th
   r.advance(10 * WAIT_MS);
   assert.deepEqual(r.log, { retries: [], giveUps: [] });
   assert.equal(r.timers.size, 0);
-  assert.equal(r.watch.target, null);
+});
+
+test('shown again without the cache (the navigation did not leave): the waits start over; from the cache the shell starts afresh', () => {
+  const r = rig();
+  r.watch.arm(TO);
+  r.leave();
+  r.advance(10 * WAIT_MS);
+  assert.deepEqual(r.log, { retries: [], giveUps: [] });
+  r.back(false);                                                // same document, still on the going screen
+  r.advance(WAIT_MS);
+  assert.deepEqual(r.log, { retries: [TO], giveUps: [] });
+  r.advance(WAIT_MS);
+  assert.deepEqual(r.log, { retries: [TO], giveUps: [TO] });
+  const c = rig();
+  c.watch.arm(TO);
+  c.leave();
+  c.back(true);                                                 // back/forward cache: boot() runs, nothing is armed here
+  c.advance(10 * WAIT_MS);
+  assert.deepEqual(c.log, { retries: [], giveUps: [] });
+  assert.equal(c.watch.arm(TO), true);                          // and the shell's own arm navigates, as it always did
+  const g = rig();                                              // a page that gave up is not re-armed by a pageshow
+  g.watch.arm(TO); g.advance(2 * WAIT_MS); g.back(false); g.advance(10 * WAIT_MS);
+  assert.deepEqual(g.log, { retries: [TO], giveUps: [TO] });
+});
+
+test('the party moves to another round after the way out was shown: the new target is armed afresh', () => {
+  const r = rig();
+  const B = TO + 'b/';
+  r.watch.arm(TO);
+  r.advance(2 * WAIT_MS);
+  assert.equal(r.watch.gaveUp, true);
+  assert.equal(r.watch.arm(B), true);                           // the caller hides the way out and navigates
+  assert.equal(r.watch.gaveUp, false);
+  assert.equal(r.watch.target, B);
+  r.advance(WAIT_MS);
+  assert.deepEqual(r.log.retries, [TO, B]);                     // B is watched like any trip
+  r.advance(WAIT_MS);
+  assert.deepEqual(r.log.giveUps, [TO, B]);
 });
 
 test('the route changes away: the timer is cancelled, and no way out is raised', () => {

@@ -917,7 +917,11 @@ function leaveForRound() {
       const g = partyGame(state.catalog, locationOf(view).game);
       const round = roundToRemember(view);     // a round this phone plays, while it is on
       if (g && round) recordRound(g, round);   // only once it is really going there
-      if (goingWatch.arm(to)) location.replace(to);   // not again for a target already on its way, or given up on
+      if (goingWatch.arm(to)) {                       // not again for a target already on its way, or given up on
+        goingStuck(false);                            // a new target: no way out left over from the last one
+        $('going-text').textContent = `Taking you to ${gameName(view)}…`;
+        location.replace(to);
+      }
     }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
@@ -1231,6 +1235,7 @@ const goingWatch = createGoingWatchdog({ retry: (to) => location.replace(to), gi
 $('going-retry').onclick = () => {
   goingStuck(false);
   $('going-text').textContent = `Taking you to ${gameName(party.view())}…`;
+  $('going-text').focus({ preventScroll: true });   // the button that had focus is gone: its words are what changed
   goingWatch.again();
 };
 $('going-back').onclick = () => {
