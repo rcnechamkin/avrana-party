@@ -1,3 +1,4 @@
+# Workflow v3: fast systemd trust proof on scoped PRs; five expensive integration jobs are manual.
 # Non-production proofs for ADR 0016, on disposable runners; each runs only when what it proves
 # changes, or on demand. They are evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md
 # tiers).
@@ -61,6 +62,7 @@ jobs:
         run: sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
 
   native-game:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -78,6 +80,7 @@ jobs:
   # runs; --reverse shows the earlier state again. Creates and removes users, units and /opt, /etc,
   # /var/backups: runner only.
   prepare-native-games:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -90,6 +93,7 @@ jobs:
   # (AVR-238) The real Checkers, not the stand-in: the Games checkout is the branch paired with this
   # one (same logic as cross-repo.yml, and like it a failure to list the branches fails the job).
   checkers:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -124,6 +128,7 @@ jobs:
   # for the game. The Games checkout is the branch paired with this one (same logic as the checkers
   # job above). Runner only.
   package:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -157,6 +162,7 @@ jobs:
   # the branch paired with this one (same logic as the jobs above). Runner only. Tier 2: not a phone,
   # not Wi-Fi, not the Pi (docs/TESTING.md).
   package-browser:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
