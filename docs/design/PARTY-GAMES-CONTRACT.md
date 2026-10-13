@@ -124,6 +124,52 @@ Every reply is under 60 bytes, a thousandth of the limit. The one reply that cou
 the managed runtime's start failure, which carried the runtime's exception text: a 200 KB text
 produced a 200 054 byte reply; capped at 200 characters (`managed.MAX_WHY`) the same failure is a 254 byte reply.
 
+## One spelling per token (AVR-465)
+
+**The rule.** In every `aps0.<payload>.<mac>` token, ticket or message, both parts are *canonical*
+base64url: only `A-Z a-z 0-9 - _`, no padding, no whitespace, and the unused low bits of the last
+character are zero. The test is one line in any language: decode the part, encode the bytes again
+without padding, and require the same characters. A receiver refuses anything else as `encoding`,
+before it checks the MAC. Nothing may tell two tokens apart by their characters: the single-use
+ticket ledger is keyed on the SHA-256 of the **decoded payload bytes**, the message replay guard
+on the payload's `nonce`.
+
+**Why.** A 32-byte MAC is 43 base64url characters and the last one carries two unused bits. The
+decoder ignored them, so every ticket had four spellings that verified, and the ledger, keyed on
+the characters, admitted one ticket four times. The rule removes the spellings; the ledger key
+removes the dependence on them, should a decoder ever be lenient again.
+
+**What it is not.** The ticket format, the lifetimes and the HMAC construction are unchanged, and
+every token an honest sender ever produced is still accepted (senders always wrote the canonical
+spelling), so this stays inside `avrana.party-session/v0`: an old Games works with a new Party and
+the reverse. The contract version does not move.
+
+**Held by vectors.** `contracts/vectors/party-session.v0.json` now also carries `refused` (each
+token must be refused with the named reason: respelled MAC, respelled payload with a correct MAC,
+padding, the standard alphabet, whitespace, an impossible length, a character outside ASCII, on
+tickets and on messages) and `replays` (open `first`, then `then` must be refused: the exact
+replay as `replay`, the respelled replay as `encoding`). `tests/unit/test_party_protocol.py` here,
+`tests/test_party_session.py` in Games and the JavaScript helper's `node --test` suite in Games
+all run them, and `tools/contract_check.py` refuses a vector file without them.
+
+**Audit of the rest of the protocol** (same question: is there a second spelling, and does anything
+count by spelling?):
+
+| Where | Finding | Result |
+|---|---|---|
+| Ticket ledger (`SpentTickets`) | keyed on the ticket's characters; four spellings each | **fixed**: canonical rule, and keyed on the decoded payload |
+| `launch`, `end`, `ended`, `host` (`ReplayGuard`) | the same four spellings verified, but the guard is keyed on the signed `nonce` (exactly 24 lower-case hex characters), so a respelled message was already a `replay` | not exploitable; now refused as `encoding` like a ticket |
+| `host_is` | no guard of its own: it must repeat the `sid`, `pid` and `nonce` of the one question it answers, all inside the MAC | not exploitable; canonical rule applies |
+| Payload JSON (key order, whitespace, duplicate keys, escapes) | a receiver does not re-derive canonical JSON, but the MAC covers the characters of part 1, so only a holder of the game's key can write a variant, and a key holder can mint outright (ADR 0006, symmetric keys). Both guards read decoded content. A receiver that re-serialised would have to agree with every other language on number formatting | no change, deliberately |
+| Non-ASCII in the payload part | reached the MAC as a `UnicodeEncodeError`, not a refusal (worked around in Games as AVR-320) | **fixed**: `encoding` |
+| Ids (`sid`, `pid`, game id) | the patterns ended in `$`, which in Python also matches before a trailing newline: `session-…\n` passed in Python only. Signed content, and Party compares `iss` and `sid` exactly afterwards | not exploitable; **fixed** (`\Z`) so implementations agree |
+| `iat`, `exp` | `true` counted as an integer in Python | **fixed**: integers only |
+| Case | base64url is case-sensitive by definition; nonces, ids and key files are lower-case only | nothing to fix |
+| Game token (`game_token`) | derived from `sid` and `pid`, never from a ticket's characters | unaffected |
+
+`avrana/party/result.py` has the same `$` patterns; a result arrives inside a signed `ended` and
+is checked against the roster by equality, so it is left for its own change (it is vendored too).
+
 ## Not declared here
 
 Player identity (Party never sends device or member ids to a game), chat transport, the shared

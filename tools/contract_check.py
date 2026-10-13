@@ -61,6 +61,22 @@ def check_bridge(root, b, key, where):
            'bridge vectors protocol', b['vectors'])
 
 
+def check_session_vectors(path, where):
+    """The session vectors carry the negative cases too (AVR-465): tokens that must be refused and
+    replays that must fail. A vector file without them would let an implementation that accepts a
+    second spelling of a token pass; whether the cases hold is each repository's own test."""
+    doc = load(path, 'session protocol vectors')
+    refused, replays = doc.get('refused'), doc.get('replays')
+    if not isinstance(refused, list) or not isinstance(replays, list) or not all(
+            isinstance(v, dict) and {'name', 'typ', 'aud', 'token', 'reason'} <= set(v) for v in refused)             or not all(isinstance(v, dict) and {'name', 'typ', 'aud', 'sid', 'first', 'then', 'reason'} <= set(v)
+                       for v in replays):
+        raise Drift(f'session protocol vectors drifted: {where} has no well-formed `refused` and `replays` '
+                    'cases (docs/design/PARTY-GAMES-CONTRACT.md, "One spelling per token")')
+    if not any(v['reason'] == 'encoding' for v in refused) or             not {'encoding', 'replay'} <= {v['reason'] for v in replays if v['typ'] == 'ticket'}:
+        raise Drift(f'session protocol vectors drifted: {where} does not hold an implementation to one '
+                    'spelling per token (no `encoding` refusal, or no ticket replay in both spellings)')
+
+
 # ---- Party ------------------------------------------------------------------------------------
 def check_party(party):
     decl_path = party / 'contracts/party-games.v0.json'
@@ -72,6 +88,7 @@ def check_party(party):
     expect(constant(protocol, 'PREFIX'), sp['prefix'], 'session protocol prefix', where)
     expect(sha256_normalized(protocol), sp['reference_sha256'], 'session protocol file digest', where)
     expect(sha256_normalized(party / sp['vectors']), sp['vectors_sha256'], 'session protocol vectors digest', where)
+    check_session_vectors(party / sp['vectors'], sp['vectors'])
     res = d['result']
     reference = party / res['reference']
     expect(constant(reference, 'SCHEMA'), res['schema'], 'result schema', where)
@@ -116,6 +133,7 @@ def check_games(games):
     expect(constant(vendored, 'VERSION'), sp['version'], 'vendored protocol version', where)
     expect(sha256_normalized(vendored), sp['vendored_sha256'], 'vendored protocol file digest', where)
     expect(sha256_normalized(games / sp['vectors']), sp['vectors_sha256'], 'vendored vectors digest', where)
+    check_session_vectors(games / sp['vectors'], sp['vectors'])
     res = d['result']
     vendored_result = games / res['vendored']
     expect(constant(vendored_result, 'SCHEMA'), res['schema'], 'vendored result schema', where)
