@@ -69,3 +69,53 @@ test('the host starts a round: two phones on Party Home go to the game origin; a
   expect(state.location.at).toBe('home');
   await ana.context.close(); await ben.context.close();
 });
+
+/**
+ * AVR-339: a navigation to the game origin that never completes (seen once in about 13 WebKit runs in CI,
+ * ~22 s of silence and then a browser error). The going screen tries once more and then gives the phone a way on
+ * and a way back. Simulated here by a game origin that accepts the request and never answers; the waits are
+ * real (8 s each, lib/going-watchdog.js). Whether the hang is a WebKit or a runner fault is not settled by this.
+ */
+async function hangGameOrigin(p: Phone) {
+  const seen = { requests: 0, hang: true };
+  await p.context.route((url) => url.origin === GAMES && url.pathname.startsWith('/games/bluff/'), (route) => {
+    seen.requests += 1;
+    if (!seen.hang) return route.continue();
+    // neither fulfilled, continued nor aborted: the request is simply never answered
+  });
+  return seen;
+}
+
+test('a game page that never answers: the going screen retries once, then offers Try again and Back to Party; Try again gets there', async ({ browser, request }) => {
+  expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
+  const ana = await phone(browser, 0);
+  await joinParty(ana.page, 'Ana');
+  const game = await hangGameOrigin(ana);
+  await startForEveryone(ana.page, 'bluff');
+  await expect(ana.page.locator('#going')).toBeVisible();
+  await expect(ana.page.locator('#going-stuck')).toBeHidden();               // not at once: the wait is bounded, not nervous
+  await expect(ana.page.locator('#going-stuck')).toBeVisible({ timeout: 30_000 });
+  expect(game.requests).toBeGreaterThanOrEqual(2);                           // the first navigation and its retry
+  await expect(ana.page.locator('#going-text')).toContainText('Can’t reach');
+  game.hang = false;                                                       // the game origin answers again
+  await ana.page.locator('#going-retry').click();
+  await expect(ana.page).toHaveURL(IN_GAME);
+  await ana.context.close();
+});
+
+test('a game page that never answers: Back to Party leaves the going screen and stays on Party Home', async ({ browser, request }) => {
+  expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
+  const ana = await phone(browser, 1);
+  await joinParty(ana.page, 'Ana');
+  const game = await hangGameOrigin(ana);
+  await startForEveryone(ana.page, 'bluff');
+  await expect(ana.page.locator('#going-stuck')).toBeVisible({ timeout: 30_000 });
+  await ana.page.locator('#going-back').click();
+  await expect(ana.page.locator('#going')).toBeHidden();
+  await expect(ana.page.locator('#going-stuck')).toBeHidden();
+  const requests = game.requests;
+  await ana.page.waitForTimeout(1500);                                     // no loop back out, no further navigation
+  await expect(ana.page).toHaveURL(AT_HOME);
+  expect(game.requests).toBe(requests);
+  await ana.context.close();
+});
