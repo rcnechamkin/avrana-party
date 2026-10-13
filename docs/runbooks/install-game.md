@@ -104,7 +104,11 @@ Install and remove then regenerate the effective catalog. **Fail closed:** if it
 release catalog, a full disk) the install is undone and exits 1; a failed regeneration removes the overlay,
 so the appliance serves the committed catalog (no package tile) until `catalog-overlay refresh` works.
 A new web release or a rollback (`ops/install-party-web.sh`) regenerates it too, so a deploy never hides
-new first-party games. A web deploy while an install is running makes the hook's refresh refuse (the lock is non-blocking): the overlay is removed with a warning, and the install republishes it when it finishes. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
+new first-party games. `ops/deploy.sh` does the same on every path that moves the web release: after the web install of a
+deployment, the nested `--rollback`/`--auto-rollback` and `--recover` (using the code release that is running, because the
+target commit may predate the overlay), and when a failed or interrupted run puts the earlier web release back. Where the overlay
+cannot be regenerated it is removed, with a `WARNING: catalog:` line in the log: warning only, the deployment, rollback,
+manifest and smoke are unaffected, and the first-party catalog is served until `sudo ops/catalog-overlay refresh`. A web deploy while an install is running makes the hook's refresh refuse (the lock is non-blocking): the overlay is removed with a warning, and the install republishes it when it finishes. If that regeneration fails the overlay is removed and the web install prints a loud warning (it never fails the
 deploy). The hook is decided (owner decision 2026-10-10). After it regenerates the overlay, `ops/install-party-web.sh` also
 runs the read-only `catalog-overlay check` and **prints a clearly marked WARNING** with the remedy if the overlay is
 stale or a package row was dropped; run `sudo ops/catalog-overlay refresh` if it does. The warning is output only: it

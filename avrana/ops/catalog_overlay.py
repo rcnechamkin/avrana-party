@@ -27,8 +27,9 @@ The rules, each tested:
   file or the new one, never a part. If anything goes wrong while refreshing, the overlay is
   removed before the error is raised: absent and regenerable, never stale or half-written.
 - The overlay is derived from the release catalog, so a new release or a rollback of the web shell
-  makes it stale. `ops/install-party-web.sh` runs `refresh` after it switches `current`, and `check`
-  says whether it is current.
+  makes it stale. `ops/install-party-web.sh` runs `refresh` after it switches `current`, `ops/deploy.sh`
+  (`settle_catalog`) refreshes or removes it after every move of the web release it makes, including its
+  rollbacks, and `check` says whether it is current.
 
 Everything that touches the host is an argument, so the tests run in scratch directories.
 """
