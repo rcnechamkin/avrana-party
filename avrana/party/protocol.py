@@ -13,7 +13,21 @@ Envelope, for every token and message:
 
     aps0.<base64url(canonical JSON payload)>.<base64url(HMAC-SHA256(key, "aps0." + part1))>
 
-Canonical JSON = sorted keys, no spaces, UTF-8. Every payload carries:
+Canonical JSON = sorted keys, no spaces, UTF-8. A sender always writes it; a receiver does not
+re-derive it, because the MAC covers the exact characters of part 1, so nobody without the key can
+respell a payload.
+
+One spelling per token (AVR-465): both base64url parts are CANONICAL, and a receiver refuses
+anything else as Invalid('encoding') before it looks at the MAC. Canonical means: only the URL-safe
+alphabet (A-Z a-z 0-9 - _), no padding, no whitespace, and the unused low bits of the last
+character are zero, so that decoding the part and encoding the result gives back the same
+characters. Without the rule a 32-byte MAC has four spellings (its 43rd character carries two
+unused bits), each of which verified, and anything that told tokens apart by their characters
+counted one token as four. Nothing in this protocol tells tokens apart by their characters any
+more: tickets are remembered by their decoded payload (SpentTickets), messages by their nonce
+(ReplayGuard).
+
+Every payload carries:
     v    "avrana.party-session/v0"
     typ  "ticket" | "launch" | "end" | "ended" | "host" | "host_is"
          (a token of one type is never accepted as another)
@@ -45,7 +59,9 @@ indistinguishable from a genuinely old token and reads 'expired'; the browser's 
 a fresh ticket. The policy for handling steps is AVR-79, not this file.
 
 Tickets are single-use at the game side (SpentTickets, used by GameSide.admit): the second
-presentation of the same ticket string is Invalid('replay'). Reconnects fetch a fresh ticket.
+presentation of the same ticket is Invalid('replay'). "The same ticket" means the same decoded
+payload, never the same characters, so the ledger would hold even against a decoder that let a
+second spelling through. Reconnects fetch a fresh ticket.
 
 The host claim: a ticket may carry `host`, true or false: whether its participant was the Party
 Host when the party minted it. The party is the only authority for its host (succession
@@ -87,9 +103,11 @@ CLOCK_SKEW = 5              # s: future-`iat` tolerance; beyond it the refusal i
 TYPES = ('ticket', 'launch', 'end', 'ended', 'host', 'host_is')
 ROLES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned')
-GAME_ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')
-SID = re.compile(r'^session-[0-9a-f]{32}$')
-PID = re.compile(r'^participant-[0-9a-f]{32}$')
+# `\Z`, not `$`: `$` also matches before a trailing newline, which would give every id a second
+# spelling that only Python accepts (AVR-465).
+GAME_ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}\Z')
+SID = re.compile(r'^session-[0-9a-f]{32}\Z')
+PID = re.compile(r'^participant-[0-9a-f]{32}\Z')
 
 
 class Invalid(Exception):
@@ -173,12 +191,18 @@ def _b64(data):
 
 
 def _unb64(text):
+    """Decode one CANONICAL base64url part or raise Invalid('encoding'): the one-spelling rule of
+    the module docstring. The last line is the rule itself (decode, encode, compare); the alphabet
+    check before it only keeps the decoder from quietly skipping characters."""
     if not re.fullmatch(r'[A-Za-z0-9_-]*', text):
         raise Invalid('encoding')
     try:
-        return base64.urlsafe_b64decode(text + '=' * (-len(text) % 4))
+        data = base64.urlsafe_b64decode(text + '=' * (-len(text) % 4))
     except (binascii.Error, ValueError):          # e.g. a length of 1 mod 4
         raise Invalid('encoding')
+    if _b64(data) != text:                        # non-zero unused bits: another spelling
+        raise Invalid('encoding')
+    return data
 
 
 def _mac(key, signed):
@@ -192,18 +216,20 @@ def seal(key, payload):
 
 
 def unseal(key, token, typ, aud, now=None):
-    """Verify signature, version, type, audience and time. Returns the payload or raises Invalid.
-    The signature is checked before anything in the payload is trusted."""
+    """Verify spelling, signature, version, type, audience and time. Returns the payload or
+    raises Invalid. Both parts must be canonical base64url ('encoding') before the signature is
+    checked, and the signature is checked before anything in the payload is trusted."""
     if not isinstance(token, str) or len(token) > MAX_TOKEN:
         raise Invalid('shape')
     parts = token.split('.')
     if len(parts) != 3 or parts[0] != PREFIX:
         raise Invalid('shape')
+    body, mac = _unb64(parts[1]), _unb64(parts[2])
     head = f'{parts[0]}.{parts[1]}'
-    if not hmac.compare_digest(_mac(key, head), _unb64(parts[2])):
+    if not hmac.compare_digest(_mac(key, head), mac):
         raise Invalid('signature')
     try:
-        payload = json.loads(_unb64(parts[1]).decode('utf-8'))
+        payload = json.loads(body.decode('utf-8'))
     except ValueError:
         raise Invalid('payload')
     if not isinstance(payload, dict) or payload.get('v') != VERSION:
@@ -214,7 +240,7 @@ def unseal(key, token, typ, aud, now=None):
         raise Invalid('audience')
     now = time.time() if now is None else now
     iat, exp = payload.get('iat'), payload.get('exp')
-    if not (isinstance(iat, int) and isinstance(exp, int)):
+    if type(iat) is not int or type(exp) is not int:      # not a float, and not true/false
         raise Invalid('expired')
     if iat > now + CLOCK_SKEW:
         raise Invalid('clock')
@@ -358,9 +384,14 @@ class ReplayGuard:
 
 class SpentTickets:
     """Single-use tickets for any game, with or without GameSide. Remembers the SHA-256 of each
-    spent ticket until its `exp` (after which unseal refuses it anyway), pruned on every call.
-    Call `spend(ticket, exp)` only AFTER the ticket verified; a second spend of the same
-    ticket string raises Invalid('replay')."""
+    spent ticket's DECODED PAYLOAD until its `exp` (after which unseal refuses it anyway), pruned
+    on every call. Call `spend(ticket, exp)` only AFTER the ticket verified; a second spend of the
+    same ticket raises Invalid('replay').
+
+    The ledger is keyed on the decoded payload bytes and not on the ticket's characters (AVR-465):
+    the payload is what the MAC vouches for and what `jti` makes unique, so no respelling of a
+    ticket, in either part, is a second ticket here. That is defence in depth: _unb64 already
+    refuses every spelling but one."""
 
     def __init__(self):
         self.spent = {}
@@ -368,7 +399,10 @@ class SpentTickets:
     def spend(self, ticket, exp, now=None):
         now = time.time() if now is None else now
         self.spent = {h: e for h, e in self.spent.items() if e > now}
-        digest = hashlib.sha256(ticket.encode('ascii')).hexdigest()
+        parts = ticket.split('.') if isinstance(ticket, str) else ()
+        if len(parts) != 3:
+            raise Invalid('shape')
+        digest = hashlib.sha256(_unb64(parts[1])).hexdigest()
         if digest in self.spent:
             raise Invalid('replay')
         self.spent[digest] = exp
