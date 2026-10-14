@@ -895,7 +895,7 @@ service-users-migration, prepare-native-games, game-origin). None of that is don
 
 ## C-08 Game process failure after session-recovery work
 
-- **Serves:** AVR-33. **Revision:** needs branch `fix/avr-33-session-recovery` merged and deployed, with
+- **Serves:** AVR-33. **Revision:** needs the AVR-33 `close_lost_game` change merged and deployed, with
   `session_recovery.close_lost_game` set to `true` in the Party Core configuration (it is `false` by
   default; with it off the behaviour is A-25's). Not merged, not deployed, owner decision pending.
 - **Prerequisites:** four phones in a party, a game running, a shell on the Pi with sudo.
@@ -905,7 +905,8 @@ service-users-migration, prepare-native-games, game-origin). None of that is don
 - **Expected after that work:** within about ten seconds of the third failed attempt every phone is on
   Party Home, `/party/api/state` shows the session ended with outcome `abandoned` and `reason: game_lost`,
   and the host can start another game without pressing End. A game that is only restarted (it answers but
-  has forgotten the session) is NOT closed: the host must press End, which now succeeds.
+  has forgotten the session) is NOT closed: the host presses End or brings everyone home, then Start
+  (End is reported unconfirmed; reading that refusal as ended is an owner decision, AVR-33).
 - **Evidence:** screen recording of one follower and the host; `curl` of `/party/api/state` before and
   after; `journalctl -u avrana-party-core` lines for the close.
 - **Pass:** all phones home without host action, no phone left on a dead game page. **Fail:** any phone

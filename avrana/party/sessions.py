@@ -258,6 +258,44 @@ class HttpGameLink:
         return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
                           ep.socket_path).ok
 
+    def reachable(self, session, seconds=None):
+        """Whether a connection to the session's game is accepted: True or False, or None when
+        this system cannot tell (no Unix sockets). A connection only; no message is sent, so this
+        adds nothing to the session protocol (AVR-33, used only with session_recovery.close_lost_game).
+
+        The wait is the game's own link timeout (the grant's `timeout`, else the link's 5 s), the
+        time a launch is given: a connection to a loopback or Unix socket is refused at once when
+        nothing listens, so a wait only happens when the game's accept queue is full, and a Pi
+        loaded by the arcade must not turn a slow accept into a "miss".
+
+        Side effect: for a socket-activated native game (deploy/games/avrana-game@.socket) systemd
+        accepts the connection while the process is down and STARTS the unit, exactly as the phone's
+        own connection would. That process holds no session, so it answers and refuses the tickets:
+        the session is not closed. The check therefore finds a game whose socket is gone (for
+        instance after systemd's start limit stopped it), or a TCP game that is down; it does not
+        find one that restarted."""
+        ep = self.endpoints.get(session.game_id)
+        if ep is None:
+            return False
+        seconds = seconds or ep.timeout or self.timeout
+        sock = None
+        try:
+            if ep.socket_path:
+                if not hasattr(socket, 'AF_UNIX'):
+                    return None
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(seconds)
+                sock.connect(ep.socket_path)
+            else:
+                u = urlsplit(ep.url)
+                sock = socket.create_connection((u.hostname, u.port or 80), timeout=seconds)
+        except (OSError, ValueError, TypeError):
+            return False
+        finally:
+            if sock is not None:
+                sock.close()                 # on the failed-connect path too
+        return True
+
 
 def routes(service, endpoints):
     """(extra_routes, internal_routes) for service.make_server."""
@@ -284,6 +322,8 @@ def routes(service, endpoints):
         ep = endpoints.get(s.game_id)
         if ep is None:
             return _send(h, 409, {'error': 'no_game', 'message': 'That game has no server here.'})
+        if not service.game_up(s):                  # AVR-33: the game is gone; the session just closed
+            return _send(h, 409, {'error': 'no_game', 'message': 'The game stopped.'})
         tok = protocol.mint_ticket(ep.key, ep.game_id, s.id, p.id, p.role, host=host)
         return _send(h, 200, {'protocol': protocol.VERSION, 'game': s.game_id, 'session': s.id,
                               'role': p.role, 'ticket': tok, 'expires_in': protocol.TICKET_TTL})

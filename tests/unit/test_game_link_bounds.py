@@ -361,6 +361,28 @@ class WhatAGamesAnswerMeans(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 1.5)
 
 
+class Reachable(unittest.TestCase):
+    """The connection check behind session_recovery.close_lost_game (AVR-33): a connection only."""
+
+    def test_a_port_nobody_listens_on_is_not_reachable(self):
+        with socket.socket() as probe:                # a port that was free a moment ago, no listener
+            probe.bind(('127.0.0.1', 0))
+            port = probe.getsockname()[1]
+        link = sessions.HttpGameLink({'drip': sessions.GameEndpoint('drip', f'http://127.0.0.1:{port}', KEY)},
+                                     timeout=1.0)
+        self.assertFalse(link.reachable(Session))
+
+    def test_a_listening_game_is_reachable(self):
+        listener = raw_server(lambda c: None)
+        self.addCleanup(listener.close)
+        link = sessions.HttpGameLink({'drip': sessions.GameEndpoint(
+            'drip', f'http://127.0.0.1:{listener.getsockname()[1]}', KEY)}, timeout=1.0)
+        self.assertTrue(link.reachable(Session))
+
+    def test_a_game_with_no_endpoint_is_not_reachable(self):
+        self.assertFalse(sessions.HttpGameLink({}).reachable(Session))
+
+
 class Stalling(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
     seconds = 3.0

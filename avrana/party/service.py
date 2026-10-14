@@ -49,6 +49,7 @@ at once, a short poll), and the listen backlog is REQUEST_QUEUE_SIZE so phone wa
 import argparse
 import http.server
 import json
+import logging
 import os
 import signal
 import socket
@@ -58,12 +59,17 @@ import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
+from avrana.contracts import party_config
 from avrana.party import core, identity
+
+log = logging.getLogger('avrana.party.service')
 
 MAX_BODY = 8192
 MAX_WAIT = 25.0
 MAX_WAITERS = 64            # AVR-218: concurrent blocked long polls; beyond it a poll returns at once
 REQUEST_QUEUE_SIZE = 128    # AVR-218: listen backlog (socketserver default 5 drops reconnect storms)
+RELEASE_THREAD = 'avrana-end-lost-game'
+PROBE_EVERY = 2.0           # s: at most one reachability check of a session's game this often (AVR-33)
 
 
 class NoGameLink:
@@ -80,10 +86,14 @@ class PartyService:
     """Thread-safe wrapper: one lock around the core, a condition for long polls, and game-link
     calls made outside the lock (a slow game must not freeze the party)."""
 
-    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None):
+    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, close_lost_game=False):
         self.store = store
+        # AVR-33 switch session_recovery.close_lost_game (off unless the appliance's config turns it
+        # on, recovery_config): a game that stays down closes the active session.
+        self._probed = None                  # (session id, when) of the last reachability check
+        self._probing = False                # a reachability check is in flight: never two at once
         self.limited = limited or identity.LimitedStore()     # Limited Mode credentials (memory)
-        self.core = core.PartyCore(clock, games)
+        self.core = core.PartyCore(clock, games, close_lost_game=close_lost_game)
         self.link = link or NoGameLink()
         self.lock = threading.Lock()
         self.changed = threading.Condition(self.lock)
@@ -232,6 +242,53 @@ class PartyService:
         elif left == 'end':
             self._end_at_game(s)
         return s
+
+    # ---- a game that is gone (AVR-33) ---------------------------------------------------------------
+    def game_up(self, s):
+        """Asked when a phone is about to be sent to the active session's game (a ticket request):
+        is a connection to that game accepted? At most one check per PROBE_EVERY seconds, made
+        outside the lock, and only for an ACTIVE session (no other state can be lost). Misses are
+        counted by Party Core, which closes the session as `game_lost` only after several over some
+        seconds (core.GAME_LOST_FAILS, GAME_LOST_SPAN); until then the answer is True, as it was
+        before this check existed. False means this call closed it.
+
+        Only one check is in flight at a time: while one waits out its connect timeout, other ticket
+        requests do not start another (they answer True at once). Otherwise checks started 2 s apart
+        against a game that drops connections would all time out together and close the round
+        after one timeout instead of three."""
+        reachable = getattr(self.link, 'reachable', None)
+        if reachable is None or not self.core.close_lost_game:
+            return True
+        with self.lock:
+            if s.state != core.ACTIVE or self._probing:
+                return True
+            now = self.core.clock()          # when this check STARTS: that is when a miss is stamped
+            if self._probed and self._probed[0] == s.id and now - self._probed[1] < PROBE_EVERY:
+                return True
+            self._probed = (s.id, now)
+            self._probing = True
+        try:
+            ep = getattr(self.link, 'endpoints', {}).get(s.game_id)
+            timeout = (getattr(ep, 'timeout', None) or getattr(self.link, 'timeout', None) or 5.0)
+            window = max(core.GAME_LOST_SPAN, core.GAME_LOST_FAILS * timeout + PROBE_EVERY)
+            up = reachable(s)
+        finally:
+            with self.lock:
+                self._probing = False
+        if up is None:
+            return True
+        with self.lock:
+            if up:
+                self.core.game_reachable(s.id)
+                return True
+            lost = self.core.game_unreachable(s.id, at=now, window=window)
+            if lost:
+                self._notify()
+        if lost:
+            log.warning('game %s: session %s closed, the game stopped answering', s.game_id, s.id)
+            # the game may come back holding a ghost: say `end` once it can hear it, off this request
+            threading.Thread(target=self.link.end, args=(s,), daemon=True, name=RELEASE_THREAD).start()
+        return not lost
 
     def run_timer(self, stop, interval=1.0):
         while not stop.wait(interval):
@@ -599,6 +656,23 @@ def load_games(entries):
     return games
 
 
+RECOVERY_DEFAULTS = party_config.RECOVERY_DEFAULTS
+
+
+def recovery_config(conf):
+    """The `session_recovery` switches of party-core.json (AVR-33): today only close_lost_game, a
+    boolean, default false. A known switch with a value that is not a boolean (or a block that is
+    not an object) is refused at startup. A key this Party does not know is logged as a warning and
+    ignored, so a config that names a switch from a newer Party does not stop a rollback.
+    `python3 -m avrana.contracts.party_config --check` applies the same rules."""
+    switches, problems, warnings = party_config.check_session_recovery(conf)
+    for warning in warnings:
+        log.warning('party-core config: %s', warning)
+    if problems:
+        raise SystemExit('party-core config: ' + '; '.join(problems))
+    return switches
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--config', required=True, help='JSON: hosts, origins, devices, games')
@@ -616,7 +690,9 @@ def main(argv=None):
                                           packages=conf.get('packages'))
     except registry.RegistryError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
-    service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True))
+    recovery = recovery_config(conf)
+    service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True),
+                           close_lost_game=recovery['close_lost_game'])
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True),
                  conf.get('game_origins'))
     extra, internal = sessions.routes(service, endpoints)

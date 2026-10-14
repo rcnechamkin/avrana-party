@@ -195,6 +195,50 @@ newline passed; those two patterns now end in `\Z`. Its game-id and participant 
 `$` on purpose: the first is followed by an equality check, and the second drives the scan that
 keeps a participant id outside the roster out of game data, which a stricter pattern would loosen.
 
+## Session recovery: a game that stays down (AVR-33)
+
+One key under `session_recovery` in `party-core.json` (spelled out in the example file). It is a
+boolean; any other value (or a block that is not an object) stops the service at startup. A key this
+Party does not know is logged as a warning naming it and ignored, so a config written for a newer
+Party still starts an older one after a rollback. `python3 -m avrana.contracts.party_config --check`
+applies the same rules (it fails on a bad value, warns about an unknown key). Nothing here adds a message, a field or a route to the session
+protocol: the check is a connection, and the closure uses the outcome v0 already has.
+
+| Key | Default | What it does |
+|---|---|---|
+| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s and never two at once, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released, and a best-effort signed `end` sent afterwards off the request thread. A miss is stamped when its check started. The window is 10 s, or 3 x the connect timeout + 2 s when that is longer (17 s at the default 5 s), so that three checks that each waited out a full timeout can still add up. Three misses close the round **within** that window, not after it: a game that refuses connections outright (nothing listening) is closed after about 4 s (checks at 0, 2 and 4 s); one that leaves connections hanging, after the third timed-out check (about 15 s at 5 s). A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and `session.reason` below does not exist. |
+
+It is off because it changes what the appliance does to a running round, and the owner has not
+decided to turn it on.
+
+**What triggers the check.** Only a ticket request for the ACTIVE session, at most one check per 2 s.
+Nothing runs on a timer, so one idle follower never triggers it. In practice a game page that cannot
+reach its game keeps asking (each reconnect fetches a ticket) and a phone being sent into the game
+asks too; three attempts a few seconds apart, from one phone or several, are enough. If nobody tries
+to enter the game the session stays `active` until someone does or the host ends it (End, or the
+host's way home, `POST /party/api/lobby`, which works whatever the game answers).
+
+**`session.reason` on `/party/api/state`.** An additive key of `session`, present only when
+`close_lost_game` is on: `"game_lost"` after the closure above, `null` for every other close. With
+the switch off the key does not exist. The current shell ignores it (`web/party/app.js` has no
+branch for it; the phone simply goes home because `location` and `nav` do). The UI contract for
+showing "the game stopped" is AVR-339; see
+[proposals/2026-10-12-session-probe.md](proposals/2026-10-12-session-probe.md) section 4.
+
+**Side effect of the connection check.** For a socket-activated native game
+(`deploy/games/avrana-game@.socket`) systemd accepts the connection while the process is down and
+starts the unit, as the phone's own connection would. That process holds no session, so it answers
+and refuses tickets: the session is not closed and this is the restarted-game case, not a lost game.
+The check finds a TCP game that is down, or a native game whose socket is gone (for instance after
+systemd's start limit stopped it). It does not find one that restarted; only the proposed `state`
+probe would.
+
+**Not built (owner decisions, AVR-33).** Two further behaviours were written on branch
+`fix/avr-33-session-recovery` (3875b7c) and are not in this source: reading an `end` refused with the
+reason token `session` as "ended" (an undeclared convention of the games' replies), and a durable
+record of the active session that a restarted Party Core ends at startup (persistence that ADR 0006
+and ADR 0016 section 8 do not provide for). The proposal names both and the options.
+
 ## Not declared here
 
 Player identity (Party never sends device or member ids to a game), chat transport, the shared

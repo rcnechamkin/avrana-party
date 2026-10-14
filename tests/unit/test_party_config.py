@@ -131,6 +131,30 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn('bluff.max_players', err)
 
+    def check_with_recovery(self, block):
+        with open(EXAMPLE, encoding='utf-8') as f:
+            conf = json.load(f)
+        conf['session_recovery'] = block
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'party-core.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(conf, f)
+            return self.run_cli('--check', path)
+
+    def test_check_refuses_what_the_service_would_refuse_in_session_recovery(self):
+        """The documented pre-restart check catches a session_recovery block the service refuses (AVR-33)."""
+        for bad in ({'close_lost_game': 'yes'}, {'close_lost_game': 1}, ['close_lost_game'], 'on'):
+            with self.subTest(bad=bad):
+                code, _, err = self.check_with_recovery(bad)
+                self.assertEqual(code, 1)
+                self.assertIn('session_recovery', err)
+
+    def test_check_warns_about_an_unknown_session_recovery_key_and_passes(self):
+        code, out, err = self.check_with_recovery({'close_lost_game': True, 'end_orphan_on_start': True})
+        self.assertEqual(code, 0, err)
+        self.assertIn("warning: session_recovery: unknown key 'end_orphan_on_start' ignored", err)
+        self.assertIn('agree with their contracts', out)
+
 
 if __name__ == '__main__':
     unittest.main()

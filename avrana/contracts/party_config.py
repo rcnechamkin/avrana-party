@@ -137,6 +137,31 @@ def check_game_origins(conf):
     return problems
 
 
+RECOVERY_DEFAULTS = {'close_lost_game': False}      # session_recovery switches (AVR-33): name -> default
+
+
+def check_session_recovery(conf):
+    """(switches, problems, warnings) for the config's `session_recovery` block, exactly as Party
+    Core reads it (avrana.party.service.recovery_config). A known switch must be a boolean, and the
+    block an object: anything else is a problem and the service refuses to start. A key it does not
+    know is a warning and is ignored, so a config written for a newer Party (a switch added later)
+    still starts an older one after a rollback; the warning names the key, so a typo is visible."""
+    block = conf.get('session_recovery', {})
+    switches = dict(RECOVERY_DEFAULTS)
+    if not isinstance(block, dict):
+        return switches, ['session_recovery: an object of booleans named ' + ', '.join(RECOVERY_DEFAULTS)], []
+    problems, warnings = [], []
+    for key in sorted(block, key=str):
+        if key not in RECOVERY_DEFAULTS:
+            warnings.append(f'session_recovery: unknown key {key!r} ignored (this Party knows '
+                            + ', '.join(RECOVERY_DEFAULTS) + ')')
+        elif type(block[key]) is not bool:
+            problems.append(f'session_recovery.{key}: true or false, not {block[key]!r}')
+        else:
+            switches[key] = block[key]
+    return switches, problems, warnings
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -153,7 +178,10 @@ def main(argv=None):
         for problem in e.problems:
             print(f'{path}: {problem}', file=sys.stderr)
         return 1
-    problems = check_game_origins(conf)
+    _, recovery_problems, warnings = check_session_recovery(conf)
+    for warning in warnings:
+        print(f'{path}: warning: {warning}', file=sys.stderr)
+    problems = check_game_origins(conf) + recovery_problems
     for problem in problems:
         print(f'{path}: {problem}', file=sys.stderr)
     if problems:

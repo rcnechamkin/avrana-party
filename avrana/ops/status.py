@@ -27,6 +27,10 @@ Shape (docs/design/STATUS-ENDPOINT.md):
                   deployment whose smoke checks passed; what `ops/deploy.sh --rollback` returns to
     contract      versions Party implements (+ games_advertises from /api/games)
     services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
+    recovery      {units: {unit: {restarts, result, active_for_s}}, failed_game_units: [unit, ...]}: what
+                  systemd's own recovery did (AVR-33). A unit restarting after failures, one restarted
+                  less than RECENT_RESTART_S ago, one that hit its start limit and a failed native game
+                  unit or socket degrade; a unit that came back and stayed up is a note
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
                   (unavailable is never `ok`: the summary is `unknown` then, AVR-31)
     party_core    {ok, uptime_s, members, session}
@@ -99,6 +103,67 @@ def unit_state(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
     return state
 
 
+GAME_UNITS = 'avrana-game@*'      # native game instances and their sockets (ADR 0016 section 5)
+
+
+# An `active` unit that systemd restarted within this many seconds may be mid crash loop: one that
+# dies every ~2 s under RestartSec=3 is often sampled `active`. It degrades until it has stayed up.
+RECENT_RESTART_S = 60
+
+
+def unit_recovery(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S, clock=time.monotonic):
+    """{'restarts': NRestarts, 'result': Result, 'active_for_s': ...} from `systemctl show`, or None
+    when unobservable. NRestarts counts systemd's automatic restarts since the unit was last started
+    by hand (a deploy's restart sets it back to 0); Result is `success`, `exit-code`,
+    `start-limit-hit`, ... `active_for_s` is how long the unit has been in its current active spell:
+    ActiveEnterTimestampMonotonic is CLOCK_MONOTONIC in microseconds, the clock `time.monotonic()`
+    reads in seconds on Linux. None when the property is missing, 0 (never active) or unparseable."""
+    if platform.system() != 'Linux':
+        return None
+    try:
+        out = runner(['systemctl', 'show', '--property=NRestarts', '--property=Result',
+                      '--property=ActiveEnterTimestampMonotonic', unit],
+                     capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    facts = dict(line.partition('=')[::2] for line in out.stdout.decode('utf-8', 'replace').splitlines() if '=' in line)
+    try:
+        restarts = int(facts.get('NRestarts', ''))
+    except ValueError:
+        restarts = None
+    result = facts.get('Result') or None
+    if restarts is None and result is None:
+        return None
+    try:
+        entered_us = int(facts.get('ActiveEnterTimestampMonotonic', ''))
+    except ValueError:
+        entered_us = 0
+    active_for_s = max(0, int(clock() - entered_us / 1e6)) if entered_us > 0 else None
+    return {'restarts': restarts, 'result': result, 'active_for_s': active_for_s}
+
+
+def failed_units(pattern, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
+    """Names of units matching `pattern` that systemd has in the failed state ([] when none), or
+    None when unobservable."""
+    if platform.system() != 'Linux':
+        return None
+    try:
+        out = runner(['systemctl', 'list-units', '--all', '--state=failed', '--plain', '--no-legend',
+                      '--no-pager', pattern], capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode not in (0, None):
+        return None
+    names = []
+    for line in out.stdout.decode('utf-8', 'replace').splitlines():
+        fields = line.split()
+        if fields and fields[0] not in ('●', '*'):
+            names.append(fields[0])
+        elif len(fields) > 1:
+            names.append(fields[1])
+    return sorted(names)
+
+
 def _parse_enddate(text):
     """`notAfter=Dec 25 10:00:00 2026 GMT` (openssl x509 -enddate) as an aware datetime, or None."""
     text = text.strip()
@@ -133,6 +198,12 @@ class Probes:
 
     def unit_state(self, unit):
         return unit_state(unit, timeout=self.timeout)
+
+    def unit_recovery(self, unit):
+        return unit_recovery(unit, timeout=self.timeout)
+
+    def failed_units(self, pattern):
+        return failed_units(pattern, timeout=self.timeout)
 
     def certificate_not_after(self, path):
         """The notAfter instant as an aware datetime, or None when unreadable. On the appliance
@@ -292,6 +363,33 @@ def build_status(config=None, probes=None, party_core=None, now=None):
             notes.append(f'{unit} is not installed (optional)')
         elif state in ('failed', 'inactive', 'not-installed'):
             reasons.append(f'{unit} is {state.replace("-", " ")}')
+    # What systemd's own recovery did (AVR-33). A crash loop under Restart=on-failure with
+    # RestartSec=3 never reaches the default start limit, so `is-active` says `activating`, not
+    # `failed`: without NRestarts it would look like a unit that is merely starting.
+    recovery_of = getattr(probes, 'unit_recovery', lambda unit: None)
+    restarts = {}
+    for unit, state in services.items():
+        facts = recovery_of(unit) if state not in ('not-installed', 'unavailable') else None
+        if facts is None:
+            continue
+        restarts[unit] = facts
+        n = facts.get('restarts') or 0
+        if facts.get('result') == 'start-limit-hit':
+            reasons.append(f'{unit} stopped restarting (start limit hit); see docs/runbooks/service-recovery.md')
+        elif state == 'activating' and n > 0:      # between automatic restarts
+            reasons.append(f'{unit} is restarting after failures ({n} automatic restarts)')
+        elif state == 'active' and n > 0:
+            up = facts.get('active_for_s')
+            if not isinstance(up, int) or up < RECENT_RESTART_S:
+                # Restarted and not yet proven stable (or its uptime cannot be read: fail safe), so a
+                # crash loop sampled between crashes is not recorded as a good deploy.
+                since = f'up {up} s' if isinstance(up, int) else 'uptime unreadable'
+                reasons.append(f'{unit} restarted recently after failures ({n} automatic restarts, {since})')
+            else:
+                notes.append(f'{unit} came back after {n} automatic restart(s) since it was last started')
+    failed_games = getattr(probes, 'failed_units', lambda pattern: [])(GAME_UNITS)
+    for unit in failed_games or []:
+        reasons.append(f'{unit} is failed; see docs/runbooks/service-recovery.md')
     web = probes.web_release(cfg['web_root'])
     # One deployment unit (AVR-271): the web build must be the deployed Party commit, and the
     # installed nginx site file must be that commit's. Either drift degrades the appliance.
@@ -336,7 +434,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         except Exception:  # the status page must not take the party down
             core = {'ok': False}
             reasons.append('party core view failed')
-    unknown = (any(s == 'unavailable' for s in services.values()) or deployed is None
+    unknown = (any(s == 'unavailable' for s in services.values()) or deployed is None or failed_games is None
                or certificate['status'] == 'unavailable' or nginx_site == 'unavailable')
     summary = 'degraded' if [r for r in reasons if 'unavailable' not in r and 'no deployment' not in r] else (
         'unknown' if unknown else 'ok')
@@ -355,6 +453,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
             'party_sha', 'games_sha', 'smoke_at', 'recorded_at', 'nginx_site_sha256')},
         'contract': dict(contract, games_advertises=provider['integration']),
         'services': services,
+        'recovery': {'units': restarts, 'failed_game_units': failed_games},
         'certificate': certificate,
         'party_core': core,
         'games_provider': provider,
