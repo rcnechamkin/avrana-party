@@ -165,7 +165,7 @@
       ],
       "redistribution": "embed-ok",
       "commercial_blocker": false,
-      "note": "30 static SVG scenes exported from the Games repository (web/gameart.js). 29 are unmodified drawings from upstream LAN Games by BEACNpool (MIT, Copyright (c) 2026 BEACNpool); bluff.svg is Avrana-authored under the same MIT terms. Served as build-time copies in web/party/art/. Keep the copyright line and licence text in docs/references/LAN-GAMES-NOTICE.md.",
+      "note": "30 static SVG scenes exported from the Games repository (web/gameart.js). 29 are unmodified drawings from upstream LAN Games by BEACNpool (MIT, Copyright (c) 2026 BEACNpool); bluff.svg is Avrana-authored; its licence awaits the owner's first-party licence decision. Served as build-time copies in web/party/art/. Keep the copyright line and licence text in docs/references/LAN-GAMES-NOTICE.md.",
       "paths": [
         "assets/vendor/lan-games-art"
       ]
