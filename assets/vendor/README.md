@@ -11,7 +11,7 @@ The mapping from game to artwork is `contracts/artwork.json`.
 | What | each LAN Games title's GameArt scene: the same drawing its hub card and join screen use |
 | Source | the games repository (`rcnechamkin/avrana-party-games`): `web/gameart.js` (drawings) + `provider/catalog.json` (accents), exported by `ops/export_game_art.mjs` |
 | Form | static, square (viewBox `0 50 300 300`), self-contained SVG: presentation attributes only, no styles, scripts, fonts or remote references; frozen (no animation) |
-| License | first-party project artwork; same terms as the games repository |
+| License | MIT. 29 of the 30 scenes are LAN Games' own drawings (`web/gameart.js`, Copyright (c) 2026 BEACNpool), carried unmodified through the Games fork; only `bluff.svg` was written for Avrana Party Games. Licence text and copyright line: `docs/references/LAN-GAMES-NOTICE.md` |
 | Refresh | in the games checkout: `node ops/export_game_art.mjs ../avrana-party/assets/vendor/lan-games-art`; to check: add `--check`. Then `npm run build:art` here |
 
 ## `kenney-board-game-icons/`: Kenney icons where they genuinely depict the game
