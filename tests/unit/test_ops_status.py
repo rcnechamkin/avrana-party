@@ -346,6 +346,125 @@ class Document(unittest.TestCase):
         self.assertEqual(cfg['units'], status.DEFAULT_CONFIG['units'])
 
 
+class RecoveryProbes(FakeProbes):
+    """FakeProbes plus what systemd's own recovery did (AVR-33)."""
+
+    def __init__(self, *a, recovery=None, failed=(), **k):
+        super().__init__(*a, **k)
+        self.recovery, self.failed = recovery or {}, failed
+
+    def unit_recovery(self, unit):
+        return self.recovery.get(unit, {'restarts': 0, 'result': 'success'})
+
+    def failed_units(self, pattern):
+        self.pattern = pattern
+        return None if self.failed is None else list(self.failed)
+
+
+class FailedRecovery(unittest.TestCase):
+    """Health exposes recovery that did not work (AVR-33): a crash loop, a start limit, a failed
+    native game; a unit that came back is a note, so a deploy's smoke check is not failed by it."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.manifest = Path(self.temp.name) / 'deployment.json'
+        manifest.write(self.manifest, sample())
+        self.cfg = {'manifest': str(self.manifest), 'party_checkout': '/p', 'games_checkout': '/g',
+                    'units': ['avrana-party-core', 'avranaparty-arcade', 'nginx']}
+
+    def build(self, **kw):
+        probes = RecoveryProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}, **kw)
+        return status.build_status(self.cfg, probes, now=NOW), probes
+
+    def test_a_healthy_appliance_stays_ok_and_reports_zero_restarts(self):
+        doc, probes = self.build()
+        self.assertEqual(doc['summary'], {'state': 'ok', 'reasons': [], 'notes': []})
+        self.assertEqual(doc['recovery']['units']['nginx'], {'restarts': 0, 'result': 'success'})
+        self.assertEqual(doc['recovery']['failed_game_units'], [])
+        self.assertEqual(probes.pattern, 'avrana-game@*')
+
+    def test_a_crash_loop_that_never_reaches_the_start_limit_degrades(self):
+        doc, _ = self.build(units={'avranaparty-arcade': 'activating'},
+                            recovery={'avranaparty-arcade': {'restarts': 7, 'result': 'exit-code'}})
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertIn('avranaparty-arcade is restarting after failures (7 automatic restarts)', doc['summary']['reasons'])
+
+    def test_a_unit_that_is_merely_starting_is_not_a_fault(self):
+        doc, _ = self.build(units={'nginx': 'activating'})
+        self.assertEqual(doc['summary']['state'], 'ok')
+
+    def test_a_start_limit_is_named_with_where_to_look(self):
+        doc, _ = self.build(units={'avranaparty-arcade': 'failed'},
+                            recovery={'avranaparty-arcade': {'restarts': 4, 'result': 'start-limit-hit'}})
+        reasons = doc['summary']['reasons']
+        self.assertIn('avranaparty-arcade is failed', reasons)
+        self.assertIn('avranaparty-arcade stopped restarting (start limit hit); see docs/runbooks/service-recovery.md',
+                      reasons)
+
+    def test_a_unit_that_came_back_is_a_note_not_a_fault(self):
+        doc, _ = self.build(recovery={'avrana-party-core': {'restarts': 2, 'result': 'success'}})
+        self.assertEqual(doc['summary']['state'], 'ok')
+        self.assertEqual(doc['summary']['notes'],
+                         ['avrana-party-core came back after 2 automatic restart(s) since it was last started'])
+
+    def test_a_failed_native_game_or_its_socket_degrades_and_names_only_that_game(self):
+        doc, _ = self.build(failed=['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertEqual(doc['recovery']['failed_game_units'],
+                         ['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
+        self.assertIn('avrana-game@checkers.socket is failed; see docs/runbooks/service-recovery.md',
+                      doc['summary']['reasons'])
+        self.assertEqual(doc['services'], {'avrana-party-core': 'active', 'avranaparty-arcade': 'active',
+                                           'nginx': 'active'}, 'the other services are untouched')
+
+    def test_game_units_that_cannot_be_listed_are_unknown_never_ok(self):
+        doc, _ = self.build(failed=None)
+        self.assertEqual(doc['summary']['state'], 'unknown')
+
+    def test_an_uninstalled_unit_is_not_asked_about(self):
+        doc, _ = self.build(units={'nginx': 'not-installed'})
+        self.assertNotIn('nginx', doc['recovery']['units'])
+
+
+class RecoveryProbeParsing(unittest.TestCase):
+    """The real probes against a scripted `systemctl` (no systemd needed)."""
+
+    def run_with(self, stdout, returncode=0):
+        calls = []
+
+        def runner(argv, capture_output, timeout):
+            calls.append(argv)
+            return mock.Mock(stdout=stdout.encode(), returncode=returncode)
+        return runner, calls
+
+    def test_nrestarts_and_result_are_read(self):
+        runner, calls = self.run_with('NRestarts=3\nResult=start-limit-hit\n')
+        with mock.patch.object(status.platform, 'system', return_value='Linux'):
+            self.assertEqual(status.unit_recovery('avranaparty-arcade', runner=runner),
+                             {'restarts': 3, 'result': 'start-limit-hit'})
+        self.assertEqual(calls[0][:2], ['systemctl', 'show'])
+
+    def test_unreadable_output_or_no_systemd_is_none(self):
+        runner, _ = self.run_with('')
+        with mock.patch.object(status.platform, 'system', return_value='Linux'):
+            self.assertIsNone(status.unit_recovery('x', runner=runner))
+        with mock.patch.object(status.platform, 'system', return_value='Windows'):
+            self.assertIsNone(status.unit_recovery('x'))
+            self.assertIsNone(status.failed_units('avrana-game@*'))
+
+    def test_failed_units_are_listed_by_name(self):
+        out = ('avrana-game@checkers.service loaded failed failed Avrana native game (checkers)\n'
+               'avrana-game@checkers.socket  loaded failed failed Avrana native game socket (checkers)\n')
+        runner, calls = self.run_with(out)
+        with mock.patch.object(status.platform, 'system', return_value='Linux'):
+            self.assertEqual(status.failed_units('avrana-game@*', runner=runner),
+                             ['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
+            self.assertEqual(status.failed_units('avrana-game@*', runner=self.run_with('')[0]), [])
+            self.assertIsNone(status.failed_units('avrana-game@*', runner=self.run_with('', returncode=1)[0]))
+        self.assertIn('--state=failed', calls[0])
+
+
 class LiveRoute(unittest.TestCase):
     """GET /party/api/status through the real HTTP handler: Host guard applies, no identity needed."""
 
