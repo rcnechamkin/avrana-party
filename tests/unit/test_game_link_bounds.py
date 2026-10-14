@@ -361,39 +361,15 @@ class WhatAGamesAnswerMeans(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 1.5)
 
 
-class NotHeldAndReachable(unittest.TestCase):
-    """An answer that is not what the link expects is a failure, never an exception; and a game that
-    says it holds no such session has nothing left to stop (a Games server that restarted)."""
+class Reachable(unittest.TestCase):
+    """The connection check behind session_recovery.close_lost_game (AVR-33): a connection only."""
 
-    def link(self, script):
-        server = raw_server(script)
-        self.addCleanup(server.close)
-        url = f'http://127.0.0.1:{server.getsockname()[1]}/games/drip'
-        return sessions.HttpGameLink({'drip': sessions.GameEndpoint('drip', url, KEY)}, timeout=2.0)
-
-    def test_a_game_that_holds_no_such_session_has_ended_it_in_both_refusal_shapes(self):
-        for status, body in ((403, {'ok': False, 'error': 'bad_message:session'}),            # the Games server
-                             (403, {'ok': False, 'message': 'Refused.', 'reason': 'session'}),   # GameSide games
-                             (409, {'ok': False, 'message': 'Another session is running.', 'reason': 'session'})):
-            with self.subTest(body=body):
-                link = self.link(says(status, body))
-                self.assertEqual(link.end_outcome(Session), 'not_held')
-                self.assertTrue(link.end(Session))
-
-    def test_other_refusals_and_silence_are_not_an_end(self):
-        for status, body in ((403, {'ok': False, 'error': 'bad_message:signature'}),
-                             (200, {'ok': False, 'message': 'The game did not stop.'}),
-                             (500, {})):
-            with self.subTest(body=body):
-                link = self.link(says(status, body))
-                self.assertEqual(link.end_outcome(Session), 'refused')
-                self.assertFalse(link.end(Session))
-        listener = raw_server(lambda c: None)
-        port = listener.getsockname()[1]
-        listener.close()
+    def test_a_port_nobody_listens_on_is_not_reachable(self):
+        with socket.socket() as probe:                # a port that was free a moment ago, no listener
+            probe.bind(('127.0.0.1', 0))
+            port = probe.getsockname()[1]
         link = sessions.HttpGameLink({'drip': sessions.GameEndpoint('drip', f'http://127.0.0.1:{port}', KEY)},
                                      timeout=1.0)
-        self.assertEqual(link.end_outcome(Session), 'unreachable')
         self.assertFalse(link.reachable(Session))
 
     def test_a_listening_game_is_reachable(self):
@@ -402,6 +378,9 @@ class NotHeldAndReachable(unittest.TestCase):
         link = sessions.HttpGameLink({'drip': sessions.GameEndpoint(
             'drip', f'http://127.0.0.1:{listener.getsockname()[1]}', KEY)}, timeout=1.0)
         self.assertTrue(link.reachable(Session))
+
+    def test_a_game_with_no_endpoint_is_not_reachable(self):
+        self.assertFalse(sessions.HttpGameLink({}).reachable(Session))
 
 
 class Stalling(http.server.BaseHTTPRequestHandler):

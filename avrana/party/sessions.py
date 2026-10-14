@@ -178,16 +178,6 @@ class Reply:
         text = self.body.get('message')
         return text if self.answered and isinstance(text, str) else None
 
-    @property
-    def not_held(self):
-        """The game answered, and says it holds no such session (Invalid('session') in the shared
-        protocol code). The two refusal shapes games use today are both read; they are a convention
-        of the games, not a declared field of v0: {"reason": "session"} and
-        {"error": "bad_message:session"}. An `end` answered like this has nothing left to reset."""
-        return (self.answered and self.status in (403, 409)
-                and (self.body.get('reason') == 'session' or self.body.get('error') == 'bad_message:session'))
-
-
 def _exchange(conn, path, data, seconds, headers):
     """One POST with ONE deadline: `seconds` on the monotonic clock from before the connection is
     made. Every wait on the socket, the headers' as much as the body's, is cut to what is left
@@ -228,14 +218,11 @@ class HttpGameLink:
     """Implements service.PartyService's GameLink with protocol messages. Every call has one
     deadline (`_exchange`) and a bounded reply; the service makes none of them under its lock."""
 
-    def __init__(self, endpoints, timeout=5.0, share=False, end_not_held_is_ended=True):
+    def __init__(self, endpoints, timeout=5.0, share=False):
         # game_id -> GameEndpoint. With share=True the caller's own dict is used, so a registry
         # reload (avrana.party.registry.apply) changes the link and the session routes together.
         self.endpoints = endpoints if share else dict(endpoints)
         self.timeout = timeout
-        # AVR-33 switch session_recovery.end_not_held_is_ended: an `end` the game refuses with the
-        # reason token "session" (see Reply.not_held) counts as ended. False: only {"ok": true} does.
-        self.end_not_held_is_ended = end_not_held_is_ended
 
     def _post(self, url, message, timeout=None, socket_path=None):
         """POST {"message": …} to `url`: loopback TCP at its address, or, with `socket_path`, that
@@ -263,31 +250,18 @@ class HttpGameLink:
         r = self._post(ep.url + LAUNCH_PATH, msg, ep.timeout, ep.socket_path)
         return r.ok, (None if r.ok else r.message or r.detail or 'The game refused to start.')
 
-    def end_outcome(self, session):
-        """What an `end` came to: 'ended' (the game reset), 'not_held' (the game answered that it
-        holds no such session: nothing to reset), 'refused' (it answered otherwise: it did not
-        stop) or 'unreachable' (no usable answer)."""
+    def end(self, session):
         ep = self.endpoints.get(session.game_id)
         if ep is None:
-            return 'unreachable'
+            return False
         msg = protocol.end_message(ep.key, ep.game_id, session.id)
-        r = self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
-                       ep.socket_path)
-        if r.ok:
-            return 'ended'
-        if r.not_held:
-            return 'not_held'
-        return 'refused' if r.answered else 'unreachable'
-
-    def end(self, session):
-        """True when the game is not running this session any more: it reset, or it says it never
-        held it (a game that restarted lost its session; there is nothing left to stop)."""
-        outcome = self.end_outcome(session)
-        return outcome == 'ended' or (outcome == 'not_held' and self.end_not_held_is_ended)
+        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
+                          ep.socket_path).ok
 
     def reachable(self, session, seconds=None):
         """Whether a connection to the session's game is accepted: True or False, or None when
-        this system cannot tell (no Unix sockets). A connection only; no message is sent.
+        this system cannot tell (no Unix sockets). A connection only; no message is sent, so this
+        adds nothing to the session protocol (AVR-33, used only with session_recovery.close_lost_game).
 
         The wait is the game's own link timeout (the grant's `timeout`, else the link's 5 s), the
         time a launch is given: a connection to a loopback or Unix socket is refused at once when
@@ -295,10 +269,11 @@ class HttpGameLink:
         loaded by the arcade must not turn a slow accept into a "miss".
 
         Side effect: for a socket-activated native game (deploy/games/avrana-game@.socket) systemd
-        accepts the connection while the process is down and STARTS the unit. That process holds no
-        session, so it answers and refuses the tickets: the session is not closed and this is
-        scenario 1, not a lost game. The check therefore finds a game whose socket is gone, or
-        whose unit cannot start; it does not find one that restarted."""
+        accepts the connection while the process is down and STARTS the unit, exactly as the phone's
+        own connection would. That process holds no session, so it answers and refuses the tickets:
+        the session is not closed. The check therefore finds a game whose socket is gone (for
+        instance after systemd's start limit stopped it), or a TCP game that is down; it does not
+        find one that restarted."""
         ep = self.endpoints.get(session.game_id)
         if ep is None:
             return False

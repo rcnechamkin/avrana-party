@@ -8,9 +8,7 @@
   "secure_cookie": true,
   "devices": "/var/lib/avrana-party-core/devices.json",
   "session_recovery": {
-    "end_orphan_on_start": false,
-    "close_lost_game": false,
-    "end_not_held_is_ended": true
+    "close_lost_game": false
   },
   "games": {
     "bluff": {

@@ -195,35 +195,26 @@ newline passed; those two patterns now end in `\Z`. Its game-id and participant 
 `$` on purpose: the first is followed by an equality check, and the second drives the scan that
 keeps a participant id outside the roster out of game data, which a stricter pattern would loosen.
 
-## Session recovery switches and an observed convention (AVR-33)
+## Session recovery: a game that stays down (AVR-33)
 
-Three keys under `session_recovery` in `party-core.json` (the example file spells all of them out).
-Each is a boolean; anything else, or another key, stops the service at startup.
+One key under `session_recovery` in `party-core.json` (spelled out in the example file). It is a
+boolean; any other value, or any other key, stops the service at startup, so a typo never leaves a
+switch silently at its default. Nothing here adds a message, a field or a route to the session
+protocol: the check is a connection, and the closure uses the outcome v0 already has.
 
 | Key | Default | What it does |
 |---|---|---|
-| `end_orphan_on_start` | **false** | Party Core keeps a small durable record (`active-session.json` beside `devices.json`, or the path in `session_record`; `""`/false there means no record at all) of the sessions it started and has not seen the game reset. At startup it sends each game the signed `end` for them, five tries two seconds apart, then drops the entry. It stops a game (and the arcade/PS1 runtime) that a restarted Party Core would otherwise leave running. With it off nothing is written or sent. |
-| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released. A miss is stamped when its check started. The window is 10 s, or 3 x the connect timeout + 2 s when that is longer (17 s at the default 5 s), so that three checks that each waited out a full timeout can still add up. A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and the key below does not exist. |
-| `end_not_held_is_ended` | **true** | An `end` the game refuses with the reason token below counts as ended, so the host's End and switch work after the game restarted. false: only `{"ok": true}` confirms, as before. |
+| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released, and a best-effort signed `end` sent afterwards off the request thread. A miss is stamped when its check started. The window is 10 s, or 3 x the connect timeout + 2 s when that is longer (17 s at the default 5 s), so that three checks that each waited out a full timeout can still add up. A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and `session.reason` below does not exist. |
 
-Why the first two are off: they change what the appliance does to a running game, and the owner
-has not decided. With both off, the branch behaves as `fix/avr-33-bounded-link` does except that
-`end_not_held_is_ended` (default on) is also in effect; set it false for exactly that behaviour.
+It is off because it changes what the appliance does to a running round, and the owner has not
+decided to turn it on.
 
 **What triggers the check.** Only a ticket request for the ACTIVE session, at most one check per 2 s.
 Nothing runs on a timer, so one idle follower never triggers it. In practice a game page that cannot
 reach its game keeps asking (each reconnect fetches a ticket) and a phone being sent into the game
 asks too; three attempts a few seconds apart, from one phone or several, are enough. If nobody tries
-to enter the game the session stays `active` until someone does or the host ends it.
-
-**Observed convention (not a declared field of v0).** `end_not_held_is_ended` reads exactly these
-two refusals, matched on the structured token and never on free text:
-
-- `{"ok": false, "message": "Refused.", "reason": "session"}` with status 403 or 409: `avrana/party/managed.py` lines 88, 111 and 114 (the arcade and PS1 runtime), `avrana/games/standin/game.py` line 155, Checkers `checkers/server.py` line 171 (Games `origin/main` 2ee23e6; the reason is `str(Invalid)`, which is `session` when the session is not the one held).
-- `{"ok": false, "error": "bad_message:session"}` with status 403: Games `server.py` line 185 (2ee23e6).
-
-Both come from the shared `Invalid("session")` of the vendored protocol code. A game that rewords its
-refusal silently reverts to the old behaviour (End unconfirmed, a switch refused); nothing fails.
+to enter the game the session stays `active` until someone does or the host ends it (End, or the
+host's way home, `POST /party/api/lobby`, which works whatever the game answers).
 
 **`session.reason` on `/party/api/state`.** An additive key of `session`, present only when
 `close_lost_game` is on: `"game_lost"` after the closure above, `null` for every other close. With
@@ -234,10 +225,17 @@ showing "the game stopped" is AVR-339; see
 
 **Side effect of the connection check.** For a socket-activated native game
 (`deploy/games/avrana-game@.socket`) systemd accepts the connection while the process is down and
-starts the unit. That process holds no session, so it answers and refuses tickets: the session is
-not closed and this is the restarted-game case, not a lost game. The check finds a game whose
-socket is gone or whose unit cannot start. It does not find one that restarted; only the proposed
-`state` probe would.
+starts the unit, as the phone's own connection would. That process holds no session, so it answers
+and refuses tickets: the session is not closed and this is the restarted-game case, not a lost game.
+The check finds a TCP game that is down, or a native game whose socket is gone (for instance after
+systemd's start limit stopped it). It does not find one that restarted; only the proposed `state`
+probe would.
+
+**Not built (owner decisions, AVR-33).** Two further behaviours were written on branch
+`fix/avr-33-session-recovery` (3875b7c) and are not in this source: reading an `end` refused with the
+reason token `session` as "ended" (an undeclared convention of the games' replies), and a durable
+record of the active session that a restarted Party Core ends at startup (persistence that ADR 0006
+and ADR 0016 section 8 do not provide for). The proposal names both and the options.
 
 ## Not declared here
 

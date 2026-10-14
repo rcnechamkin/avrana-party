@@ -1,6 +1,8 @@
 """Party recovery and robustness (AVR-33): host actions as presence, a switch whose next game
-fails, a host who disappears mid-switch, the device store after a bad power cut, and the clock.
-T1: Party Core with an injected clock, PartyService with a scripted link, no sockets."""
+fails, a host who disappears mid-switch, the device store after a bad power cut, the clock, a game
+that stays down (session_recovery.close_lost_game), and five failure scenarios end to end.
+T1: Party Core with an injected clock and PartyService with a scripted link; T2 for the scenarios
+(real HTTP on loopback)."""
 import http.server
 import json
 import logging
@@ -11,7 +13,7 @@ import threading
 import time
 import unittest
 
-from avrana.party import core, identity, protocol, record, service, sessions
+from avrana.party import core, identity, protocol, service, sessions
 from avrana.party.protocol import Invalid
 
 from test_party_service import GAME_ORIGINS, HOST, ORIGIN, ServiceCase
@@ -342,114 +344,6 @@ class GameLostRules(unittest.TestCase):
         self.assertIsNone(pc2.view('device-1')['session']['reason'])
 
 
-class SessionRecordFile(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self.tmp.name, 'active-session.json')
-        self.rec = record.SessionRecord(self.path)
-        self.a, self.b = 'session-' + 'a' * 32, 'session-' + 'b' * 32
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_what_was_written_is_read_back_and_clear_removes_it(self):
-        self.assertEqual(self.rec.read(), [])
-        self.rec.write(self.a, 'bluff')
-        self.assertEqual(self.rec.read(), [(self.a, 'bluff')])
-        self.assertEqual(os.listdir(self.tmp.name), ['active-session.json'])    # no temporary file left
-        self.rec.clear(self.a)
-        self.assertEqual(self.rec.read(), [])
-        self.assertEqual(os.listdir(self.tmp.name), [])
-        self.rec.clear(self.a)                                                   # and clearing twice is fine
-
-    def test_a_new_session_never_replaces_an_entry_that_has_not_been_processed(self):
-        self.rec.write(self.a, 'bluff')
-        self.rec.write(self.b, 'checkers')
-        self.assertEqual(self.rec.read(), [(self.a, 'bluff'), (self.b, 'checkers')])
-        self.rec.clear(self.a)                                  # a late confirmation of the older one
-        self.assertEqual(self.rec.read(), [(self.b, 'checkers')])
-        self.rec.clear(self.b)
-        self.assertEqual(self.rec.read(), [])
-
-    def test_only_the_newest_few_are_kept(self):
-        for i in range(record.MAX_KEPT + 3):
-            self.rec.write('session-' + str(i) * 32, 'bluff')
-        self.assertEqual(len(self.rec.read()), record.MAX_KEPT)
-        self.assertEqual(self.rec.read()[-1][0], 'session-' + str(record.MAX_KEPT + 2) * 32)
-
-    def test_a_write_and_a_clear_racing_each_other_never_lose_an_entry(self):
-        """clear(a) has read [a] and is about to save [] when write(b) comes in. Without one lock
-        around the read-modify-write, write(b) saves [a, b] and clear then saves [] over it."""
-        self.rec.write(self.a, 'bluff')
-        in_save, release, calls = threading.Event(), threading.Event(), []
-        real = self.rec._save
-
-        def save(entries):
-            calls.append(entries)
-            if len(calls) == 1:                    # the clear: hold it between its read and its save
-                in_save.set()
-                release.wait(5)
-            real(entries)
-        self.rec._save = save
-        clearing = threading.Thread(target=self.rec.clear, args=(self.a,))
-        writing = threading.Thread(target=self.rec.write, args=(self.b, 'bluff'))
-        clearing.start()
-        self.assertTrue(in_save.wait(5))
-        writing.start()
-        writing.join(0.3)                          # with the lock it waits here; without, it finishes
-        release.set()
-        clearing.join(5)
-        writing.join(5)
-        self.assertEqual(self.rec.read(), [(self.b, 'bluff')])
-
-    def test_a_file_that_is_not_ours_is_set_aside_and_the_record_starts_empty(self):
-        with open(self.path, 'w', encoding='utf-8') as f:
-            f.write('{"sess')
-        with self.assertLogs('avrana.party.record', level=logging.WARNING):
-            self.assertEqual(self.rec.read(), [])
-        names = os.listdir(self.tmp.name)
-        self.assertEqual([n for n in names if '.bad-' in n], [n for n in names])
-        self.assertEqual(len(names), 1)
-        self.rec.write(self.a, 'bluff')                   # and the next write is a clean file
-        self.assertEqual(self.rec.read(), [(self.a, 'bluff')])
-
-    def test_a_cut_short_or_foreign_file_is_ignored_not_fatal(self):
-        for bad in ('', '{"sess', 'not json', '[1]', '{"schema": "x"}',
-                    '{"schema": "%s", "sessions": [{"session": 1, "game": "g"}]}' % record.SCHEMA,
-                    '{"schema": "%s", "sessions": "x"}' % record.SCHEMA, '[' * 100000):
-            with self.subTest(bad=bad[:20]):
-                with open(self.path, 'w', encoding='utf-8') as f:
-                    f.write(bad)
-                with self.assertLogs('avrana.party.record', level=logging.WARNING):
-                    self.assertEqual(self.rec.read(), [])
-
-    def test_a_record_that_cannot_be_written_is_not_fatal(self):
-        gone = record.SessionRecord(os.path.join(self.tmp.name, 'missing', 'active-session.json'))
-        with self.assertLogs('avrana.party.record', level=logging.WARNING):
-            gone.write(self.a, 'bluff')
-        self.assertEqual(gone.read(), [])
-
-    def test_the_file_is_owner_only_and_on_disk_before_it_takes_its_name(self):
-        from unittest import mock
-        events = []
-        real_fsync, real_replace = os.fsync, os.replace
-        with mock.patch.object(os, 'fsync', lambda fd: (events.append('fsync'), real_fsync(fd))[1]), \
-                mock.patch.object(os, 'replace', lambda a, b: (events.append('replace'), real_replace(a, b))[1]):
-            self.rec.write(self.a, 'bluff')
-        self.assertEqual(events[:2], ['fsync', 'replace'])
-        if os.name == 'posix':
-            self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
-
-    def test_the_path_comes_from_the_config_or_sits_beside_the_device_file_or_is_switched_off(self):
-        self.assertEqual(service.session_record_path({'session_record': '/x/a.json', 'devices': '/d/devices.json'}),
-                         '/x/a.json')
-        self.assertEqual(service.session_record_path({'devices': os.path.join('d', 'devices.json')}),
-                         os.path.join('d', 'active-session.json'))
-        self.assertIsNone(service.session_record_path({}))
-        for off in ('', False, None):                     # named but empty: no record, no fallback
-            self.assertIsNone(service.session_record_path({'session_record': off, 'devices': '/d/devices.json'}))
-
-
 class SlowAccept(unittest.TestCase):
     """A game whose accept queue is full: each check waits out the whole connect timeout and misses.
     Injected clock, no sleeping."""
@@ -485,113 +379,25 @@ class SlowAccept(unittest.TestCase):
 
 
 class RecoveryConfig(unittest.TestCase):
-    def test_defaults_change_nothing_but_the_not_held_reading(self):
-        self.assertEqual(service.recovery_config({}), {'end_orphan_on_start': False, 'close_lost_game': False,
-                                                       'end_not_held_is_ended': True})
+    def test_the_default_changes_nothing(self):
+        self.assertEqual(service.recovery_config({}), {'close_lost_game': False})
         self.assertEqual(service.recovery_config({'session_recovery': {'close_lost_game': True}})['close_lost_game'], True)
 
-    def test_a_typo_or_a_non_boolean_is_refused_at_startup(self):
-        for bad in ({'close_lost': True}, {'close_lost_game': 'yes'}, {'end_orphan_on_start': 1}, [], 'on'):
+    def test_a_typo_a_non_boolean_or_an_unbuilt_switch_is_refused_at_startup(self):
+        # end_orphan_on_start and end_not_held_is_ended were proposed on fix/avr-33-session-recovery
+        # and wait for an owner decision: a config that names them must not start as if they worked
+        for bad in ({'close_lost': True}, {'close_lost_game': 'yes'}, {'end_orphan_on_start': True},
+                    {'end_not_held_is_ended': True}, [], 'on'):
             with self.subTest(bad=bad):
                 with self.assertRaises(SystemExit):
                     service.recovery_config({'session_recovery': bad})
 
     def test_the_example_config_spells_every_switch_out_with_its_default(self):
-        import json as _json
-        example = _json.load(open(os.path.join(os.path.dirname(__file__), '..', '..', 'deploy', 'party-core',
-                                               'party-core.example.json'), encoding='utf-8'))
+        path = os.path.join(os.path.dirname(__file__), '..', '..', 'deploy', 'party-core', 'party-core.example.json')
+        with open(path, encoding='utf-8') as f:
+            example = json.load(f)
         self.assertEqual(example['session_recovery'], service.RECOVERY_DEFAULTS)
         self.assertEqual(service.recovery_config(example), service.RECOVERY_DEFAULTS)
-
-
-class ScriptedLink:
-    """A link that answers `end` from a script, and says what it was asked."""
-
-    def __init__(self, *outcomes):
-        self.outcomes, self.asked = list(outcomes), []
-
-    def end_outcome(self, session):
-        self.asked.append((session.game_id, session.id))
-        return self.outcomes.pop(0) if len(self.outcomes) > 1 else self.outcomes[0]
-
-    def end(self, session):
-        return self.end_outcome(session) in ('ended', 'not_held')
-
-    def launch(self, session, roster):
-        return True, None
-
-
-class RecoverOrphan(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.rec = record.SessionRecord(os.path.join(self.tmp.name, 'active-session.json'))
-        self.rec.write('session-' + 'a' * 32, 'bluff')
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def svc(self, link, on=True):
-        return service.PartyService(identity.DeviceStore(None), {'bluff': BLUFF}, link, record=self.rec,
-                                    end_orphan_on_start=on)
-
-    def test_a_restarted_party_ends_the_session_it_forgot_and_drops_the_record(self):
-        link = ScriptedLink('ended')
-        self.assertEqual(self.svc(link).recover_orphan(sleep=lambda s: None), ['ended'])
-        self.assertEqual(link.asked, [('bluff', 'session-' + 'a' * 32)])
-        self.assertEqual(self.rec.read(), [])
-
-    def test_a_game_that_holds_nothing_or_refuses_is_done_with_too(self):
-        for outcome in ('not_held', 'refused'):
-            with self.subTest(outcome=outcome):
-                self.rec.write('session-' + 'a' * 32, 'bluff')
-                self.assertEqual(self.svc(ScriptedLink(outcome)).recover_orphan(sleep=lambda s: None), [outcome])
-                self.assertEqual(self.rec.read(), [])
-
-    def test_a_game_that_is_not_up_yet_is_tried_again_then_given_up_on(self):
-        link, waited = ScriptedLink('unreachable', 'unreachable', 'ended'), []
-        self.assertEqual(self.svc(link).recover_orphan(attempts=5, delay=2.0, sleep=waited.append), ['ended'])
-        self.assertEqual((len(link.asked), waited), (3, [2.0, 2.0]))
-        self.rec.write('session-' + 'a' * 32, 'bluff')
-        link, waited = ScriptedLink('unreachable'), []
-        self.assertEqual(self.svc(link).recover_orphan(attempts=4, delay=1.0, sleep=waited.append), ['unreachable'])
-        self.assertEqual((len(link.asked), len(waited)), (4, 3))
-        self.assertEqual(self.rec.read(), [])                       # it does not retry for ever, run after run
-
-    def test_nothing_happens_without_a_record(self):
-        self.rec.clear('session-' + 'a' * 32)
-        link = ScriptedLink('ended')
-        self.assertIsNone(self.svc(link).recover_orphan())
-        self.assertIsNone(service.PartyService(identity.DeviceStore(None), {'bluff': BLUFF}, link).recover_orphan())
-        self.assertEqual(link.asked, [])
-
-    def test_a_session_this_run_started_is_never_ended_as_an_orphan(self):
-        link = ScriptedLink('ended')
-        svc = self.svc(link)
-        svc.core.join('device-a', 'Ana')
-        s = svc.core.launch('device-a', 'bluff', svc.core.party.version)
-        self.rec.write(s.id, 'bluff')
-        self.rec.clear('session-' + 'a' * 32)
-        self.assertIsNone(svc.recover_orphan())
-        self.assertEqual(link.asked, [])
-
-    def test_with_the_switch_off_nothing_is_recorded_and_nothing_is_ended(self):
-        link = ScriptedLink('ended')
-        svc = self.svc(link, on=False)
-        self.assertIsNone(svc.record)
-        self.assertIsNone(svc.recover_orphan())
-        self.assertEqual(link.asked, [])
-        self.assertEqual(self.rec.read(), [('session-' + 'a' * 32, 'bluff')])   # and the file is untouched
-
-    def test_a_launch_racing_the_recovery_does_not_hide_the_orphan(self):
-        link = ScriptedLink('ended')
-        svc = self.svc(link)
-        svc.core.join('device-a', 'Ana')
-        s = svc.core.launch('device-a', 'bluff', svc.core.party.version)
-        svc._remember(s)                                         # the new launch writes its own entry
-        self.assertEqual([e[0] for e in self.rec.read()], ['session-' + 'a' * 32, s.id])
-        self.assertEqual(svc.recover_orphan(sleep=lambda x: None), ['ended'])
-        self.assertEqual(link.asked, [('bluff', 'session-' + 'a' * 32)])    # the orphan was ended, not the new one
-        self.assertEqual(self.rec.read(), [(s.id, 'bluff')])               # and the new session's entry stays
 
 
 # ---- the five scenarios, end to end (AVR-33) ------------------------------------------------------
@@ -670,7 +476,7 @@ class ScenarioRig(ServiceCase):
     (the game is a thread, so a crash is a stopped listener). Unix-socket variants of the link run on
     the Linux runner (test_game_link_bounds). Four phones: Ana (host), Ben, Cat, Dan."""
     game_shape = 'reason'
-    recovery = {'end_orphan_on_start': True, 'close_lost_game': True}     # the switches under test
+    close_lost_game = True                                              # the switch under test
 
     def setUp(self):
         super().setUp()
@@ -681,9 +487,7 @@ class ScenarioRig(ServiceCase):
         self.clock = Clock()
         self.clock.t = time.monotonic()
         self.svc.core.clock = self.clock
-        self.svc.core.close_lost_game = self.recovery['close_lost_game']
-        self.record_path = os.path.join(self.tmp.name, 'active-session.json')
-        self.svc.record = record.SessionRecord(self.record_path) if self.recovery['end_orphan_on_start'] else None
+        self.svc.core.close_lost_game = self.close_lost_game
         extra, internal = sessions.routes(self.svc, self.endpoints)       # the protocol routes, on the server
         handler = self.server.RequestHandlerClass                          # ServiceCase already runs
         handler.extra_routes.update(extra)
@@ -731,7 +535,7 @@ class ScenarioRig(ServiceCase):
 
     def restart_party(self):
         """Party Core restarts: devices persist (cookies), the party and its session do not."""
-        self.svc.core = core.PartyCore(self.clock, self.svc.core.games, close_lost_game=self.recovery['close_lost_game'])
+        self.svc.core = core.PartyCore(self.clock, self.svc.core.games, close_lost_game=self.close_lost_game)
         self.svc._probed = None
 
     ACTIVE = ('active', 'game', 'game', 'active', None, None)
@@ -742,9 +546,10 @@ class Scenarios(ScenarioRig):
 
     # ---- 1. Games (or a native game process) restarts while the session is ACTIVE ---------------------
     def test_1_a_restarted_game_leaves_a_party_that_still_says_active_until_the_host_ends_it(self):
-        """TODAY and after this change: Party Core cannot tell (the v0 contract has no way to ask a
-        game what it holds). Every phone is still sent to the game and the game refuses it. The
-        host's End recovers it, and now confirms instead of timing out."""
+        """Party Core cannot tell (the v0 contract has no way to ask a game what it holds). Every
+        phone is still sent to the game and the game refuses it. The host's End recovers the party;
+        it is not confirmed, because the game answers "no such session" (reading that as ended is an
+        owner decision, not built here)."""
         sid = self.launch()
         self.game.restart()                                   # lost current_sid
         self.everyone_sees(self.ACTIVE)
@@ -762,51 +567,49 @@ class Scenarios(ScenarioRig):
         status, v, _ = self.host_ends()
         self.assertEqual(status, 200)
         self.everyone_sees(self.HOME + ('ended', 'ended_by_host', None))
-        self.assertIs(self.svc.core.party.session.game_confirmed_end, True,
-                      'a game that says it holds no such session has nothing left to stop')
-        self.assertEqual(record.SessionRecord(self.record_path).read(), [])
+        self.assertIs(self.svc.core.party.session.game_confirmed_end, False)
         self.assertEqual(self.ticket('Ben')[0], 409)
         self.nothing_is_held()
         self.assertNotEqual(sid, None)
 
-    def test_1_after_a_games_restart_the_host_can_still_switch_games(self):
-        """Regression: End and a switch both ask the game to end the old session. A restarted game
-        answers "no such session"; that used to read as "did not stop", and a switch then refused
-        to start anything."""
-        for shape in ('reason', 'error'):                    # both refusal wordings in use today
-            with self.subTest(shape=shape):
-                self.game.shape = shape
-                old = self.launch()
-                self.game.restart()
-                _, v, _ = self.phones['Ana'].state()
-                status, v, _ = self.phones['Ana'].post('session/switch', {'game': 'bluff', 'if_version': v['version']})
-                self.assertEqual((status, v['state']), (200, 'active'), v)
-                new = v['session']['id']
-                self.assertNotEqual(new, old)
-                self.assertEqual(self.game.side.sid, new)
-                self.assertTrue(self.svc.core.party.session.state == 'active')
-                self.host_ends()
+    def test_1_after_a_games_restart_a_switch_stops_but_the_host_brings_everyone_home_and_starts_again(self):
+        """A switch asks the restarted game to end the old session; the refusal reads as "did not
+        stop", so nothing new starts (the safe reading). The host's way home (POST /party/api/lobby,
+        PR #122) and a fresh Start then recover the party without touching the game's service."""
+        old = self.launch()
+        self.game.restart()
+        _, v, _ = self.phones['Ana'].state()
+        status, v, _ = self.phones['Ana'].post('session/switch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual(status, 200)
+        self.assertEqual((v['state'], v['session']['id'], v['session']['detail']),
+                         ('lobby', old, 'The last game did not stop, so the next one did not start.'))
+        self.everyone_sees(self.HOME + ('ended', 'ended_by_host', None))
+        new = self.launch()
+        self.assertNotEqual(new, old)
+        self.assertEqual(self.game.side.sid, new)
+        self.nothing_is_held()
+
+    def test_1_the_hosts_way_home_works_while_the_game_is_down(self):
+        self.launch()
+        self.game.stop()
+        _, v, _ = self.phones['Ana'].state()
+        started = time.monotonic()
+        status, v, _ = self.phones['Ana'].post('lobby', {'if_version': v['version']})
+        self.assertEqual(status, 200)
+        self.assertLess(time.monotonic() - started, 5, 'the link gives up within its own deadline')
+        self.everyone_sees(self.HOME + ('ended', 'ended_by_host', None))
+        self.nothing_is_held()
 
     # ---- 2. Party Core restarts while the game is still running ---------------------------------------
-    def test_2_a_restarted_party_ends_the_session_it_forgot_and_phones_rejoin_a_clean_party(self):
-        """TODAY: the game keeps the old session until some host launches again. AFTER: the durable
-        record lets the restarted Party Core send that game the signed `end`; the game (and for the
-        arcade/PS1 their runtime) stops. In-memory party state is still lost: members, host and
-        roster are not restored; phones rejoin with their device cookie, and the first to rejoin is
-        the host."""
+    def test_2_a_restarted_party_is_clean_and_the_next_launch_replaces_what_the_game_still_holds(self):
+        """The party is memory-only (ADR 0006). The game keeps the old session until a host launches
+        it again; ending it at startup needs a durable record, which is an owner decision (ADR 0016
+        section 8), not built here. Phones rejoin with their device cookie; the first to rejoin is
+        host, which need not be the old host."""
         old = self.launch()
-        self.assertEqual(record.SessionRecord(self.record_path).read(), [(old, 'bluff')])
         _, held, _ = self.ticket('Ben')
         self.restart_party()
         self.assertEqual(self.game.side.sid, old, 'the game still holds it, nobody manages it')
-        started = time.monotonic()
-        self.assertEqual(self.svc.recover_orphan(sleep=lambda s: None), ['ended'])
-        self.assertLess(time.monotonic() - started, 3)
-        self.assertIsNone(self.game.side.sid, 'the game is clean')
-        with self.assertRaises(Invalid):
-            self.game.hello(held['ticket'])                   # an old ticket is dead
-        self.assertEqual(record.SessionRecord(self.record_path).read(), [])
-        # what a phone sees: not a member any more (the party is new), nothing running
         for name in self.phones:
             _, v, _ = self.phones[name].state()
             self.assertEqual((v['me'], v['state'], v['location']['at'], v['session']), (None, 'lobby', 'home', None))
@@ -819,29 +622,13 @@ class Scenarios(ScenarioRig):
         self.assertEqual(self.phones['Ana'].post('session/end', {'if_version': v['version']})[0], 403)
         self.everyone_sees(self.HOME + (None, None, None))
         self.assertEqual(self.ticket('Ben')[0], 409)          # no game on
+        _, v, _ = self.phones['Cat'].state()
+        status, v, _ = self.phones['Cat'].post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        self.assertEqual((status, v['state']), (200, 'active'))
+        self.assertEqual(self.game.side.sid, v['session']['id'], 'the launch replaced the orphan')
+        with self.assertRaises(Invalid):
+            self.game.hello(held['ticket'])                   # an old ticket is dead
         self.nothing_is_held()
-
-    def test_2_a_recovery_end_never_stops_a_newer_session(self):
-        old = self.launch()
-        self.restart_party()
-        for name in self.phones:
-            self.phones[name].post('join', {'name': name})
-        new = self.launch()                                   # the launch replaces the old session
-        self.assertEqual(self.game.side.sid, new)
-        record.SessionRecord(self.record_path).write(old, 'bluff')    # a stale entry, as a race leaves it
-        self.assertEqual(self.svc.recover_orphan(sleep=lambda s: None), ['not_held'])
-        self.assertEqual(self.game.side.sid, new, 'the game still holds the newer session')
-        self.assertEqual(self.seen('Dan'), self.ACTIVE)
-
-    def test_2_with_the_game_down_at_restart_the_party_gives_up_after_its_tries(self):
-        self.launch()
-        self.restart_party()
-        self.game.stop()
-        waited = []
-        self.assertEqual(self.svc.recover_orphan(attempts=3, delay=1.0, sleep=waited.append), ['unreachable'])
-        self.assertEqual(waited, [1.0, 1.0])
-        self.assertEqual(record.SessionRecord(self.record_path).read(), [])
-        self.game.start()                                     # whatever it holds, the next launch replaces
 
     # ---- 3. A native game process crashes mid-session ------------------------------------------------
     def test_3_a_game_that_stays_down_closes_the_session_for_everyone_after_a_few_misses(self):
@@ -918,7 +705,6 @@ class Scenarios(ScenarioRig):
     def test_4_the_host_returns_after_party_core_restarted_and_is_a_member_not_the_host(self):
         self.launch()
         self.restart_party()
-        self.svc.recover_orphan(sleep=lambda s: None)
         status, v, _ = self.phones['Ana'].state()
         self.assertEqual((status, v['me'], v['host']), (200, None, None))    # no member, and nobody is host
         self.phones['Ana'].post('join', {'name': 'Ana'})      # a phone with a profile does this on its own
@@ -952,7 +738,6 @@ class Scenarios(ScenarioRig):
     def test_5_followers_of_a_session_a_restarted_party_forgot_are_not_members_until_they_rejoin(self):
         self.launch()
         self.restart_party()
-        self.svc.recover_orphan(sleep=lambda s: None)
         for name in ('Ben', 'Cat', 'Dan'):
             status, body, _ = self.ticket(name)
             self.assertEqual((status, body['error']), (403, 'not_member'), name)
@@ -965,41 +750,9 @@ def sessions_probe_every():
     return service.PROBE_EVERY + 0.5
 
 
-class RefusalWording(ScenarioRig):
-    """A restarted Games server (BLUFF, EXPO) words its refusal differently from a GameSide game; the
-    host's End is confirmed by either, and by neither when the not-held reading is switched off."""
-
-    def end_after_restart(self):
-        self.launch()
-        self.game.restart()
-        self.host_ends()
-        return self.svc.core.party.session.game_confirmed_end
-
-    def test_both_wordings_confirm_the_hosts_end(self):
-        for shape in ('reason', 'error'):
-            with self.subTest(shape=shape):
-                self.game.shape = shape
-                self.assertIs(self.end_after_restart(), True)
-
-    def test_a_different_wording_is_not_read_as_not_held(self):
-        self.game.shape = 'prose'
-        self.assertIs(self.end_after_restart(), False)
-
-    def test_with_end_not_held_is_ended_off_the_old_behaviour_returns(self):
-        self.svc.link.end_not_held_is_ended = False
-        self.assertIs(self.end_after_restart(), False)
-
-
 class SwitchesOff(ScenarioRig):
-    """Both recovery switches at their defaults: the paths they guard behave as without them."""
-    recovery = {'end_orphan_on_start': False, 'close_lost_game': False}
-
-    def test_no_record_is_written_and_a_restarted_party_ends_nothing(self):
-        old = self.launch()
-        self.assertFalse(os.path.exists(self.record_path))
-        self.restart_party()
-        self.assertIsNone(self.svc.recover_orphan(sleep=lambda s: None))
-        self.assertEqual(self.game.side.sid, old)                    # the game keeps it, as before
+    """close_lost_game at its default: the path it guards behaves as without it."""
+    close_lost_game = False
 
     def test_a_game_that_stays_down_never_closes_the_session_and_is_never_probed(self):
         self.launch()
@@ -1011,7 +764,6 @@ class SwitchesOff(ScenarioRig):
             self.clock.advance(5)
         self.assertEqual(probes, [])
         self.assertEqual(self.seen('Ben'), self.ACTIVE)
-        self.assertNotIn('reason', self.phones['Ben'].state()[1]['session'])
         self.assertNotIn('reason', self.phones['Ben'].state()[1]['session'])
 
 
