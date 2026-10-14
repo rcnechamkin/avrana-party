@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from '@playwright/test';
 
 /**
  * Phones at one Party, for the suites that run against the dev server's real Party Core
@@ -8,8 +8,8 @@ import { expect, type APIRequestContext, type Browser, type BrowserContext, type
 
 export type Phone = { name: string; context: BrowserContext; page: Page };
 
-export async function phone(browser: Browser, name: string): Promise<Phone> {
-  const context = await browser.newContext();
+export async function phone(browser: Browser, name: string, options: BrowserContextOptions = {}): Promise<Phone> {
+  const context = await browser.newContext(options);
   await context.addInitScript((who) => {
     // A saved profile is who this phone is at the party; presence then is automatic.
     window.localStorage.setItem('wc-name', who);
