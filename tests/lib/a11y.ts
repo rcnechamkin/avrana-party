@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /**
  * What a browser can check of docs/design/ACCESSIBILITY.md, on whatever is on screen: contrast
@@ -208,4 +208,48 @@ export async function moving(page: Page) {
       .map((el) => `transition on ${el.id || el.className.toString().slice(0, 30)}`);
     return [...new Set([...running, ...slow])];
   });
+}
+
+/** Tab through the page by element identity (focusWalk in lib/a11y.ts stops at the first repeated
+ * label, and Home's "Library" link and the nav's "Library" share one, so it ends early here). The
+ * ring rule is focusWalk's: an outline that is not none and at least 2 px, or the same on the
+ * .input/.file-input host. */
+export async function tabWalk(page: Page, max = 90) {
+  await page.evaluate(() => { (window as any).__seen = new Set(); });
+  const bad: string[] = [], keys: string[] = [];
+  let wrapped = false;
+  for (let i = 0; i < max; i++) {
+    await page.keyboard.press('Tab');
+    const at = await page.evaluate(() => {
+      const el = document.activeElement, seen = (window as any).__seen as Set<Element>;
+      if (!el || el === document.body) return null;
+      const ring = (n: Element) => { const cs = getComputedStyle(n); return cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2; };
+      const host = el.closest('.input, .file-input');
+      const key = `${el.tagName.toLowerCase()}#${el.id || (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24)}`;
+      const again = seen.has(el);
+      seen.add(el);
+      return { key, again, ok: ring(el) || Boolean(host && ring(host)) };
+    });
+    if (!at) { if (wrapped) break; wrapped = true; continue; }
+    if (at.again) break;
+    keys.push(at.key);
+    if (!at.ok) bad.push(`no focus ring: ${at.key}`);
+  }
+  return { stops: keys.length, bad, keys };
+}
+
+/** Is this control reachable by scrolling and not covered? Scrolls it into view, then asks whether
+ * it lies wholly inside the window and whether it is what is under its own centre (not a bar or a
+ * sheet drawn over it). Returns what is wrong, empty when nothing is. */
+export async function inReach(name: string, loc: Locator) {
+  if (!(await loc.count())) return [`${name}: not found`];
+  await loc.first().scrollIntoViewIfNeeded();
+  const ok = await loc.first().evaluate((el) => {
+    const b = el.getBoundingClientRect(), hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    return { inView: b.top >= -1 && b.bottom <= window.innerHeight + 1 && b.left >= -1 && b.right <= window.innerWidth + 1, hit: !!hit && (el === hit || el.contains(hit)) };
+  });
+  const bad: string[] = [];
+  if (!ok.inView) bad.push(`${name}: not fully in view after scrolling`);
+  if (!ok.hit) bad.push(`${name}: covered by something at its centre`);
+  return bad;
 }
