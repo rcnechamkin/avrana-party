@@ -602,6 +602,12 @@ class NodePackage(OverlayBase):
         with mock.patch('os.path.isfile', lambda p: p == NODE or real(p)):
             return self.main(*argv)
 
+    def main_without_node(self, *argv):
+        from test_node_game_runtime import NODE
+        real = os.path.isfile
+        with mock.patch('os.path.isfile', lambda p: p != NODE and real(p)):   # absent even where it is installed
+            return self.main(*argv)
+
     def test_a_node_package_is_listed_by_install_and_unlisted_by_remove_with_no_core_edit(self):
         from test_node_game_runtime import NODE
         first_party = json.loads(COMMITTED.read_text(encoding='utf-8'))['games']
@@ -617,7 +623,7 @@ class NodePackage(OverlayBase):
                           'tier': 'community'})                       # what web/party/app.js needs for a Library tile
         self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
         found = installed.load(self.layout.records_dir, REPO, games_root=self.layout.root_text())
-        self.assertEqual(found.grants['hello']['runtime']['command'][0], NODE)   # launchable by Party Core, on node
+        self.assertEqual(found.grants['hello']['runtime']['command'][0], NODE)   # a valid install record, run by node
 
         rc, out, err = self.main('remove', 'hello')                   # removal needs no runtime check
         self.assertEqual(rc, 0, err)
@@ -626,6 +632,7 @@ class NodePackage(OverlayBase):
         self.assertEqual(os.listdir(self.out_dir), [])
         self.assertNotIn('hello', installed.load(self.layout.records_dir, REPO,
                                                  games_root=self.layout.root_text()).grants)
+        self.assertEqual([p for p in self.files() if 'hello' in p], [])   # tree, unit, key and registry entry gone
 
     @unittest.skipUnless(os.environ.get('AVRANA_NODE_AVRGAME'), 'set AVRANA_NODE_AVRGAME to a built Node .avrgame '
                          '(e.g. Games colyseus-tanks: npm ci && node build.mjs --party <this checkout>)')
@@ -650,7 +657,7 @@ class NodePackage(OverlayBase):
         self.assertFalse(self.overlay.exists())
 
     def test_without_the_runtime_a_node_package_never_reaches_the_catalog(self):
-        rc, _, err = self.main('install', self.node_package(), '--grant', 'party_roster')
+        rc, _, err = self.main_without_node('install', self.node_package(), '--grant', 'party_roster')
         self.assertEqual(rc, 1)
         self.assertIn('node runtime', err)
         self.assertFalse(self.overlay.exists())
