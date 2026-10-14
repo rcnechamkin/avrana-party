@@ -80,6 +80,7 @@ class Build(unittest.TestCase):
         with self.assertRaises(build.BuildError):
             build.stamp(sw.replace("const BUILD = 'dev';", ''), 'x')
 
+    @unittest.skipUnless(os.name == 'posix', 'creating a symbolic link needs POSIX (or a Windows privilege)')
     def test_symlinks_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'src'
@@ -107,6 +108,7 @@ class Build(unittest.TestCase):
         self.assertIn("const BUILD = 'dev';", (WEB_DIR / 'sw.js').read_text())
 
 
+@unittest.skipUnless(os.name == 'posix', 'runs ops/install-party-web.sh (bash, tar, symbolic links) on POSIX')
 class InstallScript(unittest.TestCase):
     def run_script(self, dest, *args, covers=None):
         # never the machine's own /srv/avrana/covers: a folder the test names, or one that is not there
