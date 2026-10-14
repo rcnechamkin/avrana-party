@@ -14,10 +14,10 @@ recovery runs on the appliance are **NOT RUN** (AVR-33, owner).
 | Fails | Automatic | The rest of the appliance |
 |---|---|---|
 | `avrana-party-core` | restarts after 3 s (`Restart=on-failure`). The party is memory-only (ADR 0006): members, host and the round are gone; phones rejoin with their device cookie, and the first to rejoin is host. A game it was running keeps that orphan session until a host launches that game again | games, arcade and nginx keep running (no unit depends on Party Core) |
-| `avranaparty-games` (BLUFF, EXPO, ...) | restarts after 3 s; the new process holds no session | Party Home and Party Core keep running |
+| `avranaparty-games` (BLUFF, EXPO, ...) | restarts (`Restart=on-failure`); the new process holds no session. The delay is **not verified on the appliance**: its unit file is in the games repository, which marks it reconstructed and its `RestartSec=3` as still to be checked there (`systemctl cat avranaparty-games`) | Party Home and Party Core keep running |
 | `avranaparty-arcade` | restarts after 3 s | the same |
 | one native game, `avrana-game@<slug>` | its socket starts it again on the next connection. Five quick failures hit systemd's start limit: the instance **and its socket** end `failed` and that game is refused | other games, Party Core and nginx are untouched |
-| any game, while a round is on | phones keep being sent to the game and bounce. With `session_recovery.close_lost_game` on (default off), three failed checks in about 10-17 s close the round as `abandoned` / `game_lost` and send everyone home | |
+| any game, while a round is on | phones keep being sent to the game and bounce. With `session_recovery.close_lost_game` on (default off), three failed checks within the window (10 s, or 17 s when each check waits out the 5 s connect timeout; about 4 s when the game refuses connections outright) close the round as `abandoned` / `game_lost` and send everyone home | |
 
 A crash loop is bounded to one start per 3 s and never stops on its own: with `RestartSec=3` the
 default start limit (5 in 10 s) is never reached, so the unit shows `activating`, not `failed`.

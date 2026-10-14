@@ -198,13 +198,15 @@ keeps a participant id outside the roster out of game data, which a stricter pat
 ## Session recovery: a game that stays down (AVR-33)
 
 One key under `session_recovery` in `party-core.json` (spelled out in the example file). It is a
-boolean; any other value, or any other key, stops the service at startup, so a typo never leaves a
-switch silently at its default. Nothing here adds a message, a field or a route to the session
+boolean; any other value (or a block that is not an object) stops the service at startup. A key this
+Party does not know is logged as a warning naming it and ignored, so a config written for a newer
+Party still starts an older one after a rollback. `python3 -m avrana.contracts.party_config --check`
+applies the same rules (it fails on a bad value, warns about an unknown key). Nothing here adds a message, a field or a route to the session
 protocol: the check is a connection, and the closure uses the outcome v0 already has.
 
 | Key | Default | What it does |
 |---|---|---|
-| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released, and a best-effort signed `end` sent afterwards off the request thread. A miss is stamped when its check started. The window is 10 s, or 3 x the connect timeout + 2 s when that is longer (17 s at the default 5 s), so that three checks that each waited out a full timeout can still add up. A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and `session.reason` below does not exist. |
+| `close_lost_game` | **false** | When a phone asks for a ticket to the ACTIVE session, Party checks that a connection to the game is accepted (at most one check per 2 s and never two at once, waiting as long as a launch would: the grant's `timeout`, else 5 s). Three failed checks inside a sliding window with no success between close the session: outcome `abandoned`, `nav` home, tickets and seats released, and a best-effort signed `end` sent afterwards off the request thread. A miss is stamped when its check started. The window is 10 s, or 3 x the connect timeout + 2 s when that is longer (17 s at the default 5 s), so that three checks that each waited out a full timeout can still add up. Three misses close the round **within** that window, not after it: a game that refuses connections outright (nothing listening) is closed after about 4 s (checks at 0, 2 and 4 s); one that leaves connections hanging, after the third timed-out check (about 15 s at 5 s). A success clears the count; a miss older than the window no longer counts. With it off no check is made, nothing closes, and `session.reason` below does not exist. |
 
 It is off because it changes what the appliance does to a running round, and the owner has not
 decided to turn it on.

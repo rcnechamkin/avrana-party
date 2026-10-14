@@ -378,19 +378,112 @@ class SlowAccept(unittest.TestCase):
                 thread.join(5)
 
 
+class OneCheckAtATime(unittest.TestCase):
+    """While a reachability check waits out its connect timeout, ticket requests start no other.
+    Before, checks started 2 s apart against a game that drops connections all timed out together
+    and closed the round after one timeout instead of three."""
+
+    def test_no_check_starts_while_one_is_in_flight(self):
+        clock = Clock()
+        started, release = threading.Event(), threading.Event()
+        calls = []
+
+        class Link:
+            timeout = 5.0
+            endpoints = {}
+
+            def reachable(self, session):
+                calls.append(clock())
+                started.set()
+                release.wait(10)                    # stands for a connect that hangs
+                return False
+
+            def launch(self, session, roster):
+                return True, None
+
+            def end(self, session):
+                return True
+        svc = service.PartyService(identity.DeviceStore(None), {'bluff': BLUFF}, Link(), clock=clock,
+                                   close_lost_game=True)
+        svc.core.join('device-a', 'Ana')
+        s = svc.core.launch('device-a', 'bluff', svc.core.party.version)
+        svc.core.launch_accepted(s.id)
+        first = threading.Thread(target=svc.game_up, args=(s,))
+        first.start()
+        self.assertTrue(started.wait(5))
+        for _ in range(4):                          # 2.5 s apart: each would be due by PROBE_EVERY
+            clock.advance(service.PROBE_EVERY + 0.5)
+            self.assertTrue(svc.game_up(s))
+        self.assertEqual(len(calls), 1, 'no second check while the first is in flight')
+        release.set()
+        first.join(5)
+        self.assertEqual(s.state, 'active', 'one miss closes nothing')
+        clock.advance(service.PROBE_EVERY + 0.5)
+        self.assertTrue(svc.game_up(s))             # the next check runs once the first is done
+        self.assertEqual(len(calls), 2)
+
+    def test_a_check_that_raises_does_not_block_later_checks(self):
+        clock = Clock()
+        calls = []
+
+        class Link:
+            timeout = 5.0
+            endpoints = {}
+
+            def reachable(self, session):
+                calls.append(clock())
+                if len(calls) == 1:
+                    raise OSError('boom')
+                return True
+
+            def launch(self, session, roster):
+                return True, None
+
+            def end(self, session):
+                return True
+        svc = service.PartyService(identity.DeviceStore(None), {'bluff': BLUFF}, Link(), clock=clock,
+                                   close_lost_game=True)
+        svc.core.join('device-a', 'Ana')
+        s = svc.core.launch('device-a', 'bluff', svc.core.party.version)
+        svc.core.launch_accepted(s.id)
+        with self.assertRaises(OSError):
+            svc.game_up(s)
+        clock.advance(service.PROBE_EVERY + 0.5)
+        self.assertTrue(svc.game_up(s))
+        self.assertEqual(len(calls), 2)
+
+
 class RecoveryConfig(unittest.TestCase):
     def test_the_default_changes_nothing(self):
         self.assertEqual(service.recovery_config({}), {'close_lost_game': False})
         self.assertEqual(service.recovery_config({'session_recovery': {'close_lost_game': True}})['close_lost_game'], True)
 
-    def test_a_typo_a_non_boolean_or_an_unbuilt_switch_is_refused_at_startup(self):
-        # end_orphan_on_start and end_not_held_is_ended were proposed on fix/avr-33-session-recovery
-        # and wait for an owner decision: a config that names them must not start as if they worked
-        for bad in ({'close_lost': True}, {'close_lost_game': 'yes'}, {'end_orphan_on_start': True},
-                    {'end_not_held_is_ended': True}, [], 'on'):
+    def test_a_non_boolean_or_a_block_that_is_not_an_object_is_refused_at_startup(self):
+        for bad in ({'close_lost_game': 'yes'}, {'close_lost_game': 1}, {'close_lost_game': None}, [], 'on'):
             with self.subTest(bad=bad):
                 with self.assertRaises(SystemExit):
                     service.recovery_config({'session_recovery': bad})
+
+    def test_an_unknown_key_is_warned_about_and_ignored(self):
+        # end_orphan_on_start and end_not_held_is_ended were proposed on fix/avr-33-session-recovery and
+        # wait for an owner decision. A config naming them (or a switch from any newer Party, or a typo)
+        # must not stop a rollback: the key is logged by name and has no effect.
+        for block, expected in (({'end_orphan_on_start': True}, False), ({'end_not_held_is_ended': True}, False),
+                                ({'close_lost': True}, False), ({'close_lost_game': True, 'end_orphan_on_start': True}, True)):
+            with self.subTest(block=block):
+                with self.assertLogs('avrana.party.service', 'WARNING') as logs:
+                    self.assertEqual(service.recovery_config({'session_recovery': block}),
+                                     {'close_lost_game': expected})
+                unknown = sorted(set(block) - {'close_lost_game'})
+                self.assertEqual(len(logs.output), len(unknown))
+                for key, line in zip(unknown, logs.output):
+                    self.assertIn(f"unknown key '{key}' ignored", line)
+
+    def test_a_bad_known_value_is_refused_even_beside_an_unknown_key(self):
+        with self.assertLogs('avrana.party.service', 'WARNING'):
+            with self.assertRaises(SystemExit) as e:
+                service.recovery_config({'session_recovery': {'close_lost_game': 'yes', 'later_switch': True}})
+        self.assertIn('session_recovery.close_lost_game', str(e.exception))
 
     def test_the_example_config_spells_every_switch_out_with_its_default(self):
         path = os.path.join(os.path.dirname(__file__), '..', '..', 'deploy', 'party-core', 'party-core.example.json')
