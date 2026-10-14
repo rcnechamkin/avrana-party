@@ -236,6 +236,7 @@ STUBS = {
 }
 
 
+@unittest.skipUnless(os.name == 'posix', 'POSIX signals and process groups')
 class ProcessLifecycle(unittest.TestCase):
     """Runs the real arcade/stream.py entry point as a child process."""
 
