@@ -1,0 +1,77 @@
+# AVR-305: one check, one fixed name, on every pull request: "CI verdict".
+# It calls the lanes a pull request needs as reusable workflows and then decides, with the pure
+# function in tools/ci_verdict.py, whether the lanes that apply to the change passed. Because it
+# always runs, it can be made a required check (docs/design/CI-VERDICT.md) without path-filtered
+# workflows leaving unrelated pull requests waiting for a check that never reports.
+#   Offline checks, Cross-repo contract  every pull request (as before).
+#   Service trust proof                  only when a platform path changed (the old `paths:` filter),
+#                                        with its native-game job.
+# The three lanes no longer have a pull_request trigger of their own (that would run each twice);
+# their push, manual and job definitions are unchanged. Nothing here deploys.
+name: CI verdict
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-verdict-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: CI scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      platform: ${{ steps.scope.outputs.platform }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        run: python3 tools/ci_verdict.py scope --base "$BASE" --head "$HEAD"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+
+  offline:
+    uses: ./.github/workflows/offline-checks.yml
+
+  cross-repo:
+    uses: ./.github/workflows/cross-repo.yml
+    secrets: inherit
+
+  trust:
+    needs: scope
+    if: needs.scope.outputs.platform == 'true'
+    uses: ./.github/workflows/service-trust-proof.yml
+    with:
+      native_game: true
+    secrets: inherit
+
+  verdict:
+    name: CI verdict
+    needs: [scope, offline, cross-repo, trust]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide
+        run: >
+          python3 tools/ci_verdict.py verdict --base "$BASE" --head "$HEAD"
+          --offline "$OFFLINE" --cross-repo "$CROSS" --trust "$TRUST" --native-game "$NATIVE"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          OFFLINE: ${{ needs.offline.result }}
+          CROSS: ${{ needs.cross-repo.result }}
+          TRUST: ${{ needs.trust.result }}
+          NATIVE: ${{ needs.trust.outputs.native_game_result }}

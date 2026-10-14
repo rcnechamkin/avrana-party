@@ -135,6 +135,10 @@ npx playwright install --with-deps chromium
 npx playwright test -c playwright.offline.config.ts
 ```
 
+Pull requests reach this lane, `Cross-repo contract` and `Service trust proof` through the
+`CI verdict` workflow (`.github/workflows/ci-verdict.yml`), whose final check, `CI verdict`, always
+reports; see [the proposal](design/CI-VERDICT.md). The lanes keep their `push` and manual triggers.
+
 `npm run check:repo` enforces the [governance manifest](manifest.json), local documentation links,
 archive/authority boundaries and existing UI/catalog freshness checks. See
 [checker scope](REPOSITORY-GOVERNANCE.md). On Windows it selects `python`; existing Python npm

@@ -7,7 +7,8 @@
 name: Offline checks
 
 on:
-  pull_request:
+# AVR-305: no pull_request trigger of its own; pull requests reach this lane through .github/workflows/ci-verdict.yml (workflow_call).
+  workflow_call:
   push:
     branches: [main]
   workflow_dispatch:
