@@ -13,6 +13,8 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/rename      {name}
     POST /party/api/leave       {}
     POST /party/api/host        {to, if_version}
+    POST /party/api/host/spectate  {if_version}          host: stop hosting and watch, during setup
+                                                         or at results (AVR-132)
     POST /party/api/session/launch {game, if_version}    host
     POST /party/api/session/end    {if_version}          host: end the game for everyone
     POST /party/api/session/switch {game, if_version}    host: end the game that is on, then
@@ -269,7 +271,7 @@ def _send(h, status, obj, cookie=None):
 def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
               'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
-              'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409,
+              'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409, 'no_successor': 409,
               'player_count': 409, 'not_results': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
@@ -388,6 +390,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('leave', device)
             elif path == '/party/api/host':
                 svc.call('transfer_host', device, body.get('to'), body.get('if_version'))
+            elif path == '/party/api/host/spectate':
+                svc.call('quit_and_spectate', device, body.get('if_version'))
             elif path == '/party/api/session/launch':
                 svc.launch(device, body.get('game'), body.get('if_version'))
             elif path == '/party/api/session/end':
