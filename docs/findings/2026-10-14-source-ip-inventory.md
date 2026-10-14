@@ -187,3 +187,86 @@ candidate; **D** commercial or licensed content; **E** third-party obligation; *
    and licence status; not in this audit's scope.
 6. Add a CI secret-scan and a "no licensed content" check to the export tool before any SDK release.
 7. Write down contributor policy (DCO or none) before accepting external contributions.
+
+## 10. Follow-up 2026-10-14
+
+Same guardrails as above: read-only toward GitHub, no values of any match written down. Mirror clones
+(`git clone --mirror`) of the three stand-alone repositories were made in a scratch directory, scanned
+with the section 1 patterns over all refs and added lines, then deleted. Nothing was changed on GitHub.
+
+### 10.1 Remaining repositories
+
+| | `avrana` | `avrana-game` | `avranawebportal` |
+|---|---|---|---|
+| Visibility / created | Private, 2025-06-12 | Private, 2026-09-29 | Private, 2026-08-20 |
+| Refs scanned | 10 branches, 18 PR refs, 78 commits | 1 branch, 2 commits | 1 branch, 5 commits |
+| Licence file history | none at the root; `services/avrana-audible-connector/companion/LICENSES/README.md` (instructions only) | none | `LICENSE` (Apache-2.0) |
+| Distinct human authors | 1 (owner) | 1 (owner) | 1 (owner, two spellings) |
+| Bots | `Claude` 3 commits | none | none |
+| Vendored third-party dirs | none (no `vendor`, `node_modules`, `dist`) | none | none |
+| Largest blob | under 0.5 MB | under 0.5 MB | under 0.5 MB |
+| ROM, disc image, key, certificate, database, archive, `.avrgame` ever added | none | none | none |
+| `.env` files | thirteen `.env.example` files only (no real `.env`) | none | none |
+
+Pattern hits, all classified as **fixtures or code, not secrets**. `avrana` is the only repository with
+hits (5 file/commit pairs; `avrana-game` and `avranawebportal`: 0):
+
+| Path (all in `avrana`) | Pattern | Verdict |
+|---|---|---|
+| `scripts/review_git_content.py` | `github_pat_` | a detection regex inside a review script; fixture |
+| `deploy/homepage/config/services.yaml` | password assignment | a templated placeholder (contains a template expression, not a literal); fixture |
+| `services/avrana-home/tests/test_jellyfin_adapter.py` | key assignment | test constant; fixture |
+| `services/avrana-home/tests/test_mutations.py` | `SECRET =` | test constant (27 characters, self-describing); fixture |
+| `services/avrana-imax-verify/tests/test_server.py` | webhook user and password | short test strings assigned to the module under test; fixture |
+
+No private key header, `ghp_`/`gho_`/`github_pat_` token, `AKIA` id, `xox` token, `sk-` key or `lin_api_`
+token was found in any of the three. Licence observations:
+
+- `avrana` has no root licence (all rights reserved by default). Its audible connector README says the
+  companion image redistributes unmodified `rmcrackan/libation` layers (GPL-3.0) and that the GPL text
+  `Libation-GPL-3.0.txt` must be fetched and committed before the image is distributed. That file is not
+  in the tree. This is an obligation, not a secret; it matters only if that image is distributed.
+- `avranawebportal` is Apache-2.0 with a single human author; `avrana-game` has no licence file.
+- "Was ever public" remains unknown for all three (GitHub does not expose visibility history).
+
+**PRIVATE ESCALATION: none.**
+
+### 10.2 GitHub Actions artifacts (metadata only, nothing downloaded)
+
+`gh api repos/rcnechamkin/<repo>/actions/artifacts --paginate`. Observed 2026-10-14. All 75 are unexpired.
+The repository retention setting reads 90 days (maximum allowed 400), but the earliest expiry observed is
+2026-10-14 and the latest 2026-12-04 (Party) and 2026-10-20 (Games), so the workflows set shorter retention.
+
+| Repository | Artifact name | Count | Total size | Could it hold secrets or runtime state? |
+|---|---|---|---|---|
+| Party | `graphify-architecture-<run>` | 39 | 15.0 MB | low: code-structure graph of the repository; may expose internal architecture and file names, no runtime data |
+| Party | `package-browser-results` | 8 | 6.0 MB | **highest of the set**: a Playwright results bundle. Traces, videos and screenshots can embed request headers, cookies and `localStorage` of the tested page. The test target is a locally started app with fixed test identities, so a real credential is unlikely, but the contents should be inspected once by the owner |
+| Party | `avrgame-tools-export` | 2 | 69 KB | low: the SDK export bundle; by design contains no operational data |
+| Party | `reconcile-report-<run>` | 1 | 4 KB | low: a text report of repository/Linear reconciliation; may name internal issues |
+| Games | `graphify-architecture-<run>` | 25 | 14.3 MB | low: same as Party's graphify output |
+
+While a repository is private, only users with read access can download artifacts. Both repositories were
+public earlier; artifacts created while public would have been downloadable by any signed-in GitHub
+user, but all observed artifacts were created from 2026-10-05 on and visibility during that window
+is not established here. Nothing was deleted or expired. Proposal for the owner: shorten retention for
+`package-browser-results`, and inspect one before deciding whether it needs expiring.
+
+### 10.3 LAN Games artwork notice (fixed in this change)
+
+`docs/references/LAN-GAMES-NOTICE.md` said no donor image or runtime asset is bundled, while
+`assets/vendor/lan-games-art/` holds 30 donor SVG scenes. Provenance from the repositories:
+
+- The SVGs are exported by `ops/export_game_art.mjs` (Games, added by the owner 2026-09-28) from
+  `web/gameart.js`. That file was written by BEACNpool (LAN Games, 2026-07-26, two commits).
+- The only later change to it is the owner's `ff0c9b0` (2026-09-28), which adds the BLUFF scene:
+  12 added lines, 0 removed. So 29 of the 30 scenes are unmodified upstream drawings and `bluff.svg` is
+  Avrana-authored.
+- Licence: LAN Games `LICENSE` (MIT, `Copyright (c) 2026 BEACNpool`), carried by the Games fork and
+  reproduced in the notice.
+
+Changes: the notice now states that artwork is bundled and how many are upstream, keeps the copyright line
+and full MIT text in the same file; `assets/vendor/README.md` no longer calls the artwork "first-party";
+`contracts/third-party.v1.json` entry `lan-games-art` is renamed and its note and licence source corrected
+(licence stays MIT, `redistribution` unchanged). `python tools/sbom.py --check` passes. Section 4 and 8 above
+are left as written (dated observations); this section supersedes the contradiction they record. Not
+done: the Colyseus Tanks and Kenney items in section 9 task 2 remain AVR-73's.

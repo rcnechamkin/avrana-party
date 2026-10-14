@@ -5,8 +5,12 @@ The game titles, icons, categories, player ranges and taglines in
 upstream https://github.com/BEACNpool/LAN-Games (retired September 2026).
 Source snapshot: `5da1764b41d32bfb965637a1850344f8f23beb32`.
 The Avrana Party Games fork preserves the following upstream license.
-No donor server, game implementation, font, image or runtime asset is bundled by
-this assimilation sprint.
+No donor server, game implementation or font is bundled. **Donor artwork is bundled**:
+`assets/vendor/lan-games-art/` holds 30 static SVG title scenes exported from the Games
+repository's `web/gameart.js`. The code that draws 29 of them (all except `bluff.svg`) is
+LAN Games' own, unmodified, and is Copyright (c) 2026 BEACNpool, MIT. The `bluff` scene was added
+by Avrana Party Games; its licence follows the owner's first-party licence decision (AVR-73). Build-time copies of these
+files are served from `web/party/art/`. The MIT licence text above must travel with them.
 
 ```text
 MIT License

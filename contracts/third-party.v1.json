@@ -152,11 +152,11 @@
     },
     {
       "id": "lan-games-art",
-      "name": "LAN Games title artwork (first-party)",
+      "name": "LAN Games title artwork (29 upstream scenes by BEACNpool, 1 Avrana-authored)",
       "version": "n/a",
       "license": "MIT",
       "license_verification": "file-read",
-      "license_source": "git origin/main:NOTICE.md in rcnechamkin/avrana-party-games",
+      "license_source": "docs/references/LAN-GAMES-NOTICE.md (MIT text, Copyright (c) 2026 BEACNpool); git origin/main:NOTICE.md in rcnechamkin/avrana-party-games",
       "source": "https://github.com/rcnechamkin/avrana-party-games",
       "usage": "embedded",
       "shipped_in": [
@@ -165,7 +165,7 @@
       ],
       "redistribution": "embed-ok",
       "commercial_blocker": false,
-      "note": "SVG exported from the Games repository; same terms as that repository (MIT per its NOTICE.md; upstream LAN Games by BEACNpool is MIT). Keep the upstream copyright in the NOTICE.",
+      "note": "30 static SVG scenes exported from the Games repository (web/gameart.js). 29 are unmodified drawings from upstream LAN Games by BEACNpool (MIT, Copyright (c) 2026 BEACNpool); bluff.svg is Avrana-authored; its licence awaits the owner's first-party licence decision. Served as build-time copies in web/party/art/. Keep the copyright line and licence text in docs/references/LAN-GAMES-NOTICE.md.",
       "paths": [
         "assets/vendor/lan-games-art"
       ]
