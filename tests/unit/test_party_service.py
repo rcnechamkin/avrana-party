@@ -895,5 +895,32 @@ class HostLobbyHttp(PartyNavigation):
         self.assertEqual(self.link.calls[-1], ('end', 'bluff', second))
 
 
+
+class QuitAndSpectateHttp(ServiceCase):
+    """POST /party/api/host/spectate (AVR-132) over real HTTP."""
+    games = TWO_GAMES
+
+    def test_at_results_hosting_passes_and_nothing_else_moves(self):
+        ana, ben = self.phone(), self.phone()
+        ana.post('join', {'name': 'Ana'})
+        ben.post('join', {'name': 'Ben'})
+        _, v, _ = ana.state()
+        status, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        status, r, _ = ana.post('host/spectate', {'if_version': v['version']})
+        self.assertEqual((status, r['error']), (409, 'round_on'))
+        self.svc.game_reported_end(v['session']['id'], 'completed')
+        _, bv, _ = ben.state()
+        status, r, _ = ben.post('host/spectate', {'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_host'))
+        status, v, _ = ana.post('host/spectate', {'if_version': bv['version']})
+        self.assertEqual((status, v['me']['host'], v['me']['watch_next'], v['location']['at']),
+                         (200, False, True, 'results'))
+        _, bv, _ = ben.state()
+        self.assertTrue(bv['me']['host'])
+        self.assertEqual([c[0] for c in self.link.launched], [v['session']['id']])   # the game was not touched
+        self.assertEqual(self.link.ended, [])
+        status, r, _ = ana.post('host/spectate', {'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_host'))
+
 if __name__ == '__main__':
     unittest.main()

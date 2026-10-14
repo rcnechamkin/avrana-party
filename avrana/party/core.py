@@ -117,7 +117,8 @@ def clean_avatar(raw):
 
 
 class Member:
-    __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left', 'mode')
+    __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left', 'mode',
+                 'watch_next')
 
     def __init__(self, device_id, name, now, avatar=None, mode=FULL):
         self.id = new_id('member')
@@ -128,6 +129,7 @@ class Member:
         self.joined_at = now
         self.last_seen = now
         self.left = False
+        self.watch_next = False         # Quit & Spectate at results: a spectator in the next round
 
 
 class Participant:
@@ -378,6 +380,37 @@ class PartyCore:
         self._set_host(target.id)
         self._commit()
 
+    def quit_and_spectate(self, device_id, if_version):
+        """Host: give up hosting and watch, at a boundary the party already has (AVR-132). Only
+        while a round is being set up (the host's own choice becomes Watch) or on a finished
+        round's results (the host watches the next round; Play again or a new game). The next host
+        is chosen as for a host who leaves (_successor) and takes over at once; the former host stays
+        a member, and nothing else moves: not the location, the session or anyone else's choice.
+
+        Refused mid-round (`round_on`: roles never change under a running game), at home
+        (`no_game`), with nobody here to take over (`no_successor`), and like any host action for
+        someone who is not the host now or who acts on an old view. Coming back later (a reload,
+        a rejoin) never makes them host again; only a hand-over or succession does."""
+        self._timed()
+        m = self._require_host(device_id, if_version)
+        at, live = self.location()['at'], self._live_session()
+        if live is not None and live.state != SETUP:          # starting, on or ending
+            raise Refused('round_on', 'You can watch from the next round. Roles never change '
+                                      'during a round.')
+        if at not in ('setup', 'results'):
+            raise Refused('no_game', 'There is no round to watch.')
+        s = self.party.session
+        nxt = self._successor(self.clock(), exclude=m.id)
+        if nxt is None:
+            raise Refused('no_successor', 'Nobody else is here to take over hosting.')
+        if at == 'setup':
+            s.choices[m.id] = 'spectator'
+        else:
+            m.watch_next = True
+        self._set_host(nxt.id)
+        self._commit()
+        return nxt
+
     def _unique(self, clean, me):
         taken = {_name_key(o.name) for o in self.party.members.values() if o is not me and not o.left}
         final, n = clean, 2
@@ -410,13 +443,23 @@ class PartyCore:
         if s.pregame:
             # the party goes to the game's page for its setup; nothing runs at the game yet
             s.state, s.state_since = SETUP, now
+            for m in self.party.members.values():
+                if m.watch_next and not m.left:
+                    s.choices[m.id] = 'spectator'    # their own choice still, and still theirs to change
+                m.watch_next = False
             self._navigate('game', s)
             self._commit()
             return s
         here = [m for m in self.party.members.values() if not m.left and self._here(m, now)]
-        for i, m in enumerate(here):
+        watching = [m for m in here if m.watch_next]
+        for m in here:
+            m.watch_next = False                 # it was for this round only
+        playing = [m for m in here if m not in watching]
+        for i, m in enumerate(playing):
             p = Participant(m.id, 'player' if i < game['max_players'] else 'spectator')
             s.participants[m.id] = p
+        for m in watching:
+            s.participants[m.id] = Participant(m.id, 'spectator')
         self._commit()
         return s
 
@@ -799,7 +842,7 @@ class PartyCore:
                 'state': s.state if s is not None and s.state != ENDED else 'lobby',
                 'members': members, 'host': party.host_id,
                 'me': ({'id': me.id, 'name': me.name, 'host': me.id == party.host_id,
-                        'mode': me.mode}
+                        'mode': me.mode, 'watch_next': me.watch_next}
                        if me else None),
                 'session': session,
                 'nav': dict(party.nav),
