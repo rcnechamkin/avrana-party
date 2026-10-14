@@ -329,6 +329,12 @@ phone setting has been tried (AVR-295).
 Fallback order: **a cover the owner supplied → the title's own art → curated art that genuinely
 depicts it → a generic icon.**
 
+**Planned, not implemented (AVR-466; owner decisions 2026-10-14).** Packages are to be able to bundle
+their own artwork, which adds two steps to this order: **owner cover → the package's cover → the
+package's icon → the title's own art → curated art → a generic icon.** Today none of it exists: an
+installed package's tile draws its kind icon. The contract is in
+[`.avrgame` package, bundled artwork](design/AVRGAME-PACKAGE.md#bundled-artwork-planned-avr-466-not-implemented).
+
 - **The owner's cover (AVR-306):** a picture the owner has a copy of (box art), one per game,
   **never committed**. It is a file named for the game (`<game id>.jpg`, `.jpeg`, `.png`, `.webp`
   or `.avif`) in one folder: `web/party/covers/` on a development machine (ignored by Git; only
@@ -343,6 +349,20 @@ depicts it → a generic icon.**
   or the Party box answers again after a break.
   Covers are not in the offline copy. How they reach the Pi:
   [deploy runbook](runbooks/deploy.md#game-covers-the-owners-never-committed).
+
+- **A package's cover and icon (PLANNED, AVR-466; not implemented):** WebP, PNG or JPEG, never SVG,
+  declared in the package's manifest and validated when it is packed and installed (a declared image
+  that is invalid refuses the package). The cover is **1:1** (recommended 512 px, at most 256 KiB)
+  and fills the tile as the owner's cover does; the icon is 1:1 (recommended 256 px, at most 64 KiB)
+  and is used in list rows and, with no cover, centred on the tile in the existing `icon-art` style.
+  The limits are starting values, to be measured on the Pi. Both are decoration (`alt=""`, the name
+  stays text), lazy, with width and height set, and give way through the same `onerror` fallback.
+  **The owner's cover always wins over a publisher's.** They are served from the Party origin at
+  `/party/pkgart/` by a new nginx location (deploying it needs separate owner approval) with no CSP
+  change, and are not in the offline copy or the service worker's precache: a phone out of range
+  shows the placeholder. The placeholder stays the kind icon and the visible title; no generated
+  imagery. A package's banner and screenshots are validated but not shown until a game-page design
+  pass; screenshots will need `alt` text.
 
 - **Own art:** each LAN title's GameArt scene (`avrana-party-games` `web/gameart.js`), exported by its
   `ops/export_game_art.mjs` as square, self-contained SVGs (presentation attributes only, frozen) into
