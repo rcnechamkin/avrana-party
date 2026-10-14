@@ -322,6 +322,37 @@ class Collection(unittest.TestCase):
         self.assertEqual(self.credentials('a.key:/k/a.key', 'LoadCredential=z.key:/k/z.key'), ['/k/a.key'])
 
 
+
+class LegacyState(unittest.TestCase):
+    """The legacy games server's state as the collector finds it. Under the service-user layout its
+    unit bind-mounts its StateDirectory over `data/` in the root-owned code tree; on the host that
+    `data/` is only an empty root 0755 mount point (the Pi, 2026-10-14: 32/33, this one failing)."""
+
+    UNIT = {'WorkingDirectory': '/opt/avrana-party-games/current', 'StateDirectory': 'avrana-lan-games',
+            'BindPaths': '/var/lib/avrana-lan-games:/opt/avrana-party-games/current/data:rbind'}
+
+    def paths(self, props, role='legacy-games', dynamic=False):
+        return boundary._state_paths(props, dynamic, role, lambda path: True)
+
+    def test_a_data_directory_mounted_over_by_the_state_directory_is_not_judged_as_state(self):
+        self.assertEqual(self.paths(self.UNIT), ['/var/lib/avrana-lan-games'])
+        for spelled in ('/var/lib/avrana-lan-games:/opt/avrana-party-games/current/data/',
+                        '-/var/lib/avrana-lan-games:/opt/avrana-party-games/current/data'):
+            self.assertEqual(self.paths(dict(self.UNIT, BindPaths=spelled)), ['/var/lib/avrana-lan-games'], spelled)
+
+    def test_a_data_directory_the_service_really_writes_is_still_judged(self):
+        for binds in ('', '/var/lib/avrana-lan-games:/opt/elsewhere', '/opt/avrana-party-games/current/logs'):
+            self.assertEqual(self.paths(dict(self.UNIT, BindPaths=binds)),
+                             ['/var/lib/avrana-lan-games', '/opt/avrana-party-games/current/data'], binds)
+        # (a root 0755 one is then a state.owned failure: test_state_another_identity_can_read)
+        self.assertEqual(boundary._state_paths(dict(self.UNIT, BindPaths=''), False, 'legacy-games',
+                                               lambda path: False), ['/var/lib/avrana-lan-games'])   # none there
+
+    def test_only_the_legacy_games_server_keeps_state_in_its_code_tree(self):
+        self.assertEqual(self.paths(dict(self.UNIT, BindPaths=''), role='party-core'), ['/var/lib/avrana-lan-games'])
+        self.assertEqual(self.paths({'StateDirectory': 'g'}, role='native-game', dynamic=True), ['/var/lib/private/g'])
+
+
 class CommandLine(unittest.TestCase):
     def run_cli(self, facts, *args):
         with tempfile.TemporaryDirectory() as d:
