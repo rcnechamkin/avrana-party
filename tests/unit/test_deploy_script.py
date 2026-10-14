@@ -411,6 +411,10 @@ SYSTEMCTL_SHIM = """#!/usr/bin/env bash
 # back); `start` and `restart` fail for the unit named in $FAIL_START (a unit that will not start).
 echo "$*" >> "$SHIM_LOG"
 if [[ $1 == is-active && -n ${FAIL_UNIT:-} && " $* " == *" $FAIL_UNIT "* ]]; then exit 3; fi
+# `list-units --state=failed`: one line per unit named in $FAILED_GAME_UNITS (space-separated).
+if [[ $1 == list-units ]]; then
+    for u in ${FAILED_GAME_UNITS:-}; do echo "$u loaded failed failed Avrana native game"; done; exit 0
+fi
 if [[ $1 == start || $1 == restart ]] && [[ -n ${FAIL_START:-} && " $* " == *" $FAIL_START "* ]]; then exit 1; fi
 # $FAIL_RELOAD=once: the first `reload` fails, later ones work; =always: every one fails.
 if [[ $1 == reload && -n ${FAIL_RELOAD:-} ]]; then
@@ -757,6 +761,27 @@ class RealRun(Harness):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(state.stat().st_mode & 0o777, 0o700)
         self.assertIn('left as it is', r.stdout)
+
+
+class FailedGameUnitsPreflight(Harness):
+    """A native game unit left failed degrades /party/api/status (AVR-33) and so fails the status smoke
+    check of any deployment: the preflight names the units and the command that clears them before
+    anything is switched, and clears nothing itself."""
+
+    def test_failed_game_units_are_listed_with_the_reset_command_before_switching(self):
+        units = 'avrana-game@checkers.service avrana-game@checkers.socket'
+        r = self.deploy(self.target_party, self.target_games, '--dry-run', FAILED_GAME_UNITS=units)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f'WARNING: failed native game units: {units}', r.stdout)
+        self.assertIn(f'sudo systemctl reset-failed {units}', r.stdout)
+        self.assertIn('dry run: nothing changed', r.stdout)
+        self.assertFalse([c for c in self.calls() if c.startswith('reset-failed')], 'the operator clears them, not the script')
+        self.assertTrue(any(c.startswith('list-units') and 'avrana-game@*' in c for c in self.calls()))
+
+    def test_no_failed_game_units_says_nothing(self):
+        r = self.deploy(self.target_party, self.target_games, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('failed native game units', r.stdout)
 
 
 class CatalogOverlayOnReleaseChanges(Harness):
