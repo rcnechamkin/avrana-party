@@ -289,3 +289,13 @@ statements above for the field-test appliance:
   reports on Party Core's internal Unix socket instead, admitted by socket permission and
   identified by its signature. "The appliance, its local services" are then separate identities,
   each trusted with its own key only.
+
+## Amendment 2026-10-13
+
+- One spelling per token (AVR-465). Both base64url parts of every token must be canonical (the
+  URL-safe alphabet, no padding, zero unused bits), and a receiver refuses anything else as
+  `encoding` before it checks the MAC; the ticket ledger above is keyed on the SHA-256 of the
+  decoded payload, not of the ticket's characters. A 43-character MAC had four spellings that
+  verified, so one ticket was admitted four times. The format, lifetimes and HMAC are unchanged and
+  every token an honest sender wrote is still accepted. The rule, its vectors and the audit of the
+  message tokens are in [PARTY-GAMES-CONTRACT](../design/PARTY-GAMES-CONTRACT.md#one-spelling-per-token-avr-465).

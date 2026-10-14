@@ -46,6 +46,35 @@ export function locationOf(view) {
   return loc && typeof loc.at === 'string' ? loc : { at: HOME, game: null, session: null };
 }
 
+/** Which move of the Party this is: a phone that gave up on the way to a round (the going screen's
+ * "Back to Party") stays on Party Home for exactly this one, never for the next. */
+export function moveKey(view) {
+  const loc = locationOf(view);
+  return `${view && view.party}:${view && view.nav ? view.nav.seq : ''}:${loc.at}:${loc.game}:${loc.session}`;
+}
+
+/** The round the Party is in or holds the results of, as one phone remembers it: null at home. */
+export function roundKey(view) {
+  const loc = locationOf(view);
+  return view && loc.session ? `${view.party}:${loc.session}` : null;
+}
+
+/** The Host's way out of a game, on Party Home (Party Core's `lobby`). Party Home takes every phone
+ * to the round, at once; a game page that is broken, or was reloaded and has no seat, would leave
+ * the whole party on a page nobody can leave. So the Host's phone, when it is on Party Home for a
+ * round it was ALREADY taken to (`sent`: the roundKey this phone kept when it left), is not sent
+ * again: it is given the choice. Returns { at, game, confirm } or null (go on as usual).
+ *   confirm: a round is on, so bringing everyone back ends it; a finished round's results are kept.
+ * Only the Host now (after a succession, the new one), and only this round: Play again is a new
+ * session, which every phone follows. Everyone else keeps following the Party. */
+export function hostReturn(view, sent) {
+  const loc = locationOf(view);
+  if (!view || !view.me || !view.me.host) return null;
+  if (loc.at !== 'game' && loc.at !== 'results') return null;
+  if (!sent || sent !== roundKey(view)) return null;
+  return { at: loc.at, game: loc.game, confirm: loc.at === 'game' };
+}
+
 /** The round this phone remembers having played ({ game, session }), or null. Only a member who
  * plays it (Party Core's own role for this member: `session.my_role`; the owner, 2026-10-06: a
  * round someone only watched is not in their "recently played"), and only while the round is on:

@@ -1,9 +1,12 @@
 # System map: machines, repositories, branches, runtime paths
 
-The **canonical answer to deployed state and topology**. Documentation reconciled 2026-10-01
-against GitHub main and dated repository findings; no new Pi audit or deployment was performed.
-The latest verified production evidence is from 2026-09-29. Older local/experiment inventories
-below are explicitly dated snapshots, not claims of current branch checkout state.
+The **canonical answer to deployed state and topology**. Production rows reconciled 2026-10-12
+against the read-only capture in [the 2026-10-12 baseline](findings/2026-10-12-deployed-baseline.md)
+(the status endpoint's deployment manifest, plus non-root shell reads); no new Pi audit, deployment or
+restart was performed. The latest production evidence is that capture: Party `c59f1c8`, Games `a448972`,
+deployed 2026-10-06 and read 2026-10-12. Rows it did not touch (the machines, the dev/test checkouts, the
+branch inventory) keep their earlier dates. Older local/experiment inventories below are explicitly dated
+snapshots, not claims of current branch checkout state.
 If you change where something lives, update this file with deployment evidence.
 
 **Accepted direction is not deployed state (note added 2026-10-02).** ADRs
@@ -17,26 +20,29 @@ migration is performed and verified with dated evidence.
 
 ## Source versus verified production
 
-| Repository / release | Current source observed for AVR-213 (2026-10-01) | Latest verified production |
-|---|---|---|
-| Party | GitHub main `bb7364c`, containing PR #34 (merge `ff32bb4`, ADR 0011) and PR #35 (AVR-130) | Checkout and `/party/` release `956b968` |
-| Games | GitHub main `0b4e9d2`, companion PR #13 merged | Games checkout `c6d7b52` |
+Three different things, never to be merged in the reader's head: what is **deployed** (running on the Pi),
+what is on **main** (merged source, not necessarily deployed), and what is **unmerged** (open pull requests
+and branches).
 
-**Source is ahead of verified production.**
-[Party PR #34](https://github.com/rcnechamkin/avrana-party/pull/34) and
-[Games PR #13](https://github.com/rcnechamkin/avrana-party-games/pull/13) are merged source changes,
-not verified deployed releases. They add profile-backed automatic presence, one authoritative
-Party location, Party-owned full-screen setup, held results and host-owned navigation (ADR 0011).
-Production deployment and Tier 3 real-phone verification of the console model belong to AVR-212.
-Party [PR #35](https://github.com/rcnechamkin/avrana-party/pull/35) merged during this reconciliation;
-current source adds authenticated arcade ticket admission and 60-second, session-local controller
-reservations. Published deployment findings do not verify that source release or its phone acceptance.
-Arcade controller release does not remove Party membership.
+| Repository | Deployed (Pi, manifest read 2026-10-12) | `origin/main` (2026-10-12) | Unmerged |
+|---|---|---|---|
+| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed | `14a0278` plus the merges of #86 and this document's PR #113; 157 commits ahead of `c59f1c8` at `14a0278`. PRs #85, #86 and #108 to #111 merged on 2026-10-12, after the [baseline](findings/2026-10-12-deployed-baseline.md) was written | Draft PRs #106, #107 and #112 and the branch `fix/avr-33-session-recovery`. PR #114 (deploy hardening: `ops/deploy.sh` installs the nginx site, journals, recovers and rolls back) merged after the others on 2026-10-12; that script has never run on the Pi |
+| Games | `a448972` (clean, no mismatch) | `282c620` (Games #61 merged 2026-10-12) | none |
 
-The latest [deployment finding](findings/2026-09-29-avr129-deploy.md) verifies the revisions above
-server-side. Party Core is running (AVR-51), authoritative navigation is deployed (AVR-128),
-Gauntlet II has Party-managed runtime lifecycle (AVR-134), and BLUFF has Play or Watch with
-host-only Start (AVR-129 / ADR 0010). These checks do not establish physical phone acceptance.
+**Main is ahead of production, and unmerged work is ahead of main.** Main's extra commits include native
+games (`provision-game`, `prepare-native-games`, native Checkers), the game origin runbook and nginx block,
+the service-user migration tooling, the experimental `.avrgame` package installer and the Party/Games contract
+work. **None of that is running on the Pi**: the installed nginx site equals the deployed checkout's file, the
+services still run as `cody`, and no native game, game origin or package is installed. A merged pull request is
+not a release. The ADR 0011 console model **is** in the deployed revision (`ff32bb4`, the merge of Party PR #34,
+is an ancestor of `c59f1c8`); its real-phone proof belongs to AVR-212 and is still missing. Unmerged work has no
+phone or Pi evidence; the baseline lists each branch and says what it changes.
+
+Earlier production milestones are in the progression list below. The deployment finding of
+[2026-09-29](findings/2026-09-29-avr129-deploy.md) verified Party `956b968` and Games `c6d7b52` server-side:
+Party Core running (AVR-51), authoritative navigation (AVR-128), Gauntlet II lifecycle (AVR-134), BLUFF Play or
+Watch with host-only Start (AVR-129 / ADR 0010). Those checks do not establish physical phone acceptance, and
+no deployment finding records the later deployments (see the progression list).
 GitHub main supplies code/tests; ADRs and design docs supply contracts; Linear supplies live work
 sequencing. Do not silently substitute a newer main SHA for a deployed revision.
 
@@ -50,7 +56,9 @@ sequencing. Do not silently substitute a newer main SHA for a deployed revision.
 | **Pi `party`** (Raspberry Pi 4, Debian 13, user `cody`) | the appliance: production services + a dev/test area | `ssh party` → `10.0.0.142` (eth0) | **no** (deploy/test target) |
 | **Mini-PC `avrana`** (`10.0.0.218`) | home infrastructure: BookStack (stale docs), Beszel telemetry hub | `ssh avrana` | no (not part of this project's code) |
 
-Networking of the Pi: `docs/runbooks/network.md`. What a clean target would need to become this
+Networking of the Pi: `docs/runbooks/network.md`. Observed 2026-10-12: the access point is on channel 36
+(5180 MHz, 20 MHz), not the 149 recorded on 2026-09-24
+([baseline](findings/2026-10-12-deployed-baseline.md)). What a clean target would need to become this
 appliance is enumerated in `deploy/appliance-inventory.json` and
 [the rebuild runbook](runbooks/rebuild.md) (AVR-32): a proposed procedure that has not been run
 on any device, with the facts this file does not record listed there as unknown.
@@ -63,7 +71,7 @@ on any device, with the facts this file does not record listed there as unknown.
 |---|---|---|---|
 | main checkout | laptop `~/Projects/avrana-party` | issue-scoped branch | editing; has `node_modules` for Playwright |
 | worktrees | laptop `~/Projects/avrana-party.wt-*` (`wt-platform`, `wt-sim`, `wt-svc`, `wt-fix`) | one branch each | parallel work without switching branches |
-| **production** | Pi `/home/cody/avrana-party` | `main` (tracks `origin/main`) | **live**: nginx site, arcade service code. An owner-approved deployment selects an exact reviewed commit and fast-forwards here; source synchronization alone is not a release. **Never edit or commit here.** Pulling changes live arcade code (a restart applies it; ask first). |
+| **production** | Pi `/home/cody/avrana-party` | at `c59f1c8` (manifest `checkout_sha`, clean, 2026-10-12) | **live**: nginx site, arcade service code. An owner-approved deployment selects an exact reviewed commit and fast-forwards here; source synchronization alone is not a release. **Never edit or commit here.** Pulling changes live arcade code (a restart applies it; ask first). |
 | dev/test | Pi `~/avrana-lab/avrana-party-docs` | feature branch (2026-09-24 inventory: `experiment/ps1-title-profiles`) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here. 2026-09-24 inventory recorded an old rescued-handoff stash; not re-audited |
 | dev/test worktree | Pi `~/avrana-lab/party-svc` (worktree of the dev/test checkout) | `experiment/party-service` | runs the dev front door on 8190 (`--ps1 ~/avrana-lab/avrana-party-docs/ps1`); `experiments/party-service/dev-data/` holds runtime logs (git-ignored) |
 
@@ -73,11 +81,11 @@ The laptop also has a git remote `party-dev` → the Pi dev/test checkout (fetch
 
 | Copy | Where | State (local copies: 2026-09-24 inventory; source/production: see revision table above) |
 |---|---|---|
-| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical source; `main` @ `0b4e9d2`, containing PR #13 (ADR 0011); work on issue-scoped branches with PRs |
+| GitHub | `rcnechamkin/avrana-party-games` (private) | canonical source; `main` @ `282c620` (2026-10-12; was `0b4e9d2` on 2026-10-01); work on issue-scoped branches with PRs |
 | laptop backup (bare) | `~/avrana-party-games.git` | `main` @ `2cf4831`; `playtest-readiness` @ `6d795a7` (reconnect fix, lifecycle log lines, the Pi's `ops/lab` helpers; 2026-09-24); also `abandoned/classic-diplomacy` (**never push or use**) and old `agent/*` branches |
 | Pi dev clone | `~/avrana-lab/avrana-party-games` | `main` @ `2cf4831` (= laptop); remote `upstream` = BEACNpool LAN Games; also has `playtest-readiness`, checked out as the worktree **`~/avrana-lab/wt/playtest`** (historical playtest worktree; current scope comes from Linear); old `agent/*` worktrees under `~/avrana-lab/wt/`. Runs BLUFF on port 8196 when started |
 | laptop working clone | any scratch clone of the bare backup | edit on a branch; the separate games fork has independent GitHub CI |
-| **production** games | Pi `/home/cody/avrana-party-games` | fork `main` @ `c6d7b52` (detached checkout) since the 2026-09-29 16:33 PDT restart (AVR-129; before: `03df5ae`); first deployed at `9696524` on 2026-09-27. Service `avranaparty-games` (port 8096) via the drop-ins `avrana-fork.conf` and `avrana-party-session.conf` (Party sessions on, AVR-51; `docs/findings/2026-09-29-party-core-deploy.md`), using the old venv |
+| **production** games | Pi `/home/cody/avrana-party-games` | at `a448972` (manifest `checkout_sha`, clean, 2026-10-12); earlier `c6d7b52` (since the 2026-09-29 16:33 PDT restart, AVR-129; before: `03df5ae`) and `0b4e9d2` (read 2026-10-02); first deployed at `9696524` on 2026-09-27. Service `avranaparty-games` (port 8096) via the drop-ins `avrana-fork.conf` and `avrana-party-session.conf` (Party sessions on, AVR-51; `docs/findings/2026-09-29-party-core-deploy.md`), using the old venv (the drop-ins and venv were not re-read on 2026-10-12) |
 | upstream LAN Games (rollback) | Pi `/home/cody/LAN-Games` | upstream `main` @ `5da1764` (retired upstream); no longer served; removing the drop-in returns to it. **Never edited.** |
 
 AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on the fork's
@@ -99,6 +107,17 @@ Production progression is historical evidence, not an instruction to synchronize
 - Later that day: Party `0e97c2e`, Games `03df5ae` for AVR-128/134
   ([finding](findings/2026-09-29-avr128-134-deploy.md)), then Party `956b968`, Games `c6d7b52`
   for AVR-129 ([finding](findings/2026-09-29-avr129-deploy.md)).
+- 2026-09-29 evening to 2026-10-02: the checkout stood at Party `a32b7b4` (merge of PR #29, 20:00 PDT) and
+  Games `0b4e9d2` when the AVR-130 finding read the Pi; **no finding records the deployment that put them
+  there**. That finding ([2026-10-02-avr130-deploy](findings/2026-10-02-avr130-deploy.md)) stages the next
+  deployment and records no after-state.
+- 2026-10-06: Party `c59f1c8`, Games `a448972`, deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed
+  at 21:10:51Z, restarting `avrana-party-core`, `avranaparty-arcade` and `avranaparty-games`. Evidence: the
+  deployment manifest as reported by `/party/api/status` on 2026-10-12
+  ([baseline](findings/2026-10-12-deployed-baseline.md)). **No dated deployment finding exists** for the
+  deployments between 2026-09-29 and 2026-10-06, nor for this one.
+- 2026-10-09 22:59 PDT: an unrecorded reboot, observed after the fact (baseline); all units were active
+  afterwards with Ethernet present. Not an offline-boot proof.
 
 Party Core `avrana-party-core` runs at 127.0.0.1:8191 behind nginx `/party/api/`.
 BLUFF is granted and listed in Party Home. Experiment rows below retain the 2026-09-27 branch
@@ -118,12 +137,13 @@ inventory; the source revision table above governs current main observations.
 | Port | Service (systemd) | Code |
 |---|---|---|
 | 80 | nginx (`/etc/nginx/sites-available/avrana-party`): captive probes, LAN Games, `/arcade/` | `avrana-party.nginx` |
-| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = release `956b968` (2026-09-29 16:32 PDT; before: `0e97c2e`, `6bd5af4`) since 2026-09-29); `/party/api/` → Party Core 127.0.0.1:8191 | `avrana-party.nginx`, `ops/` |
-| 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `c6d7b52` (upstream `/home/cody/LAN-Games` kept for rollback) |
-| 127.0.0.1:8191 | Party Core (`avrana-party-core`): membership, host and session authority behind HTTPS `/party/api/` | `avrana/party/`, production `956b968` |
+| 443 | nginx, `party.avrana.net` (Let's Encrypt; `/etc/avrana-party/tls/current`): LAN Games, `/arcade/`; `/party/` Full Mode shell (static, `/var/www/avrana-party/web/current` = build `c59f1c819de1` per the 2026-10-12 manifest; earlier `956b968` (2026-09-29 16:32 PDT), `0e97c2e`, `6bd5af4`); `/party/api/` → Party Core 127.0.0.1:8191 | `avrana-party.nginx`, `ops/` |
+| 8096 | games: the Avrana Party Games fork (`avranaparty-games` + drop-in `avrana-fork.conf`) | `/home/cody/avrana-party-games` @ `a448972` (upstream `/home/cody/LAN-Games` kept for rollback) |
+| 127.0.0.1:8191 | Party Core (`avrana-party-core`): membership, host and session authority behind HTTPS `/party/api/` | `avrana/party/`, production `c59f1c8` |
 | 127.0.0.1:8097 | arcade (`avranaparty-arcade`): RetroArch + Xvfb + GStreamer | `arcade/` from the production checkout |
 | 127.0.0.1:8098 | arcade control (**LIVE** since 2026-09-29, AVR-134): the Party's signed launch/end start and stop RetroArch + the encode (ADR 0009); drop-in `/etc/systemd/system/avranaparty-arcade.service.d/avrana-party-session.conf`; never proxied. The arcade idles (no RetroArch) until the Party Host starts Gauntlet II | `arcade/stream.py`, `avrana/party/managed.py` |
 | 10.42.0.1:53, 67 | NetworkManager's dnsmasq for the AP | NM + `avrana-captive.conf` |
+| wlan0 (radio) | Party AP "Avrana Party", 5 GHz **channel 36**, 20 MHz, read on the Pi 2026-10-07 (the owner changed it from 149 on 2026-10-06 after a measured comparison; policy and evidence are in the network runbook) | NM profile "Avrana Party Internal"; `docs/runbooks/network.md` (Channel policy) |
 | 5353 | avahi (`party.local`) | system |
 | 5201 | iperf3 | system |
 | 45876 | beszel-agent | `telemetry/` |
@@ -132,7 +152,11 @@ inventory; the source revision table above governs current main observations.
 | 8198 (when started) | PS1 stream: standalone (`ps1/tools/supervised-run.sh`, binds 10.42.0.1) or started by the front door (binds 127.0.0.1 only) | `ps1/` on the dev/test checkout |
 | 8190 (when started) | dev front door + party service; proxies `/ps1/<title>/` to the running PS1 | `experiments/party-service` (Pi worktree `~/avrana-lab/party-svc`) |
 
-### Who the services run as (observed 2026-10-03, read-only)
+### Who the services run as (observed 2026-10-03; user re-confirmed 2026-10-12)
+
+On 2026-10-12 `systemctl show avrana-party-core` still reported `User=cody`, `Restart=on-failure`
+([baseline](findings/2026-10-12-deployed-baseline.md)): the ADR 0016 migration has not been applied. The
+rest of this section is the 2026-10-03 reading.
 
 `avrana-party-core`, `avranaparty-games` and `avranaparty-arcade` all run as **`cody`**, the
 owner's SSH account, which is in `sudo` and owns both source checkouts. The session keys in
@@ -153,7 +177,7 @@ Pi met 6 of the 25 phase-1 rules (`tests/fixtures/boundary/pi-2026-10-03.json`).
 
 | Path (Pi) | What |
 |---|---|
-| `/var/log/avrana/pi-throttle.jsonl` | minute power telemetry (the journal itself is volatile: lost at reboot) |
+| `/var/log/avrana/pi-throttle.jsonl` | minute power telemetry. The systemd journal is **volatile**: effective `Storage=volatile` (the Raspberry Pi OS drop-in `40-rpi-volatile-storage.conf`; Avrana's `avrana.conf` bounds sizes and leaves `Storage=` alone), one boot in `journalctl --list-boots`, 11.4M, observed 2026-10-12 ([baseline](findings/2026-10-12-deployed-baseline.md)); lost at reboot. A deliberate reboot proof is not run |
 | `~/avrana-lab/power-watch/` | power-test samples; summarize findings in docs, keep raw samples outside Git |
 | `~/avrana-lab/playtest/` | playtest logs (runbook) |
 | `/srv/…` | ROMs and BIOS (read-only; **never** copied or committed) |

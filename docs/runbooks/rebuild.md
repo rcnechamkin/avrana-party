@@ -171,12 +171,12 @@ Every step is one of four kinds, and the four sections below take them in turn.
 | 1 | owner | Write the OS to the card, create the operator account, give it your SSH key, connect `eth0`; install `git`, `sudo` and Python 3.11 or newer; install NetworkManager and let it run the network, at a console |
 | 2 | owner | Clone the Party checkout at the reviewed commit; carry the Games bundle, clone it, detach at the reviewed commit |
 | 3 | automated | `check`, `plan`, then `apply --target-hostname NAME`: the marker, packages, service users, directories, the configuration that waits for nothing |
-| 4 | automated | `ops/deploy.sh --skip-smoke` builds both code releases and the manifest; `ops/install-party-web.sh` builds the web release |
+| 4 | automated | `ops/deploy.sh --skip-smoke --skip-nginx-site` builds both code releases and the manifest (the site file is installed by `apply` in step 8, and a host with no nginx yet would be refused otherwise); `ops/install-party-web.sh` builds the web release |
 | 5 | owner | Place what is in no repository: the games virtualenv, the libretro core, the ROM, the lego client |
 | 6 | secret | Generate the three game keys; issue and install the certificate |
 | 7 | owner | Create the access point profile and type its passphrase |
 | 8 | automated | `apply --activate`: unit files, drop-ins, the nginx site; then the reload commands of everything in place, step 3's included (journal, `uinput`, udev, systemd, nginx), then enable and start |
-| 9 | automated | `verify`; then `ops/deploy.sh` once more with the same commits, so the manifest records a smoke result |
+| 9 | automated | `verify`; then `ops/deploy.sh` once more with the same commits (without `--skip-nginx-site`: the site file is then compared and, if needed, installed), so the manifest records a smoke result |
 | 10 | hardware | The phone checklist, on real phones over the party Wi-Fi |
 | 11 | owner | Optional pieces (telemetry, automatic renewal), then update SYSTEM and write a dated finding |
 | 12 | owner | `seal`: the build is over; from now on this card is an appliance and `apply` and `restore` refuse it |
@@ -246,6 +246,8 @@ exits 1, and can simply be run again once the cause is fixed.
 sudo bash /home/cody/avrana-party/ops/deploy.sh --party <PARTY_SHA> --games <GAMES_SHA> --skip-smoke
 sudo bash /home/cody/avrana-party/ops/install-party-web.sh /home/cody/avrana-party
 ```
+
+`ops/deploy.sh` first runs `tools/contract_check.py` on the two exact commits and refuses a pair that disagrees on the Party <-> Games contract (the result is recorded in the manifest).
 
 With both checkouts already at the named commits `ops/deploy.sh` stops and starts nothing,
 builds `/opt/avrana-party/current` and `/opt/avrana-party-games/current` and writes the

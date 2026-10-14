@@ -61,7 +61,7 @@ Stop, record the exact step, time, exit status and sanitized error, and do not c
 - an under-voltage event or `vcgencmd get_throttled` other than `0x0` during a measured step;
 - a certificate warning on any phone (do not tap through it);
 - a phone that cannot reach `https://party.avrana.net/party/` after one rejoin of the Wi-Fi by the participant;
-- any step that would need `--allow-dirty`, `--allow-branch`, `--force-busy` or `--skip-smoke`: those flags
+- any step that would need `--allow-dirty`, `--allow-branch`, `--force-busy`, `--skip-smoke` or `--skip-contract-check`: those flags
   are not part of this procedure.
 
 Each defect becomes its own scoped Linear issue with the evidence; fixing it is not part of the session.
@@ -78,6 +78,8 @@ Each defect becomes its own scoped Linear issue with the evidence; fixing it is 
 | D6 | Limited Mode (plain-HTTP fallback)? | **Out of scope; not deployed.** Mitigate with the phone checklist in step 6. | LIMITED-MODE rollout steps 3 and 4 have not happened; nginx has no port-80 `/party/`. A phone whose HTTPS to `party.avrana.net` fails has no way in. |
 
 ## 0. The release pair, and how to verify it
+
+**Note 2026-10-12: these pins are stale.** Party `origin/main` was `04c5844` and Games `origin/main` `2ee23e6` on 2026-10-12, and the Pi runs Party `c59f1c8` / Games `a448972` ([baseline](../findings/2026-10-12-deployed-baseline.md)). Read the deployed and target SHAs from `/party/api/status` and `git ls-remote` at run time, and do not copy any pin below without re-checking its CI. Also stale: "AVR-319 is not merged" (the game origin deployable change is on main as Party #100). See [offline-acceptance](offline-acceptance.md) for the broader tests that reuse this packet's steps.
 
 Pinned for this packet (checked 2026-10-09 local, 2026-10-10 UTC; Party `main` was `defd4a2` and Games `main` was `fb711d9`):
 
@@ -204,9 +206,11 @@ as not installed ([deploy](deploy.md) "After"). Copy the status JSON into the re
 ## 3. nginx site file, including the AVR-314 cookie rule
 
 The web build and the site file of one commit are a single deployment unit (the catalog offers
-exactly the games the site routes; [deploy](deploy.md)). `ops/deploy.sh` never installs nginx, so
-install the site file **immediately** after step 2, still before any phone joins. Until then Party
-Home may show tiles that lead to nginx's own 502. In Session A Checkers is not provisioned and
+exactly the games the site routes; [deploy](deploy.md)). `ops/deploy.sh` installs the site file of the
+deployed commit itself (read from Git, `nginx -t`, reload, the previous file put back on any failure;
+`--skip-nginx-site` opts out), so step 2 already did it unless that flag was used; if it was, install the
+site file **immediately**, still before any phone joins, because until then Party Home may show tiles that
+lead to nginx's own 502. In Session A Checkers is not provisioned and
 Party Home may still list it (the catalog comes from the contracts): nobody taps it.
 
 **On the Pi:**
@@ -463,8 +467,8 @@ sudo tail -n 60 /var/log/avrana/pi-throttle.jsonl
 curl -s https://party.avrana.net/party/api/status | python3 -m json.tool
 ```
 
-The journal is persistent on the Pi with caps ([logs-and-retention](logs-and-retention.md)), so it survives the
-reboots in this session; copy it before any later reboot anyway. BLUFF's `EVENT {...}` lifecycle lines are the join, rejoin and disconnect record
+The journal on the Pi is **volatile** (correction 2026-10-12; [logs-and-retention](logs-and-retention.md)), so the journal does **not** survive the
+reboots in this session: copy the excerpt above before every reboot or power cut. BLUFF's `EVENT {...}` lifecycle lines are the join, rejoin and disconnect record
 (no tokens). **Never** attach or paste: Wi-Fi names or passwords, keys or credentials (`/etc/avrana-party/game-keys`, `LoadCredential`), cookies, tickets, device ids,
 raw nginx access logs (they carry URLs and client addresses), lease files, the TLS or NetworkManager backups, or a raw journal. Read the excerpt first and redact. Keep raw files on the Pi or laptop, outside Git.
 

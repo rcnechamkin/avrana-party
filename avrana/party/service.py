@@ -13,6 +13,8 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/rename      {name}
     POST /party/api/leave       {}
     POST /party/api/host        {to, if_version}
+    POST /party/api/host/spectate  {if_version}          host: stop hosting and watch, during setup
+                                                         or at results (AVR-132)
     POST /party/api/session/launch {game, if_version}    host
     POST /party/api/session/end    {if_version}          host: end the game for everyone
     POST /party/api/session/switch {game, if_version}    host: end the game that is on, then
@@ -22,6 +24,9 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/session/start  {if_version}          host: start the round set up (AVR-129)
     POST /party/api/home           {if_version}          host: from a round's results back to
                                                          Party Home, for everyone (ADR 0011)
+    POST /party/api/lobby          {if_version}          host: everyone back to Party Home from
+                                                         wherever the party is (setup, a round,
+                                                         its results); needs nothing of the game
     GET  /party/api/status                   what is running: avrana.ops.status (no secrets)
     join and rename also take {avatar}: a bundled Gaze avatar id, shown to the party
 
@@ -146,7 +151,7 @@ class PartyService:
         with self.lock:
             s = self.core.go_home(device_id, if_version)
             self._notify()
-        self._end_at_game(s)
+        self._send_end(s)
         return s
 
     def start_round(self, device_id, if_version):
@@ -167,7 +172,7 @@ class PartyService:
             old = self.core.begin_switch(device_id, game_id, if_version)
             self._notify()
         # a round still in setup never reached the game: nothing there to end
-        confirmed = True if old.state == core.ENDED else self._end_at_game(old)
+        confirmed = True if old.state == core.ENDED else self._send_end(old)
         with self.lock:
             self.core.end_confirmed(old.id, confirmed)
             s = self.core.launch_pending()
@@ -181,9 +186,10 @@ class PartyService:
         if self.record is not None:
             self.record.write(s.id, s.game_id)
 
-    def _end_at_game(self, s):
+    def _send_end(self, s):
         """The signed `end` for a session, and the durable record of it dropped once the game says
-        it is not running it. Returns the link's answer. Never called under the lock."""
+        it is not running it. Returns the link's answer (True: the game is not running it). Never
+        called under the lock. `_end_at_game` is this plus Party Core's end_confirmed."""
         confirmed = self.link.end(s)
         if confirmed and self.record is not None:
             self.record.clear(s.id)
@@ -196,7 +202,7 @@ class PartyService:
             # Roll back at the game too (AVR-134): a runtime that came up after the link gave up
             # waiting, or half-started, is stopped before the party says the launch failed, so a
             # failed start never leaves a heavy runtime running beside the next one.
-            self._end_at_game(s)
+            self._send_end(s)
         with self.lock:
             if ok:
                 accepted = self.core.launch_accepted(s.id)
@@ -207,7 +213,7 @@ class PartyService:
         if ok and not accepted:
             # AVR-223: the party moved on while the launch was in flight (the host cancelled it,
             # or LAUNCH_TIMEOUT passed): the runtime that just came up would be orphaned. Stop it.
-            self._end_at_game(s)
+            self._send_end(s)
         return s
 
     def game_reported_end(self, session_id, outcome, result=None):
@@ -219,7 +225,7 @@ class PartyService:
             s = self.core.game_reported_end(session_id, outcome, result)
             self._notify()
         if s.outcome == 'abandoned':
-            self._end_at_game(s)
+            self._send_end(s)
         return s
 
     def end(self, device_id, if_version):
@@ -228,10 +234,28 @@ class PartyService:
             self._notify()
             if s.state == core.ENDED:            # a launch that was cancelled: nothing to reset
                 return s
-        confirmed = self._end_at_game(s)
+        return self._end_at_game(s)
+
+    def _end_at_game(self, s):
+        """Ask the game to end a session Party Core is already ending, and record its answer.
+        Outside the lock: a game that is slow or gone delays nobody (the party is home already)."""
+        confirmed = self._send_end(s)
         with self.lock:
             self.core.end_confirmed(s.id, confirmed)
             self._notify()
+        return s
+
+    def lobby(self, device_id, if_version):
+        """Host: everyone back to Party Home from wherever the party is (core.begin_lobby). The
+        game is told afterwards, so its session, its room and its seats go too; what it answers,
+        or whether it answers, changes nothing for the party."""
+        with self.lock:
+            s, left = self.core.begin_lobby(device_id, if_version)
+            self._notify()
+        if left == 'release':
+            self._send_end(s)                    # the finished round's held results screen
+        elif left == 'end':
+            self._end_at_game(s)
         return s
 
     # ---- a game that is gone (AVR-33) ---------------------------------------------------------------
@@ -265,7 +289,7 @@ class PartyService:
         if lost:
             log.warning('game %s: session %s closed, the game stopped answering', s.game_id, s.id)
             # the game may come back holding a ghost: say `end` once it can hear it, off this request
-            threading.Thread(target=self._end_at_game, args=(s,), daemon=True, name=RELEASE_THREAD).start()
+            threading.Thread(target=self._send_end, args=(s,), daemon=True, name=RELEASE_THREAD).start()
         return not lost
 
     def recover_orphan(self, attempts=5, delay=2.0, sleep=time.sleep):
@@ -361,7 +385,7 @@ def _send(h, status, obj, cookie=None):
 def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
               'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
-              'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409,
+              'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409, 'no_successor': 409,
               'player_count': 409, 'not_results': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
@@ -480,6 +504,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('leave', device)
             elif path == '/party/api/host':
                 svc.call('transfer_host', device, body.get('to'), body.get('if_version'))
+            elif path == '/party/api/host/spectate':
+                svc.call('quit_and_spectate', device, body.get('if_version'))
             elif path == '/party/api/session/launch':
                 svc.launch(device, body.get('game'), body.get('if_version'))
             elif path == '/party/api/session/end':
@@ -490,6 +516,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('choose', device, body.get('choice'))
             elif path == '/party/api/home':
                 svc.go_home(device, body.get('if_version'))
+            elif path == '/party/api/lobby':
+                svc.lobby(device, body.get('if_version'))
             elif path == '/party/api/session/start':
                 svc.start_round(device, body.get('if_version'))
             else:

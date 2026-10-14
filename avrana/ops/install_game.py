@@ -9,7 +9,9 @@ NOT an SDK, NOT stable, NOT run on the appliance (docs/runbooks/install-game.md)
 explicit act by root. A package that validates is still NOT trusted: installing it makes the
 appliance run third-party code as an isolated systemd DynamicUser, in the hardened shared template
 unit, with its own key and its own Unix socket, nothing more (ADR 0016). This tool never imports,
-executes or evaluates anything from a package.
+executes or evaluates anything from a package. A package runs on python3 or on the optional pinned
+node runtime (avrana.avrgame.node_pin, AVR-68); one that names a runtime this appliance lacks is refused
+before anything is written, and nothing is fetched or built for either: no npm, no install script.
 
 There is ONE way a native game gets onto this appliance: `avrana.ops.provision_game`. This tool
 does not fork it. It validates the archive (avrana.avrgame.read), stages its files into a
@@ -47,6 +49,7 @@ from pathlib import Path, PurePosixPath
 from avrana import avrgame
 from avrana.avrgame import installed
 from avrana.contracts import game as game_contract
+from avrana.ops import catalog_overlay
 from avrana.ops import provision_game as pg
 
 Refused = pg.Refused
@@ -252,7 +255,7 @@ def _write_record(layout, package_id, doc):
 # ---- the lock ---------------------------------------------------------------------------------------
 
 @contextlib.contextmanager
-def locked(path):
+def locked(path, wait=0):
     """One install, remove or repair at a time. Where `fcntl` does not exist (Windows, where the
     tests run) there is nothing to lock. The lock dies with the process, so a crash never leaves
     it held."""
@@ -261,12 +264,21 @@ def locked(path):
     except ImportError:
         yield
         return
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise Refused('another install-game is running (the lock is held); wait for it') from None
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as exc:
+        raise Refused(f'the lock file {path} cannot be opened ({type(exc).__name__}: {exc.strerror}); '
+                      'is this running as root?') from None
+    try:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise Refused('another install-game is running (the lock is held); wait for it') from None
+                time.sleep(0.2)
         yield
     finally:
         os.close(fd)
@@ -401,8 +413,23 @@ def _check_permissions(contract, allow):
     return granted, notes
 
 
+def runtime_present(executable):
+    """Whether an optional runtime is on this host: its executable is a regular file."""
+    return os.path.isfile(executable)
+
+
+def check_runtime(name, executable, present=runtime_present):
+    """Refuse a package whose runtime this appliance does not have (AVR-68). Only the optional
+    runtimes are looked for: python3 is part of the appliance."""
+    if name in avrgame.OPTIONAL_RUNTIMES and not present(executable):
+        raise Refused(f'this package runs on the {name} runtime, which this appliance does not have '
+                      f'({executable} is missing); nothing was installed. Install the runtime first '
+                      f'(sudo ops/install-{name}-runtime <official tarball>; docs/runbooks/install-game.md), '
+                      'then install the package again. Packages of other runtimes are not affected')
+
+
 def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpreters=avrgame.INTERPRETERS,
-                 now=None, read=avrgame.read, owner=None):
+                 now=None, read=avrgame.read, owner=None, present=runtime_present):
     """Every refusal, in one place, before anything is written. Returns a Plan."""
     try:
         package = read(path)
@@ -437,6 +464,7 @@ def plan_install(path, layout, repo_contracts, allow=(), trusted=None, interpret
         raise Refused(f'{pid} is already provisioned by other means ({", ".join(left)}); '
                       'a package never takes over an existing game')
     interpreter = interpreters[package.manifest['server']['interpreter']]
+    check_runtime(package.manifest['server']['interpreter'], interpreter, present)
     if trusted is not None:
         trusted(interpreter)
     root = layout.tree_text(pid, package.version, package.sha256)
@@ -493,12 +521,13 @@ def _undo_provision(package_id, layout, run):
 
 
 def install(path, layout, repo_contracts, run, own, origin, trusted=None, allow=(), owner=None,
-            interpreters=avrgame.INTERPRETERS, now=None, extract=avrgame.extract, read=avrgame.read):
+            interpreters=avrgame.INTERPRETERS, now=None, extract=avrgame.extract, read=avrgame.read,
+            present=runtime_present):
     """Install the package at `path`. Returns the lines to show. On any failure the host is put
     back as it was (see the module docstring) and the original failure is raised;
     RollbackIncomplete when the undo itself could not finish. `owner` is the uid the staged tree
     must belong to (0 in real use); None skips that check (tests as a normal user)."""
-    plan = plan_install(path, layout, repo_contracts, allow, trusted, interpreters, now, read, owner)
+    plan = plan_install(path, layout, repo_contracts, allow, trusted, interpreters, now, read, owner, present)
     package, pid = plan.package, plan.package.id
     final = layout.on_disk(plan.root)
     ledger = _Ledger()
@@ -748,7 +777,7 @@ def _parser():
         p.add_argument('--party-url', default=pg.DEFAULT_PARTY_URL, help=f'Party Core on loopback (default {pg.DEFAULT_PARTY_URL})')
     for p in (i, r, sub.choices['list'], sub.choices['verify']):
         for name in ('key-dir', 'registry-dir', 'socket-dir', 'state-dir', 'unit-dir', 'template-dir',
-                     'party-config', 'records-dir', 'games-root', 'lock-file', 'visible-root'):
+                     'party-config', 'records-dir', 'games-root', 'lock-file', 'visible-root', 'catalog-dir', 'catalog-base'):
             p.add_argument(f'--{name}', help=argparse.SUPPRESS)
     return ap
 
@@ -812,6 +841,7 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
             from avrana.contracts import party_config
             contracts = party_config.load_contracts()
         owner = 0 if real else None
+        catalog_dir = a.catalog_dir if getattr(a, 'catalog_dir', None) else (catalog_overlay.DEFAULT_DIR if real else None)
         conf = a.party_config if getattr(a, 'party_config', None) else pg.PARTY_CONFIG
         if a.command == 'list':
             rows, problems = listing(layout, contracts, owner=owner)
@@ -837,9 +867,21 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
                     print(f'{a.id}: nothing to remove', file=out)
                 return 0
             with interrupts_as_exceptions(), locked(layout.lock_file):
-                changes = remove(a.id, layout, contracts, run, active, a.keep_state, owner)
-            for item in changes:
-                print(f'{a.id}: removed {item}', file=out)
+                try:
+                    changes = remove(a.id, layout, contracts, run, active, a.keep_state, owner)
+                except BaseException:
+                    if catalog_dir:                  # AVR-337: the record may be gone already; never leave a tile for it
+                        with shielded():
+                            catalog_overlay.best_effort(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
+                                                        catalog_dir, owner, repo_contracts=contracts)
+                    raise
+                for item in changes:                 # said first: the removal is done whatever the catalog does next
+                    print(f'{a.id}: removed {item}', file=out)
+                with shielded():
+                    lines = catalog_overlay.after_change(layout, a.catalog_base or catalog_overlay.DEFAULT_BASE,
+                                                         catalog_dir, owner, repo_contracts=contracts) if catalog_dir else []
+            for line in lines:
+                print(line, file=out)
             if not changes:
                 print(f'{a.id}: nothing to remove', file=out)
             return 0
@@ -858,6 +900,11 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
             return 0
         with interrupts_as_exceptions(), locked(layout.lock_file):
             lines = install(a.package, layout, contracts, run, own, origin, trusted, a.grant, owner)
+            if catalog_dir:                          # AVR-337: fail closed, the install is undone if the catalog cannot be written
+                with shielded():                     # installed already: a signal must not cut the publish or its undo short
+                    lines += catalog_overlay.publish_or_undo(
+                        layout, a.catalog_base or catalog_overlay.DEFAULT_BASE, catalog_dir, owner, lines[0].split(':', 1)[0],
+                        undo=lambda pid: remove(pid, layout, contracts, run, None, False, owner), repo_contracts=contracts)
         for line in lines:
             print(line, file=out)
         return 0
@@ -876,6 +923,9 @@ def main(argv=None, *, run=None, own=None, is_root=None, opener=None, contracts=
         return 1
     except Refused as e:
         print(f'install-game: refused: {e}', file=err)
+        return 1
+    except catalog_overlay.OverlayError as e:
+        print(f'install-game: the effective catalog: {e}', file=err)
         return 1
     except subprocess.CalledProcessError as e:
         print(f'install-game: failed: {" ".join(map(str, e.cmd))} exited {e.returncode}; nothing is left installed', file=err)

@@ -15,11 +15,17 @@ from types import MappingProxyType
 from avrana.contracts import game as game_contract
 from avrana.contracts import strictjson, vocabulary
 
+from . import node
 from .common import FORMAT, MAX_MANIFEST_BYTES, Problems, Refused, check_json_depth, clip, name_problem, text_ok
 
-# Interpreter NAME -> absolute executable. The appliance owns this mapping; a package only picks a
+# Runtime NAME -> absolute executable. The appliance owns this mapping; a package only picks a
 # name. The installer sets the working directory to the staged package root.
-INTERPRETERS = MappingProxyType({'python3': '/usr/bin/python3'})
+# A literal on purpose (the developer tools export reads it as data). The node path is the pinned
+# build of node_pin.EXECUTABLE; a unit test holds the two equal.
+INTERPRETERS = MappingProxyType({'python3': '/usr/bin/python3', 'node': '/opt/avrana-runtimes/node-22.22.2/bin/node'})
+# Runtimes an appliance may not have: the installer refuses a package that names a missing one.
+# Nothing else depends on them (AVR-68).
+OPTIONAL_RUNTIMES = frozenset({node.NAME})
 
 TOP = ('format', 'game', 'package', 'requires', 'server', 'client')
 RESERVED = ('signature', 'provenance', 'entitlement', 'publisher_key')
@@ -145,7 +151,7 @@ def validate_manifest(obj, vocab=None):
                              f'not {clip(req[key])}')
         out['requires'] = {k: req[k] for k in REQUIRES_KEYS if k in req}
 
-    # server: an interpreter NAME and arguments; the appliance owns the executable path
+    # server: a runtime NAME (python3 | node) and arguments; the appliance owns the executable path
     srv = obj.get('server')
     if 'server' in obj and _keys(srv, 'server', {'interpreter', 'args'}, ('interpreter', 'args'), problems):
         interp = srv.get('interpreter')
@@ -164,6 +170,8 @@ def validate_manifest(obj, vocab=None):
             if interp == 'python3' and not module_form(args):
                 problems.add('server.args: for python3 only ["-m", "<module in the package>", ...] is supported '
                              'today (a dotted module name such as "mygame" or "mygame.server")')
+            if interp == node.NAME and not node.entry_form(args):
+                problems.add(f'server.args[0]: {node.ENTRY_RULE}')
         out['server'] = {'interpreter': interp, 'args': list(args) if isinstance(args, list) else args}
 
     # client: where the portable browser bundle lives inside the package
@@ -187,8 +195,15 @@ def module_form(args):
 
 def entry_problem(manifest, names):
     """Why the package cannot start (statically: nothing is imported or run), or None. The module of
-    `-m NAME` must be NAME/__main__.py or NAME.py among the package's files."""
+    `-m NAME` must be NAME/__main__.py or NAME.py among the package's files; the entry of a node
+    package must be one of its files."""
     server = manifest['server']
+    if server['interpreter'] == node.NAME and node.entry_form(server['args']):
+        entry = server['args'][0]
+        if entry in names:
+            return None
+        return (f'server.args: the package has no file {clip(entry)} for the node entry; validation cannot prove '
+                'a package starts, but this much it can check')
     if server['interpreter'] != 'python3' or not module_form(server['args']):
         return None
     path = server['args'][1].replace('.', '/')

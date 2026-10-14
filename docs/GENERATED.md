@@ -15,6 +15,9 @@ Use the committed npm lockfile (`npm ci`). UI generation runs on a development m
 | `assets/vendor/lan-games-art/*.svg` | Games `web/gameart.js`, `provider/catalog.json`, exporter | In Games: `node ops/export_game_art.mjs ../avrana-party/assets/vendor/lan-games-art` | same command with `--check` |
 
 Confirm the exporter CLI in the selected Games revision before refreshing an imported snapshot.
+One generated artifact is not in the repository: the appliance-local effective catalog
+`/var/lib/avrana-party/catalog/catalog.json` (experimental, [AVRGAME-PACKAGE](design/AVRGAME-PACKAGE.md)), written by
+`python3 -m avrana.ops.catalog_overlay refresh` from the release's `catalog.json` and the install records.
 See [asset provenance](../assets/vendor/README.md), [provider design](design/LAN-GAMES-PROVIDER.md)
 and [cross-repo testing](TESTING.md#lan-games-provider-cross-repository-tests).
 The public offline lane validates the committed snapshots and downstream outputs, but cannot

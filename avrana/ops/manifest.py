@@ -5,6 +5,9 @@
         --web-root /var/www/avrana-party/web [--allow-dirty] [--restarted UNIT ...]
     python3 -m avrana.ops.manifest validate /var/lib/avrana-party/deployment.json
     python3 -m avrana.ops.manifest smoke /var/lib/avrana-party/deployment.json passed|failed
+    python3 -m avrana.ops.manifest contract-check /var/lib/avrana-party/deployment.json compatible|not_checkable|skipped
+    python3 -m avrana.ops.manifest last-known-good record|seed MANIFEST OUT
+    python3 -m avrana.ops.manifest deploy-info PATH --nginx-status installed --nginx-sha256 HEX [--option skip_smoke ...]
 
 Written by ops/deploy.sh after the checkouts are at their intended commits; read by
 /party/api/status, the smoke checks and tools/reconcile.py. The deployed system is authoritative
@@ -21,6 +24,15 @@ Schema (docs/design/DEPLOYMENT-MANIFEST.md):
     contract       {"party_games", "party_session", "lan_launch"}
     restarted      [unit names restarted by this deployment]
     smoke          {"status": "pending"|"passed"|"failed"|"skipped", "at": ISO 8601} or null
+    contract_check optional: {"status": "compatible"|"not_checkable"|"skipped", "at": ISO 8601}; how ops/deploy.sh
+                   judged the Party/Games pair (not_checkable: a commit predates the checker)
+    nginx_site     optional: {"status": "installed"|"unchanged"|"skipped"|"not_managed", "sha256": hex or null, "at"}; what
+                   ops/deploy.sh did with the nginx site file and the sha256 of the live file afterwards (AVR-271)
+    last_attempt   optional: {"party_sha", "games_sha", "at", "outcome", "backup"}; the last run that got past validation, and
+                   how it ended: ok|smoke-failed-kept|rolled-back|rollback-failed|interrupted-restored|refused|post-commit-failed.
+                   After a rollback the manifest names the pair that is running; this names the one that was attempted
+    deploy_options optional: {skip_smoke, skip_contract_check, no_auto_rollback, force_busy, allow_dirty, allow_branch,
+                   skip_nginx_site: bool, rollback: null|"manual"|"auto"|"recover"}; the flags this deployment ran with
 """
 import argparse
 from datetime import datetime, timezone
@@ -38,6 +50,14 @@ SCHEMA = 'avrana.deployment/v0'
 DEFAULT_PATH = '/var/lib/avrana-party/deployment.json'
 SHA = re.compile(r'^[0-9a-f]{40}$')
 SMOKE_STATES = ('pending', 'passed', 'failed', 'skipped')
+CONTRACT_CHECK_STATES = ('compatible', 'not_checkable', 'skipped')
+LAST_KNOWN_GOOD_SCHEMA = 'avrana.last-known-good/v0'
+ATTEMPT_OUTCOMES = ('ok', 'smoke-failed-kept', 'rolled-back', 'rollback-failed', 'interrupted-restored', 'refused',
+                    'post-commit-failed')
+NGINX_SITE_STATES = ('installed', 'unchanged', 'skipped', 'not_managed')
+OPTION_NAMES = ('skip_smoke', 'skip_contract_check', 'auto_rollback', 'no_auto_rollback', 'force_busy', 'allow_dirty',
+                'allow_branch', 'skip_nginx_site')
+ROLLBACK_KINDS = ('manual', 'auto', 'recover')
 
 
 class ManifestError(ValueError):
@@ -145,6 +165,30 @@ def validate(doc):
     if smoke is not None and (not isinstance(smoke, dict) or smoke.get('status') not in SMOKE_STATES
                               or (smoke.get('at') is not None and not _iso(smoke['at']))):
         errors.append(f'smoke must be null or {{status: {"|".join(SMOKE_STATES)}, at}}')
+    check = doc.get('contract_check')
+    if check is not None and (not isinstance(check, dict) or check.get('status') not in CONTRACT_CHECK_STATES
+                              or not _iso(check.get('at'))):
+        errors.append(f'contract_check must be absent or {{status: {"|".join(CONTRACT_CHECK_STATES)}, at}}')
+    site = doc.get('nginx_site')
+    if site is not None and (not isinstance(site, dict) or site.get('status') not in NGINX_SITE_STATES
+                             or not (site.get('sha256') is None or re.match(r'^[0-9a-f]{64}$', str(site.get('sha256'))))
+                             or not _iso(site.get('at'))
+                             or not (site.get('cert_name_mismatch', []) is not None
+                                     and isinstance(site.get('cert_name_mismatch', []), list)
+                                     and all(isinstance(n, str) for n in site.get('cert_name_mismatch', [])))):
+        errors.append(f'nginx_site must be absent or {{status: {"|".join(NGINX_SITE_STATES)}, sha256: hex|null, at}}')
+    options = doc.get('deploy_options')
+    if options is not None and (not isinstance(options, dict)
+                                or set(options) - set(OPTION_NAMES) - {'rollback'}
+                                or any(not isinstance(options.get(n, False), bool) for n in OPTION_NAMES)
+                                or options.get('rollback') not in (None, *ROLLBACK_KINDS)):
+        errors.append('deploy_options must be absent or booleans named ' + ', '.join(OPTION_NAMES)
+                      + ' and rollback null|' + '|'.join(ROLLBACK_KINDS))
+    attempt = doc.get('last_attempt')
+    if attempt is not None and (not isinstance(attempt, dict) or attempt.get('outcome') not in ATTEMPT_OUTCOMES
+                                or not SHA.match(str(attempt.get('party_sha', ''))) or not SHA.match(str(attempt.get('games_sha', '')))
+                                or not _iso(attempt.get('at')) or not isinstance(attempt.get('backup'), str)):
+        errors.append('last_attempt must be absent or {party_sha, games_sha, at, outcome: ' + '|'.join(ATTEMPT_OUTCOMES) + ', backup}')
     for key in ('privkey', 'token', 'password', 'secret'):
         if key in json.dumps(doc).lower():
             errors.append(f'manifest text must not contain {key!r}')
@@ -219,6 +263,108 @@ def record_smoke(path, status, now=None):
     return write(path, doc)
 
 
+def record_contract_check(path, status, now=None):
+    doc = read(path)
+    if doc is None:
+        raise ManifestError(f'{path}: no manifest to update')
+    if status not in CONTRACT_CHECK_STATES:
+        raise ManifestError(f'contract check status must be one of {CONTRACT_CHECK_STATES}')
+    doc['contract_check'] = {'status': status, 'at': now or utcnow()}
+    return write(path, doc)
+
+
+def record_last_attempt(path, party_sha, games_sha, outcome, backup, now=None):
+    """What the last run targeted and how it ended. No manifest yet: nothing to annotate (not an error)."""
+    doc = read(path)
+    if doc is None:
+        return None
+    if outcome not in ATTEMPT_OUTCOMES:
+        raise ManifestError(f'outcome must be one of {ATTEMPT_OUTCOMES}')
+    doc['last_attempt'] = {'party_sha': party_sha, 'games_sha': games_sha, 'at': now or utcnow(), 'outcome': outcome,
+                           'backup': backup}
+    return write(path, doc)
+
+
+def record_deploy_info(path, nginx_status=None, nginx_sha256=None, options=(), rollback=None, now=None,
+                       cert_name_mismatch=()):
+    """Additive facts about how the deployment ran: the nginx site file and the flags (AVR-271)."""
+    doc = read(path)
+    if doc is None:
+        raise ManifestError(f'{path}: no manifest to update')
+    if nginx_status is not None:
+        doc['nginx_site'] = {'status': nginx_status, 'sha256': nginx_sha256 or None, 'at': now or utcnow(),
+                             'cert_name_mismatch': sorted(set(cert_name_mismatch))}
+    flags = {name: name in set(options) for name in OPTION_NAMES}
+    flags['rollback'] = rollback
+    doc['deploy_options'] = flags
+    return write(path, doc)
+
+
+def _last_known_good(doc, nginx_sha256, seeded, now):
+    web = doc.get('web_release') or {}
+    return {
+        'schema': LAST_KNOWN_GOOD_SCHEMA,
+        'party_sha': doc['party']['sha'],
+        'games_sha': doc['games']['sha'],
+        'web_release': {'build': web.get('build'), 'commit': web.get('commit')} if web else None,
+        'nginx_site_sha256': nginx_sha256,
+        'deployed_at': doc['deployed_at'],
+        'smoke_at': doc['smoke']['at'],
+        'recorded_at': now or utcnow(),
+        'seeded_from_running_deployment': bool(seeded),
+    }
+
+
+def _write_last_known_good(path, record):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + '.new')
+    temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    if os.name == 'posix':
+        os.chmod(temporary, 0o644)
+    os.replace(temporary, path)
+    return path
+
+
+def record_last_known_good(manifest_path, out_path, now=None):
+    """After a PASSED smoke only: the deployment now running is the one to go back to. A failed or
+    skipped-smoke deployment never reaches this, so it never replaces the record."""
+    doc = read(manifest_path)
+    if doc is None:
+        raise ManifestError(f'{manifest_path}: no manifest to record')
+    if not isinstance(doc.get('smoke'), dict) or doc['smoke'].get('status') != 'passed':
+        raise ManifestError('only a deployment whose smoke checks passed can be the last known good')
+    site = doc.get('nginx_site') or {}
+    return _write_last_known_good(out_path, _last_known_good(doc, site.get('sha256'), False, now))
+
+
+def seed_last_known_good(manifest_path, out_path, party, games, nginx_sha256=None, now=None):
+    """An appliance deployed before this record existed: the running deployment is the record when its
+    manifest says the smoke checks passed AND both checkouts are still at the commits it names."""
+    doc = read(manifest_path)
+    if doc is None or not isinstance(doc.get('smoke'), dict) or doc['smoke'].get('status') != 'passed':
+        raise ManifestError('no running deployment with passed smoke checks to seed from')
+    for name, checkout in (('party', party), ('games', games)):
+        if observe_checkout(checkout)['sha'] != doc[name]['sha']:
+            raise ManifestError(f'the {name} checkout is not at the commit the manifest names')
+    return _write_last_known_good(out_path, _last_known_good(doc, nginx_sha256, True, now))
+
+
+def read_last_known_good(path):
+    """The record, None when absent, ManifestError when malformed."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        rec = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as e:
+        raise ManifestError(f'{path}: unreadable ({type(e).__name__})')
+    if (not isinstance(rec, dict) or rec.get('schema') != LAST_KNOWN_GOOD_SCHEMA
+            or not SHA.match(str(rec.get('party_sha', ''))) or not SHA.match(str(rec.get('games_sha', '')))):
+        raise ManifestError(f'{path}: not a {LAST_KNOWN_GOOD_SCHEMA} record')
+    return rec
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     sub = ap.add_subparsers(dest='command', required=True)
@@ -235,6 +381,29 @@ def main(argv=None):
     s = sub.add_parser('smoke', help='record the smoke result')
     s.add_argument('path')
     s.add_argument('status', choices=SMOKE_STATES)
+    c = sub.add_parser('contract-check', help='record how the Party/Games pair was judged')
+    c.add_argument('path')
+    c.add_argument('status', choices=CONTRACT_CHECK_STATES)
+    k = sub.add_parser('last-known-good', help='record (after passed smoke) or seed the rollback target')
+    k.add_argument('action', choices=('record', 'seed'))
+    k.add_argument('manifest')
+    k.add_argument('out')
+    k.add_argument('--party')
+    k.add_argument('--games')
+    k.add_argument('--nginx-sha256', default=None)
+    d = sub.add_parser('deploy-info', help='record the nginx site file result and the flags of this deployment')
+    d.add_argument('path')
+    d.add_argument('--nginx-status', choices=NGINX_SITE_STATES)
+    d.add_argument('--nginx-sha256', default=None)
+    d.add_argument('--option', action='append', default=[], choices=OPTION_NAMES, help='a flag that was set')
+    d.add_argument('--rollback-kind', choices=ROLLBACK_KINDS, default=None)
+    d.add_argument('--cert-name-mismatch', action='append', default=[], help='a server_name its certificate does not cover')
+    a = sub.add_parser('last-attempt', help='record the target and outcome of the last run')
+    a.add_argument('path')
+    a.add_argument('--party', required=True)
+    a.add_argument('--games', required=True)
+    a.add_argument('--outcome', required=True, choices=ATTEMPT_OUTCOMES)
+    a.add_argument('--backup', required=True)
     args = ap.parse_args(argv)
     try:
         if args.command == 'write':
@@ -253,6 +422,24 @@ def main(argv=None):
             if doc is None:
                 raise ManifestError(f'{args.path}: no deployment manifest (nothing deployed with ops/deploy.sh yet)')
             print(f'{args.path}: valid {SCHEMA}, party {doc["party"]["short"]}, games {doc["games"]["short"]}')
+        elif args.command == 'last-known-good':
+            if args.action == 'record':
+                record_last_known_good(args.manifest, args.out)
+            else:
+                if not (args.party and args.games):
+                    raise ManifestError('seed needs --party and --games')
+                seed_last_known_good(args.manifest, args.out, args.party, args.games, args.nginx_sha256)
+            print(f'{args.out}: last known good {args.action}ed')
+        elif args.command == 'last-attempt':
+            record_last_attempt(args.path, args.party, args.games, args.outcome, args.backup)
+            print(f'{args.path}: last attempt {args.outcome}')
+        elif args.command == 'deploy-info':
+            record_deploy_info(args.path, args.nginx_status, args.nginx_sha256, args.option, args.rollback_kind,
+                               cert_name_mismatch=args.cert_name_mismatch)
+            print(f'{args.path}: deploy info recorded')
+        elif args.command == 'contract-check':
+            record_contract_check(args.path, args.status)
+            print(f'{args.path}: contract check {args.status}')
         else:
             record_smoke(args.path, args.status)
             print(f'{args.path}: smoke {args.status}')

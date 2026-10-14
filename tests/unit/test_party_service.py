@@ -821,5 +821,106 @@ class Bounds(ServiceCase):
         self.assertLess(time.monotonic() - t0, 1.0)
 
 
+class HostLobbyHttp(PartyNavigation):
+    """POST /party/api/lobby: the host brings everyone back to Party Home from anywhere, over real
+    HTTP, with the game told afterwards (so nothing of it is left running or held)."""
+
+    def test_a_game_that_does_not_confirm_delays_nobody_and_is_still_told_to_stop(self):
+        self.link.end_ok = False                                  # a crashed game: asked, never agrees
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        _, bv, _ = ben.state()
+        seen, began = [], time.monotonic()
+        t = self.watch(ben, bv['version'], lambda x: x['location']['at'] == 'home', seen)
+        time.sleep(0.1)
+        status, v, _ = ana.post('lobby', {'if_version': v['version']})
+        t.join(20)
+        self.assertEqual((status, v['state'], v['location']['at'], v['session']['outcome']),
+                         (200, 'lobby', 'home', 'ended_by_host'))
+        self.assertEqual((seen[-1]['nav']['to'], seen[-1]['nav']['from']), ('home', 'bluff'))
+        self.assertLess(time.monotonic() - began, 5)
+        self.assertEqual([c[:2] for c in self.link.calls], [('launch', 'bluff'), ('end', 'bluff')])
+        status, again, _ = ana.post('session/launch', {'game': 'bomber', 'if_version': v['version']})
+        self.assertEqual((status, again['state'], again['location']['game']), (200, 'active', 'bomber'))
+
+    def test_from_results_only_the_host_and_the_held_screen_is_released(self):
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        sid = v['session']['id']
+        self.svc.game_reported_end(sid, 'completed')
+        _, bv, _ = ben.state()
+        self.assertEqual(bv['location']['at'], 'results')
+        status, r, _ = ben.post('lobby', {'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_host'))
+        status, r, _ = self.phone().post('lobby', {'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_member'))
+        status, r, _ = ana.post('lobby', {'if_version': bv['version'] - 1})
+        self.assertEqual((status, r['error']), (409, 'stale'))
+        self.assertEqual([c[0] for c in self.link.calls], ['launch'])   # nothing was asked of the game yet
+        status, v, _ = ana.post('lobby', {'if_version': bv['version']})
+        self.assertEqual((status, v['location']['at'], v['session']['outcome']), (200, 'home', 'completed'))
+        self.assertEqual(self.link.calls[-1], ('end', 'bluff', sid))
+        self.assertEqual(self.link.running, set())
+        status, r, _ = ana.post('lobby', {'if_version': v['version']})
+        self.assertEqual((status, r['error']), (409, 'no_game'))
+
+    def test_a_former_host_is_refused_and_the_new_one_brings_everyone_back(self):
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        status, v, _ = ana.post('host', {'to': next(m['id'] for m in v['members'] if m['name'] == 'Ben'),
+                                         'if_version': v['version']})
+        self.assertEqual(status, 200)
+        status, r, _ = ana.post('lobby', {'if_version': v['version']})
+        self.assertEqual((status, r['error']), (403, 'not_host'))
+        _, bv, _ = ben.state()
+        self.assertEqual((bv['me']['host'], bv['location']['at']), (True, 'game'))
+        status, bv, _ = ben.post('lobby', {'if_version': bv['version']})
+        self.assertEqual((status, bv['location']['at']), (200, 'home'))
+        self.assertEqual(self.link.running, set())
+
+    def test_play_again_then_back_leaves_one_session_and_no_runtime(self):
+        ana, ben = self.table('Ana', 'Ben')
+        v = self.start(ana)
+        first = v['session']['id']
+        self.svc.game_reported_end(first, 'completed')
+        self.link.running.discard(first)                          # the game ended its own round
+        _, v, _ = ana.state()
+        status, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})   # Play again
+        second = v['session']['id']
+        self.assertEqual((status, v['location']['at'], second != first), (200, 'game', True))
+        status, v, _ = ana.post('lobby', {'if_version': v['version']})
+        self.assertEqual((status, v['location']['at']), (200, 'home'))
+        self.assertEqual(self.link.overlaps, [])
+        self.assertEqual(self.link.running, set())
+        self.assertEqual(self.link.calls[-1], ('end', 'bluff', second))
+
+
+
+class QuitAndSpectateHttp(ServiceCase):
+    """POST /party/api/host/spectate (AVR-132) over real HTTP."""
+    games = TWO_GAMES
+
+    def test_at_results_hosting_passes_and_nothing_else_moves(self):
+        ana, ben = self.phone(), self.phone()
+        ana.post('join', {'name': 'Ana'})
+        ben.post('join', {'name': 'Ben'})
+        _, v, _ = ana.state()
+        status, v, _ = ana.post('session/launch', {'game': 'bluff', 'if_version': v['version']})
+        status, r, _ = ana.post('host/spectate', {'if_version': v['version']})
+        self.assertEqual((status, r['error']), (409, 'round_on'))
+        self.svc.game_reported_end(v['session']['id'], 'completed')
+        _, bv, _ = ben.state()
+        status, r, _ = ben.post('host/spectate', {'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_host'))
+        status, v, _ = ana.post('host/spectate', {'if_version': bv['version']})
+        self.assertEqual((status, v['me']['host'], v['me']['watch_next'], v['location']['at']),
+                         (200, False, True, 'results'))
+        _, bv, _ = ben.state()
+        self.assertTrue(bv['me']['host'])
+        self.assertEqual([c[0] for c in self.link.launched], [v['session']['id']])   # the game was not touched
+        self.assertEqual(self.link.ended, [])
+        status, r, _ = ana.post('host/spectate', {'if_version': bv['version']})
+        self.assertEqual((status, r['error']), (403, 'not_host'))
+
 if __name__ == '__main__':
     unittest.main()

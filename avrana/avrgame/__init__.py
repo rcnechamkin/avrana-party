@@ -12,8 +12,9 @@ installer (a separate lane) decides what a valid package may do.
 Public API
 ----------
 FORMAT                       'avrana.avrgame/experimental.1'
-INTERPRETERS                 read-only mapping, interpreter name -> absolute executable
-                             ({'python3': '/usr/bin/python3'}); the appliance owns it
+INTERPRETERS                 read-only mapping, runtime name -> absolute executable (python3, and
+                             the optional pinned node of avrana.avrgame.node_pin); the appliance owns it
+OPTIONAL_RUNTIMES            the names an appliance may lack ({'node'}); see avrana.ops.node_runtime
 Refused(problems: list[str]) the one exception; `.problems` lists every reason
 validate_manifest(obj, vocab=None) -> dict
                              normalised manifest {format, game, package, requires, server, client}
@@ -37,11 +38,12 @@ from .build import (Recipe, build_bytes, load_recipe, pack, pack_recipe, recipe_
                     validate_recipe)
 from .common import (FORMAT, MANIFEST_NAME, MAX_ARCHIVE_BYTES, MAX_FILE_BYTES, MAX_FILES,
                      MAX_MANIFEST_BYTES, MAX_TOTAL_BYTES, RECIPE_FORMAT, RECIPE_NAME, Refused)
-from .manifest import INTERPRETERS, parse as parse_manifest, supported_requires, validate_manifest
+from .manifest import (INTERPRETERS, OPTIONAL_RUNTIMES, parse as parse_manifest, supported_requires,
+                       validate_manifest)
 
 __all__ = [
     'FORMAT', 'INTERPRETERS', 'MANIFEST_NAME', 'MAX_ARCHIVE_BYTES', 'MAX_FILES', 'MAX_FILE_BYTES',
-    'MAX_MANIFEST_BYTES', 'MAX_TOTAL_BYTES', 'Package', 'PackageFile', 'RECIPE_FORMAT', 'RECIPE_NAME',
+    'MAX_MANIFEST_BYTES', 'MAX_TOTAL_BYTES', 'OPTIONAL_RUNTIMES', 'Package', 'PackageFile', 'RECIPE_FORMAT', 'RECIPE_NAME',
     'Recipe', 'Refused', 'build_bytes', 'extract', 'inspect', 'load_recipe', 'pack', 'pack_recipe',
     'parse_manifest', 'read', 'recipe_build', 'scan', 'supported_requires', 'validate_manifest',
     'validate_recipe',

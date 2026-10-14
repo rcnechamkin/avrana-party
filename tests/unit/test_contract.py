@@ -258,6 +258,36 @@ class Mutations(unittest.TestCase):
             self.run_all()
         self.assertIn('catalog snapshot drifted', str(cm.exception))
 
+    def test_session_vectors_without_the_negative_cases_are_named(self):
+        """AVR-465: redeclaring the digest is not enough; the refusals and replays must be there."""
+        for repo, rel, decl, key, write in (
+                (self.party, 'contracts/vectors/party-session.v0.json', self.decl, 'session_protocol', self.write_party),
+                (self.games, 'tests/vectors/party-session.v0.json', self.games_decl, 'session_protocol', self.write_games)):
+            for strip in (('refused',), ('replays',), ('refused', 'replays')):
+                original = (repo / rel).read_bytes()
+                doc = json.loads(original.decode('utf-8'))
+                for name in strip:
+                    del doc[name]
+                (repo / rel).write_text(json.dumps(doc), encoding='utf-8')
+                was = decl[key]['vectors_sha256']
+                decl[key]['vectors_sha256'] = checker.sha256_normalized(repo / rel)
+                write()
+                with self.subTest(rel=rel, strip=strip), self.assertRaises(checker.Drift) as cm:
+                    (checker.check_party if repo == self.party else checker.check_games)(repo)
+                self.assertIn('session protocol vectors drifted', str(cm.exception))
+                (repo / rel).write_bytes(original)
+                decl[key]['vectors_sha256'] = was
+                write()
+        doc = json.loads((self.party / 'contracts/vectors/party-session.v0.json').read_text(encoding='utf-8'))
+        doc['replays'] = [v for v in doc['replays'] if v['reason'] != 'encoding']
+        (self.party / 'contracts/vectors/party-session.v0.json').write_text(json.dumps(doc), encoding='utf-8')
+        self.decl['session_protocol']['vectors_sha256'] = checker.sha256_normalized(
+            self.party / 'contracts/vectors/party-session.v0.json')
+        self.write_party()
+        with self.assertRaises(checker.Drift) as cm:
+            checker.check_party(self.party)
+        self.assertIn('one spelling per token', str(cm.exception))
+
     def test_missing_field_is_a_readable_failure(self):
         del self.games_decl['routes']
         self.write_games()

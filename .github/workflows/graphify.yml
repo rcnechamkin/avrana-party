@@ -1,9 +1,5 @@
 name: Graphify derived context
 on:
-  push:
-    branches: [main, chore/graphify-derived-context]
-  schedule:
-    - cron: '17 */6 * * *'
   workflow_dispatch:
 permissions:
   contents: read

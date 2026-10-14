@@ -17,7 +17,8 @@ NOW = datetime(2026, 10, 3, 0, 0, tzinfo=timezone.utc)
 
 
 class FakeProbes:
-    def __init__(self, checkouts=None, units=None, cert_days=90, games=None, arcade=None, web=None):
+    def __init__(self, checkouts=None, units=None, cert_days=90, games=None, arcade=None, web=None, nginx='match'):
+        self.nginx = nginx
         self.checkouts = checkouts or {}
         self.units = units or {}
         self.cert_days = cert_days
@@ -32,6 +33,9 @@ class FakeProbes:
 
     def web_release(self, root):
         return self.web
+
+    def nginx_site(self, installed, sources):
+        return self.nginx
 
     def unit_state(self, unit):
         return self.units.get(unit, 'active')
@@ -49,6 +53,18 @@ class FakeProbes:
 
 def checkout(sha, dirty=False, ref='main', path='/p', untracked=0):
     return {'sha': sha, 'short': sha[:12], 'dirty': dirty, 'untracked': untracked, 'ref': ref, 'checkout': path}
+
+
+class _WithRecord:
+    """Real certificate/record reading with every other probe faked."""
+    def __init__(self, real):
+        self.real, self.fake = real, FakeProbes()
+
+    def __getattr__(self, name):
+        return getattr(self.fake, name)
+
+    def certificate_not_after(self, path):
+        return self.real.certificate_not_after(path)
 
 
 class Document(unittest.TestCase):
@@ -123,6 +139,44 @@ class Document(unittest.TestCase):
         self.assertEqual(doc['certificate']['status'], 'unavailable')
         self.assertEqual(doc['manifest_error'], 'deployment manifest: unreadable (PermissionError)')
 
+    def test_an_unreadable_certificate_is_never_ok(self):
+        """AVR-31: the live appliance (Party c59f1c8) answered certificate `unavailable` with
+        summary `ok` while the served certificate was 75 days from its end. The service user cannot
+        read the root-only certificate directory, and nothing said so."""
+        manifest.write(self.manifest, sample())
+        both = {'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}
+        doc = self.build(FakeProbes(both, cert_days=None))
+        self.assertEqual(doc['certificate'], {'not_after': None, 'days_left': None, 'status': 'unavailable'})
+        self.assertEqual(doc['summary']['state'], 'unknown')
+        self.assertEqual(doc['summary']['reasons'], ['certificate expiry unavailable'])
+        # a readable certificate is still ok, an expiring or expired one still degrades
+        self.assertEqual(self.build(FakeProbes(both, cert_days=60))['summary']['state'], 'ok')
+        for days, word in ((5, 'expiring'), (-1, 'expired')):
+            doc = self.build(FakeProbes(both, cert_days=days))
+            self.assertEqual((doc['summary']['state'], doc['summary']['reasons']),
+                             ('degraded', [f'certificate {word}']))
+
+    def test_the_installers_expiry_record_stands_in_for_the_root_only_certificate(self):
+        record = Path(self.temp.name) / 'certificate-not-after'
+        record.write_text('notAfter=Dec 25 10:00:00 2026 GMT\n', encoding='ascii')
+        probes = status.Probes(certificate_record=str(record))
+        want = datetime(2026, 12, 25, 10, 0, tzinfo=timezone.utc)
+        # the certificate itself is out of reach (the service user), so the record answers
+        with mock.patch.object(Path, 'exists', side_effect=PermissionError(13, 'Permission denied')):
+            self.assertEqual(probes.certificate_not_after('/etc/avrana-party/tls/current/fullchain.pem'), want)
+        doc = status.build_status(dict(self.cfg, certificate='/nowhere/fullchain.pem'),
+                                  _WithRecord(probes), now=NOW)
+        self.assertEqual(doc['certificate']['status'], 'ok')
+        self.assertEqual(doc['certificate']['not_after'], '2026-12-25T10:00:00Z')
+        # no record, a garbled one, or the wrong thing in it: unavailable, never a crash or a guess
+        for text in (None, '', 'notAfter=tomorrow', 'garbage', 'notAfter'):
+            if text is None:
+                record.unlink()
+            else:
+                record.write_text(text, encoding='ascii')
+            self.assertIsNone(probes.certificate_not_after('/nowhere/fullchain.pem'), text)
+        self.assertNotIn(str(record), json.dumps(doc))                 # no filesystem path in public
+
     def test_malformed_manifest_is_reported_not_hidden(self):
         self.manifest.write_text('{"schema": "avrana.deployment/v0"}')
         doc = self.build(FakeProbes())
@@ -164,6 +218,98 @@ class Document(unittest.TestCase):
             self.assertNotIn(forbidden, text)
         self.assertEqual(doc['web_release'], {'build': 'b', 'commit': SHA_A})
         self.assertEqual(doc['deployment']['party']['sha'], SHA_A)      # the build identity stays
+
+    def test_web_build_from_another_commit_degrades(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)},
+                            web={'path': '/w', 'build': 'b', 'commit': SHA_B})
+        doc = self.build(probes)
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertIn('web build is from a different commit than the deployed Party', doc['summary']['reasons'])
+        probes.web = {'path': '/w', 'build': 'b', 'commit': SHA_A}
+        self.assertEqual(self.build(probes)['summary']['state'], 'ok')
+
+    def test_nginx_site_drift_degrades_and_unreadable_is_unknown(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}, nginx='differs')
+        doc = self.build(probes)
+        self.assertEqual(doc['nginx_site'], {'status': 'differs', 'sha256': None})
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertTrue(any(r.startswith('nginx site file differs') for r in doc['summary']['reasons']))
+        probes.nginx = 'unavailable'
+        self.assertEqual(self.build(probes)['summary']['state'], 'unknown')
+        probes.nginx = 'match'
+        self.assertEqual(self.build(probes)['summary']['state'], 'ok')
+
+    def test_a_last_attempt_that_did_not_end_ok_is_a_note_not_a_fault(self):
+        attempt = {'party_sha': SHA_B, 'games_sha': SHA_A, 'at': '2026-10-12T00:00:00Z', 'outcome': 'rolled-back',
+                   'backup': 'deploy-20261012T000000Z'}
+        manifest.write(self.manifest, sample(last_attempt=attempt))
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)})
+        doc = self.build(probes)
+        self.assertEqual(doc['last_attempt'], attempt)
+        self.assertEqual(doc['summary']['state'], 'ok')                         # the machine runs the good pair
+        self.assertTrue(any('ended rolled-back' in n for n in doc['summary']['notes']), doc['summary'])
+        manifest.write(self.manifest, sample(last_attempt=dict(attempt, outcome='ok')))
+        doc = self.build(probes)
+        self.assertEqual(doc['last_attempt']['outcome'], 'ok')
+        self.assertFalse(any('last deployment attempt' in n for n in doc['summary']['notes']))
+        manifest.write(self.manifest, sample())                                 # an old manifest without the field
+        self.assertIsNone(self.build(probes)['last_attempt'])
+
+    def test_the_installed_site_hash_and_the_last_known_good_are_reported_additively(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)})
+        self.assertIsNone(self.build(probes)['last_known_good'])
+        probes.nginx_site_sha256 = lambda path: 'ab' * 32
+        probes.last_known_good = lambda path: {'party_sha': SHA_A, 'games_sha': SHA_B, 'smoke_at': '2026-10-12T00:00:00Z',
+                                               'recorded_at': '2026-10-12T00:00:01Z', 'nginx_site_sha256': 'ab' * 32,
+                                               'web_release': {'build': 'x'}, 'seeded_from_running_deployment': True}
+        doc = self.build(probes)
+        self.assertEqual(doc['nginx_site'], {'status': 'match', 'sha256': 'ab' * 32})
+        self.assertEqual(doc['last_known_good'], {'party_sha': SHA_A, 'games_sha': SHA_B, 'smoke_at': '2026-10-12T00:00:00Z',
+                                                  'recorded_at': '2026-10-12T00:00:01Z', 'nginx_site_sha256': 'ab' * 32})
+        self.assertEqual(doc['summary']['state'], 'ok')                    # informational: never a fault by itself
+
+    def test_the_real_probes_read_the_site_hash_and_the_record_beside_the_manifest(self):
+        import hashlib
+        root = Path(self.temp.name)
+        site = root / 'site'
+        site.write_text('server {}')
+        self.assertEqual(status.Probes().nginx_site_sha256(site), hashlib.sha256(b'server {}').hexdigest())
+        self.assertIsNone(status.Probes().nginx_site_sha256(root / 'missing'))
+        record = root / 'last-known-good.json'
+        self.assertIsNone(status.Probes().last_known_good(record))
+        record.write_text('{"schema": "avrana.last-known-good/v0", "party_sha": "%s", "games_sha": "%s"}' % (SHA_A, SHA_B))
+        self.assertEqual(status.Probes().last_known_good(record)['party_sha'], SHA_A)
+        record.write_text('not json')
+        self.assertIsNone(status.Probes().last_known_good(record))          # unreadable is absent, never a crash
+
+    def test_real_probe_compares_installed_site_with_first_readable_source(self):
+        root = Path(self.temp.name)
+        installed, new, old = root / 'installed', root / 'new', root / 'old'
+        installed.write_text('server {}')
+        new.write_text('server {}')
+        old.write_text('server { old }')
+        probe = status.Probes().nginx_site
+        self.assertEqual(probe(installed, [root / 'missing', new]), 'match')
+        self.assertEqual(probe(installed, [old, new]), 'differs')        # first readable source wins
+        self.assertEqual(probe(installed, [root / 'missing']), 'unavailable')
+        self.assertEqual(probe(root / 'missing', [new]), 'unavailable')
+
+    def test_first_readable_source_wins_over_a_differing_fallback(self):
+        root = Path(self.temp.name)
+        installed, release, home = root / 'installed', root / 'release', root / 'home'
+        installed.write_text('server {}')
+        release.write_text('server {}')
+        home.write_text('server { other }')
+        self.assertEqual(status.Probes().nginx_site(installed, [release, home]), 'match')
+
+    def test_web_drift_without_a_manifest_compares_with_the_checkout(self):
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}, web={'path': '/w', 'build': 'b', 'commit': SHA_B})
+        self.assertIn('web build is from a different commit than the deployed Party', self.build(probes)['summary']['reasons'])
+        probes.web = {'path': '/w', 'build': 'b', 'commit': SHA_A}
+        self.assertNotIn('web build is from a different commit than the deployed Party', self.build(probes)['summary']['reasons'])
 
     def test_dirty_deployment_and_untracked_files_are_reported_accurately(self):
         dirty = sample()

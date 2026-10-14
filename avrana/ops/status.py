@@ -19,14 +19,22 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     deployment    the manifest without paths/operator (or null) and manifest_error
     party, games  {deployed_sha, checkout_sha, dirty, untracked, deployed_dirty, ref, mismatch}
     web_release   {build, commit} or null
+    nginx_site    {status: match|differs|unavailable, sha256}: the installed site file against the one in
+                  the deployed Party release (AVR-271; deploy, web build and site file are one unit)
+    last_attempt  {party_sha, games_sha, at, outcome, backup} or null: the last deploy run that got past validation and how it
+                  ended (a rolled-back run leaves the manifest naming the old pair); a note, never a fault, unless outcome is ok
+    last_known_good  {party_sha, games_sha, smoke_at, recorded_at, nginx_site_sha256} or null: the last
+                  deployment whose smoke checks passed; what `ops/deploy.sh --rollback` returns to
     contract      versions Party implements (+ games_advertises from /api/games)
     services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
+                  (unavailable is never `ok`: the summary is `unknown` then, AVR-31)
     party_core    {ok, uptime_s, members, session}
     games_provider, arcade   health summaries
     summary       ok|degraded|unknown with reasons
 """
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,12 +52,23 @@ SCHEMA = 'avrana.status/v0'
 CACHE_S = 5.0
 PROBE_TIMEOUT_S = 2.0
 EXPIRING_DAYS = 21
+# The certificate directory is root-only (ADR 0016), so the service user cannot read the
+# certificate itself. ops/install-party-certificate.sh therefore also writes the one public,
+# non-secret fact health needs, the `openssl x509 -enddate` line, here (AVR-31).
+CERTIFICATE_RECORD = '/etc/avrana-party/certificate-not-after'
 DEFAULT_CONFIG = {
     'manifest': manifest.DEFAULT_PATH,
     'party_checkout': '/home/cody/avrana-party',
     'games_checkout': '/home/cody/avrana-party-games',
     'web_root': '/var/www/avrana-party/web',
     'certificate': '/etc/avrana-party/tls/current/fullchain.pem',
+    # The installed nginx site and where the deployed commit's copy lives (tried in order). ops/deploy.sh
+    # installs the site file with the deployment (AVR-271); this independent comparison is how a drift
+    # between the two (a hand edit, a deployment made by an older script) is noticed.
+    'nginx_site': '/etc/nginx/sites-available/avrana-party',
+    'nginx_site_sources': ['/opt/avrana-party/current/avrana-party.nginx',
+                           '/home/cody/avrana-party/avrana-party.nginx'],
+    'last_known_good': None,            # default: last-known-good.json beside the manifest
     'games_url': 'http://127.0.0.1:8096',
     'arcade_url': 'http://127.0.0.1:8097',      # the arcade's web port serves /stats; :8098 is its Party link
     'units': ['avrana-party-core', 'avranaparty-games', 'avranaparty-arcade', 'nginx',
@@ -80,11 +99,23 @@ def unit_state(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
     return state
 
 
+def _parse_enddate(text):
+    """`notAfter=Dec 25 10:00:00 2026 GMT` (openssl x509 -enddate) as an aware datetime, or None."""
+    text = text.strip()
+    if not text.startswith('notAfter='):
+        return None
+    try:
+        return datetime.strptime(text[len('notAfter='):], '%b %d %H:%M:%S %Y %Z').replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
 class Probes:
     """Every contact with the machine, in one place, so tests can replace it."""
 
-    def __init__(self, timeout=PROBE_TIMEOUT_S):
+    def __init__(self, timeout=PROBE_TIMEOUT_S, certificate_record=CERTIFICATE_RECORD):
         self.timeout = timeout
+        self.certificate_record = certificate_record
 
     def checkout(self, path):
         try:
@@ -105,7 +136,12 @@ class Probes:
 
     def certificate_not_after(self, path):
         """The notAfter instant as an aware datetime, or None when unreadable. On the appliance
-        the certificate directory is root-only, so inside the service this is None by design."""
+        the certificate directory is root-only, so inside the service the certificate itself is
+        unreadable by design; the expiry record the installer writes next to it is the fallback
+        (a stale record is bounded by the next install, which rewrites it)."""
+        return self._enddate_of_file(path) or self._enddate_record(self.certificate_record)
+
+    def _enddate_of_file(self, path):
         try:
             if not Path(path).exists():
                 return None
@@ -113,12 +149,41 @@ class Probes:
                                  capture_output=True, timeout=self.timeout)
         except (OSError, subprocess.TimeoutExpired):
             return None
-        text = out.stdout.decode('ascii', 'replace').strip()
-        if not text.startswith('notAfter='):
-            return None
+        return _parse_enddate(out.stdout.decode('ascii', 'replace'))
+
+    def _enddate_record(self, path):
         try:
-            return datetime.strptime(text[len('notAfter='):], '%b %d %H:%M:%S %Y %Z').replace(tzinfo=timezone.utc)
-        except ValueError:
+            return _parse_enddate(Path(path).read_text(encoding='ascii', errors='replace')[:256])
+        except (OSError, TypeError):
+            return None
+
+    def nginx_site(self, installed, sources):
+        """match|differs|unavailable: the installed nginx site file byte for byte against the first
+        readable source. Unreadable on either side is unavailable, never a match."""
+        try:
+            have = hashlib.sha256(Path(installed).read_bytes()).hexdigest()
+        except OSError:
+            return 'unavailable'
+        for source in sources:
+            try:
+                want = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+            except OSError:
+                continue
+            return 'match' if have == want else 'differs'
+        return 'unavailable'
+
+    def nginx_site_sha256(self, installed):
+        """sha256 of the installed site file (not a secret), or None."""
+        try:
+            return hashlib.sha256(Path(installed).read_bytes()).hexdigest()
+        except OSError:
+            return None
+
+    def last_known_good(self, path):
+        """The last-known-good record ops/deploy.sh keeps beside the manifest, or None."""
+        try:
+            return manifest.read_last_known_good(path)
+        except (manifest.ManifestError, OSError):
             return None
 
     def get_json(self, url):
@@ -153,6 +218,11 @@ def _public_deployment(deployed):
     if isinstance(deployed.get('web_release'), dict):
         doc['web_release'] = {k: v for k, v in deployed['web_release'].items() if k != 'path'}
     return doc
+
+
+def _public_attempt(deployed):
+    attempt = deployed.get('last_attempt') if deployed else None
+    return dict(attempt) if isinstance(attempt, dict) else None
 
 
 def _public_web(release):
@@ -222,9 +292,32 @@ def build_status(config=None, probes=None, party_core=None, now=None):
             notes.append(f'{unit} is not installed (optional)')
         elif state in ('failed', 'inactive', 'not-installed'):
             reasons.append(f'{unit} is {state.replace("-", " ")}')
+    web = probes.web_release(cfg['web_root'])
+    # One deployment unit (AVR-271): the web build must be the deployed Party commit, and the
+    # installed nginx site file must be that commit's. Either drift degrades the appliance.
+    expected = (deployed['party']['sha'] if deployed else party['checkout_sha'])
+    web_commit = web.get('commit') if isinstance(web, dict) else None
+    if web_commit and expected and web_commit != expected:
+        reasons.append('web build is from a different commit than the deployed Party')
+    nginx_site = probes.nginx_site(cfg['nginx_site'], cfg['nginx_site_sources'])
+    nginx_sha256 = getattr(probes, 'nginx_site_sha256', lambda path: None)(cfg['nginx_site'])
+    lkg_path = cfg.get('last_known_good') or str(Path(str(cfg['manifest'])).with_name('last-known-good.json'))
+    lkg = getattr(probes, 'last_known_good', lambda path: None)(lkg_path)
+    if nginx_site == 'differs':
+        reasons.append('nginx site file differs from the deployed commit (install avrana-party.nginx, docs/runbooks/deploy.md)')
+    elif nginx_site == 'unavailable':
+        reasons.append('nginx site file unavailable to compare')
+    attempt = _public_attempt(deployed)
+    if attempt and attempt.get('outcome') != 'ok':
+        notes.append(f'the last deployment attempt (party {str(attempt.get("party_sha"))[:12]}) ended {attempt.get("outcome")}; '
+                     f'the running pair is the one in "deployment" (see docs/runbooks/deploy.md)')
     certificate = _certificate(probes.certificate_not_after(cfg['certificate']), now)
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
+    elif certificate['status'] == 'unavailable':
+        # Not a fault of the certificate, but an expiry nobody can see is a cliff nobody sees
+        # coming: never `ok` (AVR-31). `unknown`, like a unit that cannot be observed.
+        reasons.append('certificate expiry unavailable')
     games_doc = probes.get_json(cfg['games_url'].rstrip('/') + '/api/games')
     provider = _games(games_doc, contract)
     if not provider['ok']:
@@ -243,7 +336,8 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         except Exception:  # the status page must not take the party down
             core = {'ok': False}
             reasons.append('party core view failed')
-    unknown = any(s == 'unavailable' for s in services.values()) or deployed is None
+    unknown = (any(s == 'unavailable' for s in services.values()) or deployed is None
+               or certificate['status'] == 'unavailable' or nginx_site == 'unavailable')
     summary = 'degraded' if [r for r in reasons if 'unavailable' not in r and 'no deployment' not in r] else (
         'unknown' if unknown else 'ok')
     return {
@@ -254,7 +348,11 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         'manifest_error': manifest_error,
         'party': party,
         'games': games,
-        'web_release': _public_web(probes.web_release(cfg['web_root'])),
+        'web_release': _public_web(web),
+        'nginx_site': {'status': nginx_site, 'sha256': nginx_sha256},
+        'last_attempt': _public_attempt(deployed),
+        'last_known_good': None if lkg is None else {k: lkg.get(k) for k in (
+            'party_sha', 'games_sha', 'smoke_at', 'recorded_at', 'nginx_site_sha256')},
         'contract': dict(contract, games_advertises=provider['integration']),
         'services': services,
         'certificate': certificate,

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Regenerate, check or show the EXPERIMENTAL effective game catalog (AVR-337): the release catalog plus
+# a row for each installed .avrgame package, served by nginx at /party/catalog.json when it exists.
+# See avrana/ops/catalog_overlay.py and docs/runbooks/install-game.md.
+#
+#   sudo /opt/avrana-party/current/ops/catalog-overlay refresh   # write, or remove, the overlay
+#   /opt/avrana-party/current/ops/catalog-overlay check          # exit 1 when it is stale or missing
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+tree=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+cd "$tree"
+PYTHONDONTWRITEBYTECODE=1 exec python3 -m avrana.ops.catalog_overlay "$@"

@@ -1,3 +1,4 @@
+# Workflow v3: fast systemd trust proof on scoped PRs; five expensive integration jobs are manual.
 # Non-production proofs for ADR 0016, on disposable runners; each runs only when what it proves
 # changes, or on demand. They are evidence about systemd on Ubuntu, not about the Pi (docs/TESTING.md
 # tiers).
@@ -17,6 +18,15 @@
 #   package      (AVR-39, EXPERIMENTAL) the Hello Party .avrgame package of the paired Games branch: built
 #                unprivileged, refused when tampered, installed by `ops/install-game`, two sessions,
 #                the phase 2 boundary checker, removed, re-installed. Runner only.
+#   package-browser (AVR-338, EXPERIMENTAL) the same installed package, played in REAL BROWSERS
+#                (Playwright Chromium and WebKit) through Party Home, the Host's launch, the game origin
+#                and the bridge, behind the committed nginx site with a throwaway certificate; then
+#                removed. Discovery is the real effective-catalog overlay of install-game (AVR-337). Runner only; not a phone.
+#   node-package (AVR-68, EXPERIMENTAL) a package on the OPTIONAL Node.js runtime: the pinned official build is
+#                fetched, checked against the SHA-256 pinned in the repository and installed offline by
+#                `ops/install-node-runtime`; the Node fixture game (tests/fixtures/node-game) is refused without the
+#                runtime, installed by `ops/install-game`, run under the same template unit and sandbox as a Python
+#                package, played for two sessions, measured (RSS, tasks), and removed. Runner only.
 name: Service trust proof
 
 on:
@@ -28,10 +38,21 @@ on:
       - 'ops/provision-game'
       - 'ops/prepare-native-games'
       - 'ops/install-game'
+      - 'ops/install-node-runtime'
+      - 'tests/fixtures/node-game/**'
+      - 'ops/catalog-overlay'
+      - 'ops/install-party-web.sh'
       - 'experiments/**'
+      - 'tests/package/**'
+      - 'avrana-party.nginx'
+      - 'web/party/**'
       - 'tests/fixtures/appliances/**'
       - '.github/workflows/service-trust-proof.yml'
   workflow_dispatch:
+
+concurrency:
+  group: service-trust-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -48,6 +69,7 @@ jobs:
         run: sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
 
   native-game:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -65,6 +87,7 @@ jobs:
   # runs; --reverse shows the earlier state again. Creates and removes users, units and /opt, /etc,
   # /var/backups: runner only.
   prepare-native-games:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -77,6 +100,7 @@ jobs:
   # (AVR-238) The real Checkers, not the stand-in: the Games checkout is the branch paired with this
   # one (same logic as cross-repo.yml, and like it a failure to list the branches fails the job).
   checkers:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -84,34 +108,22 @@ jobs:
         with:
           path: party
           persist-credentials: false
-      - name: Resolve the matching Games branch
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
         id: peer
-        shell: bash
         env:
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
           BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          # A failure to list the other repository's branches must fail this job: falling back to
-          # main would report compatibility that was never checked against the paired branch.
-          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
-          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
-          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
-          ref=main; why='no AVR id in this branch name'
-          if [ -n "$avr" ]; then
-            why="no Games branch carries $avr"
-            if echo "$heads" | grep -qxF "$BRANCH"; then
-              ref=$BRANCH; why='same branch name'
-            else
-              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
-              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
-            fi
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash party/.github/ci/peer-access.sh
       - uses: actions/checkout@v7
         with:
           repository: rcnechamkin/avrana-party-games
           ref: ${{ steps.peer.outputs.ref }}
           path: games
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
           persist-credentials: false
       - name: Checkers - prepare, provision-game, a complete game, a Host-ended session, the boundary, remove
         run: sudo AVRANA_CHECKERS_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/checkers-proof.sh
@@ -123,6 +135,7 @@ jobs:
   # for the game. The Games checkout is the branch paired with this one (same logic as the checkers
   # job above). Runner only.
   package:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -130,34 +143,104 @@ jobs:
         with:
           path: party
           persist-credentials: false
-      - name: Resolve the matching Games branch
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
         id: peer
-        shell: bash
         env:
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
           BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          # A failure to list the other repository's branches must fail this job: falling back to
-          # main would report compatibility that was never checked against the paired branch.
-          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party-games.git             | awk '{print $2}' | sed 's#refs/heads/##')
-          [ -n "$heads" ] || { echo "::error::could not list avrana-party-games branches"; exit 1; }
-          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
-          ref=main; why='no AVR id in this branch name'
-          if [ -n "$avr" ]; then
-            why="no Games branch carries $avr"
-            if echo "$heads" | grep -qxF "$BRANCH"; then
-              ref=$BRANCH; why='same branch name'
-            else
-              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
-              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
-            fi
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "Games ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash party/.github/ci/peer-access.sh
       - uses: actions/checkout@v7
         with:
           repository: rcnechamkin/avrana-party-games
           ref: ${{ steps.peer.outputs.ref }}
           path: games
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
           persist-credentials: false
       - name: Package - build, refusals, install-game, two sessions, the boundary, remove, re-install
         run: sudo AVRANA_PACKAGE_PROOF=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-proof.sh
+
+  # (AVR-338, EXPERIMENTAL) Real browsers against the INSTALLED Hello Party package: the disposable
+  # appliance of the package job plus the committed nginx site on party.avrana.net / games.avrana.net
+  # (throwaway certificate, /etc/hosts), the real effective-catalog overlay of install-game, Playwright Chromium and WebKit as phones. The Games checkout is
+  # the branch paired with this one (same logic as the jobs above). Runner only. Tier 2: not a phone,
+  # not Wi-Fi, not the Pi (docs/TESTING.md).
+  package-browser:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: party
+          persist-credentials: false
+      - name: Access check - read the Games repository (red here = credential problem, not a test failure)
+        id: peer
+        env:
+          PEER_REPO: rcnechamkin/avrana-party-games
+          PEER_KEY: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          SECRET_NAME: AVRANA_GAMES_READ_KEY
+          DOC: docs/CROSS-REPO.md (Private repositories and the read keys)
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: bash party/.github/ci/peer-access.sh
+      - uses: actions/checkout@v7
+        with:
+          repository: rcnechamkin/avrana-party-games
+          ref: ${{ steps.peer.outputs.ref }}
+          path: games
+          ssh-key: ${{ secrets.AVRANA_GAMES_READ_KEY }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.2'
+          cache: npm
+          cache-dependency-path: party/package-lock.json
+      - name: Install from the committed lockfile
+        working-directory: party
+        run: npm ci
+      - name: Install the browsers
+        working-directory: party
+        run: npx playwright install --with-deps chromium webkit
+      - name: Package in real browsers - install, play, reconnect, result, remove
+        run: sudo env "PATH=$PATH" AVRANA_PACKAGE_BROWSER_PROOF=1 AVRANA_BROWSER_WEBKIT=1 AVRANA_GAMES_REPO="$GITHUB_WORKSPACE/games" bash party/experiments/native-game/package-browser-proof.sh
+      - name: Keep the browsers' traces, screenshots and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-browser-results
+          path: party/test-results/package-browser
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # (AVR-68, EXPERIMENTAL) A package whose server is a Node.js process. Node is optional on the appliance
+  # and is never downloaded there: here the runner fetches the official build, the step below and then
+  # `ops/install-node-runtime` itself check it against the SHA-256 pinned in avrana/avrgame/node_pin.py, and the
+  # tool installs it inside a network namespace with no interface. The fixture game needs no Games checkout.
+  # Runner only: x86-64, not the Pi (docs/TESTING.md tiers); the measurements are of this runner.
+  node-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch the pinned Node build and check it against the pin of the repository
+        run: |
+          set -euo pipefail
+          read -r name sha < <(python3 -c 'from avrana.avrgame import node_pin; print(*node_pin.ARCHIVES["x64"])')
+          version=$(python3 -c 'from avrana.avrgame import node_pin; print(node_pin.VERSION)')
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$name" "https://nodejs.org/dist/v$version/$name"
+          echo "$sha  $RUNNER_TEMP/$name" | sha256sum -c -
+          echo "AVRANA_NODE_TARBALL=$RUNNER_TEMP/$name" >> "$GITHUB_ENV"
+      - name: Node package - the runtime, refusals, install-game, two sessions, the sandbox, the measurements, remove
+        run: |
+          set -o pipefail
+          sudo AVRANA_NODE_PROOF=1 AVRANA_NODE_TARBALL="$AVRANA_NODE_TARBALL" bash experiments/native-game/node-package-proof.sh | tee "$RUNNER_TEMP/node-proof.log"
+      - name: The measurements (RSS, tasks, the JIT under the sandbox)
+        if: always()
+        run: |
+          { echo '```'; grep -E '^(MEASURE|OBSERVE     (the fixture at start|MemoryDenyWriteExecute))' "$RUNNER_TEMP/node-proof.log" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
