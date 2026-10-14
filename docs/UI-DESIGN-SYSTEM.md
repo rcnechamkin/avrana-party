@@ -62,10 +62,15 @@ like every other file (provenance: `assets/vendor/README.md`); the system face s
 a light Helvetica where the phone really has one (`local()` only, so Android and Windows never
 fall back to Arial), Geist Light elsewhere. Sizes are rem, so they follow the phone's text size;
 body is 0.9375 rem; supporting lines (a sender's name in chat, a value on a list row, counts) are
-0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor.
+0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor. These sizes are
+named type roles in `party.css`'s `@theme` (AVR-425; the Design Foundation's roles): `headline`
+1.75, `title` 1.375, `section` 1.0625, `body` 0.9375, `supporting` 0.8125 and `caption` 0.6875 rem,
+used as `var(--text-body)` in the stylesheet and `text-body` in markup; write a role, not a
+`text-[…rem]` value. A role sets a size only, never a line height.
 Light mode was dropped with the prototype system; `prefers-contrast: more` and
 `prefers-reduced-motion` are honoured. Transitions are 150 ms, colour/border only, plus a chevron
-turn.
+turn; the stylesheet names them `--motion-quick` and `--ease-standard`. `npm run check:ui` also
+fails when a page's `theme-color` or a colour in `manifest.json` is not `--color-base-100`.
 
 ## Components
 

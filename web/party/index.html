@@ -40,8 +40,8 @@
       <p class="m-0 max-w-sm">Make sure this phone is on the <strong>Avrana Party</strong> Wi-Fi, then try again.</p>
       <button type="button" id="retry" class="btn btn-primary btn-wide mt-3">Try again</button>
     </section>
-    <p id="profile-note" class="mb-3 text-[0.9375rem] empty:hidden" role="status"></p>
-    <p id="party-note" class="mb-3 text-[0.9375rem] text-warning empty:hidden" role="status"></p>
+    <p id="profile-note" class="mb-3 text-body empty:hidden" role="status"></p>
+    <p id="party-note" class="mb-3 text-body text-warning empty:hidden" role="status"></p>
 
     <!-- Home: who is here and who hosts. -->
     <section id="view-home" data-page="home">
@@ -82,8 +82,8 @@
           <button type="button" id="limited-fold" class="btn btn-ghost btn-square" aria-label="Fold this notice away"><span data-icon="chevron-up"></span></button></div>
         <p id="limited-intro"></p>
         <ul id="limited-list" aria-label="What is different on this phone"></ul>
-        <p id="limited-restore" class="text-[0.9375rem] text-muted"></p>
-        <p class="text-[0.9375rem]"><a class="avrana-textlink" href="doorway/">Check for the full version</a></p>
+        <p id="limited-restore" class="text-body text-muted"></p>
+        <p class="text-body"><a class="avrana-textlink" href="doorway/">Check for the full version</a></p>
       </section>
 
       <button id="home-name" type="button" class="btn btn-primary btn-block mt-6" hidden><span data-icon="user-round-pen"></span>Choose your name</button>
@@ -110,32 +110,32 @@
         <summary hidden><h2>Your Avrana profile</h2></summary>
         <div class="p-4">
           <h2 class="m-0 text-lg font-bold">Your Avrana profile</h2>
-          <p class="mb-4 mt-1 text-[0.9375rem] text-muted">Saved on this browser. Shared with the party games.</p>
+          <p class="mb-4 mt-1 text-body text-muted">Saved on this browser. Shared with the party games.</p>
           <form id="profile-form">
-            <label for="profile-name" class="mb-1.5 block text-[0.9375rem] font-semibold">Your name</label>
+            <label for="profile-name" class="mb-1.5 block text-body font-semibold">Your name</label>
             <input id="profile-name" class="input w-full text-base" maxlength="24" autocomplete="nickname" required>
-            <p class="mb-2 mt-5 flex items-baseline justify-between gap-3 text-[0.9375rem]"><span class="font-semibold" id="avatar-label">Your avatar</span><span id="avatar-chosen" class="text-muted"></span></p>
+            <p class="mb-2 mt-5 flex items-baseline justify-between gap-3 text-body"><span class="font-semibold" id="avatar-label">Your avatar</span><span id="avatar-chosen" class="text-muted"></span></p>
             <div id="avatar-choices" class="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-4" role="group" aria-labelledby="avatar-label"></div>
             <button type="submit" class="btn btn-primary btn-block mt-4">Save profile</button>
           </form>
           <div class="mt-5 border-t border-line pt-4">
-            <label for="profile-photo" class="mb-1.5 block text-[0.9375rem] font-semibold">Or use your photo</label>
+            <label for="profile-photo" class="mb-1.5 block text-body font-semibold">Or use your photo</label>
             <input id="profile-photo" class="file-input w-full" type="file" accept="image/jpeg,image/png,image/webp">
             <div id="photo-crop" class="mt-3" hidden>
               <canvas id="photo-canvas" class="mx-auto my-3 block w-full max-w-64 rounded-box" width="512" height="512" aria-label="Photo preview"></canvas>
-              <label for="photo-zoom" class="block text-[0.9375rem]">Zoom</label><input id="photo-zoom" class="range range-primary mb-3 w-full" type="range" min="1" max="4" step="0.01" value="1">
-              <label for="photo-x" class="block text-[0.9375rem]">Left to right</label><input id="photo-x" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
-              <label for="photo-y" class="block text-[0.9375rem]">Top to bottom</label><input id="photo-y" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
+              <label for="photo-zoom" class="block text-body">Zoom</label><input id="photo-zoom" class="range range-primary mb-3 w-full" type="range" min="1" max="4" step="0.01" value="1">
+              <label for="photo-x" class="block text-body">Left to right</label><input id="photo-x" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
+              <label for="photo-y" class="block text-body">Top to bottom</label><input id="photo-y" class="range range-primary mb-3 w-full" type="range" min="0" max="100" value="50">
               <div class="flex flex-wrap gap-2"><button id="photo-use" type="button" class="btn btn-primary flex-1">Use photo</button><button id="photo-cancel" type="button" class="btn btn-ghost flex-1">Cancel</button></div>
             </div>
             <button id="remove-photo" type="button" class="btn btn-ghost mt-2 text-error" hidden>Remove photo</button>
           </div>
-          <p id="profile-stats" class="mb-0 mt-4 text-[0.9375rem] text-muted"></p>
+          <p id="profile-stats" class="mb-0 mt-4 text-body text-muted"></p>
         </div>
       </details>
       <p id="people-state" class="avrana-state mt-5" role="status" hidden></p>
       <section id="party-people" class="mt-6" hidden aria-labelledby="party-h">
-        <h2 id="party-h" class="avrana-section-title">People here <span id="party-count" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
+        <h2 id="party-h" class="avrana-section-title">People here <span id="party-count" class="font-sans text-body font-normal text-muted"></span></h2>
         <ul id="party-members" class="avrana-faces" aria-label="People at the party"></ul>
       </section>
       <ul class="avrana-list mt-6">
@@ -151,7 +151,7 @@
         <p id="game-count" class="sr-only" role="status"></p>
         <div id="catalog-error" class="avrana-surface mb-4 flex flex-wrap items-center gap-3 p-4" role="status" hidden>
           <p class="m-0 flex-1">Game list unavailable.</p>
-          <button type="button" id="catalog-retry" class="btn btn-primary">Retry</button>
+          <button type="button" id="catalog-retry" class="btn btn-primary">Try again</button>
         </div>
         <div class="avrana-tools">
           <label for="game-search" class="sr-only">Search games</label>
@@ -182,7 +182,7 @@
            Limited Mode's own words are kept here for as long as the phone is in it. -->
       <section id="health" class="mt-2 grid gap-3" aria-label="How things are" hidden></section>
       <section id="phone" class="mt-5" aria-labelledby="phone-h">
-        <h2 id="phone-h" class="avrana-section-title">This phone <span id="phone-summary" class="font-sans text-[0.9375rem] font-normal text-muted"></span></h2>
+        <h2 id="phone-h" class="avrana-section-title">This phone <span id="phone-summary" class="font-sans text-body font-normal text-muted"></span></h2>
         <ul id="phone-list" class="avrana-checks" aria-labelledby="phone-h"></ul>
       </section>
       <ul class="avrana-list mt-6">
@@ -217,13 +217,13 @@
         <button type="button" id="scene-retry" class="btn btn-block">Try again</button>
       </div>
       <div id="scene-live" class="live">
-        <p id="scene-seat" class="m-0 text-center text-[0.8125rem] text-warning empty:hidden" role="status"></p>
+        <p id="scene-seat" class="m-0 text-center text-supporting text-warning empty:hidden" role="status"></p>
         <div class="choices" role="group" aria-label="Your choice for this round">
           <button id="choose-play" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Play this round</span></button>
           <button id="choose-watch" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Watch this round</span></button>
         </div>
         <button id="scene-start" type="button" class="btn btn-primary btn-block" hidden>Start game</button>
-        <p id="scene-net" class="m-0 text-center text-[0.8125rem] text-muted" role="status" hidden></p>
+        <p id="scene-net" class="m-0 text-center text-supporting text-muted" role="status" hidden></p>
         <p class="line"><span id="scene-status" role="status" aria-live="polite"></span> <button id="scene-cancel" type="button" class="avrana-textlink" hidden>Choose another game</button></p>
       </div>
     </div>
@@ -250,10 +250,10 @@
     <ul id="social-people" class="avrana-people" aria-label="People at the party"></ul>
   </div>
   <div id="chat" class="body" hidden>
-    <p id="chat-status" class="m-0 text-[0.9375rem] text-muted" role="status">Open to chat</p>
+    <p id="chat-status" class="m-0 text-body text-muted" role="status">Open to chat</p>
     <button id="chat-name" type="button" class="btn btn-outline mt-3" hidden>Choose your name</button>
     <ol id="chat-messages" class="my-2 list-none p-0 [overflow-wrap:anywhere]" aria-label="Party messages"></ol>
-    <p id="chat-feedback" class="text-[0.9375rem] text-warning empty:hidden" role="status"></p>
+    <p id="chat-feedback" class="text-body text-warning empty:hidden" role="status"></p>
   </div>
   <form id="chat-form" class="compose" hidden>
     <label for="chat-text" class="sr-only">Message</label>

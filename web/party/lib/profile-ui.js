@@ -40,7 +40,7 @@ export function wireProfile(profile, changed) {
     $('player-chip').replaceChildren(avatarNode(me, 'lg'),
       h('span', { class: 'grid min-w-0 flex-1' },
         h('span', { class: 'truncate', text: me.name || 'Choose your name' }),
-        h('span', { class: 'text-[0.9375rem] font-normal text-muted',
+        h('span', { class: 'text-body font-normal text-muted',
           text: me.name ? 'Your profile' : 'Pick a name to join a game' })),
       icon('user-round-pen', { cls: 'text-muted' }));
     $('profile-stats').textContent = me.favorites.length + ' favorites · ' + me.playTotal + ' games opened';

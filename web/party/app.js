@@ -1263,9 +1263,9 @@ const chat = createPartyChat({
     const atEnd = $('chat').scrollHeight - $('chat').scrollTop - $('chat').clientHeight < 40;
     list.replaceChildren(...snapshot.messages.map((m) =>
       h('li', { class: 'flex gap-3 py-2' }, avatarNode(m, 'sm'), h('div', { class: 'min-w-0' },
-        h('strong', { class: 'text-[0.8125rem] font-medium text-muted', text: m.name }),
+        h('strong', { class: 'text-supporting font-medium text-muted', text: m.name }),
         h('p', { class: 'm-0 whitespace-pre-wrap', text: m.text }),
-        m.photo ? h('p', { class: 'm-0 inline-flex items-center gap-1.5 text-[0.9375rem] text-muted' }, icon('image'), 'Photo shared') : null))));
+        m.photo ? h('p', { class: 'm-0 inline-flex items-center gap-1.5 text-body text-muted' }, icon('image'), 'Photo shared') : null))));
     const pane = $('chat');
     if (atEnd) { list.scrollTop = list.scrollHeight; pane.scrollTop = pane.scrollHeight; }
   },
