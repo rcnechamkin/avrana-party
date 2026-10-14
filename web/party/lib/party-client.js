@@ -136,6 +136,19 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     /** The host, from a round's results: everyone back to Party Home. */
     goHome: () => act('home', { if_version: view ? view.version : null }),
     end: () => act('session/end', { if_version: view ? view.version : null }),
+    /** The host, from anywhere (a setup, a round, its results): everyone back to Party Home. The
+     * Party's own way out; it asks nothing of the game's page. */
+    async lobby() {
+      let res = await act('lobby', { if_version: view ? view.version : null });
+      if (res.ok || res.error !== 'stale') return res;
+      epoch++;
+      const fresh = await request('state');
+      epoch++;
+      if (fresh.ok) accept(readView(fresh.body), true);
+      const v = view;                           // still the host, and the party still not home
+      if (!v || !v.me || !v.me.host || !v.location || v.location.at === 'home') return res;
+      return act('lobby', { if_version: v.version });
+    },
     /** The host starts a party game for everyone (from the lobby). */
     launch: (game) => hostMove('session/launch', game, 'lobby'),
     /** The host moves everyone from the game that is on to another one (AVR-128): Party Core
