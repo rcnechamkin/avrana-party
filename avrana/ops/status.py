@@ -27,9 +27,10 @@ Shape (docs/design/STATUS-ENDPOINT.md):
                   deployment whose smoke checks passed; what `ops/deploy.sh --rollback` returns to
     contract      versions Party implements (+ games_advertises from /api/games)
     services      {unit: active|inactive|failed|not-installed|unknown|unavailable}
-    recovery      {units: {unit: {restarts, result}}, failed_game_units: [unit, ...]}: what systemd's
-                  own recovery did (AVR-33). A unit restarting after failures, one that hit its start
-                  limit and a failed native game unit or socket degrade; a unit that came back is a note
+    recovery      {units: {unit: {restarts, result, active_for_s}}, failed_game_units: [unit, ...]}: what
+                  systemd's own recovery did (AVR-33). A unit restarting after failures, one restarted
+                  less than RECENT_RESTART_S ago, one that hit its start limit and a failed native game
+                  unit or socket degrade; a unit that came back and stayed up is a note
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
                   (unavailable is never `ok`: the summary is `unknown` then, AVR-31)
     party_core    {ok, uptime_s, members, session}
@@ -105,14 +106,23 @@ def unit_state(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
 GAME_UNITS = 'avrana-game@*'      # native game instances and their sockets (ADR 0016 section 5)
 
 
-def unit_recovery(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
-    """{'restarts': NRestarts, 'result': Result} from `systemctl show`, or None when unobservable.
-    NRestarts counts systemd's automatic restarts since the unit was last started by hand (a deploy's
-    restart sets it back to 0); Result is `success`, `exit-code`, `start-limit-hit`, ..."""
+# An `active` unit that systemd restarted within this many seconds may be mid crash loop: one that
+# dies every ~2 s under RestartSec=3 is often sampled `active`. It degrades until it has stayed up.
+RECENT_RESTART_S = 60
+
+
+def unit_recovery(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S, clock=time.monotonic):
+    """{'restarts': NRestarts, 'result': Result, 'active_for_s': ...} from `systemctl show`, or None
+    when unobservable. NRestarts counts systemd's automatic restarts since the unit was last started
+    by hand (a deploy's restart sets it back to 0); Result is `success`, `exit-code`,
+    `start-limit-hit`, ... `active_for_s` is how long the unit has been in its current active spell:
+    ActiveEnterTimestampMonotonic is CLOCK_MONOTONIC in microseconds, the clock `time.monotonic()`
+    reads in seconds on Linux. None when the property is missing, 0 (never active) or unparseable."""
     if platform.system() != 'Linux':
         return None
     try:
-        out = runner(['systemctl', 'show', '--property=NRestarts', '--property=Result', unit],
+        out = runner(['systemctl', 'show', '--property=NRestarts', '--property=Result',
+                      '--property=ActiveEnterTimestampMonotonic', unit],
                      capture_output=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -122,7 +132,14 @@ def unit_recovery(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
     except ValueError:
         restarts = None
     result = facts.get('Result') or None
-    return None if restarts is None and result is None else {'restarts': restarts, 'result': result}
+    if restarts is None and result is None:
+        return None
+    try:
+        entered_us = int(facts.get('ActiveEnterTimestampMonotonic', ''))
+    except ValueError:
+        entered_us = 0
+    active_for_s = max(0, int(clock() - entered_us / 1e6)) if entered_us > 0 else None
+    return {'restarts': restarts, 'result': result, 'active_for_s': active_for_s}
 
 
 def failed_units(pattern, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
@@ -362,7 +379,14 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         elif state == 'activating' and n > 0:      # between automatic restarts
             reasons.append(f'{unit} is restarting after failures ({n} automatic restarts)')
         elif state == 'active' and n > 0:
-            notes.append(f'{unit} came back after {n} automatic restart(s) since it was last started')
+            up = facts.get('active_for_s')
+            if not isinstance(up, int) or up < RECENT_RESTART_S:
+                # Restarted and not yet proven stable (or its uptime cannot be read: fail safe), so a
+                # crash loop sampled between crashes is not recorded as a good deploy.
+                since = f'up {up} s' if isinstance(up, int) else 'uptime unreadable'
+                reasons.append(f'{unit} restarted recently after failures ({n} automatic restarts, {since})')
+            else:
+                notes.append(f'{unit} came back after {n} automatic restart(s) since it was last started')
     failed_games = getattr(probes, 'failed_units', lambda pattern: [])(GAME_UNITS)
     for unit in failed_games or []:
         reasons.append(f'{unit} is failed; see docs/runbooks/service-recovery.md')

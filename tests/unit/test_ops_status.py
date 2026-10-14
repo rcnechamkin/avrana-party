@@ -354,7 +354,7 @@ class RecoveryProbes(FakeProbes):
         self.recovery, self.failed = recovery or {}, failed
 
     def unit_recovery(self, unit):
-        return self.recovery.get(unit, {'restarts': 0, 'result': 'success'})
+        return self.recovery.get(unit, {'restarts': 0, 'result': 'success', 'active_for_s': 3600})
 
     def failed_units(self, pattern):
         self.pattern = pattern
@@ -380,7 +380,7 @@ class FailedRecovery(unittest.TestCase):
     def test_a_healthy_appliance_stays_ok_and_reports_zero_restarts(self):
         doc, probes = self.build()
         self.assertEqual(doc['summary'], {'state': 'ok', 'reasons': [], 'notes': []})
-        self.assertEqual(doc['recovery']['units']['nginx'], {'restarts': 0, 'result': 'success'})
+        self.assertEqual(doc['recovery']['units']['nginx'], {'restarts': 0, 'result': 'success', 'active_for_s': 3600})
         self.assertEqual(doc['recovery']['failed_game_units'], [])
         self.assertEqual(probes.pattern, 'avrana-game@*')
 
@@ -402,11 +402,39 @@ class FailedRecovery(unittest.TestCase):
         self.assertIn('avranaparty-arcade stopped restarting (start limit hit); see docs/runbooks/service-recovery.md',
                       reasons)
 
-    def test_a_unit_that_came_back_is_a_note_not_a_fault(self):
-        doc, _ = self.build(recovery={'avrana-party-core': {'restarts': 2, 'result': 'success'}})
+    def test_a_unit_that_came_back_and_stayed_up_is_a_note_not_a_fault(self):
+        doc, _ = self.build(recovery={'avrana-party-core': {'restarts': 2, 'result': 'success', 'active_for_s': 900}})
         self.assertEqual(doc['summary']['state'], 'ok')
         self.assertEqual(doc['summary']['notes'],
                          ['avrana-party-core came back after 2 automatic restart(s) since it was last started'])
+
+    def test_a_crash_loop_sampled_while_active_degrades(self):
+        """Crashing every ~2 s under RestartSec=3 is often seen `active`: up for seconds, restarts > 0."""
+        doc, _ = self.build(recovery={'avranaparty-arcade': {'restarts': 5, 'result': 'success', 'active_for_s': 1}})
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertIn('avranaparty-arcade restarted recently after failures (5 automatic restarts, up 1 s)',
+                      doc['summary']['reasons'])
+        self.assertEqual(doc['summary']['notes'], [])
+
+    def test_restarted_just_under_the_window_degrades_and_at_it_is_a_note(self):
+        doc, _ = self.build(recovery={'nginx': {'restarts': 1, 'result': 'success',
+                                                'active_for_s': status.RECENT_RESTART_S - 1}})
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        doc, _ = self.build(recovery={'nginx': {'restarts': 1, 'result': 'success',
+                                                'active_for_s': status.RECENT_RESTART_S}})
+        self.assertEqual(doc['summary']['state'], 'ok')
+
+    def test_restarts_with_an_unreadable_uptime_fail_safe_as_degraded(self):
+        for facts in ({'restarts': 2, 'result': 'success'}, {'restarts': 2, 'result': 'success', 'active_for_s': None},
+                      {'restarts': 2, 'result': 'success', 'active_for_s': 'soon'}):
+            doc, _ = self.build(recovery={'avrana-party-core': facts})
+            self.assertEqual(doc['summary']['state'], 'degraded', facts)
+            self.assertIn('avrana-party-core restarted recently after failures (2 automatic restarts, uptime unreadable)',
+                          doc['summary']['reasons'])
+
+    def test_no_restarts_never_needs_an_uptime(self):
+        doc, _ = self.build(recovery={'nginx': {'restarts': 0, 'result': 'success', 'active_for_s': None}})
+        self.assertEqual(doc['summary']['state'], 'ok')
 
     def test_a_failed_native_game_or_its_socket_degrades_and_names_only_that_game(self):
         doc, _ = self.build(failed=['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
@@ -442,8 +470,21 @@ class RecoveryProbeParsing(unittest.TestCase):
         runner, calls = self.run_with('NRestarts=3\nResult=start-limit-hit\n')
         with mock.patch.object(status.platform, 'system', return_value='Linux'):
             self.assertEqual(status.unit_recovery('avranaparty-arcade', runner=runner),
-                             {'restarts': 3, 'result': 'start-limit-hit'})
+                             {'restarts': 3, 'result': 'start-limit-hit', 'active_for_s': None})
         self.assertEqual(calls[0][:2], ['systemctl', 'show'])
+        self.assertIn('--property=ActiveEnterTimestampMonotonic', calls[0])
+
+    def test_active_for_is_monotonic_now_minus_the_microsecond_enter_timestamp(self):
+        runner, _ = self.run_with('NRestarts=4\nResult=success\nActiveEnterTimestampMonotonic=5000000000\n')
+        with mock.patch.object(status.platform, 'system', return_value='Linux'):
+            facts = status.unit_recovery('x', runner=runner, clock=lambda: 5002.5)
+        self.assertEqual(facts, {'restarts': 4, 'result': 'success', 'active_for_s': 2})
+
+    def test_an_unparseable_or_zero_enter_timestamp_is_none_not_a_crash(self):
+        for value in ('', 'n/a', '0', '-3'):
+            runner, _ = self.run_with(f'NRestarts=1\nResult=success\nActiveEnterTimestampMonotonic={value}\n')
+            with mock.patch.object(status.platform, 'system', return_value='Linux'):
+                self.assertIsNone(status.unit_recovery('x', runner=runner, clock=lambda: 100.0)['active_for_s'], value)
 
     def test_unreadable_output_or_no_systemd_is_none(self):
         runner, _ = self.run_with('')
