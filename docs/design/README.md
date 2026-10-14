@@ -68,6 +68,9 @@ Read in this order:
      HTML/JS/WASM game clients, the authoritative appliance, cold/warm delivery constraints, app-host
      isolation, Android handhelds, no native mobile executable delivery, porting rights and the
      unresolved app-store gates; lists conflicts with accepted text without resolving them
+   - `THIRD-PARTY.md` — **proposed** (2026-10-14, AVR-73): third-party license classification,
+     new-dependency gate, SBOM/NOTICE expectations and known commercial blockers, with
+     `contracts/third-party.v1.json` and `tools/sbom.py`; not legal advice, awaiting owner approval
    - `PARTY-GAMES-CONTRACT.md` — the versioned Party ↔ Games boundary, its two declarations
      and the checker both CIs run
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)
