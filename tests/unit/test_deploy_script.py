@@ -535,8 +535,11 @@ class Harness(unittest.TestCase):
         return subprocess.run([BASH, str(SCRIPT), '--party', party, '--games', games, *flags], capture_output=True,
                               text=True, env=dict(self.env, **env), timeout=300)
 
-    def calls(self):
-        return self.log.read_text().splitlines() if self.log.exists() else []
+    def calls(self, queries=False):
+        """systemctl calls. The read-only `list-units` query of the preflight (failed native game units)
+        is left out unless `queries`, so "nothing was touched" stays an empty list."""
+        lines = self.log.read_text().splitlines() if self.log.exists() else []
+        return lines if queries else [c for c in lines if not c.startswith('list-units ')]
 
     def target_site(self):
         return subprocess.run(['git', '-C', str(self.origin), 'show', f'{self.target_party}:avrana-party.nginx'],
@@ -776,7 +779,7 @@ class FailedGameUnitsPreflight(Harness):
         self.assertIn(f'sudo systemctl reset-failed {units}', r.stdout)
         self.assertIn('dry run: nothing changed', r.stdout)
         self.assertFalse([c for c in self.calls() if c.startswith('reset-failed')], 'the operator clears them, not the script')
-        self.assertTrue(any(c.startswith('list-units') and 'avrana-game@*' in c for c in self.calls()))
+        self.assertTrue(any(c.startswith('list-units') and 'avrana-game@*' in c for c in self.calls(queries=True)))
 
     def test_no_failed_game_units_says_nothing(self):
         r = self.deploy(self.target_party, self.target_games, '--dry-run')
