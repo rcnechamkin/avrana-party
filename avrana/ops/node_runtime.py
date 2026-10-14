@@ -96,9 +96,15 @@ def read_archive(path):
         fd = os.open(path, flags)
     except OSError:
         raise Refused(f'{path}: does not exist or cannot be read (a symbolic link is refused)') from None
+    try:
+        regular = stat.S_ISREG(os.fstat(fd).st_mode)
+    except OSError:
+        os.close(fd)
+        raise
+    if not regular:
+        os.close(fd)
+        raise Refused(f'{path}: not a regular file')
     with os.fdopen(fd, 'rb') as f:
-        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
-            raise Refused(f'{path}: not a regular file')
         data = f.read(MAX_ARCHIVE_BYTES + 1)
     if len(data) > MAX_ARCHIVE_BYTES:
         raise Refused(f'{path}: larger than {MAX_ARCHIVE_BYTES} bytes; not an official Node build')
