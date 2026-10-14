@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { startPartyFollow, gameOfPath, profileIdentity } from '../../web/party/lib/party-follow.js';
+import { startPartyFollow, followTarget, gameOfPath, profileIdentity } from '../../web/party/lib/party-follow.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
 const ana = { id: 'member-a', name: 'Ana', host: true }, ben = { id: 'member-b', name: 'Ben', host: false };
@@ -20,12 +20,13 @@ const PROFILE = store({ 'wc-name': 'Benjamin The Great', 'wc-avatar': 'gaze-12' 
 
 /** A fake origin: the probe answers `first`; POSTs are recorded and answered by `answer`;
  * each long poll takes the next of `polls`, then hangs until aborted. */
-function origin(first, polls = [], { party = true, answer = () => [200, first] } = {}) {
+function origin(first, polls = [], { party = true, answer = () => [200, first], bridge = { schema: 'avrana.party-bridge/v1', origins: {} } } = {}) {
   const queue = [...polls], posts = [];
   const fetch = (url, init = {}) => {
     const reply = (status, body) => Promise.resolve({ ok: status < 300, status, json: async () => body });
     if (url === '/party/catalog.json') return reply(200, catalog);
     if (!party) return reply(404, { detail: 'Not Found' });
+    if (url === '/party/api/bridge') return bridge ? reply(200, bridge) : reply(503, {});
     if (init.method === 'POST') { posts.push([url, JSON.parse(init.body)]); return reply(...answer(url)); }
     if (url === '/party/api/state') return reply(200, first);
     if (url.startsWith('/party/api/state?') && queue.length) return reply(200, queue.shift());
@@ -38,7 +39,8 @@ const settle = async () => { for (let i = 0; i < 10; i++) await new Promise((r) 
 async function run(first, here, { polls = [], storage = PROFILE, ...opts } = {}) {
   const went = [];
   const o = origin(first, polls, opts);
-  const api = await startPartyFollow({ here, fetch: o.fetch, go: (url) => went.push(url), storage, root: null });
+  const api = await startPartyFollow({ here, fetch: o.fetch, go: (url) => went.push(url), storage, root: null,
+    partyOrigin: 'http://party.avrana.test' });
   await settle();
   api?.stop();
   return { api, went, posts: o.posts };
@@ -100,4 +102,57 @@ test('the game shell gets the host\'s controls; they go to Party Core as the hos
   assert.deepEqual(o.posts.map(([url, body]) => [url, body.game ?? null]),
     [['/party/api/session/launch', 'bluff'], ['/party/api/home', null], ['/party/api/session/end', null]]);
   api.stop();
+});
+
+// AVR-307: a member on a Party-origin game page goes to a started game's registered origin
+// (ADR 0013), decided the way Party Home decides it, and is never shown the game on this origin.
+const GAMES = 'http://games.avrana.test';
+const bridgeOf = (origins) => ({ schema: 'avrana.party-bridge/v1', origins });
+const inLimited = (v) => ({ ...v, mode: 'limited' });
+
+test('followTarget: a started game opens on its registered origin; otherwise as before', () => {
+  const started = view({ location: at('game', 'bluff') }), me = 'http://party.avrana.test';
+  const pick = (v, origins, here = 'arcade-gauntlet2') => followTarget({ view: v, here, catalog, origins, partyOrigin: me });
+  assert.equal(pick(started, { [GAMES]: '*' }), `${GAMES}/games/bluff/?avrana=1`);
+  assert.equal(pick(started, { [GAMES]: ['bluff'] }), `${GAMES}/games/bluff/?avrana=1`);
+  assert.equal(pick(started, { [GAMES]: ['expo'] }), '/games/bluff/?avrana=1');       // not registered for this game
+  assert.equal(pick(started, {}), '/games/bluff/?avrana=1');                          // no registrations: today's path
+  assert.equal(pick(inLimited(started), { [GAMES]: '*' }), '/games/bluff/?avrana=1'); // Limited Mode stays same-origin
+  assert.equal(pick(started, { [GAMES]: '*' }, 'bluff'), null);                       // already there
+  assert.equal(pick(view({ location: at('home') }), { [GAMES]: '*' }), '/party/');   // Party Home is the Party's
+  assert.equal(pick(view({ location: at('setup') }), { [GAMES]: '*' }), '/party/');
+  assert.equal(pick(view({ location: at('results') }), { [GAMES]: '*' }), `${GAMES}/games/bluff/?avrana=1`);
+});
+
+test('followTarget: an answer the shell will not follow, or none at all, is Party Home, never the same-origin path of an origin game', () => {
+  const started = view({ location: at('game', 'bluff') }), me = 'http://party.avrana.test';
+  const pick = (origins, partyOrigin = me) => followTarget({ view: started, here: 'arcade-gauntlet2', catalog, origins, partyOrigin });
+  assert.equal(pick(null), '/party/');                                                // the ask failed
+  assert.equal(pick({ 'http://games.avrana.test/x': '*' }), '/party/');               // malformed
+  assert.equal(pick({ [GAMES]: '*', 'http://other.avrana.test': '*' }), '/party/');   // ambiguous
+  assert.equal(pick({ [me]: '*' }), '/party/');                                       // the Party's own origin
+  assert.equal(pick({ [GAMES]: '*' }, null), '/party/');                              // this page's origin unknown
+  assert.equal(followTarget({ view: inLimited(started), here: 'arcade-gauntlet2', catalog, origins: null, partyOrigin: me }),
+    '/games/bluff/?avrana=1');                                                        // Limited needs no answer
+});
+
+test('a page on the Party origin goes straight to the registered origin on a host move, and on load', async () => {
+  const bridge = bridgeOf({ [GAMES]: '*' });
+  const moved = await run(view({ location: at('game', 'arcade-gauntlet2') }), 'arcade-gauntlet2', { bridge, polls: [view({ version: 9, location: at('game') })] });
+  assert.deepEqual(moved.went, [`${GAMES}/games/bluff/?avrana=1`]);                  // one move, no stop on the Party origin
+  const loaded = await run(view({ location: at('game') }), 'arcade-gauntlet2', { bridge });
+  assert.deepEqual(loaded.went, [`${GAMES}/games/bluff/?avrana=1`]);
+  const limited = await run(inLimited(view({ location: at('game') })), 'arcade-gauntlet2', { bridge });
+  assert.deepEqual(limited.went, ['/games/bluff/?avrana=1']);
+  const plain = await run(view({ location: at('game') }), 'arcade-gauntlet2');       // nothing registered
+  assert.deepEqual(plain.went, ['/games/bluff/?avrana=1']);
+});
+
+test('a bridge answer that fails sends the page to Party Home to decide, once', async () => {
+  const failed = await run(view({ location: at('game') }), 'arcade-gauntlet2', { bridge: null });
+  assert.deepEqual(failed.went, ['/party/']);
+  const odd = await run(view({ location: at('game') }), 'arcade-gauntlet2', { bridge: { schema: 'something/else', origins: {} } });
+  assert.deepEqual(odd.went, ['/party/']);
+  const refused = await run(view({ location: at('game') }), 'arcade-gauntlet2', { bridge: bridgeOf({ [GAMES]: '*', 'http://other.avrana.test': '*' }) });
+  assert.deepEqual(refused.went, ['/party/']);
 });

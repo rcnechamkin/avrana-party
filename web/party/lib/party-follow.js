@@ -23,6 +23,8 @@
 import { createPartyClient } from './party-client.js';
 import { createProfile } from './profile.js';
 import { destination, locationOf, partyGame } from './party-mode.js';
+import { createGameOrigins, gameAddress } from './game-origins.js';
+import { LIMITED, modeOf } from './limited.js';
 
 const CONFIRM_MS = 4000;                      // a second tap within this ends the game
 
@@ -30,6 +32,24 @@ const CONFIRM_MS = 4000;                      // a second tap within this ends t
 export function gameOfPath(pathname) {
   const m = /^\/games\/([a-z][a-z0-9_-]*)\//.exec(pathname || '');
   return m ? m[1] : null;
+}
+
+/** Where a member's page goes for the party's current place, or null when it is already there
+ * (AVR-307). `destination()` with Party Core's game origins (ADR 0013), decided the way Party
+ * Home decides it (web/party/app.js addressOf): never a title named here, never Limited Mode
+ * (games stay same-origin), and an address this shell will not follow is Party Home.
+ *   origins  the bridge answer's `origins`, or null when it is not known (the ask failed)
+ *   partyOrigin  this page's own origin
+ * A game that is not registered to an origin opens at its same-origin path, as before. When a
+ * game would open on a registered origin but the registrations are not known, the answer is
+ * Party Home (/party/), which asks again and decides; a phone is never taken to the Party
+ * origin's copy of a game that lives elsewhere on a guess. */
+export function followTarget({ view, here, catalog, origins = null, partyOrigin = null }) {
+  const plain = destination(view, here, catalog);
+  if (!plain || plain === '/party/' || modeOf(view) === LIMITED) return plain;
+  if (!origins || typeof origins !== 'object') return '/party/';
+  return destination(view, here, catalog,
+    (game, entry) => gameAddress({ game, entry, origins, partyOrigin, limited: false }));
 }
 
 /** The profile's Party name (Party Core allows 16 characters) and avatar, or null. */
@@ -44,9 +64,12 @@ export function profileIdentity(storage) {
  * `container`: the page's own navigation, for the fallback host control. Returns the Party API,
  * or null when there is no Party here for this phone. */
 export async function startPartyFollow({ here = null, container = null, fetch = globalThis.fetch.bind(globalThis),
-  go = (url) => location.replace(url), storage = globalThis.localStorage, root = globalThis.document } = {}) {
+  go = (url) => location.replace(url), storage = globalThis.localStorage, root = globalThis.document,
+  partyOrigin = globalThis.location ? globalThis.location.origin : null } = {}) {
   const listeners = new Set();
   let ready = false, moving = false, endBtn = null, armed = null;
+  const gameOrigins = createGameOrigins({ fetch });
+  let originsFor = null;                      // the game list the registrations were asked for
   const client = createPartyClient({ fetch, base: '/party/api/', onView });
   let first = await client.probe();
   if (!first) return null;                    // no Party Core here: the page stays as it is
@@ -116,6 +139,24 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
     endBtn.textContent = 'End game for everyone';
   }
 
+  /** Party Core's registrations, current for this game list; one retry if the last ask failed. */
+  async function aim() {
+    const key = (client.view() ? client.view().games : []).join(',');
+    if (!gameOrigins.ok() || key !== originsFor) await gameOrigins.refresh();
+    if (gameOrigins.ok()) originsFor = key;
+  }
+
+  function leave(url) {
+    // A move that arrives while this phone is offline (a Wi-Fi drop, a wake-up) waits for the
+    // network, so the page never lands on the browser's own error screen.
+    const nav = globalThis.navigator;
+    if (nav && nav.onLine === false && typeof globalThis.addEventListener === 'function') {
+      globalThis.addEventListener('online', () => go(url), { once: true });
+    } else {
+      go(url);
+    }
+  }
+
   function onView(v) {
     if (!ready || moving) return;           // the first join answers before the page is wired
     if (!v.me) {                              // no longer a member (a new party after a restart)
@@ -123,17 +164,21 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
       if (who) client.join(who.name, who.avatar);
       return;
     }
-    const url = destination(v, here, catalog);
-    if (url) {
+    const plain = destination(v, here, catalog);
+    if (plain) {
       moving = true;
-      // A move that arrives while this phone is offline (a Wi-Fi drop, a wake-up) waits for the
-      // network, so the page never lands on the browser's own error screen.
-      const nav = globalThis.navigator;
-      if (nav && nav.onLine === false && typeof globalThis.addEventListener === 'function') {
-        globalThis.addEventListener('online', () => go(url), { once: true });
-      } else {
-        go(url);
-      }
+      if (plain === '/party/' || modeOf(v) === LIMITED) return leave(plain);
+      // A game that may open on its own origin: ask Party Core where (once per game list), and
+      // only then leave; the page never shows the game on this origin on the way.
+      aim().then(() => {
+        const now = client.view();
+        const to = now && now.me
+          ? followTarget({ view: now, here, catalog, origins: gameOrigins.ok() ? gameOrigins.get() : null, partyOrigin })
+          : null;
+        if (to) return leave(to);
+        moving = false;                       // the party moved on while asking: look again
+        if (now) onView(now);
+      });
       return;
     }
     fallbackControls(v);
