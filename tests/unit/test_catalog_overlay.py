@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from avrana import REPO_ROOT
+from avrana.avrgame import installed
 from avrana.ops import catalog_overlay as co
 from avrana.ops import install_game as ig
 
@@ -582,6 +583,85 @@ class FromInstallGame(OverlayBase):
         self.assertIn('hello: removed record', out)         # the completed removal is reported beside the problem
         self.assertFalse(self.overlay.exists())            # absent, so the release catalog is served
         self.assertEqual([p for p in self.files() if 'hello' in p], [])
+
+
+class NodePackage(OverlayBase):
+    """AVR-39: a package on the optional Node runtime (AVR-68) reaches Party Home's catalog and Library the
+    same way as a Python one, through install-game alone, and leaves it on removal. Only the pinned node
+    executable is made to exist; everything else is the real command line."""
+
+    def node_package(self):
+        from test_node_game_runtime import node_zip
+        path = self.inputs / 'hello.avrgame'
+        path.write_bytes(node_zip())
+        return str(path)
+
+    def main_with_node(self, *argv):
+        from test_node_game_runtime import NODE
+        real = os.path.isfile
+        with mock.patch('os.path.isfile', lambda p: p == NODE or real(p)):
+            return self.main(*argv)
+
+    def main_without_node(self, *argv):
+        from test_node_game_runtime import NODE
+        real = os.path.isfile
+        with mock.patch('os.path.isfile', lambda p: p != NODE and real(p)):   # absent even where it is installed
+            return self.main(*argv)
+
+    def test_a_node_package_is_listed_by_install_and_unlisted_by_remove_with_no_core_edit(self):
+        from test_node_game_runtime import NODE
+        first_party = json.loads(COMMITTED.read_text(encoding='utf-8'))['games']
+        self.assertNotIn('hello', [g['id'] for g in first_party])
+        rc, out, err = self.main_with_node('install', self.node_package(), '--grant', 'party_roster')
+        self.assertEqual(rc, 0, err)
+        self.assertIn('catalog: the effective catalog lists hello', out)
+        games = self.doc()['games']
+        self.assertEqual(games[:-1], first_party)                     # first-party rows untouched and first
+        row = games[-1]
+        self.assertEqual({k: row[k] for k in ('id', 'installed', 'entry', 'provider', 'tier')},
+                         {'id': 'hello', 'installed': True, 'entry': '/games/hello/', 'provider': 'native',
+                          'tier': 'community'})                       # what web/party/app.js needs for a Library tile
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+        found = installed.load(self.layout.records_dir, REPO, games_root=self.layout.root_text())
+        self.assertEqual(found.grants['hello']['runtime']['command'][0], NODE)   # a valid install record, run by node
+
+        rc, out, err = self.main('remove', 'hello')                   # removal needs no runtime check
+        self.assertEqual(rc, 0, err)
+        self.assertIn('catalog: no package is listed', out)
+        self.assertFalse(self.overlay.exists())                       # the committed release catalog is served again
+        self.assertEqual(os.listdir(self.out_dir), [])
+        self.assertNotIn('hello', installed.load(self.layout.records_dir, REPO,
+                                                 games_root=self.layout.root_text()).grants)
+        self.assertEqual([p for p in self.files() if 'hello' in p], [])   # tree, unit, key and registry entry gone
+
+    @unittest.skipUnless(os.environ.get('AVRANA_NODE_AVRGAME'), 'set AVRANA_NODE_AVRGAME to a built Node .avrgame '
+                         '(e.g. Games colyseus-tanks: npm ci && node build.mjs --party <this checkout>)')
+    def test_a_real_built_node_package_is_listed_and_unlisted(self):
+        import zipfile
+        src = Path(os.environ['AVRANA_NODE_AVRGAME'])
+        with zipfile.ZipFile(src) as z:
+            manifest = json.loads(z.read('avrgame.json'))
+        self.assertEqual(manifest['server']['interpreter'], 'node')
+        pid = manifest['game']['id']
+        pkg = self.inputs / src.name
+        shutil.copyfile(src, pkg)
+        grants = [a for p in manifest['game']['runtime'].get('permissions', []) for a in ('--grant', p)]
+        rc, out, err = self.main_with_node('install', str(pkg), *grants)
+        self.assertEqual(rc, 0, err)
+        row = self.doc()['games'][-1]
+        self.assertEqual((row['id'], row['installed'], row['entry'], row['name']),
+                         (pid, True, f'/games/{pid}/', manifest['game']['name']))
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+        rc, out, err = self.main('remove', pid)
+        self.assertEqual(rc, 0, err)
+        self.assertFalse(self.overlay.exists())
+
+    def test_without_the_runtime_a_node_package_never_reaches_the_catalog(self):
+        rc, _, err = self.main_without_node('install', self.node_package(), '--grant', 'party_roster')
+        self.assertEqual(rc, 1)
+        self.assertIn('node runtime', err)
+        self.assertFalse(self.overlay.exists())
+        self.assertEqual(ig.listing(self.layout, REPO)[0], {})
 
 
 class Command(OverlayBase):
