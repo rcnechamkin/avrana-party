@@ -153,6 +153,7 @@
     {"path": "docs/runbooks/rebuild.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "Clean-target rebuild (AVR-32). Not run on any device; owner-only.", "status_marker": "Status: **PROPOSED procedure, NOT RUN** (2026-10-05). Written from source and from the facts"},
     {"path": "docs/runbooks/logs-and-retention.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/network.md", "class": "runbook", "status": "current", "authority": "procedure"},
+    {"path": "docs/runbooks/service-recovery.md", "class": "runbook", "status": "current", "authority": "procedure", "notes": "AVR-33 operator recovery; Party Core restart verified 2026-09-29 (PR #29), other appliance recovery runs not run."},
     {"path": "docs/runbooks/party-core-deploy.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/party-https.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/party-load-test.md", "class": "runbook", "status": "proposed", "authority": "procedure"},
