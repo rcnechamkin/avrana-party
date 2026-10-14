@@ -521,6 +521,34 @@ class PartyCore:
         self._commit()
         return s
 
+    def begin_lobby(self, device_id, if_version):
+        """Host: everyone back to Party Home, wherever the party is. The Party's own way out of a
+        game: it asks nothing of the game's page, so it works when that page is broken, was
+        reloaded and has no seat, or the game's process is gone.
+
+        Returns (session, what is left for the service to do at the game):
+          'release'  the party was on a finished round's results: the round is over and its result
+                     is kept; the game's held results screen is released.
+          'end'      a round was on: it is ended as the host's End does. Tickets stop at once and
+                     `nav` goes home before the game is asked, so a game that never answers holds
+                     nobody.
+          None       nothing: a round being set up or starting was closed here, or a switch was
+                     under way (it is called off; the switch itself is ending the old game).
+        Refused like any host action for someone who is not the host now (succession included) or
+        who acts on an old view; `no_game` when the party is home."""
+        self._timed()
+        self._require_host(device_id, if_version)
+        if self.location()['at'] == 'results':
+            return self.go_home(device_id, if_version), 'release'
+        s = self._live_session()
+        if s is not None and s.state == ENDING and self.party.pending is not None:
+            self.party.pending = None             # no next game: the old one ends, and that is all
+            self._home_unless_live()
+            self._commit()
+            return s, None
+        s = self.begin_end(device_id, if_version)
+        return s, 'end' if s.state == ENDING else None
+
     def begin_switch(self, device_id, game_id, if_version):
         """Host moves the party from the game that is on to another one (or a fresh round of the
         same). Starts ending the current session and returns it; the service ends it at the game,

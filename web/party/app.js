@@ -25,7 +25,7 @@ import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
 import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
-import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode } from './lib/party-mode.js';
+import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { createGameOrigins, gameAddress } from './lib/game-origins.js';
 import { createGoingWatchdog } from './lib/going-watchdog.js';
@@ -47,6 +47,8 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
   // round: the briefing on screen (its id)
+  // left: the round this document is leaving for; held: the Host's way-out screen on show (goingHost)
+  left: null, held: null, lobbyBusy: false,
   screen: 'main', declined: null, round: null, game: null, back: null, rulesGame: null,
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
@@ -855,7 +857,7 @@ function show(which, round = null) {
   $('going').hidden = which !== 'going';
   $('skip').hidden = which !== 'main';
   document.documentElement.dataset.screen = which;
-  if (which !== 'going') { goingWatch.cancel(); goingStuck(false); }   // no longer on the way: no timer, no way out left over
+  if (which !== 'going') { goingWatch.cancel(); goingStuck(false); goingHost(null); }   // no longer on the way: no timer, no way out left over
   if (!moved) return;
   renderTop();
   renderLimited();
@@ -880,6 +882,10 @@ function onPartyView(view, previous = null) {
   const url = state.declined === moveKey(view) ? null      // this phone went back to Party Home from this move
     : destination(view, HOME, state.catalog, gameOrigins.isSettled() ? addressOf : null);
   if (url) {                                  // the party is in a round: this phone goes there
+    // ...unless it is the Host's and was taken there already: the Host gets the Party's way out.
+    const held = state.left === roundKey(view) ? null : hostReturn(view, kept('localStorage', SENT_KEY));
+    if (held) { show('going'); goingHost(held); return; }
+    goingHost(null);
     if (!goingWatch.gaveUp) $('going-text').textContent = `Taking you to ${gameName(view)}…`;   // not over the way out
     show('going');
     leaveForRound();
@@ -919,6 +925,8 @@ function leaveForRound() {
       if (g && round) recordRound(g, round);   // only once it is really going there
       if (goingWatch.arm(to)) {                       // not again for a target already on its way, or given up on
         goingStuck(false);                            // a new target: no way out left over from the last one
+        state.left = roundKey(view);                  // this document is on its way there; the phone keeps
+        put('localStorage', SENT_KEY, state.left);    // that it was taken, for the Host's way out (goingHost)
         $('going-text').textContent = `Taking you to ${gameName(view)}…`;
         location.replace(to);
       }
@@ -940,6 +948,46 @@ function goingStuck(on) {
   if (!on) return;
   $('going-text').textContent = `Can’t reach ${gameName(party.view())}.`;
   $('going-retry').focus({ preventScroll: true });
+}
+
+/** The Host's phone on Party Home while the party is in a round or on its results (hostReturn):
+ * back to the game, or everyone back to the Party. Party Core's own control: it needs nothing of
+ * the game's page, and a reload of Party Home shows it again. `held` null takes it away. */
+const SENT_KEY = 'avrana-party-sent';
+function goingHost(held) {
+  $('going-host').hidden = !held;
+  if (!held) {
+    if (state.held) $('going-wait').hidden = false;
+    state.held = null;
+    return;
+  }
+  const view = party.view(), name = gameName(view), key = `${roundKey(view)}:${held.at}`;
+  $('going-wait').hidden = true;
+  $('going-stuck').hidden = true;
+  $('going-text').textContent = held.at === 'results' ? `${name} is over.` : `${name} is on.`;
+  $('going-return').textContent = `Return to ${name}`;
+  if (state.held === key) return;             // the same screen, asked about again: leave what the Host is doing
+  state.held = key;
+  goingConfirm(false);
+  $('going-problem').textContent = '';
+  $('going-text').focus({ preventScroll: true });
+}
+
+function goingConfirm(on) {
+  $('going-confirm').hidden = !on;
+  $('going-choices').hidden = on;
+}
+
+async function bringEveryoneBack() {
+  if (state.lobbyBusy) return;
+  state.lobbyBusy = true;
+  $('going-problem').textContent = '';
+  const res = await party.lobby();
+  state.lobbyBusy = false;
+  goingConfirm(false);
+  if (!res.ok) $('going-problem').textContent = 'That did not work. Please try again.';
+  const view = party.view();
+  if (view) onPartyView(view, view);          // home, or whoever is the Host now
 }
 
 async function renderGames(refresh = true) {
@@ -1245,6 +1293,22 @@ $('going-back').onclick = () => {
   window.stop();                              // the navigation that never arrived must not arrive later and take this phone away
   onPartyView(view, view);                    // Party Home, which show() moves to; the timer is cancelled there
 };
+$('going-return').onclick = () => {
+  const view = party.view();
+  if (!view) return;
+  state.left = roundKey(view);                // this once, on purpose: go there
+  goingWatch.cancel();                        // a fresh try, with its own waits
+  goingHost(null);
+  onPartyView(view, view);
+};
+$('going-lobby').onclick = () => {
+  const view = party.view(), held = view ? hostReturn(view, kept('localStorage', SENT_KEY)) : null;
+  if (!held || !held.confirm) { bringEveryoneBack(); return; }   // a finished round: its result is kept
+  goingConfirm(true);                         // a round is on: it ends for everyone
+  $('going-confirm-text').focus({ preventScroll: true });
+};
+$('going-lobby-yes').onclick = bringEveryoneBack;
+$('going-lobby-no').onclick = () => { goingConfirm(false); $('going-return').focus({ preventScroll: true }); };
 $('net-retry').onclick = tryAgain;
 $('scene-retry').onclick = tryAgain;
 $('host-now-x').onclick = () => {
@@ -1398,7 +1462,10 @@ document.addEventListener('visibilitychange', () => {
   if (state.partyMode) party.poke();          // a phone waking up asks Party Core at once
   (state.reachable === false ? boot() : refreshHealth());
 });
-window.addEventListener('pageshow', (event) => { if (event.persisted) boot(); else syncChat(); });
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) { state.left = null; boot(); }   // back from the cache: this document did not leave after all
+  else syncChat();
+});
 go(false);
 window.addEventListener('online', () => {
   if (state.reachable === false) boot();
