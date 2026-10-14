@@ -70,6 +70,48 @@ test('the host starts a round: two phones on Party Home go to the game origin; a
   await ana.context.close(); await ben.context.close();
 });
 
+// The Host's way out, Party Core's own (POST /party/api/lobby): the Host's phone, back on Party Home
+// for a round it was already taken to (a new tab, a reload: the game page may be broken), is not
+// sent straight back. It may return to the game, or bring everyone back to the Party.
+test('the Host, back on Party Home mid-round, can return to the game or bring everyone back, and a reload keeps the choice', async ({ browser, request }) => {
+  expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
+  const ana = await phone(browser, 0), ben = await phone(browser, 1);
+  await joinParty(ana.page, 'Ana');
+  await joinParty(ben.page, 'Ben');
+  await startForEveryone(ana.page, 'bluff');
+  for (const p of [ana, ben]) await expect(p.page).toHaveURL(IN_GAME);
+
+  const home = await ana.context.newPage();                      // the Host opens Party Home again
+  await home.goto(`${PARTY}/party/`);
+  await expect(home.locator('#going-host')).toBeVisible();
+  await expect(home.locator('#going-text')).toHaveText('BLUFF is on.');
+  await expect(home.locator('#going-back')).toBeHidden();         // this phone's own way back is not the Host's choice
+  await home.reload();                                            // and a reload (Safari's refresh) keeps it
+  await expect(home.locator('#going-host')).toBeVisible();
+  await expect(home).toHaveURL(AT_HOME);
+
+  await home.getByRole('button', { name: 'Return to BLUFF' }).click();
+  await expect(home).toHaveURL(IN_GAME);
+  await home.goto(`${PARTY}/party/`);
+  await home.getByRole('button', { name: 'Bring everyone back to the Party' }).click();
+  await expect(home.locator('#going-confirm')).toBeVisible();     // a round is on: it ends for everyone
+  await home.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(home.locator('#going-choices')).toBeVisible();
+  expect((await home.evaluate(() => fetch('/party/api/state').then((r) => r.json()))).location.at).toBe('game');
+  await home.getByRole('button', { name: 'Bring everyone back to the Party' }).click();
+  await home.getByRole('button', { name: 'End the round' }).click();
+  for (const p of [ana.page, ben.page, home]) await expect(p).toHaveURL(AT_HOME);
+  await expect(home.locator('#going')).toBeHidden();
+  await home.waitForTimeout(1500);                                // nobody is taken back out
+  for (const p of [ana.page, ben.page, home]) await expect(p).toHaveURL(AT_HOME);
+  expect((await home.evaluate(() => fetch('/party/api/state').then((r) => r.json()))).location.at).toBe('home');
+
+  // the next round is a new one: the Host's phone follows it like everyone's
+  await startForEveryone(home, 'bluff');
+  for (const p of [ben.page, home]) await expect(p).toHaveURL(IN_GAME);
+  await ana.context.close(); await ben.context.close();
+});
+
 /**
  * AVR-339: a navigation to the game origin that never completes (seen once in about 13 WebKit runs in CI,
  * ~22 s of silence and then a browser error). The going screen tries once more and then gives the phone a way on

@@ -940,6 +940,130 @@ class Fuzz(unittest.TestCase):
                 self.assertEqual(len(ids), len(set(ids)), seed)
 
 
+class HostLobby(unittest.TestCase):
+    """The Party's own way out of a game (begin_lobby): the host brings everyone back to Party
+    Home from wherever the party is, and nothing is asked of the game's page. Found at the first
+    playtest on a phone (2026-10-13): a game page that could not be used left the party on it."""
+
+    def setUp(self):
+        self.pc, self.clock = make([PREGAME, BOMBER])
+        self.a = self.pc.join('device-a', 'Ana')
+        self.b = self.pc.join('device-b', 'Ben')
+
+    def v(self):
+        return self.pc.party.version
+
+    def at(self, device='device-b'):
+        loc = self.pc.view(device)['location']
+        return loc['at'], loc['game']
+
+    def round(self, game='bomber'):
+        s = self.pc.launch('device-a', game, self.v())
+        if game == 'bluff':
+            self.pc.choose('device-a', 'player')
+            self.pc.choose('device-b', 'player')
+            self.pc.start_round('device-a', self.v())
+        self.pc.launch_accepted(s.id)
+        return s
+
+    def refused(self, code, fn, *args):
+        with self.assertRaises(Refused) as e:
+            fn(*args)
+        self.assertEqual(e.exception.code, code)
+
+    def test_a_game_that_crashed_and_never_answers_holds_nobody(self):
+        s = self.round()
+        self.assertEqual(self.pc.participant_for('device-b', 'bomber')[0], s)
+        got, left = self.pc.begin_lobby('device-a', self.v())
+        self.assertEqual((got, left, self.at(), self.at('device-a')),
+                         (s, 'end', ('home', None), ('home', None)))    # at once, before the game is asked
+        self.refused('no_game', self.pc.participant_for, 'device-b', 'bomber')   # no ticket to a round that is over
+        self.refused('busy', self.pc.launch, 'device-a', 'bomber', self.v())     # nothing beside a game still ending
+        self.clock.advance(core.END_TIMEOUT)
+        self.pc.tick()                                                  # the game never confirmed
+        view = self.pc.view('device-b')
+        self.assertEqual((view['state'], view['session']['outcome'], s.game_confirmed_end),
+                         ('lobby', 'ended_by_host', False))
+        self.assertFalse(self.pc.end_confirmed(s.id, True))             # a late answer changes nothing
+        self.refused('stale_session', self.pc.game_reported_end, s.id, 'completed')
+        nxt = self.round()                                              # and the party plays on
+        self.assertNotEqual(nxt.id, s.id)
+        self.assertEqual((self.at(), self.pc.party.session), (('game', 'bomber'), nxt))
+
+    def test_from_held_results_the_result_is_kept_and_no_ticket_is_needed(self):
+        s = self.round()
+        self.pc.game_reported_end(s.id, 'completed')
+        self.refused('no_game', self.pc.participant_for, 'device-a', 'bomber')   # a reloaded page has no seat
+        for _ in range(40):                                             # an hour: nothing moves by itself
+            self.clock.advance(90)
+            self.pc.touch('device-a')
+            self.pc.touch('device-b')
+            self.pc.tick()
+        self.assertEqual(self.at(), ('results', 'bomber'))
+        self.refused('not_host', self.pc.begin_lobby, 'device-b', self.v())
+        self.assertEqual(self.at(), ('results', 'bomber'))
+        got, left = self.pc.begin_lobby('device-a', self.v())
+        self.assertEqual((got, left, self.at()), (s, 'release', ('home', None)))
+        self.assertEqual((s.state, s.outcome), (core.ENDED, 'completed'))        # the round's own end stands
+        self.refused('no_game', self.pc.begin_lobby, 'device-a', self.v())       # home already: nothing to leave
+        self.refused('no_game', self.pc.participant_for, 'device-b', 'bomber')
+
+    def test_only_the_host_now_and_only_on_the_view_they_saw(self):
+        s = self.round()
+        self.refused('not_host', self.pc.begin_lobby, 'device-b', self.v())
+        self.refused('not_member', self.pc.begin_lobby, 'device-x', self.v())
+        self.refused('stale', self.pc.begin_lobby, 'device-a', self.v() - 1)
+        self.pc.transfer_host('device-a', self.b.id, self.v())           # Ana hands over
+        self.refused('not_host', self.pc.begin_lobby, 'device-a', self.v())      # a former host is nobody special
+        self.assertEqual((self.at(), s.state), (('game', 'bomber'), core.ACTIVE))
+        self.pc.begin_lobby('device-b', self.v())
+        self.assertEqual(self.at('device-a'), ('home', None))
+
+    def test_a_host_who_left_cannot_bring_the_party_back_and_the_next_one_can(self):
+        self.round()
+        self.pc.game_reported_end(self.pc.party.session.id, 'completed')
+        old = self.v()
+        self.pc.leave('device-a')
+        self.assertEqual(self.pc.party.host_id, self.b.id)
+        for version in (old, self.v()):
+            self.refused('not_member', self.pc.begin_lobby, 'device-a', version)
+        self.assertEqual(self.at(), ('results', 'bomber'))
+        self.pc.begin_lobby('device-b', self.v())
+        self.assertEqual(self.at(), ('home', None))
+
+    def test_a_round_being_set_up_or_starting_is_closed_here(self):
+        s = self.pc.launch('device-a', 'bluff', self.v())                # setup
+        self.assertEqual(self.pc.begin_lobby('device-a', self.v()), (s, None))
+        self.assertEqual((self.at(), s.state), (('home', None), core.ENDED))
+        s = self.pc.launch('device-a', 'bomber', self.v())               # launching: the game has not answered
+        self.assertEqual(self.pc.begin_lobby('device-a', self.v()), (s, None))
+        self.assertEqual((s.state, s.outcome), (core.ENDED, 'launch_failed'))
+        self.assertFalse(self.pc.launch_accepted(s.id))                  # the runtime that comes up late is stopped
+
+    def test_play_again_is_a_new_round_and_it_can_be_left_too(self):
+        first = self.round()
+        self.pc.game_reported_end(first.id, 'completed')
+        again = self.round()                                            # Play again, from the results
+        self.assertEqual((self.at(), again.id != first.id), (('game', 'bomber'), True))
+        got, left = self.pc.begin_lobby('device-a', self.v())
+        self.assertEqual((got, left, self.at()), (again, 'end', ('home', None)))
+        self.pc.end_confirmed(again.id, True)
+        self.assertEqual((self.pc.view('device-b')['state'], self.pc.party.session), ('lobby', again))
+        third = self.round()
+        self.assertEqual(self.pc.participant_for('device-b', 'bomber')[0], third)
+
+    def test_a_switch_under_way_is_called_off(self):
+        s = self.round()
+        self.pc.begin_switch('device-a', 'bluff', self.v())
+        self.assertEqual(self.at(), ('game', 'bomber'))                  # ending, the next game pending
+        self.assertEqual(self.pc.begin_lobby('device-a', self.v()), (s, None))
+        self.assertEqual((self.at(), self.pc.party.pending), (('home', None), None))
+        self.pc.end_confirmed(s.id, True)                                # the switch's own end arrives
+        self.assertIsNone(self.pc.launch_pending())                      # and opens nothing
+        self.assertEqual((self.at(), self.pc.view('device-a')['state']), (('home', None), 'lobby'))
+
+
+
 class QuitAndSpectate(unittest.TestCase):
     """AVR-132: the host gives up hosting and watches, at a boundary Party Core already has (a
     round being set up, a finished round's results); never under a running round."""
@@ -1054,7 +1178,6 @@ class QuitAndSpectate(unittest.TestCase):
         self.pc.tick()
         self.assertEqual(self.pc.party.host_id, self.a.id)                      # earliest-joined who is here
         self.assertEqual(s.state, core.SETUP)
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -24,6 +24,9 @@ an owner-approved `location /party/api/` on the 443 server). Routes:
     POST /party/api/session/start  {if_version}          host: start the round set up (AVR-129)
     POST /party/api/home           {if_version}          host: from a round's results back to
                                                          Party Home, for everyone (ADR 0011)
+    POST /party/api/lobby          {if_version}          host: everyone back to Party Home from
+                                                         wherever the party is (setup, a round,
+                                                         its results); needs nothing of the game
     GET  /party/api/status                   what is running: avrana.ops.status (no secrets)
     join and rename also take {avatar}: a bundled Gaze avatar id, shown to the party
 
@@ -206,10 +209,28 @@ class PartyService:
             self._notify()
             if s.state == core.ENDED:            # a launch that was cancelled: nothing to reset
                 return s
+        return self._end_at_game(s)
+
+    def _end_at_game(self, s):
+        """Ask the game to end a session Party Core is already ending, and record its answer.
+        Outside the lock: a game that is slow or gone delays nobody (the party is home already)."""
         confirmed = self.link.end(s)
         with self.lock:
             self.core.end_confirmed(s.id, confirmed)
             self._notify()
+        return s
+
+    def lobby(self, device_id, if_version):
+        """Host: everyone back to Party Home from wherever the party is (core.begin_lobby). The
+        game is told afterwards, so its session, its room and its seats go too; what it answers,
+        or whether it answers, changes nothing for the party."""
+        with self.lock:
+            s, left = self.core.begin_lobby(device_id, if_version)
+            self._notify()
+        if left == 'release':
+            self.link.end(s)                     # the finished round's held results screen
+        elif left == 'end':
+            self._end_at_game(s)
         return s
 
     def run_timer(self, stop, interval=1.0):
@@ -402,6 +423,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('choose', device, body.get('choice'))
             elif path == '/party/api/home':
                 svc.go_home(device, body.get('if_version'))
+            elif path == '/party/api/lobby':
+                svc.lobby(device, body.get('if_version'))
             elif path == '/party/api/session/start':
                 svc.start_round(device, body.get('if_version'))
             else:

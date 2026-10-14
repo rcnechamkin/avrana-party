@@ -333,6 +333,20 @@
     <button type="button" id="going-retry" class="btn btn-primary btn-wide">Try again</button>
     <button type="button" id="going-back" class="btn btn-ghost btn-wide">Back to Party</button>
   </div>
+  <!-- The Host, on Party Home while the party is in a round or on its results: the Party's own way
+       out for everyone, whatever the game's page is doing (lib/party-mode.js hostReturn). -->
+  <div id="going-host" class="grid justify-items-center gap-2" hidden>
+    <div id="going-choices" class="grid justify-items-center gap-2">
+      <button type="button" id="going-return" class="btn btn-primary btn-wide"></button>
+      <button type="button" id="going-lobby" class="btn btn-ghost btn-wide">Bring everyone back to the Party</button>
+    </div>
+    <div id="going-confirm" class="grid justify-items-center gap-2" hidden>
+      <p id="going-confirm-text" class="m-0 text-sm" tabindex="-1">This ends the round for everyone.</p>
+      <button type="button" id="going-lobby-yes" class="btn btn-primary btn-wide">End the round</button>
+      <button type="button" id="going-lobby-no" class="btn btn-ghost btn-wide">Keep playing</button>
+    </div>
+    <p id="going-problem" class="m-0 text-sm" role="alert"></p>
+  </div>
 </section>
 <noscript><p class="p-4 text-center">Avrana Party needs JavaScript.</p></noscript>
 </body>

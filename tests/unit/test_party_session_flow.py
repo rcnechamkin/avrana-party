@@ -484,6 +484,49 @@ class Flow(ServiceCase):
         self.assertFalse(self.svc.core.party.session.game_confirmed_end)
         self.game = ReferenceGame(self.port)
 
+    # ---- the host's way back to Party Home from anywhere (POST /party/api/lobby) ------------------
+    def lobby(self, phone=None):
+        phone = phone or self.ana
+        _, v, _ = phone.state()
+        return phone.post('lobby', {'if_version': v['version']})
+
+    def test_lobby_from_a_game_that_crashed_brings_everyone_home_and_kills_tickets(self):
+        self.launch()
+        _, t, _ = self.ticket(self.ben)
+        self.game.stop()                                                   # the game's server is gone
+        self.assertEqual(self.lobby(self.ben)[0], 403)                     # not the host's phone
+        status, v, _ = self.lobby()
+        self.assertEqual((status, v['state'], v['location']['at'], v['session']['outcome']),
+                         (200, 'lobby', 'home', 'ended_by_host'))
+        self.assertFalse(self.svc.core.party.session.game_confirmed_end)
+        self.assertEqual(self.ben.state()[1]['location']['at'], 'home')
+        self.assertEqual(self.ticket(self.ben)[0], 409)
+        self.game = ReferenceGame(self.port)
+
+    def test_lobby_from_results_needs_no_ticket_and_releases_the_game(self):
+        sid = self.launch()
+        self.game.report(self.game.side.ended('completed'))
+        self.assertEqual(self.ana.state()[1]['location']['at'], 'results')
+        self.assertEqual(self.ticket(self.ana)[0], 409)                    # a reloaded page gets no seat
+        status, v, _ = self.lobby()
+        self.assertEqual((status, v['location']['at'], v['session']['id'], v['session']['outcome']),
+                         (200, 'home', sid, 'completed'))                  # the round's own end stands
+        self.assertEqual(self.game.end_posts, 1)                           # its held screen was released
+        self.assertEqual(self.ticket(self.ben)[0], 409)
+        self.assertEqual(self.lobby()[0], 409)                             # home already
+
+    def test_after_lobby_the_next_round_is_new_and_the_old_tickets_stay_dead(self):
+        first = self.launch()
+        _, old, _ = self.ticket(self.ben)
+        self.assertEqual(self.lobby()[0], 200)
+        self.assertEqual(self.game.ends, [first])
+        second = self.launch()
+        self.assertNotEqual(second, first)
+        with self.assertRaises(Invalid):
+            self.game.hello(old['ticket'])
+        _, new, _ = self.ticket(self.ben)
+        self.assertEqual((self.game.hello(new['ticket'])[1], self.game.side.sid), ('player', second))
+
 
 PREGAME_BLUFF = {'bluff': {'id': 'bluff', 'min_players': 2, 'max_players': 6,
                            'late_join': 'spectator_only', 'pregame': True}}

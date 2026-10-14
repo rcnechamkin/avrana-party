@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { HOME, readView, partyGame, tileMode, destination, roster, roundToRemember, setupPanel } from '../../web/party/lib/party-mode.js';
+import { HOME, readView, partyGame, tileMode, destination, roster, roundToRemember, setupPanel, roundKey, hostReturn } from '../../web/party/lib/party-mode.js';
 import { createPartyClient } from '../../web/party/lib/party-client.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
@@ -278,5 +278,69 @@ test('a start refused because someone has not chosen is never retried', async ()
   const res = await client.startRound();
   assert.equal(res.error, 'unresolved');
   assert.equal(srv.calls.filter((c) => c.method === 'POST').length, 1);
+  client.stop(); srv.release();
+});
+
+// ---- the Host's way out of a game, on Party Home (Party Core's `lobby`) ---------------------------
+
+test('hostReturn: the Host, on Party Home for a round this phone was already taken to, is given the choice', () => {
+  const on = view({ state: 'active', session: active(), location: at('game') });
+  const key = roundKey(on);
+  assert.equal(key, 'party-1:session-1');
+  assert.equal(roundKey(view()), null);                                      // home: no round
+  assert.equal(hostReturn(on, null), null);                                  // never taken there: go, as everyone does
+  assert.deepEqual(hostReturn(on, key), { at: 'game', game: 'bluff', confirm: true });   // a round is on: ending it is asked about
+  // after a reload of Party Home the phone still remembers (the caller keeps `sent` in localStorage)
+  assert.deepEqual(hostReturn(JSON.parse(JSON.stringify(on)), key), { at: 'game', game: 'bluff', confirm: true });
+  // ticketless results: the game page may have nothing to show; the result is kept, so no question
+  const results = view({ state: 'lobby', session: { ...active(), state: 'ended', outcome: 'completed' }, location: at('results') });
+  assert.deepEqual(hostReturn(results, key), { at: 'results', game: 'bluff', confirm: false });
+});
+
+test('hostReturn: nobody but the Host now, and never for another round (Play again is followed)', () => {
+  const on = view({ state: 'active', session: active(), location: at('game') });
+  const key = roundKey(on);
+  assert.equal(hostReturn(view({ me: ben, state: 'active', session: active(), location: at('game') }), key), null);   // a former host too
+  assert.equal(hostReturn(view({ me: null, state: 'active', session: active(), location: at('game') }), key), null);
+  const again = view({ state: 'active', session: active('session-2'), location: at('game', 'bluff', 'session-2') });
+  assert.equal(hostReturn(again, key), null);                                // a new session: this phone goes there
+  assert.equal(hostReturn(view({ party: 'party-2', state: 'active', session: active(), location: at('game') }), key), null);
+  for (const where of ['home', 'setup']) assert.equal(hostReturn(view({ location: at(where) }), key), null, where);
+  assert.equal(hostReturn(null, key), null);
+});
+
+test('lobby goes to api/lobby with the version, and is retried once only when stale and still not home', async () => {
+  let version = 7;
+  const on = (v, host = true) => view({ version: v, state: 'active', session: active(), location: at('game'),
+    me: { id: 'member-a', name: 'Ana', host } });
+  const serve = (fresh) => fakeServer((url, init) => {
+    if (url.endsWith('state')) return [200, fresh(version)];
+    if (url.includes('state?')) return 'hang';
+    const body = JSON.parse(init.body);
+    if (body.if_version !== version) { version++; return [409, { error: 'stale', message: 'The party changed.' }]; }
+    return [200, view({ version: version + 1 })];
+  });
+  let srv = serve(on);
+  let client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(on(6));
+  let res = await client.lobby();
+  assert.equal(res.ok, true);
+  assert.deepEqual(srv.calls.filter((c) => c.method === 'POST').map((c) => [c.url, c.body.if_version]), [['api/lobby', 6], ['api/lobby', 8]]);
+  assert.equal(client.view().location.at, 'home');
+  client.stop(); srv.release();
+  // hosting passed to someone else meanwhile: the refusal stands, nothing is sent again
+  version = 7;
+  srv = serve((v) => on(v, false));
+  client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(on(6));
+  res = await client.lobby();
+  assert.deepEqual([res.ok, res.error, srv.calls.filter((c) => c.method === 'POST').length], [false, 'stale', 1]);
+  client.stop(); srv.release();
+  // and a real refusal is never retried
+  srv = fakeServer((url) => url.includes('state?') ? 'hang' : url.endsWith('state') ? [200, on(6)] : [403, { error: 'not_host', message: 'No.' }]);
+  client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(on(6));
+  res = await client.lobby();
+  assert.deepEqual([res.error, srv.calls.filter((c) => c.method === 'POST').length], ['not_host', 1]);
   client.stop(); srv.release();
 });

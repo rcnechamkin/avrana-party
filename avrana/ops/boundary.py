@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import subprocess
 import sys
@@ -217,6 +218,28 @@ def _stat(path):
             'group': name(grp.getgrgid, st.st_gid), 'mode': format(st.st_mode & 0o7777, '04o')}
 
 
+def _bind_targets(p):
+    """The paths a unit's BindPaths= mounts something over (`src[:dst[:opts]]`, `-` = optional)."""
+    targets = set()
+    for entry in p.get('BindPaths', '').split():
+        src, _, rest = entry.partition(':')
+        targets.add(posixpath.normpath(rest.partition(':')[0] or src.lstrip('-')))
+    return targets
+
+
+def _state_paths(p, dynamic, role, is_dir):
+    """The directories a unit keeps state in, as the host sees them. The legacy games server writes
+    `data/` in its code tree; when its unit bind-mounts its StateDirectory over that path (the
+    service-user layout), the host's `data/` is only the empty mount point and the state is the
+    StateDirectory, already listed. Judging the mount point would report a boundary that does not exist."""
+    state = [f'/var/lib/private/{d}' if dynamic else f'/var/lib/{d}'
+             for d in p.get('StateDirectory', '').split()]
+    data = posixpath.join(p.get('WorkingDirectory', '').lstrip('!-'), 'data')
+    if role == 'legacy-games' and is_dir(data) and posixpath.normpath(data) not in _bind_targets(p):
+        state.append(data)
+    return state
+
+
 def _show(unit):
     props = {}
     for line in _run('systemctl', 'show', unit, '--no-pager').splitlines():
@@ -298,11 +321,7 @@ def collect():
         code = {p.get('WorkingDirectory', '').lstrip('!-')}
         for argv in re.findall(r'argv\[\]=([^;]*);', p.get('ExecStart', '')):
             code.update(a for a in argv.split() if a.startswith('/'))
-        state = [f'/var/lib/private/{d}' if dynamic else f'/var/lib/{d}'
-                 for d in p.get('StateDirectory', '').split()]
-        data = Path(p.get('WorkingDirectory', '').lstrip('!-'), 'data')
-        if role == 'legacy-games' and data.is_dir():
-            state.append(str(data))
+        state = _state_paths(p, dynamic, role, os.path.isdir)
         env = dict(e.split('=', 1) for e in p.get('Environment', '').split() if '=' in e)
         service = {
             'unit': unit, 'role': role, 'user': user, 'dynamic_user': dynamic,
