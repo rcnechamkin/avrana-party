@@ -12,6 +12,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const executablePath = process.env.PW_CHROMIUM_EXECUTABLE || undefined;
 const PORT = Number(process.env.AVRANA_PARTY_DEV_PORT || 8184);
+// AVR-307: a second dev server whose games are registered to a game origin (ADR 0013), for follow-origin.spec.ts
+const ORIGIN_PORT = Number(process.env.AVRANA_PARTY_ORIGIN_DEV_PORT || PORT + 1);
+const python = process.env.AVRANA_PYTHON || 'python3';
 
 export default defineConfig({
   testDir: './tests/party',
@@ -31,13 +34,28 @@ export default defineConfig({
     trace: { mode: 'retain-on-failure', screenshots: false, snapshots: false, sources: false },
     serviceWorkers: 'block',
   },
-  webServer: {
-    command: `${process.env.AVRANA_PYTHON || 'python3'} -m avrana.web.devserver --port ${PORT} --test-controls --party`,
+  webServer: [{
+    command: `${python} -m avrana.web.devserver --port ${PORT} --test-controls --party`,
     url: `http://127.0.0.1:${PORT}/party/`,
     reuseExistingServer: false,
     timeout: 15_000,
-  },
+  }, {
+    command: `${python} -m avrana.web.devserver --port ${ORIGIN_PORT} --test-controls --party --game-origin`,
+    url: `http://127.0.0.1:${ORIGIN_PORT}/party/`,
+    reuseExistingServer: false,
+    timeout: 15_000,
+  }],
   projects: [
-    { name: 'phones-chromium', use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    { name: 'phones-chromium', testIgnore: /follow-origin\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    {
+      // ADR 0013: games registered to a game origin, which Chromium resolves to the dev server.
+      // Plain HTTP on two host names of one site; real Safari and HTTPS are Tier 3 (the owner's).
+      name: 'two-origins-chromium',
+      testMatch: /follow-origin\.spec\.ts$/,
+      use: {
+        ...devices['Pixel 7'], baseURL: `http://127.0.0.1:${ORIGIN_PORT}`,
+        launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] },
+      },
+    },
   ],
 });
