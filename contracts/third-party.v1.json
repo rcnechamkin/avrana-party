@@ -1,0 +1,718 @@
+{
+  "schema": "avrana.third-party/v1",
+  "about": "Third-party components Avrana Party ships to the appliance or phones, relies on the owner to install, or only references (AVR-73). Read by tools/sbom.py. A PROPOSAL until the owner approves docs/design/THIRD-PARTY.md; an engineering inventory, not legal advice. license_verification: file-read = a license file or package metadata in this repository or an installed package was read; repo-doc = recorded in a repository document, not re-read from upstream; unverified = license is NOASSERTION and must be read before any redistribution.",
+  "first_party": {
+    "name": "Avrana Party",
+    "license": "NOASSERTION",
+    "license_verification": "unverified",
+    "note": "package.json says \"ISC\" but the repository has no LICENSE file and the package is private. The project license is undecided; this blocks outside redistribution of Avrana itself."
+  },
+  "components": [
+    {
+      "id": "geist-font",
+      "name": "Geist (variable)",
+      "version": "1.7.2",
+      "license": "OFL-1.1",
+      "license_verification": "file-read",
+      "license_source": "web/party/fonts/OFL.txt",
+      "source": "https://www.npmjs.com/package/geist",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "redistribute-with-notice",
+      "commercial_blocker": false,
+      "note": "Served as is from web/party/fonts/. OFL.txt ships beside the font; the font may not be sold on its own and a modified font must not reuse the reserved name. Provenance and SHA-256 in assets/vendor/README.md.",
+      "paths": [
+        "web/party/fonts"
+      ]
+    },
+    {
+      "id": "tailwindcss-output",
+      "name": "Tailwind CSS (compiled into web/party/styles.css)",
+      "version": "4.3.3",
+      "license": "MIT",
+      "license_verification": "file-read",
+      "license_source": "node_modules/tailwindcss/LICENSE",
+      "source": "https://github.com/tailwindlabs/tailwindcss",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "redistribute-with-notice",
+      "commercial_blocker": false,
+      "note": "The build tool is a devDependency; its generated CSS is committed and carries the MIT banner on its first line. Keep that banner (or the NOTICE entry) when redistributing.",
+      "npm_packages": [
+        "tailwindcss"
+      ]
+    },
+    {
+      "id": "daisyui-output",
+      "name": "daisyUI (compiled into web/party/styles.css)",
+      "version": "5.7.46",
+      "license": "MIT",
+      "license_verification": "file-read",
+      "license_source": "node_modules/daisyui/LICENSE",
+      "source": "https://github.com/saadeghi/daisyui",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "redistribute-with-notice",
+      "commercial_blocker": false,
+      "note": "Only the component parts the pages use are compiled in (web/src/party.css @plugin block). The compiled file carries only the Tailwind banner, so the NOTICE is where the daisyUI copyright notice is kept.",
+      "npm_packages": [
+        "daisyui"
+      ]
+    },
+    {
+      "id": "lucide-icons",
+      "name": "Lucide icons (selected, in web/party/lib/icons.js)",
+      "version": "1.48.0",
+      "license": "ISC",
+      "license_verification": "file-read",
+      "license_source": "node_modules/lucide-static/LICENSE",
+      "source": "https://lucide.dev/license",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "redistribute-with-notice",
+      "commercial_blocker": false,
+      "note": "Only the icons listed in tools/build-icons.mjs ship, as plain data. The generated file keeps the ISC and Feather (MIT) notice in its header.",
+      "npm_packages": [
+        "lucide-static"
+      ]
+    },
+    {
+      "id": "dicebear-gaze-avatars",
+      "name": "DiceBear \"Gaze\" avatars (web/party/avatars)",
+      "version": "10.6.0",
+      "license": "CC0-1.0",
+      "license_verification": "file-read",
+      "license_source": "node_modules/@dicebear/styles/LICENSE.md",
+      "source": "https://www.dicebear.com",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "embed-ok",
+      "commercial_blocker": false,
+      "note": "The 32 SVGs are generated at build time by tools/build-avatars.mjs from the Gaze style (CC0 1.0 per LICENSE.md). The @dicebear/styles package declares \"SEE LICENSE IN LICENSE.md\" because other styles in it carry other licenses: use only Gaze and do not ship the package or other styles without review.",
+      "paths": [
+        "web/party/avatars"
+      ],
+      "npm_packages": [
+        "@dicebear/styles"
+      ]
+    },
+    {
+      "id": "dicebear-core",
+      "name": "@dicebear/core",
+      "version": "10.7.0",
+      "license": "MIT",
+      "license_verification": "file-read",
+      "license_source": "node_modules/@dicebear/core/LICENSE",
+      "source": "https://github.com/dicebear/dicebear",
+      "usage": "build-time-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "not-distributed",
+      "commercial_blocker": false,
+      "note": "Renders the avatars; its code is not in any committed output.",
+      "npm_packages": [
+        "@dicebear/core"
+      ]
+    },
+    {
+      "id": "kenney-board-game-icons",
+      "name": "Kenney Board Game Icons",
+      "version": "1.1",
+      "license": "CC0-1.0",
+      "license_verification": "file-read",
+      "license_source": "assets/vendor/kenney-board-game-icons/License.txt",
+      "source": "https://kenney.nl/assets/board-game-icons",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "embed-ok",
+      "commercial_blocker": false,
+      "note": "Two icons (sword, exploding) vendored byte-for-byte and re-colored into web/party/art by tools/build-art.mjs. Attribution not required; pack SHA-256 in assets/vendor/README.md.",
+      "paths": [
+        "assets/vendor/kenney-board-game-icons"
+      ]
+    },
+    {
+      "id": "lan-games-art",
+      "name": "LAN Games title artwork (first-party)",
+      "version": "n/a",
+      "license": "MIT",
+      "license_verification": "file-read",
+      "license_source": "git origin/main:NOTICE.md in rcnechamkin/avrana-party-games",
+      "source": "https://github.com/rcnechamkin/avrana-party-games",
+      "usage": "embedded",
+      "shipped_in": [
+        "appliance-web",
+        "phones"
+      ],
+      "redistribution": "embed-ok",
+      "commercial_blocker": false,
+      "note": "SVG exported from the Games repository; same terms as that repository (MIT per its NOTICE.md; upstream LAN Games by BEACNpool is MIT). Keep the upstream copyright in the NOTICE.",
+      "paths": [
+        "assets/vendor/lan-games-art"
+      ]
+    },
+    {
+      "id": "web-test-tooling",
+      "name": "Playwright, @types/node and @tailwindcss/cli",
+      "version": "1.63.x / 26.x / 4.3.x",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "package-lock.json (per-package license fields)",
+      "source": "https://github.com/microsoft/playwright",
+      "usage": "build-time-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "not-distributed",
+      "commercial_blocker": false,
+      "note": "Test and build tools only; nothing of them is in a committed output. The SBOM still lists every devDependency (scope excluded) with the license recorded in package-lock.json.",
+      "npm_packages": [
+        "@playwright/test",
+        "@types/node",
+        "@tailwindcss/cli"
+      ]
+    },
+    {
+      "id": "nodejs-runtime",
+      "name": "Node.js (pinned optional runtime for experimental .avrgame packages)",
+      "version": "22.22.2",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (owner-supplied tarball pinned by SHA-256 in avrana/avrgame/node_pin.py)",
+      "source": "https://nodejs.org/dist/v22.22.2/",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Never downloaded or committed; installed by ops/install-node-runtime from an official tarball the owner brings. Node core is generally MIT but the tarball LICENSE (it aggregates bundled dependencies) has not been read here. Read it before redistributing the tarball."
+    },
+    {
+      "id": "python3-aiohttp",
+      "name": "aiohttp (Debian python3-aiohttp)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://github.com/aio-libs/aiohttp",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Imported only by arcade/stream.py. Installed by arcade/install-dependencies.sh from the distribution; not vendored. Party Core itself uses only the Python standard library.",
+      "python_modules": [
+        "aiohttp"
+      ],
+      "apt_packages": [
+        "python3-aiohttp"
+      ]
+    },
+    {
+      "id": "python3-evdev",
+      "name": "python-evdev (Debian python3-evdev)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://github.com/gvalkov/python-evdev",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Imported by avrana/providers/uinput_gamepad.py for virtual gamepads. Distribution package.",
+      "python_modules": [
+        "evdev"
+      ],
+      "apt_packages": [
+        "python3-evdev"
+      ]
+    },
+    {
+      "id": "python3-gi",
+      "name": "PyGObject / GStreamer bindings (Debian python3-gi)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://gitlab.gnome.org/GNOME/pygobject",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Imported by arcade/stream.py. License not read here.",
+      "python_modules": [
+        "gi"
+      ],
+      "apt_packages": [
+        "python3-gi",
+        "gir1.2-gst-plugins-bad-1.0"
+      ]
+    },
+    {
+      "id": "gstreamer",
+      "name": "GStreamer (tools, base/good/bad plugins, nice, pulseaudio)",
+      "version": "distro",
+      "license": "LGPL-2.1-or-later",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (table row \"GStreamer webrtcbin\", licence read 2026-09-26: LGPL)",
+      "source": "https://gstreamer.freedesktop.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Used in-process by arcade/stream.py through the system python3-gi. Plugin sets differ in license (the -bad set especially); per-plugin licenses are not verified here.",
+      "apt_packages": [
+        "gstreamer1.0-tools",
+        "gstreamer1.0-plugins-base",
+        "gstreamer1.0-plugins-good",
+        "gstreamer1.0-plugins-bad",
+        "gstreamer1.0-nice",
+        "gstreamer1.0-pulseaudio"
+      ]
+    },
+    {
+      "id": "nginx-pkg",
+      "name": "nginx (Debian packages)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://packages.debian.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by the owner from the distribution (ports 80 and 443); never vendored. An image build that ships these must read each package copyright file first. FFmpeg builds can be GPL or LGPL depending on configuration.",
+      "apt_packages": [
+        "nginx"
+      ]
+    },
+    {
+      "id": "networkmanager-pkg",
+      "name": "NetworkManager and dnsmasq-base (Debian packages)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://packages.debian.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by the owner from the distribution (the access point and its shared DHCP/DNS); never vendored. An image build that ships these must read each package copyright file first. FFmpeg builds can be GPL or LGPL depending on configuration.",
+      "apt_packages": [
+        "network-manager",
+        "dnsmasq-base"
+      ]
+    },
+    {
+      "id": "avahi-pkg",
+      "name": "Avahi (Debian packages)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://packages.debian.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by the owner from the distribution (party.local); never vendored. An image build that ships these must read each package copyright file first. FFmpeg builds can be GPL or LGPL depending on configuration.",
+      "apt_packages": [
+        "avahi-daemon"
+      ]
+    },
+    {
+      "id": "system-tools-pkg",
+      "name": "openssl, git, curl, sudo, iw, iproute2, logrotate, bind9-dnsutils (Debian packages)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://packages.debian.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by the owner from the distribution (deploy, probes and checks); never vendored. An image build that ships these must read each package copyright file first. FFmpeg builds can be GPL or LGPL depending on configuration.",
+      "apt_packages": [
+        "openssl",
+        "git",
+        "curl",
+        "sudo",
+        "iw",
+        "iproute2",
+        "logrotate",
+        "bind9-dnsutils"
+      ]
+    },
+    {
+      "id": "python3-pkg",
+      "name": "Python 3 and venv (Debian packages)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://packages.debian.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by the owner from the distribution (Party Core and ops tooling (standard library only)); never vendored. An image build that ships these must read each package copyright file first. FFmpeg builds can be GPL or LGPL depending on configuration.",
+      "apt_packages": [
+        "python3",
+        "python3-venv"
+      ]
+    },
+    {
+      "id": "arcade-display-pkg",
+      "name": "Xvfb, xauth, FFmpeg, PulseAudio (Debian packages)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://packages.debian.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by the owner from the distribution (the arcade private display, audio, encoding); never vendored. An image build that ships these must read each package copyright file first. FFmpeg builds can be GPL or LGPL depending on configuration.",
+      "apt_packages": [
+        "xvfb",
+        "xauth",
+        "ffmpeg",
+        "pulseaudio",
+        "pulseaudio-utils"
+      ]
+    },
+    {
+      "id": "retroarch",
+      "name": "RetroArch",
+      "version": "distro",
+      "license": "GPL-3.0-or-later",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (table row, licence read 2026-09-26: GPL-3.0)",
+      "source": "https://github.com/libretro/RetroArch",
+      "usage": "separate-process",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "separate-process-only",
+      "commercial_blocker": false,
+      "note": "Run only as a child process (avrana/providers/retroarch.py); never linked or embedded. A product image that includes it must offer corresponding source. Keep its UDP command port off.",
+      "apt_packages": [
+        "retroarch"
+      ]
+    },
+    {
+      "id": "mame-pkg",
+      "name": "MAME (Debian mame, ROM verification tools)",
+      "version": "distro",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (Debian package)",
+      "source": "https://www.mamedev.org",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "ROM verification only. Do not assume the distro package license matches the 2010 libretro core below.",
+      "apt_packages": [
+        "mame"
+      ]
+    },
+    {
+      "id": "libretro-mame2010",
+      "name": "MAME 2010 libretro core (0.139)",
+      "version": "0.139 dff8aad",
+      "license": "LicenseRef-MAME-non-commercial",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (table row, \"non-commercial licence texts\"); revision in arcade/evidence/selected-core.json",
+      "source": "https://github.com/libretro/mame2010-libretro",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "avoid-commercial-distribution",
+      "commercial_blocker": true,
+      "note": "COMMERCIAL BLOCKER. Installed by the owner from the libretro buildbot (SHA-256 in arcade/evidence/selected-core.json), never committed. Non-commercial terms forbid selling or bundling it; a commercial product needs another core or a license."
+    },
+    {
+      "id": "libretro-fbneo",
+      "name": "FinalBurn Neo core",
+      "version": "155afc22",
+      "license": "LicenseRef-FBNeo-non-commercial",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (table row, \"non-commercial licence texts\"); revision in arcade/evidence/FBNeo-revision.json",
+      "source": "https://github.com/finalburnneo/FBNeo",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "avoid-commercial-distribution",
+      "commercial_blocker": true,
+      "note": "COMMERCIAL BLOCKER. Owner-installed, never committed. Non-commercial license: do not bundle or sell."
+    },
+    {
+      "id": "libretro-pcsx-rearmed",
+      "name": "PCSX-ReARMed libretro core",
+      "version": "r26l-111-g94e8a03",
+      "license": "GPL-2.0-only",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (table row, GPL-2.0); revision in ps1/evidence/selected-core.json",
+      "source": "https://github.com/libretro/pcsx_rearmed",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "separate-process-only",
+      "commercial_blocker": false,
+      "note": "Loaded by RetroArch as a libretro .so; installed by the owner, never committed (not in Debian). Redistribution would need a source offer."
+    },
+    {
+      "id": "owner-supplied-content",
+      "name": "Arcade ROMs, PS1 BIOS and game images",
+      "version": "n/a",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository",
+      "source": "owner supplied",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": true,
+      "note": "COMMERCIAL BLOCKER for any bundled or pre-loaded image: Avrana holds no license to these titles or BIOS files. The repository must never contain them (AGENTS.md)."
+    },
+    {
+      "id": "lego-acme",
+      "name": "lego (ACME client)",
+      "version": "owner build (/usr/local/bin/lego)",
+      "license": "MIT",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (table row, MIT)",
+      "source": "https://github.com/go-acme/lego",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Installed by ops/deploy-party-https.sh from an owner lab build; separate process."
+    },
+    {
+      "id": "beszel-agent",
+      "name": "Beszel agent (telemetry)",
+      "version": "0.18.7",
+      "license": "NOASSERTION",
+      "license_verification": "unverified",
+      "license_source": "not in this repository (downloaded from a GitHub release by telemetry/install-beszel-agent.sh)",
+      "source": "https://github.com/henrygd/beszel",
+      "usage": "owner-installed",
+      "shipped_in": [
+        "appliance-system"
+      ],
+      "redistribution": "owner-installs-do-not-bundle",
+      "commercial_blocker": false,
+      "note": "Optional monitoring agent, a separate systemd service. License not read here."
+    },
+    {
+      "id": "ref-sunshine",
+      "name": "Sunshine",
+      "version": "n/a",
+      "license": "GPL-3.0-only",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (GPL-3.0)",
+      "source": "https://github.com/LizardByte/Sunshine",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Benchmark held; revision pin in arcade/evidence/Sunshine-revision.json. Do not copy code into Avrana."
+    },
+    {
+      "id": "ref-moonlight-web",
+      "name": "Moonlight-Web (linckosz and MrCreativ3001 projects)",
+      "version": "n/a",
+      "license": "GPL-3.0-only",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (GPL-3.0, both)",
+      "source": "https://github.com/linckosz/moonlight-web",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Two GPL projects; transport ideas only. Not reusable code."
+    },
+    {
+      "id": "ref-selkies",
+      "name": "Selkies and pixelflux",
+      "version": "n/a",
+      "license": "MPL-2.0",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (MPL-2.0; the published wheels are GPL because they bundle x264)",
+      "source": "https://github.com/selkies-project/selkies",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Revision pin in arcade/evidence/selkies-revision.json. A spike candidate, not a dependency."
+    },
+    {
+      "id": "ref-wolf",
+      "name": "Wolf (Games on Whales)",
+      "version": "n/a",
+      "license": "MIT",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (MIT)",
+      "source": "https://github.com/games-on-whales/wolf",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Pattern reference; revision pin in arcade/evidence/wolf-revision.json."
+    },
+    {
+      "id": "ref-localsend",
+      "name": "LocalSend protocol",
+      "version": "n/a",
+      "license": "LicenseRef-No-License-File",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (the protocol repository has no LICENSE file; the app is Apache-2.0)",
+      "source": "https://github.com/localsend/protocol",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": true,
+      "note": "Reference only until the protocol license is clarified: an unlicensed repository grants no reuse rights. Implement from our own spec; copy nothing."
+    },
+    {
+      "id": "ref-rauc",
+      "name": "RAUC",
+      "version": "n/a",
+      "license": "LGPL-2.1-only",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (LGPL-2.1)",
+      "source": "https://github.com/rauc/rauc",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Update-client fallback candidate only; no tryboot backend. A separate process or dynamic linking would be LGPL-compatible; not adopted."
+    },
+    {
+      "id": "ref-inputplumber",
+      "name": "InputPlumber",
+      "version": "n/a",
+      "license": "GPL-3.0-or-later",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (GPL-3.0-or-later)",
+      "source": "https://github.com/ShadowBlip/InputPlumber",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Deferred. Root D-Bus daemon; GPL, so a process boundary only if ever adopted."
+    },
+    {
+      "id": "ref-opennds",
+      "name": "openNDS",
+      "version": "n/a",
+      "license": "GPL-2.0-only",
+      "license_verification": "repo-doc",
+      "license_source": "docs/research/AVRANA-OPEN-SOURCE-SUBSTRATE.md (GPL-2.0, rejected as a runtime)",
+      "source": "https://github.com/openNDS/openNDS",
+      "usage": "reference-only",
+      "shipped_in": [
+        "none"
+      ],
+      "redistribution": "reference-only",
+      "commercial_blocker": false,
+      "note": "Rejected as a runtime; RFC 8908/8910 know-how only."
+    }
+  ],
+  "games_repo_pointer": {
+    "repository": "rcnechamkin/avrana-party-games",
+    "read_from": "origin/main NOTICE.md and requirements.txt (2026-10-14)",
+    "status": "follow-up: Games needs its own inventory in this schema; not detailed here",
+    "items": [
+      {
+        "name": "FastAPI, Uvicorn, websockets, Pillow",
+        "license": "MIT / BSD-3-Clause / BSD-3-Clause / MIT-CMU",
+        "note": "runtime dependencies (requirements.txt pins)"
+      },
+      {
+        "name": "python-chess 1.11.2",
+        "license": "GPL-3.0-or-later",
+        "note": "COMMERCIAL BLOCKER candidate: runtime dependency of the chess/duel games, installed from PyPI, not bundled (Games NOTICE.md)"
+      },
+      {
+        "name": "Sora and JetBrains Mono fonts",
+        "license": "OFL-1.1",
+        "note": "bundled in web/fonts and games/wordclash/web/fonts with OFL texts"
+      },
+      {
+        "name": "colyseus-tanks/upstream",
+        "license": "MIT",
+        "note": "LICENSE first lines read (Endel Dreyer); the bundled pixel-tank PNG textures and games/bluff/art/kenney are not verified"
+      }
+    ]
+  }
+}
