@@ -192,6 +192,15 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
   client.start(first);
   const wake = () => { if (doc && doc.visibilityState === 'visible') client.poke(); };
   if (doc) doc.addEventListener('visibilitychange', wake);
-  api.stop = () => { client.stop(); if (doc) doc.removeEventListener('visibilitychange', wake); };
+  // The network coming back asks again at once: a poll that was in flight when the Wi-Fi dropped
+  // may never be answered, and a move made meanwhile must not wait for it to time out (AVR-290).
+  const net = globalThis.addEventListener ? globalThis : null;
+  const back = () => client.poke();
+  if (net) net.addEventListener('online', back);
+  api.stop = () => {
+    client.stop();
+    if (doc) doc.removeEventListener('visibilitychange', wake);
+    if (net) net.removeEventListener('online', back);
+  };
   return api;
 }

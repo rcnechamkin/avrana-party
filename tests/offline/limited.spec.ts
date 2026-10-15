@@ -334,3 +334,102 @@ test('the doorway takes no destination from its address', async ({ page }) => {
   await page.goto(`${LIMITED}/party/doorway/?limited=http://evil.test/&full=http://evil.test/#http://evil.test/`);
   await page.waitForURL(`${LIMITED}/party/`);
 });
+
+// AVR-290: a Limited Mode phone inside a first-party game page or the Arcade follows the Party.
+// The game page here is the dev server's stub that runs the real in-game follower exactly as
+// Games' integration shim does; the arcade page is the real arcade/index.html. Neither is gated on
+// a secure context any more, so a plain-HTTP phone follows the same Party over its own credential.
+
+/** The Host's own call, from the Host's page (Playwright's client cannot resolve the Limited name). */
+async function hostMove(page: Page, verb: string, game?: string) {
+  return page.evaluate(async ([v, g]) => {
+    const version = (await (await fetch('/party/api/state')).json()).version;
+    return (await fetch(`/party/api/${v}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(g ? { game: g, if_version: version } : { if_version: version }) })).status;
+  }, [verb, game ?? ''] as [string, string]);
+}
+
+test('Host moves reach Limited phones on a game page and on the Arcade, beside a Full Mode phone, with no new member', async ({ page, context, browser }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  const gus = await secondPhone(browser, 'Gus'), fay = await secondPhone(browser, 'Fay');
+  try {
+    await home(gus.page, LIMITED);
+    await home(fay.page, FULL);
+    await expect(page.locator('#party-members li')).toHaveCount(3);
+    const limited: Page[] = [page, gus.page];
+    const everyoneAt = async (path: string) => {
+      for (const p of limited) await expect(p).toHaveURL(LIMITED + path);   // always this origin, never another
+    };
+    // Lena (Limited, the Host) starts a game: every phone goes to it. The Full Mode phone follows
+    // by the Full Mode rules (its game's registered origin, ADR 0013); the Limited ones stay here.
+    expect(await hostMove(page, 'session/launch', 'expo')).toBe(200);
+    await everyoneAt('/games/expo/?avrana=1');
+    await expect(fay.page).toHaveURL(/\/games\/expo\/\?avrana=1$/);
+    await expect(gus.page.locator('h1[data-game="expo"]')).toBeVisible();
+    expect(await gus.page.evaluate(() => window.isSecureContext)).toBe(false);
+    // Switch: the Arcade page (the real one) is followed to, and followed from.
+    expect(await hostMove(page, 'session/switch', 'arcade-gauntlet2')).toBe(200);
+    await everyoneAt('/arcade/');
+    await expect(gus.page.locator('html')).toHaveAttribute('data-avrana-party', 'on');
+    await expect(gus.page.locator('#home')).toHaveAttribute('href', '/party/');   // a Party here: Home is the Party
+    // Host End on the Arcade: every Limited phone goes back to Party Home.
+    expect(await hostMove(page, 'session/end')).toBe(200);
+    await everyoneAt('/party/');
+    // Again from a game page.
+    expect(await hostMove(page, 'session/launch', 'expo')).toBe(200);
+    await everyoneAt('/games/expo/?avrana=1');
+    expect(await hostMove(page, 'session/end')).toBe(200);
+    await everyoneAt('/party/');
+    // Nothing joined again and nothing crossed: one member each, the Limited credential only.
+    await expect(page.locator('#party-members li')).toHaveCount(3);
+    for (const p of [context, gus.context]) {
+      expect((await p.cookies(`${LIMITED}/party/`)).map((c) => c.name)).toEqual(['avrana_limited']);
+    }
+    expect((await fay.context.cookies(`${FULL}/party/`)).map((c) => c.name)).toEqual(['avrana_device']);
+  } finally {
+    await gus.context.close();
+    await fay.context.close();
+  }
+});
+
+test('a Limited phone that opens a game page or the Arcade, or comes back from offline, is taken where the Party is', async ({ page, context, browser }) => {
+  await named(context, 'Lena');
+  await home(page, LIMITED);
+  const gus = await secondPhone(browser, 'Gus');
+  try {
+    await home(gus.page, LIMITED);
+    await expect(page.locator('#party-members li')).toHaveCount(2);
+    const following = (p: Page) => p.waitForFunction(() => Boolean((window as any).AvranaParty?.active));
+    // On load, at Party Home: a game page and the Arcade both lead to Party Home.
+    await gus.page.goto(`${LIMITED}/games/expo/?avrana=1`);
+    await expect(gus.page).toHaveURL(`${LIMITED}/party/`);
+    await gus.page.goto(`${LIMITED}/arcade/`);
+    await expect(gus.page).toHaveURL(`${LIMITED}/party/`);
+    // On load, with the Party in a game: any other page leads to it.
+    expect(await hostMove(page, 'session/launch', 'expo')).toBe(200);
+    await expect(page).toHaveURL(/\/games\/expo\/\?avrana=1$/);
+    await gus.page.goto(`${LIMITED}/arcade/`);
+    await expect(gus.page).toHaveURL(`${LIMITED}/games/expo/?avrana=1`);
+    // A move made while this phone is offline is followed once the network is back.
+    await following(gus.page);
+    await gus.context.setOffline(true);
+    expect(await hostMove(page, 'session/end')).toBe(200);
+    await page.waitForTimeout(1500);
+    await expect(gus.page).toHaveURL(`${LIMITED}/games/expo/?avrana=1`);
+    await gus.context.setOffline(false);
+    await expect(gus.page).toHaveURL(`${LIMITED}/party/`, { timeout: 15_000 });
+    // and the same for the Arcade, switched to while offline
+    expect(await hostMove(page, 'session/launch', 'arcade-gauntlet2')).toBe(200);
+    await expect(gus.page).toHaveURL(`${LIMITED}/arcade/`, { timeout: 15_000 });
+    await following(gus.page);
+    await gus.context.setOffline(true);
+    expect(await hostMove(page, 'session/end')).toBe(200);
+    await page.waitForTimeout(1500);
+    await gus.context.setOffline(false);
+    await expect(gus.page).toHaveURL(`${LIMITED}/party/`, { timeout: 15_000 });
+    await expect(page.locator('#party-members li')).toHaveCount(2);
+  } finally {
+    await gus.context.close();
+  }
+});

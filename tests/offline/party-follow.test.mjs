@@ -156,3 +156,62 @@ test('a bridge answer that fails sends the page to Party Home to decide, once', 
   const refused = await run(view({ location: at('game') }), 'arcade-gauntlet2', { bridge: bridgeOf({ [GAMES]: '*', 'http://other.avrana.test': '*' }) });
   assert.deepEqual(refused.went, ['/party/']);
 });
+
+// AVR-290: a Limited Mode phone (plain HTTP, ADR 0012) inside a first-party game or the arcade
+// follows the Party exactly as a Full Mode phone does, but always on its own origin, and with no
+// bridge ask. The follower is the same module over the same same-origin long poll; nothing about
+// the transport or the credential differs, and the loaders no longer withhold it.
+test('Limited Mode: every host move takes the page along, on this origin, asking nothing of the bridge', async () => {
+  const bridge = bridgeOf({ [GAMES]: '*' });          // a registration that must never be consulted or used
+  const go = async (first, here, polls = []) => {
+    const o = origin(first, polls, { bridge });
+    const went = [];
+    const api = await startPartyFollow({ here, fetch: o.fetch, go: (u) => went.push(u), storage: PROFILE, root: null,
+      partyOrigin: 'http://10.42.0.1' });
+    await settle();
+    api?.stop();
+    return { went, asked: o.posts.length };
+  };
+  const gamePage = 'bluff', arcade = 'arcade-gauntlet2';
+  // on load / reconnect: Home, setup, another game
+  assert.deepEqual((await go(inLimited(view({ location: at('home') })), gamePage)).went, ['/party/']);
+  assert.deepEqual((await go(inLimited(view({ location: at('setup') })), arcade)).went, ['/party/']);
+  assert.deepEqual((await go(inLimited(view({ location: at('game') })), arcade)).went, ['/games/bluff/?avrana=1']);
+  assert.deepEqual((await go(inLimited(view({ location: at('game', arcade) })), gamePage)).went, ['/arcade/']);
+  assert.deepEqual((await go(inLimited(view({ location: at('game') })), gamePage)).went, []);        // already there
+  // on a move: Host End/Home -> Party Home; switch -> the other title; results hold the round's page
+  const home = inLimited(view({ version: 9, location: at('home') }));
+  const next = inLimited(view({ version: 9, location: at('game', arcade) }));
+  const results = inLimited(view({ version: 9, location: at('results') }));
+  assert.deepEqual((await go(inLimited(view()), gamePage, [home])).went, ['/party/']);
+  assert.deepEqual((await go(inLimited(view()), gamePage, [next])).went, ['/arcade/']);
+  assert.deepEqual((await go(inLimited(view({ location: at('game', arcade) })), arcade, [home])).went, ['/party/']);
+  assert.deepEqual((await go(inLimited(view()), gamePage, [results])).went, []);
+  // never an absolute address: a Limited phone stays on the origin it is on
+  for (const v of [home, next, results, inLimited(view())]) {
+    for (const here of [gamePage, arcade]) {
+      const first = inLimited(view({ location: at('game', here) }));
+      for (const to of (await go(first, here, [v])).went) assert.match(to, /^\/(party|games|arcade)\//);
+    }
+  }
+});
+
+test('Limited Mode: a watcher follows like a player; a title that is not here is Party Home', async () => {
+  const watcher = inLimited(view({ location: at('game') }));
+  watcher.session = { ...watcher.session, my_role: 'spectator' };
+  assert.deepEqual((await run(watcher, 'arcade-gauntlet2')).went, ['/games/bluff/?avrana=1']);
+  const gone = inLimited(view({ location: at('game', 'backgammon') }));    // no launchable catalog title
+  assert.deepEqual((await run(gone, 'bluff')).went, ['/party/']);
+});
+
+test('Limited Mode: the arcade page and Games\' loaders never gate the follower on a secure context', () => {
+  const arcadePage = readFileSync(new URL('../../arcade/index.html', import.meta.url), 'utf8');
+  const sameOrigin = /function sameOrigin\(\)\{[\s\S]*?\n\}/.exec(arcadePage)[0];
+  assert.match(sameOrigin, /party-follow\.js/);
+  assert.match(sameOrigin, /^function sameOrigin\(\)\{\s*if\(followed\)return;/);          // no scheme test before the follower
+  // Wake Lock stays a secure-context feature (ADR 0012 degrades it, never emulates it).
+  assert.match(sameOrigin, /isSecureContext&&'wakeLock' in navigator/);
+  // The follower module itself checks nothing about the scheme.
+  const follower = readFileSync(new URL('../../web/party/lib/party-follow.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(follower.replace(/\/\/.*/g, ''), /isSecureContext|location\.protocol/);
+});
