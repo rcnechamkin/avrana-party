@@ -15,7 +15,7 @@ from types import MappingProxyType
 from avrana.contracts import game as game_contract
 from avrana.contracts import strictjson, vocabulary
 
-from . import node
+from . import artwork, node
 from .common import FORMAT, MAX_MANIFEST_BYTES, Problems, Refused, check_json_depth, clip, name_problem, text_ok
 
 # Runtime NAME -> absolute executable. The appliance owns this mapping; a package only picks a
@@ -95,7 +95,7 @@ def validate_manifest(obj, vocab=None):
     if fmt != FORMAT:
         problems.add(f'format: this appliance supports only {FORMAT!r}, not {clip(fmt)}; '
                      'unknown formats are refused')
-    for key in sorted(set(obj) - set(TOP) - set(RESERVED)):
+    for key in sorted(set(obj) - set(TOP) - set(RESERVED) - {'artwork'}):
         if key in APPLIANCE_OWNED:
             problems.add(f'manifest.{key}: set by the appliance, never by a package')
         else:
@@ -182,6 +182,13 @@ def validate_manifest(obj, vocab=None):
         if why:
             problems.add(why)
         out['client'] = {'root': root}
+
+    # artwork: optional, additive; the shape here, the files themselves when the archive is read
+    if 'artwork' in obj:
+        client = obj.get('client')
+        block = artwork.validate_block(obj['artwork'], client.get('root') if isinstance(client, dict) else None, problems)
+        if block is not None:
+            out['artwork'] = block
 
     problems.raise_if_any()
     return out

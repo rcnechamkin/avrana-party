@@ -19,7 +19,7 @@ from pathlib import Path
 
 from avrana.contracts import strictjson
 
-from . import archive, common
+from . import archive, artwork, common
 from .common import (MANIFEST_NAME, RECIPE_FORMAT, RECIPE_NAME, Problems, Refused, bytecode, clip,
                      name_problem, secret_problem)
 from .manifest import parse, validate_manifest
@@ -147,8 +147,31 @@ def _walk(directory, prefix, out, problems):
             problems.add(f'path {clip(rel)}: not a regular file or directory')
 
 
-def build_bytes(source_root, manifest_path, includes, compress=False):
-    """The archive bytes, validated exactly as `read` validates an archive. Writes nothing."""
+def _add_artwork(files, block, root, problems):
+    """Add the declared artwork files that the includes did not already bring in (links are refused)."""
+    for path in artwork.declared_paths(block):
+        if path in files:
+            continue
+        start = Path(root) / path
+        try:
+            parts = path.split('/')
+            for i in range(1, len(parts)):                   # no linked directory on the way
+                _plain(Path(root).joinpath(*parts[:i]), f'artwork {clip(path)}')
+            st = _plain(start, f'artwork {clip(path)}')
+        except Refused as exc:
+            if 'symbolic links' in exc.problems[0]:
+                problems.add(exc.problems[0])
+            continue                      # absent: the reader's check names it
+        if stat.S_ISREG(st.st_mode):
+            files[path] = start
+        else:
+            problems.add(f'artwork {clip(path)}: not a regular file')
+
+
+def build_bytes(source_root, manifest_path, includes, compress=False, warnings=None):
+    """The archive bytes, validated exactly as `read` validates an archive. Writes nothing. Files that
+    the manifest's `artwork` block declares are included even when `includes` does not list them.
+    `warnings`, a list, receives notes that do not refuse the package (metadata in an image)."""
     problems = Problems()
     try:
         _plain(manifest_path, 'manifest')
@@ -157,6 +180,7 @@ def build_bytes(source_root, manifest_path, includes, compress=False):
         raise Refused('manifest: cannot be read') from None
     manifest = validate_manifest(parse(manifest_bytes))     # raises with every manifest problem
     files = _collect(source_root, includes, problems, os.path.realpath(manifest_path))
+    _add_artwork(files, manifest.get('artwork', {}), source_root, problems)
     if MANIFEST_NAME in files:
         problems.add(f'{MANIFEST_NAME}: comes from the manifest path; do not include another one at the root')
     if len(files) + 1 > common.MAX_FILES:
@@ -195,6 +219,10 @@ def build_bytes(source_root, manifest_path, includes, compress=False):
             zf.writestr(info, data, compress_type=method, compresslevel=9 if compress else None)
     data = buf.getvalue()
     archive.scan(data)[1].close()     # the same validation a reader applies
+    if warnings is not None and manifest.get('artwork'):
+        names = dict(entries)
+        warnings.extend(artwork.metadata_warnings(
+            artwork.file_problems(manifest['artwork'], {n: len(names[n]) for n in names}, names.__getitem__)[1]))
     return data
 
 
@@ -216,11 +244,11 @@ def _write_atomic(data, out_path):
     return out_path
 
 
-def pack(source_root, manifest_path, includes, out_path, compress=False):
+def pack(source_root, manifest_path, includes, out_path, compress=False, warnings=None):
     """Build `out_path` from `includes` (paths relative to `source_root`, directories recursive)
     and the manifest at `manifest_path` (stored as avrgame.json). Validates before writing and
     writes atomically. Returns the Package of the written archive."""
-    data = build_bytes(source_root, manifest_path, includes, compress)
+    data = build_bytes(source_root, manifest_path, includes, compress, warnings)
     return archive.read(_write_atomic(data, out_path))
 
 
@@ -230,11 +258,11 @@ def recipe_build(recipe_path, compress=False):
     return build_bytes(r.root, r.manifest, r.include, compress)
 
 
-def pack_recipe(recipe_path, out_path=None, compress=False):
+def pack_recipe(recipe_path, out_path=None, compress=False, warnings=None):
     """Pack from a recipe. Default output: `<id>-<version>.avrgame` in the current directory.
     Returns the Package (its `path` says where)."""
     r = load_recipe(recipe_path)
-    data = build_bytes(r.root, r.manifest, r.include, compress)
+    data = build_bytes(r.root, r.manifest, r.include, compress, warnings)
     package, zf = archive.scan(data)
     zf.close()
     if out_path is None:

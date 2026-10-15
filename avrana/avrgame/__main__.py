@@ -63,7 +63,10 @@ def main(argv=None):
         if args.command == 'validate':
             print(_summary(_validate(args.target)))
         elif args.command == 'pack':
-            package = build.pack_recipe(args.recipe, args.out, compress=args.deflate)
+            warnings = []
+            package = build.pack_recipe(args.recipe, args.out, compress=args.deflate, warnings=warnings)
+            for note in warnings:
+                print(f'warning: {note}', file=sys.stderr)
             print(f'{package.path}\nsha256: {package.sha256}')
         elif args.command == 'extract':
             package = archive.extract(args.archive, args.dest)
