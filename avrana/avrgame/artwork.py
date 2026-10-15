@@ -264,7 +264,10 @@ def parse_png(data):
 
 SOF_ACCEPTED = (0xC0, 0xC1, 0xC2)
 SOF_ALL = tuple(m for m in range(0xC0, 0xD0) if m not in (0xC4, 0xC8, 0xCC))
-_ENTROPY_END = re.compile(rb'\xff+([\x01-\xcf\xd8-\xfe])')
+# The end of a scan's entropy-coded data: a marker that is not a stuffed byte (FF 00) or a restart
+# marker. One FF, never FF+: on a long run of FF fill bytes FF+ backtracks from every offset
+# (quadratic; a hostile image could pin a CPU). The match then starts at the last FF of a run.
+_ENTROPY_END = re.compile(rb'\xff([\x01-\xcf\xd8-\xfe])')
 
 
 def parse_jpeg(data):

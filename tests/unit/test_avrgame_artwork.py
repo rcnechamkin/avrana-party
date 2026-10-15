@@ -218,6 +218,21 @@ class ImageParsers(unittest.TestCase):
             with self.subTest(label):
                 self.bad(name, data, expect)
 
+    def test_a_long_run_of_fill_bytes_in_a_scan_is_linear(self):
+        # Review of PR #140: FF+ in the end-of-scan search was quadratic on a long FF run (30 KB took
+        # 10 s). A run larger than any allowed image must still be decided in well under a second.
+        import time
+        head = jpeg(eoi=False)
+        for tail in (b'\x00\xff\xd9', b'\x12\xff\xd9', b'\xff\xd9'):
+            data = head + b'\xff' * 300_000 + tail
+            started = time.perf_counter()
+            try:
+                artwork.parse_jpeg(data)
+            except artwork._Bad:
+                pass
+            self.assertLess(time.perf_counter() - started, 1.0, tail)
+        self.assertEqual(artwork.parse_jpeg(head + b'\xff' * 1000 + b'\xff\xd9')[:2], (256, 256))
+
 
 class ValidatorOnArchives(Tmp):
     def refuse(self, block, images, expect, extra=()):
