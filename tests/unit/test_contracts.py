@@ -439,6 +439,8 @@ class DeviceCaps(unittest.TestCase):
         game.validate(self.with_caps({'memory_mb': 4096, 'storage_mb': 102400}), VOCAB)
         self.assertIn('at least one', self.problems(self.with_caps({})))
         self.assertIn('must be an object', self.problems(self.with_caps(['memory_mb'])))
+        self.assertIn('requires nothing', self.problems(self.with_caps({'opfs': False, 'shared_memory': False})))
+        game.validate(self.with_caps({'opfs': False, 'memory_mb': 5}), VOCAB)
 
     def test_only_under_requires(self):
         self.assertIn("unknown key 'device_caps'", self.problems(self.with_caps({'opfs': True}, scope='optional')))

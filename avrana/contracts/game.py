@@ -121,6 +121,7 @@ WEBGL2_OFFSCREEN = ('worker', 'main')
 def _device_caps(obj, where, problems):
     """A normalised copy of a valid `device_caps` object, or None after naming every problem."""
     allowed = set(DEVICE_CAPS_INT) | set(DEVICE_CAPS_BOOL) | {'webgl2_offscreen'}
+    problems_before = len(problems)
     if not _keys(obj, where, allowed, set(), problems):
         return None
     if not obj:
@@ -142,6 +143,8 @@ def _device_caps(obj, where, problems):
             problems.append(f'{where}.{key}: one of {list(WEBGL2_OFFSCREEN)}')
             continue
         out[key] = value
+    if obj and len(problems) == problems_before and not any(v is not False for v in out.values()):
+        problems.append(f'{where}: every value is false, which requires nothing (leave device_caps out)')
     return out
 
 

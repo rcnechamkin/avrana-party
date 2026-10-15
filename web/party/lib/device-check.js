@@ -14,8 +14,11 @@
 //    by the game at launch". The game page's own preflight stays the final check for everything.
 //  - Memory, OPFS and storage are measured on Party's origin, standing in for the game's origin
 //    (a phone's memory limits are per browser, but a separate origin has its own storage usage).
-//  - Memory is a real non-shared WebAssembly.Memory of the declared size, released at once; that
-//    shows a reservation of that size is possible now, not that the game will keep running.
+//  - Memory is a non-shared WebAssembly.Memory of the declared size, released at once. That only
+//    RESERVES address space (its pages are never touched): a refusal is real evidence that the phone
+//    cannot, a success only that a reservation of that size is possible now, not that the RAM is there.
+//  - Every check has a time limit (`timeoutMs`), and the checker one more over the whole probe
+//    (`totalMs`): a check that never settles is 'unknown', so it can never hold Play back.
 // Pure of the page except through `env` (default globalThis), so tests inject fakes.
 
 const PAGE = 65536;
@@ -45,7 +48,7 @@ async function memory(requires, env) {
     let mem = new env.WebAssembly.Memory({ initial: pages, maximum: pages });
     const ok = mem.buffer.byteLength === pages * PAGE;
     mem = null;                                  // let go at once; the browser frees it when it collects
-    return ok ? result('pass', `${requires.memory_mb} MB allocated`) : result('fail', 'allocation came back short');
+    return ok ? result('pass', `${requires.memory_mb} MB reserved`) : result('fail', 'allocation came back short');
   } catch (error) {
     // A refused reservation is a RangeError; anything else says nothing about this phone.
     return error instanceof RangeError ? result('fail', `refused: ${message(error)}`) : result('unknown', message(error));
@@ -107,14 +110,22 @@ async function storage(requires, env) {
   }
 }
 
-/** Try each declared need. Never throws; every key asked for gets an answer. */
+// `promise`, or 'unknown' when it has not settled within `ms`
+function within(promise, ms, env) {
+  let timer;
+  const late = new Promise((resolve) => { timer = env.setTimeout(() => resolve(result('unknown', 'the check did not finish in time')), ms); });
+  return Promise.race([promise, late]).finally(() => env.clearTimeout(timer));
+}
+
+/** Try each declared need. Never throws; every key asked for gets an answer, each within `timeoutMs`. */
 export async function probeDevice(requires, env = globalThis, { timeoutMs = 4000 } = {}) {
   const out = {};
+  const timed = (check) => within(check, timeoutMs, env.setTimeout ? env : globalThis);
   if (asked(requires, 'shared_memory')) out.shared_memory = result('launch', 'needs a cross-origin isolated page, which the game has and Party Home does not');
-  if (asked(requires, 'memory_mb')) out.memory_mb = await memory(requires, env);
-  if (asked(requires, 'webgl2_offscreen')) out.webgl2_offscreen = await webgl2(requires, env, timeoutMs);
-  if (asked(requires, 'opfs')) out.opfs = await opfs(env);
-  if (asked(requires, 'storage_mb')) out.storage_mb = await storage(requires, env);
+  if (asked(requires, 'memory_mb')) out.memory_mb = await timed(memory(requires, env));
+  if (asked(requires, 'webgl2_offscreen')) out.webgl2_offscreen = await timed(webgl2(requires, env, timeoutMs));
+  if (asked(requires, 'opfs')) out.opfs = await timed(opfs(env));
+  if (asked(requires, 'storage_mb')) out.storage_mb = await timed(storage(requires, env));
   return out;
 }
 
@@ -148,7 +159,7 @@ export function decide(requires, results) {
 }
 
 /** One checker per page: each distinct set of needs is probed once and the answer kept. */
-export function createDeviceChecker({ env = globalThis, probe = probeDevice } = {}) {
+export function createDeviceChecker({ env = globalThis, probe = probeDevice, totalMs = 12000 } = {}) {
   const done = new Map();
   const pending = new Map();
   const keyOf = (requires) => JSON.stringify(KEYS.map((k) => requires[k] ?? null));
@@ -159,8 +170,12 @@ export function createDeviceChecker({ env = globalThis, probe = probeDevice } = 
       const key = keyOf(requires);
       if (done.has(key)) return Promise.resolve(done.get(key));
       if (!pending.has(key)) {
-        pending.set(key, Promise.resolve().then(() => probe(requires, env))
-          .catch(() => ({}))                     // a probe that falls over proves nothing: every check is unknown
+        // a probe that falls over, or outlives `totalMs`, proves nothing: every check it did not answer is unknown
+        let timer;
+        const late = new Promise((resolve) => { timer = setTimeout(() => resolve({}), totalMs); });
+        pending.set(key, Promise.race([Promise.resolve().then(() => probe(requires, env)), late])
+          .catch(() => ({}))
+          .finally(() => clearTimeout(timer))
           .then((results) => {
             const decision = decide(requires, results);
             done.set(key, decision);

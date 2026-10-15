@@ -13,17 +13,18 @@ existing `requires.device` list of named capabilities (which keeps its meaning):
 
 | key | value | checked by Party Home by |
 | --- | --- | --- |
-| `memory_mb` | whole number, 1 to 4096 | really allocating a WebAssembly memory of that size, then letting it go |
+| `memory_mb` | whole number, 1 to 4096 | reserving a WebAssembly memory of that size, then letting it go: a refusal fails; a success only shows the reservation is possible (pages are not touched, so it does not prove the RAM) |
 | `shared_memory` | `true` / `false` | **not checkable here** (see below) |
 | `webgl2_offscreen` | `"worker"` or `"main"` | making a WebGL 2 context on an OffscreenCanvas, in a Worker (`lib/device-probe-worker.js`) or on the page |
 | `opfs` | `true` / `false` | `navigator.storage.getDirectory()` |
 | `storage_mb` | whole number, 1 to 102400 | `navigator.storage.estimate()`: free space (quota minus usage) |
 
 The validator (`avrana/contracts/game.py`) refuses unknown keys, wrong types and implausible
-values; it allows the object only under `requires`, never `optional`, and not empty. The catalog
+values; it allows the object only under `requires`, never `optional`, and not without at least one
+real requirement (an object of only `false` values is refused). The catalog
 build passes it through to `web/party/catalog.json` only when declared. The browser side is
-`web/party/lib/device-check.js`; the semantics follow the gamekit preflight of AVR-467 (read, not
-copied).
+`web/party/lib/device-check.js`. The same keys are what the OpenCE page's own preflight checks
+(rcnechamkin/avrana-party-games#73, not merged); the two are independent and neither imports the other.
 
 ## What the phone sees
 
@@ -33,7 +34,8 @@ declares needs, the phone runs the probe (once per page, then kept). Results are
 - **fail**: Play is disabled, Watch stays open, and the panel says in plain words what is missing
   ("This phone does not have enough free storage for this game (about 2000 MB). You can watch
   this one."). Nobody else's choice changes.
-- **unknown** (the probe threw, timed out, or the API does not report): never a pass, and does not
+- **unknown** (the probe threw, took longer than its time limit, or the API does not report; each
+  check has a limit, and the whole probe another, so a check that never finishes cannot hold Play): never a pass, and does not
   block Play. It is shown: "Could not check this phone's memory. The game checks again when it
   starts."
 - **launch** (`shared_memory` only): neither pass nor fail: "The game checks this phone's shared

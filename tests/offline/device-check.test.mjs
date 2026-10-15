@@ -116,3 +116,20 @@ test('the checker probes once per set of needs, keeps the answer, and a crashing
   assert.equal(d.play, true);
   assert.equal(d.checks[0].status, 'unknown');
 });
+
+test('a check that never settles is unknown within its limit, and cannot hold Play', async () => {
+  const never = new Promise(() => {});
+  const stuck = { navigator: { storage: { getDirectory: () => never, estimate: () => never } } };
+  const r = await probeDevice({ opfs: true, storage_mb: 10 }, stuck, { timeoutMs: 20 });
+  assert.equal(r.opfs.status, 'unknown');
+  assert.equal(r.storage_mb.status, 'unknown');
+  const hung = createDeviceChecker({ probe: () => never, totalMs: 20 });
+  const d = await hung.check({ opfs: true });
+  assert.equal(d.play, true);
+  assert.equal(d.checks[0].status, 'unknown');
+});
+
+test('a memory pass says reserved, not allocated', async () => {
+  const fake = { Memory: class { constructor({ initial }) { this.buffer = { byteLength: initial * 65536 }; } } };
+  assert.match((await probeDevice({ memory_mb: 10 }, { WebAssembly: fake })).memory_mb.detail, /reserved/);
+});
