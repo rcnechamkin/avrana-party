@@ -31,6 +31,8 @@ def compile_presentations(contract, runtime_caps):
                               'runtime': [c for c in p['optional']['runtime'] if c not in have]}}
         if 'viewport' in p:
             entry['viewport'] = p['viewport']
+        if p['requires'].get('device_caps'):       # EXPERIMENTAL (AVR-469); absent for every game that declares none
+            entry['requires']['device_caps'] = dict(p['requires']['device_caps'])
         out.append(entry)
     return out
 

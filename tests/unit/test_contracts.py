@@ -14,6 +14,7 @@ from pathlib import Path
 
 from avrana import CONTRACTS_DIR, REPO_ROOT, WEB_DIR
 from avrana.contracts import appliance, catalog, game, strictjson, vocabulary
+from avrana.contracts import evaluate as evaluate_mod
 
 VOCAB = vocabulary.load()
 GAMES = CONTRACTS_DIR / 'games'
@@ -393,6 +394,61 @@ class ApplianceAndCatalog(unittest.TestCase):
             self.assertEqual(info.id, prov['id'])
             self.assertEqual(info.kind, prov['kind'])
             self.assertEqual(sorted(info.offers), sorted(prov['offers']))
+
+
+class DeviceCaps(unittest.TestCase):
+    """EXPERIMENTAL (AVR-469): optional requires.device_caps, measured needs checked before Play."""
+
+    @staticmethod
+    def with_caps(caps, scope='requires'):
+        doc = minimal()
+        doc['presentations'][0][scope] = dict(doc['presentations'][0].get(scope, {}), device_caps=caps)
+        return doc
+
+    def problems(self, doc):
+        with self.assertRaises(game.ContractError) as ctx:
+            game.validate(doc, VOCAB)
+        return ' | '.join(ctx.exception.problems)
+
+    def test_a_contract_without_it_is_unchanged(self):
+        c = game.validate(minimal(), VOCAB)
+        self.assertNotIn('device_caps', c['presentations'][0]['requires'])
+        entry = evaluate_mod.compile_presentations(c, ['runtime.lan_games'])[0]
+        self.assertEqual(entry['requires'], {'device': ['websocket']})
+
+    def test_valid_declaration_is_kept_beside_the_device_list_and_reaches_the_catalog(self):
+        caps = {'memory_mb': 384, 'shared_memory': True, 'webgl2_offscreen': 'worker', 'opfs': True, 'storage_mb': 2000}
+        c = game.validate(self.with_caps(caps), VOCAB)
+        self.assertEqual(c['presentations'][0]['requires']['device_caps'], caps)
+        self.assertEqual(c['presentations'][0]['requires']['device'], ['websocket'])
+        entry = evaluate_mod.compile_presentations(c, ['runtime.lan_games'])[0]
+        self.assertEqual(entry['requires'], {'device': ['websocket'], 'device_caps': caps})
+
+    def test_unknown_keys_are_refused(self):
+        self.assertIn("unknown key 'gpu_mb'", self.problems(self.with_caps({'memory_mb': 64, 'gpu_mb': 1})))
+
+    def test_implausible_values_are_refused(self):
+        for caps in ({'memory_mb': 0}, {'memory_mb': 4097}, {'memory_mb': -5}, {'memory_mb': 1.5}, {'memory_mb': '384'},
+                     {'memory_mb': True}, {'storage_mb': 0}, {'storage_mb': 10 ** 9}, {'shared_memory': 'yes'},
+                     {'shared_memory': 1}, {'opfs': None}, {'webgl2_offscreen': True}, {'webgl2_offscreen': 'gpu'}):
+            with self.subTest(caps=caps):
+                self.problems(self.with_caps(caps))
+
+    def test_the_bounds_are_inclusive_and_an_empty_object_is_refused(self):
+        game.validate(self.with_caps({'memory_mb': 1, 'storage_mb': 1}), VOCAB)
+        game.validate(self.with_caps({'memory_mb': 4096, 'storage_mb': 102400}), VOCAB)
+        self.assertIn('at least one', self.problems(self.with_caps({})))
+        self.assertIn('must be an object', self.problems(self.with_caps(['memory_mb'])))
+        self.assertIn('requires nothing', self.problems(self.with_caps({'opfs': False, 'shared_memory': False})))
+        game.validate(self.with_caps({'opfs': False, 'memory_mb': 5}), VOCAB)
+
+    def test_only_under_requires(self):
+        self.assertIn("unknown key 'device_caps'", self.problems(self.with_caps({'opfs': True}, scope='optional')))
+
+    def test_device_names_still_come_from_the_vocabulary(self):
+        doc = self.with_caps({'opfs': True})
+        doc['presentations'][0]['requires']['device'] = ['not_a_capability']
+        self.assertTrue(self.problems(doc))
 
 
 if __name__ == '__main__':

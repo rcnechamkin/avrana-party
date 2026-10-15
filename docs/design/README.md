@@ -50,6 +50,8 @@ Read in this order:
      and per-game process direction; signing kept separate from isolation
    - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
      the hub/BLUFF audit
+   - `DEVICE-REQUIREMENTS.md` — EXPERIMENTAL (AVR-469): measured device needs in the Game Contract,
+     checked before Play; what the probe can and cannot prove
    - `GAME-UX-CONTRACT.md` — the shared game UX and interaction contract (AVR-56): what the
      platform owns and what a game owns on a phone, the briefing, rules access, unavailable-action
      explanations, interaction floors, system cues and art slots; each rule labelled implemented,
