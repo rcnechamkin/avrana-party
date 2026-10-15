@@ -767,8 +767,8 @@ class RealRun(Harness):
 
 
 class FailedGameUnitsPreflight(Harness):
-    """A native game unit left failed degrades /party/api/status (AVR-33) and so fails the status smoke
-    check of any deployment: the preflight names the units and the command that clears them before
+    """A native game unit left failed is a note in /party/api/status (AVR-33; it degrades only for a live
+    session's game, so it never fails a deployment's smoke): the preflight names the units and the command that clears them before
     anything is switched, and clears nothing itself."""
 
     def test_failed_game_units_are_listed_with_the_reset_command_before_switching(self):

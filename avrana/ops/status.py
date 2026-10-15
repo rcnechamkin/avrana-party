@@ -30,7 +30,8 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     recovery      {units: {unit: {restarts, result, active_for_s}}, failed_game_units: [unit, ...]}: what
                   systemd's own recovery did (AVR-33). A unit restarting after failures, one restarted
                   less than RECENT_RESTART_S ago, one that hit its start limit and a failed native game
-                  unit or socket degrade; a unit that came back and stayed up is a note
+                  unit or socket of the live Party session's game degrade; a failed game unit nothing is
+                  using, and a unit that came back and stayed up, are notes
     certificate   {not_after, days_left, status: ok|expiring|expired|unavailable}
                   (unavailable is never `ok`: the summary is `unknown` then, AVR-31)
     party_core    {ok, uptime_s, members, session}
@@ -326,6 +327,11 @@ def _arcade(doc):
             'video_frames': doc.get('video_frames'), 'sample_age_s': ages}
 
 
+def _game_slug(unit):
+    """'avrana-game@checkers.socket' -> 'checkers' (the Party game id is the unit's instance name)."""
+    return unit.partition('@')[2].rpartition('.')[0]
+
+
 def build_status(config=None, probes=None, party_core=None, now=None):
     """The status document. `party_core` is a callable returning {"uptime_s", "members",
     "session"} from inside the service (or None when built outside it)."""
@@ -388,8 +394,6 @@ def build_status(config=None, probes=None, party_core=None, now=None):
             else:
                 notes.append(f'{unit} came back after {n} automatic restart(s) since it was last started')
     failed_games = getattr(probes, 'failed_units', lambda pattern: [])(GAME_UNITS)
-    for unit in failed_games or []:
-        reasons.append(f'{unit} is failed; see docs/runbooks/service-recovery.md')
     web = probes.web_release(cfg['web_root'])
     # One deployment unit (AVR-271): the web build must be the deployed Party commit, and the
     # installed nginx site file must be that commit's. Either drift degrades the appliance.
@@ -434,7 +438,20 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         except Exception:  # the status page must not take the party down
             core = {'ok': False}
             reasons.append('party core view failed')
-    unknown = (any(s == 'unavailable' for s in services.values()) or deployed is None or failed_games is None
+    # A failed native game unit is a fault only while it matters: it is the game of the live Party
+    # session. Any other failed unit is stale (nothing is using it), so it is a note naming the
+    # remedy and must not fail a deploy's smoke or trigger --auto-rollback (AVR-33 decision 2026-10-14).
+    session = core.get('session') if isinstance(core.get('session'), dict) else None
+    live_game = session.get('game') if session and session.get('state') != 'ended' else None
+    for unit in failed_games or []:
+        if live_game is not None and _game_slug(unit) == live_game:
+            reasons.append(f'{unit} is failed and its game is in the live session; see docs/runbooks/service-recovery.md')
+        else:
+            notes.append(f'{unit} is failed but no live session uses it: sudo systemctl reset-failed {unit} '
+                         f'(docs/runbooks/service-recovery.md)')
+    # Unobservable failures only matter while a game is live; with none, nothing depends on them.
+    games_unobservable = failed_games is None and live_game is not None
+    unknown = (any(s == 'unavailable' for s in services.values()) or deployed is None or games_unobservable
                or certificate['status'] == 'unavailable' or nginx_site == 'unavailable')
     summary = 'degraded' if [r for r in reasons if 'unavailable' not in r and 'no deployment' not in r] else (
         'unknown' if unknown else 'ok')

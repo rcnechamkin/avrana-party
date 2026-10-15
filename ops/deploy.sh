@@ -869,14 +869,14 @@ fi
 log "party core: $busy"
 
 # Failed native game units (avrana-game@*) are not this deployment's to fix, but they degrade
-# /party/api/status (AVR-33), so the status smoke check after the switch fails while they stay failed.
-# Said here, before anything is switched, with the command that clears them once looked at.
+# /party/api/status only as a note unless a live Party session uses that game (AVR-33), so a stale one cannot fail
+# the smoke check or trigger --auto-rollback. Said here, before anything is switched, with the command that clears them once looked at.
 failed_games=$(systemctl list-units --all --state=failed --plain --no-legend --no-pager 'avrana-game@*' 2>/dev/null \
     | awk '{ print ($1 == "●" || $1 == "*") ? $2 : $1 }' | sort | tr '\n' ' ' || true)
 failed_games=${failed_games% }
 if [[ -n $failed_games ]]; then
     log "WARNING: failed native game units: $failed_games"
-    log "WARNING: they degrade /party/api/status, so the status smoke check will fail until they are cleared;"
+    log "WARNING: they are stale notes in /party/api/status (they degrade it only if a live Party session uses that game), so they do not fail smoke;"
     log "WARNING: read their journal (docs/runbooks/service-recovery.md), then: sudo systemctl reset-failed $failed_games"
 fi
 
