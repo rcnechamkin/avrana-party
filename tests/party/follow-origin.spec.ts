@@ -57,3 +57,17 @@ test('the host starts B: a phone on Party Home and a member on the Party origin\
   expect(seen.filter((u) => u.startsWith(`${PARTY}/games/`)), 'B was never requested on the Party origin').toEqual([]);
   await ana.context.close(); await ben.context.close();
 });
+
+test('AVR-476: from a game on its registered origin, the Host\'s Back crosses back to the Party\'s way out; a follower\'s does not', async ({ browser }) => {
+  const ana = await phone(browser, 'Ana'), ben = await phone(browser, 'Ben');
+  expect((await post(ana, 'session/launch', { game: 'expo', if_version: await version(ana) })).status()).toBe(200);
+  for (const p of [ana, ben]) await expect(p.page).toHaveURL(NEXT);
+  await ana.page.goBack();
+  expect(new URL(ana.page.url()).origin).toBe(PARTY);
+  await expect(ana.page.locator('#going-host')).toBeVisible();
+  await ana.page.locator('#going-return').tap();
+  await expect(ana.page).toHaveURL(NEXT);
+  await ben.page.goBack();
+  expect(ben.page.url().startsWith(`${PARTY}/party/`), 'a follower is not walked back through Party Home').toBe(false);
+  await ana.context.close(); await ben.context.close();
+});

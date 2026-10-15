@@ -958,7 +958,10 @@ function leaveForRound() {
         state.left = roundKey(view);                  // this document is on its way there; the phone keeps
         put('localStorage', SENT_KEY, state.left);    // that it was taken, for the Host's way out (goingHost)
         $('going-text').textContent = `Taking you to ${gameName(view)}…`;
-        location.replace(to);
+        // AVR-476: the Host leaves Party Home in the history, so the browser's own Back (trusted, and
+        // there even when a game fills the screen) brings them to the Party's way out (goingHost).
+        // Everyone else keeps one history entry: Back on a game page never bounces them through here.
+        if (view.me && view.me.host) location.assign(to); else location.replace(to);
       }
     }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
