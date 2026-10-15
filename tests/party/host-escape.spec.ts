@@ -118,7 +118,7 @@ test.describe('the Host\'s way out of a full-screen game', () => {
     for (const p of [host, bob]) await expect(p.page, p.name).toHaveURL(atHome);
   });
 
-  test('a small phone with notch insets: the way out fits, nothing sideways, thumb-sized targets', async () => {
+  test('a small phone (320 x 568): the way out fits, nothing sideways, thumb-sized targets', async () => {
     await host.page.setViewportSize({ width: 320, height: 568 });
     await startRound(host, [bob]);
     await host.page.goBack();
@@ -143,6 +143,23 @@ test.describe('the Host\'s way out of a full-screen game', () => {
     await expect(bob.page).toHaveURL(atHome);
   });
 
+  test('a slow first try: the watchdog\'s retry also keeps Party Home behind the Host\'s game', async () => {
+    test.setTimeout(60_000);
+    let held: import('@playwright/test').Route | null = null;
+    await host.page.route('**/games/expo/**', async (route) => {
+      if (held === null && route.request().isNavigationRequest()) { held = route; return; }   // the first try never answers
+      await route.continue();
+    });
+    expect((await post(host, 'session/launch', { game: 'expo', if_version: await version(host) })).status()).toBe(200);
+    await expect(bob.page).toHaveURL(atGame);
+    await expect(host.page).toHaveURL(atGame, { timeout: 20_000 });      // the watchdog's one retry, about 8 s on
+    expect(held, 'the first navigation was the one held').not.toBeNull();
+    await host.page.goBack();
+    await expect(host.page).toHaveURL(atHome);
+    await expect(host.page.locator('#going-host')).toBeVisible();
+    await (held as import('@playwright/test').Route | null)?.abort().catch(() => {});
+  });
+
   test('reconnecting: an End that cannot reach the Party says so, and works once the phone is back', async () => {
     await startRound(host, [bob]);
     await host.page.goBack();
@@ -154,7 +171,7 @@ test.describe('the Host\'s way out of a full-screen game', () => {
     expect((await view(bob)).location.at, 'nothing changed while the phone was away').toBe('game');
     await host.context.setOffline(false);
     await expect(host.page.locator('#going-host')).toBeVisible();
-    if (await host.page.locator('#going-lobby').isVisible()) await host.page.locator('#going-lobby').tap();
+    await host.page.locator('#going-lobby').tap();                         // the failed End closed the question; ask again
     await host.page.locator('#going-lobby-yes').tap();
     for (const p of [host, bob]) await expect(p.page, p.name).toHaveURL(atHome);
   });

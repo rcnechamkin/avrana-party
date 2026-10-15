@@ -945,6 +945,15 @@ function addressOf(game, entry) {
 
 /** Take this phone to the round, once Party Core has said where games open (or that it could not
  * say): never on a guess, so a slow answer cannot send a phone to the wrong address and back. */
+// AVR-476: the Host leaves Party Home in the history, so the browser's own Back (trusted, and there
+// even when a game fills the screen) brings them to the Party's way out (goingHost). Everyone else
+// keeps one history entry: Back on a game page never bounces them through here. The watchdog's retry
+// and "Try again" go the same way, so a slow first try cannot cost the Host their way back.
+function goToRound(to) {
+  const view = party.view();
+  if (view && view.me && view.me.host) location.assign(to); else location.replace(to);
+}
+
 function leaveForRound() {
   gameOrigins.settled().then(() => {
     const view = party.view();
@@ -958,10 +967,7 @@ function leaveForRound() {
         state.left = roundKey(view);                  // this document is on its way there; the phone keeps
         put('localStorage', SENT_KEY, state.left);    // that it was taken, for the Host's way out (goingHost)
         $('going-text').textContent = `Taking you to ${gameName(view)}…`;
-        // AVR-476: the Host leaves Party Home in the history, so the browser's own Back (trusted, and
-        // there even when a game fills the screen) brings them to the Party's way out (goingHost).
-        // Everyone else keeps one history entry: Back on a game page never bounces them through here.
-        if (view.me && view.me.host) location.assign(to); else location.replace(to);
+        goToRound(to);
       }
     }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
@@ -1312,7 +1318,7 @@ function syncPresence() {
 }
 const party = createPartyClient({ onView: onPartyView, onLink });
 const gameOrigins = createGameOrigins();
-const goingWatch = createGoingWatchdog({ retry: (to) => location.replace(to), giveUp: () => goingStuck(true) });
+const goingWatch = createGoingWatchdog({ retry: goToRound, giveUp: () => goingStuck(true) });
 $('going-retry').onclick = () => {
   goingStuck(false);
   $('going-text').textContent = `Taking you to ${gameName(party.view())}…`;

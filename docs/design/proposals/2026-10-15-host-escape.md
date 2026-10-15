@@ -40,7 +40,9 @@ Findings:
 
 ## 3. Part 1, built: Back is the Host's way out
 
-Party Home leaves itself in the history **for the Host only** (`location.assign`). Everyone else
+Party Home leaves itself in the history **for the Host only** (`location.assign`, also for the
+going watchdog's retry and Try again). This covers every Host who starts from Party Home: the
+appliance's arcade and OpenCE pages, the Games origin, and Limited Mode. Everyone else
 keeps `location.replace`, so a follower's Back never bounces them through Party Home. The Host's Back
 (the browser's, the Android back gesture, an iPhone edge swipe, Alt+Left) returns to Party Home,
 whose existing way out shows. From there Return goes back to the game, and Back still works next
@@ -56,7 +58,8 @@ Tested (Tier 2, `tests/party/host-escape.spec.ts`; the cross-origin case is in
 - keyboard only;
 - a 320 × 568 phone: on screen, thumb-sized, nothing sideways;
 - the round ended elsewhere while the way out is shown;
-- offline End: says so, nothing changes, works after reconnecting.
+- offline End: says so, nothing changes, works after reconnecting;
+- a first navigation that hangs: the watchdog's retry also keeps Party Home behind the game.
 
 The key tests fail without the change.
 
@@ -66,6 +69,11 @@ Limits:
 - **Browser full screen:** on a phone the first back gesture may only leave full screen; a second
   one goes back. That is the browser's, and only a phone shows it (Tier 3).
 - **A game's own history entries** (`pushState`) come before Party Home in the Back order.
+- **History grows** by one Party Home entry per round the Host starts from Party Home. Each one is a
+  live Party Home: Back past it shows the current round's way out or Party Home, never a stale round.
+- **A former Host's Back** (the role passed on) lands on Party Home, which sends a follower straight
+  back to the game: one bounce forward. Likewise, after a game-side Play again or game switch, the
+  Party Home behind the game may remember the earlier round and need a second Back.
 - Not tried on iPhone Safari or Android Chrome, nor through nginx and HTTPS.
 
 ## 4. Part 2, proposed: a visible Party control over the game
@@ -96,4 +104,7 @@ None of this is built.
 ## 5. Not changed
 
 Party Core and its lifecycle, `nav` and location, the session and bridge protocols, game pages,
-Limited Mode's follower and ADR 0011's End / Party Home / Play again are all unchanged.
+Limited Mode's follower and ADR 0011's End / Party Home / Play again are all unchanged. The only
+behaviour change is the Host's history: Party Home's navigation into a round (whichever game, same
+origin or not, Limited Mode included) now keeps Party Home behind it for the Host; followers'
+navigation is as before.
