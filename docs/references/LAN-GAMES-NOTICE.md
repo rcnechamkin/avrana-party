@@ -9,7 +9,7 @@ No donor server, game implementation or font is bundled. **Donor artwork is bund
 `assets/vendor/lan-games-art/` holds 30 static SVG title scenes exported from the Games
 repository's `web/gameart.js`. The code that draws 29 of them (all except `bluff.svg`) is
 LAN Games' own, unmodified, and is Copyright (c) 2026 BEACNpool, MIT. The `bluff` scene was added
-by Avrana Party Games; its licence follows the owner's first-party licence decision (AVR-73). Build-time copies of these
+by Avrana Party Games; it is covered by the repository's first-party LICENSE (all rights reserved). Build-time copies of these
 files are served from `web/party/art/`. The MIT licence text above must travel with them.
 
 ```text
