@@ -329,10 +329,11 @@ phone setting has been tried (AVR-295).
 Fallback order: **a cover the owner supplied → the title's own art → curated art that genuinely
 depicts it → a generic icon.**
 
-**Planned, not implemented (AVR-466; owner decisions 2026-10-14).** Packages are to be able to bundle
+**Implemented, experimental, not deployed (AVR-466 phase C; owner decisions 2026-10-14).** Packages are to be able to bundle
 their own artwork, which adds two steps to this order: **owner cover → the package's cover → the
-package's icon → the title's own art → curated art → a generic icon.** Today none of it exists: an
-installed package's tile draws its kind icon (the package validator and packer already accept the images; nothing serves or draws them yet). The contract is in
+package's icon → the title's own art → curated art → a generic icon.** The shell draws the ladder (`web/party/lib/cover-art.js`; a list row prefers the icon to the cover; a picture that fails to
+load falls to the next rung), but a phone is served the images only once the separately gated nginx `/party/pkgart/`
+location is deployed; until then each answers 404 and the tile draws what it drew before. The contract is in
 [`.avrgame` package, bundled artwork](design/AVRGAME-PACKAGE.md#bundled-artwork-avr-466-experimental).
 
 - **The owner's cover (AVR-306):** a picture the owner has a copy of (box art), one per game,

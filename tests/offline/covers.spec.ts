@@ -124,3 +124,62 @@ test('with no covers, or an index that cannot be read, the shell is as it was', 
     await context.close();
   }
 });
+
+/**
+ * A package's bundled artwork (AVR-466 phase C, experimental). The catalog row's appliance-set `images`
+ * names pictures under /party/pkgart/, which nginx serves only once that location is deployed. Here the
+ * page's requests for them are answered (or refused) by the test, which is also what a phone sees when
+ * the location is absent.
+ */
+const PKG = (id: string, name: string) => `/party/pkgart/${id}/${name}.png`;
+const PICTURE = path.join(FIXTURES, 'ps1-worms.png');
+
+test('a package tile uses its cover, else its icon, and a picture that 404s gives way to the next rung without a broken image', async ({ page }) => {
+  const rows = [
+    { id: 'pkg-both', name: 'Pkg Both', images: { cover: { url: PKG('pkg-both', '0123456789abcdef'), w: 256, h: 256 }, icon: { url: PKG('pkg-both', 'fedcba9876543210'), w: 64, h: 64 } } },
+    { id: 'pkg-icon', name: 'Pkg Icon', images: { cover: { url: PKG('pkg-icon', '0123456789abcdef'), w: 256, h: 256 }, icon: { url: PKG('pkg-icon', 'fedcba9876543210'), w: 64, h: 64 } } },
+    { id: 'pkg-none', name: 'Pkg None', images: { cover: { url: PKG('pkg-none', '0123456789abcdef'), w: 256, h: 256 } } },
+    { id: 'pkg-bad', name: 'Pkg Bad', images: { cover: { url: 'https://elsewhere.example/x.png', w: 256, h: 256 } } },
+  ];
+  await page.route('**/party/catalog.json', async (route) => {
+    const body = await (await route.fetch()).json();
+    const template = body.games.find((g: { id: string }) => g.id === 'ps1-worms');
+    body.games.push(...rows.map((r) => ({ ...template, ...r, artwork: undefined, installed: true, entry: `/games/${r.id}/` })));
+    await route.fulfill({ json: body });
+  });
+  const asked: string[] = [];
+  page.on('request', (req) => { if (req.url().includes('/pkgart/') || req.url().includes('elsewhere.example')) asked.push(new URL(req.url()).pathname); });
+  // pkg-both: the cover is served. pkg-icon: only the icon is (cover 404). pkg-none: nothing is (nginx location absent).
+  await page.route('**/party/pkgart/pkg-both/0123456789abcdef.png', (route) => route.fulfill({ path: PICTURE, contentType: 'image/png' }));
+  await page.route('**/party/pkgart/pkg-icon/0123456789abcdef.png', (route) => route.fulfill({ status: 404, body: 'not found' }));
+  await page.route('**/party/pkgart/pkg-icon/fedcba9876543210.png', (route) => route.fulfill({ path: PICTURE, contentType: 'image/png' }));
+  await page.route('**/party/pkgart/pkg-none/**', (route) => route.fulfill({ status: 404, body: 'not found' }));
+  await page.route('**/elsewhere.example/**', (route) => route.abort());
+  await open(page);
+  await place(page, 'library');
+  const img = (id: string) => cover(page, '#games', id).locator('img');
+  await img('pkg-both').scrollIntoViewIfNeeded();
+  await expect(img('pkg-both')).toHaveAttribute('src', PKG('pkg-both', '0123456789abcdef'));
+  await expect(img('pkg-both')).toHaveAttribute('alt', '');
+  await expect(img('pkg-both')).toHaveAttribute('width', '256');
+  await expect(img('pkg-both')).toHaveAttribute('loading', 'lazy');
+  await expect(cover(page, '#games', 'pkg-both')).toHaveClass(/own-art/);
+  await img('pkg-icon').scrollIntoViewIfNeeded();
+  await expect(img('pkg-icon')).toHaveAttribute('src', PKG('pkg-icon', 'fedcba9876543210'));          // cover 404: the icon
+  await expect(img('pkg-icon')).toHaveAttribute('width', '64');
+  await cover(page, '#games', 'pkg-none').scrollIntoViewIfNeeded();
+  await expect(img('pkg-none')).toHaveCount(0);                                                       // nothing served: the kind icon
+  await expect(cover(page, '#games', 'pkg-none').locator('svg').first()).toBeVisible();
+  await expect(img('pkg-bad')).toHaveCount(0);                                                        // not a package picture address: never asked for
+  expect(asked.some((p) => p.includes('elsewhere'))).toBe(false);
+  expect(await broken(page)).toEqual([]);
+  expect(await sideways(page)).toBeLessThanOrEqual(0);
+  // the game's name stays the visible text, and the picture adds nothing to the accessible name
+  await expect(page.locator('#games [data-game="pkg-none"]').first()).toContainText('Pkg None');
+  expect([...await lowContrast(page, '#main'), ...await unnamed(page, '#main')]).toEqual([]);
+  // a failed picture is not asked for again wherever the game is drawn next
+  const before = asked.filter((p) => p.includes('pkg-none')).length;
+  await place(page, 'home');
+  await place(page, 'library');
+  expect(asked.filter((p) => p.includes('pkg-none')).length).toBe(before);
+});

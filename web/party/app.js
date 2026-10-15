@@ -24,6 +24,7 @@ import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat } from './lib/party-chat.js';
 import { loadCatalog, loadCovers } from './lib/catalog-load.js';
+import { pickCover } from './lib/cover-art.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
@@ -54,9 +55,9 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
   // box: the status document, asked for by the Host only; entries: the shelf as last drawn
   failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
-  // covers: the owner's cover for a game (id -> path), from covers/index.json; badCovers: the ones
-  // that would not load on this phone since the page last started
-  covers: new Map(), badCovers: new Set() };
+  // covers: the owner's cover for a game (id -> path), from covers/index.json; badArt: the picture
+  // addresses (owner, package, first-party) that would not load on this phone since the page last started
+  covers: new Map(), badArt: new Set() };
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -132,18 +133,20 @@ function favButton(game, cls = '') {
     } }, icon('heart'));
 }
 
-/** A cover: the cover the owner supplied for the title (AVR-306), else the title's own art, else
- * its kind icon on its own colour. `mark` is the player range for the corner (lib/library.js
- * seatsMark), or null. `shape`: 'wide' for the lead cover on Home, a game's page and the
+/** A cover, by the ladder of lib/cover-art.js: the cover the owner supplied for the title (AVR-306),
+ * else the package's cover, else its icon (AVR-466), else the title's own art, else its kind icon on its
+ * own colour. A list row (`small`) prefers the package's icon. `mark` is the player range for the corner
+ * (lib/library.js seatsMark), or null. `shape`: 'wide' for the lead cover on Home, a game's page and the
  * briefing; square otherwise. */
-function tileCover(game, mark, shape = '') {
-  const own = state.badCovers.has(game.id) ? null : state.covers.get(game.id) || null;
-  const art = own || (ARTWORK.test(game.artwork || '') ? game.artwork : null);
-  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (art ? ' has-art' : '') + (own ? ' own-art' : '') + (!own && art && art.startsWith('art/kenney-') ? ' icon-art' : '') },
-    art ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async',
-      // An owner's cover that will not load (the box out of reach, a picture this phone cannot
-      // draw) gives way to the art the title had before, here and wherever it is drawn next.
-      onerror: own ? () => { state.badCovers.add(game.id); el.replaceWith(tileCover(game, mark, shape)); } : null,
+function tileCover(game, mark, shape = '', small = false) {
+  const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
+  const rung = pickCover(game, { own: state.covers.get(game.id) || null, art, small }, state.badArt);
+  const flat = rung.kind === 'own' || rung.kind.startsWith('package-');      // a picture whole in its box, not cropped to fill it
+  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (rung.src ? ' has-art' : '') + (flat ? ' own-art' : '') + (rung.kind === 'art' && rung.src.startsWith('art/kenney-') ? ' icon-art' : '') },
+    rung.src ? h('img', { src: rung.src, alt: '', loading: 'lazy', decoding: 'async', width: rung.w, height: rung.h,
+      // A picture that will not load (the box out of reach, nginx not serving package art yet, a format
+      // this phone cannot draw) gives way to the next rung, here and wherever it is drawn next.
+      onerror: () => { state.badArt.add(rung.src); el.replaceWith(tileCover(game, mark, shape, small)); },
     }) : icon(kindIcon(game)),
     mark ? h('span', { class: 'seats' + (mark.ok ? '' : ' no') }, icon(mark.ok ? 'users' : 'triangle-alert'), mark.text) : null);
   if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
@@ -180,7 +183,7 @@ function row(entry, people) {
   return h('li', { class: 'avrana-row' },
     h('a', { class: 'open', 'data-game': game.id, 'data-note': note ? note.kind : null,
       'aria-label': spoken(entry, people), ...gameLink(game) },
-    tileCover(game, null),
+    tileCover(game, null, '', true),
     h('span', {}, h('span', { class: 't', text: game.name }),
       game.summary ? h('span', { class: 'd', text: game.summary }) : null,
       h('span', { class: 'f' },
@@ -626,7 +629,7 @@ function onLink({ ok, answered }) {
     clearTimeout(state.lostTimer);
     gameOrigins.refresh();                      // the box may have restarted with other registrations
     renderLink();
-    state.badCovers = new Set();                // a cover that did not load while the box was away is tried again
+    state.badArt = new Set();                   // a cover that did not load while the box was away is tried again
     refreshHealth();                            // what was off may be on again, and the other way
     return;
   }
@@ -1202,7 +1205,7 @@ async function boot() {
   ]);
   state.reachable = reachable;
   state.covers = covers;
-  state.badCovers = new Set();
+  state.badArt = new Set();
   const catalog = loaded.catalog;       // empty, never null, when catalog.json is missing or corrupt (AVR-220)
   state.catalog = catalog;
   $('catalog-error').hidden = loaded.ok || !reachable;
