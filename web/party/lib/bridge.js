@@ -25,7 +25,7 @@
 //  * replies are posted to the bound origin only, never "*";
 //  * a message with an unknown type, an unknown field or a malformed value is ignored whole;
 //  * `navigate` carries a word from a closed set, never a URL, and the game supplies no URL.
-import { createPartyClient } from './party-client.js';
+import { FIRST_RETRY_MS, createPartyClient } from './party-client.js';
 import { destination, locationOf } from './party-mode.js';
 import { profileIdentity } from './party-follow.js';
 
@@ -75,14 +75,22 @@ export function publicView(view) {
 
 /** Start the bridge in `win` (the frame). Returns {stop, bound()} for tests. */
 export function startBridge({ win = globalThis, fetch = globalThis.fetch.bind(globalThis),
-  storage = globalThis.localStorage } = {}) {
+  storage = globalThis.localStorage, retryMs = FIRST_RETRY_MS, schedule = setTimeout } = {}) {
   let origins = null, bound = null, client = null, lastNavigate = false;
   const loaded = (async () => {
-    try {
-      const res = await fetch('/party/api/bridge', { cache: 'no-store', credentials: 'same-origin' });
-      const body = res.ok ? await res.json() : null;
-      origins = body && body.schema === PROTOCOL && body.origins && typeof body.origins === 'object' ? body.origins : {};
-    } catch { origins = {}; }
+    // The registrations, retried on a transient failure (no answer, a 5xx): a frame that missed
+    // them would ignore its game's hello and never follow the party (AVR-475).
+    for (let i = 0; ; i++) {
+      let res = null;
+      try { res = await fetch('/party/api/bridge', { cache: 'no-store', credentials: 'same-origin' }); } catch { res = null; }
+      if (res && res.ok) {
+        const body = await res.json().catch(() => null);
+        origins = body && body.schema === PROTOCOL && body.origins && typeof body.origins === 'object' ? body.origins : {};
+        return;
+      }
+      if ((res && res.status < 500) || i >= retryMs.length) { origins = {}; return; }
+      await new Promise((resolve) => schedule(resolve, retryMs[i]));
+    }
   })();
 
   const post = (msg) => win.parent.postMessage({ avrana: PROTOCOL, ...msg }, bound.origin);
@@ -99,7 +107,7 @@ export function startBridge({ win = globalThis, fetch = globalThis.fetch.bind(gl
 
   async function follow() {
     client = createPartyClient({ fetch, base: '/party/api/', onView });
-    let first = await client.probe();
+    let first = await client.probeRetrying(retryMs);   // a blip at load must not leave the page unfollowed (AVR-475)
     if (first && !first.me) {                 // presence is automatic once there is a profile
       const who = profileIdentity(storage);
       if (who) {

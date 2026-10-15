@@ -12,6 +12,11 @@ import { readView } from './party-mode.js';
 
 const WAIT_S = 20;              // long-poll wait; the service caps it at 25 s
 const RETRY_MS = [1000, 2000, 5000];
+// A page's FIRST contact, retried while nothing answered or the answer was a server error (a Wi-Fi
+// blip, a Party Core restart): a game page that missed it would otherwise never follow the party,
+// and Party Core ends a round whose every page went silent (AVR-475). About a minute in all.
+export const FIRST_RETRY_MS = [1000, 2000, 5000, 10000, 20000, 30000];
+export const transient = (res) => !res.ok && (res.status === 0 || res.status >= 500);
 
 export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), base = 'api/', onView, onLink = () => {},
   schedule = setTimeout, cancel = clearTimeout } = {}) {
@@ -118,6 +123,16 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     async probe() {
       const res = await request('state');
       return res.ok ? readView(res.body) : null;
+    },
+    /** probe(), retried on a transient failure (FIRST_RETRY_MS); null once Party Core answers that
+     * it is not here (a 4xx) or the retries are used up. */
+    async probeRetrying(delays = FIRST_RETRY_MS) {
+      for (let i = 0; ; i++) {
+        const res = await request('state');
+        if (res.ok) return readView(res.body);
+        if (!transient(res) || i >= delays.length) return null;
+        await sleep(delays[i]);
+      }
     },
     start(first) {
       gen++;

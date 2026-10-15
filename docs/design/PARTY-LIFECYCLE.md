@@ -198,8 +198,12 @@ request-based liveness and game-owned grace, rather than a socket-count-based pr
 Current Core uses LIVE_WINDOW 45 s, HOST_GRACE 30 s past liveness, LAUNCH_TIMEOUT 60 s,
 END_TIMEOUT 15 s, TABLE_ABANDON 5 min (AVR-475: an active round whose every player's page has been
 silent that long past LIVE_WINDOW ends `abandoned`, the party goes home and the game is told `end`;
-a game page follows the party through the bridge, so an open page keeps its player present) and
-PARTY_IDLE 3 h (no live members/session). Members in an active session
+a game page follows the party through the bridge, so an open page keeps its player present; a page
+retries its first contact for about a minute on no answer or a 5xx, so a blip at load does not
+leave it unfollowed. A game's own `completed` that arrives after the round was abandoned is
+refused as stale (R4), and phones waiting on a long poll may hear of an abandon applied by a
+refused request only at the next tick, as for every other timer) and PARTY_IDLE 3 h (no live
+members/session). Members in an active session
 count as playing. The table retains proposed seat/model defaults, not evidence of arcade
 deployment or physical behavior. Tune future seat policies from real-phone evidence and AVR-130, with scope in Linear.
 
