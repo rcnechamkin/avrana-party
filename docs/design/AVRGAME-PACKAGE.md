@@ -35,7 +35,7 @@ A package is one ZIP file (`*.avrgame`) holding a **native** game: its authorita
 
 Sizes are enforced against the bytes actually read while streaming, not only the declared headers, so a compression bomb is stopped by what it really expands to.
 
-**Planned (AVR-466, not implemented):** per-image and total artwork limits sit inside these archive limits and are listed under [Bundled artwork](#bundled-artwork-planned-avr-466-not-implemented). The values above are unchanged.
+**Planned, not implemented:** per-image and total artwork limits sit inside these archive limits and are listed under [Bundled artwork](#bundled-artwork-planned-avr-466-not-implemented). The values above are unchanged.
 
 ## Manifest `avrgame.json`
 
@@ -52,7 +52,7 @@ Strict JSON (duplicate keys, NaN, a BOM or an unknown key anywhere in the envelo
 | `server.interpreter` | the runtime, a **name** from the appliance's allowlist (`INTERPRETERS`): `python3` (mapped to `/usr/bin/python3`) or `node` (mapped to the appliance's pinned Node build, when it has one); never a path |
 | `server.args` | 1-16 strings, each 1-200 printable characters, no control characters, no absolute path or `..` (a hygiene check, not a sandbox). For `python3` the only supported form is `["-m", "<dotted module>", ...]`, and the module must exist in the package as `NAME/__main__.py` or `NAME.py` (checked statically; nothing is imported or run). `-c`, a script path or other interpreter options are refused with a message saying so. For `node` the only supported form is `["<entry>.mjs", ...]`: the first argument is the entry, a file of the package (same name rules as an archive entry) ending in `.mjs`, outside any `node_modules`; `.js`, `.cjs`, an option such as `--eval` or `--require`, and a path that leaves the package are refused. The arguments after it reach the script, never Node |
 | `client.root` | relative directory inside the package holding the portable browser bundle; must contain `index.html`. Informational today (the game's own server serves it) |
-| `artwork` | **PLANNED, not implemented (AVR-466).** Optional block of bundled images; today it is refused as an unknown key. Shape, limits and rules: [Bundled artwork](#bundled-artwork-planned-avr-466-not-implemented) |
+| `artwork` | **PLANNED, not implemented.** Optional block of bundled images; today it is refused as an unknown key. Shape, limits and rules: [Bundled artwork](#bundled-artwork-planned-avr-466-not-implemented) |
 
 `publisher`, `license` and `source` are **display-only claims**; no trust derives from them. The manifest has no tier, entry path, health check, granted permission, key, socket or absolute path; those keys are refused by name (`set by the appliance`).
 
