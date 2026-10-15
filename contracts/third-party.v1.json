@@ -1,11 +1,11 @@
 {
   "schema": "avrana.third-party/v1",
-  "about": "Third-party components Avrana Party ships to the appliance or phones, relies on the owner to install, or only references (AVR-73). Read by tools/sbom.py. A PROPOSAL until the owner approves docs/design/THIRD-PARTY.md; an engineering inventory, not legal advice. license_verification: file-read = a license file or package metadata in this repository or an installed package was read; repo-doc = recorded in a repository document, not re-read from upstream; unverified = license is NOASSERTION and must be read before any redistribution.",
+  "about": "Third-party components Avrana Party ships to the appliance or phones, relies on the owner to install, or only references (AVR-73). Read by tools/sbom.py. Policy approved by the owner 2026-10-14 (docs/design/THIRD-PARTY.md); an engineering inventory, not legal advice. license_verification: file-read = a license file or package metadata in this repository or an installed package was read; repo-doc = recorded in a repository document, not re-read from upstream; unverified = license is NOASSERTION and must be read before any redistribution.",
   "first_party": {
     "name": "Avrana Party",
-    "license": "NOASSERTION",
-    "license_verification": "unverified",
-    "note": "package.json says \"ISC\" but the repository has no LICENSE file and the package is private. The project license is undecided; this blocks outside redistribution of Avrana itself."
+    "license": "LicenseRef-Avrana-Proprietary",
+    "license_verification": "file-read",
+    "note": "All rights reserved (LICENSE; owner decision 2026-10-14). package.json says UNLICENSED. Deliberately published SDK components will carry a permissive license when published. Third-party components keep their own licenses."
   },
   "components": [
     {
@@ -165,7 +165,7 @@
       ],
       "redistribution": "embed-ok",
       "commercial_blocker": false,
-      "note": "30 static SVG scenes exported from the Games repository (web/gameart.js). 29 are unmodified drawings from upstream LAN Games by BEACNpool (MIT, Copyright (c) 2026 BEACNpool); bluff.svg is Avrana-authored; its licence awaits the owner's first-party licence decision. Served as build-time copies in web/party/art/. Keep the copyright line and licence text in docs/references/LAN-GAMES-NOTICE.md.",
+      "note": "30 static SVG scenes exported from the Games repository (web/gameart.js). 29 are unmodified drawings from upstream LAN Games by BEACNpool (MIT, Copyright (c) 2026 BEACNpool); bluff.svg is Avrana-authored and covered by the first-party LICENSE (all rights reserved). Served as build-time copies in web/party/art/. Keep the copyright line and licence text in docs/references/LAN-GAMES-NOTICE.md.",
       "paths": [
         "assets/vendor/lan-games-art"
       ]

@@ -1,6 +1,6 @@
 # Third-party licensing, SBOM and redistribution policy
 
-- **Status:** **PROPOSED policy (2026-10-14, AVR-73). Awaiting owner approval. Nothing here is accepted by an ADR; the generator exists, the gate does not run in CI.** It is an engineering policy and not legal advice: a lawyer must review it before Avrana is sold or distributed outside the owner's own use.
+- **Status:** **APPROVED policy (owner decision 2026-10-14, AVR-73). The generator exists; the gate does not run in CI yet (Actions unavailable). Commercial distribution and public releases stay gated pending rights verification.** It is an engineering policy and not legal advice: a lawyer must review it before Avrana is sold or distributed outside the owner's own use.
 - **Machine-readable part:** [`contracts/third-party.v1.json`](../../contracts/third-party.v1.json) (inventory) and [`tools/sbom.py`](../../tools/sbom.py) (check, SBOM, NOTICE).
 - **Not covered:** the Games repository's own inventory (pointer list only, section 7); a legal opinion on any license; signing of releases.
 
@@ -64,7 +64,7 @@ Fails when: the inventory breaks its schema or has a component without a license
 | FinalBurn Neo core | non-commercial license (repo-doc) | owner-installed, never committed | same |
 | ROMs and PS1 BIOS | Avrana has no license to them | owner-supplied | never pre-load; owner brings their own |
 | LocalSend protocol | the protocol repository has no LICENSE file (repo-doc) | reference-only | write our own protocol text; ask upstream for a license |
-| Avrana's own license | no LICENSE file; `package.json` says ISC while the package is private | undecided | owner decision before any outside distribution |
+| Avrana's own license | decided 2026-10-14: all rights reserved (`LICENSE`, `package.json` UNLICENSED); deliberately published SDK components get a permissive license when published | resolved for the repository | pick the exact permissive license per SDK component at its first publication, after ownership and third-party checks |
 | python-chess (Games repo) | GPL-3.0-or-later, runtime dependency of chess games | installed from PyPI, not bundled | replace it, or run chess as a separate process; Games follow-up |
 
 Copyleft items that are **not** blockers while Avrana keeps the process boundary: RetroArch (GPL-3.0) and PCSX-ReARMed (GPL-2.0) run as a separate process and are owner-installed; an image that includes them would need a source offer. Moonlight-Web, Sunshine, InputPlumber (GPL-3.0) and openNDS (GPL-2.0) are reference-only; Selkies (MPL-2.0, but its published wheels are GPL) is a candidate only; RAUC (LGPL-2.1) is a reference candidate that would be acceptable as a separate process.
@@ -77,9 +77,9 @@ Games is a separate repository with its own runtime dependencies and bundled ass
 
 Licenses recorded as `NOASSERTION` (14 components at the time of writing, run `--check` for the live list): the Debian packages (nginx, NetworkManager, Avahi, Python, system tools, FFmpeg, PulseAudio, Xvfb, MAME, aiohttp, evdev, PyGObject), the Node.js tarball, the Beszel agent, Playwright and its siblings, and owner-supplied content. Debian copyright files and the Node tarball `LICENSE` were not available in this repository and were not read. The `repo-doc` claims were read from the 2026-09-26 research document, not re-checked upstream.
 
-## 9. Decisions requested from the owner
+## 9. Owner decisions (2026-10-14)
 
-1. Approve the classification vocabulary (section 2) and the new-dependency gate (section 3).
-2. Choose Avrana's own license (or confirm "all rights reserved") and add a `LICENSE` file.
-3. Confirm that the commercial offering will not include libretro MAME or FBNeo cores or any ROM or BIOS.
-4. Approve a follow-up that runs `tools/sbom.py --check` in CI (when Actions are available) and attaches the SBOM and NOTICE to release candidates.
+1. The classification vocabulary (section 2) and the new-dependency gate (section 3) are approved.
+2. Proprietary Party Core code is all rights reserved where legally permissible (`LICENSE`). Deliberately published SDK components use a permissive license, subject to ownership and third-party obligations; the exact license is chosen per component at publication.
+3. Commercial distribution and public releases stay gated pending rights verification; the blockers in section 6 stand until then.
+4. Running `tools/sbom.py --check` in CI waits for GitHub Actions to be available (no spending changes).
