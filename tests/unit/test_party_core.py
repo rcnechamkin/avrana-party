@@ -22,6 +22,16 @@ class Clock:
         self.t += s
 
 
+def play(pc, clock, seconds, *devices, step=20.0):
+    """`seconds` pass while the named devices' game pages follow the party: the bridge's long poll
+    reaches Party Core about every 20 s (web/party/lib/bridge.js), and each poll is a heartbeat."""
+    end = clock.t + seconds
+    while clock.t < end:
+        clock.advance(min(step, end - clock.t))
+        for d in devices:
+            pc.touch(d)
+
+
 def make(games=None):
     clock = Clock()
     return core.PartyCore(clock, {g['id']: g for g in (games or [BLUFF])}), clock
@@ -118,13 +128,14 @@ class Presence(unittest.TestCase):
     def test_entering_a_game_is_not_leaving_the_party(self):
         """The experiment's defect: Party Home's stream closed when a phone opened the game, so
         the party saw it disappear. Here a player in the active session stays 'playing' however
-        long the game runs without a Party Home request."""
+        long the game runs without a Party Home request: the game page's own follow (the bridge)
+        is enough. Only a table whose every page went silent is abandoned (AVR-475, below)."""
         pc, clock = make()
         a = pc.join('device-a', 'Ana')
         b = pc.join('device-b', 'Ben')
         s = pc.launch('device-a', 'bluff', pc.party.version)
         pc.launch_accepted(s.id)
-        clock.advance(3600)                                  # an hour in the game, no party requests
+        play(pc, clock, 3600, 'device-b')                   # an hour in the game; only Ben's page follows
         pc.tick()
         self.assertEqual(pc.presence(a), 'playing')
         self.assertEqual(pc.presence(b), 'playing')
@@ -137,7 +148,9 @@ class Presence(unittest.TestCase):
         a = pc.join('device-a', 'Ana')
         s = pc.launch('device-a', 'bluff', pc.party.version)
         pc.launch_accepted(s.id)
-        clock.advance(600)
+        play(pc, clock, 600, 'device-a')
+        clock.advance(core.LIVE_WINDOW + 5)                  # her page went quiet: away, until ...
+        self.assertEqual(pc.presence(a), 'playing')
         pc.game_reported_end(s.id, 'completed')
         self.assertEqual(pc.presence(a), 'here')             # released now; the walk home is short
         clock.advance(core.LIVE_WINDOW + 1)
@@ -184,8 +197,7 @@ class Host(unittest.TestCase):
         pc.join('device-b', 'Ben')
         s = pc.launch('device-a', 'bluff', pc.party.version)
         pc.launch_accepted(s.id)
-        clock.advance(10 * (core.LIVE_WINDOW + core.HOST_GRACE))
-        pc.touch('device-b')
+        play(pc, clock, 10 * (core.LIVE_WINDOW + core.HOST_GRACE), 'device-b')   # Ana's page is silent
         self.assertEqual(pc.party.host_id, a.id)
 
     def test_host_leaving_hands_over_at_once(self):
@@ -307,7 +319,7 @@ class Session(unittest.TestCase):
     def test_participant_ids_are_stable_across_reconnects_and_unique_per_session(self):
         s = self.launch()
         _, p1 = self.pc.participant_for('device-b')
-        self.clock.advance(3000)
+        play(self.pc, self.clock, 3000, 'device-a')
         _, p2 = self.pc.participant_for('device-b')
         self.assertIs(p1, p2)
         self.pc.leave('device-b')
@@ -851,6 +863,91 @@ class Idle(unittest.TestCase):
         clock.advance(core.PARTY_IDLE * 2)
         pc.tick()
         self.assertEqual(pc.view(None)['party'], first)
+
+
+class TableAbandon(unittest.TestCase):
+    """AVR-475 (PARTY-LIFECYCLE TABLE_ABANDON): a round whose every player's page went silent ends as
+    `abandoned` TABLE_ABANDON after the last seat emptied (LIVE_WINDOW after that player's last
+    request), and the party goes home; seen on the Pi when every browser of an OpenCE round closed."""
+
+    def setUp(self):
+        self.pc, self.clock = make()
+        self.a = self.pc.join('device-a', 'Ana')
+        self.b = self.pc.join('device-b', 'Ben')
+        self.s = self.pc.launch('device-a', 'bluff', self.pc.party.version)
+        self.pc.launch_accepted(self.s.id)
+        self.start = self.clock.t
+
+    def deadline(self, last_seen):
+        return last_seen + core.LIVE_WINDOW + core.TABLE_ABANDON
+
+    def test_every_page_silent_abandons_at_the_deadline_not_before(self):
+        self.clock.t = self.deadline(self.start) - 1
+        self.pc.tick()
+        self.assertEqual(self.s.state, core.ACTIVE)
+        self.assertEqual(self.pc.presence(self.a), 'playing')
+        self.clock.advance(1)
+        self.pc.tick()
+        self.assertEqual((self.s.state, self.s.outcome), (core.ENDED, 'abandoned'))
+        self.assertEqual(self.s.detail, 'Everyone left the game.')
+        self.assertEqual(self.pc.location()['at'], 'home')
+        self.assertEqual(self.pc.abandoned, [self.s])
+        self.assertEqual(self.pc.presence(self.a), 'away')   # gone, not freshly "home"
+        self.assertIsNone(self.s.reason)                     # the view's reason key is unchanged
+
+    def test_counted_from_the_last_players_last_request(self):
+        play(self.pc, self.clock, 200, 'device-b')           # Ben's page follows for a while
+        last = self.clock.t
+        self.clock.t = self.deadline(last) - 1
+        self.pc.tick()
+        self.assertEqual(self.s.state, core.ACTIVE)
+        self.clock.advance(1)
+        self.pc.tick()
+        self.assertEqual(self.s.outcome, 'abandoned')
+
+    def test_one_page_still_following_keeps_the_round_for_hours(self):
+        play(self.pc, self.clock, 3 * 3600, 'device-a')
+        self.assertEqual(self.s.state, core.ACTIVE)
+        self.assertEqual(self.pc.abandoned, [])
+
+    def test_a_player_back_before_the_deadline_keeps_it(self):
+        self.clock.t = self.deadline(self.start) - 5
+        self.pc.touch('device-b')
+        self.clock.t = self.deadline(self.start) + 60
+        self.pc.tick()
+        self.assertEqual(self.s.state, core.ACTIVE)
+
+    def test_a_watcher_alone_does_not_hold_a_table_with_no_players(self):
+        self.pc.join('device-c', 'Cat')                      # joined after the start: watches
+        play(self.pc, self.clock, core.LIVE_WINDOW + core.TABLE_ABANDON + 20, 'device-c')
+        self.assertEqual(self.s.outcome, 'abandoned')
+
+    def test_applied_at_the_next_request_and_a_newcomer_can_host_a_new_round(self):
+        """The Pi run: every browser closed mid-round; the next arrival must be able to start again.
+        No tick runs here: the deadline holds when the newcomer acts (R4)."""
+        self.clock.t = self.deadline(self.start) + 1
+        d = self.pc.join('device-d', 'Dee')
+        self.assertEqual(self.s.outcome, 'abandoned')
+        self.assertEqual(self.pc.party.host_id, d.id)        # Ana is long gone: the role moved
+        s2 = self.pc.launch('device-d', 'bluff', self.pc.party.version)
+        self.pc.launch_accepted(s2.id)
+        self.assertEqual(self.pc.location()['at'], 'game')
+
+    def test_only_an_active_round(self):
+        pc, clock = make([PREGAME])
+        pc.join('device-a', 'Ana')
+        s = pc.launch('device-a', 'bluff', pc.party.version)      # setup
+        clock.advance(core.LIVE_WINDOW + core.TABLE_ABANDON + 60)
+        pc.tick()
+        self.assertEqual(s.state, core.SETUP)
+        self.assertEqual(pc.abandoned, [])
+
+    def test_a_round_the_game_ended_first_is_not_abandoned_again(self):
+        self.pc.game_reported_end(self.s.id, 'completed')
+        self.clock.t = self.deadline(self.start) + 60
+        self.pc.tick()
+        self.assertEqual(self.s.outcome, 'completed')
+        self.assertEqual(self.pc.abandoned, [])
 
 
 class Fuzz(unittest.TestCase):

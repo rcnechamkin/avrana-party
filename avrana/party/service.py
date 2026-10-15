@@ -292,9 +292,20 @@ class PartyService:
 
     def run_timer(self, stop, interval=1.0):
         while not stop.wait(interval):
-            with self.lock:
-                if self.core.tick():
-                    self._notify()
+            self.tick()
+
+    def tick(self):
+        """Apply due timers. A round TABLE_ABANDON closed (AVR-475) still runs at its game: say `end`,
+        best effort and off the lock, as for a game that was lost. Any request may have applied that
+        timer first (R4); the closed sessions wait in core.abandoned until this tick tells the game."""
+        with self.lock:
+            if self.core.tick():
+                self._notify()
+            closed, self.core.abandoned = self.core.abandoned, []
+        for s in closed:
+            log.warning('game %s: session %s abandoned, every player left', s.game_id, s.id)
+            threading.Thread(target=self.link.end, args=(s,), daemon=True, name=RELEASE_THREAD).start()
+        return closed
 
 
 BRIDGE_ROUTE = '/party/api/bridge'

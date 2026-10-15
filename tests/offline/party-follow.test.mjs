@@ -215,3 +215,30 @@ test('Limited Mode: the arcade page and Games\' loaders never gate the follower 
   const follower = readFileSync(new URL('../../web/party/lib/party-follow.js', import.meta.url), 'utf8');
   assert.doesNotMatch(follower.replace(/\/\/.*/g, ''), /isSecureContext|location\.protocol/);
 });
+
+test('a blip at load is retried: the page still follows (its long poll is the heartbeat, AVR-475)', async () => {
+  const o = origin(view({ location: at('game') }));
+  let fails = 2, polls = 0;
+  const fetch = (url, init = {}) => {
+    if (url === '/party/api/state' && fails-- > 0) {
+      return fails === 0 ? Promise.resolve({ ok: false, status: 502, json: async () => ({}) }) : Promise.reject(new Error('offline'));
+    }
+    if (url.startsWith('/party/api/state?')) polls += 1;
+    return o.fetch(url, init);
+  };
+  const api = await startPartyFollow({ here: 'bluff', fetch, go: () => {}, storage: PROFILE, root: null, retryMs: [0, 0, 0] });
+  await settle();
+  assert.ok(api, 'followed after two failed first tries');
+  assert.ok(polls >= 1, 'the long poll started');
+  api.stop();
+});
+
+test('no Party Core here (a 4xx) is not retried', async () => {
+  let probes = 0;
+  const fetch = (url) => {
+    if (url === '/party/api/state') probes += 1;
+    return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+  };
+  assert.equal(await startPartyFollow({ here: 'bluff', fetch, go: () => {}, storage: PROFILE, root: null, retryMs: [0, 0, 0] }), null);
+  assert.equal(probes, 1);
+});

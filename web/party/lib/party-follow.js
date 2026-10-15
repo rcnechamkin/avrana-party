@@ -65,13 +65,13 @@ export function profileIdentity(storage) {
  * or null when there is no Party here for this phone. */
 export async function startPartyFollow({ here = null, container = null, fetch = globalThis.fetch.bind(globalThis),
   go = (url) => location.replace(url), storage = globalThis.localStorage, root = globalThis.document,
-  partyOrigin = globalThis.location ? globalThis.location.origin : null } = {}) {
+  partyOrigin = globalThis.location ? globalThis.location.origin : null, retryMs = undefined } = {}) {
   const listeners = new Set();
   let ready = false, moving = false, endBtn = null, armed = null;
   const gameOrigins = createGameOrigins({ fetch });
   let originsFor = null;                      // the game list the registrations were asked for
   const client = createPartyClient({ fetch, base: '/party/api/', onView });
-  let first = await client.probe();
+  let first = await client.probeRetrying(retryMs);  // a blip at load must not leave this page unfollowed (AVR-475)
   if (!first) return null;                    // no Party Core here: the page stays as it is
   if (!first.me) {                            // presence is automatic once there is a profile
     const who = profileIdentity(storage);

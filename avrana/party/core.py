@@ -14,7 +14,10 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   leaving the party.
 * **Playing is not leaving.** A member who holds a place in the active game session shows as
   `playing`, and the host role never moves away from a host who is in the game. The game owns
-  in-game disconnects (grace, autopilot, pause); the party does not duplicate those timers.
+  in-game disconnects (grace, autopilot, pause); the party does not duplicate those timers. One
+  bound is the party's (AVR-475, PARTY-LIFECYCLE TABLE_ABANDON): when every player's page has been
+  silent past LIVE_WINDOW and then TABLE_ABANDON, the round ends as `abandoned` and the party goes
+  home, so a table whose phones all died does not hold the party for ever.
 * **One game session at a time**, launching -> active -> ending -> ended. The session carries the
   party-approved roster; each member gets an opaque participant id that exists only inside that
   session, so games never see device or member ids.
@@ -62,6 +65,7 @@ HOST_GRACE = 30.0          # s an away host keeps the role before succession (PA
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
+TABLE_ABANDON = 5 * 60.0   # s after the last player turned away before an active round is abandoned (AVR-475)
 GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
 GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
 NAME_MAX = 16
@@ -199,6 +203,7 @@ class PartyCore:
         self.party = Party(clock())
         self._shown = {}                # member_id -> presence last published (timer diffing)
         self._misses = (None, [])       # (session id, times of failed checks inside the window)
+        self.abandoned = []             # sessions TABLE_ABANDON closed whose game has not been told yet
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
@@ -272,6 +277,13 @@ class PartyCore:
         party, now = self.party, self.clock()
         if party.ended:
             return
+        s = party.session
+        emptied = self._table_emptied(s)
+        if emptied is not None and now - emptied >= TABLE_ABANDON:
+            self._close(s, 'abandoned', 'Everyone left the game.')
+            for member_id in s.participants:      # they are gone, not just home: no fresh presence,
+                party.released_at.pop(member_id, None)    # so an away host is succeeded below
+            self.abandoned.append(s)
         host = party.members.get(party.host_id)
         if host is not None and not self._playing(host) \
                 and now - self._seen(host) >= LIVE_WINDOW + HOST_GRACE:
@@ -304,6 +316,23 @@ class PartyCore:
         if party.idle_since is not None and now - party.idle_since >= PARTY_IDLE:
             party.ended = True
             self._commit()
+
+    def _table_emptied(self, s):
+        """When the last occupied seat of an ACTIVE round emptied (PARTY-LIFECYCLE TABLE_ABANDON): the
+        moment its last player turned away, i.e. LIVE_WINDOW after that player's page last reached
+        the party (every game page follows the party, so a page that is open keeps its player here).
+        Counted from that moment, not from a tick (R4). None while any player is still here, or for
+        a round that is not active. Members who left the party do not hold a seat."""
+        if s is None or s.state != ACTIVE:
+            return None
+        members = self.party.members
+        seats = [members[mid] for mid, p in s.participants.items() if p.role == 'player' and mid in members]
+        seats = [m for m in seats if not m.left] or [m for m in seats]
+        if not seats:
+            return None
+        last = max(m.last_seen for m in seats)
+        emptied = max(last, s.state_since) + LIVE_WINDOW
+        return emptied if self.clock() >= emptied else None
 
     def _timed(self):
         self._run_timers()

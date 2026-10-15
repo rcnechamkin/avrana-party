@@ -395,3 +395,39 @@ test('connectParty refuses a Party origin that is not an origin', () => {
     assert.throws(() => connectParty({ partyOrigin: bad, game: 'bluff', window: fakeWindow(GAMES), document: {} }));
   }
 });
+
+test('a blip at load (no answer, then a 5xx) is retried: the frame still binds and follows (AVR-475)', async () => {
+  const api = partyApi();
+  let bridgeFails = 1, stateFails = 2, statePolls = 0;
+  const fetch = (url, init = {}) => {
+    if (url === '/party/api/bridge' && bridgeFails-- > 0) return Promise.reject(new Error('offline'));
+    if (url === '/party/api/state' && stateFails-- > 0) return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
+    if (url.startsWith('/party/api/state?')) statePolls += 1;
+    return api.fetch(url, init);
+  };
+  const page = fakeWindow(GAMES), frame = fakeWindow(PARTY);
+  frame.parent = { postMessage: (data, target) => page.deliver(data, { origin: PARTY, handle: {} }, target) };
+  const bridge = startBridge({ win: frame, fetch, storage: { getItem: () => null, setItem() {} }, retryMs: [0, 0, 0] });
+  frame.deliver(msg('hello', { game: 'bluff' }), { origin: GAMES, handle: frame.parent }, PARTY);
+  for (let i = 0; i < 10; i++) await settle();
+  assert.ok(bridge.bound(), 'the hello was honoured after the registrations were retried');
+  assert.ok(page.received.some((m) => m.data.type === 'view'), 'a view was pushed');
+  assert.ok(statePolls >= 1, 'the long poll (the heartbeat) started after the failed first probes');
+  bridge.stop();
+});
+
+test('a 4xx is an answer, not a blip: no retry', async () => {
+  let calls = 0;
+  const fetch = (url) => {
+    if (url === '/party/api/bridge') { calls += 1; return Promise.resolve({ ok: false, status: 404, json: async () => ({}) }); }
+    return new Promise(() => {});
+  };
+  const frame = fakeWindow(PARTY);
+  frame.parent = { postMessage() {} };
+  const bridge = startBridge({ win: frame, fetch, storage: { getItem: () => null, setItem() {} }, retryMs: [0, 0, 0] });
+  frame.deliver(msg('hello', { game: 'bluff' }), { origin: GAMES, handle: frame.parent }, PARTY);
+  for (let i = 0; i < 10; i++) await settle();
+  assert.equal(calls, 1);
+  assert.equal(bridge.bound(), null);
+  bridge.stop();
+});

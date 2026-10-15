@@ -9,7 +9,7 @@ import time
 import unittest
 from contextlib import redirect_stderr
 
-from avrana.party import identity, service
+from avrana.party import core, identity, service
 
 HOST = 'party.test'
 ORIGIN = 'https://party.test'
@@ -493,6 +493,29 @@ class HostLaunch(ServiceCase):
         _, v, _ = ben.post('session/end', {'if_version': v['version']})
         self.assertEqual((v['state'], v['session']['outcome']), ('lobby', 'ended_by_host'))
         self.assertEqual(self.link.ended, [sid])
+
+
+class TableAbandonTick(unittest.TestCase):
+    """AVR-475: the round Party Core abandoned still runs at its game; the timer tells it `end`, once."""
+
+    def test_the_tick_ends_the_abandoned_round_at_its_game_once(self):
+        clock = [1000.0]
+        with tempfile.TemporaryDirectory() as tmp:
+            link = FakeLink()
+            svc = service.PartyService(identity.DeviceStore(os.path.join(tmp, 'devices.json')), BLUFF, link,
+                                       clock=lambda: clock[0])
+            svc.core.join('device-a', 'Ana')
+            s = svc.core.launch('device-a', 'bluff', svc.core.party.version)
+            svc.core.launch_accepted(s.id)
+            self.assertEqual(svc.tick(), [])
+            clock[0] += core.LIVE_WINDOW + core.TABLE_ABANDON + 1
+            self.assertEqual(svc.tick(), [s])
+            for _ in range(50):
+                if link.ended:
+                    break
+                time.sleep(0.02)
+            self.assertEqual(link.ended, [s.id])
+            self.assertEqual(svc.tick(), [])                 # told once
 
 
 class ProviderLink:
