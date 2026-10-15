@@ -61,6 +61,7 @@
     {"path": "docs/OFFLINE-TRUST-AND-RECOVERY.md", "class": "design", "status": "proposed", "authority": "none", "status_marker": "> **Status: design direction, not deployed implementation.** Canonical Full Mode HTTPS is deployed at"},
     {"path": "docs/PERSONAL-VIEWPORT-AND-EMULATION.md", "class": "design", "status": "proposed", "authority": "none", "status_marker": "> **Status: design direction.** The PS1 and viewport work remains on experiment branches."},
     {"path": "docs/README.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "documentation-map"},
+    {"path": "docs/ARCHITECTURE.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "architecture-overview", "last_verified": "2026-10-15"},
     {"path": "docs/REPOSITORY-GOVERNANCE.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "integrity-checks"},
     {"path": "docs/ROADMAP.md", "class": "strategy", "status": "current", "authority": "strategic-direction", "canonical_for": "strategic-direction"},
     {"path": "docs/SYSTEM.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "deployed-state"},

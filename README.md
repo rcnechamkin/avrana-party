@@ -121,6 +121,7 @@ Browser testing at phone-sized viewports is useful, but it is not considered pro
 
 If you want to work on Avrana Party, start with:
 
+- [Architecture overview](docs/ARCHITECTURE.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [AGENTS.md](AGENTS.md)
 - [Documentation map](docs/README.md)
