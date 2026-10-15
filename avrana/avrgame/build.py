@@ -27,6 +27,22 @@ from .manifest import parse, validate_manifest
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 FILE_ATTR = (stat.S_IFREG | 0o644) << 16
 _REPARSE = 0x400
+# text a checkout may convert to CRLF (git's core.autocrlf on Windows): the same commit then packs
+# different bytes, so a different sha256, on different machines. A warning, never a refusal.
+TEXT_SUFFIXES = frozenset(('.py', '.js', '.mjs', '.cjs', '.html', '.htm', '.css', '.json', '.svg', '.txt',
+                           '.md', '.map', '.xml', '.csv', '.toml', '.cfg', '.ini', '.yaml', '.yml'))
+
+
+def line_ending_warnings(entries):
+    """Notes for the text files (by suffix) among `entries` (name, bytes) that contain CRLF."""
+    notes = []
+    for name, data in entries:
+        if os.path.splitext(name)[1].lower() not in TEXT_SUFFIXES or b'\r\n' not in data:
+            continue
+        kind = 'mixed CRLF and LF' if data.count(b'\n') != data.count(b'\r\n') else 'CRLF'
+        notes.append(f'{clip(name)}: {kind} line endings; a checkout with other line-ending settings packs '
+                     'different bytes (mark it eol=lf in .gitattributes)')
+    return notes
 
 
 @dataclass(frozen=True)
@@ -171,7 +187,8 @@ def _add_artwork(files, block, root, problems):
 def build_bytes(source_root, manifest_path, includes, compress=False, warnings=None):
     """The archive bytes, validated exactly as `read` validates an archive. Writes nothing. Files that
     the manifest's `artwork` block declares are included even when `includes` does not list them.
-    `warnings`, a list, receives notes that do not refuse the package (metadata in an image)."""
+    `warnings`, a list, receives notes that do not refuse the package (metadata in an image, CRLF line
+    endings in a text file)."""
     problems = Problems()
     try:
         _plain(manifest_path, 'manifest')
@@ -219,6 +236,8 @@ def build_bytes(source_root, manifest_path, includes, compress=False, warnings=N
             zf.writestr(info, data, compress_type=method, compresslevel=9 if compress else None)
     data = buf.getvalue()
     archive.scan(data)[1].close()     # the same validation a reader applies
+    if warnings is not None:
+        warnings.extend(line_ending_warnings(entries))
     if warnings is not None and manifest.get('artwork'):
         names = dict(entries)
         warnings.extend(artwork.metadata_warnings(
