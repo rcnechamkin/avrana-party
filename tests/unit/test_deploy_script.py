@@ -223,7 +223,8 @@ def catalog_tool_shim(directory):
     """A directory with a `python3` that runs `-m avrana.ops.catalog_overlay ...` as the scripts do, but as "root" (the tool
     refuses to refresh as anybody else, and a test user is not root on Linux), from the tree it is run in, with a lock
     file of its own ($SETTLE_LOCK). Every other python3 call is the real interpreter. With $SETTLE_STUB the effective
-    catalog is a marker naming the release catalog it was derived from; with $SETTLE_SKIP_HOOK a `--wait 0` call (the
+    catalog is a marker naming the release catalog it was derived from (the stub replaces `_effective`, which `refresh`
+    calls since AVR-466 phase C, and names no artwork); with $SETTLE_SKIP_HOOK a `--wait 0` call (the
     hook in install-party-web.sh when ops/deploy.sh runs it) does nothing and succeeds."""
     directory.mkdir()
     python = Path(sys.executable).as_posix()
@@ -239,7 +240,7 @@ def catalog_tool_shim(directory):
         '    sys.exit(0)\n'
         'if os.environ.get("SETTLE_STUB"):\n'
         '    from pathlib import Path\n'
-        '    co.effective = lambda base, records, **kw: ("EFFECTIVE-FOR " + Path(base).read_text(), ["hello"], [])\n'
+        '    co._effective = lambda base, records, **kw: ("EFFECTIVE-FOR " + Path(base).read_text(), ["hello"], [], {})\n'
         'sys.exit(co.main(args + ["--lock-file", os.environ["SETTLE_LOCK"]]))\n')
     (directory / 'wrap.py').write_text(wrapper, newline='\n')
     (directory / 'python3').write_text(f'#!/bin/sh\nexec "{python}" "{(directory / "wrap.py").as_posix()}" "$@"\n', newline='\n')
