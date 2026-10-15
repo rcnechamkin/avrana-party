@@ -191,12 +191,15 @@ request-based liveness and game-owned grace, rather than a socket-count-based pr
 | PRESENCE_GRACE, SEAT_GRACE | 60 s (a game may set longer) | PS1 holds a slot 30 s; BLUFF waits 30 s (prompts) / 60 s (own turn) before autopilot |
 | Succession | earliest-joined eligible member here or playing (deterministic) | implemented in Party Core |
 | LAUNCH_TIMEOUT | 60 s | — |
-| TABLE_ABANDON | 5 min | BLUFF |
+| TABLE_ABANDON | 5 min | implemented in Party Core (AVR-475): counted from LIVE_WINDOW after the last player's last request; BLUFF precedent |
 | Away-seat auto-release | only for games that declare open seats, after 5 min; otherwise the host removes | — |
 | PARTY_IDLE | 3 h with nobody connected (plane naps); never while anyone is connected | — |
 
 Current Core uses LIVE_WINDOW 45 s, HOST_GRACE 30 s past liveness, LAUNCH_TIMEOUT 60 s,
-END_TIMEOUT 15 s and PARTY_IDLE 3 h (no live members/session). Members in an active session
+END_TIMEOUT 15 s, TABLE_ABANDON 5 min (AVR-475: an active round whose every player's page has been
+silent that long past LIVE_WINDOW ends `abandoned`, the party goes home and the game is told `end`;
+a game page follows the party through the bridge, so an open page keeps its player present) and
+PARTY_IDLE 3 h (no live members/session). Members in an active session
 count as playing. The table retains proposed seat/model defaults, not evidence of arcade
 deployment or physical behavior. Tune future seat policies from real-phone evidence and AVR-130, with scope in Linear.
 
