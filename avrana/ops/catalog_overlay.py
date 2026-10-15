@@ -20,6 +20,13 @@ The rules, each tested:
 - A package is listed only when its install record is valid (avrana.avrgame.installed) and the
   catalog builder (avrana.contracts.catalog.build) accepts its row. A record that is refused, or a
   row the builder rejects, drops that package alone and is reported; the others stay.
+- Package artwork (AVR-466 phase C, experimental): for each listed package the staged manifest is re-read
+  (the install record is unchanged), its `artwork.cover` and `artwork.icon` are re-hashed against the record
+  and re-validated by avrana.avrgame.artwork, and the valid ones are copied, content-addressed, to
+  `<out dir>/art/<id>/<16 hex of sha256>.<ext>` (nginx serves them at /party/pkgart/, a separate and
+  separately approved deploy step); the row gains `images: {cover|icon: {url, w, h}}`. A damaged image is
+  dropped alone (the game stays listed, a warning is reported) and never undoes an install. Banner and
+  screenshots are validated at install and neither copied nor listed. Files no listed row names are pruned.
 - No valid package, no overlay file: `refresh` removes it, so the appliance serves exactly the
   committed catalog.
 - Written atomically: a hidden temporary file in the same directory, flushed and fsynced, made 0644,
@@ -44,12 +51,15 @@ import json
 import os
 import re
 import secrets
+import shutil
+import stat
 import sys
 import unicodedata
 from pathlib import Path
 
 from avrana import CONTRACTS_DIR
-from avrana.avrgame import installed
+from avrana import avrgame
+from avrana.avrgame import artwork, installed
 from avrana.contracts import appliance as appliance_mod
 from avrana.contracts import catalog, strictjson, vocabulary
 
@@ -60,6 +70,10 @@ MAX_BASE_BYTES = 4 * 1024 * 1024
 MAX_BASE_MOVES = 3          # a refresh repeats at most this often when the release catalog moves under it
 MAX_OVERLAY_BYTES = 5 * 1024 * 1024
 MAX_ROW_BYTES = 4096
+ART_DIR_NAME = 'art'                 # <out dir>/art/<id>/<digest>.<ext>
+ART_URL_PREFIX = '/party/pkgart'     # the public path nginx maps to that directory
+ART_ROLES = ('cover', 'icon')        # banner and screenshots are validated, not served (D11)
+ART_EXTENSIONS = {'webp': 'webp', 'png': 'png', 'jpeg': 'jpg'}
 MAX_NAME, MAX_SUMMARY, MAX_STRING = 60, 400, 200
 # The only keys of a package's row. Everything else the builder copies from the contract's free-form
 # extensions (provider, status, legacySlug, integration, icon, art, accent, category, description,
@@ -92,13 +106,15 @@ def _strings(value):
             yield from _strings(v)
 
 
-def package_row(row, pid, taken_names):
+def package_row(row, pid, taken_names, images=None):
     """The row a package may have: an allowlist of the builder's keys, the fields that say what it
     is forced (native, /games/<id>/, installed, community), every string and the row bounded, and a
     display name that cannot pass for a first-party game's. ValueError says why not."""
     out = {k: row[k] for k in ROW_KEYS if k in row}
     out.update({'id': pid, 'installed': True, 'entry': f'/games/{pid}/', 'provider': 'native', 'status': 'current',
                 'tier': 'community'})
+    if images:
+        out['images'] = images           # appliance-set, never read from the contract (the builder's keys are an allowlist)
     name = out.get('name')
     if not isinstance(name, str) or not name.strip() or not name.isprintable() or len(name) > MAX_NAME:
         raise ValueError(f'the display name must be 1 to {MAX_NAME} printable characters')
@@ -114,6 +130,155 @@ def package_row(row, pid, taken_names):
     if len(json.dumps(out, ensure_ascii=False).encode('utf-8')) > MAX_ROW_BYTES:
         raise ValueError(f'the row is larger than {MAX_ROW_BYTES} bytes')
     return out
+
+
+# ---- package artwork (AVR-466 phase C, experimental) -------------------------------------------------------------
+
+class _Damaged(Exception):
+    """One staged file cannot be used as it is. The sentence says why."""
+
+
+def _read_plain(path, limit):
+    """The bytes of a plain file of at most `limit` bytes (never a link), or _Damaged."""
+    flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise _Damaged('is missing or not a plain file') from None
+    with os.fdopen(fd, 'rb') as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise _Damaged('is not a plain file')
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise _Damaged(f'is larger than {limit} bytes')
+    return data
+
+
+def _disk_dir(root, games_root, disk_root):
+    prefix = str(games_root).replace('\\', '/').rstrip('/') + '/'
+    if not root.startswith(prefix):
+        raise _Damaged(f'the staged tree {root} is not under {prefix}')
+    return Path(disk_root).joinpath(*root[len(prefix):].split('/'))
+
+
+def package_art(rec, games_root, disk_root):
+    """(images, files, problems) for one install record. `images` is {role: {url, w, h}} for the cover and
+    icon that are still exactly what was installed and still valid; `files` maps '<id>/<digest>.<ext>' to the
+    bytes to serve; `problems` are `<id>: artwork ...` sentences for what was left out. The staged manifest
+    is re-read and the images are re-hashed against the record and re-checked by avrana.avrgame.artwork. A
+    damaged image is dropped alone; nothing here raises."""
+    images, files, problems = {}, {}, []
+    known = {path: (size, digest) for path, size, digest in rec.files}
+    try:
+        base = _disk_dir(rec.root, games_root, disk_root)
+    except _Damaged as exc:
+        return images, files, [f'{rec.id}: artwork not shown: {exc}']
+
+    def load(name, limit):
+        if name not in known:
+            raise _Damaged('is not in the install record')
+        size, digest = known[name]
+        if size > limit:
+            raise _Damaged(f'is {size} bytes, more than the {limit} allowed')
+        data = _read_plain(base.joinpath(*name.split('/')), limit)
+        if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
+            raise _Damaged('changed since it was installed')
+        return data
+
+    try:
+        manifest = avrgame.validate_manifest(avrgame.parse_manifest(load(avrgame.MANIFEST_NAME, avrgame.MAX_MANIFEST_BYTES)))
+    except _Damaged as exc:
+        return images, files, [f'{rec.id}: artwork not shown: the staged manifest {exc}']
+    except Exception as exc:
+        return images, files, [f'{rec.id}: artwork not shown: the staged manifest cannot be read ({type(exc).__name__})']
+    block = manifest.get('artwork') or {}
+    for role in ART_ROLES:
+        if role not in block:
+            continue
+        path = block[role]
+        try:
+            data = load(path, artwork.COVER_LIMITS[0] if role == 'cover' else artwork.ICON_LIMITS[0])
+            wrong, _ = artwork.file_problems({role: path}, {path: len(data)}, lambda name: data)
+            if wrong:
+                raise _Damaged('; '.join(wrong))
+            kind, width, height, _ = artwork.inspect_image(path, data)
+        except _Damaged as exc:
+            problems.append(f'{rec.id}: artwork {role} not shown: {exc}')
+            continue
+        except Exception as exc:
+            problems.append(f'{rec.id}: artwork {role} not shown: cannot be checked ({type(exc).__name__})')
+            continue
+        name = f'{hashlib.sha256(data).hexdigest()[:16]}.{ART_EXTENSIONS[kind]}'
+        images[role] = {'url': f'{ART_URL_PREFIX}/{rec.id}/{name}', 'w': width, 'h': height}
+        files[f'{rec.id}/{name}'] = data
+    return images, files, problems
+
+
+def _same_file(path, data):
+    try:
+        return _read_plain(path, len(data)) == data
+    except _Damaged:
+        return False
+
+
+def _write_art(art_dir, rel, data):
+    """Copy one validated image to <art dir>/<id>/<name>, atomically; a file already there with these bytes stays."""
+    path = Path(art_dir) / rel
+    if _same_file(path, data):
+        return
+    for directory in (Path(art_dir), path.parent):
+        # Never write through a link or into a stray file: anything that is not a real directory
+        # is removed first (lstat, so a symbolic link is seen as itself, not as its target).
+        if os.path.lexists(directory) and not stat.S_ISDIR(os.lstat(directory).st_mode):
+            os.unlink(directory)
+        if not os.path.lexists(directory):
+            os.makedirs(directory, mode=0o755, exist_ok=True)
+            os.chmod(directory, 0o755)
+    write_atomic(path, data)
+
+
+def _art_present(art_dir):
+    """Every non-directory entry under the art directory, as '<id>/<name>' (a link or a stray file included)."""
+    found = set()
+    root = Path(art_dir)
+    if not root.is_dir():
+        return found
+    for top in os.scandir(root):
+        if top.is_dir(follow_symlinks=False):
+            for item in os.scandir(top.path):
+                if item.name.startswith('.') and item.name.endswith('.tmp'):
+                    continue                    # an atomic write in flight, not a stale picture
+                found.add(f'{top.name}/{item.name}')
+        else:
+            found.add(top.name)
+    return found
+
+
+def prune_art(art_dir, keep):
+    """Remove everything under the art directory that is not in `keep` ('<id>/<name>'), the empty id
+    directories, and the directory itself when nothing is left."""
+    root = Path(art_dir)
+    if not os.path.lexists(root):
+        return
+    if root.is_symlink() or not root.is_dir():
+        root.unlink()
+        return
+    for top in sorted(os.scandir(root), key=lambda e: e.name):
+        if not top.is_dir(follow_symlinks=False):
+            os.unlink(top.path)
+            continue
+        for item in os.scandir(top.path):
+            if f'{top.name}/{item.name}' in keep and item.is_file(follow_symlinks=False):
+                continue
+            if item.is_dir(follow_symlinks=False):
+                shutil.rmtree(item.path)
+            else:
+                os.unlink(item.path)
+        if not os.listdir(top.path):
+            os.rmdir(top.path)
+    if not os.listdir(root):
+        os.rmdir(root)
+    _fsync_dir(root.parent)
 
 
 class OverlayError(Exception):
@@ -137,10 +302,12 @@ def _base(path):
     return doc
 
 
-def effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, owner=installed._DEFAULT,
-              appliance_path=catalog.DEFAULT_APPLIANCE, games_dir=None, strict_modes=None, repo_contracts=None):
-    """(text, listed, problems). `text` is the effective catalog, or None when no package is to be
-    listed (the release catalog is then served as it is). `listed` is the package ids in it."""
+def _effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, owner=installed._DEFAULT,
+               appliance_path=catalog.DEFAULT_APPLIANCE, games_dir=None, strict_modes=None, repo_contracts=None,
+               disk_root=None, art_dir=None, write_art=False):
+    """(text, listed, problems, art). `art` maps '<id>/<name>' to the bytes of every image the rows name.
+    With `write_art` (refresh) each image is copied under `art_dir` first, and one that cannot be copied is
+    dropped from its row (a problem, not a failure)."""
     doc = _base(base_path)
     vocab = vocabulary.load()
     repo = repo_contracts if repo_contracts is not None else catalog.load_contracts(games_dir or CONTRACTS_DIR / 'games', vocab)
@@ -149,28 +316,49 @@ def effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, o
     appliance = appliance_mod.load(appliance_path, vocab)
     taken = {row.get('id') for row in doc['games'] if isinstance(row, dict)}
     names = {_fold(x) for row in doc['games'] if isinstance(row, dict) for x in (row.get('id'), row.get('name')) if x}
-    rows, labels = [], {}
+    rows, labels, art = [], {}, {}
     for pid in sorted(found.records):
         if pid in taken or pid in repo:
             problems.append(f'{pid}: the catalog already has a game with this id; the package is not listed')
             continue
         try:
             one = catalog.build(vocab, appliance, {**repo, pid: found.contracts[pid]}, extra_grants={pid: found.grants[pid]})
-            row = package_row(next(g for g in one['games'] if g['id'] == pid), pid, names)
+            images, files, art_problems = package_art(found.records[pid], games_root, disk_root or games_root)
+            row = package_row(next(g for g in one['games'] if g['id'] == pid), pid, names, images)
         except ValueError as exc:
             problems.append(f'{pid}: not listed: {exc}')
             continue
+        problems.extend(art_problems)
+        if write_art:
+            for rel in sorted(files):
+                try:
+                    _write_art(art_dir, rel, files[rel])
+                except OSError as exc:
+                    problems.append(f'{pid}: artwork not shown: {rel} could not be copied ({type(exc).__name__})')
+                    for role in [r for r, v in row['images'].items() if v['url'].endswith('/' + rel)]:
+                        del row['images'][role]
+                    if not row['images']:
+                        del row['images']
+                    files = {k: v for k, v in files.items() if k != rel}
+        art.update(files)
         names.add(_fold(row['name']))
         rows.append(row)
         labels.update({k: v for k, v in one['labels'].items() if k not in doc['labels']})
     if not rows:
-        return None, [], problems
+        return None, [], problems, {}
     doc['games'] = [*doc['games'], *rows]
     doc['labels'] = {**doc['labels'], **{k: labels[k] for k in sorted(labels)}}
     text = strictjson.dumps(doc)
     if len(text.encode('utf-8')) > MAX_OVERLAY_BYTES:
         raise OverlayError(f'the effective catalog would be larger than {MAX_OVERLAY_BYTES} bytes')
-    return text, [row['id'] for row in rows], problems
+    return text, [row['id'] for row in rows], problems, art
+
+
+def effective(base_path, records_dir, **kw):
+    """(text, listed, problems). `text` is the effective catalog, or None when no package is to be
+    listed (the release catalog is then served as it is). `listed` is the package ids in it. Nothing is written."""
+    text, listed, problems, _ = _effective(base_path, records_dir, **kw)
+    return text, listed, problems
 
 
 def _fsync_dir(path):
@@ -194,7 +382,7 @@ def write_atomic(path, text):
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0)
                      | getattr(os, 'O_NOFOLLOW', 0), 0o600)
         with os.fdopen(fd, 'wb') as f:
-            f.write(text.encode('utf-8'))
+            f.write(text if isinstance(text, bytes) else text.encode('utf-8'))
             f.flush()
             os.fsync(f.fileno())
         os.chmod(tmp, 0o644)
@@ -238,11 +426,13 @@ def refresh(out_dir, base_path, records_dir, **kw):
     try:
         for _ in range(MAX_BASE_MOVES):
             seen = _digest(base_path)
-            text, listed, problems = effective(base_path, records_dir, **kw)
+            art_dir = Path(out_dir) / ART_DIR_NAME
+            text, listed, problems, art = _effective(base_path, records_dir, art_dir=art_dir, write_art=True, **kw)
             if text is None:
                 remove(target)
             else:
                 write_atomic(target, text)
+            prune_art(art_dir, set(art))          # the art of a removed package, a superseded image, a stray file
             if _digest(base_path) == seen:
                 return listed, problems
             # The web release moved while this ran (a deploy switched `current`): what was just written was
@@ -251,6 +441,10 @@ def refresh(out_dir, base_path, records_dir, **kw):
     except BaseException as exc:
         try:
             remove(target)
+            try:
+                prune_art(Path(out_dir) / ART_DIR_NAME, set())      # no overlay advertises it any more
+            except OSError:
+                pass                                                 # content-addressed and harmless; the next refresh prunes
         except OSError as gone:
             raise OverlayError(f'the effective catalog failed ({exc}) and {target} could not be removed ({gone}); '
                                'remove it by hand') from exc
@@ -262,14 +456,26 @@ def refresh(out_dir, base_path, records_dir, **kw):
         raise
 
 
+def _art_wrong(art_dir, art):
+    """What differs between the art directory and the images the effective catalog names."""
+    present = _art_present(art_dir)
+    wrong = [f'{art_dir / rel} is missing or changed: run refresh' for rel in sorted(art)
+             if rel not in present or not _same_file(art_dir / rel, art[rel])]
+    wrong += [f'{art_dir / rel} is not named by any listed package: run refresh' for rel in sorted(present - set(art))]
+    return wrong
+
+
 def check(out_dir, base_path, records_dir, problems_out=None, **kw):
     """[] when the overlay is exactly what `refresh` would write now (including: absent when no
     package is to be listed); otherwise what is wrong."""
     target = Path(out_dir) / FILE_NAME
-    text, _, problems = effective(base_path, records_dir, **kw)
+    text, _, problems, art = _effective(base_path, records_dir, **kw)
     if problems_out is not None:
         problems_out.extend(problems)         # packages left out of the overlay and why (not a staleness)
     have = target.read_text(encoding='utf-8') if target.is_file() else None
+    wrong = _art_wrong(Path(out_dir) / ART_DIR_NAME, art)
+    if wrong:
+        return wrong
     if have == text:
         return []
     if text is None:
@@ -280,7 +486,8 @@ def check(out_dir, base_path, records_dir, problems_out=None, **kw):
 
 
 def _apply(layout, base_path, out_dir, owner, **kw):
-    listed, problems = refresh(out_dir, base_path, layout.records_dir, games_root=layout.root_text(), owner=owner, **kw)
+    listed, problems = refresh(out_dir, base_path, layout.records_dir, games_root=layout.root_text(), owner=owner,
+                               disk_root=layout.games_root, **kw)
     lines = [f'catalog: the effective catalog lists {", ".join(listed)}' if listed
              else 'catalog: no package is listed; the release catalog is served as it is']
     return listed, problems, lines + [f'catalog: {p}' for p in problems]

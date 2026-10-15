@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,7 @@ from avrana.avrgame import installed
 from avrana.ops import catalog_overlay as co
 from avrana.ops import install_game as ig
 
+from test_avrgame_artwork import art_zip, webp
 from test_install_game import Base, REPO, IDLE, Response
 
 COMMITTED = REPO_ROOT / 'web' / 'party' / 'catalog.json'
@@ -40,7 +42,8 @@ class OverlayBase(Base):
         self.addCleanup(lambda: self.assertEqual(sha(COMMITTED), self.committed_sha))
 
     def kw(self):
-        return {'games_root': '/opt/avrana-games', 'owner': None, 'repo_contracts': REPO}
+        return {'games_root': '/opt/avrana-games', 'owner': None, 'repo_contracts': REPO,
+                'disk_root': self.layout.games_root}
 
     def refresh(self, base=None):
         return co.refresh(self.out_dir, base or self.base, self.layout.records_dir, **self.kw())
@@ -278,7 +281,7 @@ class PackageControlledFields(OverlayBase):
             co.package_row({'id': 'hello', 'name': 'ㅤ͏'}, 'hello', set())
 
     def test_a_refused_row_fails_the_install_and_undoes_it(self):
-        def refuse(row, pid, names):
+        def refuse(row, pid, names, images=None):
             raise ValueError('the display name is, or is easily mistaken for, a first-party game')
         with mock.patch.object(co, 'package_row', refuse):
             rc, out, err = self.main('install', str(self.package()), '--grant', 'party_roster')
@@ -662,6 +665,236 @@ class NodePackage(OverlayBase):
         self.assertIn('node runtime', err)
         self.assertFalse(self.overlay.exists())
         self.assertEqual(ig.listing(self.layout, REPO)[0], {})
+
+
+class PackageArtwork(OverlayBase):
+    """AVR-466 phase C (experimental): bundled cover and icon reach the catalog row as `images` and are
+    copied, content-addressed, under <catalog dir>/art. nginx serving them is a separate, gated deploy."""
+    D = 'game_pkg/artwork/'
+    URL = re.compile(r'^/party/pkgart/hello/([0-9a-f]{16})\.(webp|png|jpg)$')
+
+    def art_package(self, cover=None, icon=None, extra=None, block=None):
+        images, spec = {}, {}
+        for role, data in (('cover', cover), ('icon', icon)):
+            if data is not None:
+                images[self.D + role + '.webp'] = data
+                spec[role] = self.D + role + '.webp'
+        for name, data in (extra or {}).items():
+            images[self.D + name] = data
+        path = self.inputs / 'hello.avrgame'
+        path.write_bytes(art_zip(block if block is not None else spec, images))
+        return path
+
+    def art_files(self):
+        art = self.out_dir / 'art'
+        return sorted(p.relative_to(art).as_posix() for p in art.rglob('*') if p.is_file()) if art.is_dir() else []
+
+    def row(self):
+        return self.doc()['games'][-1]
+
+    def damage(self, name, data):
+        path = self.tree() / Path(*name.split('/'))
+        os.chmod(path, 0o644)
+        path.write_bytes(data)
+
+    def check(self, notes=None):
+        return co.check(self.out_dir, self.base, self.layout.records_dir, notes, **self.kw())
+
+    def test_a_valid_cover_and_icon_are_copied_content_addressed_and_named_in_the_row(self):
+        cover, icon = webp(300, 300), webp(128, 128)
+        self.install(self.art_package(cover, icon))
+        self.assertEqual(self.refresh(), (['hello'], []))
+        images = self.row()['images']
+        self.assertEqual(list(images), ['cover', 'icon'])
+        self.assertEqual((images['cover']['w'], images['cover']['h'], images['icon']['w']), (300, 300, 128))
+        for role, data in (('cover', cover), ('icon', icon)):
+            m = self.URL.match(images[role]['url'])
+            self.assertTrue(m, images[role])
+            self.assertEqual(m.group(1), hashlib.sha256(data).hexdigest()[:16])
+            self.assertEqual((self.out_dir / 'art' / 'hello' / f'{m.group(1)}.webp').read_bytes(), data)
+        self.assertEqual(len(self.art_files()), 2)
+        self.assertEqual(sorted(os.listdir(self.out_dir)), ['art', co.FILE_NAME])
+        self.assertEqual(self.check(), [])
+        first = self.overlay.read_bytes()
+        self.refresh()                                              # deterministic
+        self.assertEqual(self.overlay.read_bytes(), first)
+        if os.name == 'posix':
+            for p in (self.out_dir / 'art').rglob('*'):
+                self.assertEqual(p.stat().st_mode & 0o777, 0o755 if p.is_dir() else 0o644)
+
+    def test_the_install_record_schema_is_unchanged(self):
+        self.install(self.art_package(webp(256, 256)))
+        doc = json.loads(self.layout.record('hello').read_text(encoding='utf-8'))
+        self.assertEqual(set(doc) - set(installed.TOP), set())
+        self.assertNotIn('artwork', doc)
+        self.assertNotIn('images', doc)
+
+    def test_a_package_without_artwork_leaves_the_catalog_bytes_and_the_directory_as_they_were(self):
+        self.install()
+        self.refresh()
+        self.assertNotIn('images', self.row())
+        self.assertFalse((self.out_dir / 'art').exists())
+        self.assertEqual(os.listdir(self.out_dir), [co.FILE_NAME])
+        again = self.overlay.read_bytes()
+        self.remove()
+        self.install(self.art_package(None, None, block={}))        # an empty block is artless too
+        self.refresh()
+        self.assertEqual(self.overlay.read_bytes(), again)
+
+    def test_a_damaged_image_drops_that_image_only_and_check_warns(self):
+        self.install(self.art_package(webp(300, 300), webp(128, 128)))
+        self.damage(self.D + 'icon.webp', webp(128, 128) + b'x')   # same name, other bytes: the hash no longer matches
+        listed, problems = self.refresh()
+        self.assertEqual(listed, ['hello'])
+        self.assertEqual(list(self.row()['images']), ['cover'])
+        self.assertTrue(any('hello: artwork icon not shown' in p for p in problems), problems)
+        self.assertEqual(len(self.art_files()), 1)
+        notes = []
+        self.assertEqual(self.check(notes), [])
+        self.assertTrue(any('icon not shown' in n for n in notes))
+
+    def test_a_removed_file_or_a_damaged_manifest_drops_the_images_without_failing(self):
+        self.install(self.art_package(webp(300, 300), webp(128, 128)))
+        os.unlink(self.tree() / Path(*(self.D + 'cover.webp').split('/')))
+        self.refresh()
+        self.assertEqual(list(self.row()['images']), ['icon'])
+        self.damage('avrgame.json', b'{}')
+        listed, problems = self.refresh()
+        self.assertEqual(listed, ['hello'])
+        self.assertNotIn('images', self.row())
+        self.assertTrue(any('staged manifest' in p for p in problems), problems)
+        self.assertFalse((self.out_dir / 'art').exists())
+
+    def test_a_damaged_image_never_undoes_an_install(self):
+        self.install(self.art_package(webp(300, 300)))
+        self.damage(self.D + 'cover.webp', b'not an image')
+        lines = co.publish_or_undo(self.layout, self.base, self.out_dir, None, 'hello',
+                                   undo=lambda pid: self.fail('undone'), repo_contracts=REPO)
+        self.assertTrue(any('lists hello' in line for line in lines), lines)
+        self.assertTrue(any('artwork cover not shown' in line for line in lines), lines)
+        self.assertIn('hello', ig.listing(self.layout, REPO)[0])
+        self.assertNotIn('images', self.row())
+
+    def test_a_copy_that_fails_drops_that_image_only(self):
+        self.install(self.art_package(webp(300, 300), webp(128, 128)))
+        real = co._write_art
+
+        def flaky(art_dir, rel, data):
+            if data == webp(128, 128):
+                raise PermissionError('no')
+            return real(art_dir, rel, data)
+
+        with mock.patch.object(co, '_write_art', flaky):
+            listed, problems = self.refresh()
+        self.assertEqual(listed, ['hello'])
+        self.assertEqual(list(self.row()['images']), ['cover'])
+        self.assertTrue(any('could not be copied' in p for p in problems), problems)
+        self.assertEqual(len(self.art_files()), 1)
+
+    def test_remove_deletes_the_games_art_and_a_stray_file_is_pruned(self):
+        self.install(self.art_package(webp(300, 300)))
+        self.refresh()
+        stray = self.out_dir / 'art' / 'other' / ('0' * 16 + '.png')
+        stray.parent.mkdir(parents=True)
+        stray.write_bytes(b'x')
+        self.refresh()                                               # nothing names it: pruned
+        self.assertFalse(stray.parent.exists())
+        self.assertEqual(len(self.art_files()), 1)
+        self.remove()
+        self.assertEqual(self.refresh(), ([], []))
+        self.assertFalse(self.overlay.exists())
+        self.assertFalse((self.out_dir / 'art').exists())
+        self.assertEqual(os.listdir(self.out_dir), [])
+
+    def test_urls_change_when_the_bytes_change_and_stay_when_they_do_not(self):
+        self.install(self.art_package(webp(300, 300)))
+        self.refresh()
+        first = self.row()['images']['cover']['url']
+        self.remove()
+        self.install(self.art_package(webp(300, 300)))               # same bytes again
+        self.refresh()
+        self.assertEqual(self.row()['images']['cover']['url'], first)
+        self.remove()
+        self.install(self.art_package(webp(310, 310)))               # new bytes: new digest, new URL, old file pruned
+        self.refresh()
+        second = self.row()['images']['cover']['url']
+        self.assertNotEqual(second, first)
+        self.assertEqual(self.art_files(), ['hello/' + second.rsplit('/', 1)[1]])
+
+    def test_banner_and_screenshots_are_validated_but_neither_copied_nor_listed(self):
+        extra = {'banner.webp': webp(1280, 720), 's1.webp': webp(400, 700)}
+        block = {'cover': self.D + 'cover.webp', 'banner': self.D + 'banner.webp',
+                 'screenshots': [{'path': self.D + 's1.webp', 'alt': 'Arena'}]}
+        self.install(self.art_package(webp(300, 300), extra=extra, block=block))
+        self.refresh()
+        self.assertEqual(list(self.row()['images']), ['cover'])
+        self.assertEqual(len(self.art_files()), 1)
+        self.assertNotIn(b'banner', self.overlay.read_bytes())
+
+    def test_check_finds_a_missing_changed_or_stray_file_and_refresh_repairs_it(self):
+        self.install(self.art_package(webp(300, 300)))
+        self.refresh()
+        (name,) = self.art_files()
+        target = self.out_dir / 'art' / name
+        for damage in (lambda: target.unlink(), lambda: target.write_bytes(b'other'),
+                       lambda: (target.parent / 'extra.png').write_bytes(b'x')):
+            self.refresh()
+            damage()
+            wrong = self.check()
+            self.assertTrue(wrong, 'a damaged art directory must be reported')
+            self.assertIn('run refresh', wrong[0])
+            self.refresh()
+            self.assertEqual(self.check(), [])
+        self.assertEqual(self.art_files(), [name])
+
+    def test_an_overlay_failure_removes_the_art_with_the_catalog(self):
+        self.install(self.art_package(webp(300, 300)))
+        self.refresh()
+        with self.assertRaises(co.OverlayError):
+            self.refresh(base=self.root / 'missing.json')
+        self.assertFalse(self.overlay.exists())
+        self.assertFalse((self.out_dir / 'art').exists())
+
+    def test_install_and_remove_through_the_command_line_copy_and_delete_the_art(self):
+        rc, out, err = self.main('install', str(self.art_package(webp(300, 300), webp(128, 128))), '--grant', 'party_roster')
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(sorted(self.row()['images']), ['cover', 'icon'])
+        self.assertEqual(len(self.art_files()), 2)
+        rc, out, err = self.main('remove', 'hello')
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(os.listdir(self.out_dir), [])
+
+
+class ArtFiles(unittest.TestCase):
+    """Review of PR #144: the art writer never writes through a link or into a stray file, and
+    `check` does not count an atomic write in flight as a stale picture."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.art = self.tmp / 'art'
+
+    def test_a_write_in_flight_is_not_present(self):
+        co._write_art(self.art, 'hello/0123456789abcdef.png', b'x')
+        (self.art / 'hello' / '.0123456789abcdef.png.1a2b3c4d.tmp').write_bytes(b'y')
+        self.assertEqual(co._art_present(self.art), {'hello/0123456789abcdef.png'})
+
+    def test_a_stray_file_where_the_id_directory_goes_is_replaced(self):
+        self.art.mkdir()
+        (self.art / 'hello').write_bytes(b'not a directory')
+        co._write_art(self.art, 'hello/0123456789abcdef.png', b'x')
+        self.assertEqual((self.art / 'hello' / '0123456789abcdef.png').read_bytes(), b'x')
+
+    @unittest.skipUnless(os.name == 'posix', 'creating a symbolic link needs POSIX (or a Windows privilege)')
+    def test_a_linked_id_directory_is_never_written_through(self):
+        elsewhere = self.tmp / 'elsewhere'
+        elsewhere.mkdir()
+        self.art.mkdir()
+        (self.art / 'hello').symlink_to(elsewhere, target_is_directory=True)
+        co._write_art(self.art, 'hello/0123456789abcdef.png', b'x')
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertFalse((self.art / 'hello').is_symlink())
+        self.assertEqual((self.art / 'hello' / '0123456789abcdef.png').read_bytes(), b'x')
 
 
 class Command(OverlayBase):
