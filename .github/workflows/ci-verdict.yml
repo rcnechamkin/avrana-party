@@ -5,7 +5,7 @@
 # workflows leaving unrelated pull requests waiting for a check that never reports.
 #   Offline checks, Cross-repo contract  every pull request (as before).
 #   Service trust proof                  only when a platform path changed (the old `paths:` filter),
-#                                        with its native-game job.
+#                                        (its native-game job is deferred: manual only for now).
 # The three lanes no longer have a pull_request trigger of their own (that would run each twice);
 # their push, manual and job definitions are unchanged. Nothing here deploys.
 name: CI verdict
@@ -50,7 +50,9 @@ jobs:
     if: needs.scope.outputs.platform == 'true'
     uses: ./.github/workflows/service-trust-proof.yml
     with:
-      native_game: true
+      # Deferred by the owner (2026-10-14) until billing, runners and a hosted run are verified;
+      # set true together with tools/ci_verdict.py NATIVE_GAME_REQUIRED.
+      native_game: false
     secrets: inherit
 
   verdict:

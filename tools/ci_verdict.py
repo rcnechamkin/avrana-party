@@ -59,6 +59,13 @@ def touches_platform(changed_paths):
     return any(is_platform_path(p) for p in changed_paths)
 
 
+# Owner decision 2026-10-14 (AVR-305): the 10-minute native-game job is not yet mandatory. It becomes
+# required for platform changes once Actions billing, runner availability and a hosted verification
+# run are resolved; flip this and pass `native_game: true` in ci-verdict.yml together. Until then a
+# native-game run (manual dispatch) that fails still fails the verdict.
+NATIVE_GAME_REQUIRED = False
+
+
 def _norm(result):
     result = (result or '').strip().lower()
     return NOT_RUN if result == '' else result
@@ -68,15 +75,15 @@ def decide(changed_paths, offline, cross_repo, trust, native_game):
     """(ok, reasons). Each lane result is one of RESULTS.
 
     Offline checks and Cross-repo contract apply to every pull request: they must have succeeded.
-    The Service trust proof workflow and its native-game job apply when a platform path changed:
-    then both must have succeeded. When no platform path changed they are not required, but if one
+    The Service trust proof workflow applies when a platform path changed: then it must have
+    succeeded, and so must its native-game job when NATIVE_GAME_REQUIRED (deferred for now). When no platform path changed they are not required, but if one
     ran anyway and did not succeed that is still a failure.
     """
     lanes = (('Offline checks', _norm(offline), True),
              ('Cross-repo contract', _norm(cross_repo), True))
     platform = touches_platform(changed_paths)
     lanes += (('Service trust proof', _norm(trust), platform),
-              ('Service trust proof / native-game', _norm(native_game), platform))
+              ('Service trust proof / native-game', _norm(native_game), platform and NATIVE_GAME_REQUIRED))
     reasons = []
     for name, result, required in lanes:
         if result not in RESULTS:

@@ -4,6 +4,7 @@ import itertools
 from pathlib import Path
 import re
 import unittest
+from unittest import mock
 
 from avrana import REPO_ROOT
 
@@ -53,11 +54,21 @@ class Decide(unittest.TestCase):
         self.assertEqual(cv.decide(DOCS, OK, OK, S, N), (True, []))
         self.assertEqual(cv.decide(DOCS, OK, OK, N, ''), (True, []))
 
-    def test_platform_change_needs_the_proof_and_native_game(self):
-        self.assertTrue(cv.decide(PLATFORM, OK, OK, OK, OK)[0])
-        for trust, native in ((S, OK), (N, OK), (OK, S), (OK, N), (OK, ''), (S, S), (F, OK), (OK, F), (C, OK), (OK, C)):
-            with self.subTest(trust=trust, native=native):
-                self.assertFalse(cv.decide(PLATFORM, OK, OK, trust, native)[0])
+    def test_platform_change_needs_the_proof_and_native_game_when_required(self):
+        with mock.patch.object(cv, 'NATIVE_GAME_REQUIRED', True):
+            self.assertTrue(cv.decide(PLATFORM, OK, OK, OK, OK)[0])
+            for trust, native in ((S, OK), (N, OK), (OK, S), (OK, N), (OK, ''), (S, S), (F, OK), (OK, F), (C, OK), (OK, C)):
+                with self.subTest(trust=trust, native=native):
+                    self.assertFalse(cv.decide(PLATFORM, OK, OK, trust, native)[0])
+
+    def test_native_game_is_deferred_by_default(self):
+        self.assertFalse(cv.NATIVE_GAME_REQUIRED)        # owner decision 2026-10-14
+        for native in (S, N, ''):
+            self.assertTrue(cv.decide(PLATFORM, OK, OK, OK, native)[0])
+        for native in (F, C):                             # a run that failed still fails
+            self.assertFalse(cv.decide(PLATFORM, OK, OK, OK, native)[0])
+        for trust in (S, N, F, C):                        # the trust proof itself stays required
+            self.assertFalse(cv.decide(PLATFORM, OK, OK, trust, S)[0])
 
     def test_always_lanes_must_succeed_on_every_change(self):
         for paths in (DOCS, PLATFORM, []):
@@ -81,17 +92,19 @@ class Decide(unittest.TestCase):
 
     def test_every_combination_against_the_rule(self):
         results = (OK, F, C, S, N)
-        for paths, combo in itertools.product((DOCS, PLATFORM), itertools.product(results, repeat=4)):
-            off, cross, trust, native = combo
-            platform = paths is PLATFORM
-            expect = off == OK and cross == OK
-            for r in (trust, native):
-                expect = expect and (r == OK or (not platform and r in (S, N)))
-            with self.subTest(paths=paths, combo=combo):
-                self.assertEqual(cv.decide(paths, *combo)[0], expect)
+        for required in (False, True):
+            with mock.patch.object(cv, 'NATIVE_GAME_REQUIRED', required):
+                for paths, combo in itertools.product((DOCS, PLATFORM), itertools.product(results, repeat=4)):
+                    off, cross, trust, native = combo
+                    platform = paths is PLATFORM
+                    expect = off == OK and cross == OK
+                    expect = expect and (trust == OK or (not platform and trust in (S, N)))
+                    expect = expect and (native == OK or (not (platform and required) and native in (S, N)))
+                    with self.subTest(required=required, paths=paths, combo=combo):
+                        self.assertEqual(cv.decide(paths, *combo)[0], expect)
 
     def test_reasons_name_the_lane(self):
-        ok, reasons = cv.decide(PLATFORM, F, OK, S, N)
+        ok, reasons = cv.decide(PLATFORM, F, OK, S, F)
         self.assertFalse(ok)
         text = '\n'.join(reasons)
         for name in ('Offline checks', 'Service trust proof', 'native-game'):
