@@ -16,7 +16,7 @@ See [AGENTS](../AGENTS.md), [documentation map](README.md) and [generated-file g
   read-only and with complete pagination. The separate Avrana Game project is excluded.
   Both repos use the same project scope because Party/provider work crosses repository boundaries.
 - Regenerate on local commits/checkouts/merges, in watch mode after input changes or snapshot
-  expiry, and in CI after main pushes, every six hours and manual dispatch.
+  expiry. In CI the refresh runs only on manual dispatch (`.github/workflows/graphify.yml`).
 - Commit configuration, tooling, instructions, and optionally reviewed portable semantic graphs
   plus their generated receipts. Everything containing Linear state stays ignored/local.
 - Detect stale context with SHA256 input/output hashes, toolkit/config/version metadata, Graphify
@@ -137,7 +137,7 @@ also removed. Failures do not print API responses or model/source text into CI l
 The existing offline/test workflows run configuration and fixture checks with no credentials.
 `Graphify derived context` calls the single reusable Party refresh workflow; Games pins that workflow
 and toolkit to the same immutable commit. Canonical Party documentation uses a separate current-main
-checkout, refreshed by CI every run and by local ensure/hooks/watch at most every six hours.
+checkout, refreshed by each dispatched CI run and by local ensure/hooks/watch at most every six hours.
 Thus documentation freshness does not depend on updating the executable toolkit pin. Changes to
 shared tooling require deliberately updating both Games pins. Public architecture artifacts contain no Linear state or machine path sidecars.
 The read-only job has `contents: read` and cannot commit, merge, deploy or mutate Linear.

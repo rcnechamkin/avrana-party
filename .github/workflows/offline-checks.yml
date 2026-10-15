@@ -41,7 +41,7 @@ jobs:
         run: npm run check:repo
 
       # History is evidence, not architecture: a PR that edits docs/archive or an existing dated
-      # finding fails unless it carries the `historical-edit` label (docs/WORKFLOW.md).
+      # finding fails unless it carries the `historical-edit` label (docs/REPOSITORY-GOVERNANCE.md).
       - name: Historical documents are not edited without intent
         if: github.event_name == 'pull_request'
         env:

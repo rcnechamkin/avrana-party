@@ -109,7 +109,7 @@ npm run test:offline
 
 These cover repository structure, documentation links, generated files, Python and JavaScript logic, and browser behavior against a local test server.
 
-Linux CI also runs nginx and logrotate checks.
+The full Linux CI lane, started manually from GitHub Actions, also checks the committed nginx site and logrotate configuration against real binaries.
 
 See [CONTRIBUTING](CONTRIBUTING.md#set-up-and-test-locally) for platform-specific setup and [TESTING](docs/TESTING.md) for the full test layout.
 
@@ -164,7 +164,7 @@ There are a few different records in the project, and they deliberately answer d
 | Where is the project heading? | [ROADMAP](docs/ROADMAP.md) |
 | What does each test actually prove? | [TESTING](docs/TESTING.md) |
 | What rules should contributors and coding agents follow? | [AGENTS.md](AGENTS.md) |
-| How does a change get from an idea to a playtested deployment? | [WORKFLOW](docs/WORKFLOW.md) |
+| How do changes get reviewed, checked in CI and released? | [CONTRIBUTING](CONTRIBUTING.md), [WORKFLOW](docs/WORKFLOW.md) |
 
 A merged PR means the source changed. It does not automatically mean that change has been deployed or tested on real hardware.
 
@@ -172,8 +172,6 @@ Historical findings and old handoffs are preserved in the [archive](docs/archive
 
 ## License
 
-The package metadata currently identifies the project as ISC, but the repository does not yet contain a LICENSE file.
+Avrana Party is proprietary software; all rights are reserved. See [LICENSE](LICENSE).
 
-Until that discrepancy is resolved, do not assume licensing terms that are not explicitly present in the repository.
-
-See [CONTRIBUTING](CONTRIBUTING.md#licensing-and-sensitive-reports) for the current notice. Existing third-party notices remain in place.
+Third-party components keep their own licenses. They are inventoried, with their redistribution posture, in [contracts/third-party.v1.json](contracts/third-party.v1.json); see also [assets/vendor/README.md](assets/vendor/README.md) and [the LAN Games notice](docs/references/LAN-GAMES-NOTICE.md).
