@@ -332,8 +332,8 @@ depicts it → a generic icon.**
 **Planned, not implemented (AVR-466; owner decisions 2026-10-14).** Packages are to be able to bundle
 their own artwork, which adds two steps to this order: **owner cover → the package's cover → the
 package's icon → the title's own art → curated art → a generic icon.** Today none of it exists: an
-installed package's tile draws its kind icon. The contract is in
-[`.avrgame` package, bundled artwork](design/AVRGAME-PACKAGE.md#bundled-artwork-planned-avr-466-not-implemented).
+installed package's tile draws its kind icon (the package validator and packer already accept the images; nothing serves or draws them yet). The contract is in
+[`.avrgame` package, bundled artwork](design/AVRGAME-PACKAGE.md#bundled-artwork-avr-466-experimental).
 
 - **The owner's cover (AVR-306):** a picture the owner has a copy of (box art), one per game,
   **never committed**. It is a file named for the game (`<game id>.jpg`, `.jpeg`, `.png`, `.webp`

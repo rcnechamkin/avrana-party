@@ -128,6 +128,8 @@ are refused. The recipe is a convenience for the packer and is **not** inside th
 | `avrgame.json` | {{MAX_MANIFEST_KIB}} KiB |
 | A file name | {{MAX_NAME_LENGTH}} characters, {{MAX_DEPTH}} path segments |
 | `server.args` | 1 to {{MAX_ARGS}} strings, each 1 to {{MAX_ARG}} printable characters |
+| One bundled image | {{ART_PIXELS}} pixels at most; bytes and sides per role in the `artwork` entry below |
+| All bundled images | {{ART_TOTAL_MIB}} MiB |
 
 Sizes are checked against the bytes actually read, not only the sizes an archive claims.
 
@@ -172,6 +174,20 @@ Validation lists **every** problem it finds, one per line on stderr, and exits 1
   name and by content; WebAssembly is allowed. Nothing is installed, built or run for a package: the
   `scripts` of a vendored `package.json` are never read.
 - **`client.root`** is a relative directory inside the package and must contain `index.html`.
+- **`artwork`** (optional, experimental) bundles images. The format string does not change, and a package
+  without the block is validated exactly as before. Every key is optional; an unknown key (there is no
+  `credit` field) is refused. Each value is a relative path of a file in the package, outside
+  `client.root`; a declared image that is missing or invalid refuses the package, with every problem
+  listed. `cover`: square, {{ART_COVER_MIN}} to {{ART_COVER_MAX}} pixels on a side, at most {{ART_COVER_KIB}} KiB.
+  `icon`: square, {{ART_ICON_MIN}} to {{ART_ICON_MAX}} pixels, at most {{ART_ICON_KIB}} KiB. `banner`: 16:9 within
+  {{ART_BANNER_TOLERANCE}}%, 640x360 to 1920x1080, at most {{ART_BANNER_KIB}} KiB. `screenshots`: up to {{ART_SHOTS}}
+  entries `{"path": ..., "alt": ...}` with `alt` 1 to {{ART_ALT}} printable characters, any shape from 9:16 to 16:9,
+  at most {{ART_SHOT_LONG}} pixels on the long side and {{ART_SHOT_KIB}} KiB each. Formats: WebP (preferred), PNG or
+  JPEG (`.webp`, `.png`, `.jpg`, `.jpeg`), static only. The type is read from the file's content and must
+  agree with its extension; SVG, AVIF, GIF, animated WebP and animated PNG are refused. Dimensions are read from
+  the file header and the file's structure is walked, but pixels are never decoded. `pack` also adds a
+  declared image that the recipe's `include` list does not name, and warns (without refusing) when an
+  image carries EXIF or XMP metadata. You warrant the right to redistribute every bundled image.
 - **Capability names**: the Game Contract's `requires` and `optional` lists may use only names from the
   capability vocabulary, listed with a one-line meaning in the section "Capability names" below. The file
   `contracts/capabilities.v0.json` in this export holds the same names; its labels, summaries and probe

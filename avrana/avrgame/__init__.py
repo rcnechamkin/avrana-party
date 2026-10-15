@@ -23,7 +23,8 @@ supported_requires() -> {'session': (...), 'bridge': (...), 'result': (...)}
 read(path) -> Package        validate a .avrgame file without extracting (alias: inspect)
 extract(path, dest) -> Package   validate, then unpack into a new or empty directory
 scan(data: bytes) -> (Package, zipfile.ZipFile)   validate archive bytes already in memory
-pack(source_root, manifest_path, includes, out_path, compress=False) -> Package
+pack(source_root, manifest_path, includes, out_path, compress=False, warnings=None) -> Package
+                             declared `artwork` files are included; `warnings` (a list) receives notes
 load_recipe(path) -> Recipe, pack_recipe(recipe_path, out_path=None, compress=False) -> Package,
 validate_recipe(recipe_path) -> Package        developer build recipe (avrgame.build.json);
                              stored (uncompressed) by default so the sha256 is reproducible

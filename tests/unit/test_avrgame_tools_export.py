@@ -48,7 +48,7 @@ COMMIT = '0123456789abcdef0123456789abcdef01234567'
 ALLOWED = {
     'AVRGAME-PACKAGE-FORMAT.md', 'MANIFEST.json', 'NOTICE.md', 'README.md',
     'avrana/__init__.py',
-    'avrana/avrgame/__init__.py', 'avrana/avrgame/__main__.py', 'avrana/avrgame/archive.py',
+    'avrana/avrgame/__init__.py', 'avrana/avrgame/__main__.py', 'avrana/avrgame/archive.py', 'avrana/avrgame/artwork.py',
     'avrana/avrgame/build.py', 'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py', 'avrana/avrgame/node.py',
     'avrana/contracts/__init__.py', 'avrana/contracts/game.py', 'avrana/contracts/party_games.py',
     'avrana/contracts/strictjson.py', 'avrana/contracts/vocabulary.py',
@@ -56,7 +56,7 @@ ALLOWED = {
     'contracts/capabilities.v0.json',
 }
 ALLOWED_MODULES = {
-    'avrana', 'avrana.avrgame', 'avrana.avrgame.__main__', 'avrana.avrgame.archive', 'avrana.avrgame.build',
+    'avrana', 'avrana.avrgame', 'avrana.avrgame.__main__', 'avrana.avrgame.archive', 'avrana.avrgame.artwork', 'avrana.avrgame.build',
     'avrana.avrgame.common', 'avrana.avrgame.manifest', 'avrana.avrgame.node', 'avrana.contracts', 'avrana.contracts.game',
     'avrana.contracts.party_games', 'avrana.contracts.strictjson', 'avrana.contracts.vocabulary',
     'avrana.party', 'avrana.party.protocol', 'avrana.party.result',
@@ -256,7 +256,7 @@ class ContentsTests(Built):
         self.assertEqual(tools.SPEAKS, {'package_format': avrgame.FORMAT, 'recipe_format': avrgame.RECIPE_FORMAT,
                                         **manifest['requires_spoken']})
         self.assertEqual((manifest['source_commit'], manifest['source_dirty'], manifest['experimental']), (COMMIT, False, True))
-        self.assertEqual(manifest['tools_version'], 'experimental.2')
+        self.assertEqual(manifest['tools_version'], 'experimental.3')
         self.assertRegex(manifest['speaks_digest'], r'^[0-9a-f]{12}$')
 
     def test_the_documents_are_complete_experimental_and_say_what_is_open(self):

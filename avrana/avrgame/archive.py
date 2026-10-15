@@ -12,7 +12,7 @@ import zipfile
 import zlib
 from dataclasses import dataclass
 
-from . import common, node
+from . import artwork, common, node
 from .common import MANIFEST_NAME, Problems, Refused, bytecode, clip, name_problem, secret_problem
 from .manifest import client_index, entry_problem, parse, validate_manifest
 
@@ -205,6 +205,8 @@ def scan(data, vocab=None):
         missing = entry_problem(manifest, names)
         if missing:
             problems.add(missing)
+        for why in artwork.missing_problems(manifest.get('artwork', {}), names):
+            problems.add(why)
     # A Node package ships source only: compiled code is refused by name here and by content below.
     node_package = manifest is not None and manifest['server']['interpreter'] == node.NAME
     if node_package:
@@ -225,6 +227,19 @@ def scan(data, vocab=None):
                 problems.add(native)
         listing.append(PackageFile(info.orig_filename, size, digest))
     problems.raise_if_any()
+    if manifest.get('artwork'):
+        by_name = {i.orig_filename: i for i in files}
+        sizes = {entry.path: entry.size for entry in listing}
+
+        def read_image(name):
+            try:
+                return zf.read(by_name[name])
+            except _DAMAGE as exc:
+                raise Refused(f'entry {clip(name)}: damaged ({type(exc).__name__})') from None
+        found, _ = artwork.file_problems(manifest['artwork'], sizes, read_image)
+        for why in found:
+            problems.add(why)
+        problems.raise_if_any()
     package = Package(manifest=manifest, game=manifest['game'], id=manifest['game']['id'],
                       version=manifest['package']['version'], sha256=hashlib.sha256(data).hexdigest(),
                       size=len(data), files=tuple(listing), total_bytes=total)

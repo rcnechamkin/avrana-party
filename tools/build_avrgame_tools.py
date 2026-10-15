@@ -17,7 +17,7 @@ no signing. Format validation is not publisher trust.
 What is in the export (standard library only; nothing from a package is ever executed):
 
   code copied from this repository: the code is unchanged, LF-normalised
-      avrana/avrgame/{__init__,archive,build,common,manifest,node,__main__}.py
+      avrana/avrgame/{__init__,archive,artwork,build,common,manifest,node,__main__}.py
       avrana/contracts/{strictjson,game,vocabulary}.py
     Comments and docstrings that name internal material (the DENY list below) are removed from the
     exported copy only, by `tokenize` and `ast` (whole comment blocks, and the flagged sentences of a
@@ -69,7 +69,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 EXPORT_FORMAT = 'avrana.avrgame-tools-export/experimental.1'
-TOOLS_REVISION = 2
+TOOLS_REVISION = 3
 TOOLS_VERSION = f'experimental.{TOOLS_REVISION}'
 NAME = f'avrana-avrgame-tools-{TOOLS_VERSION}'
 ZIP_NAME = f'{NAME}.zip'
@@ -87,11 +87,11 @@ SPEAKS = {
     'bridge': 'avrana.party-bridge/v1',
     'result': 'avrana.game-result/v1',
 }
-SPEAKS_DIGEST = '80d21bea6809'
+SPEAKS_DIGEST = '43d083cf813b'
 
 # Code copied from the repository (LF-normalised, internal comments and docstrings scrubbed).
 COPIED = (
-    'avrana/avrgame/__init__.py', 'avrana/avrgame/archive.py', 'avrana/avrgame/build.py',
+    'avrana/avrgame/__init__.py', 'avrana/avrgame/archive.py', 'avrana/avrgame/artwork.py', 'avrana/avrgame/build.py',
     'avrana/avrgame/common.py', 'avrana/avrgame/manifest.py', 'avrana/avrgame/node.py', 'avrana/avrgame/__main__.py',
     'avrana/contracts/strictjson.py', 'avrana/contracts/game.py', 'avrana/contracts/vocabulary.py',
 )
@@ -624,6 +624,7 @@ def template_values(source, files):
     """Placeholder values read from the sources, so the README cannot disagree with the code."""
     common = constants(files['avrana/avrgame/common.py'].decode())
     manifest = constants(files['avrana/avrgame/manifest.py'].decode())
+    art = constants(files['avrana/avrgame/artwork.py'].decode())
     game = constants(files['avrana/contracts/game.py'].decode())
     bridge = json.loads(read_text_file(source, PARTY_GAMES_JSON))['bridge']['protocol']
     ceilings = community_ceilings(source)
@@ -634,6 +635,13 @@ def template_values(source, files):
         'MAX_TOTAL_MIB': str(common['MAX_TOTAL_BYTES'] // mib), 'MAX_ARCHIVE_MIB': str(common['MAX_ARCHIVE_BYTES'] // mib),
         'MAX_MANIFEST_KIB': str(common['MAX_MANIFEST_BYTES'] // kib), 'MAX_NAME_LENGTH': str(common['MAX_NAME_LENGTH']),
         'MAX_DEPTH': str(common['MAX_DEPTH']), 'MAX_ARGS': str(manifest['MAX_ARGS']), 'MAX_ARG': str(manifest['MAX_ARG']),
+        'ART_PIXELS': str(art['MAX_ART_PIXELS']), 'ART_TOTAL_MIB': str(art['MAX_ART_TOTAL_BYTES'] // mib),
+        'ART_COVER_KIB': str(art['COVER_LIMITS'][0] // kib), 'ART_COVER_MIN': str(art['COVER_LIMITS'][1]),
+        'ART_COVER_MAX': str(art['COVER_LIMITS'][2]), 'ART_ICON_KIB': str(art['ICON_LIMITS'][0] // kib),
+        'ART_ICON_MIN': str(art['ICON_LIMITS'][1]), 'ART_ICON_MAX': str(art['ICON_LIMITS'][2]),
+        'ART_BANNER_KIB': str(art['BANNER_LIMITS'][0] // kib), 'ART_BANNER_TOLERANCE': str(art['BANNER_TOLERANCE_PERCENT']),
+        'ART_SHOTS': str(art['MAX_SCREENSHOTS']), 'ART_ALT': str(art['MAX_ALT']),
+        'ART_SHOT_LONG': str(art['SCREENSHOT_MAX_LONG_SIDE']), 'ART_SHOT_KIB': str(art['SCREENSHOT_MAX_BYTES'] // kib),
         'PERMISSIONS': ', '.join(f'`{p}`' for p in game['PERMISSIONS']),
         'REQ_SESSION': string_constant(read_text_file(source, PROTOCOL_SOURCE).decode(), 'VERSION', PROTOCOL_SOURCE),
         'REQ_RESULT': string_constant(read_text_file(source, RESULT_SOURCE).decode(), 'SCHEMA', RESULT_SOURCE),
@@ -895,6 +903,7 @@ def speaks_facts(files, source):
         },
         'limits': {**{k: v for k, v in sorted(common.items()) if k.startswith('MAX_')},
                    **{k: manifest[k] for k in ('MAX_ARGS', 'MAX_ARG')}},
+        'artwork': dict(sorted(constants(files['avrana/avrgame/artwork.py'].decode()).items())),
         'permissions': list(constants(files['avrana/contracts/game.py'].decode())['PERMISSIONS']),
         'interpreters': interpreter_names(manifest_text),
         'ceilings': community_ceilings(source),
