@@ -28,6 +28,8 @@ from avrana.web import build
 from avrana.web.devserver import SHELL_HEADERS
 
 SITE = (REPO_ROOT / 'avrana-party.nginx').read_text(encoding='utf-8')
+# AVR-466 (DRAFT, deploy gated): the one location that serves package art
+PKGART = '~ "^/party/pkgart/(?<art_game>[a-z][a-z0-9_-]{0,39})/(?<art_file>[0-9a-f]{16}\\.(webp|png|jpg))$"'
 APPLE_SUCCESS = '<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>\n'
 
 
@@ -156,7 +158,7 @@ class StaticRules(unittest.TestCase):
 
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
-                                                 '= /party/bridge.html', '= /party/catalog.json', '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
+                                                 '= /party/bridge.html', '= /party/catalog.json', PKGART, '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
         from avrana.contracts import game             # the slug nginx accepts is a Game Contract id
         self.assertIn(game.ID.pattern.strip('^$'), self.GAMES[2])
         self.assertFalse(any('/party' in loc for loc in locations(self.http)))
@@ -173,6 +175,33 @@ class StaticRules(unittest.TestCase):
         from avrana.ops import catalog_overlay
         self.assertIn(catalog_overlay.DEFAULT_DIR + '/' + catalog_overlay.FILE_NAME, body)
         self.assertIn(catalog_overlay.DEFAULT_BASE, body)
+
+    def test_package_art_is_one_regular_expression_location_over_one_directory_and_nothing_else(self):
+        """AVR-466 (DRAFT, deploy gated): /party/pkgart/<game id>/<16 hex>.<ext> -> the overlay's art directory."""
+        name = PKGART
+        self.assertEqual(sum(loc == name for loc in locations(self.https)), 1)
+        body = location_body(self.https, name)
+        self.assertEqual(re.findall(r'alias\s+([^;]+);', body), ['/var/lib/avrana-party/catalog/art/$art_game/$art_file'])
+        self.assertIn('/var/lib/avrana-party/catalog/art/', body)       # the overlay's directory (avrana.ops.catalog_overlay)
+        self.assertEqual(dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body)), {
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Referrer-Policy': 'same-origin'})
+        self.assertNotRegex(body, r'autoindex|proxy_pass|try_files|Service-Worker-Allowed|\$(?!art_game|art_file)')
+        self.assertRegex(body, r'types\s*\{\s*image/webp webp;\s*image/png png;\s*image/jpeg jpg;\s*\}')
+        # only on the Party host over HTTPS: not on plain HTTP and not on the game origin
+        self.assertNotIn('pkgart', self.http)
+        self.assertNotIn('pkgart', server_blocks(SITE)[2])
+        # the regex is the whole defence: the shapes it must refuse
+        pattern = re.compile(r'^/party/pkgart/([a-z][a-z0-9_-]{0,39})/([0-9a-f]{16}\.(webp|png|jpg))$')
+        self.assertTrue(pattern.match('/party/pkgart/hello/0123456789abcdef.webp'))
+        for bad in ('/party/pkgart/hello/0123456789abcdef.svg', '/party/pkgart/hello/0123456789ABCDEF.png',
+                    '/party/pkgart/hello/0123456789abcde.png', '/party/pkgart/Hello/0123456789abcdef.png',
+                    '/party/pkgart/../hello/0123456789abcdef.png', '/party/pkgart/hello/x/0123456789abcdef.png',
+                    '/party/pkgart/hello/0123456789abcdef.png/', '/party/pkgart/hello/0123456789abcdef.jpeg',
+                    '/party/pkgart/hello/.0123456789abcdef.png'):
+            self.assertFalse(pattern.match(bad), bad)
 
     def test_shell_headers_match_the_dev_server(self):
         body = location_body(self.https, '/party/')
@@ -515,6 +544,37 @@ http {{
             overlay.unlink()
             overlay.parent.rmdir()
         self.assertEqual(self.get('/party/catalog.json', https=True)[1], release)
+
+    def test_package_art_is_served_from_the_overlay_directory_only_by_its_exact_name(self):
+        """AVR-466 (DRAFT, deploy gated): content-addressed files, appliance-chosen type, immutable, never listed."""
+        art = self.tmp / 'overlay' / 'art' / 'demo'
+        art.mkdir(parents=True)
+        try:
+            files = {'0123456789abcdef.png': (b'\x89PNG fake', 'image/png'), '1123456789abcdef.webp': (b'RIFF fake', 'image/webp'),
+                     '2123456789abcdef.jpg': (b'\xff\xd8 fake', 'image/jpeg')}
+            for name, (data, _) in files.items():
+                (art / name).write_bytes(data)
+            (art / 'secret.txt').write_bytes(b'not art')
+            (art / '3123456789abcdef.svg').write_bytes(b'<svg onload=alert(1)>')
+            for name, (data, kind) in files.items():
+                res, body = self.get('/party/pkgart/demo/' + name, https=True)
+                self.assertEqual((res.status, body), (200, data), name)
+                self.assertEqual(res.getheader('Content-Type'), kind, name)
+                self.assertEqual(res.getheader('Cache-Control'), 'public, max-age=31536000, immutable')
+                self.assertEqual(res.getheader('X-Content-Type-Options'), 'nosniff')
+                self.assertEqual(res.getheader('Content-Security-Policy'), "default-src 'none'; sandbox")
+                self.assertEqual(res.getheader('Referrer-Policy'), 'same-origin')
+                self.assertIsNone(res.getheader('Service-Worker-Allowed'))
+            for refused in ('/party/pkgart/demo/', '/party/pkgart/demo', '/party/pkgart/', '/party/pkgart/demo/secret.txt',
+                            '/party/pkgart/demo/3123456789abcdef.svg', '/party/pkgart/demo/0123456789ABCDEF.png',
+                            '/party/pkgart/demo/9123456789abcdef.png', '/party/pkgart/other/0123456789abcdef.png',
+                            '/party/pkgart/demo/0123456789abcdef.png/', '/party/pkgart/demo/%2e%2e/0123456789abcdef.png',
+                            '/party/pkgart/..%2fdemo/0123456789abcdef.png', '/party/pkgart/demo/0123456789abcdef.png%00.txt'):
+                res, _ = self.get(refused, https=True)
+                self.assertEqual(res.status, 404, refused)
+            self.assertEqual(self.get('/party/pkgart/demo/0123456789abcdef.png', https=False)[0].status, 404)   # port 80 has no Party
+        finally:
+            shutil.rmtree(self.tmp / 'overlay', ignore_errors=True)
 
     def test_origin_endpoint(self):
         res, body = self.get('/party/api/origin.json', https=True)
