@@ -151,11 +151,16 @@ server {
     # match, so no other Party page is frameable by it or by anything else). Party Core does not set
     # this header: it serves no pages. Headers must match avrana/web/devserver.py (the /party/bridge.html
     # route) and tests/unit/test_nginx_site.py. Never send the old frame-options header (it cannot name an origin).
+    # CORP same-site + COEP require-corp let a cross-origin isolated game page (COEP require-corp, needed for
+    # SharedArrayBuffer and Emscripten threads) embed this frame; same-site, not cross-origin, because the game
+    # origin is a sibling (games.avrana.net) and no other site has any business loading this page (AVR-467).
     location = /party/bridge.html {
         alias /var/www/avrana-party/web/current/bridge.html;
         add_header Cache-Control "no-cache" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-site" always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://games.avrana.net" always;
     }
 
