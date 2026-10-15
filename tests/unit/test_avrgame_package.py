@@ -347,6 +347,23 @@ class PackAndReadTests(Tmp):
         (root / 'shared' / 'helper.py').write_bytes(b'X = 2\n')
         self.assertNotEqual(self.pack(root, 'd.avrgame').sha256, a.sha256)
 
+    def test_crlf_in_a_text_file_is_a_warning_and_the_bytes_are_kept(self):
+        root = self.make_tree()
+        quiet = []
+        self.pack(root, 'lf.avrgame', warnings=quiet)
+        self.assertEqual(quiet, [])
+        (root / 'shared' / 'helper.py').write_bytes(b'X = 1\r\nY = 2\r\n')
+        (root / 'shared' / 'mixed.json').write_bytes(b'{\r\n"a": 1\n}\n')
+        (root / 'shared' / 'blob.wasm').write_bytes(b'\x00asm\r\n')          # not text: never a warning
+        notes = []
+        package = self.pack(root, 'crlf.avrgame', warnings=notes)
+        self.assertEqual(len(notes), 2, notes)
+        self.assertIn("'shared/helper.py': CRLF line endings", notes[0])
+        self.assertIn("'shared/mixed.json': mixed CRLF and LF line endings", notes[1])
+        self.assertIn('eol=lf', notes[1])
+        with zipfile.ZipFile(package.path) as zf:
+            self.assertEqual(zf.read('shared/helper.py'), b'X = 1\r\nY = 2\r\n')      # packed as found
+
     def test_the_archive_is_sorted_with_fixed_times_modes_and_forward_slashes(self):
         self.pack()
         with zipfile.ZipFile(self.tmp / 'out.avrgame') as zf:
