@@ -26,6 +26,16 @@ test('requirements come from the presentation the phone is given', () => {
   assert.deepEqual(deviceRequirements(g, undefined), { memory_mb: 900 });
 });
 
+test('no player presentation (the phone can only watch): no requirements to check', () => {
+  const watchOnly = { presentations: [
+    { id: 'tv', available: true, roles: ['spectator'], requires: { device: [], device_caps: { memory_mb: 900 } } },
+    { id: 'phone', available: false, roles: ['player'], requires: { device: [], device_caps: { memory_mb: 100 } } },
+  ] };
+  assert.equal(deviceRequirements(watchOnly, undefined), null);
+  assert.equal(deviceRequirements(watchOnly, 'nope'), null);
+  assert.equal(deviceRequirements({}, 'phone'), null);
+});
+
 const cases = [
   ['every check passes', { memory_mb: { status: 'pass' }, opfs: { status: 'pass' } }, true, ''],
   ['a failing check blocks Play and names itself', { memory_mb: { status: 'pass' }, storage_mb: { status: 'fail' } }, false, 'free storage|storage for this game'],

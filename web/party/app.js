@@ -798,6 +798,7 @@ function openRules(game, ob, then = null) {
 }
 
 const deviceChecker = createDeviceChecker();   // EXPERIMENTAL (AVR-469): once per page, per set of needs
+const deviceRedraws = new Set();               // the checks a redraw is already waiting on
 
 /** What the game's declared device needs (contract `requires.device_caps`) say about Play on this
  * phone: { play, why }. A game that declares none is never held up. While the check runs Play waits
@@ -808,11 +809,16 @@ function deviceGate(game) {
   if (!req) return { play: true, why: '' };
   const kept = deviceChecker.peek(req);
   if (kept) return { play: kept.play, why: kept.why };
-  deviceChecker.check(req).then(() => {
-    const view = party.view();
-    const panel = view && setupPanel(view);
-    if (panel && panel.game === game.id) renderScene(view);
-  });
+  const waiting = JSON.stringify(req);
+  if (!deviceRedraws.has(waiting)) {               // one redraw per check, however often the scene is drawn meanwhile
+    deviceRedraws.add(waiting);
+    deviceChecker.check(req).then(() => {
+      deviceRedraws.delete(waiting);
+      const view = party.view();
+      const panel = view && setupPanel(view);
+      if (panel && panel.game === game.id) renderScene(view);
+    });
+  }
   return { play: false, why: 'Checking that this phone can run it…' };
 }
 

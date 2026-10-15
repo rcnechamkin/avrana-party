@@ -17,8 +17,9 @@
 //  - Memory is a non-shared WebAssembly.Memory of the declared size, released at once. That only
 //    RESERVES address space (its pages are never touched): a refusal is real evidence that the phone
 //    cannot, a success only that a reservation of that size is possible now, not that the RAM is there.
-//  - Every check has a time limit (`timeoutMs`), and the checker one more over the whole probe
+//  - Every asynchronous check has a time limit (`timeoutMs`), and the checker one more over the whole probe
 //    (`totalMs`): a check that never settles is 'unknown', so it can never hold Play back.
+//    The memory reservation is synchronous: no timer can interrupt it while it runs (it returns or throws).
 // Pure of the page except through `env` (default globalThis), so tests inject fakes.
 
 const PAGE = 65536;

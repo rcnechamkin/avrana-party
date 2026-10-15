@@ -35,7 +35,8 @@ declares needs, the phone runs the probe (once per page, then kept). Results are
   ("This phone does not have enough free storage for this game (about 2000 MB). You can watch
   this one."). Nobody else's choice changes.
 - **unknown** (the probe threw, took longer than its time limit, or the API does not report; each
-  check has a limit, and the whole probe another, so a check that never finishes cannot hold Play): never a pass, and does not
+  asynchronous check has a limit, and the whole probe another, so a check that never finishes cannot
+  hold Play; the memory reservation is synchronous, so a limit cannot interrupt it, only follow it): never a pass, and does not
   block Play. It is shown: "Could not check this phone's memory. The game checks again when it
   starts."
 - **launch** (`shared_memory` only): neither pass nor fail: "The game checks this phone's shared
@@ -58,6 +59,19 @@ new Party Core route or message, no change to the session lifecycle or Host flow
 - Worker probing uses a file of Party's own origin (the shell's `worker-src` is `'self'`); the CSP
   is unchanged.
 - Real phones (low-memory Android, iPhone Safari) are Tier 3 and the owner's.
+
+### Definitive or inconclusive, per check
+
+| check | a **fail** is | a **pass** is |
+| --- | --- | --- |
+| `memory_mb` | definitive: the browser refused the reservation now | inconclusive: address space only, no RAM touched |
+| `webgl2_offscreen` | definitive for this browser (no WebGL 2 there) | good evidence; the game's real context may still be refused under memory pressure |
+| `opfs` | definitive: no OPFS in this browser | definitive that it opens; the game origin's own storage may differ |
+| `storage_mb` | good evidence; measured on Party's origin, not the game's | inconclusive: an estimate, and quota can shrink |
+| `shared_memory` | never decided here (`launch`) | never decided here (`launch`) |
+
+Every answer above was produced in desktop Chromium only (Tier 2). **Physical-phone validation is
+open**: no low-memory Android, iPhone Safari or the appliance's Wi-Fi has run this probe.
 
 ## Tests
 
