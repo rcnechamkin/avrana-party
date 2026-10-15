@@ -310,8 +310,9 @@ const overlay=document.querySelector('#start-overlay'), connectLabel=document.qu
 // checking), live (connected, no picture yet), playing, problem. Always with words in #status.
 const link=state=>{document.body.dataset.link=state};
 const showPlayer=n=>{who.hidden=!n;whoLabel.textContent=n?'Player '+n:''};
-// Other games goes back to Party Home (/party/, HTTPS Full Mode only). Plain HTTP (the captive and
-// legacy path, e.g. http://party.local/arcade/) has no /party/, so it goes to / (a link to the Party).
+// Other games goes back to Party Home (/party/). Plain HTTP with no Party (the captive and legacy
+// path, e.g. http://party.local/arcade/) has no /party/, so it goes to / (a link to the Party); a
+// Limited Mode phone (ADR 0012) does have one, and follows the Party below (AVR-290).
 if(!window.isSecureContext)document.querySelector('#home').setAttribute('href','/');
 // Tapping Play shows progress until the picture arrives, and a failure names its likely cause.
 const CONNECT_MS=20000,PICTURE_MS=10000;let connectTimer=null,pictureTimer=null,serverReason=null;
@@ -352,13 +353,16 @@ const partyOrigin=(async()=>{for(let i=0;;i++){const o=await askPartyOrigin();if
 let awake=null,followed=false;
 const wake=m=>{awake=awake||m.createKeepAwake()};
 function sameOrigin(){
- if(followed||!window.isSecureContext)return;followed=true;
- if('wakeLock' in navigator)import('/party/lib/keep-awake.js').then(wake).catch(()=>{});
+ if(followed)return;followed=true;
+ if(window.isSecureContext&&'wakeLock' in navigator)import('/party/lib/keep-awake.js').then(wake).catch(()=>{});
  // Follow the party (AVR-128): when the Party Host starts or switches to a party game, this phone
- // goes there too, like Party Home. Full Mode only; with no Party Core it does nothing. Never fatal.
+ // goes there too, like Party Home. Not gated on a secure context (AVR-290): a Limited Mode phone
+ // (plain HTTP, ADR 0012) follows the same Party over the same /party/api/ with its own credential.
+ // With no Party Core it does nothing. Never fatal.
  // Gauntlet II is itself a Party game (AVR-134). In a Party (ADR 0011) the page stays where the party
  // is, "Other games" is hidden (only the Party Host moves the party) and the host gets End here.
- import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:PARTY_GAME,container:document.querySelector('.foot')})).catch(()=>{});
+ import('/party/lib/party-follow.js').then(m=>m.startPartyFollow({here:PARTY_GAME,container:document.querySelector('.foot')}))
+  .then(api=>{if(api)document.querySelector('#home').setAttribute('href','/party/')}).catch(()=>{});
 }
 const bridge=partyOrigin.then(async origin=>{
  if(!origin){sameOrigin();return null}

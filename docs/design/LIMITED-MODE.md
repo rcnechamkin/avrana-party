@@ -25,6 +25,7 @@ recommendation.
 - [E] nginx already passes `X-Forwarded-Proto $scheme` to Party Core, which does not read it.
 - [E] Game pages and the arcade page load `/party/lib/party-follow.js` only when
   `window.isSecureContext` is true (`arcade/index.html`, Games `avrana-integration.js`).
+  *(Changed by AVR-290, §3.7a: they now load it in any context.)*
 - [E] The shell registers its service worker only in a secure context (`web/party/lib/shell.js`),
   and Wake Lock is probed, not assumed (`keep-awake.js`).
 - [E] The Party lives in memory. A Party Core restart forgets every member (`core.py`).
@@ -166,12 +167,51 @@ which takes seconds.
 origin `secure_context`, `wake_lock` and `service_worker` are "no". The banner lists what is
 missing on this phone and names the installed games it cannot play. In a round's setup, a phone
 that cannot play the game has Play disabled and the reason shown, and may still choose Watch.
-Not yet: a game page in Limited Mode does not follow the party, because game pages and the arcade
-page load the follower only in a secure context (a paired change with Games; tracked as AVR-290).
+A game page and the arcade page in Limited Mode follow the party (AVR-290, §3.7a).
 
 **The notice folds (UX/UI redesign PR 1.4; the owner, 2026-10-06).** The notice on Home can be
 folded away for the visit; the phone is still marked, by the "Limited" mark in the top bar, and
 the mark opens the same three facts. A new visit shows the notice in full again.
+
+### 3.7a How a Limited phone inside a game page or the Arcade follows the Party (AVR-290)
+
+**Decision: the follower transport is the one Limited Party Home already uses; nothing new is
+added.** `web/party/lib/party-follow.js` is the same module, run on the plain-HTTP origin: the
+same same-origin long poll of `/party/api/state` that Party Home runs, authenticated by the
+Limited credential (`avrana_limited`, `Path=/party/`, HttpOnly), through the same Limited
+listener. The module never reads the scheme; the only thing that kept it from a Limited phone was
+the loaders, which started it only when `window.isSecureContext` was true. That gate is removed
+for the follower; Wake Lock keeps its gate (§3.7).
+
+Boundaries, unchanged: no new Party Core route, no protocol or contract change, no cookie or
+`Secure` change (Full Mode keeps `__Host-avrana_device; Secure`), no bridge and no new origin
+(D5). A Limited phone makes no `bridge` ask and follows only to same-origin paths
+(`/party/`, `/games/<slug>/?avrana=1`, `/arcade/`), so it keeps its Limited identity, one member
+and one origin. A Full Mode phone is untouched.
+
+Behaviour, per case:
+
+| Case | Limited phone on a game page or the Arcade |
+|---|---|
+| Load, or a page opened by hand | the page is where the Party is, or goes there at once |
+| Host End, Home, Play again, switch | follows: Party Home, or the other title's page |
+| Reconnect or wake | the follower asks again when the page is shown or the network returns, so a move made meanwhile is followed |
+| Mixed party | each phone follows by its own rules: a Limited phone stays on its origin, a Full Mode phone goes to its game's registered origin (ADR 0013) |
+| Watcher | follows exactly like a player: the move depends on the Party's place, not on the seat |
+| Title not installed or not launchable here | Party Home |
+| No Party Core (the legacy `http://party.local/arcade/` path) | nothing starts; the Arcade's "Other games" keeps going to `/` |
+| Arcade "Other games" | `/party/` once the follower is running; hidden while in a Party |
+
+Paired change. Party: `arcade/index.html` stops gating the follower on a secure context, and the
+follower also asks again when the network returns. Games: `web/avrana-integration.js` stops
+gating the follower on a secure context for same-origin pages (a one-line condition; the module
+path, `window.AvranaParty` and every parameter are unchanged, so it is not a contract change).
+Compatibility: either side may ship first. A new Party with an old Games leaves game pages as they
+were (the arcade follows); a new Games with an old Party makes the import of
+`/party/lib/party-follow.js` run on a plain-HTTP phone, where the module already exists and
+returns null without a Party Core. Rollback: revert either side alone; the other is inert.
+Tier 3, the owner's: a real phone on `http://10.42.0.1` inside BLUFF, EXPO and the Arcade through
+Host End, switch, and a Wi-Fi drop and wake. Nothing here is deployed.
 
 ### 3.8 The second origin in Limited Mode
 
