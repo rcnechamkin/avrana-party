@@ -436,19 +436,67 @@ class FailedRecovery(unittest.TestCase):
         doc, _ = self.build(recovery={'nginx': {'restarts': 0, 'result': 'success', 'active_for_s': None}})
         self.assertEqual(doc['summary']['state'], 'ok')
 
-    def test_a_failed_native_game_or_its_socket_degrades_and_names_only_that_game(self):
-        doc, _ = self.build(failed=['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
+    CHECKERS = ['avrana-game@checkers.service', 'avrana-game@checkers.socket']
+
+    def build_in_session(self, game, state='active', **kw):
+        probes = RecoveryProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}, **kw)
+        core = lambda: {'uptime_s': 5, 'members': 2, 'session': {'game': game, 'state': state} if game else None}
+        return status.build_status(self.cfg, probes, core, now=NOW)
+
+    def test_a_stale_failed_game_with_no_session_is_a_note_and_the_status_smoke_passes(self):
+        from avrana.ops import smoke
+        doc = self.build_in_session(None, failed=self.CHECKERS)
+        self.assertEqual(doc['summary']['state'], 'ok')
+        self.assertEqual(doc['summary']['reasons'], [])
+        self.assertEqual(doc['recovery']['failed_game_units'], self.CHECKERS)
+        self.assertEqual(len(doc['summary']['notes']), 2)
+        self.assertIn('sudo systemctl reset-failed avrana-game@checkers.socket', doc['summary']['notes'][1])
+        self.assertIn('docs/runbooks/service-recovery.md', doc['summary']['notes'][1])
+
+        class Http:
+            def get(self, *a, **k):
+                return 200, {}, json.dumps(doc).encode()
+        self.assertEqual(smoke.check_status(Http(), 'https', '127.0.0.1', 443, 'h').status, smoke.PASS,
+                         'a failed game unit that existed before a deploy cannot roll it back')
+
+    def test_a_failed_unit_of_the_live_sessions_game_degrades(self):
+        for state in ('launching', 'active', 'ending', 'setup'):
+            doc = self.build_in_session('checkers', state, failed=self.CHECKERS)
+            self.assertEqual(doc['summary']['state'], 'degraded', state)
+            self.assertIn('avrana-game@checkers.socket is failed and its game is in the live session; '
+                          'see docs/runbooks/service-recovery.md', doc['summary']['reasons'])
+
+    def test_a_failed_unit_of_another_game_during_a_session_is_a_note(self):
+        doc = self.build_in_session('bluff', failed=self.CHECKERS)
+        self.assertEqual(doc['summary']['state'], 'ok')
+        self.assertEqual(doc['summary']['reasons'], [])
+        self.assertEqual(len(doc['summary']['notes']), 2)
+
+    def test_an_ended_session_no_longer_makes_its_game_meaningful(self):
+        doc = self.build_in_session('checkers', 'ended', failed=self.CHECKERS)
+        self.assertEqual(doc['summary']['state'], 'ok')
+
+    def test_unobservable_failures_are_unknown_only_while_a_session_is_live(self):
+        self.assertEqual(self.build_in_session('checkers', failed=None)['summary']['state'], 'unknown')
+        for game in (None,):
+            doc = self.build_in_session(game, failed=None)
+            self.assertEqual(doc['summary']['state'], 'ok')
+            self.assertIsNone(doc['recovery']['failed_game_units'])
+        self.assertEqual(self.build_in_session('checkers', 'ended', failed=None)['summary']['state'], 'ok')
+
+    def test_a_failed_native_game_or_its_socket_of_the_live_session_names_only_that_game(self):
+        doc = self.build_in_session('checkers', failed=['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
         self.assertEqual(doc['summary']['state'], 'degraded')
         self.assertEqual(doc['recovery']['failed_game_units'],
                          ['avrana-game@checkers.service', 'avrana-game@checkers.socket'])
-        self.assertIn('avrana-game@checkers.socket is failed; see docs/runbooks/service-recovery.md',
-                      doc['summary']['reasons'])
+        self.assertIn('avrana-game@checkers.socket is failed and its game is in the live session; '
+                      'see docs/runbooks/service-recovery.md', doc['summary']['reasons'])
         self.assertEqual(doc['services'], {'avrana-party-core': 'active', 'avranaparty-arcade': 'active',
                                            'nginx': 'active'}, 'the other services are untouched')
 
-    def test_game_units_that_cannot_be_listed_are_unknown_never_ok(self):
+    def test_without_a_party_core_view_unobservable_game_units_do_not_by_themselves_make_it_unknown(self):
         doc, _ = self.build(failed=None)
-        self.assertEqual(doc['summary']['state'], 'unknown')
+        self.assertEqual(doc['summary']['state'], 'ok')
 
     def test_an_uninstalled_unit_is_not_asked_about(self):
         doc, _ = self.build(units={'nginx': 'not-installed'})

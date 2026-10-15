@@ -33,7 +33,9 @@ journalctl -u <unit> -n 100 --no-pager
 
 `summary.reasons` names what did not recover: `<unit> is restarting after failures (N automatic
 restarts)` (a crash loop), `<unit> stopped restarting (start limit hit)`, `avrana-game@<slug>.socket
-is failed`. `recovery.units` gives each unit's restart count. A note `<unit> came back after N
+is failed and its game is in the live session`. A failed native game that no live session uses is only a note
+(`avrana-game@<slug>.socket is failed but no live session uses it: sudo systemctl reset-failed ...`), so it never
+fails a deploy's smoke check or triggers `--auto-rollback`; clear it when convenient with the command below. `recovery.units` gives each unit's restart count. A note `<unit> came back after N
 automatic restart(s)` means it recovered; the cause is still in its journal. No answer from the
 status URL means Party Core itself is down: use `systemctl status avrana-party-core`.
 
