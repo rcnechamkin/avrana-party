@@ -30,6 +30,7 @@ import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemem
 import { createPartyClient } from './lib/party-client.js';
 import { createGameOrigins, gameAddress } from './lib/game-origins.js';
 import { createGoingWatchdog } from './lib/going-watchdog.js';
+import { createDeviceChecker, deviceRequirements } from './lib/device-check.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
 import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
@@ -796,11 +797,30 @@ function openRules(game, ob, then = null) {
   $('rules').showModal();
 }
 
+const deviceChecker = createDeviceChecker();   // EXPERIMENTAL (AVR-469): once per page, per set of needs
+
+/** What the game's declared device needs (contract `requires.device_caps`) say about Play on this
+ * phone: { play, why }. A game that declares none is never held up. While the check runs Play waits
+ * (Watch never does), and the briefing is drawn again when the answer is in. */
+function deviceGate(game) {
+  let req = null;
+  try { req = deviceRequirements(game, evaluateSeat(game, statuses(state.report), 'player').presentation); } catch { req = null; }
+  if (!req) return { play: true, why: '' };
+  const kept = deviceChecker.peek(req);
+  if (kept) return { play: kept.play, why: kept.why };
+  deviceChecker.check(req).then(() => {
+    const view = party.view();
+    const panel = view && setupPanel(view);
+    if (panel && panel.game === game.id) renderScene(view);
+  });
+  return { play: false, why: 'Checking that this phone can run it…' };
+}
+
 async function choose(choice) {
   const view = party.view();
   const game = view && partyGame(state.catalog, view.session && view.session.game);
   const ob = game ? await onboardingFor(game) : null;
-  if (choice === 'player' && game && !seatChoice(state.mode, game, statuses(state.report)).play) return;
+  if (choice === 'player' && game && (!seatChoice(state.mode, game, statuses(state.report)).play || !deviceGate(game).play)) return;
   if (choice === 'player' && game && !acknowledged(ob)) return openRules(game, ob, () => choose('player'));
   const res = await party.choose(choice);
   if (!res.ok) $('scene-status').textContent = res.message || 'Please try again.';
@@ -833,9 +853,10 @@ async function renderScene(view) {
   // One seat, one decision (ADR 0012): in Limited Mode, a phone that cannot play this game here
   // may still watch. Full Mode is not gated.
   const limits = seatChoice(state.mode, game, statuses(state.report), state.catalog.labels || {});
-  $('choose-play').disabled = panel.starting || !limits.play;
+  const device = deviceGate(game);
+  $('choose-play').disabled = panel.starting || !limits.play || !device.play;
   $('choose-watch').disabled = panel.starting || !limits.watch;
-  $('scene-seat').textContent = limits.play ? '' : limits.why || 'This phone can only watch this one.';
+  $('scene-seat').textContent = !limits.play ? limits.why || 'This phone can only watch this one.' : device.why;
   $('scene-start').hidden = !panel.host;
   $('scene-cancel').hidden = !panel.host || panel.starting;
   $('scene-start').disabled = !panel.canStart || state.partyBusy;

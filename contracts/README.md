@@ -103,6 +103,12 @@ same comparison; `--show` prints the result. `pregame` is an extension only beca
 - A method that needs an appliance presenter must require it: `shared_stream` requires
   `presentation.shared_stream`; `controller_only` requires `presentation.tv`; `personal_viewport`
   with `crop` or `dedicated_stream` requires the matching `presentation.personal_viewport.*`.
+- **Experimental (AVR-469):** `requires` may also carry `device_caps`, measured needs a phone is
+  checked against before it is offered Play: `memory_mb` (1 to 4096), `shared_memory` (bool),
+  `webgl2_offscreen` (`"worker"` or `"main"`), `opfs` (bool), `storage_mb` (1 to 102400). Unknown
+  keys and implausible values are refused; it is not allowed under `optional`. `device` keeps its
+  meaning. A phone that fails a check is shown Watch with Play disabled; `shared_memory` is left to
+  the game page. See [DEVICE-REQUIREMENTS](../docs/design/DEVICE-REQUIREMENTS.md).
 
 **Examples:**
 - `arcade-gauntlet2`: a shared stream with a phone controller.

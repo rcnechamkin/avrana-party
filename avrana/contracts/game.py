@@ -111,13 +111,51 @@ def _enum(obj, key, where, values, problems, default=None):
     return value
 
 
-def _requirements(obj, where, vocab, problems):
-    """{device: [...], runtime: [...]} with names from the vocabulary."""
+# EXPERIMENTAL (AVR-469): measured device needs a phone checks before it is offered Play. Additive and
+# optional; `requires.device` (named capabilities) keeps its meaning. Only under `requires`, never `optional`.
+DEVICE_CAPS_INT = {'memory_mb': (1, 4096), 'storage_mb': (1, 102400)}
+DEVICE_CAPS_BOOL = ('shared_memory', 'opfs')
+WEBGL2_OFFSCREEN = ('worker', 'main')
+
+
+def _device_caps(obj, where, problems):
+    """A normalised copy of a valid `device_caps` object, or None after naming every problem."""
+    allowed = set(DEVICE_CAPS_INT) | set(DEVICE_CAPS_BOOL) | {'webgl2_offscreen'}
+    if not _keys(obj, where, allowed, set(), problems):
+        return None
+    if not obj:
+        problems.append(f'{where}: name at least one requirement (or leave device_caps out)')
+    out = {}
+    for key, value in obj.items():
+        if key not in allowed:
+            continue
+        if key in DEVICE_CAPS_INT:
+            low, high = DEVICE_CAPS_INT[key]
+            if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+                problems.append(f'{where}.{key}: a whole number from {low} to {high}')
+                continue
+        elif key in DEVICE_CAPS_BOOL:
+            if not isinstance(value, bool):
+                problems.append(f'{where}.{key}: true or false')
+                continue
+        elif value not in WEBGL2_OFFSCREEN:
+            problems.append(f'{where}.{key}: one of {list(WEBGL2_OFFSCREEN)}')
+            continue
+        out[key] = value
+    return out
+
+
+def _requirements(obj, where, vocab, problems, caps=False):
+    """{device: [...], runtime: [...]} with names from the vocabulary; `caps` also allows device_caps."""
     out = {'device': [], 'runtime': []}
     if obj is None:
         return out
-    if not _keys(obj, where, {'device', 'runtime'}, set(), problems):
+    if not _keys(obj, where, {'device', 'runtime'} | ({'device_caps'} if caps else set()), set(), problems):
         return out
+    if caps and 'device_caps' in obj:
+        measured = _device_caps(obj['device_caps'], f'{where}.device_caps', problems)
+        if measured:
+            out['device_caps'] = measured
     for scope in ('device', 'runtime'):
         if scope in obj:
             allowed = set(getattr(vocab, scope)) if vocab else None
@@ -257,7 +295,7 @@ def validate(doc, vocab=None):
         roles = _names(p.get('roles'), f'{where}.roles', problems, ROLES)
         if not roles:
             problems.append(f'{where}.roles: at least one role')
-        requires = _requirements(p.get('requires'), f'{where}.requires', vocab, problems)
+        requires = _requirements(p.get('requires'), f'{where}.requires', vocab, problems, caps=True)
         optional = _requirements(p.get('optional'), f'{where}.optional', vocab, problems)
         for scope in ('device', 'runtime'):
             both = set(requires[scope]) & set(optional[scope])
