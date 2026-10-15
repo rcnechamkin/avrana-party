@@ -227,7 +227,11 @@ def _write_art(art_dir, rel, data):
     if _same_file(path, data):
         return
     for directory in (Path(art_dir), path.parent):
-        if not directory.is_dir():
+        # Never write through a link or into a stray file: anything that is not a real directory
+        # is removed first (lstat, so a symbolic link is seen as itself, not as its target).
+        if os.path.lexists(directory) and not stat.S_ISDIR(os.lstat(directory).st_mode):
+            os.unlink(directory)
+        if not os.path.lexists(directory):
             os.makedirs(directory, mode=0o755, exist_ok=True)
             os.chmod(directory, 0o755)
     write_atomic(path, data)
@@ -242,6 +246,8 @@ def _art_present(art_dir):
     for top in os.scandir(root):
         if top.is_dir(follow_symlinks=False):
             for item in os.scandir(top.path):
+                if item.name.startswith('.') and item.name.endswith('.tmp'):
+                    continue                    # an atomic write in flight, not a stale picture
                 found.add(f'{top.name}/{item.name}')
         else:
             found.add(top.name)

@@ -865,6 +865,38 @@ class PackageArtwork(OverlayBase):
         self.assertEqual(os.listdir(self.out_dir), [])
 
 
+class ArtFiles(unittest.TestCase):
+    """Review of PR #144: the art writer never writes through a link or into a stray file, and
+    `check` does not count an atomic write in flight as a stale picture."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.art = self.tmp / 'art'
+
+    def test_a_write_in_flight_is_not_present(self):
+        co._write_art(self.art, 'hello/0123456789abcdef.png', b'x')
+        (self.art / 'hello' / '.0123456789abcdef.png.1a2b3c4d.tmp').write_bytes(b'y')
+        self.assertEqual(co._art_present(self.art), {'hello/0123456789abcdef.png'})
+
+    def test_a_stray_file_where_the_id_directory_goes_is_replaced(self):
+        self.art.mkdir()
+        (self.art / 'hello').write_bytes(b'not a directory')
+        co._write_art(self.art, 'hello/0123456789abcdef.png', b'x')
+        self.assertEqual((self.art / 'hello' / '0123456789abcdef.png').read_bytes(), b'x')
+
+    @unittest.skipUnless(os.name == 'posix', 'creating a symbolic link needs POSIX (or a Windows privilege)')
+    def test_a_linked_id_directory_is_never_written_through(self):
+        elsewhere = self.tmp / 'elsewhere'
+        elsewhere.mkdir()
+        self.art.mkdir()
+        (self.art / 'hello').symlink_to(elsewhere, target_is_directory=True)
+        co._write_art(self.art, 'hello/0123456789abcdef.png', b'x')
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertFalse((self.art / 'hello').is_symlink())
+        self.assertEqual((self.art / 'hello' / '0123456789abcdef.png').read_bytes(), b'x')
+
+
 class Command(OverlayBase):
     def run_main(self, *args):
         out, err = io.StringIO(), io.StringIO()
