@@ -26,6 +26,8 @@ Read in this order:
    is the service-identity, secret-ownership and local-IPC mechanism for ADR 0014: what each
    service may read, where a native game's socket, key and state live, and what the first
    field-test appliance does and does not promise.
+   [ADR 0017](../adr/0017-party-owned-messaging.md) (2026-10-16, accepted) is Party-owned
+   messaging: one Party room in Party Core, the sender always the credential's member.
 3. Then whichever focused document matches the work:
    - `FULL-MODE.md` — the deployed HTTPS shell (capability probe, offline copy, keep-awake) and
      the accepted Full Mode / Limited Mode target contract, kept explicitly separate
@@ -82,8 +84,8 @@ Read in this order:
    - `DEPLOYMENT-MANIFEST.md` — what the Pi records about each deployment (`avrana.deployment/v0`)
    - `STATUS-ENDPOINT.md` — `GET /party/api/status`: the running build and its health
      (`avrana.status/v0`)
-   - `MESSAGING.md` — proposed Party-owned messaging service (AVR-53): identity, one room,
-     history, limits, delivery; not accepted.
+   - `MESSAGING.md` — the **accepted** (ADR 0017) Party-owned messaging service (AVR-53):
+     identity, one room, history, limits, delivery; merged (PR #159), not deployed
    - `COMMUNICATION.md` — chat as a platform capability: transport, policy, presentation and
      game-native actions kept separate; default Party chat (HUD + feed); game overrides (PROPOSED)
 
