@@ -16,6 +16,12 @@ do not run `npm test` in Cloud and treat its failure as a product regression.
 **Never run heavy suites on the Pi during a power measurement** — each SSH session is a CPU burst
 (`docs/findings/2026-09-24-new-psu-power-baseline.md`).
 
+## Four-player journey (Tier 2, real Party service + real BLUFF server)
+
+| Check | Command | Notes |
+|---|---|---|
+| Four phones through BLUFF: join, privacy, completion, play again, reconnect, vanished Host, abandoned table, Host End | `python tools/acceptance/four_player_journey.py --games <Games checkout>` (interpreter with the Games requirements) | Writes JSON and Markdown evidence under `test-results/acceptance/`. Simulation: no phones, Wi-Fi, browser, TLS or Pi. Results and GO / NO-GO: [2026-10-15 matrix](findings/2026-10-15-friend-ready-acceptance-matrix.md); owner steps: [checklist](runbooks/friend-ready-owner-checklist.md) |
+
 ## Workflow, contract and operations checks (AVR-230)
 
 All Tier 1–2: no Pi, no phones. Linux CI is authoritative; rows note what Windows skips.
