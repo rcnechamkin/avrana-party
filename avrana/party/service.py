@@ -2,8 +2,8 @@
 
     python3 -m avrana.party.service --config party.json          # binds 127.0.0.1 only
 
-Phones reach it through nginx on the HTTPS server (a deployment step that is NOT done: it needs
-an owner-approved `location /party/api/` on the 443 server). Routes:
+Phones reach it through nginx on the HTTPS server (`location /party/api/` in avrana-party.nginx).
+Routes:
 
     GET  /party/api/state[?since=V&wait=S]   the caller's view; long-polls up to S (<= 25) seconds
                                              for a version newer than V; a member's poll is also
