@@ -95,7 +95,11 @@ viewport and can cover, hide or full-screen over any frame.
   (one import-free file a game can vendor, like `shim.js`; same-origin pages get it from
   `party-follow.js` with `layer: true` or `<html data-avrana-party-layer>`). Protocol
   `avrana.party-layer/v1`: frame → page `ready`, `place {mode: button|tab|open, side, y}`,
-  `drag {x, y}`; page → frame `viewport {w, h, insets}`. No view, name or message text crosses.
+  `drag {x, y}`, `hide` (not a member: nothing over the game); page → frame
+  `viewport {w, h, insets}`. No view, name or message text crosses. On a page of another origin
+  (which owns the frame element and could hide it under a lure), the Host is offered only End and
+  Bring everyone back, which bridge v1 already gives a game page; Hand over hosting and Stop
+  hosting stay on same-origin pages until the owner widens D3 beyond first-party games.
   Bridge v1 and its frozen vectors are untouched, so a game that does not mount the layer, or
   stops mounting it, is exactly as before. The frame is sandboxed (`allow-scripts
   allow-same-origin allow-forms`: it cannot navigate the game page); it answers only a page on
