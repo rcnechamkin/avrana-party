@@ -8,5 +8,5 @@
   "linear_max_age_seconds": 21600,
   "max_file_bytes": 2097152,
   "extensions": [".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh", ".json", ".md"],
-  "exclude": [".git/*", ".github/*", ".claude/*", ".agents/*", ".graphify-context/*", "graphify-out/*", "graphify-public/*", "context/graphify/*", "experiments/*", "assets/vendor/*", "arcade/evidence/*", "docs/findings/*", "docs/archive/*", "docs/research/*", "web/party/art/*", "web/party/avatars/*", "web/party/lib/avatars.js", "web/party/lib/icons.js", "package-lock.json", "node_modules/*", "test-results/*", "playwright-report/*", "CODEX-HANDOFF.md"]
+  "exclude": [".git/*", ".github/*", ".claude/*", ".agents/*", ".graphify-context/*", "graphify-out/*", "graphify-public/*", "context/graphify/*", "experiments/*", "assets/vendor/*", "arcade/evidence/*", "docs/findings/*", "docs/archive/*", "docs/research/*", "web/party/art/*", "web/party/avatars/*", "web/party/lib/avatars.js", "web/party/lib/icons.js", "package-lock.json", "node_modules/*", "test-results/*", "playwright-report/*"]
 }

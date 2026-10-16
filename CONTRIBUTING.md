@@ -2,8 +2,8 @@
 
 Start with [README](README.md) for the product and repository layout, then
 [AGENTS](AGENTS.md) for shared operational rules and [docs](docs/README.md) for the authority map.
-Those rules apply to humans and coding agents alike. [WORKFLOW](docs/WORKFLOW.md) is the whole
-loop from a Linear issue to a deployed, playtested change, including where humans must act.
+Those rules apply to humans and coding agents alike. [WORKFLOW](docs/WORKFLOW.md) summarizes what
+CI runs on a pull request and what is left to manual dispatch and physical testing.
 
 ## Pick and scope work
 
@@ -70,12 +70,11 @@ evidence. Keep live work in Linear and strategy in ROADMAP; do not add root hand
 
 ## Submit a PR
 
-End with the [implementation report](docs/agents/IMPLEMENTATION-REPORT.md): issue, branches,
-commits, behavioral changes, exact test commands and results, docs changed, deployment (normally
-"no"), blockers and follow-ups. Work that spans both repositories uses paired `avr-N` branches
-([CROSS-REPO](docs/CROSS-REPO.md)); CI checks the Party ↔ Games contract against the pair.
-Include the problem, resulting behavior, issue link, scope, source/generated changes, test
-commands/results and any unverified hardware behavior. For docs, identify authority and moved
+Describe the problem, the resulting behavior, the issue link if there is one, source and
+regenerated files, the exact test commands with their results (including what was not run), and
+any hardware behavior that remains unverified. Keep it short. Work that spans both repositories uses
+paired `avr-N` branches ([CROSS-REPO](docs/CROSS-REPO.md)); CI checks the Party ↔ Games contract
+against the pair. For docs, identify authority and moved
 paths. For new decisions, explain amendments without silently rewriting earlier ADR decisions.
 Before every push, confirm the branch, inspect the complete diff and changed-file list, run
 `git diff --check`, and scan for secrets/runtime artifacts. CI must pass before merge.
@@ -83,16 +82,16 @@ Merge and deployment remain separate decisions; nothing is released merely becau
 
 ## Licensing and sensitive reports
 
-The root package metadata says `ISC`, but there is no repository LICENSE. This discrepancy needs
-an owner decision; this guide grants no new license. Preserve existing third-party notices.
+Avrana Party is proprietary; [LICENSE](LICENSE) reserves all rights, and `package.json` declares
+`UNLICENSED` to match. Contributing grants no license. Preserve existing third-party notices and
+record new third-party material in [contracts/third-party.v1.json](contracts/third-party.v1.json).
 Do not put credentials or exploit details exposing a live appliance in a public issue. If GitHub
 offers private vulnerability reporting, use the repository Security tab; otherwise ask the
 maintainer for a private channel without including sensitive details. No private address or
 reporting service is assumed here.
 
-## Derived architecture navigation
+## Optional derived navigation
 
-Use [Graphify](docs/GRAPHIFY.md) before broad searches where useful, after checking freshness.
-Read original docs/code to verify results and live Linear to choose work. CI extracts local ASTs
-without model credentials and flags stale semantic documentation. Interactive host-agent sessions
-refresh semantics. Never hand-edit a generated graph, receipt or private Linear snapshot.
+[Graphify](docs/GRAPHIFY.md) can build an optional code graph for navigation. It is not required
+and is not a source of truth: read the code and documents themselves. Never hand-edit a generated
+graph, receipt or private Linear snapshot.

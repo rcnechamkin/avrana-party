@@ -94,3 +94,20 @@ reconcile-report.json
 # index is the only tracked file; avrana/web/covers.py says what a cover is.
 web/party/covers/*
 !web/party/covers/index.json
+
+# Local tool scratch at the repository root: a private Python environment (.codex/) and
+# scratch copies of the tree (.work-*/). Neither is project content.
+/.codex/
+/.work-*/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python packaging and coverage output
+*.egg-info/
+.coverage
+htmlcov/
