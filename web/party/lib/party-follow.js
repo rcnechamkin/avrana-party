@@ -210,8 +210,12 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
     if (want && !mounted) {
       const loading = {};
       mounted = loading;
-      const mount = mountLayer || (await import('../bridge/layer-mount.js')).mountPartyLayer;
+      let mount = mountLayer;
+      if (!mount) {
+        try { mount = (await import('../bridge/layer-mount.js')).mountPartyLayer; } catch { mount = null; }
+      }
       if (mounted !== loading) return;
+      if (!mount) { mounted = null; return; }   // not loaded (offline): the next view tries again
       mounted = mount({ partyOrigin, game: here });
     } else if (!want) dropLayer();
   }

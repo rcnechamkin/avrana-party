@@ -28,11 +28,18 @@ const state = { vp: null, place: null, back: null, parentOrigin: null, origins: 
 async function allowed(origin) {
   if (origin === location.origin) return true;
   if (!state.origins) {
+    let body = null;
     try {
       const res = await fetch('/party/api/bridge', { cache: 'no-store', credentials: 'same-origin' });
-      const body = res.ok ? await res.json() : null;
-      state.origins = body && body.origins && typeof body.origins === 'object' ? body.origins : {};
-    } catch { state.origins = {}; }
+      body = res.ok ? await res.json() : null;
+    } catch { /* the Wi-Fi blinked */ }
+    if (!body || !body.origins || typeof body.origins !== 'object') {
+      // Not known yet, so not allowed yet: ask the page to say hello again in a moment. A failure
+      // is never kept, or one blip would leave a game origin without its button for the round.
+      setTimeout(() => parent.postMessage({ avrana: PROTOCOL, type: 'ready' }, '*'), 3000);
+      return false;
+    }
+    state.origins = body.origins;
   }
   return originAllows(state.origins, origin, game);
 }
@@ -46,11 +53,12 @@ window.addEventListener('message', async (ev) => {
     if (!(await allowed(ev.origin))) return;               // silence for anyone else
     state.parentOrigin = ev.origin;
   } else if (ev.origin !== state.parentOrigin) return;
+  state.crossOrigin = state.parentOrigin !== location.origin;
   const first = !state.vp;
   state.vp = msg;
   for (const side of ['top', 'right', 'bottom', 'left']) document.documentElement.style.setProperty(`--li-${side}`, `${msg.insets[side]}px`);
   if (first) state.place = initialPlace(kept('localStorage', POSITION_KEY), state.vp);
-  if (state.view && state.view.me) post({ type: 'place', ...currentPlace() });
+  if (state.view && state.view.me) { state.shown = true; post({ type: 'place', ...currentPlace() }); }
 });
 
 function currentPlace() {
@@ -133,7 +141,16 @@ function closeLayer() {
 $('layer-close').addEventListener('click', closeLayer);
 $('layer-backdrop').addEventListener('click', closeLayer);
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && state.place && state.place.mode === 'open') { e.preventDefault(); closeLayer(); }
+  if (!state.place || state.place.mode !== 'open') return;
+  if (e.key === 'Escape') { e.preventDefault(); closeLayer(); return; }
+  if (e.key !== 'Tab') return;
+  // aria-modal: Tab and Shift+Tab go round the drawer and never reach the game behind it.
+  const all = [...$('layer-sheet').querySelectorAll('button, input, select, [tabindex="0"]')]
+    .filter((el) => !el.disabled && el.getClientRects().length > 0);
+  if (!all.length) return;
+  const at = all.indexOf(document.activeElement);
+  if (e.shiftKey && at <= 0) { e.preventDefault(); all.at(-1).focus(); }
+  else if (!e.shiftKey && (at === -1 || at === all.length - 1)) { e.preventDefault(); all[0].focus(); }
 });
 $('layer-tabs').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]');
@@ -167,6 +184,12 @@ function onView(view) {
   state.view = view;
   if (view && view.me) chat.open(view.party, view.me.id); else chat.close();
   if (state.vp && view && view.me && !state.shown) { state.shown = true; post({ type: 'place', ...currentPlace() }); }
+  if (!(view && view.me) && state.shown) {
+    // No longer a member: hide the frame, or an empty frame would sit over the game.
+    state.shown = false;
+    if (state.place && state.place.mode === 'open') state.place = state.back || initialPlace(null, state.vp);
+    post({ type: 'hide' });
+  }
   render();
 }
 
@@ -213,7 +236,7 @@ function render() {
 }
 
 function renderHost(view) {
-  const offered = actions(view);
+  const offered = actions(view, { crossOrigin: Boolean(state.crossOrigin) });
   $('layer-host').hidden = offered.length === 0;
   $('layer-actions').replaceChildren(...offered.map((a) => h('button', {
     type: 'button', class: 'btn btn-outline w-full justify-start', 'data-action': a, text: ACTION_WORDS[a].label,

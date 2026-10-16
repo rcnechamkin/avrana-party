@@ -14,6 +14,8 @@ test('the frame may say ready, place and drag, exactly, and nothing else', () =>
   assert.ok(parseLayerMessage(P({ type: 'place', mode: 'button', side: 'left', y: 10 })));
   assert.ok(parseLayerMessage(P({ type: 'place', mode: 'open', side: 'right', y: 0 })));
   assert.ok(parseLayerMessage(P({ type: 'drag', x: 1, y: 2 })));
+  assert.ok(parseLayerMessage(P({ type: 'hide' })));
+  assert.equal(parseLayerMessage(P({ type: 'hide', mode: 'open' })), null);
   for (const bad of [null, 'x', [], { type: 'ready' }, { avrana: 'avrana.party-bridge/v1', type: 'ready' },
     P({ type: 'ready', extra: 1 }), P({ type: 'place', mode: 'full', side: 'left', y: 1 }),
     P({ type: 'place', mode: 'tab', side: 'top', y: 1 }), P({ type: 'place', mode: 'tab', side: 'left', y: NaN }),
@@ -88,6 +90,9 @@ test('only the host is offered host actions, and each where Party Core allows it
   }
   assert.ok(!actions(view('game', { others: 'away' })).includes('handover'));
   assert.ok(!actions(view('game', { others: null })).includes('handover'));
+  // on another origin's page, only what bridge v1 already allows a game page (D3: coverable)
+  assert.deepEqual(actions(view('game'), { crossOrigin: true }), ['end', 'lobby']);
+  assert.deepEqual(actions(view('results'), { crossOrigin: true }), ['lobby']);
   assert.deepEqual(actions({ me: null }), []);
   assert.deepEqual(actions(null), []);
 });
@@ -131,9 +136,14 @@ test('the mount frames the layer page for this game, hidden until placed', () =>
   assert.equal(layer.isOpen(), true);
   assert.equal(layer.frame.style.width, '375px');
   assert.deepEqual(page.events, [{ open: true }]);
+  page.say(P({ type: 'hide' }));                          // no longer a member: nothing over the game
+  assert.equal(layer.frame.style.visibility, 'hidden');
+  assert.equal(layer.isOpen(), false);
+  assert.deepEqual(page.events, [{ open: true }, { open: false }]);
+  page.say(P({ type: 'place', mode: 'open', side: 'right', y: 200 }));
   layer.stop();
   assert.equal(layer.frame.removed, true);
-  assert.deepEqual(page.events, [{ open: true }, { open: false }]);
+  assert.deepEqual(page.events, [{ open: true }, { open: false }, { open: true }, { open: false }]);
   assert.equal(page.listeners.message, undefined);
 });
 

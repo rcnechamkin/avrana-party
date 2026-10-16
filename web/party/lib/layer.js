@@ -10,6 +10,8 @@
 //                   place {mode, side, y}         mode: 'button' | 'tab' | 'open'; side: 'left' |
 //                                                 'right'; y: the top, in CSS px of the page
 //                   drag {x, y}                   during a drag: the button's top-left
+//                   hide                          nothing to show (not a member): the page hides
+//                                                 the frame until the next place
 //   page -> frame   viewport {w, h, insets}       on load and on every resize; insets: the
 //                                                 safe-area insets {top, right, bottom, left}
 //
@@ -67,8 +69,12 @@ export function gesture({ heldMs, moved }) {
 
 /** What this phone is offered in the drawer, from its Party view (Party Core decides every one
  * of them again when it is used). Quit & Spectate is offered only where Party Core allows it:
- * at a round's setup or results (D5b decides the rest). */
-export function actions(view) {
+ * at a round's setup or results (D5b decides the rest).
+ * `crossOrigin`: the layer sits on a page of another origin, which owns the frame element and
+ * could hide it under a lure (D3 accepted "coverable" for first-party games only). There the
+ * layer offers only what bridge v1 already lets a game page do (End, Party Home); handing over
+ * hosting and stopping hosting stay on the Party's own pages until the owner widens this. */
+export function actions(view, { crossOrigin = false } = {}) {
   const me = view && view.me;
   if (!me) return [];
   const at = locationOf(view).at;
@@ -76,6 +82,7 @@ export function actions(view) {
   if (me.host) {
     if (at === 'game') out.push('end');
     if (at !== 'home') out.push('lobby');
+    if (crossOrigin) return out;
     if ((view.members || []).some((m) => m.id !== me.id && (m.presence === 'here' || m.presence === 'playing'))) out.push('handover');
     if (at === 'setup' || at === 'results') out.push('spectate');
   }

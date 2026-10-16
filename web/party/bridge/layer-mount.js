@@ -15,7 +15,7 @@
 // element full screen that hides it. It reserves no region; the player moves the button.
 export const LAYER_PROTOCOL = 'avrana.party-layer/v1';
 export const BUTTON = 52, TAB = { w: 24, h: 60 }, MARGIN = 6;   // the frame around the 48 px button; the tucked tab
-const SIDES = ['left', 'right'], MODES = ['button', 'tab', 'open'];
+const SIDES = ['left', 'right'], MODES = ['button', 'tab', 'open'];   // and `hide`: nothing to show
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const keysAre = (o, ...names) => Object.keys(o).sort().join(',') === names.sort().join(',');
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
@@ -23,7 +23,7 @@ const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 /** A message from the layer frame, checked: the message, or null for anything else. */
 export function parseLayerMessage(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data) || data.avrana !== LAYER_PROTOCOL) return null;
-  if (data.type === 'ready') return keysAre(data, 'avrana', 'type') ? data : null;
+  if (data.type === 'ready' || data.type === 'hide') return keysAre(data, 'avrana', 'type') ? data : null;
   if (data.type === 'place') {
     return keysAre(data, 'avrana', 'type', 'mode', 'side', 'y') && MODES.includes(data.mode)
       && SIDES.includes(data.side) && num(data.y) ? data : null;
@@ -57,7 +57,8 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
   frame.src = `${partyOrigin}/party/layer.html?game=${encodeURIComponent(game)}`;
   frame.dataset.avranaPartyLayer = 'button';
   Object.assign(frame.style, { position: 'fixed', border: '0', margin: '0', padding: '0', background: 'transparent',
-    colorScheme: 'normal', zIndex: '2147483647', left: '0', top: '0', width: BUTTON + 'px', height: BUTTON + 'px',
+    // The frame's document is dark; a matching scheme keeps the frame's canvas transparent.
+    colorScheme: 'dark', zIndex: '2147483647', left: '0', top: '0', width: BUTTON + 'px', height: BUTTON + 'px',
     visibility: 'hidden' });
 
   // The page's safe areas, as CSS sees them (needs viewport-fit=cover to be anything but 0).
@@ -78,16 +79,23 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
   let last = null;
 
   const send = (msg) => { if (frame.contentWindow) frame.contentWindow.postMessage({ avrana: LAYER_PROTOCOL, ...msg }, partyOrigin); };
+  function setOpen(nowOpen) {
+    if (nowOpen === open) return;
+    open = nowOpen;   // focus is already in the frame: it opened from a tap or a key there
+    if (typeof win.CustomEvent === 'function') doc.dispatchEvent(new win.CustomEvent('avrana-party-layer', { detail: { open } }));
+  }
   function apply(msg) {
+    if (msg.type === 'hide') {        // no longer a member: nothing over the game, nothing to tap
+      Object.assign(frame.style, { visibility: 'hidden', width: BUTTON + 'px', height: BUTTON + 'px' });
+      frame.dataset.avranaPartyLayer = 'hidden';
+      setOpen(false);
+      return;
+    }
     const box = layerBox(msg, vp);
     Object.assign(frame.style, { left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', visibility: 'visible' });
     const mode = msg.type === 'drag' ? 'drag' : msg.mode;
     frame.dataset.avranaPartyLayer = mode;
-    const nowOpen = mode === 'open';
-    if (nowOpen !== open) {
-      open = nowOpen;   // focus is already in the frame: it opened from a tap or a key there
-      if (typeof win.CustomEvent === 'function') doc.dispatchEvent(new win.CustomEvent('avrana-party-layer', { detail: { open } }));
-    }
+    setOpen(mode === 'open');
   }
   function onResize() {
     vp = viewport();
@@ -99,7 +107,7 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
     const msg = parseLayerMessage(ev.data);
     if (!msg) return;
     if (msg.type === 'ready') { ready = true; vp = viewport(); send({ type: 'viewport', ...vp }); return; }
-    if (msg.type === 'place') last = msg;
+    if (msg.type === 'place' || msg.type === 'hide') last = msg;
     apply(msg);
   }
 

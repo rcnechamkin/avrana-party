@@ -211,11 +211,37 @@ test.describe('the Party layer on a game page', () => {
     await expect(layer.locator('#layer-close')).toBeFocused();
     await host.page.keyboard.press('Tab');
     await expect(layer.locator('#layer-tab-people')).toBeFocused();
+    // aria-modal: Tab goes round the drawer, never out to the game behind it
+    for (let i = 0; i < 12; i++) await host.page.keyboard.press('Tab');
+    expect(await layer.locator('#layer-sheet').evaluate((s) => s.contains(document.activeElement) && document.hasFocus())).toBe(true);
+    await layer.locator('#layer-close').focus();
+    await host.page.keyboard.press('Shift+Tab');
+    await expect(layer.locator('#layer-tuck')).toBeFocused();
     await host.page.keyboard.press('Escape');
     await expect(layer.locator('#layer-sheet')).toBeHidden();
     await expect(layer.locator('#layer-button')).toBeFocused();
     expect((await view(host)).location.at).toBe('game');
   });
+});
+
+test('mounted by a page itself (the vendored file): a phone that is no longer a member gets the game back, nothing over it', async ({ browser }) => {
+  const host = await phone(browser, 'Ada');
+  const bob = await phone(browser, 'Bob');
+  try {
+    await startRound(host, [bob]);
+    await bob.page.evaluate(async () => {
+      const { mountPartyLayer } = await import('/party/bridge/layer-mount.js');
+      mountPartyLayer({ partyOrigin: location.origin, game: 'expo' });
+    });
+    await openLayer(bob.page);
+    await expect(bob.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'open');
+    await bob.page.evaluate(() => localStorage.removeItem('wc-name'));   // so nothing joins again
+    expect((await post(bob, 'leave', {})).status()).toBe(200);
+    await expect(bob.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'hidden');
+    await expect(bob.page.locator(FRAME)).toHaveCSS('visibility', 'hidden');
+    const box = (await bob.page.locator('h1').boundingBox())!;
+    expect(await bob.page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName, [box.x + 5, box.y + 5])).toBe('H1');
+  } finally { await host.context.close(); await bob.context.close(); }
 });
 
 test('a game page that does not opt in has no layer', async ({ browser }) => {
