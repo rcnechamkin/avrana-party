@@ -122,8 +122,8 @@ export function createPartyChat({ fetch = globalThis.fetch.bind(globalThis), bas
         adopt(body.party);
         const lines = body.messages.map(readLine).filter(Boolean);
         const messages = merge(state.messages, lines);
-        // Away longer than the room holds: the earliest line still held is past what we had.
-        const gap = state.gap || (before > 0 && Number.isSafeInteger(body.first) && body.first > before + 1);
+        // Lines this phone never had have left the room: say so, never pretend it is whole.
+        const gap = state.gap || (Number.isSafeInteger(body.lost) && body.lost > before);
         if (Number.isSafeInteger(body.last) && body.last >= cursor) cursor = body.last;
         emit({ status: 'connected', messages, gap });
         const retry = Number.isFinite(body.retry_ms) ? Math.min(Math.max(body.retry_ms, 0), 30000) : 0;

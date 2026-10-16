@@ -401,6 +401,14 @@ Built as specified, with these choices where the text left room. Each is easy to
   `round_started`, `round_ended`.
 - **The first member becoming Host** as they join is announced as the join only, not also as a
   host change (it would otherwise be counted into the next line as "1 more change").
+- **`lost`** (new answer field): the highest `seq` that has left either ring. With two rings,
+  `first` cannot say whether lines are missing (a quiet system ring keeps old lines while people's
+  words roll off); the shell shows "Earlier messages are gone" when `lost` is above its cursor.
+  Found by the independent review.
+- **Refusals** are counted per code and logged as one total line at most once a minute; never
+  text, names or members.
+- **Releasing a member's older held poll** wakes every held message poll once (one condition);
+  bounded by the cap. A per-member wake is a possible refinement if the Pi measurement shows cost.
 - **`retry_ms`:** 1000 for an immediate answer with nothing new (`wait=0`); 3000 over the cap or
   when a newer poll from the same member released this one; 0 otherwise.
 - **The shell reads the room whenever this phone is a member,** drawer open or not, so the Party

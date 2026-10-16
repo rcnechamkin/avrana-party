@@ -109,10 +109,17 @@ class Room:
         self._last_system = None                     # when the last system line was written
         self._untold = 0                             # events since then that were counted, not written
         self.refusals = collections.Counter()        # code -> count; never text or names
+        self.lost = 0                                # the highest seq that has left either ring
 
     # ---- reading --------------------------------------------------------------------------------
+    def _keep(self, ring, line):
+        if len(ring) == ring.maxlen:                 # the oldest line leaves: say so to readers
+            self.lost = max(self.lost, ring[0]['seq'])
+        ring.append(line)
+
     def first(self):
-        """The lowest seq still held (0 for an empty room)."""
+        """The lowest seq still held (0 for an empty room). With two rings this alone cannot say
+        whether lines are missing (a quiet system ring keeps old lines); `lost` says that."""
         held = [ring[0]['seq'] for ring in (self.people, self.system_lines) if ring]
         return min(held) if held else 0
 
@@ -155,7 +162,7 @@ class Room:
         self.seq += 1
         line = {'seq': self.seq, 'kind': 'member', 'scope': SCOPE, 'from': member.id,
                 'name': member.name, 'avatar': member.avatar, 'text': clean, 'at': now}
-        self.people.append(line)
+        self._keep(self.people, line)
         sent[client_id] = line
         while len(sent) > CLIENT_IDS:
             sent.popitem(last=False)
@@ -178,7 +185,7 @@ class Room:
         line.update({k: v for k, v in extra.items() if v is not None})
         if self._untold:
             line['more'], self._untold = self._untold, 0
-        self.system_lines.append(line)
+        self._keep(self.system_lines, line)
         return line
 
     def _refuse(self, e):

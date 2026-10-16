@@ -55,6 +55,7 @@ import http.server
 import json
 import logging
 import math
+import re
 import os
 import signal
 import socket
@@ -74,8 +75,10 @@ MAX_WAIT = 25.0
 MAX_WAITERS = 64            # AVR-218: concurrent blocked long polls; beyond it a poll returns at once
 MAX_MSG_WAITERS = 64        # held message polls, a cap of their own (one per member besides)
 MSG_RETRY_MS = 1000         # an immediate answer with nothing new: wait this long before asking again
+REFUSAL_LOG_EVERY = 60.0   # s between log lines with the room's refusal totals
 MSG_BUSY_RETRY_MS = 3000    # over the cap, or released by a newer poll from the same member
 MESSAGES_ROUTE = '/party/api/messages'
+CURSOR = re.compile(r'^-?[0-9]{1,18}$')
 REQUEST_QUEUE_SIZE = 128    # AVR-218: listen backlog (socketserver default 5 drops reconnect storms)
 RELEASE_THREAD = 'avrana-end-lost-game'
 PROBE_EVERY = 2.0           # s: at most one reachability check of a session's game this often (AVR-33)
@@ -113,6 +116,7 @@ class PartyService:
         self.msg_waiters = 0
         self._held = {}                      # member id -> the token of its one held message poll
         self._room_mark = None
+        self._refusals_logged = -REFUSAL_LOG_EVERY
 
     def _notify(self):
         self.changed.notify_all()
@@ -141,6 +145,16 @@ class PartyService:
         if m is None or m.left:
             raise core.Refused('not_member', 'Join the party first.')
         return m
+
+    def _log_refusals(self, room, before):
+        """Refused sends are counted, and the total is logged at most once a minute: never the
+        text, the name or the member (MESSAGING.md decision 5)."""
+        total = sum(room.refusals.values())
+        now = time.monotonic()
+        if total > before and now - self._refusals_logged >= REFUSAL_LOG_EVERY:
+            self._refusals_logged = now
+            log.info('party room: %d refused sends so far (%s)', total,
+                     ', '.join(f'{k}={v}' for k, v in sorted(room.refusals.items())))
 
     def messages(self, device_id, party_id, after, wait=0.0):
         """The Party room above `after` for a current member, long-polled up to `wait` seconds.
@@ -187,7 +201,7 @@ class PartyService:
                     if self.core.party is not party:
                         party, after = self.core.party, 0
             room = party.room
-            return {'party': party.id, 'first': room.first(), 'last': room.seq,
+            return {'party': party.id, 'first': room.first(), 'last': room.seq, 'lost': room.lost,
                     'messages': room.after(after), 'retry_ms': retry_ms}
 
     def send_message(self, device_id, party_id, text, client_id):
@@ -199,7 +213,11 @@ class PartyService:
             party = self.core.party
             if party_id != party.id:
                 raise messages.Refused('bad_party', 'The party changed. Your message was not sent.')
-            line, _ = party.room.send(m, text, client_id)
+            refused = sum(party.room.refusals.values())
+            try:
+                line, _ = party.room.send(m, text, client_id)
+            finally:
+                self._log_refusals(party.room, refused)
             self._notify_room()
             return {'party': party.id, 'message': line}
 
@@ -483,7 +501,7 @@ def _room_query(query):
     if not party or len(party) > 64:
         raise messages.Refused('bad_party', 'Say which party.')
     raw = q.get('after', ['0'])[0]
-    if not raw.lstrip('-').isdigit() or not raw.lstrip('-').isascii() or len(raw) > 18:
+    if not CURSOR.match(raw):
         raise messages.Refused('bad_query', 'The cursor is a whole number.')
     try:
         wait = float(q.get('wait', ['0'])[0])

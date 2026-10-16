@@ -1327,10 +1327,11 @@ function renderChat(snapshot) {
   if (showing) {
     // Said once, politely, to a screen reader: the newest line from someone else.
     const fresh = snapshot.messages.filter((m) => m.kind === 'member' && m.from !== me && m.seq > state.chatSaid);
-    if (fresh.length && state.chatSaid) $('chat-live').textContent = `${fresh.at(-1).name}: ${fresh.at(-1).text}`;
+    const said = state.chatSaid;
+    state.chatSaid = snapshot.messages.length ? snapshot.messages.at(-1).seq : 0;   // before markSeen re-renders
+    if (fresh.length && said) $('chat-live').textContent = `${fresh.at(-1).name}: ${fresh.at(-1).text}`;
     chat.markSeen();
-  }
-  state.chatSaid = snapshot.messages.length ? snapshot.messages.at(-1).seq : 0;
+  } else state.chatSaid = snapshot.messages.length ? snapshot.messages.at(-1).seq : 0;
   renderHud();
 }
 /** The room follows the Party view: this member, this Party. */

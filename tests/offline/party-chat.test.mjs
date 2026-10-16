@@ -102,7 +102,8 @@ test('away longer than the room holds: the gap is said, not hidden', async () =>
   f.answers.push(f.room('party-1', [line(5)]), 'offline');
   f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle(); await f.settle();
   assert.equal(f.chat.state().status, 'unavailable');
-  f.answers.push(f.room('party-1', [line(90), line(91)], 90, 91));
+  const back = f.room('party-1', [line(90), line(91)], 1, 91); back.body.lost = 89;   // a quiet system ring keeps first low
+  f.answers.push(back);
   f.fire(1000); await f.settle(); await f.settle();
   const s = f.chat.state();
   assert.equal(s.status, 'connected');

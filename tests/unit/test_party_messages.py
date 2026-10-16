@@ -131,6 +131,15 @@ class Room(unittest.TestCase):
         self.assertEqual(self.room.first(), 11)
         self.assertEqual(held[0]['text'], 'm10')
 
+    def test_lost_says_what_left_either_ring_even_when_first_stays_low(self):
+        self.room.system('joined', self.ben)                 # a quiet system ring keeps seq 1
+        for i in range(80):
+            self.clock.advance(1)
+            self.send(self.ana, f'm{i}')
+        self.assertEqual(self.room.first(), 1)
+        self.assertEqual(self.room.lost, 21)                 # people 2..21 are gone
+        self.assertEqual(messages.Room(self.clock).lost, 0)
+
     def test_system_lines_never_push_people_out(self):
         self.send(self.ana, 'keep me')
         for i in range(50):
@@ -161,6 +170,7 @@ class Room(unittest.TestCase):
             self.send(self.ana)
         self.assertEqual(e.exception.code, 'too_fast')
         self.assertGreater(e.exception.retry_ms, 0)
+        self.assertEqual(self.room.refusals['too_fast'], 1)
         self.send(self.ben)                                  # someone else is not limited
         self.clock.advance(4)
         self.send(self.ana)
@@ -472,7 +482,7 @@ class Http(unittest.TestCase):
         seqs = lambda out: [l['seq'] for l in out['messages']]
         self.assertEqual(seqs(high), seqs(zero))
         self.assertEqual(seqs(neg), seqs(zero))
-        for bad in ('1.5', 'x', '-', '%EF%BC%91', '99999999999999999999'):
+        for bad in ('1.5', 'x', '-', '--5', '-+5', '+5', '%EF%BC%91', '99999999999999999999'):
             status, out = ana.req('GET', f'/party/api/messages?party={ana.party}&after={bad}')
             self.assertEqual((status, out['error']), (400, 'bad_query'), bad)
         for bad in ('nan', 'inf', 'soon'):
