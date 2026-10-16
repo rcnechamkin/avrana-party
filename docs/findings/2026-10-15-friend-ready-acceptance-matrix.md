@@ -38,7 +38,7 @@ PASS / FAIL / BLOCKED / NOT TESTED. A PASS at T1/T2 never reads as a T4 PASS.
 | 1 | Offline cold boot, no upstream DNS (AVR-10) | NOT TESTED (needs hardware) | NOT TESTED. Last Pi reboot was online ([baseline](2026-10-12-deployed-baseline.md)) | NOT TESTED |
 | 2 | First-time Wi-Fi join and browser onboarding (AVR-76) | T2 PASS for the shell and captive pages (offline suites) | NOT TESTED | NOT TESTED |
 | 3 | Four phones join one Party (AVR-12) | **PASS** J1 (4 sockets, 4 seats, private hands) | NOT TESTED | NOT TESTED |
-| 4 | Host launches BLUFF, game completes (AVR-27) | **PASS** J1 (59 moves, result accepted, results screen) | NOT TESTED | NOT TESTED |
+| 4 | Host launches BLUFF, game completes (AVR-27) | **PASS** J1 (income/coup script only: no challenge, block or exchange path; 59 moves, result accepted, results screen) | NOT TESTED | NOT TESTED |
 | 5a | Phone drops and returns to its seat and hand | **PASS** J2 | NOT TESTED | NOT TESTED |
 | 5b | Host's phone vanishes mid-round | **PASS** J3 (round continues; Host role stays, see Findings) | NOT TESTED | NOT TESTED |
 | 5c | Host succession after the round | **PASS** J3 | NOT TESTED | NOT TESTED |
@@ -67,8 +67,7 @@ PASS / FAIL / BLOCKED / NOT TESTED. A PASS at T1/T2 never reads as a T4 PASS.
 
 Measured (loopback, T2, so *not* Wi-Fi latency; the 62 ms is dominated by the harness's 50 ms read poll):
 launch to all four welcomed p50 87 ms, p95 134 ms; action to the next table state p50 62 ms, p95 63 ms
-over 217 moves; reconnect to the restored state 63 ms. Full 4-player BLUFF to a winner: 59 moves per
-round in the scripted play (income, then coup).
+over 217 moves; reconnect to the restored state 63 ms. The scripted play is income then coup, so BLUFF's challenge/block/exchange paths and the known reveal-polish gap (AVR-313) are not exercised.
 
 ## The new harness
 

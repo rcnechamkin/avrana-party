@@ -1,5 +1,7 @@
 # Owner checklist: four phones, offline, one night (about 60 minutes)
 
+Status: **PROPOSED owner-run procedure, NOT RUN on the appliance or on a phone** (2026-10-15).
+
 Short form of [friend-ready-acceptance](friend-ready-acceptance.md) and
 [physical-check-avr-475-476](physical-check-avr-475-476.md). Evidence so far and the reasoning:
 [the 2026-10-15 matrix](../findings/2026-10-15-friend-ready-acceptance-matrix.md). Nothing here is
@@ -19,7 +21,7 @@ done by an agent; tick each box yourself and write PASS / FAIL / SKIPPED beside 
 
 | # | Do this | Pass if | Issue if it fails |
 |---|---|---|---|
-| 1 | Unplug the Ethernet cable, then power the Pi off and on. Start the timer | The Party Wi-Fi appears within about 2 minutes, with no keyboard or screen | AVR-10 |
+| 1 | Shut the Pi down cleanly (`sudo poweroff` per [friend-ready-acceptance](friend-ready-acceptance.md) section 5), unplug the Ethernet cable, wait 30 seconds, apply power. Start the timer | The Party Wi-Fi appears within 5 minutes (aim for 2), with no keyboard or screen | AVR-10 |
 | 2 | On phone A, join the Party Wi-Fi. Open the camera/QR or the browser as printed on the join card | The Party page opens in the normal browser; no password typed besides Wi-Fi; no app | AVR-76 |
 | 3 | Phones B, C, D do the same, all four connected at once | All four show Party Home and their name; nothing says "no internet" in a way that blocks you | AVR-12 |
 | 4 | Phone A (the Host) opens BLUFF and starts it. Others tap ready | All four land on the table; each sees only their own cards | AVR-27 |
@@ -28,7 +30,7 @@ done by an agent; tick each box yourself and write PASS / FAIL / SKIPPED beside 
 | 7 | After the game: Host taps to go home, then starts BLUFF again | A fresh round starts for all four | AVR-27 |
 | 8 | (Optional) Mid-game on the Host: browser Back, then "Bring everyone back", then Keep playing | The Host reaches the Party's menu and the round continues | AVR-476 |
 | 9 | (Optional) Close the game on all four phones and wait 7 minutes | The Party shows the game ended ("Everyone left the game"); the next person to open it can start a game | AVR-475 |
-| 10 | Afterwards: `https://party.avrana.net/party/api/status` from the laptop on Ethernet | `summary: ok`; no throttling or under-voltage noted | AVR-10 |
+| 10 | Afterwards, from the laptop on the Party Wi-Fi (Ethernet stays unplugged until the session ends): `https://party.avrana.net/party/api/status`; then replug Ethernet and run `ssh party vcgencmd get_throttled` | `summary: ok`; throttle value `0x0` | AVR-10 |
 
 ## Write down, even if everything passes
 
@@ -46,5 +48,5 @@ party must go on.
 
 ## GO / NO-GO
 
-Rows 1 to 7 PASS on at least one iPhone and one Android phone: **GO** for friends. Any of 1 to 7 FAIL:
+Rows 1 to 7 PASS on at least one iPhone and one Android phone, with at least one player new to BLUFF who needed no explanation and no step 2 to 9 intervention from you: **GO** for friends. Any of 1 to 7 FAIL:
 **NO-GO**; file it and send the notes.

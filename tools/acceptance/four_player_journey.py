@@ -246,6 +246,16 @@ def seat_up(stack, ev, names=NAMES):
     return clients, s
 
 
+def no_foreign_cards_ever(clients):
+    """No frame any phone received carried another seat's cards or the omniscient view."""
+    for c in clients:
+        for m in c.seen:
+            g = m.get("game") if m.get("type") == "state" else None
+            if g and (g.get("omniscient") or any("cards" in seat for seat in g.get("seats", []))):
+                return False
+    return True
+
+
 def private_views_ok(clients):
     """Each phone sees only its own cards; the public seat list never carries another's hand."""
     for c in clients:
@@ -304,7 +314,7 @@ def finish(stack, clients, ev, label, drop=()):
     s = stack.session()
     sent = play_until(stack, clients, ev, lambda: s.state == "ended", drop=drop)
     ok = wait_for(stack, lambda: s.state == "ended", 15)
-    ev.check(f"{label}: BLUFF played to a winner and Party recorded the end", ok and s.outcome == "completed",
+    ev.check(f"{label}: BLUFF (income/coup script, no challenge or block path) played to a winner and Party recorded the end", ok and s.outcome == "completed",
              f"{sent} moves, outcome={s.outcome}")
     return s
 
@@ -315,9 +325,9 @@ def j1(games, ev, clock):
     try:
         clients, s = seat_up(st, ev)
         ev.check("private hands: each phone sees only its own two cards", private_views_ok(clients))
-        ev.check("the spectator-omniscient view is not sent to players",
-                 all(not c.state.get("omniscient") for c in clients))
-        s = finish(st, clients, ev, "round 1")
+        s0 = finish(st, clients, ev, "round 1")
+        ev.check("no frame to any player, over the whole round, carried another seat's cards", no_foreign_cards_ever(clients))
+        s = s0
         ev.check("result accepted by Party Core (structured standings, 4 entries)",
                  s.result_refused is None and s.result and len(s.result["standings"]) == 4,
                  getattr(s, "result_refused", None))
@@ -341,7 +351,7 @@ def j1(games, ev, clock):
         time.sleep(0.2)
         host.send(t="start")
         ok = wait_for(st, lambda: st.binding.session.phase == "playing" and all(c.state for c in clients2))
-        ev.check("round 2 starts for all four with fresh hands", ok and private_views_ok(clients2),
+        ev.check("round 2 starts for all four, each holding two cards", ok and private_views_ok(clients2),
                  f"{(time.perf_counter() - t0) * 1000:.0f} ms")
         finish(st, clients2, ev, "round 2")
     finally:
@@ -388,13 +398,13 @@ def j3(games, ev, clock, advance):
         hm = [m for m in st.svc.core.party.members.values() if m.name == "Ada"][0]
         ev.check("RECORD: Host unchanged while away mid-round", host_now == hm.id, f"host={host_now}")
         done = finish(st, clients, ev, "remaining three finish", drop=(host,))
-        ev.check("RECORD: the vanished Host's seat is forfeited or autopiloted, game still completes", done.state == "ended")
+        ev.check("the game still completes without the vanished Host", done.state == "ended")
         st.follow(*clients[1:])
         advance(pcore.LIVE_WINDOW + pcore.HOST_GRACE + 5)
         st.follow(*clients[1:])
         st.svc.tick()
         new_host = st.svc.core.party.host_id
-        ev.check("after the round, Host succession moves to a present player", new_host is not None and new_host != hm.id,
+        ev.check("after the round, Host succession moves to a present player", new_host in {m.id for m in st.svc.core.party.members.values() if m.name in ("Ben", "Cleo", "Dev")},
                  f"new host={new_host}")
     finally:
         st.stop()
@@ -438,19 +448,23 @@ def j5(games, ev, clock):
         st.svc.end(clients[0].device, st.version())
         ev.check("Host's End confirmed by the game", s.state == "ended" and s.outcome == "ended_by_host"
                  and s.game_confirmed_end is True)
-        ok = wait_for(st, lambda: all(c.ended_msg for c in clients[1:]))
+        ok = wait_for(st, lambda: all(c.ended_msg for c in clients))
         ev.check("every phone is told the party ended", ok)
         from websockets.sync.client import connect
         ws = connect("ws://127.0.0.1:%d/games/bluff/ws" % st.game_port, open_timeout=5)
         ws.send(json.dumps({"t": "hello", "ticket": old_ticket}))
-        got_welcome, end = False, time.time() + 2
-        while time.time() < end:
+        got_welcome, refused, end = False, False, time.time() + 3
+        while time.time() < end and not refused:
             try:
                 m = json.loads(ws.recv(timeout=0.3))
-                got_welcome |= m.get("type") == "welcome"
+            except TimeoutError:
+                continue
             except Exception:
+                refused = True                    # the server closed the socket
                 break
-        ev.check("the old session's ticket is refused", not got_welcome)
+            got_welcome |= m.get("type") == "welcome"
+            refused |= m.get("kind") == "invalid"
+        ev.check("the old session's ticket is refused (invalid frame or close, no welcome)", refused and not got_welcome)
         ws.close()
         s2 = st.svc.launch(clients[0].device, "bluff", st.version())
         ev.check("a new round can start straight away", s2.state == "active")
