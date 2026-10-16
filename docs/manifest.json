@@ -12,6 +12,7 @@
     {"path": "docs/runbooks/offline-acceptance.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "Owner offline acceptance (AVR-214): reproducible hardware and phone tests in three sessions, certificate-renewal and clock policy sections. Every test NOT RUN; owner-only.", "status_marker": "Status: **PROPOSED owner-run procedure, NOT RUN on the appliance** (2026-10-12)."},
     {"path": "docs/findings/2026-10-14-source-ip-inventory.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-14"},
     {"path": "docs/findings/2026-10-14-square-viewport-evidence.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-14"},
+    {"path": "docs/findings/2026-10-15-production-and-branch-history.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-15"},
     {"path": "docs/findings/2026-10-12-deployed-baseline.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-12"},
     {"path": "docs/research/hardware-feasibility-brief.md", "class": "research", "status": "research", "authority": "none", "notes": "Preliminary hardware requirements and validation matrix (AVR-42, AVR-43); not a decision or vendor selection."},
     {"path": "docs/GRAPHIFY.md", "class": "runbook", "status": "current", "authority": "procedure"},
