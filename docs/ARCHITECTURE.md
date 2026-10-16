@@ -179,8 +179,8 @@ the appliance's HTTPS site; with `--party` it runs a real Party Core behind it. 
 - systemd proofs that run as root on disposable CI machines (`experiments/native-game/`,
   `experiments/service-trust/`)
 
-`npm test` targets a live appliance. [TESTING](TESTING.md) explains each suite and what it does
-and does not prove. A test at phone size in a desktop browser is not evidence about a real phone.
+The live-appliance suite is separate and needs the Party Wi-Fi. [TESTING](TESTING.md) explains each
+suite, how to run it, and what it does and does not prove. A test at phone size in a desktop browser is not evidence about a real phone.
 
 ## Where to go next
 
