@@ -29,7 +29,7 @@ npm run test:unit
 npm run test:modules
 npx playwright install chromium
 npm run test:offline-browser
-npx playwright test tests/soak-metrics.spec.ts
+npx playwright test -c playwright.live.config.ts tests/live/soak-metrics.spec.ts --project=chromium
 ```
 
 The checker uses `python` on Windows and `python3` elsewhere. Existing `test:unit`, `catalog`
@@ -45,7 +45,8 @@ shell and symlink tests. Report that honestly and wait for Linux CI. Tier 2 brow
 sizes do not prove iPhone Safari, AP behavior, streaming hardware, power or physical acceptance.
 Cross-repository provider tests require two explicit local checkouts; Games has independent CI.
 
-`npm test`, `test:all`, soak and fault target the live Pi. Running them requires separate hardware
+`npm test` is the offline lane. The `test:live*` scripts (`tests/live/`, `playwright.live.config.ts`)
+target the live Pi; running them requires separate hardware
 scope/authorization. No contribution authorizes deployment, service restarts or edits to live
 nginx, DNS, NetworkManager, systemd, certificates, Wi-Fi or production checkouts.
 

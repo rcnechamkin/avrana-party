@@ -3,7 +3,7 @@ import {
   median, percentile, minOf, maxOf,
   summarizeClientSeries, summarizeServerSeries, evaluate,
   DEFAULT_THRESHOLDS, type ClientSample, type ServerSample,
-} from './lib/soak-metrics';
+} from '../lib/soak-metrics';
 
 // Pure unit tests — no browser, no network. Guards the threshold/aggregation
 // logic the live harness depends on.

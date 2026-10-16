@@ -197,7 +197,7 @@ class PageKeepsItsContract(unittest.TestCase):
         self.assertEqual(self.IDS - ids, set())
 
     def test_the_heading_says_the_game_and_the_player(self):
-        # tests/multiplayer.spec.ts and the soak driver read the seat from the h1 ("Player N")
+        # tests/live/multiplayer.spec.ts and the soak driver read the seat from the h1 ("Player N")
         heading = re.search(r'<h1>(.*?)</h1>', PAGE, re.S).group(1)
         self.assertIn('id="game-name"', heading)
         self.assertIn('id="who"', heading)

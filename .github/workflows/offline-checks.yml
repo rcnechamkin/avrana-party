@@ -2,7 +2,7 @@
 # Run full verification before merging high-risk code and for release candidates.
 # Offline CI lane: checks that need no Pi, phones, Party Wi-Fi, HDMI, Bluetooth,
 # streaming/emulator hardware or power telemetry (Tier 1 and the simulated-Party
-# Tier 2). The live-appliance Playwright suite (`npm test`, soak, fault) stays
+# Tier 2). The live-appliance Playwright suite (`npm run test:live`, soak, fault) stays
 # manual; see docs/TESTING.md.
 name: Offline checks
 
@@ -76,7 +76,7 @@ jobs:
 
       # Pure unit tests: no browser is launched, so no `playwright install`.
       - name: Soak metric maths
-        run: npx playwright test tests/soak-metrics.spec.ts
+        run: npx playwright test -c playwright.live.config.ts tests/live/soak-metrics.spec.ts --project=chromium
 
       # AGENTS.md: the two committed nginx sites must stay byte-identical.
       - name: nginx site files are identical

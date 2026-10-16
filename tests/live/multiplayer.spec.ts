@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
-import { serverMaxPlayers } from './lib/soak-driver';
+import { serverMaxPlayers } from '../lib/soak-driver';
 
 /**
  * Controller slot behaviour (Chromium / WebRTC), using independent browser contexts as stand-ins

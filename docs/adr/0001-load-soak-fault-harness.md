@@ -28,14 +28,14 @@ on the Avrana Party Wi-Fi, in three layers:
 
 1. **`tests/lib/soak-metrics.ts`** — pure functions (median/percentile, per-client
    and server summaries, threshold `evaluate`, `formatReport`). No I/O, no
-   Playwright → unit-tested in isolation (`tests/soak-metrics.spec.ts`).
+   Playwright → unit-tested in isolation (`tests/live/soak-metrics.spec.ts`).
 2. **`tests/lib/soak-driver.ts`** — Playwright helpers: `connectClient`,
    `tryConnect` (tolerates rejection), `readClientMetrics` (reads the page's own
    `#metrics`), `sampleServer` (/arcade/stats), `assertReachable` (fast, actionable
    failure when the laptop drops off the AP).
-3. **Specs** — `tests/soak.spec.ts` (N clients held for a duration, sampled, gated,
-   JSON artifact) and `tests/fault.spec.ts` (abrupt drop, churn, over-subscription
-   → recovery). Both tagged **`@heavy`** so the everyday `npm test` stays fast.
+3. **Specs** — `tests/live/soak.spec.ts` (N clients held for a duration, sampled, gated,
+   JSON artifact) and `tests/live/fault.spec.ts` (abrupt drop, churn, over-subscription
+   → recovery). Both tagged **`@heavy`** so the everyday `npm run test:live` stays fast.
 
 ### Threshold philosophy (important)
 
@@ -51,11 +51,14 @@ latency/jitter.
 ### Run it
 
 ```bash
-npm run soak                     # 2 clients, 90 s (defaults)
-SOAK_CLIENTS=4 SOAK_SECONDS=600 npx playwright test tests/soak.spec.ts --project=chromium   # 4-client 10-min soak
-npm run fault                    # fault injection & recovery
-npm test                         # fast suite (excludes @heavy)
+npm run test:live:soak           # 2 clients, 90 s (defaults)
+SOAK_CLIENTS=4 SOAK_SECONDS=600 npx playwright test -c playwright.live.config.ts tests/live/soak.spec.ts --project=chromium   # 4-client 10-min soak
+npm run test:live:fault          # fault injection & recovery
+npm run test:live                # fast suite (excludes @heavy)
 ```
+
+Paths and script names updated 2026-10-15, when the live suite moved to `tests/live/` and
+`npm test` became the offline lane; the decision is unchanged.
 
 Artifacts land in `test-results/soak/` (per-run JSON + attached report).
 
