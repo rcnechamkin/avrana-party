@@ -13,8 +13,7 @@ check is a comparison of records. The report (Markdown + JSON) separates three k
 
 A check that could not run is never reported as passing. Linear is read only (same GraphQL scope
 as tools/graphify_context.py); GitHub is read through `gh` when available or the public REST API.
-Nothing is written to Linear or GitHub: connecting the report to a pinned Linear maintenance
-issue is documented in docs/WORKFLOW.md as a later step. Exit code 0 always: drift is a report,
+Nothing is written to Linear or GitHub. Exit code 0 always: drift is a report,
 not a build failure.
 """
 import argparse
