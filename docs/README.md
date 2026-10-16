@@ -1,58 +1,67 @@
-# Documentation map
+# Documentation
 
-Start with [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md) and [AGENTS](../AGENTS.md).
-Authority is scoped to the question, not the newest filename. The machine-readable
-[manifest](manifest.json) classifies every Markdown document; it contains metadata, not a
-second description of product state. [Linear](https://linear.app/avranakern) alone owns live work.
+New to the project? Read the [README](../README.md), then [ARCHITECTURE](ARCHITECTURE.md), then
+[CONTRIBUTING](../CONTRIBUTING.md). The sections below go from overview to detail.
 
-| Document/category | Purpose and authority | Status / limits | Look here instead |
-|---|---|---|---|
-| [WORKFLOW](WORKFLOW.md) | The development loop from a Linear issue to a playtested deployment; Linear state mapping; issue structure; what CI enforces | Current reference | [AGENTS](../AGENTS.md) for agent rules; Linear for live work |
-| [CROSS-REPO](CROSS-REPO.md) | Branch pairing, paired PRs and what each CI runs against the other repository | Current reference | [Party ↔ Games contract](design/PARTY-GAMES-CONTRACT.md) for the interface itself |
-| [Implementation report](agents/IMPLEMENTATION-REPORT.md) | The one completion-report format | Current reference | AGENTS for what Done means |
-| [SYSTEM](SYSTEM.md) | Verified deployment/topology | Current reference, observations explicitly dated | GitHub main for source; findings for supporting evidence |
-| [TESTING](TESTING.md) | Commands and evidence semantics | Current guide; old counts remain dated results | CI on the actual revision; runbooks for physical checks |
-| [ADRs](adr/) | Architectural decisions | Read each actual status and partial amendments | Proposed portions do not override accepted decisions |
-| ADRs [0012](adr/0012-limited-mode-party-survives-https-loss.md), [0013](adr/0013-party-and-game-browser-origins.md), [0014](adr/0014-native-games-isolated-lan-games-retired.md) (2026-10-02) | Limited Mode; Party origin vs game origin; isolated native games and LAN Games retirement. They amend ADRs 0002–0006 and 0011 by dated amendment | Accepted direction, **not implemented or deployed** | SYSTEM for what runs today; Linear for sequencing |
-| ADR [0015](adr/0015-game-result-envelope.md) (2026-10-03) | Game result envelope v1: what a game reports about how a session finished, and the party's acceptance boundary | Accepted; history and stats are AVR-71 | The ADR for the contract; SYSTEM for what is deployed |
-| ADR [0016](adr/0016-service-identities-and-local-trust-boundary.md) (2026-10-03) | Field-test service identities, secret and state ownership, local IPC and what the first appliance outside the owner's hands promises | Accepted, **not implemented or deployed**: every service still runs as one user | SYSTEM for what runs; AVR-236 for the implementation |
-| [Portable game-client delivery](design/PORTABLE-GAME-CLIENT-DELIVERY.md) (AVR-335) | Direction for browser-first portable game clients, optional app hosting, delivery and cache constraints, and the unresolved store-policy gates, with conflicts against accepted text recorded | Proposed (2026-10-10); not built or deployed; decides nothing | ADRs 0012-0016 for accepted decisions; [AVRGAME-PACKAGE](design/AVRGAME-PACKAGE.md) for the experimental format |
-| [Appliance content delivery](design/APPLIANCE-CONTENT-DELIVERY.md) (AVR-500) | How a game's data reaches a fresh phone automatically from the appliance: content packs, the rights gate, simulated measurements and the owner decisions (approval packets) | Proposed (2026-10-15); experimental code in Games, nothing deployed | [AVRGAME-PACKAGE](design/AVRGAME-PACKAGE.md) browser client contract (AVR-135) |
-| [Messaging proposal](design/MESSAGING.md) (2026-10-06) | Party-owned messaging: sender identity, one Party room, history, limits, delivery, Limited Mode and the end of the legacy chat (AVR-53) | **Proposed, not accepted**; nothing is built; becomes ADR 0017 if accepted | The shell and Games source for the chat that runs today |
-| [Design index](design/README.md) | Product contracts and detailed designs | Mix of canonical contracts and explicitly proposed mechanisms | ADRs resolve decisions; SYSTEM establishes deployment |
-| [Game UX contract](design/GAME-UX-CONTRACT.md) | Platform-owned versus game-owned UX: briefing, Ready/Watch/Start, rules access, unavailable-action explanations, interaction floors, system cues, art slots (AVR-56) | Mixed: every rule labelled implemented, accepted or proposed; not validated on phones; changes no machine contract | [UI design system](UI-DESIGN-SYSTEM.md) for the Party theme; [ACCESSIBILITY](design/ACCESSIBILITY.md) for the MUST table; ADRs 0010/0011 for the location model |
-| [UX/UI product brief](design/AVRANA-UX-UI-PRODUCT-BRIEF.md) | Owner-approved UX/UI direction for the shell, Library, shared game UX, Arcade and EXPO presentation (2026-10-05) | Accepted direction for the redesign, **not implemented**; its §29 lists what is undecided | UI design system for what source does today; [design skills](agents/design-skills.md) for the tooling |
-| [UI design system](UI-DESIGN-SYSTEM.md) | Current source UI contract and build guide | Prototype visual system, not a final brand decision | [Generated sources](GENERATED.md) |
-| [ROADMAP](ROADMAP.md) | Strategic direction/milestone outcomes | Current strategy, no assignments | Linear for next task, blockers, acceptance and ownership |
-| [Runbooks](runbooks/) | Procedures and verification checklists | Some historical/experimental; no authorization to execute | SYSTEM for state, dated findings for outcomes |
-| [Findings](findings/) | Dated observations, measurements and audits | Historical evidence; never a live queue | SYSTEM for consolidated verified deployment |
-| [Research](research/) | Substrate/reference candidates | Context only, authority: none | Accepted ADRs and canonical design sections |
-| [Platform direction](GAME-PLATFORM-ARCHITECTURE.md), [trust/recovery](OFFLINE-TRUST-AND-RECOVERY.md), [emulation](PERSONAL-VIEWPORT-AND-EMULATION.md), [experience](AVRANA-EXPERIENCE.md) | Broad design direction/product aspirations | Draft/proposed scope as labeled; not a built SDK | ADRs and design index for current contracts |
-| [Archive](archive/) | Preserved handoffs/publication drafts | Non-authoritative history | AGENTS and Linear; never execute old next-step instructions |
-| [Agent environments](agents/) | Vendor/environment setup differences | Current tooling guidance only | AGENTS for all shared operational invariants |
-| [Branch inventory](branches.json) | Retention roles for divergent branches | Dated snapshot, canonical: false | GitHub refs for current source, Linear for active work |
-| [Deployment index](../deploy/README.md) | Configuration and operations file map | Source assets; no deployment claim | SYSTEM and relevant runbook |
-| [Game origin runbook](runbooks/game-origin.md) (AVR-319) | Owner-run order to bring up `games.avrana.net`: certificate names, DNS, nginx block, `game_origins`, verification, reverse | Proposed procedure, not run on the appliance | SYSTEM for state, dated findings for outcomes |
-| [Rebuild runbook](runbooks/rebuild.md) and [appliance inventory](../deploy/appliance-inventory.json) (AVR-32) | What a clean target needs and the order to install it: automated steps, secret handoffs, owner-only actions, phone checks, rollback, and what the repository cannot say | Proposed procedure, **not run on any device**; the simulated rehearsal in the tests is not hardware evidence | SYSTEM for what is deployed; [deploy](runbooks/deploy.md) for a routine release |
-| [Friend-ready acceptance](runbooks/friend-ready-acceptance.md) (AVR-10, AVR-12, AVR-261, AVR-27) | One owner-run session packet: release pair, backups, deploy, nginx, native-game preparation, offline cold boot, four phones, Checkers on two phones, four-human BLUFF, rollback, record sheet | Proposed procedure, **not run on the appliance or any phone** | SYSTEM for what is deployed; the four issues for acceptance |
-| [SDK acceptance](runbooks/sdk-acceptance.md) (AVR-68) | Owner-run physical acceptance of the experimental SDK: preconditions, the pinned Node runtime, installing Checkers, Hello Party and Tanks, the play matrix on real phones offline, measurements, cache and update, teardown | Proposed procedure, **every step NOT RUN** | [install-game](runbooks/install-game.md) for the commands; SYSTEM for what is deployed |
-| [Offline acceptance](runbooks/offline-acceptance.md) (AVR-214) | Owner-run hardware and phone tests in three sessions (no deploy, after deploying main, after named PRs): cold boot offline, four phones, host loss, restarts, power cuts, certificate renewal, clock policy, channel and capacity, power and battery, offline upgrade | Proposed procedure, **every test NOT RUN** | [Friend-ready acceptance](runbooks/friend-ready-acceptance.md) for the deploy-and-record packet; the [2026-10-12 baseline](findings/2026-10-12-deployed-baseline.md) for the starting facts |
-| [Hardware feasibility brief](research/hardware-feasibility-brief.md) | Requirements and validation matrix for later hardware discussions | Research; **not a decision or vendor selection** | AVR-42, AVR-43 in Linear |
+Several documents describe accepted designs that are not built or deployed yet. Each one says so
+in a status line at the top. When a document and the code disagree, the code on `main` describes
+what the software does, and [SYSTEM](SYSTEM.md) describes what is running on the appliance.
 
-## Maintaining the map
+## Understand the system
 
-Classes: `canonical`, `decision`, `design`, `strategy`, `runbook`, `evidence`, `research`,
-`historical`, `archived`. `current` means maintained reference, not deployed or fully built.
-Mixed documents use `mixed` and explicit status notes; proposed sections stay proposed.
-Manifest `canonical_for` values are unique domain identifiers, not precedence scores.
-Only the external Linear authority has `live-work` scope.
+| Document | What it answers |
+|---|---|
+| [ARCHITECTURE](ARCHITECTURE.md) | How the appliance, Party Core, the shell, games and the arcade fit together |
+| [Architecture decision records](adr/) | What was decided and why. Each ADR states whether it is implemented and deployed |
+| [Design documents](design/README.md) | Detailed contracts and mechanisms: party lifecycle, Party ↔ Games contract, browser origins, Limited Mode, native games, packages, game UX |
+| [contracts/](../contracts/README.md) | The machine-readable schemas and test vectors behind those contracts |
+| [UI design system](UI-DESIGN-SYSTEM.md) | How the Party shell's interface is built and themed |
 
-Add a manifest entry with each new document. Keep links relative, date findings, and preserve
-status banners. Update classification when promoting/archiving work, with evidence and review.
-Run `npm run check:repo`; see [REPOSITORY-GOVERNANCE](REPOSITORY-GOVERNANCE.md) for its scope.
+## Develop and test
 
-Optional manifest fields: `supersedes` (a list of archived/historical documents this one
-replaces) and `last_verified` (the date someone last checked the document against code). Both are
-validated; an old `last_verified` is reported, never failed.
+| Document | What it answers |
+|---|---|
+| [CONTRIBUTING](../CONTRIBUTING.md) | Local setup, branches, pull requests, what not to commit |
+| [TESTING](TESTING.md) | Every test suite, how to run it, and what it does and does not prove |
+| [GENERATED](GENERATED.md) | Which files are generated, from what, and how to rebuild them |
+| [CROSS-REPO](CROSS-REPO.md) | Changes that span this repository and the Games repository |
+| [WORKFLOW](WORKFLOW.md) | What CI runs on a pull request and what runs only on request |
+| [Repository checks](REPOSITORY-GOVERNANCE.md) | What `npm run check:repo` enforces, including the document manifest |
+| [Agent tooling](agents/) | Setup notes for coding-agent environments; the rules are in [AGENTS](../AGENTS.md) |
 
-[Graphify](GRAPHIFY.md) documents derived navigation context only; it adds no authority domain.
+## Operate the appliance
+
+| Document | What it answers |
+|---|---|
+| [SYSTEM](SYSTEM.md) | What is deployed on the Pi, on which machines, services and ports |
+| [Deploy](runbooks/deploy.md) | Releasing a Party/Games pair with `ops/deploy.sh`, and rolling back |
+| [Network](runbooks/network.md), [Party HTTPS](runbooks/party-https.md) | The Wi-Fi access point, local DNS and the certificate |
+| [Service recovery](runbooks/service-recovery.md), [logs and retention](runbooks/logs-and-retention.md) | Diagnosing and recovering services |
+| [Install a game](runbooks/install-game.md), [provision a game](runbooks/provision-game.md), [prepare native games](runbooks/prepare-native-games.md) | Native-game and package installation (not yet used on the appliance) |
+| [Rebuild](runbooks/rebuild.md) | Building an appliance from a clean device (procedure, not yet run on hardware) |
+| [All runbooks](runbooks/) | Including physical acceptance checklists for real phones and the Pi |
+
+Runbooks describe procedures. Running one on the appliance is the owner's decision.
+
+## Direction
+
+| Document | What it answers |
+|---|---|
+| [ROADMAP](ROADMAP.md) | Product direction and milestones. Current tasks are tracked in [Linear](https://linear.app/avranakern) |
+| [Game platform](GAME-PLATFORM-ARCHITECTURE.md), [offline trust and recovery](OFFLINE-TRUST-AND-RECOVERY.md), [personal viewports and emulation](PERSONAL-VIEWPORT-AND-EMULATION.md), [experience](AVRANA-EXPERIENCE.md) | Longer-term design direction; not a description of what is built |
+| [Appliance content delivery](design/APPLIANCE-CONTENT-DELIVERY.md) | Proposed design for delivering large game data from the appliance to phones; awaiting owner decisions |
+| [Research](research/) | Background studies and candidate technologies; no decisions |
+
+## History
+
+| Location | What it holds |
+|---|---|
+| [Findings](findings/) | Dated measurements, audits and deployment observations. Never edited after the fact |
+| [Archive](archive/) | Superseded material kept as history; it gives no current instructions |
+| [Branch inventory](branches.json) | Long-lived research branches that are kept but never merged wholesale |
+
+## Adding or moving a document
+
+Every Markdown file has an entry in [manifest.json](manifest.json) that records its class and
+status. Add one with each new document, keep links relative, and run `npm run check:repo`.
+[Repository checks](REPOSITORY-GOVERNANCE.md) describes the rules.
