@@ -29,6 +29,14 @@
     "frame": "/party/bridge.html",
     "decision": "docs/adr/0013-party-and-game-browser-origins.md"
   },
+  "layer": {
+    "protocol": "avrana.party-layer/v1",
+    "reference": "web/party/bridge/layer-mount.js",
+    "reference_sha256": "d259204d24cada3c34e25d24a45f087e5da8cf6f6ee1dea5587f468b901abb3e",
+    "frame": "/party/layer.html",
+    "decision": "docs/design/proposals/2026-10-16-control-center.md",
+    "note": "Optional for a games repository. A game page on another origin that vendors this file byte for byte may mount the Party layer; bridge v1 is untouched."
+  },
   "routes": {
     "party_ticket": "/party/api/session/ticket",
     "party_ended": "/internal/party-session/v0/ended",

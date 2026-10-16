@@ -276,3 +276,29 @@ test('the arcade page on the Party origin keeps the same-origin path: no bridge 
   await expect(page.locator('#home')).toHaveAttribute('href', '/party/');
 });
 
+
+test('the Party layer on a game-origin page: vendored mount, Party-origin frame, the Host gets only the bridge-level actions', async ({ page: host, context }) => {
+  await hostWithGameOn(host);
+  const page = await context.newPage();
+  await page.goto(`${GAMES}/__test__/layer-game.html?party=${encodeURIComponent(PARTY)}&game=${GAME}`);
+  const frame = page.locator('iframe[data-avrana-party-layer]');
+  await expect(frame).toHaveAttribute('src', `${PARTY}/party/layer.html?game=${GAME}`);
+  await expect(frame).toHaveAttribute('data-avrana-party-layer', 'button');
+  const layer = page.frameLocator('iframe[data-avrana-party-layer]');
+  await expect(layer.locator('#layer-button')).toBeVisible();
+  // Nothing of the Party's identity is on the game origin; the frame holds it on the Party's.
+  expect(await page.evaluate(() => document.cookie)).toBe('');
+  expect(await page.evaluate(() => Object.keys(localStorage).length)).toBe(0);
+  await layer.locator('#layer-button').click();
+  await expect(layer.locator('#layer-sheet')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).layerEvents)).toEqual([true]);
+  await expect(layer.locator('#layer-people-list li')).toHaveCount(1);
+  // The Host of a round on another origin gets End and Bring everyone back, not handover or stop hosting
+  await expect(layer.locator('#layer-actions [data-action="end"]')).toBeVisible();
+  await expect(layer.locator('#layer-actions [data-action="lobby"]')).toBeVisible();
+  await expect(layer.locator('#layer-actions [data-action="handover"]')).toHaveCount(0);
+  await expect(layer.locator('#layer-actions [data-action="spectate"]')).toHaveCount(0);
+  await layer.locator('#layer-close').click();
+  await expect(layer.locator('#layer-sheet')).toBeHidden();
+  expect(await page.evaluate(() => (window as any).layerEvents)).toEqual([true, false]);
+});

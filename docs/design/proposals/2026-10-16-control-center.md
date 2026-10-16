@@ -105,6 +105,23 @@ viewport and can cover, hide or full-screen over any frame.
   allow-same-origin allow-forms`: it cannot navigate the game page); it answers only a page on
   the Party's own origin or one Party Core registers for that game. nginx and the devserver let
   `layer.html` alone be framed by `'self'` and the game origin.
+- **A game on its own origin (as built, AVR-292 follow-up).** `contracts/party-games.v0.json` now
+  has an optional `layer` block (protocol, reference file, SHA-256, frame) checked by
+  `tools/contract_check.py`: a games repository may vendor `layer-mount.js` byte for byte (by
+  convention as `web/avrana-party-layer.js`) and declare it as `layer.vendored`; a mismatch is
+  named, and a repository with no `layer` block is unaffected, so rollback is a game that stops
+  calling `mountPartyLayer({ partyOrigin, game })`. The page decides when to mount (a member in this
+  game's round, as `party-follow.js` does for same-origin pages) and calls `stop()` otherwise. The
+  frame still loads from the Party origin with the phone's own credential; the page holds none
+  (`tests/offline/bridge.spec.ts`, Tier 2). **Not built:** the Games side (the SDK export and
+  `comply` do not yet vendor the file) and any installed `.avrgame` that mounts it; the real
+  cookie behaviour of a framed Party page under Safari's tracking prevention is Tier 3
+  ([device validation](../../runbooks/party-layer-device-validation.md), 7.7).
+- **A top-layer dialog hides the button.** A page's `<dialog>.showModal()` puts it in the top layer
+  and makes the Party frame inert. A game that mounts the layer opens its own dialogs without the
+  top layer and keeps the table inert, the focus trapped and Escape working itself (BLUFF:
+  `games/bluff/web/modal.js`), and leaves `aria-modal` off so a screen reader can still reach the
+  Party button.
 - **What games must do (GAME-UX-CONTRACT amendment).** Keep the frame above their own content
   (no element over it, no element full screen that hides it), and put nothing under the default
   position that cannot also be reached once the player moves the button. No reserved corner.

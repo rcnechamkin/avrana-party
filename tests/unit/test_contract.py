@@ -19,7 +19,7 @@ PARTY_FILES = ['contracts/party-games.v0.json', 'avrana/party/protocol.py', 'avr
                'avrana/contracts/lan_catalog.py', 'contracts/vectors/party-session.v0.json',
                'contracts/catalogs/lan-games.json', 'deploy/arcade/avrana-party-session.conf',
                'docs/runbooks/party-core-deploy.md', 'web/party/bridge/shim.js', 'web/party/bridge.html',
-               'contracts/vectors/party-bridge.v1.json']
+               'contracts/vectors/party-bridge.v1.json', 'web/party/bridge/layer-mount.js', 'web/party/layer.html']
 
 
 def fake_games(root, party_decl):
@@ -152,6 +152,45 @@ class Mutations(unittest.TestCase):
         with self.assertRaises(checker.Drift) as cm:
             self.run_all()
         self.assertIn('bridge shim file digest', str(cm.exception))
+
+    def vendor_layer(self):
+        shutil.copyfile(self.party / 'web/party/bridge/layer-mount.js', self.games / 'web/avrana-party-layer.js')
+        l = self.decl['layer']
+        self.games_decl['layer'] = {'protocol': l['protocol'], 'vendored': 'web/avrana-party-layer.js',
+                                    'vendored_sha256': l['reference_sha256']}
+        self.write_games()
+
+    def test_layer_mount_edit_without_redeclaring_is_named(self):
+        with open(self.party / 'web/party/bridge/layer-mount.js', 'a', encoding='utf-8') as f:
+            f.write('\n// a change\n')
+        with self.assertRaises(checker.Drift) as cm:
+            checker.check_party(self.party)
+        self.assertIn('layer mount file digest', str(cm.exception))
+
+    def test_a_games_repository_without_the_layer_still_passes(self):
+        # optional: bridge v1 games need nothing from it, so a rollback is a game that stops mounting
+        self.assertNotIn('layer', self.games_decl)
+        self.run_all()
+
+    def test_a_vendored_layer_mount_matches_or_is_named(self):
+        self.vendor_layer()
+        self.run_all()
+        with open(self.games / 'web/avrana-party-layer.js', 'a', encoding='utf-8') as f:
+            f.write('\n// a local edit\n')
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('layer mount file digest', str(cm.exception))
+
+    def test_layer_change_redeclared_but_not_revendored_is_cross_drift(self):
+        self.vendor_layer()
+        with open(self.party / 'web/party/bridge/layer-mount.js', 'a', encoding='utf-8') as f:
+            f.write('\n// a change\n')
+        self.decl['layer']['reference_sha256'] = checker.sha256_normalized(self.party / 'web/party/bridge/layer-mount.js')
+        self.write_party()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('layer mount drifted', str(cm.exception))
+        self.assertIn('re-vendor', str(cm.exception))
 
     def test_bridge_vectors_divergence_is_named(self):
         with open(self.games / 'tests/vectors/party-bridge.v1.json', 'a', encoding='utf-8') as f:
