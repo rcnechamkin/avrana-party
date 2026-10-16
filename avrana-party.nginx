@@ -159,6 +159,19 @@ server {
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://games.avrana.net" always;
     }
 
+    # The Party layer (AVR-292, ADR 0011 amendment of 2026-10-16): the floating Party button and its
+    # drawer, a Party frame that a game page mounts (web/party/bridge/layer-mount.js). A game page is
+    # served from this origin today (BLUFF and EXPO) or from https://games.avrana.net, so both may
+    # frame it; no other site may. The headers are otherwise those of /party/ below and must match
+    # avrana/web/devserver.py (the /party/layer.html route) and tests/unit/test_nginx_site.py.
+    location = /party/layer.html {
+        alias /var/www/avrana-party/web/current/layer.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://games.avrana.net" always;
+    }
+
     # The game catalog Party Home reads (AVR-337, EXPERIMENTAL; docs/design/AVRGAME-PACKAGE.md). When
     # root has installed an .avrgame package, ops/install-game writes the EFFECTIVE catalog (the
     # release catalog plus a row per installed package, appended) to the appliance-local file named
