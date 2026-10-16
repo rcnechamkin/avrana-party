@@ -22,6 +22,10 @@ export default defineConfig({
     // (game-origin.spec.ts); the browsers below map *.avrana.test to loopback
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8184 --party-session --game-origin`,
     url: 'http://127.0.0.1:8184/party/', reuseExistingServer: false, timeout: 60000,
+  }, {
+    // AVR-292: EXPO as a real Party game too (party-layer.spec.ts); on the other ports it cannot start
+    command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8186 --party-session --expo-game`,
+    url: 'http://127.0.0.1:8186/party/', reuseExistingServer: false, timeout: 60000,
   }, ...(process.platform === 'win32' ? [] : [{
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8185 --party-session --game-origin --native-game checkers`,
     url: 'http://127.0.0.1:8185/party/', reuseExistingServer: false, timeout: 60000,

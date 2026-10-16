@@ -44,7 +44,7 @@ FORWARD = ('host', 'cookie', 'origin', 'content-type', 'content-length')
 RETURN = ('content-type', 'cache-control', 'set-cookie', 'x-content-type-options')
 
 
-def prepare_keys():
+def prepare_keys(expo=False):
     """Create a throwaway key for BLUFF, reserve the party service's loopback port and point the
     games server at both (as deploy/avrana-party-session.conf does on the appliance). Returns
     (key, party_port)."""
@@ -52,6 +52,8 @@ def prepare_keys():
     atexit.register(shutil.rmtree, keys, True)
     key = protocol.new_key()
     protocol.write_key(os.path.join(keys, f'{GAME}.key'), key)
+    if expo:             # EXPO's game side is real too (AVR-292 checks its Party layer on the real page)
+        protocol.write_key(os.path.join(keys, f'{SECOND}.key'), key)
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         party_port = probe.getsockname()[1]
@@ -60,7 +62,7 @@ def prepare_keys():
     return key, party_port
 
 
-def attach(app, key, port, public_hosts, party_port, game_origins=None, native=None):
+def attach(app, key, port, public_hosts, party_port, game_origins=None, native=None, expo=False):
     """Run the party service beside `app` and route /party/api/ to it. `public_hosts` are the
     host names phones use for this origin (127.0.0.1 always included). `game_origins` registers
     the origins game pages are served from when they are not this one (ADR 0013)."""
@@ -72,6 +74,8 @@ def attach(app, key, port, public_hosts, party_port, game_origins=None, native=N
     pregame = service.load_games({GAME: {'max_players': MAX_PLAYERS, 'min_players': 2, 'pregame': True},
                                   SECOND: {'max_players': 2}})
     endpoints = {GAME: sessions.GameEndpoint(GAME, f'http://127.0.0.1:{port}/games/{GAME}', key)}
+    if expo:
+        endpoints[SECOND] = sessions.GameEndpoint(SECOND, f'http://127.0.0.1:{port}/games/{SECOND}', key)
     if native:
         from avrana.contracts import party_config
         from native_runtime import ActivatedLink
