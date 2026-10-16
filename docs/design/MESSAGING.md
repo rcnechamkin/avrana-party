@@ -1,11 +1,10 @@
 # Party-owned messaging (proposal)
 
-Status: **PROPOSED (2026-10-06) · not accepted · implemented in source for review (AVR-54, 2026-10-16) · not deployed**
-**2026-10-16:** the owner's Persistent Party Experience sprint asked for the service to be built.
-It is built on a review branch to the proposed defaults below (every decision marked "proposed"),
-with the Chat tab moved off the legacy socket. That is implementation for review, not acceptance:
-the eight owner decisions at the end still stand, and nothing merges or deploys until the owner
-accepts. See "Implementation notes" before "Consequences".
+Status: **ACCEPTED (owner, 2026-10-16) as [ADR 0017](../adr/0017-party-owned-messaging.md), all eight proposed defaults · implemented, merged (AVR-54, PR #159) · not deployed**
+**2026-10-16:** built to the proposed defaults below at the owner's request and merged (PR #159);
+the owner then accepted all eight defaults ([ADR 0017](../adr/0017-party-owned-messaging.md)), so
+"proposed" below now reads "accepted". Not deployed. See "Implementation notes" before
+"Consequences".
 
 This is the [AVR-53](https://linear.app/avranakern/issue/AVR-53/define-avrana-platform-messaging-architecture-and-ownership)
 proposal. The owner allowed it to be drafted before the
@@ -353,7 +352,7 @@ people who know each other this is accepted; it is listed below for the owner.
 - Phones (human): the iOS and Android keyboard over the composer, new messages announced
   politely and never over "your turn", largest text, names in other scripts.
 
-## Owner decisions needed before acceptance
+## Owner decisions (all eight taken as proposed, 2026-10-16; ADR 0017)
 
 1. **Chat over a briefing.** Keep people only (accepted today), or allow the Party room there.
    AVR-53's text and slice 3 of the redesign plan ask for it; rule 3.2 forbids it.
