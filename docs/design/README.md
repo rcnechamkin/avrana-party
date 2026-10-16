@@ -70,6 +70,10 @@ Read in this order:
      HTML/JS/WASM game clients, the authoritative appliance, cold/warm delivery constraints, app-host
      isolation, Android handhelds, no native mobile executable delivery, porting rights and the
      unresolved app-store gates; lists conflicts with accepted text without resolving them
+   - `APPLIANCE-CONTENT-DELIVERY.md` — **proposed** (2026-10-15, AVR-500/501): how an installed
+     game's data reaches a fresh phone with no import (content packs served by the game's own process,
+     checked and kept in OPFS by the page), the rights gate, simulated evidence and the owner decisions
+     it needs; nothing deployed
    - `THIRD-PARTY.md` — **proposed** (2026-10-14, AVR-73): third-party license classification,
      new-dependency gate, SBOM/NOTICE expectations and known commercial blockers, with
      `contracts/third-party.v1.json` and `tools/sbom.py`; not legal advice, awaiting owner approval
