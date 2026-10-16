@@ -64,7 +64,9 @@ GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" conten
              # Party moves this page like any game page. `here` is the Party Core game id.
              b'<script type="module">import { startPartyFollow } from "/party/lib/party-follow.js";'
              b'const slug = location.pathname.split("/")[2];'
-             b'startPartyFollow({ here: slug, container: document.getElementById("nav") });'
+             # A test opts this stub into the Party layer (AVR-292) with localStorage avrana-test-layer.
+             b'let layer = false; try { layer = localStorage.getItem("avrana-test-layer") === "1"; } catch {}'
+             b'startPartyFollow({ here: slug, container: document.getElementById("nav"), layer });'
              b'</script>')
 
 
@@ -309,6 +311,11 @@ class Handler(BaseHTTPRequestHandler):
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
                 "frame-ancestors 'none'", 'frame-ancestors ' + cfg['party'].game_origin)
             return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
+        if path == '/party/layer.html' and cfg['party'] is not None:
+            # The Party layer (AVR-292): framed by a game page on this origin or the game origin.
+            csp = SHELL_HEADERS['Content-Security-Policy'].replace(
+                "frame-ancestors 'none'", "frame-ancestors 'self' " + cfg['party'].game_origin)
+            return self._file(cfg['web'], 'layer.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
         if path in ('/party/doorway/', '/party/doorway/index.html') and cfg['party'] is not None:
             # The doorway as step 3's nginx will serve it: its own connect-src (the one request
             # it makes is to the Full Mode origin), and here its two destinations simulated.

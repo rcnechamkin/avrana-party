@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-theme="avrana" class="avrana-layer-doc">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="same-origin">
+<meta name="robots" content="noindex">
+<title>Your Party</title>
+<!-- The Party layer over a game (AVR-292): the floating Party button and its drawer, drawn by the
+     Party in a frame a game page mounts (bridge/layer-mount.js). The server sends this page
+     `frame-ancestors` naming the Party's own origin and the game origins; every other Party page
+     keeps `frame-ancestors 'none'`. -->
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="lib/layer-app.js"></script>
+</head>
+<body class="avrana-layer">
+<button id="layer-button" type="button" class="avrana-layer-button" aria-haspopup="dialog" aria-label="Your Party" hidden>
+  <span class="ring" aria-hidden="true"><span data-icon="users"></span></span><span id="layer-unread" class="unread" aria-hidden="true"></span>
+</button>
+<button id="layer-tab" type="button" class="avrana-layer-tab" aria-label="Show the Party button" hidden><span data-icon="chevron-left"></span></button>
+
+<div id="layer-open" class="avrana-layer-open" hidden>
+  <div id="layer-backdrop" class="avrana-layer-backdrop"></div>
+  <section id="layer-sheet" class="avrana-drawer avrana-layer-sheet" role="dialog" aria-modal="true" aria-labelledby="layer-h">
+    <div class="head"><h2 id="layer-h" class="m-0">Your Party</h2><button id="layer-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
+    <p id="layer-where" class="where"></p>
+    <p id="layer-link" class="where text-warning empty:hidden" role="status"></p>
+    <div id="layer-tabs" class="avrana-tabs" role="group" aria-label="Show">
+      <button id="layer-tab-people" type="button" data-tab="people" aria-pressed="true">People</button>
+      <button id="layer-tab-chat" type="button" data-tab="chat" aria-pressed="false">Chat<span id="layer-tab-unread" class="unread" aria-hidden="true"></span></button>
+    </div>
+    <div id="layer-people" class="body">
+      <ul id="layer-people-list" class="avrana-people" aria-label="People at the party"></ul>
+      <div id="layer-host" class="avrana-layer-host" hidden>
+        <h3 class="m-0 text-supporting font-medium text-muted">Host</h3>
+        <div id="layer-actions" class="avrana-layer-actions"></div>
+        <div id="layer-confirm" class="avrana-layer-confirm" hidden>
+          <p id="layer-confirm-text" class="m-0" tabindex="-1"></p>
+          <label id="layer-pick-label" for="layer-pick" class="text-supporting text-muted" hidden>Hand over to</label>
+          <select id="layer-pick" class="select w-full" hidden></select>
+          <div class="flex gap-2"><button id="layer-yes" type="button" class="btn btn-primary"></button><button id="layer-no" type="button" class="btn btn-ghost">Cancel</button></div>
+          <p id="layer-confirm-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
+        </div>
+      </div>
+      <div class="avrana-layer-moves">
+        <button id="layer-move" type="button" class="btn btn-ghost btn-sm">Move the button to the other side</button>
+        <button id="layer-tuck" type="button" class="btn btn-ghost btn-sm">Tuck the button away</button>
+      </div>
+    </div>
+    <div id="chat" class="body" hidden>
+      <p id="chat-status" class="m-0 text-body text-muted empty:hidden" role="status"></p>
+      <ol id="chat-messages" aria-label="Party messages"></ol>
+      <p id="chat-feedback" class="text-body text-warning empty:hidden" role="status"></p>
+      <p id="chat-live" class="sr-only" aria-live="polite"></p>
+    </div>
+    <form id="chat-form" class="compose" hidden>
+      <label for="chat-text" class="sr-only">Message</label>
+      <input id="chat-text" class="input min-w-0 flex-1 text-base" maxlength="400" autocomplete="off" placeholder="Message the Party" required><button id="chat-send" type="submit" class="btn btn-primary" disabled><span data-icon="send-horizontal"></span>Send</button>
+    </form>
+  </section>
+</div>
+</body>
+</html>

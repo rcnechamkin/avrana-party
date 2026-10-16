@@ -242,3 +242,30 @@ test('no Party Core here (a 4xx) is not retried', async () => {
   assert.equal(await startPartyFollow({ here: 'bluff', fetch, go: () => {}, storage: PROFILE, root: null, retryMs: [0, 0, 0] }), null);
   assert.equal(probes, 1);
 });
+
+test('the Party layer (AVR-292): mounted for a member at this game\'s round or results, only on opt-in', async () => {
+  async function layered(first, here, { polls = [], layer = true } = {}) {
+    const o = origin(first, polls), mounts = [];
+    const api = await startPartyFollow({ here, fetch: o.fetch, go: () => {}, storage: PROFILE, root: null, layer,
+      partyOrigin: 'http://party.avrana.test', mountLayer: (opts) => { const m = { opts, stopped: false, stop() { m.stopped = true; } }; mounts.push(m); return m; } });
+    await settle();
+    return { api, mounts };
+  }
+  const game = await layered(view(), 'bluff');
+  assert.deepEqual(game.mounts.map((m) => m.opts), [{ partyOrigin: 'http://party.avrana.test', game: 'bluff' }]);
+  game.api.stop();
+  assert.equal(game.mounts[0].stopped, true);                                           // and goes with the page
+  const results = await layered(view({ location: at('results') }), 'bluff');
+  assert.equal(results.mounts.length, 1);
+  results.api.stop();
+  const off = await layered(view(), 'bluff', { layer: false });
+  assert.equal(off.mounts.length, 0);                                                   // the game did not opt in
+  off.api.stop();
+  const ended = await layered(view(), 'bluff', { polls: [view({ version: 9, location: at('home') })] });
+  assert.equal(ended.mounts.length, 1);
+  assert.equal(ended.mounts[0].stopped, true);                                          // the round ended: removed
+  ended.api.stop();
+  const left = await layered(view(), 'bluff', { polls: [view({ version: 9, me: null })] });
+  assert.equal(left.mounts[0].stopped, true);                                           // no longer a member
+  left.api.stop();
+});

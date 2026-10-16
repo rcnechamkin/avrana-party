@@ -623,6 +623,42 @@
   .avrana-tabs .unread { margin-left: 0.375rem; }
   .avrana-hud .unread:empty, .avrana-tabs .unread:empty { display: none; }
 
+  /* The Party layer over a game (AVR-292, layer.html): a frame the game page places. Its document
+     is transparent; it is only as big as what it shows (the button, the tab, or the open drawer).
+     Safe areas come from the page (an iframe sees none of its own): --li-top/right/bottom/left. */
+  html.avrana-layer-doc, body.avrana-layer { min-height: 0; height: 100%; background: transparent; overflow: hidden; }
+  .avrana-layer-button {
+    position: fixed; inset: 2px; display: grid; place-items: center; border-radius: 0.875rem; cursor: pointer;
+    background: rgb(28 28 32 / 0.72); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid rgb(255 255 255 / 0.14); color: var(--color-base-content);
+    touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .avrana-layer-button .ring { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: rgb(255 255 255 / 0.16); }
+  .avrana-layer-button .ring .avrana-icon { width: 1.125rem; height: 1.125rem; }
+  .avrana-layer-button .unread { position: absolute; top: -2px; right: -2px; }
+  .avrana-layer-button.lifted { transform: scale(1.12); background: rgb(28 28 32 / 0.9); }
+  .avrana-layer-button:focus-visible, .avrana-layer-tab:focus-visible { outline: 2px solid var(--color-base-content); outline-offset: -3px; }
+  .avrana-layer-tab {
+    position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer; color: var(--color-base-content);
+    background: rgb(28 28 32 / 0.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border: 1px solid rgb(255 255 255 / 0.14); touch-action: manipulation;
+  }
+  .avrana-layer-tab[data-side="right"] { border-right: 0; border-radius: 0.75rem 0 0 0.75rem; }
+  .avrana-layer-tab[data-side="left"] { border-left: 0; border-radius: 0 0.75rem 0.75rem 0; }
+  .avrana-layer-open { position: fixed; inset: 0; }
+  .avrana-layer-backdrop { position: absolute; inset: 0; background: rgb(4 4 6 / 0.6); }
+  .avrana-layer-sheet { display: flex; padding-top: var(--li-top, 0px); padding-left: var(--li-left, 0px); padding-right: var(--li-right, 0px); }
+  .avrana-layer-sheet:has(#chat:not([hidden])) { height: min(86dvh, 40rem); }
+  .avrana-layer-host { display: grid; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-line); }
+  .avrana-layer-actions { display: grid; gap: 0.5rem; }
+  .avrana-layer-actions .btn { min-height: 2.75rem; height: auto; white-space: normal; text-align: left; }
+  .avrana-layer-confirm { display: grid; gap: 0.5rem; }
+  .avrana-layer-confirm .btn { min-height: 2.75rem; }
+  .avrana-layer-moves { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--color-line); }
+  .avrana-layer-moves .btn { min-height: 2.75rem; color: var(--color-muted); }
+  @media (prefers-reduced-motion: reduce) { .avrana-layer-button { transition: none; } .avrana-layer-button.lifted { transform: none; } }
+
   /* The Party's chat: a person's line is a face, a name and their words; a system line is the
      Party's own small text, never drawn like a person's words. */
   #chat-messages { margin: 0.5rem 0; padding: 0; list-style: none; overflow-wrap: anywhere; }

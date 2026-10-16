@@ -15,6 +15,9 @@
 //     and a document 'avrana-party' event on every change. A game that draws the host's
 //     controls itself (End, Play again, Party Home) marks an element [data-avrana-party-shell];
 //     otherwise the host gets one End control in the page's own navigation (`container`).
+//  4. On a game that opts in (`layer: true`, or <html data-avrana-party-layer>), mounts the Party
+//     layer during its round and results: the floating Party button and drawer (AVR-292,
+//     bridge/layer-mount.js), drawn by a Party frame above the game.
 //
 // Progressive enhancement: with no Party Core (a 404), or on a phone with no profile, this module
 // returns null and the page stays what it always was (a standalone game with Back to Party).
@@ -65,9 +68,10 @@ export function profileIdentity(storage) {
  * or null when there is no Party here for this phone. */
 export async function startPartyFollow({ here = null, container = null, fetch = globalThis.fetch.bind(globalThis),
   go = (url) => location.replace(url), storage = globalThis.localStorage, root = globalThis.document,
-  partyOrigin = globalThis.location ? globalThis.location.origin : null, retryMs = undefined } = {}) {
+  partyOrigin = globalThis.location ? globalThis.location.origin : null, retryMs = undefined, layer = null,
+  mountLayer = null } = {}) {
   const listeners = new Set();
-  let ready = false, moving = false, endBtn = null, armed = null;
+  let ready = false, moving = false, endBtn = null, armed = null, mounted = null;
   const gameOrigins = createGameOrigins({ fetch });
   let originsFor = null;                      // the game list the registrations were asked for
   const client = createPartyClient({ fetch, base: '/party/api/', onView });
@@ -160,6 +164,7 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
   function onView(v) {
     if (!ready || moving) return;           // the first join answers before the page is wired
     if (!v.me) {                              // no longer a member (a new party after a restart)
+      dropLayer();
       const who = profileIdentity(storage);
       if (who) client.join(who.name, who.avatar);
       return;
@@ -167,6 +172,7 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
     const plain = destination(v, here, catalog);
     if (plain) {
       moving = true;
+      dropLayer();                            // the round is not here any more
       if (plain === '/party/' || modeOf(v) === LIMITED) return leave(plain);
       // A game that may open on its own origin: ask Party Core where (once per game list), and
       // only then leave; the page never shows the game on this origin on the way.
@@ -182,10 +188,32 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
       return;
     }
     fallbackControls(v);
+    syncLayer(v);
     for (const fn of listeners) { try { fn(v); } catch { /* a listener's own problem */ } }
     if (doc && typeof CustomEvent === 'function') {
       doc.dispatchEvent(new CustomEvent('avrana-party', { detail: { location: locationOf(v), host: api.isHost() } }));
     }
+  }
+
+  /** The Party layer (AVR-292): mounted while this page holds the Party's round or its results,
+   * for a member, on a game that opted in; removed otherwise. */
+  const wantsLayer = layer !== null ? Boolean(layer)
+    : Boolean(doc && doc.documentElement && doc.documentElement.hasAttribute('data-avrana-party-layer'));
+  function dropLayer() {
+    if (mounted && mounted.stop) mounted.stop();
+    mounted = null;                           // a mount still loading sees this and stops
+  }
+  async function syncLayer(v) {
+    if (!wantsLayer || !here || !partyOrigin) return;
+    const loc = locationOf(v);
+    const want = Boolean(v.me) && (loc.at === 'game' || loc.at === 'results') && loc.game === here;
+    if (want && !mounted) {
+      const loading = {};
+      mounted = loading;
+      const mount = mountLayer || (await import('../bridge/layer-mount.js')).mountPartyLayer;
+      if (mounted !== loading) return;
+      mounted = mount({ partyOrigin, game: here });
+    } else if (!want) dropLayer();
   }
 
   ready = true;
@@ -199,6 +227,7 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
   if (net) net.addEventListener('online', back);
   api.stop = () => {
     client.stop();
+    dropLayer();
     if (doc) doc.removeEventListener('visibilitychange', wake);
     if (net) net.removeEventListener('online', back);
   };

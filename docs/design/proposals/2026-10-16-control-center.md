@@ -63,26 +63,26 @@ viewport and can cover, hide or full-screen over any frame.
 
 ## 3. Design as decided (B now)
 
-- **The Party button.** 48 × 48 CSS px, Party-rendered inside the bridge frame, translucent dark
+- **The Party button.** 48 × 48 CSS px, Party-rendered inside the Party layer frame, translucent dark
   like AssistiveTouch, showing the Party mark and the unread count. It floats above the game; it
   starts on the right edge, a third of the way down, inside `env(safe-area-inset-*)`.
 - **Tap** (or Enter / Space) opens the Party drawer. **Long-press** (about 400 ms, with a small
   scale-up as the cue) then **drag** moves it. On release it settles on the nearer left or right
   edge, kept clear of the safe areas, the notch and the home indicator. A quick fling toward an
-  edge, or a drop past it, **tucks it away**: it slides mostly off screen and leaves a 20 × 56 px
+  edge, or a drop past it, **tucks it away**: it slides mostly off screen and leaves a 24 × 60 px
   tab with a chevron. Tap the tab to bring the button back. Position and tucked state are kept per
   phone (Party-origin storage), so the button is where the player left it in the next round.
 - **Mechanics.** The frame tracks the finger in `screenX/screenY`, which do not jump as the frame
-  itself moves, and asks the shim to move the frame (`layer.move {x, y}`); the shim may only place
-  the frame where asked, inside the viewport. The button sets `touch-action: none` and
+  itself moves, and asks the page to move the frame (`drag {x, y}`, then `place`); the page may
+  only place the frame where asked, clamped inside the viewport. The button sets `touch-action: none` and
   `-webkit-touch-callout: none`, so a long-press opens no Safari callout or text selection.
 - **Accessibility.** A drag has a non-drag equivalent (WCAG 2.5.7): the drawer has **Move button
   to the other side** and **Tuck button away**, and the tucked tab is a real button named "Show
   the Party button". The button's name carries the unread count. It honours reduced motion: no
   slide or fling animation.
 - **The drawer.** Opening moves focus into the frame's dialog (`aria-modal`); the game gets
-  `layer.open` so it can stop taking keys and announcements; closing returns focus to the button
-  and sends `layer.closed`. The game is dimmed, not resized, and keeps its state.
+  the document event `avrana-party-layer` `{open: true}` so it can stop taking keys and
+  announcements; closing returns focus to the button and sends `{open: false}`. The game is dimmed, not resized, and keeps its state.
 - **What it holds, by role.**
   - Everyone: the Party and the game on now; people, with the Host named in words; the Party's
     chat (read with the Party credential inside the Party-origin frame, never passed to the game);
@@ -90,9 +90,17 @@ viewport and can cover, hide or full-screen over any frame.
   - Host: End for everyone; Bring everyone back; Hand over hosting (pick someone here); Quit &
     Spectate (D5b decides its mid-round meaning). All confirmed.
   - Player-private game state never enters the frame.
-- **Bridge v2.** Verbs `layer.mount`, `layer.move`, `layer.grow`, `layer.shrink` from the frame to
-  the shim; events `layer.open` / `layer.closed` to the game; capability word `party-layer/1` in the
-  handshake. A game without it keeps v1, so either side can roll back.
+- **Its own frame and protocol, not bridge v2 (as built, AVR-292).** The layer is a second,
+  visible Party-origin frame, `/party/layer.html`, mounted by `web/party/bridge/layer-mount.js`
+  (one import-free file a game can vendor, like `shim.js`; same-origin pages get it from
+  `party-follow.js` with `layer: true` or `<html data-avrana-party-layer>`). Protocol
+  `avrana.party-layer/v1`: frame → page `ready`, `place {mode: button|tab|open, side, y}`,
+  `drag {x, y}`; page → frame `viewport {w, h, insets}`. No view, name or message text crosses.
+  Bridge v1 and its frozen vectors are untouched, so a game that does not mount the layer, or
+  stops mounting it, is exactly as before. The frame is sandboxed (`allow-scripts
+  allow-same-origin allow-forms`: it cannot navigate the game page); it answers only a page on
+  the Party's own origin or one Party Core registers for that game. nginx and the devserver let
+  `layer.html` alone be framed by `'self'` and the game origin.
 - **What games must do (GAME-UX-CONTRACT amendment).** Keep the frame above their own content
   (no element over it, no element full screen that hides it), and put nothing under the default
   position that cannot also be reached once the player moves the button. No reserved corner.
@@ -115,13 +123,16 @@ viewport and can cover, hide or full-screen over any frame.
 
 ## 5. Build order
 
-1. Party: bridge v2 and the button/drawer UI in the frame (drag, tuck, the non-drag actions,
-   reusing `party-chat.js` and the drawer's people list), vectors and hashes. Tests: both
-   bridge-vector suites, tap vs long-press vs fling, position kept, focus and screen reader, a
-   320 × 568 phone, unread, Host-only actions, a follower's 403.
+1. Party (AVR-292, built): the layer frame and its mount, the button/drawer UI (drag, tuck, the
+   non-drag actions, reusing `party-chat.js` and the people list), Host actions with a
+   confirmation (End, Bring everyone back, Hand over; Stop hosting and watch at setup or
+   results only). Tests: `tests/offline/party-layer.test.mjs`, `party-follow.test.mjs`,
+   `tests/party/party-layer.spec.ts` (tap, long-press drag, tuck, position kept, keyboard,
+   320 × 568, unread, Host-only actions).
 2. Party Core, once D5b is answered: Quit & Spectate during a round.
-3. Games: the vendored shim with `layer.*`, BLUFF and EXPO keeping the frame on top and handling
-   `layer.open`; a mid-round quit as a forfeit (D5b). One paired PR, one merge set.
+3. Games: BLUFF and EXPO opt in (`layer: true` to `startPartyFollow`), keep the frame on top and
+   handle `avrana-party-layer`; a mid-round quit as a forfeit (D5b). Not a contract change for
+   bridge v1, so the Games PR can follow the Party PR.
 4. Arcade, after the Pi measures the frame's cost to the stream.
 5. Phones: iPhone Safari and Android Chrome on the Pi with the WAN cable out (Tier 3): drag,
    long-press without callouts, tuck, safe areas, VoiceOver and TalkBack.
