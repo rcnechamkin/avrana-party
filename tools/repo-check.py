@@ -253,9 +253,9 @@ def check_repository(root, files):
     for path in files:
         if path.split('/')[0] not in allowed:
             fail(path, 'unexpected root entry; document intentional structure')
-        if '/' not in path and 'handoff' in path.lower() and path != 'CODEX-HANDOFF.md':
+        if '/' not in path and 'handoff' in path.lower():
             fail(path, 'root handoff logs belong in docs/archive/handoffs')
-    for path in ['CLAUDE.md', 'CODEX-HANDOFF.md', 'docs/agents/claude-cloud.md']:
+    for path in ['CLAUDE.md', 'docs/agents/claude-cloud.md']:
         if path not in documents:
             fail(path, 'agent compatibility layer missing')
             continue
