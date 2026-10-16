@@ -1,4 +1,4 @@
-# Weekly drift reconciliation (docs/WORKFLOW.md step 16): deterministic comparisons between Linear,
+# Weekly drift reconciliation: deterministic comparisons between Linear,
 # GitHub, both repositories and (when reachable) the deployed Pi. Publishes ONE report as a job
 # summary and an artifact; never fails the build, never writes to Linear or GitHub. The Pi is only
 # reachable on the Party LAN, so deployed-version checks run from a laptop with --status-url.

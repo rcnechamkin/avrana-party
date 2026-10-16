@@ -364,7 +364,7 @@ and status lists it under `summary.notes`. The `certificate` check still fails b
 Then:
 
 1. Move the Linear issue to **In Review** with the `Human Validation` label when phone acceptance
-   remains (the `Ready for Playtest` state in [WORKFLOW](../WORKFLOW.md)).
+   remains.
 2. Do the physical check on real phones. Findings become a new issue or close this one.
 3. Update [SYSTEM](../SYSTEM.md) from the manifest (`python3 -m avrana.ops.manifest validate`
    prints the SHAs) and add a dated finding only when something noteworthy happened.

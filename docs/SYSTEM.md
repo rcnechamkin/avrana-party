@@ -22,28 +22,26 @@ migration is performed and verified with dated evidence.
 
 Three different things, never to be merged in the reader's head: what is **deployed** (running on the Pi),
 what is on **main** (merged source, not necessarily deployed), and what is **unmerged** (open pull requests
-and branches).
+and branches). A merged pull request is not a release. GitHub is the record of `main` and of open work;
+this file records only what was observed on the appliance.
 
-| Repository | Deployed (Pi, manifest read 2026-10-12) | `origin/main` (2026-10-12) | Unmerged |
-|---|---|---|---|
-| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed | `14a0278` plus the merges of #86 and this document's PR #113; 157 commits ahead of `c59f1c8` at `14a0278`. PRs #85, #86 and #108 to #111 merged on 2026-10-12, after the [baseline](findings/2026-10-12-deployed-baseline.md) was written | Draft PRs #106, #107 and #112 and the branch `fix/avr-33-session-recovery`. PR #114 (deploy hardening: `ops/deploy.sh` installs the nginx site, journals, recovers and rolls back) merged after the others on 2026-10-12; that script has never run on the Pi |
-| Games | `a448972` (clean, no mismatch) | `282c620` (Games #61 merged 2026-10-12) | none |
+| Repository | Deployed (Pi, deployment manifest read 2026-10-12) |
+|---|---|
+| Party | `c59f1c8` (checkout and `/party/` web release build `c59f1c819de1`; clean, no mismatch). Deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed |
+| Games | `a448972` (clean, no mismatch) |
 
-**Main is ahead of production, and unmerged work is ahead of main.** Main's extra commits include native
-games (`provision-game`, `prepare-native-games`, native Checkers), the game origin runbook and nginx block,
-the service-user migration tooling, the experimental `.avrgame` package installer and the Party/Games contract
-work. **None of that is running on the Pi**: the installed nginx site equals the deployed checkout's file, the
-services still run as `cody`, and no native game, game origin or package is installed. A merged pull request is
-not a release. The ADR 0011 console model **is** in the deployed revision (`ff32bb4`, the merge of Party PR #34,
-is an ancestor of `c59f1c8`); its real-phone proof belongs to AVR-212 and is still missing. Unmerged work has no
-phone or Pi evidence; the baseline lists each branch and says what it changes.
+**Main is ahead of production.** On 2026-10-12, `main` already contained native games (`provision-game`,
+`prepare-native-games`, native Checkers), the game origin runbook and nginx block, the service-user
+migration tooling, the experimental `.avrgame` package installer, the Party/Games contract work and the
+current `ops/deploy.sh` (which installs the nginx site, journals, recovers and rolls back). **None of that
+is running on the Pi**: the installed nginx site equals the deployed checkout's file, the services still run
+as `cody`, no native game, game origin or package is installed, and the current `ops/deploy.sh` has never
+run on the Pi. The ADR 0011 console model **is** in the deployed revision (`ff32bb4`, the merge of Party
+PR #34, is an ancestor of `c59f1c8`); its real-phone proof is still missing.
 
-Earlier production milestones are in the progression list below. The deployment finding of
-[2026-09-29](findings/2026-09-29-avr129-deploy.md) verified Party `956b968` and Games `c6d7b52` server-side:
-Party Core running (AVR-51), authoritative navigation (AVR-128), Gauntlet II lifecycle (AVR-134), BLUFF Play or
-Watch with host-only Start (AVR-129 / ADR 0010). Those checks do not establish physical phone acceptance, and
-no deployment finding records the later deployments (see the progression list).
-GitHub main supplies code/tests; ADRs and design docs supply contracts; Linear supplies live work
+Server-side checks of a deployment do not establish physical phone acceptance. Earlier deployments and
+their evidence are in [the production history](findings/2026-10-15-production-and-branch-history.md).
+GitHub main supplies code and tests; ADRs and design docs supply contracts; Linear supplies live work
 sequencing. Do not silently substitute a newer main SHA for a deployed revision.
 
 ## Machines
@@ -70,7 +68,7 @@ on any device, with the facts this file does not record listed there as unknown.
 | Checkout | Machine / path | Branch | Purpose |
 |---|---|---|---|
 | main checkout | laptop `~/Projects/avrana-party` | issue-scoped branch | editing; has `node_modules` for Playwright |
-| worktrees | laptop `~/Projects/avrana-party.wt-*` (`wt-platform`, `wt-sim`, `wt-svc`, `wt-fix`) | one branch each | parallel work without switching branches |
+| worktrees | laptop `~/Projects/avrana-party.wt-*` | one branch each | parallel work without switching branches |
 | **production** | Pi `/home/cody/avrana-party` | at `c59f1c8` (manifest `checkout_sha`, clean, 2026-10-12) | **live**: nginx site, arcade service code. An owner-approved deployment selects an exact reviewed commit and fast-forwards here; source synchronization alone is not a release. **Never edit or commit here.** Pulling changes live arcade code (a restart applies it; ask first). |
 | dev/test | Pi `~/avrana-lab/avrana-party-docs` | feature branch (2026-09-24 inventory: `experiment/ps1-title-profiles`) | test feature branches on the Pi (`git fetch && git merge --ff-only origin/<branch>`); never develop here. 2026-09-24 inventory recorded an old rescued-handoff stash; not re-audited |
 | dev/test worktree | Pi `~/avrana-lab/party-svc` (worktree of the dev/test checkout) | `experiment/party-service` | runs the dev front door on 8190 (`--ps1 ~/avrana-lab/avrana-party-docs/ps1`); `experiments/party-service/dev-data/` holds runtime logs (git-ignored) |
@@ -92,45 +90,11 @@ AGPL/Diplomacy: the abandoned `diplomacy/diplomacy` engine work exists only on t
 `abandoned/classic-diplomacy` branch (and `~/avrana-lab/diplomacy-spike` on the Pi). `main` and
 `playtest-readiness` do not contain it.
 
-## Branch roles and historical inventories
+## History
 
-The [retention inventory](branches.json) records the later GitHub branch audit. The rows below
-retain their dated historical context; neither inventory assigns work or establishes deployment.
-
-Production progression is historical evidence, not an instruction to synchronize to main:
-
-- 2026-09-27: `7581baa`, shell and arcade AP fix; Party Core was present as source but inactive
-  ([finding](findings/2026-09-27-production-deploy.md)).
-- 2026-09-28: Party `15f6322`, BLUFF listed in Party Home; Games `c6199be`.
-- 2026-09-29: Party Core deployed and restart/rollback checked at `6bd5af4` / `b345b6d`,
-  Games `eeedb19` ([finding](findings/2026-09-29-party-core-deploy.md)).
-- Later that day: Party `0e97c2e`, Games `03df5ae` for AVR-128/134
-  ([finding](findings/2026-09-29-avr128-134-deploy.md)), then Party `956b968`, Games `c6d7b52`
-  for AVR-129 ([finding](findings/2026-09-29-avr129-deploy.md)).
-- 2026-09-29 evening to 2026-10-02: the checkout stood at Party `a32b7b4` (merge of PR #29, 20:00 PDT) and
-  Games `0b4e9d2` when the AVR-130 finding read the Pi; **no finding records the deployment that put them
-  there**. That finding ([2026-10-02-avr130-deploy](findings/2026-10-02-avr130-deploy.md)) stages the next
-  deployment and records no after-state.
-- 2026-10-06: Party `c59f1c8`, Games `a448972`, deployed 2026-10-06T21:10:48Z by `ops/deploy.sh`, smoke passed
-  at 21:10:51Z, restarting `avrana-party-core`, `avranaparty-arcade` and `avranaparty-games`. Evidence: the
-  deployment manifest as reported by `/party/api/status` on 2026-10-12
-  ([baseline](findings/2026-10-12-deployed-baseline.md)). **No dated deployment finding exists** for the
-  deployments between 2026-09-29 and 2026-10-06, nor for this one.
-- 2026-10-09 22:59 PDT: an unrecorded reboot, observed after the fact (baseline); all units were active
-  afterwards with Ethernet present. Not an offline-boot proof.
-
-Party Core `avrana-party-core` runs at 127.0.0.1:8191 behind nginx `/party/api/`.
-BLUFF is granted and listed in Party Home. Experiment rows below retain the 2026-09-27 branch
-inventory; the source revision table above governs current main observations.
-
-| Branch | Where | What | Status |
-|---|---|---|---|
-| `main` | GitHub + Pi production | current source/code/tests; the Pi holds a separately deployed revision | canonical |
-| `docs/party-platform` | GitHub | history of the docs now on `main`, plus raw power-measurement evidence that stays out of `main` | park (archive) |
-| `experiment/party-service` | GitHub + Pi worktree `~/avrana-lab/party-svc` | party service, device identity, membership, host, presence, lifecycle, manifest v0, service-game launcher (PS1) + seat tickets v1, Party Home reconnect (includes the deleted `fix/party-home-reconnect`) | park: source evidence for Party Core, **not** for a wholesale merge |
-| `experiment/party-sim` | GitHub | `experiments/`: party lifecycle model, viewport geometry, Personal Viewports PoC | park (research) |
-| `experiment/ps1-title-profiles` | GitHub + Pi dev/test checkout | current PS1 line: title profiles, token-in-hello, Leave, supervised runs, party mode, `--viewports` | park (R&D) |
-| `ps1-emulation` | GitHub | older PS1 shared-stream base (superseded by `experiment/ps1-title-profiles`) | park (history) |
+Earlier production revisions, the dated branch inventory and the Pi's research worktrees are kept
+in [the production and branch history finding](findings/2026-10-15-production-and-branch-history.md).
+Retained research branches are listed in [branches.json](branches.json).
 
 ## Services and ports on the Pi
 
