@@ -27,6 +27,10 @@ Routes:
     POST /party/api/lobby          {if_version}          host: everyone back to Party Home from
                                                          wherever the party is (setup, a round,
                                                          its results); needs nothing of the game
+    GET  /party/api/messages?party=P&after=SEQ&wait=S   the Party room above SEQ, long-polled; a member's
+                                             read, never presence (MESSAGING.md, AVR-54)
+    POST /party/api/messages {party, text, client_id}   a member's line; a repeated client_id
+                                             answers with the stored line
     GET  /party/api/status                   what is running: avrana.ops.status (no secrets)
     join and rename also take {avatar}: a bundled Gaze avatar id, shown to the party
 
@@ -50,6 +54,7 @@ import argparse
 import http.server
 import json
 import logging
+import math
 import os
 import signal
 import socket
@@ -60,13 +65,17 @@ import time
 from urllib.parse import parse_qs, urlsplit
 
 from avrana.contracts import party_config
-from avrana.party import core, identity
+from avrana.party import core, identity, messages
 
 log = logging.getLogger('avrana.party.service')
 
 MAX_BODY = 8192
 MAX_WAIT = 25.0
 MAX_WAITERS = 64            # AVR-218: concurrent blocked long polls; beyond it a poll returns at once
+MAX_MSG_WAITERS = 64        # held message polls, a cap of their own (one per member besides)
+MSG_RETRY_MS = 1000         # an immediate answer with nothing new: wait this long before asking again
+MSG_BUSY_RETRY_MS = 3000    # over the cap, or released by a newer poll from the same member
+MESSAGES_ROUTE = '/party/api/messages'
 REQUEST_QUEUE_SIZE = 128    # AVR-218: listen backlog (socketserver default 5 drops reconnect storms)
 RELEASE_THREAD = 'avrana-end-lost-game'
 PROBE_EVERY = 2.0           # s: at most one reachability check of a session's game this often (AVR-33)
@@ -98,9 +107,101 @@ class PartyService:
         self.lock = threading.Lock()
         self.changed = threading.Condition(self.lock)
         self.waiters = 0
+        # The Party room's long polls (MESSAGING.md decision 6) wait on their own condition, with
+        # their own cap and at most one held poll per member, so neither kind starves the other.
+        self.heard = threading.Condition(self.lock)
+        self.msg_waiters = 0
+        self._held = {}                      # member id -> the token of its one held message poll
+        self._room_mark = None
 
     def _notify(self):
         self.changed.notify_all()
+        self._notify_room()
+
+    def _room_mark_now(self):
+        p = self.core.party
+        return p.id, p.ended, p.room.seq, sum(1 for m in p.members.values() if m.left)
+
+    def _notify_room(self):
+        """Wake the message polls only when something they wait for changed: a line, the Party
+        ending or being replaced, a member leaving. A state change alone does not wake them."""
+        mark = self._room_mark_now()
+        if mark != self._room_mark:
+            self._room_mark = mark
+            self.heard.notify_all()
+
+    def _timed_locked(self):
+        before = self.core.party.version, self.core.party.id
+        self.core._timed()
+        if (self.core.party.version, self.core.party.id) != before:
+            self._notify()
+
+    def _room_member_locked(self, device_id):
+        m = self.core._member_of(device_id) if device_id else None
+        if m is None or m.left:
+            raise core.Refused('not_member', 'Join the party first.')
+        return m
+
+    def messages(self, device_id, party_id, after, wait=0.0):
+        """The Party room above `after` for a current member, long-polled up to `wait` seconds.
+        A cursor for another Party (it ended, or Core restarted) or above anything held reads from
+        the start of the current room. Nothing slow happens under the lock: the caller builds the
+        JSON and writes it after this returns. Not presence: it never touches the member."""
+        deadline = time.monotonic() + min(max(wait, 0.0), MAX_WAIT)
+        retry_ms = 0
+        with self.lock:
+            self._timed_locked()
+            m = self._room_member_locked(device_id)
+            party = self.core.party
+            if party_id != party.id or after > party.room.seq:
+                after = 0
+            if party.room.seq <= after:
+                if wait <= 0:
+                    retry_ms = MSG_RETRY_MS
+                elif self.msg_waiters >= MAX_MSG_WAITERS:
+                    retry_ms = MSG_BUSY_RETRY_MS     # over the cap: answer now, and say when to ask
+                else:
+                    token = object()
+                    self._held[m.id] = token         # a second poll from this member releases the first
+                    self.heard.notify_all()
+                    self.msg_waiters += 1
+                    try:
+                        while True:
+                            if self._held.get(m.id) is not token:
+                                retry_ms = MSG_BUSY_RETRY_MS
+                                break
+                            if self.core.party is not party or party.ended or m.left \
+                                    or party.room.seq > after:
+                                break
+                            left = deadline - time.monotonic()
+                            if left <= 0:
+                                break
+                            self.heard.wait(left)
+                    finally:
+                        self.msg_waiters -= 1
+                        if self._held.get(m.id) is token:
+                            del self._held[m.id]
+                    # checked again after the wake: never answer from a Party that ended meanwhile
+                    self._timed_locked()
+                    m = self._room_member_locked(device_id)
+                    if self.core.party is not party:
+                        party, after = self.core.party, 0
+            room = party.room
+            return {'party': party.id, 'first': room.first(), 'last': room.seq,
+                    'messages': room.after(after), 'retry_ms': retry_ms}
+
+    def send_message(self, device_id, party_id, text, client_id):
+        """A current member's line in the Party it names. A line typed for an earlier Party is
+        refused and stores nothing. Not presence, and it never changes the Party's version."""
+        with self.lock:
+            self._timed_locked()
+            m = self._room_member_locked(device_id)
+            party = self.core.party
+            if party_id != party.id:
+                raise messages.Refused('bad_party', 'The party changed. Your message was not sent.')
+            line, _ = party.room.send(m, text, client_id)
+            self._notify_room()
+            return {'party': party.id, 'message': line}
 
     def call(self, fn, *args):
         with self.lock:
@@ -365,6 +466,34 @@ def _refused(h, e):
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
 
+def _room_refused(h, e):
+    """A refused Party room request (MESSAGING.md decision 6): fixed codes, `retry_ms` on too_fast."""
+    if isinstance(e, core.Refused):
+        return _refused(h, e)
+    body = {'error': e.code, 'message': str(e)}
+    if e.retry_ms is not None:
+        body['retry_ms'] = e.retry_ms
+    return _send(h, 429 if e.code == 'too_fast' else 400, body)
+
+
+def _room_query(query):
+    """(party, after, wait) from GET /party/api/messages, or messages.Refused."""
+    q = parse_qs(query)
+    party = q.get('party', [None])[0]
+    if not party or len(party) > 64:
+        raise messages.Refused('bad_party', 'Say which party.')
+    raw = q.get('after', ['0'])[0]
+    if not raw.lstrip('-').isdigit() or not raw.lstrip('-').isascii() or len(raw) > 18:
+        raise messages.Refused('bad_query', 'The cursor is a whole number.')
+    try:
+        wait = float(q.get('wait', ['0'])[0])
+    except ValueError:
+        raise messages.Refused('bad_query', 'The wait is a number of seconds.') from None
+    if not math.isfinite(wait):
+        raise messages.Refused('bad_query', 'The wait is a number of seconds.')
+    return party, max(0, int(raw)), wait
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = 'AvranaParty/0'
     service: PartyService = None
@@ -419,6 +548,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         route = self.extra_routes.get(('GET', url.path))
         if route:
             return route(self, self._device(), None)
+        if url.path == MESSAGES_ROUTE:         # the Party room: members only, no anonymous read
+            try:
+                party, after, wait = _room_query(url.query)
+                answer = self.service.messages(self._device(), party, after, wait)
+            except (core.Refused, messages.Refused) as e:
+                return _room_refused(self, e)
+            return _send(self, 200, answer)    # built and written outside the Party's lock
         if url.path == BRIDGE_ROUTE:           # which game origins the bridge frame may serve
             return _send(self, 200, {'schema': BRIDGE_SCHEMA, 'origins': self.cfg.game_origins})
         if url.path != '/party/api/state':
@@ -469,6 +605,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._join(device, body)
             if device is None:
                 return _send(self, 403, {'error': 'not_member', 'message': 'Join the party first.'})
+            if path == MESSAGES_ROUTE:
+                party = body.get('party')
+                try:
+                    if not isinstance(party, str):
+                        raise messages.Refused('bad_party', 'Say which party.')
+                    answer = self.service.send_message(device, party, body.get('text'),
+                                                       body.get('client_id'))
+                except (core.Refused, messages.Refused) as e:
+                    return _room_refused(self, e)
+                return _send(self, 200, answer)
             svc = self.service
             if path == '/party/api/heartbeat':
                 with svc.lock:

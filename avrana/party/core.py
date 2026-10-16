@@ -50,6 +50,11 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   the role moves by succession, a Full Mode member who is here is preferred; a host who is
   here is never displaced, whatever their mode.
 
+* **The Party room** (AVR-54, docs/design/MESSAGING.md). Each Party holds one message room in
+  memory (avrana.party.messages); a new Party starts an empty one. System lines are derived in
+  _commit from what the commit changed, so they are written by the same operation that changed the
+  state and can be neither missing nor doubled. A message never changes `version`.
+
 Not here (deliberately): persistence across reboot (the party is memory-only; OPEN), kicks, votes,
 profiles, teams, seat assignment (the game seats its roster), results and scores.
 """
@@ -58,6 +63,7 @@ import re
 import secrets
 import unicodedata
 
+from avrana.party import messages
 from avrana.party import result as game_result
 
 LIVE_WINDOW = 45.0         # s since the last party request before a member counts as away
@@ -178,7 +184,7 @@ class GameSession:
 
 
 class Party:
-    def __init__(self, now):
+    def __init__(self, now, clock=None):
         self.id = new_id('party')
         self.created_at = now
         self.version = 0
@@ -190,6 +196,7 @@ class Party:
         self.ended = False
         self.nav = {'seq': 0, 'to': 'home', 'game': None, 'session': None, 'from': None}
         self.pending = None             # the game a host switch moves to, while the old one ends
+        self.room = messages.Room(clock or (lambda: now))   # the Party room; ends with the Party
 
 
 class PartyCore:
@@ -200,16 +207,59 @@ class PartyCore:
         self.clock = clock
         self.close_lost_game = close_lost_game    # AVR-33 switch (session_recovery.close_lost_game)
         self.games = dict(games)        # game_id -> {'id', 'max_players', 'late_join'}
-        self.party = Party(clock())
+        self.party = Party(clock(), clock)
         self._shown = {}                # member_id -> presence last published (timer diffing)
         self._misses = (None, [])       # (session id, times of failed checks inside the window)
         self.abandoned = []             # sessions TABLE_ABANDON closed whose game has not been told yet
+        self._announced = None          # _facts() at the last commit (system lines)
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
         self.party.version += 1
         now = self.clock()
         self._shown = {m.id: self.presence(m, now) for m in self.party.members.values()}
+        self._announce()
+
+    def _facts(self):
+        """What system lines are about: (party id, {member: (left, name)}, host, (session, state))."""
+        p, s = self.party, self.party.session
+        return (p.id, {m.id: (m.left, m.name) for m in p.members.values()}, p.host_id,
+                (s.id, s.state) if s else None)
+
+    def _announce(self):
+        """Write the room's system lines for what this commit changed (MESSAGING.md decision 4):
+        a first join or a return, a leave, a new host, a rename, a round becoming active, an
+        active round finishing. Nothing else. A no-op rejoin or rename changes nothing here."""
+        before, now = self._announced, self._facts()
+        self._announced = now
+        if before is None or before[0] != now[0]:
+            before = (now[0], {}, None, None)
+        room, members, arrived = self.party.room, self.party.members, set()
+        for mid, (left, name) in now[1].items():
+            was = before[1].get(mid)
+            m = members[mid]
+            if was is None:
+                if not left:
+                    arrived.add(mid)
+                    room.system('joined', m)
+            elif was[0] and not left:
+                room.system('returned', m)
+            elif not was[0] and left:
+                room.system('left', m)
+            elif not left and was[1] != name:
+                room.system('renamed', m, was=was[1])
+        # The first member of a Party becomes its host as they join: that is the join, not a change.
+        if now[2] != before[2] and now[2] in members and not (before[2] is None and now[2] in arrived):
+            room.system('host', members[now[2]])
+        s, prev = self.party.session, before[3]
+        if s is not None and now[3] != prev:
+            started_by = members.get(s.started_by)
+            if started_by is not None:
+                same = prev is not None and prev[0] == s.id
+                if s.state == ACTIVE and not (same and prev[1] == ACTIVE):
+                    room.system('round_started', started_by, game=s.game_id)
+                elif s.state == ENDED and same and prev[1] in (ACTIVE, ENDING):
+                    room.system('round_ended', started_by, game=s.game_id, outcome=s.outcome)
 
     def _member_of(self, device_id):
         return next((m for m in self.party.members.values() if m.device_id == device_id), None)
@@ -337,7 +387,7 @@ class PartyCore:
     def _timed(self):
         self._run_timers()
         if self.party.ended:                                  # the next visitor starts afresh
-            self.party = Party(self.clock())
+            self.party = Party(self.clock(), self.clock)
             self._shown = {}
 
     # ---- membership ----------------------------------------------------------------------------
