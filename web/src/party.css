@@ -613,6 +613,24 @@
   .avrana-tabs button[aria-pressed="true"] { color: var(--color-base-content); font-weight: 550; }
   .avrana-tabs button[aria-pressed="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--color-base-content); }
 
+  /* Something new in the Party's chat (AVR-54): one small count, the same on the Party control and
+     the Chat word. It says a number only; the control's name says it to a screen reader. */
+  .avrana-hud .unread, .avrana-tabs .unread {
+    min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem;
+    background: var(--color-base-content); color: var(--color-primary-content);
+    font-size: var(--text-caption); font-weight: 600; line-height: 1rem; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .avrana-tabs .unread { margin-left: 0.375rem; }
+  .avrana-hud .unread:empty, .avrana-tabs .unread:empty { display: none; }
+
+  /* The Party's chat: a person's line is a face, a name and their words; a system line is the
+     Party's own small text, never drawn like a person's words. */
+  #chat-messages { margin: 0.5rem 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+  .avrana-chat-line { display: flex; gap: 0.75rem; padding: 0.5rem 0; }
+  .avrana-chat-line p { unicode-bidi: isolate; }
+  .avrana-chat-system, .avrana-chat-empty { padding: 0.375rem 0; color: var(--color-muted); font-size: var(--text-supporting); text-align: center; }
+  .avrana-chat-empty { padding: 1.5rem 0; }
+
   /* The round's line-up (the briefing): each person a face, the name, the word "Host" where it
      applies, and the answer as an icon and a word (Playing, Watching, Choosing). */
   .avrana-lineup {

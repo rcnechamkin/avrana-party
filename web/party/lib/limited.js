@@ -31,7 +31,7 @@ export function limitedNotice({ caps = {}, blocked = [] } = {}) {
   }
   return {
     title: 'Limited Mode',
-    intro: 'This connection is not private. Other people on this Wi-Fi could see what this phone sends. The party, the host and the games still work.',
+    intro: 'This connection is not private. Other people on this Wi-Fi could see what this phone sends and the Party’s chat. The party, the host and the games still work.',
     missing,
     restore: 'The full version comes back when the Party box’s owner renews its certificate.',
   };

@@ -92,96 +92,18 @@ test('search, group size and cross-provider favorites work together', async ({ p
   await players(4);
   await expect(page.locator('#games')).toContainText('Gauntlet II');
 });
-test('Party Chat, in the drawer, uses the same hello and server echo, then reconnects after a profile edit', async ({ page }) => {
+test('without a Party there is no chat: the old socket is never opened, nothing reconnects (AVR-54)', async ({ page }) => {
   await legacyProfile(page);
-  const hellos: any[] = [];
-  await page.routeWebSocket('**/chat/ws', (ws) => {
-    ws.onMessage((raw) => {
-      const msg = JSON.parse(String(raw));
-      if (msg.t === 'hello') {
-        hellos.push(msg);
-        ws.send(JSON.stringify({ type: 'welcome', you: 'hashed-uid' }));
-        ws.send(JSON.stringify({ type: 'history', messages: [
-          { id: 1, by: 'other-uid', name: 'Casey', avatar: '🦊', pfp: null,
-            text: 'Hello from the games', ts: 1234 }] }));
-        ws.send(JSON.stringify({ type: 'presence', online: 2 }));
-      } else if (msg.t === 'msg') ws.send(JSON.stringify({ type: 'msg', id: 2,
-        by: 'hashed-uid', name: hellos.at(-1).name, avatar: hellos.at(-1).avatar,
-        text: msg.text, pfp: null, ts: 2345 }));
-    });
-  });
+  let sockets = 0;
+  page.on('websocket', (ws) => { if (ws.url().endsWith('/chat/ws')) sockets++; });
   await open(page);
-  // No Party here, only the old chat: the Party control is a chat mark and opens straight to it.
-  await expect(page.locator('#hud')).toHaveAccessibleName('Party chat');
-  expect(hellos).toHaveLength(0);                                        // connected only while it is on screen
-  await page.locator('#hud').click();
-  await expect(page.locator('#social')).toBeVisible();
-  await expect(page.locator('#social-tabs')).toBeHidden();               // nobody to list: no People side
-  await expect(page.locator('#chat-status')).toHaveText('2 in chat');
-  await expect(page.locator('#chat-messages')).toContainText('Hello from the games');
-  expect(hellos[0]).toEqual({ t: 'hello', token: 'existing-player-01', name: 'Robin', avatar: 'gaze-02' });
-  await page.locator('#chat-text').fill('<b>Hello Party</b>');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.locator('#chat-messages')).toContainText('<b>Hello Party</b>');
-  await expect(page.locator('#chat-messages b')).toHaveCount(0);
-  await expect(page.locator('#chat-messages li')).toHaveCount(2);
-  // Escape closes the drawer, gives focus back to the control that opened it, and ends the connection.
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#social')).toBeHidden();
-  await expect(page.locator('#hud')).toBeFocused();
-  await expect(page.locator('#chat-send')).toBeDisabled();
+  // Chat is the Party room, Party Core's own. With no Party Core here the catalog has no chat at
+  // all: no chat mark, no Party chat row, and no connection to the retiring runtime's chat.
+  await expect(page.locator('#hud')).toBeHidden();
   await place(page, 'party');
-  await page.locator('#player-chip').click();
-  await page.locator('#profile-name').fill('Robin Two');
-  await page.getByRole('button', { name: 'Save profile' }).click();
-  // The Party page's own row opens the same chat, under the new name and the same identity.
-  await page.locator('#party-chat').click();
-  await expect.poll(() => hellos.at(-1)?.name).toBe('Robin Two');
-  expect(hellos.at(-1).token).toBe(hellos[0].token);
-  await page.locator('#social-close').click();
-  await expect(page.locator('#social')).toBeHidden();
-  await expect(page.locator('#chat-send')).toBeDisabled();
-});
-test('chat’s runtime going away while the drawer is open ends the connection and says so', async ({ page }) => {
-  await legacyProfile(page);
-  let hub = true, sockets = 0;
-  await page.routeWebSocket('**/chat/ws', (ws) => {
-    sockets++;
-    if (!hub) { ws.close(); return; }
-    ws.onMessage((raw) => {
-      if (JSON.parse(String(raw)).t === 'hello') {
-        ws.send(JSON.stringify({ type: 'welcome', you: 'hashed-uid' }));
-        ws.send(JSON.stringify({ type: 'presence', online: 1 }));
-      }
-    });
-  });
-  await open(page);
-  await page.locator('#hud').click();
-  await expect(page.locator('#chat-status')).toHaveText('1 in chat');
-  await page.keyboard.press('Escape');
-  // the hub stops answering: a few tries in a row, then the drawer says so and stops trying
-  hub = false;
-  await page.locator('#hud').click();
-  await expect(page.locator('#chat-status')).toHaveText('Chat isn’t available right now.', { timeout: 30_000 });
-  await expect(page.locator('#chat-send')).toBeDisabled();
-  const tried = sockets;
-  await page.waitForTimeout(6_000);
-  expect(sockets).toBe(tried);                                            // it really stopped
-  // closing and opening the drawer tries again, and a hub that is back is found
-  hub = true;
-  await page.keyboard.press('Escape');
-  await page.locator('#hud').click();
-  await expect(page.locator('#chat-status')).toHaveText('1 in chat');
-});
-
-test('a phone with no name is offered its name, not a dead end, on the Chat side', async ({ page }) => {
-  await open(page);
-  await page.locator('#hud').click();
-  await expect(page.locator('#chat-status')).toHaveText('Choose your name to chat.');
-  await page.locator('#chat-name').click();
-  await expect(page.locator('#social')).toBeHidden();
-  await expect(page.locator('html')).toHaveAttribute('data-place', 'party');
-  await expect(page.locator('#profile-name')).toBeFocused();
+  await expect(page.locator('#party-chat-row')).toBeHidden();
+  await page.waitForTimeout(500);
+  expect(sockets).toBe(0);
 });
 
 test('missing donor service disables its titles without disabling the arcade or losing the profile', async ({ page }) => {

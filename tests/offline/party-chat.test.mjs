@@ -1,93 +1,207 @@
+// The Party room's client (web/party/lib/party-chat.js, AVR-54): merge by seq, unread, reconnect
+// catch-up, the gap, a new Party, membership loss, sends and their retry. Pure: a fake fetch.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPartyChat, normalizeMessage } from '../../web/party/lib/party-chat.js';
+import { createPartyChat, length, merge, readLine, systemText, unread } from '../../web/party/lib/party-chat.js';
 
-const message = (id, text = 'hello') => ({ id, by: 'hashed-uid', name: 'Robin',
-  avatar: '🐸', pfp: null, text, ts: 1234, img: null });
-function fixture() {
-  const sockets = [], changes = [], pending = new Map();
-  let number = 0, me = { token: 'existing-player-01', name: 'Robin', avatar: '🐸' };
-  class Socket {
-    constructor(url) { this.url = url; this.sent = []; sockets.push(this); }
-    send(text) { this.sent.push(JSON.parse(text)); }
-    close() { this.onclose?.(); }
-    receive(data) { this.onmessage({ data: JSON.stringify(data) }); }
-  }
-  const chat = createPartyChat({ identity: () => me, origin: 'https://party.avrana.net',
-    Socket, onChange: (s) => changes.push(s),
-    schedule: (fn, ms) => { const id = ++number; pending.set(id, { fn: () => { pending.delete(id); fn(); }, ms }); return id; },
-    cancel: (id) => pending.delete(id) });
-  return { chat, sockets, changes, pending, setName: (name) => { me = { ...me, name }; } };
+const line = (seq, from = 'member-b', text = `m${seq}`, extra = {}) =>
+  ({ seq, kind: 'member', scope: 'party', from, name: from === 'member-a' ? 'Ana' : 'Ben', avatar: null, text, age_ms: 0, ...extra });
+const sys = (seq, event, extra = {}) =>
+  ({ seq, kind: 'system', scope: 'party', from: 'member-b', name: 'Ben', avatar: null, event, age_ms: 0, ...extra });
+
+/** A fake Party Core: answers queued for GET /messages, a handler for POST. */
+function fixture({ storage = null } = {}) {
+  const gets = [], posts = [], answers = [], timers = new Map(), changes = [];
+  let n = 0, onPost = () => ({ status: 200, body: {} });
+  const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+  const fetch = async (url, init = {}) => {
+    if (init.method === 'POST') {
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      const r = onPost(body);
+      if (r === 'offline') throw new TypeError('offline');
+      return json(r.status, r.body);
+    }
+    gets.push(url);
+    const next = answers.shift();
+    if (!next) return new Promise((_, reject) => {      // held: nothing new, until aborted
+      if (init.signal) init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    });
+    if (next === 'offline') throw new TypeError('offline');
+    return json(next.status || 200, next.body);
+  };
+  const chat = createPartyChat({ fetch, base: '/party/api/', storage, onChange: (s) => changes.push(s),
+    schedule: (fn, ms) => { const id = ++n; timers.set(id, { fn: () => { timers.delete(id); fn(); }, ms }); return id; },
+    cancel: (id) => timers.delete(id), newId: () => `id${posts.length + 1}` });
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  const fire = (ms) => { for (const t of [...timers.values()]) if (t.ms === ms) t.fn(); };
+  return { chat, gets, posts, answers, changes, settle, fire, setPost: (f) => { onPost = f; },
+    room: (party, lines, first, last, retry = 0) => ({ body: { party, first: first ?? (lines[0]?.seq || 0), last: last ?? (lines.at(-1)?.seq || 0), messages: lines, retry_ms: retry } }) };
 }
-test('Party Chat reuses donor hello, integer IDs, history, message echo and presence count', () => {
-  const f = fixture(); f.chat.open(); f.chat.open();
-  assert.equal(f.sockets.length, 1);
-  const s = f.sockets[0];
-  assert.equal(s.url, 'wss://party.avrana.net/chat/ws');
-  s.onopen();
-  assert.deepEqual(s.sent[0], { t: 'hello', token: 'existing-player-01', name: 'Robin', avatar: '🐸' });
-  assert.equal(f.chat.send('too early'), false);
-  s.receive({ type: 'welcome', you: 'hashed-uid' });
-  s.receive({ type: 'history', messages: [message(1)] });
-  s.receive({ type: 'presence', online: 3 });
-  assert.equal(f.changes.at(-1).online, 3);
-  assert.equal(f.chat.send('  Hey party  '), true);
-  assert.deepEqual(s.sent.at(-1), { t: 'msg', text: 'Hey party' });
-  assert.equal(f.changes.at(-1).messages.length, 1); // No optimistic second store.
-  s.receive({ type: 'msg', ...message(2, 'Hey party') });
-  s.receive({ type: 'msg', ...message(2, 'duplicate') });
-  assert.equal(f.changes.at(-1).messages.length, 2);
-  s.receive({ type: 'history', messages: Array.from({length: 65}, (_, i) => message(i + 1)) });
-  assert.equal(f.changes.at(-1).messages.length, 60);
-  s.receive({ type: 'cleared' });
-  assert.equal(f.changes.at(-1).messages.length, 0);
+
+test('reads the named Party from 0, then long-polls from the cursor', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', [line(1), sys(2, 'joined')]));
+  f.chat.open('party-1', 'member-a');
+  await f.settle(); await f.settle();
+  assert.match(f.gets[0], /messages\?party=party-1&after=0&wait=0$/);
+  assert.match(f.gets[1], /after=2&wait=20$/);
+  const s = f.chat.state();
+  assert.equal(s.status, 'connected');
+  assert.deepEqual(s.messages.map((m) => m.seq), [1, 2]);
   f.chat.close();
-  assert.equal(f.pending.size, 0);
-});
-test('profile edits reconnect the same channel; stale sockets cannot mutate the current view', () => {
-  const f = fixture(); f.chat.open(); const old = f.sockets[0]; old.onopen();
-  old.receive({ type: 'welcome', you: 'hashed-uid' });
-  f.setName('New Name'); f.chat.reconnect();
-  const fresh = f.sockets[1]; fresh.onopen();
-  assert.equal(fresh.sent[0].token, old.sent[0].token);
-  assert.equal(fresh.sent[0].name, 'New Name');
-  old.receive({ type: 'msg', ...message(1, 'stale') });
-  assert.equal(f.changes.at(-1).messages.length, 0);
-  fresh.receive({ type: 'welcome', you: 'hashed-uid' });
-  fresh.close();
-  assert.equal(f.changes.at(-1).status, 'unavailable');
-  const retry = [...f.pending.values()].find((t) => t.ms === 600);
-  assert.ok(retry); retry.fn();
-  assert.equal(f.sockets.length, 3);
-  f.chat.close();
-});
-test('malformed payloads and untrusted image URLs are not rendered as links', () => {
-  assert.equal(normalizeMessage({ ...message(1), id: 'string-id' }), null);
-  assert.equal(normalizeMessage({ ...message(1), text: {} }), null);
-  assert.equal(normalizeMessage({ ...message(1), pfp: 'https://outside.test/x' }).pfp, '');
-  const f = fixture(); f.chat.open(); const s = f.sockets[0];
-  s.onmessage({ data: 'not json' }); s.receive({ type: 'history', messages: {} });
-  s.receive({ type: 'presence', online: -1 });
-  assert.equal(f.changes.at(-1).online, 0);
-  f.chat.close();
-});
-test('no welcome times out; heartbeat uses donor ping; closed chat stops retries', () => {
-  const f = fixture(); f.chat.open(); let s = f.sockets[0];
-  [...f.pending.values()].find((t) => t.ms === 12000).fn();
-  assert.equal(f.changes.at(-1).status, 'unavailable');
-  [...f.pending.values()].find((t) => t.ms === 600).fn();
-  s = f.sockets[1]; s.onopen(); s.receive({ type: 'welcome', you: 'me' });
-  [...f.pending.values()].find((t) => t.ms === 25000).fn();
-  assert.deepEqual(s.sent.at(-1), { t: 'ping' });
-  f.chat.close(); assert.equal(f.pending.size, 0);
-  assert.equal(f.chat.send('closed'), false);
 });
 
-test('a sender Gaze avatar arrives as its exact bundled picture; anything else is dropped', () => {
-  const base = { id: 7, by: 'u', name: 'Casey', text: 'hi' };
-  assert.equal(normalizeMessage({ ...base, pfp: '/shared/avatars/gaze-29.svg' }).pfp, '/shared/avatars/gaze-29.svg');
-  for (const bad of ['/shared/avatars/gaze-99.svg', '/shared/avatars/../x.svg', 'https://x.test/shared/avatars/gaze-01.svg',
-    '/shared/avatars/gaze-01.svg?token=1', '/shared/avatars/gaze-1.svg']) {
-    assert.equal(normalizeMessage({ ...base, pfp: bad }).pfp, '', bad);
-  }
+test('a line is never doubled: a repeated answer, the own echo and a reconnect merge by seq', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', [line(1)]));
+  f.chat.open('party-1', 'member-a');
+  await f.settle(); await f.settle();
+  f.setPost((b) => ({ status: 200, body: { party: 'party-1', message: line(2, 'member-a', b.text) } }));
+  assert.deepEqual(await f.chat.send('  hello  '), { ok: true });
+  assert.deepEqual(f.posts[0], { party: 'party-1', text: 'hello', client_id: 'id1' });
+  // the poke ends the held poll; the next answer carries the same line again
+  f.answers.push(f.room('party-1', [line(2, 'member-a', 'hello')]), f.room('party-1', [line(1), line(2, 'member-a', 'hello')], 1, 2));
+  await f.settle(); await f.settle(); await f.settle();
+  assert.deepEqual(f.chat.state().messages.map((m) => m.seq), [1, 2]);
+  f.chat.close();
+});
+
+test('unread counts other people only, and only above what an open drawer has shown', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', [line(1), line(2, 'member-a'), sys(3, 'joined'), line(4)]));
+  f.chat.open('party-1', 'member-a');
+  await f.settle(); await f.settle();
+  assert.equal(f.chat.state().unread, 2);
+  f.chat.markSeen();
+  assert.equal(f.chat.state().unread, 0);
+  f.chat.close();
+});
+
+test('what was shown is kept for the tab, per Party: a reload does not bring old lines back as new', async () => {
+  const kept = new Map();
+  const storage = { getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, v) };
+  let f = fixture({ storage });
+  f.answers.push(f.room('party-1', [line(1), line(2)]));
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  f.chat.markSeen(); f.chat.close();
+  f = fixture({ storage });
+  f.answers.push(f.room('party-1', [line(1), line(2), line(3)]));
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  assert.equal(f.chat.state().unread, 1);
+  f.chat.close();
+  f = fixture({ storage });
+  f.answers.push(f.room('party-2', [line(1)]));
+  f.chat.open('party-2', 'member-a'); await f.settle(); await f.settle();
+  assert.equal(f.chat.state().unread, 1, 'another Party starts its own count');
+  f.chat.close();
+});
+
+test('away longer than the room holds: the gap is said, not hidden', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', [line(5)]), 'offline');
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle(); await f.settle();
+  assert.equal(f.chat.state().status, 'unavailable');
+  const back = f.room('party-1', [line(90), line(91)], 1, 91); back.body.lost = 89;   // a quiet system ring keeps first low
+  f.answers.push(back);
+  f.fire(1000); await f.settle(); await f.settle();
+  const s = f.chat.state();
+  assert.equal(s.status, 'connected');
+  assert.equal(s.gap, true);
+  assert.deepEqual(s.messages.map((m) => m.seq), [5, 90, 91]);
+  f.chat.close();
+});
+
+test('a new Party (it ended, Core restarted) empties the list before anything of it is shown', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', [line(1), line(2)]));
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  f.chat.poke();
+  f.answers.push(f.room('party-2', [line(1, 'member-b', 'new party')]));
+  await f.settle(); await f.settle(); await f.settle();
+  const s = f.chat.state();
+  assert.equal(s.party, 'party-2');
+  assert.deepEqual(s.messages.map((m) => m.text), ['new party']);
+  assert.equal(s.gap, false);
+  f.chat.close();
+});
+
+test('not a member: the list is emptied and nothing is retried until the page opens it again', async () => {
+  const f = fixture();
+  f.answers.push({ status: 403, body: { error: 'not_member' } });
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  assert.equal(f.chat.state().status, 'not_member');
+  const asked = f.gets.length;
+  await f.settle(); await f.settle();
+  assert.equal(f.gets.length, asked);
+  f.answers.push(f.room('party-1', []));
+  assert.equal(f.chat.open('party-1', 'member-a'), true);
+  await f.settle(); await f.settle();
+  assert.equal(f.chat.state().status, 'connected');
+  f.chat.close();
+});
+
+test('retry_ms is honoured: an answer at the cap does not make the phone ask again at once', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', [], 0, 0, 3000));
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  assert.equal(f.gets.length, 1);
+  f.fire(3000); await f.settle();
+  assert.equal(f.gets.length, 2);
+  f.chat.close();
+});
+
+test('a send whose answer was lost is retried once with the same client_id', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', []));
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  let first = true;
+  f.setPost((b) => { if (first) { first = false; return 'offline'; } return { status: 200, body: { party: 'party-1', message: line(1, 'member-a', b.text) } }; });
+  assert.equal((await f.chat.send('hi')).ok, true);
+  assert.equal(f.posts.length, 2);
+  assert.equal(f.posts[0].client_id, f.posts[1].client_id);
+  f.chat.close();
+});
+
+test('refusals come back with words to show; nothing is drawn for them', async () => {
+  const f = fixture();
+  f.answers.push(f.room('party-1', []));
+  f.chat.open('party-1', 'member-a'); await f.settle(); await f.settle();
+  f.setPost(() => ({ status: 429, body: { error: 'too_fast', retry_ms: 1500 } }));
+  const r = await f.chat.send('again');
+  assert.deepEqual([r.ok, r.error, r.retry_ms], [false, 'too_fast', 1500]);
+  assert.ok(r.message);
+  assert.equal(f.chat.state().messages.length, 0);
+  assert.equal((await f.chat.send('   ')).error, 'empty');
+  assert.equal((await f.chat.send('x'.repeat(401))).error, 'too_long');
+  assert.equal((await f.chat.send('😀'.repeat(400))).error, 'too_fast', 'an emoji counts once: it reached Party Core');
+  f.chat.close();
+  assert.equal((await f.chat.send('closed')).error, 'not_connected');
+});
+
+test('only lines Party Core built are drawn; markup stays text', () => {
+  assert.equal(readLine({ ...line(1), seq: '1' }), null);
+  assert.equal(readLine({ ...line(1), kind: 'admin' }), null);
+  assert.equal(readLine({ ...sys(1, 'joined'), event: 'free text' }), null);
+  assert.equal(readLine({ ...line(1), text: { html: '<b>' } }), null);
+  assert.equal(readLine({ ...line(1), avatar: 'https://x.test/a.png' }).avatar, null);
+  assert.equal(readLine(line(1, 'member-b', '<img onerror=x>')).text, '<img onerror=x>');
+  assert.equal(length('😀😀'), 2);
+});
+
+test('system lines are the Party\'s words, from a closed list', () => {
+  const name = (id) => ({ bluff: 'BLUFF' }[id] || id);
+  assert.equal(systemText(readLine(sys(1, 'joined')), name), 'Ben joined the Party');
+  assert.equal(systemText(readLine(sys(1, 'renamed', { was: 'Benny' })), name), 'Benny is now Ben');
+  assert.equal(systemText(readLine(sys(1, 'round_started', { game: 'bluff' })), name), 'BLUFF started');
+  assert.equal(systemText(readLine(sys(1, 'round_ended', { game: 'bluff', outcome: 'abandoned' })), name), 'BLUFF stopped');
+  assert.equal(systemText(readLine(sys(1, 'host', { more: 3 })), name), 'Ben is hosting now, and 3 more changes');
+});
+
+test('merge keeps seq order and the last 80', () => {
+  const held = Array.from({ length: 79 }, (_, i) => readLine(line(i + 1)));
+  const out = merge(held, [readLine(line(81)), readLine(line(80)), readLine(line(3))]);
+  assert.equal(out.length, 80);
+  assert.deepEqual(out.slice(-2).map((l) => l.seq), [80, 81]);
+  assert.equal(unread(out, 79, 'member-a'), 2);
 });

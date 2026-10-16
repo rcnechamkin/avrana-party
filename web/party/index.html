@@ -22,7 +22,7 @@
     <a id="top-back" class="avrana-back" href="#library" hidden><span data-icon="chevron-left"></span><span id="top-back-word">Library</span></a>
     <h1 id="top-title" class="avrana-top-title brand" tabindex="-1">Avrana Party</h1>
     <button id="limited-mark" type="button" class="avrana-limmark" hidden aria-haspopup="dialog" aria-label="Limited Mode on this phone. What this means"><span class="pill"><span data-icon="triangle-alert"></span><span class="word">Limited</span></span></button>
-    <button id="hud" type="button" class="avrana-hud" hidden aria-haspopup="dialog"><span id="hud-faces" class="faces"></span><span id="hud-count" class="n"></span></button>
+    <button id="hud" type="button" class="avrana-hud" hidden aria-haspopup="dialog"><span id="hud-faces" class="faces"></span><span id="hud-count" class="n"></span><span id="hud-unread" class="unread" aria-hidden="true"></span></button>
   </header>
 
   <main id="content" class="avrana-main"><div class="wrap">
@@ -237,23 +237,24 @@
   </nav>
 </div>
 
-<!-- Your Party: the people here and, while the old chat still answers, today's chat. It opens over
+<!-- Your Party: the people here and the Party's chat (Party Core's room, AVR-54). It opens over
      the page that is open and closes back to it. -->
 <dialog id="social" class="avrana-drawer" aria-labelledby="social-h">
   <div class="head"><h2 id="social-h" class="m-0">Your Party</h2><button id="social-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
   <p id="social-where" class="where" hidden></p>
   <div id="social-tabs" class="avrana-tabs" role="group" aria-label="Show">
-    <button id="tab-chat" type="button" data-tab="chat" aria-pressed="false">Chat</button>
+    <button id="tab-chat" type="button" data-tab="chat" aria-pressed="false">Chat<span id="tab-chat-unread" class="unread" aria-hidden="true"></span></button>
     <button id="tab-people" type="button" data-tab="people" aria-pressed="true">People</button>
   </div>
   <div id="pane-people" class="body">
     <ul id="social-people" class="avrana-people" aria-label="People at the party"></ul>
   </div>
   <div id="chat" class="body" hidden>
-    <p id="chat-status" class="m-0 text-body text-muted" role="status">Open to chat</p>
+    <p id="chat-status" class="m-0 text-body text-muted empty:hidden" role="status"></p>
     <button id="chat-name" type="button" class="btn btn-outline mt-3" hidden>Choose your name</button>
     <ol id="chat-messages" class="my-2 list-none p-0 [overflow-wrap:anywhere]" aria-label="Party messages"></ol>
     <p id="chat-feedback" class="text-body text-warning empty:hidden" role="status"></p>
+    <p id="chat-live" class="sr-only" aria-live="polite"></p>
   </div>
   <form id="chat-form" class="compose" hidden>
     <label for="chat-text" class="sr-only">Message</label>

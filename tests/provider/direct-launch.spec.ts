@@ -71,23 +71,19 @@ test('a shell profile edit reaches a game page, and the return to Party survives
   await expect(page.locator('#player-chip')).toContainText('Robin Updated');
 });
 
-test('one real Party Chat history survives a game visit; game opens no global chat connection', async ({ page }) => {
+test('the shell opens no legacy chat connection, on its own pages or across a game visit (AVR-54)', async ({ page }) => {
+  // Chat is the Party room, Party Core's own; the retiring runtime's /chat/ws is never opened by
+  // the shell. Without a Party (this suite) there is no chat to offer at all.
   await seed(page); await home(page);
   let globalSockets = 0;
   page.on('websocket', (ws) => { if (ws.url().endsWith('/chat/ws')) globalSockets++; });
-  await page.locator('#hud').click();                                   // the Party drawer, on its Chat side
-  await expect(page.locator('#chat-send')).toBeEnabled();
-  const message = 'Across the boundary ' + Date.now();
-  await page.locator('#chat-text').fill(message); await page.locator('#chat-send').click();
-  await expect(page.locator('#chat-messages')).toContainText(message);
+  await expect(page.locator('#hud')).toBeHidden();
   await page.goto('/games/expo/?avrana=1');
   await expect(page.locator('#avrana-navigation a')).toBeVisible();
-  await expect(page.locator('#edit-profile-btn')).toBeHidden();
-  expect(globalSockets).toBe(1);
   await page.locator('#avrana-navigation a').click();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
-  await page.locator('#hud').click();
-  await expect(page.locator('#chat-messages')).toContainText(message);
+  await expect(page.locator('#hud')).toBeHidden();
+  expect(globalSockets).toBe(0);
 });
 
 // A standalone game page still ships while that runtime retires; the hub page at / does not.
