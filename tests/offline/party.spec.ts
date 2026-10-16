@@ -154,13 +154,15 @@ test('"Skip to the games" goes to the Library and puts focus on its heading, fro
 test('the phone’s Back closes what is open over a place', async ({ page, context }) => {
   await context.addInitScript(() => { try { localStorage.setItem('wc-name', 'Robin'); } catch { /* none */ } });
   await open(page);
+  // Without a Party there is no Party drawer (chat is the Party's own, AVR-54); the Library's
+  // filter sheet is opened over a place the same way and closes by the same rule.
   await place(page, 'party');
-  await place(page, 'system');
-  await page.locator('#hud').click();
-  await expect(page.locator('#social')).toBeVisible();
+  await place(page, 'library');
+  await page.locator('#lib-filter').click();
+  await expect(page.locator('#lib-filters')).toBeVisible();
   await page.goBack();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'party');
-  await expect(page.locator('#social')).toBeHidden();
+  await expect(page.locator('#lib-filters')).toBeHidden();
 });
 
 test('the frame holds at 200% text on a small phone: nothing sideways, the bars stay, words stay whole', async ({ page }) => {
