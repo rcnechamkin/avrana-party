@@ -1,13 +1,42 @@
 # The Party's Control Center during a game: decisions needed
 
-- **Status:** **PROPOSED (2026-10-16, AVR-83 / AVR-292).** A decision brief. Nothing here is built.
-  It asks the owner for the decisions AVR-83 says must come before the permanent in-game
-  presentation, and recommends one answer to each.
+- **Status:** **DECIDED by the owner (2026-10-16, AVR-83 / AVR-292); one sub-question open (D5b).**
+  Nothing here is built. §0 records the decisions; §3 is revised to match them. §2 and §4 keep
+  the brief as it was put to the owner.
 - **Reads with:** [ADR 0011](../../adr/0011-party-console-model.md) (decision 5: the game owns the
   viewport), [ADR 0013](../../adr/0013-party-and-game-browser-origins.md) (origins, the bridge),
   [ADR 0012](../../adr/0012-limited-mode-party-survives-https-loss.md) (Limited Mode),
   [host escape](2026-10-15-host-escape.md) (who can draw what during a round), [MESSAGING](../MESSAGING.md),
   [GAME-UX-CONTRACT](../GAME-UX-CONTRACT.md).
+
+## 0. Decisions taken (owner, 2026-10-16)
+
+| # | Decision |
+|---|---|
+| D1 + D2 | **A floating Party button that behaves like iOS AssistiveTouch**, not a fixed reserved corner. Tap opens the Party drawer. Long-press, then drag, moves it anywhere on screen; let go and it settles on the nearest side edge. Throw it into a side edge and it **tucks away** to a small tab with an arrow (as a collapsed picture-in-picture video does on iPhone); tap the tab to bring the button back. Replaces the 56 × 56 reserved corner: the player moves the button off whatever it covers. ADR 0011 decision 5 is amended (see its 2026-10-16 amendment). |
+| D3 | **B now** (the Party-origin bridge frame draws the button and the drawer). **A maybe later**, after looking at how other games handle chat over play. |
+| D4 | Chat during a game: yes, **inside the drawer only**; no toasts or overlay over play; the unread count on the button is the only interruption. |
+| D5 | The Host gets **End for everyone, Bring everyone back, hand over hosting, and Quit & Spectate during a round** (both confirmed). **D5b is open:** what happens to a Host's seat when they quit mid-round (§0.1). |
+| D6 | Limited Mode: the same design, first-party games only (a same-origin frame, as ADR 0012 accepts). |
+| D7 | Arcade (Gauntlet II): the same button over the stream page, after the Pi measures its cost. |
+
+### 0.1 D5b: quitting mid-round (needs one more answer)
+
+Hand over hosting already works mid-round (`POST /party/api/host`; Party Core allows it to anyone
+who is here). Quit & Spectate does not: Party Core refuses it during a round (`round_on`), because
+ADR 0010 says roles never change during a round. Allowing it changes two things:
+
+1. **The seat.** The game owns seats. Recommended: the quitting Host's seat is handled as the
+   game already handles a player who leaves (BLUFF's per-player forfeit); hosting passes by
+   succession at once.
+2. **What they then see.** In BLUFF a Party spectator gets the omniscient view (every hand). A
+   player who quits mid-round and becomes a spectator could read the remaining players' hands
+   aloud. Recommended: **they keep their own player view (forfeited) until the round ends**, and
+   are a spectator from the next round, which is what Quit & Spectate already does at results.
+
+Alternatives: let them become a full spectator at once (leaks private state mid-round), or only
+allow hand over hosting mid-round (no seat change). The recommendation needs a Party Core change
+(lift `round_on` for this one verb, keep the role) and a Games change (forfeit on that signal).
 
 ## 1. Where things stand
 
@@ -32,36 +61,45 @@ viewport and can cover, hide or full-screen over any frame.
 | Cost | Largest: ADR 0011 D5 and ADR 0013 rewritten, every game's full screen, Limited Mode, iOS frame quirks | Moderate: bridge v2 (show, grow, shrink), the vendored shim, one paired Games PR per game | Small |
 | Game state while open | Preserved (frame stays) | Preserved (page never navigates) | n/a |
 
-## 3. Recommended design (B now, A later)
+## 3. Design as decided (B now)
 
-- **Invocation.** One pill, 44 × 44 CSS px, Party-rendered inside the bridge frame, docked
-  **top-right inside `env(safe-area-inset-top/right)`**. It shows the Party mark and the unread
-  count. Tap or Enter opens; Escape, the drawer's Close, a tap outside, or the phone's Back closes.
-- **Geometry the game keeps clear.** A 56 × 56 region top-right, inside the safe area, during
-  play (GAME-UX-CONTRACT amendment). Opening the drawer covers the lower part of the screen like
-  today's drawer (a sheet up to 86 dvh); the game is dimmed, not resized, and keeps its state.
-- **Focus and screen readers.** Opening moves focus into the frame's dialog (`aria-modal`), the
-  game page gets a bridge event `layer: open` so it can stop taking keys and announcements;
-  closing returns focus to the pill and sends `layer: closed`. A game that ignores the events
-  still works; it just may keep animating under the sheet.
+- **The Party button.** 48 × 48 CSS px, Party-rendered inside the bridge frame, translucent dark
+  like AssistiveTouch, showing the Party mark and the unread count. It floats above the game; it
+  starts on the right edge, a third of the way down, inside `env(safe-area-inset-*)`.
+- **Tap** (or Enter / Space) opens the Party drawer. **Long-press** (about 400 ms, with a small
+  scale-up as the cue) then **drag** moves it. On release it settles on the nearer left or right
+  edge, kept clear of the safe areas, the notch and the home indicator. A quick fling toward an
+  edge, or a drop past it, **tucks it away**: it slides mostly off screen and leaves a 20 × 56 px
+  tab with a chevron. Tap the tab to bring the button back. Position and tucked state are kept per
+  phone (Party-origin storage), so the button is where the player left it in the next round.
+- **Mechanics.** The frame tracks the finger in `screenX/screenY`, which do not jump as the frame
+  itself moves, and asks the shim to move the frame (`layer.move {x, y}`); the shim may only place
+  the frame where asked, inside the viewport. The button sets `touch-action: none` and
+  `-webkit-touch-callout: none`, so a long-press opens no Safari callout or text selection.
+- **Accessibility.** A drag has a non-drag equivalent (WCAG 2.5.7): the drawer has **Move button
+  to the other side** and **Tuck button away**, and the tucked tab is a real button named "Show
+  the Party button". The button's name carries the unread count. It honours reduced motion: no
+  slide or fling animation.
+- **The drawer.** Opening moves focus into the frame's dialog (`aria-modal`); the game gets
+  `layer.open` so it can stop taking keys and announcements; closing returns focus to the button
+  and sends `layer.closed`. The game is dimmed, not resized, and keeps its state.
 - **What it holds, by role.**
   - Everyone: the Party and the game on now; people, with the Host named in words; the Party's
-    chat (the same room, read with the Party credential inside the Party-origin frame, never
-    passed to the game); connection state ("Reconnecting…" from the frame's own polls).
-  - Host: End the round for everyone, and Bring everyone back (both confirmed, both Party Core
-    verbs that exist today). Nothing else.
-  - Not offered: a personal "leave the round" (ADR 0011 has none; AVR-132's Quit & Spectate stays
-    at setup and results only). Player-private game state never enters the frame.
-- **Bridge v2.** New verbs `layer.mount {corner}`, `layer.grow`, `layer.shrink` from the frame to
-  the shim, and events `layer.open` / `layer.closed` to the game; capability word
-  `party-layer/1` in the handshake. A game without it keeps v1 behaviour, so a rollback of either
-  side is compatible.
-- **Limited Mode.** First-party pages are same-origin there (ADR 0012 D5), so the frame is a
-  same-origin frame and the game page could reach into it. Accept that for first-party games, as
-  ADR 0012 does for everything else on Limited; never offer it to a third-party game in Limited.
-- **Conformance.** The kit's `comply --boot` checks that the pill is hit-testable during play.
-- **A (Party as the top document)** stays AVR-83's longer design, revisited if a third-party game
-  or a native-app host needs the stronger guarantee.
+    chat (read with the Party credential inside the Party-origin frame, never passed to the game);
+    connection state.
+  - Host: End for everyone; Bring everyone back; Hand over hosting (pick someone here); Quit &
+    Spectate (D5b decides its mid-round meaning). All confirmed.
+  - Player-private game state never enters the frame.
+- **Bridge v2.** Verbs `layer.mount`, `layer.move`, `layer.grow`, `layer.shrink` from the frame to
+  the shim; events `layer.open` / `layer.closed` to the game; capability word `party-layer/1` in the
+  handshake. A game without it keeps v1, so either side can roll back.
+- **What games must do (GAME-UX-CONTRACT amendment).** Keep the frame above their own content
+  (no element over it, no element full screen that hides it), and put nothing under the default
+  position that cannot also be reached once the player moves the button. No reserved corner.
+- **Limited Mode.** Same design; a same-origin frame, first-party games only.
+- **Conformance.** The kit's `comply --boot` checks the button is visible and tappable during play.
+- **A (Party as the top document)** stays a later option, revisited after looking at how other
+  games handle chat over play.
 
 ## 4. Decisions for the owner
 
@@ -75,12 +113,15 @@ viewport and can cover, hide or full-screen over any frame.
 | D6 | Limited Mode | Same design, same-origin frame, first-party only | No layer on Limited | Weaker isolation on Limited, as already accepted by ADR 0012 |
 | D7 | Arcade (Gauntlet II) | Same pill, frame over the stream page | Arcade excluded in 1.0 | Arcade stream performance must be measured on the Pi with the frame visible |
 
-## 5. Once decided, the build order
+## 5. Build order
 
-1. Party: bridge v2 frame UI (pill and drawer, reusing `party-chat.js` and the drawer's people
-   list), vectors and hashes, ADR amendments. Tests: both bridge-vector suites, focus, a 320 × 568
-   phone, unread, Host-only controls, a follower's 403.
-2. Games: the vendored shim with `layer.*`, BLUFF and EXPO keeping the corner clear and handling
-   `layer.open`, one paired PR, one merge set.
-3. Arcade, measured on the Pi.
-4. Phones: iPhone Safari and Android Chrome on the Pi with the WAN cable out (Tier 3).
+1. Party: bridge v2 and the button/drawer UI in the frame (drag, tuck, the non-drag actions,
+   reusing `party-chat.js` and the drawer's people list), vectors and hashes. Tests: both
+   bridge-vector suites, tap vs long-press vs fling, position kept, focus and screen reader, a
+   320 × 568 phone, unread, Host-only actions, a follower's 403.
+2. Party Core, once D5b is answered: Quit & Spectate during a round.
+3. Games: the vendored shim with `layer.*`, BLUFF and EXPO keeping the frame on top and handling
+   `layer.open`; a mid-round quit as a forfeit (D5b). One paired PR, one merge set.
+4. Arcade, after the Pi measures the frame's cost to the stream.
+5. Phones: iPhone Safari and Android Chrome on the Pi with the WAN cable out (Tier 3): drag,
+   long-press without callouts, tuck, safe areas, VoiceOver and TalkBack.

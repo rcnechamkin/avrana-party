@@ -142,3 +142,13 @@ The decision above is unchanged. This adds the product-level invariant it alread
   or checked on a phone)
   ([GAME-UX-CONTRACT](../design/GAME-UX-CONTRACT.md) Rule 3.2;
   [plan](../design/ux-redesign/IMPLEMENTATION-PLAN.md), slice 1, PR 1.3).
+- **2026-10-16 (owner decision, AVR-83; not implemented).** Decision 5 ("the game owns the
+  viewport during a round") is narrowed: the Party keeps **one floating Party button** over every
+  integrated game during play, drawn by the Party-origin bridge frame. It behaves like iOS
+  AssistiveTouch: tap opens the Party drawer (people, the Party's chat, connection state and the
+  Host's actions); long-press and drag move it; thrown to a side edge it tucks away to a small tab.
+  Games keep the frame above their content and reserve no fixed region. The Host's actions there are
+  End for everyone, Bring everyone back, hand over hosting and Quit & Spectate; Quit & Spectate
+  during a round is a change to ADR 0010's role boundary whose details (the seat, and what the
+  quitter may see) are still open. Decisions 1 to 4, 6 and 7 are unchanged. Design:
+  [2026-10-16 Control Center](../design/proposals/2026-10-16-control-center.md).
