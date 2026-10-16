@@ -1,12 +1,12 @@
 // Avrana Party page (Full Mode shell at https://party.avrana.net/party/).
 //
 // What it does, in order: check that the Pi answers, load the game catalog, observe this phone's
-// capabilities, and show each installed game with what it will be like on *this* phone. Profiles
-// and chat share donor adapters. Guest copy only.
+// capabilities, and show each installed game with what it will be like on *this* phone. Guest copy
+// only. Chat is the Party room, Party Core's own (AVR-54, lib/party-chat.js).
 //
 // The page is a frame with four places (Home, Party, Library, System: lib/frame.js) that are views
 // of this one document, and two things that open over whichever is on screen: the Party drawer
-// (people, and today's chat while the old chat still answers) and the Limited Mode sheet.
+// (people, and the Party's chat) and the Limited Mode sheet.
 //
 // Party mode (ADR 0011, the console model) is progressive enhancement: only when Party Core answers
 // /party/api/state is this page the party's home screen. A phone with a profile is in the party on
@@ -22,7 +22,7 @@ import { hydrateIcons, icon } from './lib/icons.js';
 
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
-import { createPartyChat } from './lib/party-chat.js';
+import { createPartyChat, systemText } from './lib/party-chat.js';
 import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { pickCover } from './lib/cover-art.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
@@ -33,7 +33,7 @@ import { createGoingWatchdog } from './lib/going-watchdog.js';
 import { createDeviceChecker, deviceRequirements } from './lib/device-check.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
-import { PAGES, backWord, chatGivesUp, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab } from './lib/frame.js';
+import { PAGES, backWord, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab, unreadMark } from './lib/frame.js';
 import { LOST_AFTER_MS, awayHost, briefLine, fineLine, hostNote, hostPassed, linkState, linkWords, offLine, troubles } from './lib/states.js';
 
 const $ = (id) => document.getElementById(id);
@@ -44,7 +44,7 @@ const HEALTH_EVERY_MS = 15000;
 
 const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   gamesKey: null, partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
-  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatFails: 0,
+  mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatSaid: 0,
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
   // screen: what has the frame's middle (main: a place; scene: the briefing; going: on the way to a game)
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
@@ -489,7 +489,7 @@ function openProfile() {
   $('profile-name').focus();
 }
 
-const chatOn = () => chatOffered({ reachable: state.reachable, hub: state.donor !== null && state.donor !== undefined, status: state.chatStatus });
+const chatOn = () => chatOffered({ reachable: state.reachable, member: Boolean(state.partyMode && party.view() && party.view().me) });
 
 /** Home's own words: a nameless phone's first step. Its shelves are drawn with the Library. */
 function renderHome() {
@@ -513,7 +513,9 @@ function renderHud() {
   $('party-chat-row').hidden = !chatOn();
   const chatting = chatOn() && state.screen !== 'scene';      // people only over a briefing
   $('hud').hidden = !(people.length || chatting);
-  $('hud').setAttribute('aria-label', hudLabel({ party: people.length > 0, count: people.length, chat: chatting }));
+  const fresh = chatting ? chat.state().unread : 0;
+  $('hud').setAttribute('aria-label', hudLabel({ party: people.length > 0, count: people.length, chat: chatting, unread: fresh }));
+  $('hud-unread').textContent = unreadMark(fresh);
   $('hud-faces').replaceChildren(...(people.length
     ? people.slice(0, 3).map((m) => avatarNode({ avatar: m.avatar || '' }, 'xs'))
     : [icon('message-circle')]));
@@ -531,6 +533,9 @@ function renderSocial() {
   if (!tab) { $('social').close(); return; }
   state.tab = tab;
   const playing = brief && view ? partyGame(state.catalog, view.session && view.session.game) : null;
+  const fresh = chat.state().unread;
+  $('tab-chat-unread').textContent = unreadMark(fresh);
+  $('tab-chat').setAttribute('aria-label', fresh ? `Chat, ${fresh === 1 ? '1 new message' : `${fresh} new messages`}` : 'Chat');
   $('social-where').hidden = !brief;
   $('social-where').textContent = brief ? `Getting ready${playing ? ` for ${playing.name}` : ''}.` : '';
   $('social-tabs').hidden = !(view && chatting);
@@ -544,12 +549,11 @@ function renderSocial() {
     const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
     $('social-people').replaceChildren(...roster(view).map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'sm')));
   }
-  syncChat();           // the side on screen may have changed by itself (chat's runtime went away)
+  syncChat();           // the side on screen may have changed by itself (this phone left the Party)
 }
 
 function openSocial(want) {
   state.tab = want;
-  state.chatFails = 0;
   const chatting = chatOn() && state.screen !== 'scene';
   if (startTab({ party: state.partyMode && Boolean(party.view()), chat: chatting, want }) && !$('social').open) $('social').showModal();
   renderSocial();
@@ -898,6 +902,7 @@ function show(which, round = null) {
 function onPartyView(view, previous = null) {
   if (!state.partyMode) return;
   ensurePresent(view);
+  syncRoom(view);
   const passed = hostPassed(previous, view);
   if (passed) state.passed = passed;
   else if (state.passed && previous && previous.party !== view.party) state.passed = null;   // a new Party: that was the last one's news
@@ -1285,31 +1290,55 @@ hydrateIcons();
 let storage;
 try { storage = window.localStorage; } catch { /* compatibility model reports persistence failure */ }
 const profile = createProfile(storage);
-const chat = createPartyChat({
-  identity: () => profile.identity(), origin: location.origin,
-  onChange: (snapshot) => {
-    const was = chatOn();
-    state.chatStatus = snapshot.status;
-    if (was !== chatOn()) renderHud();
-    if (snapshot.status === 'connected') state.chatFails = 0;
-    else if (snapshot.status === 'unavailable' && chatGivesUp(++state.chatFails)) { chat.close(); return; }
-    const labels = { closed: chatGivesUp(state.chatFails) ? 'Chat isn’t available right now.' : 'Open to chat',
-      connecting: 'Connecting…', unavailable: 'Chat is reconnecting…', profile_required: 'Save your profile to chat' };
-    $('chat-status').textContent = snapshot.status === 'connected'
-      ? snapshot.online + ' in chat' : labels[snapshot.status];
-    $('chat-send').disabled = snapshot.status !== 'connected';
-    const list = $('chat-messages');
-    const atEnd = $('chat').scrollHeight - $('chat').scrollTop - $('chat').clientHeight < 40;
-    list.replaceChildren(...snapshot.messages.map((m) =>
-      h('li', { class: 'flex gap-3 py-2' }, avatarNode(m, 'sm'), h('div', { class: 'min-w-0' },
-        h('strong', { class: 'text-supporting font-medium text-muted', text: m.name }),
-        h('p', { class: 'm-0 whitespace-pre-wrap', text: m.text }),
-        m.photo ? h('p', { class: 'm-0 inline-flex items-center gap-1.5 text-body text-muted' }, icon('image'), 'Photo shared') : null))));
-    const pane = $('chat');
-    if (atEnd) { list.scrollTop = list.scrollHeight; pane.scrollTop = pane.scrollHeight; }
-  },
-});
-const renderProfile = wireProfile(profile, () => { renderGames(false); renderHome(); syncChat(true); syncPresence(); });
+// The Party room (AVR-54). It is read whenever this phone is in the Party, drawer open or not,
+// which is how the Party control can say there is something new. Party Core writes every line;
+// a line is drawn as text, a person's words never as a system line.
+let storageTab;
+try { storageTab = window.sessionStorage; } catch { /* unread starts over on each page */ }
+const chat = createPartyChat({ storage: storageTab, onChange: renderChat });
+function renderChat(snapshot) {
+  state.chatStatus = snapshot.status;
+  const view = party ? party.view() : null;
+  const me = view && view.me ? view.me.id : null;
+  const limited = state.mode === LIMITED || Boolean(view && view.members.some((m) => m.mode === LIMITED));
+  const labels = { connecting: 'Connecting…', unavailable: 'Reconnecting…',
+    not_member: 'Join the Party to chat.', closed: '' };
+  $('chat-status').textContent = snapshot.status === 'connected'
+    ? (limited ? 'Not private: a phone here is in Limited Mode, so others on this Wi-Fi could read these messages.' : '')
+    : labels[snapshot.status] || '';
+  $('chat-send').disabled = snapshot.status !== 'connected';
+  const list = $('chat-messages');
+  const pane = $('chat');
+  const atEnd = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
+  const name = (id) => { const g = partyGame(state.catalog, id); return g ? g.name : 'The game'; };
+  const items = snapshot.messages.map((m) => m.kind === 'system'
+    ? h('li', { class: 'avrana-chat-system', 'data-seq': String(m.seq) }, h('span', { text: systemText(m, name) }))
+    : h('li', { class: 'avrana-chat-line', 'data-seq': String(m.seq), 'data-mine': String(m.from === me) },
+      avatarNode({ avatar: m.avatar || '' }, 'sm'),
+      h('div', { class: 'min-w-0' },
+        h('strong', { class: 'text-supporting font-medium text-muted' }, h('bdi', { text: m.from === me ? `${m.name} (you)` : m.name })),
+        h('p', { class: 'm-0 whitespace-pre-wrap', dir: 'auto', text: m.text }))));
+  if (snapshot.gap) items.unshift(h('li', { class: 'avrana-chat-system', text: 'Earlier messages are gone.' }));
+  if (!items.length && snapshot.status === 'connected')
+    items.push(h('li', { class: 'avrana-chat-empty', text: 'No messages yet. Say hello to the Party.' }));
+  list.replaceChildren(...items);
+  if (atEnd) pane.scrollTop = pane.scrollHeight;
+  const showing = $('social').open && state.tab === 'chat' && state.screen !== 'scene';
+  if (showing) {
+    // Said once, politely, to a screen reader: the newest line from someone else.
+    const fresh = snapshot.messages.filter((m) => m.kind === 'member' && m.from !== me && m.seq > state.chatSaid);
+    if (fresh.length && state.chatSaid) $('chat-live').textContent = `${fresh.at(-1).name}: ${fresh.at(-1).text}`;
+    chat.markSeen();
+  }
+  state.chatSaid = snapshot.messages.length ? snapshot.messages.at(-1).seq : 0;
+  renderHud();
+}
+/** The room follows the Party view: this member, this Party. */
+function syncRoom(view) {
+  if (state.partyMode && view && view.me && state.reachable !== false) chat.open(view.party, view.me.id);
+  else if (chat.state().status !== 'closed') chat.close();
+}
+const renderProfile = wireProfile(profile, () => { renderGames(false); renderHome(); syncChat(); syncPresence(); });
 /** A saved profile is who this phone is at the party: join with it, or show the new name. */
 function syncPresence() {
   const view = party.view(), who = partyIdentity();
@@ -1400,19 +1429,14 @@ $('rules-ok').onclick = async () => {
   $('rules').close();
   if (then) then();
 };
-/** Today's chat is connected only while it is on screen: the drawer open, on its Chat side. */
-function syncChat(reconnect = false) {
+/** The Chat side on screen: what it shows has been seen. A phone with no name is not in the Party
+ * yet, so its first step is a name. The room itself is read all the time (syncRoom). */
+function syncChat() {
   const showing = $('social').open && state.tab === 'chat';
   const nameless = showing && state.reachable && !profile.snapshot().name;
   $('chat-name').hidden = !nameless;
-  if (state.reachable && showing && !nameless) {
-    if (chatGivesUp(state.chatFails)) return;                 // it said so; opening the side again tries again
-    const opened = chat.open();
-    if (reconnect && !opened) chat.reconnect();
-  } else {
-    chat.close();
-    if (nameless) $('chat-status').textContent = 'Choose your name to chat.';
-  }
+  if (nameless) $('chat-status').textContent = 'Choose your name to chat.';
+  if (showing && !nameless) chat.markSeen();   // a change is drawn by renderChat, through onChange
 }
 $('hud').onclick = () => openSocial(null);
 $('party-chat').onclick = () => openSocial('chat');
@@ -1420,7 +1444,6 @@ $('social-tabs').onclick = (event) => {
   const button = event.target.closest('button[data-tab]');
   if (!button) return;
   state.tab = button.dataset.tab;
-  state.chatFails = 0;
   renderSocial();
 };
 $('social-close').onclick = () => $('social').close();
@@ -1453,12 +1476,20 @@ $('top-back').onclick = (event) => {
   event.preventDefault();
   history.back();
 };
-$('chat-form').onsubmit = (event) => {
+$('chat-form').onsubmit = async (event) => {
   event.preventDefault();
-  if (chat.send($('chat-text').value)) {
+  if (state.chatSending) return;
+  state.chatSending = true;
+  $('chat-send').disabled = true;
+  const res = await chat.send($('chat-text').value);
+  state.chatSending = false;
+  $('chat-send').disabled = chat.state().status !== 'connected';
+  if (res.ok) {
     $('chat-text').value = ''; $('chat-feedback').textContent = '';
-  } else $('chat-feedback').textContent = 'Chat is not connected yet. Please try again.';
+    $('chat').scrollTop = $('chat').scrollHeight;
+  } else $('chat-feedback').textContent = res.message;      // the words stay in the box to send again
 };
+$('chat-text').oninput = () => { if ($('chat-feedback').textContent) $('chat-feedback').textContent = ''; };
 $('game-search').oninput = () => renderGames(false);
 $('game-views').onclick = (event) => {
   const button = event.target.closest('button[data-view]');
@@ -1498,7 +1529,7 @@ $('retry').addEventListener('click', () => { boot(); });
 $('catalog-retry').addEventListener('click', () => { boot(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  if (state.partyMode) party.poke();          // a phone waking up asks Party Core at once
+  if (state.partyMode) { party.poke(); chat.poke(); }   // a phone waking up asks Party Core at once
   (state.reachable === false ? boot() : refreshHealth());
 });
 window.addEventListener('pageshow', (event) => {

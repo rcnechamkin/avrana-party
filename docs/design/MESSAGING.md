@@ -1,6 +1,12 @@
 # Party-owned messaging (proposal)
 
-Status: **PROPOSED (2026-10-06) · not accepted · not implemented · not deployed**
+Status: **PROPOSED (2026-10-06) · not accepted · implemented in source for review (AVR-54, 2026-10-16) · not deployed**
+**2026-10-16:** the owner's Persistent Party Experience sprint asked for the service to be built.
+It is built on a review branch to the proposed defaults below (every decision marked "proposed"),
+with the Chat tab moved off the legacy socket. That is implementation for review, not acceptance:
+the eight owner decisions at the end still stand, and nothing merges or deploys until the owner
+accepts. See "Implementation notes" before "Consequences".
+
 This is the [AVR-53](https://linear.app/avranakern/issue/AVR-53/define-avrana-platform-messaging-architecture-and-ownership)
 proposal. The owner allowed it to be drafted before the
 [AVR-27](https://linear.app/avranakern/issue/AVR-27/four-human-offline-bluff-acceptance) four-human
@@ -366,9 +372,52 @@ people who know each other this is accepted; it is listed below for the owner.
 
 ## Reconciliation with AVR-27
 
-Empty until the four-human night has happened. Before acceptance this section records what the
-night showed about how people used chat, names and the drawer, and what in this proposal changed
-because of it.
+AVR-27 (four-human offline BLUFF acceptance) was marked Done on 2026-10-16. Its Linear record
+checks off private views, completion, a reconnect and a sane return to the Party; it records
+nothing about chat, names in chat or the drawer. The shell's chat on that night was the legacy
+Games socket, and no friction with it was written down. So, in writing:
+
+- **Nothing the night recorded changes a decision here.** There is no evidence for or against
+  chat over a briefing, the limits or the system-line list.
+- **The night did not test this design.** It cannot: the Party room did not exist. The proof
+  this design needs is its own (Proof, below, and `docs/runbooks/party-chat-phone-acceptance.md`).
+- **One gap stays open:** the record's unchecked rows ("no developer intervention",
+  "first-time players understand", "friction recorded") mean the owner may know more than Linear
+  says. If the owner remembers how people used chat that night, it belongs here before acceptance.
+
+## Implementation notes (AVR-54 branch, 2026-10-16)
+
+Built as specified, with these choices where the text left room. Each is easy to change.
+
+- **Code.** `avrana/party/messages.py` (the room: cleaning, rings, rates, `client_id`s, metered
+  system lines), `PartyCore._announce` (system lines derived in `_commit` from what the commit
+  changed), `PartyService.messages` / `send_message` (own condition `heard`, own cap
+  `MAX_MSG_WAITERS = 64`, one held poll per member) and the two routes in `service.py`. The shell's
+  `web/party/lib/party-chat.js` replaces the legacy socket client.
+- **System line fields.** Besides the table in decision 3: `renamed` carries `was` (the old name),
+  so the line can say who it was; `round_started` and `round_ended` carry `game` (the game id) and
+  `round_ended` its `outcome`; a line after counted events carries `more`. A round's lines are
+  "about" the member who started it. Events are `joined`, `returned`, `left`, `host`, `renamed`,
+  `round_started`, `round_ended`.
+- **The first member becoming Host** as they join is announced as the join only, not also as a
+  host change (it would otherwise be counted into the next line as "1 more change").
+- **`retry_ms`:** 1000 for an immediate answer with nothing new (`wait=0`); 3000 over the cap or
+  when a newer poll from the same member released this one; 0 otherwise.
+- **The shell reads the room whenever this phone is a member,** drawer open or not, so the Party
+  control can count unread (decision 5). Seen is kept per tab in `sessionStorage` per Party, so a
+  reload or a game visit does not bring read lines back as new.
+- **Unread** is shown as a count on the Party control and on the Chat word, and in their accessible
+  names. A new line from someone else is said once, politely, only while the Chat side is open.
+- **Over a briefing:** unchanged, people only (rule 3.2; owner decision 1 still open). The badge
+  is not shown there.
+- **Limited Mode (decision 4):** one shared room. The Limited notice now says the Party's chat can
+  be seen by others on the Wi-Fi. Full phones are told too, in the Chat side's status line, while
+  any member is in Limited Mode. That second part is the recommended answer to 4b, built so it can
+  be seen; it is one line to remove if the owner decides otherwise.
+- **Without a Party** (the plain catalog) there is no chat at all, and the shell never opens
+  `/chat/ws` (retirement step 2, decision 10). The legacy runtime's chat itself is untouched.
+- **Not built:** chat over a briefing, chat during a game (AVR-83/AVR-292), moderation, photos,
+  reactions, a join limit or member cap (decision 7's prerequisite for strangers).
 
 ## Consequences
 

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CHAT_TRIES, PAGES, chatGivesUp, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab, gameOf, backWord } from '../../web/party/lib/frame.js';
+import { PAGES, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab, gameOf, backWord, unreadMark } from '../../web/party/lib/frame.js';
 
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
 
@@ -55,20 +55,17 @@ test('who picks the games', () => {
   assert.equal(hostLine(null, ana), '');
 });
 
-test('chat is offered only while the runtime that serves it answers, or it is already connected', () => {
-  assert.equal(chatOffered({ reachable: true, hub: true, status: 'closed' }), true);
-  assert.equal(chatOffered({ reachable: true, hub: false, status: 'closed' }), false);
-  assert.equal(chatOffered({ reachable: true, hub: false, status: 'reconnecting' }), false);
-  assert.equal(chatOffered({ reachable: true, hub: false, status: 'connected' }), true);
-  assert.equal(chatOffered({ reachable: false, hub: true, status: 'connected' }), false);
+test('the Party room is offered to a member of the Party, whatever else runs, never out of reach', () => {
+  assert.equal(chatOffered({ reachable: true, member: true }), true);
+  assert.equal(chatOffered({ reachable: true, member: false }), false);
+  assert.equal(chatOffered({ reachable: false, member: true }), false);
   assert.equal(chatOffered(), false);
 });
 
-test('chat that never comes gives up after a few tries in a row', () => {
-  assert.equal(chatGivesUp(0), false);
-  assert.equal(chatGivesUp(CHAT_TRIES - 1), false);
-  assert.equal(chatGivesUp(CHAT_TRIES), true);
-  assert.ok(CHAT_TRIES >= 3 && CHAT_TRIES <= 10);
+test('the unread mark is a small count', () => {
+  assert.equal(unreadMark(0), '');
+  assert.equal(unreadMark(3), '3');
+  assert.equal(unreadMark(10), '9+');
 });
 
 test('the drawer opens on the side asked for when it exists, else chat, else people', () => {
@@ -83,6 +80,8 @@ test('the drawer opens on the side asked for when it exists, else chat, else peo
 test('the Party control names itself for a screen reader', () => {
   assert.equal(hudLabel({ party: true, count: 4, chat: true }), 'Your Party: 4 people here. Open people and chat');
   assert.equal(hudLabel({ party: true, count: 1, chat: false }), 'Your Party: 1 person here. Open people');
+  assert.equal(hudLabel({ party: true, count: 3, chat: true, unread: 2 }), 'Your Party: 3 people here, 2 new messages. Open people and chat');
+  assert.equal(hudLabel({ party: true, count: 3, chat: true, unread: 1 }), 'Your Party: 3 people here, 1 new message. Open people and chat');
   assert.equal(hudLabel({ party: false, chat: true }), 'Party chat');
   assert.equal(hudLabel({ party: false, chat: false }), '');
   assert.equal(hudLabel(), '');

@@ -53,18 +53,11 @@ export function hostLine(me, host, away = false) {
   return away ? `${host.name} is the host, and is away.` : `${host.name} is the host and picks the games.`;
 }
 
-/** Is today's chat on offer? It is served by the old games runtime, which is being retired
- * (ADR 0014), so it may simply not be there: it is offered only while that runtime answers
- * (`hub`), or while a conversation is already connected. Never when the Pi is out of reach. */
-export function chatOffered({ reachable, hub, status } = {}) {
-  return Boolean(reachable) && (Boolean(hub) || status === 'connected');
+/** Is the Party room on offer? It is Party Core's (AVR-54), so it is there whenever this phone
+ * is a member of the Party, whatever else is running. Never when the Pi is out of reach. */
+export function chatOffered({ reachable, member } = {}) {
+  return Boolean(reachable) && Boolean(member);
 }
-
-/** How many tries in a row today's chat gets before the shell stops trying and says so. A
- * connection that drops is retried at once; one that never comes must not read "reconnecting"
- * for ever. Opening the Chat side again starts over. */
-export const CHAT_TRIES = 6;
-export const chatGivesUp = (failures) => failures >= CHAT_TRIES;
 
 /** Which side of the drawer to open: the one asked for when it exists, else chat, else people;
  * null when there is nothing to open. */
@@ -75,8 +68,12 @@ export function startTab({ party, chat, want } = {}) {
 }
 
 /** The Party control's name for a screen reader. */
-export function hudLabel({ party, count, chat } = {}) {
+export function hudLabel({ party, count, chat, unread = 0 } = {}) {
   if (!party) return chat ? 'Party chat' : '';
   const people = count === 1 ? '1 person' : `${count} people`;
-  return `Your Party: ${people} here. Open people${chat ? ' and chat' : ''}`;
+  const fresh = chat && unread > 0 ? `, ${unread === 1 ? '1 new message' : `${unread} new messages`}` : '';
+  return `Your Party: ${people} here${fresh}. Open people${chat ? ' and chat' : ''}`;
 }
+
+/** The unread mark on the Party control: a count, capped so it stays one small badge. */
+export const unreadMark = (n) => (n > 0 ? (n > 9 ? '9+' : String(n)) : '');
