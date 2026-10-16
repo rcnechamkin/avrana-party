@@ -113,7 +113,7 @@ Linux CI also runs nginx and logrotate checks.
 
 See [CONTRIBUTING](CONTRIBUTING.md#set-up-and-test-locally) for platform-specific setup and [TESTING](docs/TESTING.md) for the full test layout.
 
-> **Important:** `npm test` targets the live Avrana Party appliance. Use the offline commands above for normal local development.
+`npm test` runs the same offline lane. Tests against a live appliance are separate and always named as such (`npm run test:live*`); they need the Party Wi-Fi.
 
 Browser testing at phone-sized viewports is useful, but it is not considered proof that something works correctly on a real iPhone or Android device.
 

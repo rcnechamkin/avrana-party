@@ -155,7 +155,7 @@ used as evidence.
 - **Depends on a public endpoint:** both the game card's live state and the arcade page's "full"
   check read the public `/arcade/stats`, which also shows players' IP addresses. If it is ever
   restricted (PS1 already limits its `/stats` to 127.0.0.1), add a small public summary
-  (`players`, `max_players`, `running`) first. Live `tests/multiplayer.spec.ts` depends on the
+  (`players`, `max_players`, `running`) first. Live `tests/live/multiplayer.spec.ts` depends on the
   "full" wording.
 
 ## Accepted target: Full Mode / Limited Mode contract (ADR 0012; not deployed)

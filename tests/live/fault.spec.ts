@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { summarizeClientSeries } from './lib/soak-metrics';
-import { connectClient, tryConnect, readClientMetrics, sampleServer, serverMaxPlayers, assertReachable } from './lib/soak-driver';
+import { summarizeClientSeries } from '../lib/soak-metrics';
+import { connectClient, tryConnect, readClientMetrics, sampleServer, serverMaxPlayers, assertReachable } from '../lib/soak-driver';
 
 /**
  * Fault injection & recovery (Chromium, @heavy). Exercises the RUNNING service

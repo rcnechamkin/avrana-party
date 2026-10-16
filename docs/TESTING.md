@@ -11,8 +11,9 @@ phone/human acceptance (Tier 3). AVR-51 was deployed 2026-09-29; ADR 0011 is mer
 with deployment and phone proof pending AVR-212. A deployment curl check is not phone proof.
 Claude Code Cloud can run offline tests after `npm ci` and `npx playwright install` where needed;
 the offline checks on `main` also run in GitHub Actions (see "Offline CI lane" below).
-The `tests/` browser suite targets the live Pi and requires Party Wi-Fi and local name resolution;
-do not run `npm test` in Cloud and treat its failure as a product regression.
+The `tests/live/` browser suite (`npm run test:live*`) targets the live Pi and requires Party Wi-Fi
+and local name resolution; do not run it in Cloud and treat its failure as a product regression.
+`npm test` runs the offline lane (`npm run test:offline`).
 **Never run heavy suites on the Pi during a power measurement** — each SSH session is a CPU burst
 (`docs/findings/2026-09-24-new-psu-power-baseline.md`).
 
@@ -71,9 +72,9 @@ Published deployment evidence has not advanced to this source; physical acceptan
 
 | Suite | Branch | Command | Where | Needs | Recorded result (date in row; otherwise 2026-09-24) |
 |---|---|---|---|---|---|
-| Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm test` (fast), `npm run test:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; a hosts-file line `10.42.0.1 party.avrana` (Windows: `C:\Windows\System32\drivers\etc\hosts`, edited as administrator) | not run today (would take the laptop off the home network) |
-| Soak / fault harness (`@heavy`) | `main` | `npm run soak`, `npm run fault` | laptop on the Party Wi-Fi | live Pi; owner go-ahead for load | not run |
-| Soak metric maths | `main` | `npx playwright test tests/soak-metrics.spec.ts` | laptop, Cloud, **CI** | — (no browser binaries) | 10 pass (5 × 2 projects; Cloud 2026-09-26) |
+| Live appliance E2E (captive probe, hub, arcade, streaming, stats, 2 players) | `main` | `npm run test:live` (fast), `npm run test:live:all` | laptop **joined to the Avrana Party Wi-Fi** | the live Pi; a hosts-file line `10.42.0.1 party.avrana` (Windows: `C:\Windows\System32\drivers\etc\hosts`, edited as administrator) | not run today (would take the laptop off the home network) |
+| Soak / fault harness (`@heavy`) | `main` | `npm run test:live:soak`, `npm run test:live:fault` | laptop on the Party Wi-Fi | live Pi; owner go-ahead for load | not run |
+| Soak metric maths | `main` | `npx playwright test -c playwright.live.config.ts tests/live/soak-metrics.spec.ts --project=chromium` | laptop, Cloud, **CI** | — (no browser binaries) | 10 pass (5 × 2 projects; Cloud 2026-09-26) |
 | Arcade AP-address detection | `main` | `python3 -m unittest discover -s tests/unit -k ApAddresses` (also in the full unit run and **CI**) | laptop, Pi, CI | — (GStreamer/aiohttp stubbed) | 4 pass (2026-09-27) |
 | PS1 title profiles | `experiment/ps1-title-profiles` | `python ps1/tests/test_profiles.py` | laptop, Pi | — | 11 pass |
 | PS1 hello handshake (+ capture size, viewports) / Leave / slot logic / party-mode seats / latency instrumentation | `experiment/ps1-title-profiles` | `python ps1/tests/test_hello.py`, `test_leave.py`, `test_slots.py`, `test_seats.py`, `test_latency.py` | laptop, Pi | — (aiohttp/GStreamer stubbed) | 10, 4, 5, 4 pass; slots OK |
@@ -126,7 +127,7 @@ It pins Node 22.22.2. Its current offline commands are:
 ```sh
 npm ci
 npm run check:repo
-npx playwright test tests/soak-metrics.spec.ts
+npx playwright test -c playwright.live.config.ts tests/live/soak-metrics.spec.ts --project=chromium
 cmp avrana-party.nginx arcade/nginx-site
 AVRANA_REQUIRE_NGINX=1 AVRANA_REQUIRE_LOGROTATE=1 python3 -m unittest discover -s tests/unit -v
 node --test 'tests/offline/*.test.mjs'

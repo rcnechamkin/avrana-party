@@ -18,9 +18,8 @@ import { defineConfig, devices } from '@playwright/test';
  *                      a real iPhone remains authoritative for iOS + captive.
  */
 export default defineConfig({
-  testDir: './tests',
-  // Offline suites have their own runners (playwright.offline.config.ts, node --test, unittest).
-  testIgnore: ['offline/**', 'unit/**', 'rollback/**'],
+  // Only the live specs. Every other suite has its own config and runs against local servers.
+  testDir: './tests/live',
   fullyParallel: false, // the appliance has a fixed number of controller slots; avoid slot contention
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

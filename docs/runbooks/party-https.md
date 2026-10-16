@@ -346,7 +346,7 @@ To remove the feature, restore the backed-up site, run `nginx -t` and reload. Re
 - The refactored `stream.py` (provider adapters, `/stats` `providers` block) runs after the next
   start of the service, and that includes a crash restart or a reboot.
 - The arcade was stopped at the 2026-09-25 deploy. Treat the fast-forward itself as the arcade
-  deploy step, and run the arcade checks in the phone checklist (and `npm test` from the Party
+  deploy step, and run the arcade checks in the phone checklist (and `npm run test:live` from the Party
   Wi-Fi) the next time it runs.
 - Keep-awake needs the shell, because the page loads `/party/lib/keep-awake.js`. Without the shell
   it is silently off.

@@ -2,8 +2,8 @@
  * Pure metrics + threshold logic for the Avrana Party load/soak/regression harness.
  *
  * No Playwright, no I/O — just data in, verdict out — so it is unit-testable in
- * isolation (see tests/soak-metrics.spec.ts) and reusable by the live harness
- * (tests/soak.spec.ts, tests/fault.spec.ts).
+ * isolation (see tests/live/soak-metrics.spec.ts) and reusable by the live harness
+ * (tests/live/soak.spec.ts, tests/live/fault.spec.ts).
  */
 
 export interface ClientSample {

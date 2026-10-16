@@ -4,12 +4,12 @@ import path from 'node:path';
 import {
   summarizeClientSeries, summarizeServerSeries, evaluate, formatReport,
   type ClientSample, type ServerSample, type ClientSummary,
-} from './lib/soak-metrics';
-import { connectClient, tryConnect, readClientMetrics, sampleServer, serverMaxPlayers, assertReachable } from './lib/soak-driver';
+} from '../lib/soak-metrics';
+import { connectClient, tryConnect, readClientMetrics, sampleServer, serverMaxPlayers, assertReachable } from '../lib/soak-driver';
 
 /**
  * Load / soak / regression harness (Chromium, tagged @heavy so it stays out of
- * the fast `npm test` run). Connects N real WebRTC clients, holds them for a
+ * the fast `npm run test:live` run). Connects N real WebRTC clients, holds them for a
  * configurable duration, samples each client's stats + the server /stats every
  * interval, then evaluates regression thresholds and writes a JSON artifact.
  *
