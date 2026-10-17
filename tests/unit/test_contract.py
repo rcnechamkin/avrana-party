@@ -181,6 +181,19 @@ class Mutations(unittest.TestCase):
             self.run_all()
         self.assertIn('layer mount file digest', str(cm.exception))
 
+    def test_a_malformed_layer_declaration_is_named_not_a_traceback(self):
+        self.vendor_layer()
+        del self.games_decl['layer']['vendored_sha256']
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('layer declaration incomplete', str(cm.exception))
+        self.games_decl['layer'].update(vendored_sha256='0' * 64, vendored='web/missing.js')
+        self.write_games()
+        with self.assertRaises(checker.Drift) as cm:
+            self.run_all()
+        self.assertIn('no such file', str(cm.exception))
+
     def test_layer_change_redeclared_but_not_revendored_is_cross_drift(self):
         self.vendor_layer()
         with open(self.party / 'web/party/bridge/layer-mount.js', 'a', encoding='utf-8') as f:

@@ -65,7 +65,12 @@ def check_layer(root, b, key, where):
     """The Party layer's page side (AVR-292, avrana.party-layer/v1): one import-free file a game page
     mounts the Party's frame with. Optional for a games repository; bridge v1 does not depend on it.
     `key` is 'reference' in Party and 'vendored' in a games repository."""
+    missing = [k for k in ('protocol', key, key + '_sha256') if not isinstance(b.get(k), str)]
+    if missing:
+        raise Drift(f'layer declaration incomplete: {where} lacks {", ".join(missing)}')
     mount = root / b[key]
+    if not mount.is_file():
+        raise Drift(f'layer mount drifted: {where} declares {b[key]!r} but there is no such file')
     if f"LAYER_PROTOCOL = '{b['protocol']}'" not in mount.read_text(encoding='utf-8'):
         raise Drift(f'layer protocol drifted: {where} declares {b["protocol"]!r} but {b[key]} does not')
     expect(sha256_normalized(mount), b[key + '_sha256'], 'layer mount file digest', where)

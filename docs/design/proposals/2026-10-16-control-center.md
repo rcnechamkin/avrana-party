@@ -109,7 +109,7 @@ viewport and can cover, hide or full-screen over any frame.
   has an optional `layer` block (protocol, reference file, SHA-256, frame) checked by
   `tools/contract_check.py`: a games repository may vendor `layer-mount.js` byte for byte (by
   convention as `web/avrana-party-layer.js`) and declare it as `layer.vendored`; a mismatch is
-  named, and a repository with no `layer` block is unaffected, so rollback is a game that stops
+  named, and a repository with no `layer` block is unaffected (declaring the block is what opts a copy in to being checked), so rollback is a game that stops
   calling `mountPartyLayer({ partyOrigin, game })`. The page decides when to mount (a member in this
   game's round, as `party-follow.js` does for same-origin pages) and calls `stop()` otherwise. The
   frame still loads from the Party origin with the phone's own credential; the page holds none
