@@ -100,6 +100,9 @@ function setStatus(kind, text) {
   status.dataset.state = kind;
   $('status-text').textContent = text;
   $('secure').hidden = !(kind === 'ok' && window.isSecureContext);
+  // Connected, secure and not in Limited Mode: nothing a person needs to read (the words stay for
+  // a screen reader). Anything else is said on the page.
+  status.dataset.quiet = String(kind === 'ok' && window.isSecureContext && state.mode !== LIMITED);
 }
 
 const FIT = {

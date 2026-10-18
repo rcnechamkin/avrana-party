@@ -4,7 +4,7 @@ import { place } from '../lib/frame';
 /**
  * AVR-220: a missing, corrupt or wrong-shaped catalog.json must not take Party Home down.
  * The three failures the audit reproduced in Chromium, each against the simulated Party (Tier 2):
- * the page finishes booting, says the game list is unavailable, offers a Retry that works, and
+ * the page finishes booting, says the game list is unavailable, offers a Try again that works, and
  * throws nothing. The module-level cases are in tests/offline/catalog-load.test.mjs.
  */
 const BROKEN: Record<string, { status: number; body: string }> = {
@@ -19,7 +19,7 @@ async function breakCatalog(page: Page, reply: { status: number; body: string })
 }
 
 for (const [name, reply] of Object.entries(BROKEN)) {
-  test(`Party Home survives ${name} and Retry recovers`, async ({ page }) => {
+  test(`Party Home survives ${name} and Try again recovers`, async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await breakCatalog(page, reply);
@@ -31,6 +31,7 @@ for (const [name, reply] of Object.entries(BROKEN)) {
     await place(page, 'library');
     await expect(notice).toBeVisible();
     await expect(notice).toContainText('Game list unavailable');
+    await expect(page.locator('#catalog-retry')).toHaveText('Try again');   // the same words as every other recovery
     await expect(page.locator('[data-game], [data-id]')).toHaveCount(0);   // no covers, no cards, no crash
     await expect(page.locator('#games [data-empty]')).toHaveCount(0);  // and not dressed up as an empty search
     await expect(page.locator('#away')).toBeHidden();                  // the party itself is reachable
