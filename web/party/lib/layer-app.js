@@ -11,7 +11,7 @@ import { locationOf, partyGame, roster } from './party-mode.js';
 import { unreadMark } from './frame.js';
 import { originAllows } from './bridge.js';
 import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine,
-  gesture, initialPlace, layerBox, parseFromPage, settle } from './layer.js';
+  gesture, keptSpots, nudge, orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark } from './layer.js';
 
 const $ = (id) => document.getElementById(id);
 const game = new URLSearchParams(location.search).get('game');
@@ -19,8 +19,11 @@ const game = new URLSearchParams(location.search).get('game');
 function kept(store, key) { try { return JSON.parse(globalThis[store].getItem(key)); } catch { return null; } }
 function keep(store, key, value) { try { globalThis[store].setItem(key, JSON.stringify(value)); } catch { /* nowhere */ } }
 
-const state = { vp: null, place: null, back: null, parentOrigin: null, origins: null, tab: 'people',
+// mode: 'button' | 'tab' | 'open'. spots: where the button is, per orientation (lib/layer.js).
+const state = { vp: null, mode: 'button', spots: {}, parentOrigin: null, origins: null, tab: 'people',
   confirm: null, link: 'ok', catalog: null, said: 0, busy: false };
+const spot = () => spotFor(state.spots, state.vp);
+const closedMode = () => (spot().parked ? 'tab' : 'button');
 
 // ---- talking to the page that mounted us ---------------------------------------------------------
 /** Only the page that mounted this frame, once its origin is known to be allowed: the Party's own
@@ -57,31 +60,32 @@ window.addEventListener('message', async (ev) => {
   const first = !state.vp;
   state.vp = msg;
   for (const side of ['top', 'right', 'bottom', 'left']) document.documentElement.style.setProperty(`--li-${side}`, `${msg.insets[side]}px`);
-  if (first) state.place = initialPlace(kept('localStorage', POSITION_KEY), state.vp);
-  if (state.view && state.view.me) { state.shown = true; post({ type: 'place', ...currentPlace() }); }
+  if (first) state.spots = keptSpots(kept('localStorage', POSITION_KEY));
+  if (state.mode !== 'open') state.mode = closedMode();   // a turn of the phone may bring another place
+  if (state.view && state.view.me) { state.shown = true; show(); }
 });
 
-function currentPlace() {
-  const p = state.place;
-  return { mode: p.mode, side: p.side, y: Math.round(p.y) };
-}
-
-function setPlace(p, { save = true } = {}) {
-  state.place = p;
-  if (save && p.mode !== 'open') keep('localStorage', POSITION_KEY, { mode: p.mode, side: p.side, y: Math.round(p.y) });
-  post({ type: 'place', ...currentPlace() });
+/** Tell the page where the frame goes: the whole screen when open, else the button or tab. */
+function show() {
+  if (state.mode === 'open') post({ type: 'place', mode: 'open', side: 'right', y: 0 });
+  else post(requestFor(spot(), state.vp));
   render();
 }
 
-// ---- the button: tap opens, long-press drags, a fling tucks it away -----------------------------------
+/** The button is somewhere new (a drag, a nudge, a park, a reset): keep it, for this orientation. */
+function setSpot(next) {
+  state.spots = { ...state.spots, [orientationOf(state.vp)]: next };
+  keep('localStorage', POSITION_KEY, state.spots);
+}
+
+// ---- the button: tap opens, long-press drags and it stays where it is let go -------------------------
 const button = $('layer-button');
-let press = null, quietUntil = 0;   // a click right after a drag or a slide is not a tap
+let press = null, quietUntil = 0;   // a click right after a drag is not a tap
 button.addEventListener('contextmenu', (e) => e.preventDefault());
 button.addEventListener('pointerdown', (e) => {
-  if (!state.vp || state.place.mode !== 'button') return;
-  const box = layerBox({ type: 'place', ...currentPlace() }, state.vp);
-  press = { id: e.pointerId, sx: e.screenX, sy: e.screenY, t: performance.now(), box, dragging: false,
-    moved: 0, samples: [], x: box.x, y: box.y };
+  if (!state.vp || state.mode !== 'button') return;
+  const at = spotAt(spot(), state.vp);
+  press = { id: e.pointerId, sx: e.screenX, sy: e.screenY, box: at, dragging: false, moved: 0, x: at.x, y: at.y };
   try { button.setPointerCapture(e.pointerId); } catch { /* not all pointers */ }
   press.timer = setTimeout(() => {
     if (!press || gesture({ heldMs: LONG_PRESS_MS, moved: press.moved }) !== 'drag' || press.moved > SLOP) return;
@@ -96,8 +100,6 @@ button.addEventListener('pointermove', (e) => {
   press.moved = Math.max(press.moved, Math.hypot(dx, dy));
   if (!press.dragging) return;
   press.x = press.box.x + dx; press.y = press.box.y + dy;
-  press.samples.push({ x: press.x, t: performance.now() });
-  if (press.samples.length > 5) press.samples.shift();
   post({ type: 'drag', x: Math.round(press.x), y: Math.round(press.y) });
 });
 function release(e) {
@@ -108,9 +110,8 @@ function release(e) {
   button.classList.remove('lifted');
   if (!p.dragging) { if (p.moved > SLOP) quietUntil = performance.now() + 500; return; }
   quietUntil = performance.now() + 500;
-  const s = p.samples, vx = s.length > 1 ? (s.at(-1).x - s[0].x) / Math.max(1, s.at(-1).t - s[0].t) : 0;
-  setPlace(settle({ x: p.x, y: p.y, vx }, state.vp));
-  if (state.place.mode === 'tab') $('layer-tab').focus({ preventScroll: true });
+  setSpot(toSpot({ x: p.x, y: p.y }, state.vp));   // where the finger let go, kept inside the screen
+  show();
 }
 button.addEventListener('pointerup', release);
 button.addEventListener('pointercancel', release);
@@ -118,30 +119,41 @@ button.addEventListener('click', () => {
   if (performance.now() < quietUntil) return;
   openLayer();
 });
+// The arrow keys move the focused button without a drag.
+button.addEventListener('keydown', (e) => {
+  const dir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key];
+  if (!dir || !state.vp || state.mode !== 'button') return;
+  e.preventDefault();
+  setSpot(nudge(spot(), dir, state.vp));
+  show();
+});
 $('layer-tab').addEventListener('click', () => {
-  setPlace({ mode: 'button', side: state.place.side, y: state.place.y });
+  setSpot(unpark(spot()));
+  state.mode = 'button';
+  show();
   button.focus({ preventScroll: true });
 });
 
 // ---- the drawer --------------------------------------------------------------------------------------
 function openLayer(tab = null) {
-  if (!state.vp || state.place.mode === 'open') return;
-  state.back = state.place;
+  if (!state.vp || state.mode === 'open') return;
   if (tab) state.tab = tab;
-  setPlace({ mode: 'open', side: state.place.side, y: state.place.y }, { save: false });
+  state.mode = 'open';
+  show();
   $('layer-close').focus({ preventScroll: true });
   syncChat();
 }
 function closeLayer() {
-  if (state.place.mode !== 'open') return;
+  if (state.mode !== 'open') return;
   state.confirm = null;
-  setPlace(state.back || initialPlace(null, state.vp));
-  button.focus({ preventScroll: true });
+  state.mode = closedMode();
+  show();
+  (state.mode === 'tab' ? $('layer-tab') : button).focus({ preventScroll: true });
 }
 $('layer-close').addEventListener('click', closeLayer);
 $('layer-backdrop').addEventListener('click', closeLayer);
 document.addEventListener('keydown', (e) => {
-  if (!state.place || state.place.mode !== 'open') return;
+  if (state.mode !== 'open') return;
   if (e.key === 'Escape') { e.preventDefault(); closeLayer(); return; }
   if (e.key !== 'Tab') return;
   // aria-modal: Tab and Shift+Tab go round the drawer and never reach the game behind it.
@@ -159,19 +171,20 @@ $('layer-tabs').addEventListener('click', (e) => {
   render();
   syncChat();
 });
-$('layer-move').addEventListener('click', () => {
-  const back = state.back || state.place;
-  state.back = { mode: 'button', side: back.side === 'left' ? 'right' : 'left', y: back.y };
-  keep('localStorage', POSITION_KEY, state.back);
-  $('layer-confirm-error').textContent = '';
-  $('layer-live-note').textContent = `The button is now on the ${state.back.side}.`;
-});
-$('layer-tuck').addEventListener('click', () => {
-  const back = state.back || state.place;
-  state.back = { mode: 'tab', side: back.side, y: back.y };
-  keep('localStorage', POSITION_KEY, state.back);
-  closeLayer();
-  $('layer-tab').focus({ preventScroll: true });
+// Moving the button without dragging: the drawer's buttons. It moves when the drawer closes.
+const said = (text) => { $('layer-confirm-error').textContent = ''; $('layer-live-note').textContent = text; };
+for (const b of document.querySelectorAll('[data-nudge]')) {
+  b.addEventListener('click', () => { setSpot(nudge(spot(), b.dataset.nudge, state.vp)); said(`The button moves ${b.dataset.nudge}.`); });
+}
+for (const side of ['left', 'right']) {
+  $(`layer-park-${side}`).addEventListener('click', () => {
+    setSpot(park(spot(), side));
+    closeLayer();       // parking also closes the drawer: the tab takes focus
+  });
+}
+$('layer-reset').addEventListener('click', () => {
+  setSpot({ ...spotFor({}, state.vp) });
+  said('The button is back where it started.');
 });
 
 // ---- the Party ---------------------------------------------------------------------------------------
@@ -183,11 +196,11 @@ const chat = createPartyChat({ base: '/party/api/', storage: storageTab, onChang
 function onView(view) {
   state.view = view;
   if (view && view.me) chat.open(view.party, view.me.id); else chat.close();
-  if (state.vp && view && view.me && !state.shown) { state.shown = true; post({ type: 'place', ...currentPlace() }); }
+  if (state.vp && view && view.me && !state.shown) { state.shown = true; show(); }
   if (!(view && view.me) && state.shown) {
     // No longer a member: hide the frame, or an empty frame would sit over the game.
     state.shown = false;
-    if (state.place && state.place.mode === 'open') state.place = state.back || initialPlace(null, state.vp);
+    if (state.vp && state.mode === 'open') state.mode = closedMode();
     post({ type: 'hide' });
   }
   render();
@@ -205,17 +218,17 @@ function personItem(m) {
 }
 
 function render() {
-  const view = state.view, place = state.place;
+  const view = state.view;
   const member = Boolean(view && view.me);
-  const mode = member && place ? place.mode : null;
+  const mode = member && state.vp ? state.mode : null;
   document.documentElement.dataset.mode = mode || 'none';
   button.hidden = mode !== 'button';
   $('layer-tab').hidden = mode !== 'tab';
   $('layer-open').hidden = mode !== 'open';
   if (mode === 'tab') {
-    const slot = $('layer-tab');
-    slot.replaceChildren(icon(place.side === 'right' ? 'chevron-left' : 'chevron-right'));
-    slot.dataset.side = place.side;
+    const slot = $('layer-tab'), side = spot().parked;
+    slot.replaceChildren(icon(side === 'right' ? 'chevron-left' : 'chevron-right'));
+    slot.dataset.side = side;
   }
   const unread = chat.state().unread;
   button.setAttribute('aria-label', buttonLabel(unread));
@@ -307,7 +320,7 @@ function renderChat(snapshot) {
   if (!items.length && snapshot.status === 'connected') items.push(h('li', { class: 'avrana-chat-empty', text: 'No messages yet. Say hello to the Party.' }));
   $('chat-messages').replaceChildren(...items);
   if (atEnd) pane.scrollTop = pane.scrollHeight;
-  const showing = state.place && state.place.mode === 'open' && state.tab === 'chat';
+  const showing = state.mode === 'open' && state.tab === 'chat';
   const said = state.said;
   state.said = snapshot.messages.length ? snapshot.messages.at(-1).seq : 0;
   if (showing) {
@@ -317,7 +330,7 @@ function renderChat(snapshot) {
   }
   render();
 }
-function syncChat() { if (state.place && state.place.mode === 'open' && state.tab === 'chat') chat.markSeen(); }
+function syncChat() { if (state.mode === 'open' && state.tab === 'chat') chat.markSeen(); }
 
 $('chat-form').addEventListener('submit', async (e) => {
   e.preventDefault();

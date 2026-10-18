@@ -628,7 +628,7 @@
      Safe areas come from the page (an iframe sees none of its own): --li-top/right/bottom/left. */
   html.avrana-layer-doc, body.avrana-layer { min-height: 0; height: 100%; background: transparent; overflow: hidden; }
   .avrana-layer-button {
-    position: fixed; inset: 2px; display: grid; place-items: center; border-radius: 0.875rem; cursor: pointer;
+    position: fixed; inset: 0; display: grid; place-items: center; border-radius: 0.875rem; cursor: pointer;
     background: rgb(28 28 32 / 0.72); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
     border: 1px solid rgb(255 255 255 / 0.14); color: var(--color-base-content);
     touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;

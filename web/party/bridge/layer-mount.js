@@ -14,7 +14,7 @@
 // A game that mounts it keeps the frame above its own content: no element over it, and no
 // element full screen that hides it. It reserves no region; the player moves the button.
 export const LAYER_PROTOCOL = 'avrana.party-layer/v1';
-export const BUTTON = 52, TAB = { w: 24, h: 60 }, MARGIN = 6;   // the frame around the 48 px button; the tucked tab
+export const BUTTON = 48, TAB = { w: 24, h: 60 }, MARGIN = 6;   // the frame is the button, so a tap outside it is the game's; the parked tab
 const SIDES = ['left', 'right'], MODES = ['button', 'tab', 'open'];   // and `hide`: nothing to show
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const keysAre = (o, ...names) => Object.keys(o).sort().join(',') === names.sort().join(',');
@@ -35,7 +35,9 @@ export function parseLayerMessage(data) {
 /** The frame's box for a request, always inside the viewport. */
 export function layerBox(msg, vp) {
   const ins = vp.insets;
-  if (msg.type === 'drag') return { x: clamp(msg.x, 0, vp.w - BUTTON), y: clamp(msg.y, 0, vp.h - BUTTON), w: BUTTON, h: BUTTON };
+  if (msg.type === 'drag') {      // anywhere the player lets go, inside the safe areas
+    return { x: clamp(msg.x, ins.left + MARGIN, vp.w - ins.right - MARGIN - BUTTON), y: clamp(msg.y, ins.top + MARGIN, vp.h - ins.bottom - MARGIN - BUTTON), w: BUTTON, h: BUTTON };
+  }
   if (msg.mode === 'open') return { x: 0, y: 0, w: vp.w, h: vp.h };
   const size = msg.mode === 'tab' ? TAB : { w: BUTTON, h: BUTTON };
   const x = msg.mode === 'tab' ? (msg.side === 'left' ? 0 : vp.w - size.w)
@@ -93,7 +95,7 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
     }
     const box = layerBox(msg, vp);
     Object.assign(frame.style, { left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', visibility: 'visible' });
-    const mode = msg.type === 'drag' ? 'drag' : msg.mode;
+    const mode = msg.type === 'drag' ? 'button' : msg.mode;
     frame.dataset.avranaPartyLayer = mode;
     setOpen(mode === 'open');
   }
@@ -107,7 +109,7 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
     const msg = parseLayerMessage(ev.data);
     if (!msg) return;
     if (msg.type === 'ready') { ready = true; vp = viewport(); send({ type: 'viewport', ...vp }); return; }
-    if (msg.type === 'place' || msg.type === 'hide') last = msg;
+    if (msg.type === 'place' || msg.type === 'hide' || msg.type === 'drag') last = msg;   // a drag's last point stays
     apply(msg);
   }
 
