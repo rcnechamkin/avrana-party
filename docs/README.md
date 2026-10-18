@@ -49,6 +49,7 @@ Runbooks describe procedures. Running one on the appliance is the owner's decisi
 |---|---|
 | [ROADMAP](ROADMAP.md) | Product direction and milestones. Current tasks are tracked in [Linear](https://linear.app/avranakern) |
 | [Game platform](GAME-PLATFORM-ARCHITECTURE.md), [offline trust and recovery](OFFLINE-TRUST-AND-RECOVERY.md), [personal viewports and emulation](PERSONAL-VIEWPORT-AND-EMULATION.md), [experience](AVRANA-EXPERIENCE.md) | Longer-term design direction; not a description of what is built |
+| [Design Foundation](design/foundation/README.md), [Party mapping](design/foundation/PARTY-MAPPING.md) | Proposed shared UI standards and a source mapping; no runtime styling or product decision is changed |
 | [Appliance content delivery](design/APPLIANCE-CONTENT-DELIVERY.md) | Proposed design for delivering large game data from the appliance to phones; awaiting owner decisions |
 | [Research](research/) | Background studies and candidate technologies; no decisions |
 
