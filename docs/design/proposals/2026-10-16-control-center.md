@@ -67,17 +67,21 @@ viewport and can cover, hide or full-screen over any frame.
   like AssistiveTouch, showing the Party mark and the unread count. It floats above the game; it
   starts on the right edge, a third of the way down, inside `env(safe-area-inset-*)`.
 - **Tap** (or Enter / Space) opens the Party drawer. **Long-press** (about 400 ms, with a small
-  scale-up as the cue) then **drag** moves it. On release it settles on the nearer left or right
-  edge, kept clear of the safe areas, the notch and the home indicator. A quick fling toward an
-  edge, or a drop past it, **tucks it away**: it slides mostly off screen and leaves a 24 × 60 px
-  tab with a chevron. Tap the tab to bring the button back. Position and tucked state are kept per
-  phone (Party-origin storage), so the button is where the player left it in the next round.
+  scale-up as the cue) then **drag** moves it, and it **stays exactly where it is let go**, inside
+  the safe areas (AVR-579 replaced the earlier snap to the nearer edge). Its place is kept per
+  phone as fractions of the usable area, **one for portrait and one for landscape**, so it survives
+  a rotation or a resize; the first time in an orientation it follows the other's. **Parking** is
+  deliberate: the drawer's **Park on the left / right edge** turns it into a 24 × 60 px tab with a
+  chevron at the same height; tap the tab to bring the button back at that edge. A fling or a drop
+  at the edge no longer parks it. The frame is exactly the button's box, so a tap anywhere else
+  reaches the game.
 - **Mechanics.** The frame tracks the finger in `screenX/screenY`, which do not jump as the frame
-  itself moves, and asks the page to move the frame (`drag {x, y}`, then `place`); the page may
-  only place the frame where asked, clamped inside the viewport. The button sets `touch-action: none` and
+  itself moves, and asks the page to move the frame (`drag {x, y}`, which the page keeps until the
+  next request; `place` for a tab or the open drawer); the page may only place the frame where
+  asked, clamped inside the viewport and its safe areas. The button sets `touch-action: none` and
   `-webkit-touch-callout: none`, so a long-press opens no Safari callout or text selection.
-- **Accessibility.** A drag has a non-drag equivalent (WCAG 2.5.7): the drawer has **Move button
-  to the other side** and **Tuck button away**, and the tucked tab is a real button named "Show
+- **Accessibility.** A drag has a non-drag equivalent (WCAG 2.5.7): the drawer has **Move up / down /
+  left / right** (48 px steps; the arrow keys do the same on the focused button), **Park on the left / right edge** and **Reset position**, and the tucked tab is a real button named "Show
   the Party button". The button's name carries the unread count. It honours reduced motion: no
   slide or fling animation.
 - **The drawer.** Opening moves focus into the frame's dialog (`aria-modal`); the game gets
@@ -105,6 +109,23 @@ viewport and can cover, hide or full-screen over any frame.
   allow-same-origin allow-forms`: it cannot navigate the game page); it answers only a page on
   the Party's own origin or one Party Core registers for that game. nginx and the devserver let
   `layer.html` alone be framed by `'self'` and the game origin.
+- **A game on its own origin (as built, AVR-292 follow-up).** `contracts/party-games.v0.json` now
+  has an optional `layer` block (protocol, reference file, SHA-256, frame) checked by
+  `tools/contract_check.py`: a games repository may vendor `layer-mount.js` byte for byte (by
+  convention as `web/avrana-party-layer.js`) and declare it as `layer.vendored`; a mismatch is
+  named, and a repository with no `layer` block is unaffected (declaring the block is what opts a copy in to being checked), so rollback is a game that stops
+  calling `mountPartyLayer({ partyOrigin, game })`. The page decides when to mount (a member in this
+  game's round, as `party-follow.js` does for same-origin pages) and calls `stop()` otherwise. The
+  frame still loads from the Party origin with the phone's own credential; the page holds none
+  (`tests/offline/bridge.spec.ts`, Tier 2). **Not built:** the Games side (the SDK export and
+  `comply` do not yet vendor the file) and any installed `.avrgame` that mounts it; the real
+  cookie behaviour of a framed Party page under Safari's tracking prevention is Tier 3
+  ([device validation](../../runbooks/party-layer-device-validation.md), 7.7).
+- **A top-layer dialog hides the button.** A page's `<dialog>.showModal()` puts it in the top layer
+  and makes the Party frame inert. A game that mounts the layer opens its own dialogs without the
+  top layer and keeps the table inert, the focus trapped and Escape working itself (BLUFF:
+  `games/bluff/web/modal.js`), and leaves `aria-modal` off so a screen reader can still reach the
+  Party button.
 - **What games must do (GAME-UX-CONTRACT amendment).** Keep the frame above their own content
   (no element over it, no element full screen that hides it), and put nothing under the default
   position that cannot also be reached once the player moves the button. No reserved corner.

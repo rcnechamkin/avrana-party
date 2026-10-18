@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BUTTON, MARGIN, TAB, layerBox, mountPartyLayer, parseLayerMessage } from '../../web/party/bridge/layer-mount.js';
-import { FLING, LONG_PRESS_MS, PROTOCOL, SLOP, actions, buttonLabel, connectionLine, gesture, initialPlace,
-  parseFromPage, settle } from '../../web/party/lib/layer.js';
+import { DEFAULT_SPOT, LONG_PRESS_MS, PROTOCOL, SLOP, STEP, actions, buttonLabel, connectionLine, gesture, keptSpots, nudge,
+  orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark, usable } from '../../web/party/lib/layer.js';
 
 const VP = { w: 375, h: 667, insets: { top: 20, right: 0, bottom: 34, left: 0 } };
 const P = (o) => ({ avrana: PROTOCOL, ...o });
@@ -44,28 +44,67 @@ test('the frame box is always inside the viewport and clear of the safe areas', 
   assert.deepEqual(layerBox({ type: 'place', mode: 'tab', side: 'right', y: 100 }, VP), { x: VP.w - TAB.w, y: 100, ...TAB });
   assert.deepEqual(layerBox({ type: 'place', mode: 'tab', side: 'left', y: 100 }, VP), { x: 0, y: 100, ...TAB });
   assert.deepEqual(layerBox({ type: 'place', mode: 'open', side: 'left', y: 100 }, VP), { x: 0, y: 0, w: VP.w, h: VP.h });
-  assert.deepEqual(layerBox({ type: 'drag', x: -40, y: 5000 }, VP), { x: 0, y: VP.h - BUTTON, w: BUTTON, h: BUTTON });
+  assert.deepEqual(layerBox({ type: 'drag', x: -40, y: 5000 }, VP),
+    { x: MARGIN, y: VP.h - VP.insets.bottom - MARGIN - BUTTON, w: BUTTON, h: BUTTON });
+  assert.deepEqual(layerBox({ type: 'drag', x: 123, y: 234 }, VP), { x: 123, y: 234, w: BUTTON, h: BUTTON });   // free: no edge snapping
   const notch = { ...VP, insets: { top: 0, right: 44, bottom: 0, left: 44 } };     // a phone on its side
   assert.equal(layerBox({ type: 'place', mode: 'button', side: 'left', y: 50 }, notch).x, 44 + MARGIN);
   assert.equal(layerBox({ type: 'place', mode: 'button', side: 'right', y: 50 }, notch).x, notch.w - 44 - MARGIN - BUTTON);
 });
 
-test('a release settles on the nearer side; past the edge or a fling tucks it into a tab', () => {
-  assert.deepEqual(settle({ x: 40, y: 200, vx: 0 }, VP), { mode: 'button', side: 'left', y: 200 });
-  assert.deepEqual(settle({ x: 300, y: 200, vx: 0 }, VP), { mode: 'button', side: 'right', y: 200 });
-  assert.equal(settle({ x: -BUTTON / 2, y: 0 }, VP).mode, 'tab');
-  assert.equal(settle({ x: VP.w - BUTTON / 2, y: 0 }, VP).mode, 'tab');
-  assert.equal(settle({ x: 100, y: 0, vx: -FLING }, VP).mode, 'tab');            // thrown left
-  assert.equal(settle({ x: 100, y: 0, vx: FLING * 0.9 }, VP).mode, 'button');    // toward the far side, too slow
-  assert.equal(settle({ x: 250, y: 0, vx: FLING * 2 }, VP).mode, 'tab');
-  assert.equal(settle({ x: 250, y: 0, vx: -FLING * 2 }, VP).mode, 'button');      // thrown away from its side
+test('the button is where it was put: free, kept as fractions, and always inside the safe areas', () => {
+  const u = usable(VP);
+  assert.deepEqual(u, { x0: MARGIN, y0: VP.insets.top + MARGIN, x1: VP.w - MARGIN - BUTTON, y1: VP.h - VP.insets.bottom - MARGIN - BUTTON });
+  const mid = toSpot({ x: 150, y: 300 }, VP);
+  assert.equal(mid.parked, null);
+  assert.deepEqual(spotAt(mid, VP), { x: 150, y: 300 });                      // a point in the middle stays in the middle
+  assert.deepEqual(toSpot({ x: -999, y: 99999 }, VP), { nx: 0, ny: 1, parked: null });   // let go off-screen: clamped
+  assert.deepEqual(requestFor(mid, VP), { type: 'drag', x: 150, y: 300 });
+  assert.deepEqual(requestFor({ nx: 0.3, ny: 0.5, parked: 'left' }, VP), { type: 'place', mode: 'tab', side: 'left', y: spotAt({ nx: 0, ny: 0.5 }, VP).y });
 });
 
-test('the first place is the kept one, else the right side a third down', () => {
-  assert.deepEqual(initialPlace(null, VP), { mode: 'button', side: 'right', y: Math.round(VP.h / 3) });
-  assert.deepEqual(initialPlace({ mode: 'tab', side: 'left', y: 80 }, VP), { mode: 'tab', side: 'left', y: 80 });
-  assert.deepEqual(initialPlace({ mode: 'open', side: 'left', y: 80 }, VP).mode, 'button');   // never opens by itself
-  assert.deepEqual(initialPlace({ mode: 'tab', side: 'top', y: 80 }, VP).side, 'right');
+test('a turn of the phone keeps each orientation\'s own place; a size change clamps', () => {
+  const portrait = VP, landscape = { w: 667, h: 375, insets: { top: 0, right: 44, bottom: 21, left: 44 } };
+  assert.equal(orientationOf(portrait), 'portrait');
+  assert.equal(orientationOf(landscape), 'landscape');
+  const spots = { portrait: { nx: 0.2, ny: 0.8, parked: null } };
+  assert.deepEqual(spotFor(spots, portrait), spots.portrait);
+  assert.deepEqual(spotFor(spots, landscape), spots.portrait, 'the first time sideways, it follows the other orientation');
+  const both = { ...spots, landscape: { nx: 1, ny: 0, parked: null } };
+  assert.deepEqual(spotFor(both, landscape), both.landscape);
+  assert.deepEqual(spotFor(both, portrait), both.portrait, 'turning back finds the first place again');
+  const box = layerBox(requestFor(both.landscape, landscape), landscape);
+  assert.equal(box.x, landscape.w - 44 - MARGIN - BUTTON);                    // the notch side is respected
+  assert.equal(box.y, MARGIN);
+  for (const vp of [{ w: 320, h: 200, insets: VP.insets }, { w: 80, h: 80, insets: { top: 30, right: 30, bottom: 30, left: 30 } }]) {
+    const at = requestFor(both.portrait, vp);
+    const b = layerBox(at, vp);
+    assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.w <= vp.w + MARGIN * 2 && b.y >= vp.insets.top, JSON.stringify(vp));
+  }
+  assert.deepEqual(spotFor({}, VP), DEFAULT_SPOT);
+});
+
+test('kept places are checked; anything else is dropped', () => {
+  const good = { nx: 0.5, ny: 0.5, parked: null };
+  assert.deepEqual(keptSpots({ portrait: good, landscape: { ...good, parked: 'left' } }), { portrait: good, landscape: { ...good, parked: 'left' } });
+  assert.deepEqual(keptSpots({ portrait: { nx: 2, ny: 0, parked: null } }), {});
+  assert.deepEqual(keptSpots({ portrait: { nx: 0, ny: 0, parked: 'top' } }), {});
+  assert.deepEqual(keptSpots({ mode: 'button', side: 'right', y: 80 }), {});   // the old shape: start fresh
+  assert.deepEqual(keptSpots(null), {});
+});
+
+test('without dragging: nudges, parking on an edge, the tab back, all deliberate', () => {
+  const at = { nx: 0.5, ny: 0.5, parked: null };
+  const from = spotAt(at, VP);
+  assert.deepEqual(spotAt(nudge(at, 'down', VP), VP), { x: from.x, y: from.y + STEP });
+  assert.deepEqual(spotAt(nudge(at, 'left', VP), VP), { x: from.x - STEP, y: from.y });
+  assert.equal(nudge({ nx: 0, ny: 0, parked: null }, 'up', VP).ny, 0, 'a nudge stops at the edge of the room');
+  const parked = park(at, 'right');
+  assert.deepEqual(parked, { nx: 0.5, ny: 0.5, parked: 'right' });
+  assert.equal(requestFor(parked, VP).mode, 'tab');
+  assert.deepEqual(unpark(parked), { nx: 1, ny: 0.5, parked: null });          // back at the edge it was parked on
+  assert.equal(nudge(parked, 'down', VP).parked, null, 'moving a parked button brings it back');
+  assert.equal(requestFor(unpark(park(at, 'left')), VP).x, MARGIN);
 });
 
 test('a short press is a tap, a long one a drag, a moving short one nothing', () => {
@@ -157,4 +196,25 @@ test('the mount ignores messages from any other origin or window, and malformed 
   assert.equal(layer.frame.style.visibility, 'hidden');
   assert.throws(() => mountPartyLayer({ partyOrigin: 'https://party.test/x', game: 'bluff', window: page.win }));
   assert.throws(() => mountPartyLayer({ partyOrigin: 'https://party.test', game: '../x', window: page.win }));
+});
+
+test('the mount leaves a dragged button where it is put, and keeps it inside when the page resizes', () => {
+  const page = fakePage();
+  const layer = mountPartyLayer({ partyOrigin: 'https://party.test', game: 'bluff', window: page.win });
+  page.say(P({ type: 'ready' }));
+  page.say(P({ type: 'drag', x: 170, y: 300 }));
+  assert.equal(layer.frame.style.left, '170px');
+  assert.equal(layer.frame.style.top, '300px');
+  assert.equal(layer.frame.style.width, `${BUTTON}px`, 'the frame is the button: a tap beside it is the game\'s');
+  assert.equal(layer.frame.style.height, `${BUTTON}px`);
+  assert.equal(layer.frame.dataset.avranaPartyLayer, 'button');
+  page.win.innerWidth = 200; page.win.innerHeight = 250;               // the page shrinks
+  page.listeners.resize();
+  assert.equal(layer.frame.style.left, `${200 - MARGIN - BUTTON}px`);
+  assert.equal(layer.frame.style.top, `${250 - 34 - MARGIN - BUTTON}px`);
+  assert.deepEqual(page.posted.at(-1), [P({ type: 'viewport', w: 200, h: 250, insets: VP.insets }), 'https://party.test']);
+  page.say(P({ type: 'place', mode: 'tab', side: 'left', y: 100 }));   // parked
+  assert.equal(layer.frame.style.left, '0px');
+  assert.equal(layer.frame.style.width, `${TAB.w}px`);
+  layer.stop();
 });

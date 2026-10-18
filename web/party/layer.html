@@ -43,9 +43,15 @@
           <p id="layer-confirm-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
         </div>
       </div>
-      <div class="avrana-layer-moves">
-        <button id="layer-move" type="button" class="btn btn-ghost btn-sm">Move the button to the other side</button>
-        <button id="layer-tuck" type="button" class="btn btn-ghost btn-sm">Tuck the button away</button>
+      <div class="avrana-layer-moves" role="group" aria-labelledby="layer-moves-h">
+        <h3 id="layer-moves-h" class="m-0 w-full text-supporting font-medium text-muted">Party button position</h3>
+        <button id="layer-nudge-up" type="button" class="btn btn-ghost btn-sm" data-nudge="up">Move up</button>
+        <button id="layer-nudge-down" type="button" class="btn btn-ghost btn-sm" data-nudge="down">Move down</button>
+        <button id="layer-nudge-left" type="button" class="btn btn-ghost btn-sm" data-nudge="left">Move left</button>
+        <button id="layer-nudge-right" type="button" class="btn btn-ghost btn-sm" data-nudge="right">Move right</button>
+        <button id="layer-park-left" type="button" class="btn btn-ghost btn-sm">Park on the left edge</button>
+        <button id="layer-park-right" type="button" class="btn btn-ghost btn-sm">Park on the right edge</button>
+        <button id="layer-reset" type="button" class="btn btn-ghost btn-sm">Reset position</button>
       </div>
     </div>
     <div id="chat" class="body" hidden>

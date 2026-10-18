@@ -6,7 +6,9 @@ import { phone, post, version, view, type Phone } from '../lib/phones';
  * The Party layer over a game (AVR-292; docs/design/proposals/2026-10-16-control-center.md): the
  * floating Party button a game page mounts (bridge/layer-mount.js), drawn by the Party's own frame
  * (layer.html). People, the Party's chat, the Host's controls with a confirmation, and the
- * AssistiveTouch-style button: tap opens, long-press drags, pushed into a side it tucks into a tab.
+ * AssistiveTouch-style button (AVR-579): tap opens, long-press drags and it stays where it is let go
+ * (a place per orientation), the drawer or the arrow keys move it without a drag, and parking on an edge
+ * as a tab is deliberate.
  *
  * Tier 2: Chromium at phone size against the dev server's real Party Core and its stub game pages
  * (opted in with localStorage avrana-test-layer). Not a phone, not Safari, not BLUFF or EXPO
@@ -153,49 +155,218 @@ test.describe('the Party layer on a game page', () => {
     await expect(bob.page).toHaveURL(atGame);
   });
 
-  test('long-press drags the button; it settles on the nearer side and stays there after a reload', async () => {
+  const PORTRAIT = { width: 375, height: 667 }, LANDSCAPE = { width: 667, height: 375 };
+  const near = (got: { x: number; y: number }, want: { x: number; y: number }, tol = 3) => {
+    expect(Math.abs(got.x - want.x), `x ${got.x} vs ${want.x}`).toBeLessThanOrEqual(tol);
+    expect(Math.abs(got.y - want.y), `y ${got.y} vs ${want.y}`).toBeLessThanOrEqual(tol);
+  };
+  const within = (b: { x: number; y: number; width: number; height: number }, vp: { width: number; height: number }) => {
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width).toBeLessThanOrEqual(vp.width);
+    expect(b.y + b.height).toBeLessThanOrEqual(vp.height);
+  };
+  /** The page's own layout viewport as the layer frame sees it, after a resize has settled. */
+  async function resize(page: Page, vp: { width: number; height: number }) {
+    await page.setViewportSize(vp);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(vp.width);
+  }
+
+  test('long-press drags the button; it stays exactly where it is let go, also after a reload', async () => {
     await startRound(host, [bob]);
-    const vw = bob.page.viewportSize()!.width;
+    await resize(bob.page, PORTRAIT);
     await placed(bob.page);
     const start = await frameBox(bob.page);
-    expect(start.x, 'starts on the right').toBeGreaterThan(vw / 2);
-    await longPressDrag(bob.page, { x: 80, y: start.y + 120 });
-    await expect.poll(async () => (await frameBox(bob.page)).x).toBeLessThan(20);
-    const settled = await frameBox(bob.page);
-    expect(settled.y).toBeGreaterThan(start.y + 60);
+    expect(start.x, 'starts on the right').toBeGreaterThan(PORTRAIT.width / 2);
+    await longPressDrag(bob.page, { x: 140, y: start.y + 150 });
+    const free = { x: 140 - start.width / 2, y: start.y + 150 - start.height / 2 };
+    await expect.poll(async () => Math.abs((await frameBox(bob.page)).x - free.x)).toBeLessThanOrEqual(3);
+    near(await frameBox(bob.page), free);                  // not on a side: nothing snapped it
     await expect(layerOf(bob.page).locator('#layer-sheet'), 'a drag is not a tap').toBeHidden();
+    await bob.page.waitForTimeout(600);
+    near(await frameBox(bob.page), free);                  // and nothing slides it later
     await bob.page.reload();
-    await expect(layerOf(bob.page).locator('#layer-button')).toBeVisible();
-    await expect.poll(async () => (await frameBox(bob.page)).x).toBeLessThan(20);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    near(await frameBox(bob.page), free);
   });
 
-  test('pushed into the side it tucks into a tab with an arrow; the tab brings the button back', async () => {
+  test('let go beyond an edge it stops inside the screen; pushing is not parking', async () => {
     await startRound(host, [bob]);
-    const vw = bob.page.viewportSize()!.width;
+    await resize(bob.page, PORTRAIT);
     await placed(bob.page);
     const start = await frameBox(bob.page);
-    await longPressDrag(bob.page, { x: vw - 2, y: start.y + start.height / 2 });
+    await longPressDrag(bob.page, { x: 1, y: start.y + start.height / 2 });
     const layer = layerOf(bob.page);
+    await expect(layer.locator('#layer-button')).toBeVisible();
+    await expect(layer.locator('#layer-tab')).toBeHidden();
+    const box = await frameBox(bob.page);
+    within(box, PORTRAIT);
+    expect(box.width).toBeGreaterThan(40);                 // still the whole button, not a tab
+  });
+
+  test('a tap opens the Party; a finger that moves, or a short drag, does not', async () => {
+    await startRound(host, [bob]);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    const layer = layerOf(bob.page);
+    const box = await frameBox(bob.page);
+    const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    // a quick swipe across it: not a tap, and the button did not move
+    await bob.page.mouse.move(c.x, c.y);
+    await bob.page.mouse.down();
+    await bob.page.mouse.move(c.x - 30, c.y + 30, { steps: 5 });
+    await bob.page.mouse.up();
+    await expect(layer.locator('#layer-sheet')).toBeHidden();
+    near(await frameBox(bob.page), box, 1);
+    // a held press with no movement and then release: a drag of nothing; the next tap still opens
+    await bob.page.waitForTimeout(600);
+    await layer.locator('#layer-button').click();
+    await expect(layer.locator('#layer-sheet')).toBeVisible();
+  });
+
+  test('turn the phone: each orientation keeps its own place; rotating back finds the first again', async () => {
+    await startRound(host, [bob]);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    await longPressDrag(bob.page, { x: 120, y: 200 });
+    const portrait = await frameBox(bob.page);
+    await resize(bob.page, LANDSCAPE);
+    await expect(layerOf(bob.page).locator('#layer-button')).toBeVisible();
+    await expect.poll(async () => { const b = await frameBox(bob.page); return b.x + b.width <= LANDSCAPE.width && b.y + b.height <= LANDSCAPE.height; }).toBe(true);
+    within(await frameBox(bob.page), LANDSCAPE);
+    await longPressDrag(bob.page, { x: 500, y: 120 });
+    const landscape = await frameBox(bob.page);
+    near(landscape, { x: 500 - 24, y: 120 - 24 });
+    await resize(bob.page, PORTRAIT);
+    await expect.poll(async () => Math.abs((await frameBox(bob.page)).x - portrait.x)).toBeLessThanOrEqual(3);
+    near(await frameBox(bob.page), portrait);
+    await resize(bob.page, LANDSCAPE);
+    await expect.poll(async () => Math.abs((await frameBox(bob.page)).x - landscape.x)).toBeLessThanOrEqual(3);
+    near(await frameBox(bob.page), landscape);
+    await bob.page.reload();                                // both are kept
+    await resize(bob.page, LANDSCAPE);
+    await placed(bob.page);
+    near(await frameBox(bob.page), landscape);
+    await resize(bob.page, PORTRAIT);
+    await expect.poll(async () => Math.abs((await frameBox(bob.page)).x - portrait.x)).toBeLessThanOrEqual(3);
+  });
+
+  test('the viewport shrinks and grows: the button is clamped inside, then returns', async () => {
+    await startRound(host, [bob]);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    await longPressDrag(bob.page, { x: 330, y: 600 });      // low and to the right
+    const before = await frameBox(bob.page);
+    const small = { width: 320, height: 400 };
+    await resize(bob.page, small);
+    await expect.poll(async () => { const b = await frameBox(bob.page); return b.x + b.width <= small.width && b.y + b.height <= small.height; }).toBe(true);
+    within(await frameBox(bob.page), small);
+    await resize(bob.page, PORTRAIT);
+    await expect.poll(async () => Math.abs((await frameBox(bob.page)).y - before.y)).toBeLessThanOrEqual(3);
+    near(await frameBox(bob.page), before);
+  });
+
+  test('only the button\'s own box takes touches; every other point reaches the game', async () => {
+    await startRound(host, [bob]);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    await longPressDrag(bob.page, { x: 200, y: 400 });
+    const box = await frameBox(bob.page);
+    const tag = (x: number, y: number) => bob.page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.tagName, [x, y]);
+    expect(await tag(box.x + 24, box.y + 24)).toBe('IFRAME');
+    expect(await tag(box.x + 1, box.y + 1), 'a corner of the box is still the button').toBe('IFRAME');
+    for (const [dx, dy] of [[-3, 24], [51, 24], [24, -3], [24, 51], [-20, -20], [70, 70]]) {
+      expect(await tag(box.x + dx, box.y + dy), `${dx},${dy}`).not.toBe('IFRAME');
+    }
+    expect(box.width, 'the frame is the button, no invisible margin').toBeLessThanOrEqual(48);
+    await bob.page.evaluate(() => {
+      const w = window as unknown as { taps: string[] };
+      w.taps = [];
+      document.addEventListener('pointerdown', (e) => w.taps.push((e.target as Element).tagName));
+    });
+    await bob.page.mouse.click(box.x - 4, box.y + 24);      // just beside it
+    await bob.page.mouse.click(box.x + 24, box.y + 54);     // just under it
+    expect((await bob.page.evaluate(() => (window as unknown as { taps: string[] }).taps)).length, 'both reached the game').toBe(2);
+    await expect(layerOf(bob.page).locator('#layer-sheet')).toBeHidden();
+    // parked as a tab: the same, only the tab's box
+    await bob.page.waitForTimeout(600);        // a click right after a drag is not a tap
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-park-right').click();
     await expect(layer.locator('#layer-tab')).toBeVisible();
+    await expect.poll(async () => (await frameBox(bob.page)).width).toBeLessThan(30);
+    const tab = await frameBox(bob.page);
+    expect(await tag(tab.x + 10, tab.y + 30)).toBe('IFRAME');
+    expect(await tag(tab.x - 3, tab.y + 30)).not.toBe('IFRAME');
+    expect(await tag(tab.x + 10, tab.y + tab.height + 3)).not.toBe('IFRAME');
+  });
+
+  test('parking is deliberate: the drawer parks it on an edge as a tab; the tab brings it back', async () => {
+    await startRound(host, [bob]);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    await longPressDrag(bob.page, { x: 180, y: 300 });
+    const at = await frameBox(bob.page);
+    await bob.page.waitForTimeout(600);        // a click right after a drag is not a tap
+    let layer = await openLayer(bob.page);
+    await layer.locator('#layer-park-left').click();
+    await expect(layer.locator('#layer-sheet')).toBeHidden();
+    await expect(layer.locator('#layer-tab')).toBeVisible();
+    await expect(layer.locator('#layer-tab')).toBeFocused();
     await expect(layer.locator('#layer-button')).toBeHidden();
     await expect.poll(async () => (await frameBox(bob.page)).width).toBeLessThan(30);
-    expect(Math.round((await frameBox(bob.page)).x + (await frameBox(bob.page)).width)).toBe(vw);
+    const tab = await frameBox(bob.page);
+    expect(Math.round(tab.x), 'on the left edge').toBe(0);
+    expect(Math.abs(tab.y + tab.height / 2 - (at.y + at.height / 2)), 'at the height it was').toBeLessThanOrEqual(12);
+    await bob.page.reload();                                // parked stays parked
+    await resize(bob.page, PORTRAIT);
+    await expect(layerOf(bob.page).locator('#layer-tab')).toBeVisible();
+    layer = layerOf(bob.page);
     await layer.locator('#layer-tab').click();
     await expect(layer.locator('#layer-button')).toBeVisible();
     await expect(layer.locator('#layer-button')).toBeFocused();
+    const back = await frameBox(bob.page);
+    expect(back.x, 'back at the edge it was parked on').toBeLessThanOrEqual(8);
+    expect(back.width).toBeGreaterThan(40);
+    // and the tab is recoverable on the right as well
+    layer = await openLayer(bob.page);
+    await layer.locator('#layer-park-right').click();
+    await expect(layer.locator('#layer-tab')).toBeVisible();
+    expect(Math.round((await frameBox(bob.page)).x + (await frameBox(bob.page)).width)).toBe(PORTRAIT.width);
+    await layer.locator('#layer-tab').click();
+    await expect(layer.locator('#layer-button')).toBeVisible();
   });
 
-  test('without dragging: the drawer moves the button to the other side or tucks it away', async () => {
+  test('without dragging: the drawer moves the button by steps, parks it, or resets it; the arrow keys move it too', async () => {
     await startRound(host, [bob]);
+    await resize(bob.page, PORTRAIT);
+    await placed(bob.page);
+    const start = await frameBox(bob.page);
     let layer = await openLayer(bob.page);
-    await layer.locator('#layer-tuck').click();
-    await expect(layer.locator('#layer-tab')).toBeVisible();
-    await expect(layer.locator('#layer-tab')).toBeFocused();
-    await layer.locator('#layer-tab').click();
-    layer = await openLayer(bob.page);
-    await layer.locator('#layer-move').click();
+    await expect(layer.locator('#layer-moves-h')).toHaveText('Party button position');
+    await layer.locator('#layer-nudge-down').click();
+    await layer.locator('#layer-nudge-left').click();
+    await expect(layer.locator('#layer-live-note')).toHaveText('The button moves left.');
     await bob.page.keyboard.press('Escape');
-    await expect.poll(async () => (await frameBox(bob.page)).x).toBeLessThan(20);
+    await expect.poll(async () => (await frameBox(bob.page)).y).toBeGreaterThan(start.y + 40);
+    near(await frameBox(bob.page), { x: start.x - 48, y: start.y + 48 });
+    // arrow keys, with the button itself focused
+    await expect(layer.locator('#layer-button')).toBeFocused();
+    await bob.page.keyboard.press('ArrowUp');
+    await expect.poll(async () => (await frameBox(bob.page)).y).toBeLessThan(start.y + 10);
+    near(await frameBox(bob.page), { x: start.x - 48, y: start.y });
+    await expect(layer.locator('#layer-sheet'), 'arrows move, they do not open').toBeHidden();
+    layer = await openLayer(bob.page);
+    await layer.locator('#layer-reset').click();
+    await bob.page.keyboard.press('Escape');
+    await expect.poll(async () => Math.abs((await frameBox(bob.page)).x - start.x)).toBeLessThanOrEqual(3);
+    near(await frameBox(bob.page), start);
+    // every one of those controls is a real button a thumb can hit
+    layer = await openLayer(bob.page);
+    for (const id of ['nudge-up', 'nudge-down', 'nudge-left', 'nudge-right', 'park-left', 'park-right', 'reset']) {
+      const b = (await layer.locator(`#layer-${id}`).boundingBox())!;
+      expect(b.height, id).toBeGreaterThanOrEqual(44);
+    }
   });
 
   test('keyboard only: Enter opens, Tab stays in the drawer, Escape closes back to the button', async () => {
@@ -217,7 +388,7 @@ test.describe('the Party layer on a game page', () => {
     expect(await layer.locator('#layer-sheet').evaluate((s) => s.contains(document.activeElement) && document.hasFocus())).toBe(true);
     await layer.locator('#layer-close').focus();
     await host.page.keyboard.press('Shift+Tab');
-    await expect(layer.locator('#layer-tuck')).toBeFocused();
+    await expect(layer.locator('#layer-reset')).toBeFocused();
     await host.page.keyboard.press('Escape');
     await expect(layer.locator('#layer-sheet')).toBeHidden();
     await expect(layer.locator('#layer-button')).toBeFocused();

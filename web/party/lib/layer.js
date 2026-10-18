@@ -20,12 +20,11 @@
 
 import { locationOf } from './party-mode.js';
 
-import { BUTTON, LAYER_PROTOCOL as PROTOCOL, layerBox } from '../bridge/layer-mount.js';
+import { BUTTON, LAYER_PROTOCOL as PROTOCOL, MARGIN, layerBox } from '../bridge/layer-mount.js';
 
 export { PROTOCOL, layerBox };
 export const LONG_PRESS_MS = 400;
 export const SLOP = 8;                     // px a finger may move and still be a tap
-export const FLING = 1.0;                  // px/ms toward an edge that throws the button into it
 export const POSITION_KEY = 'avrana-layer-position';
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -42,24 +41,74 @@ export function parseFromPage(data) {
   return { type: 'viewport', w: data.w, h: data.h, insets: { top: i.top, right: i.right, bottom: i.bottom, left: i.left } };
 }
 
-/** Where the button settles when a drag ends: the nearer side, or tucked into it.
- * x, y: the button's top-left at release; vx: horizontal speed in px/ms (+ is rightward). */
-export function settle({ x, y, vx = 0 }, vp) {
-  const center = x + BUTTON / 2;
-  const side = center < vp.w / 2 ? 'left' : 'right';
-  const toward = side === 'left' ? -vx : vx;
-  const past = side === 'left' ? x < 0 - BUTTON / 4 : x + BUTTON > vp.w + BUTTON / 4;
-  const flung = toward >= FLING;
-  return { mode: past || flung ? 'tab' : 'button', side, y };
+// ---- where the button is (AVR-579) -----------------------------------------------------------------
+// The button stays wherever the player lets go of it. Its place is kept per orientation as a
+// fraction of the usable area (inside the safe areas), so it survives a rotation, a resize or a
+// different phone. Parking on an edge is a deliberate act (the drawer, never a drag or a fling).
+export const STEP = 48;                   // px the drawer's and the keys' nudge moves the button
+export const DEFAULT_SPOT = { nx: 1, ny: 1 / 3, parked: null };
+const orientationOf = (vp) => (vp.w > vp.h ? 'landscape' : 'portrait');
+const fraction = (v) => num(v) && v >= 0 && v <= 1;
+
+/** The room the button may sit in: its top-left, inside the safe areas, a margin from the edges. */
+export function usable(vp) {
+  const i = vp.insets;
+  const x0 = i.left + MARGIN, y0 = i.top + MARGIN;
+  return { x0, y0, x1: Math.max(x0, vp.w - i.right - MARGIN - BUTTON), y1: Math.max(y0, vp.h - i.bottom - MARGIN - BUTTON) };
+}
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+/** The button's top-left -> its place as fractions of the usable area. */
+export function toSpot({ x, y }, vp, parked = null) {
+  const u = usable(vp);
+  return { nx: u.x1 > u.x0 ? clamp01((x - u.x0) / (u.x1 - u.x0)) : 0, ny: u.y1 > u.y0 ? clamp01((y - u.y0) / (u.y1 - u.y0)) : 0, parked };
 }
 
-/** The first place: kept from last time on this phone, else the right edge a third of the way down. */
-export function initialPlace(kept, vp) {
-  if (kept && SIDES.includes(kept.side) && num(kept.y) && (kept.mode === 'button' || kept.mode === 'tab')) {
-    return { mode: kept.mode, side: kept.side, y: kept.y };
-  }
-  return { mode: 'button', side: 'right', y: Math.round(vp.h / 3) };
+/** A place -> the button's top-left on this screen, always inside the usable area. */
+export function spotAt(spot, vp) {
+  const u = usable(vp);
+  return { x: Math.round(u.x0 + clamp01(spot.nx) * (u.x1 - u.x0)), y: Math.round(u.y0 + clamp01(spot.ny) * (u.y1 - u.y0)) };
 }
+
+/** The kept places ({portrait, landscape}, each {nx, ny, parked}), checked; anything else is dropped. */
+export function keptSpots(kept) {
+  const out = {};
+  for (const o of ['portrait', 'landscape']) {
+    const s = kept && kept[o];
+    if (s && fraction(s.nx) && fraction(s.ny) && (s.parked === null || SIDES.includes(s.parked))) out[o] = { nx: s.nx, ny: s.ny, parked: s.parked };
+  }
+  return out;
+}
+
+/** This screen's place: its orientation's own, else the other's carried over, else the first place
+ * (the right edge a third of the way down). */
+export function spotFor(spots, vp) {
+  const o = orientationOf(vp);
+  return (spots && (spots[o] || spots[o === 'portrait' ? 'landscape' : 'portrait'])) || DEFAULT_SPOT;
+}
+export { orientationOf };
+
+/** The page's request for a place: a tab on a side when parked, else the button where it was left. */
+export function requestFor(spot, vp) {
+  const at = spotAt(spot, vp);
+  if (spot.parked) return { type: 'place', mode: 'tab', side: spot.parked, y: at.y };
+  return { type: 'drag', x: at.x, y: at.y };
+}
+
+/** One step of a non-drag move (the drawer's buttons, the arrow keys). A parked button comes back
+ * at its edge first. */
+export function nudge(spot, dir, vp, step = STEP) {
+  const here = spot.parked ? { ...spot, nx: spot.parked === 'left' ? 0 : 1, parked: null } : spot;
+  const at = spotAt(here, vp);
+  const d = { up: [0, -step], down: [0, step], left: [-step, 0], right: [step, 0] }[dir];
+  return toSpot({ x: at.x + d[0], y: at.y + d[1] }, vp);
+}
+
+/** Park on an edge on purpose: a tab at the height it was. */
+export const park = (spot, side) => ({ nx: spot.nx, ny: spot.ny, parked: side });
+
+/** The tab, tapped: the button comes back at the edge it was parked on. */
+export const unpark = (spot) => ({ nx: spot.parked === 'left' ? 0 : 1, ny: spot.ny, parked: null });
 
 /** Is a pointer gesture a tap (open), a drag (move), or nothing yet? */
 export function gesture({ heldMs, moved }) {
