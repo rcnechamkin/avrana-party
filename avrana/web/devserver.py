@@ -56,6 +56,16 @@ BRIDGE_GAME = (b'<!doctype html><meta charset="utf-8"><title>bridge test game</t
                b'window.party = connectParty({ partyOrigin: q.get("party"), game: q.get("game") });'
                b'window.party.onChange((v) => window.partyViews.push(v));'
                b'</script>')
+# A game page on the GAME origin that mounts the Party layer (AVR-292) from its own vendored copy of
+# layer-mount.js (served below as /__test__/avrana-party-layer.js, as a game repository would ship it).
+LAYER_GAME = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, viewport-fit=cover">'
+              b'<title>layer test game</title><h1>stub game on the game origin</h1>'
+              b'<script type="module">import { mountPartyLayer } from "/__test__/avrana-party-layer.js";'
+              b'const q = new URLSearchParams(location.search);'
+              b'window.layerEvents = [];'
+              b'document.addEventListener("avrana-party-layer", (e) => window.layerEvents.push(e.detail.open));'
+              b'window.layer = mountPartyLayer({ partyOrigin: q.get("party"), game: q.get("game") });'
+              b'</script>')
 RETURN = ('content-type', 'cache-control', 'set-cookie', 'x-content-type-options')
 GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
              b'<title>%s (stub game)</title><h1 data-game="%s">%s stub</h1>'
@@ -329,6 +339,10 @@ class Handler(BaseHTTPRequestHandler):
                               dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
         if cfg['test_controls'] and path == '/__test__/bridge-game.html':
             return self._send(200, BRIDGE_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
+        if cfg['test_controls'] and path == '/__test__/layer-game.html':
+            return self._send(200, LAYER_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
+        if cfg['test_controls'] and path == '/__test__/avrana-party-layer.js':
+            return self._file(cfg['web'], 'bridge/layer-mount.js', {'Cache-Control': 'no-store'})
         if path.startswith('/party/covers/'):
             return self._cover(path[len('/party/covers/'):])
         if path.startswith('/party/'):

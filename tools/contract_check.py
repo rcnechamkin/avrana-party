@@ -61,6 +61,21 @@ def check_bridge(root, b, key, where):
            'bridge vectors protocol', b['vectors'])
 
 
+def check_layer(root, b, key, where):
+    """The Party layer's page side (AVR-292, avrana.party-layer/v1): one import-free file a game page
+    mounts the Party's frame with. Optional for a games repository; bridge v1 does not depend on it.
+    `key` is 'reference' in Party and 'vendored' in a games repository."""
+    missing = [k for k in ('protocol', key, key + '_sha256') if not isinstance(b.get(k), str)]
+    if missing:
+        raise Drift(f'layer declaration incomplete: {where} lacks {", ".join(missing)}')
+    mount = root / b[key]
+    if not mount.is_file():
+        raise Drift(f'layer mount drifted: {where} declares {b[key]!r} but there is no such file')
+    if f"LAYER_PROTOCOL = '{b['protocol']}'" not in mount.read_text(encoding='utf-8'):
+        raise Drift(f'layer protocol drifted: {where} declares {b["protocol"]!r} but {b[key]} does not')
+    expect(sha256_normalized(mount), b[key + '_sha256'], 'layer mount file digest', where)
+
+
 def check_session_vectors(path, where):
     """The session vectors carry the negative cases too (AVR-465): tokens that must be refused and
     replays that must fail. A vector file without them would let an implementation that accepts a
@@ -102,6 +117,10 @@ def check_party(party):
     check_bridge(party, d['bridge'], 'reference', where)
     if not (party / 'web/party' / d['bridge']['frame'].removeprefix('/party/')).is_file():
         raise Drift(f'bridge frame drifted: {where} declares {d["bridge"]["frame"]!r} but web/party has no such page')
+    if 'layer' in d:
+        check_layer(party, d['layer'], 'reference', where)
+        if not (party / 'web/party' / d['layer']['frame'].removeprefix('/party/')).is_file():
+            raise Drift(f'layer frame drifted: {where} declares {d["layer"]["frame"]!r} but web/party has no such page')
     sessions = party / 'avrana/party/sessions.py'
     r = d['routes']
     expect(constant(sessions, 'TICKET_ROUTE'), r['party_ticket'], 'party ticket route', where)
@@ -143,6 +162,8 @@ def check_games(games):
         raise Drift(f'{where} declares no bridge: a games repository vendors the bridge shim (ADR 0013) '
                     'and declares it with its vectors')
     check_bridge(games, d['bridge'], 'vendored', where)
+    if 'layer' in d:
+        check_layer(games, d['layer'], 'vendored', where)
     for slug in res['reported_by']:
         if slug not in d['party_side_games']:
             raise Drift(f'result reporters drifted: {where} lists {slug!r} under result.reported_by '
@@ -199,6 +220,15 @@ def check_cross(party, games, p, g):
                     f'{pb["reference"]} (Party); re-vendor the file and update both declarations')
     if gb['vectors_sha256'] != pb['vectors_sha256']:
         raise Drift('bridge vectors drifted between tests/vectors/ (Games) and contracts/vectors/ (Party)')
+    if 'layer' in g:                     # optional: a games repository that vendors the Party layer's mount
+        pl, gl = p.get('layer'), g['layer']
+        if pl is None:
+            raise Drift('layer drifted: Games vendors the Party layer mount but Party declares no layer')
+        if gl['protocol'] != pl['protocol']:
+            raise Drift(f'layer protocol drifted: Games {gl["protocol"]!r} vs Party {pl["protocol"]!r}')
+        if gl['vendored_sha256'] != pl['reference_sha256']:
+            raise Drift(f'layer mount drifted: {gl["vendored"]} (Games) is not byte-identical to '
+                        f'{pl["reference"]} (Party); re-vendor the file and update both declarations')
     for key in ('party_ticket', 'party_ended', 'party_host', 'game_launch', 'game_end'):
         if p['routes'][key] != g['routes'][key]:
             raise Drift(f'route {key} drifted: Party {p["routes"][key]!r} vs Games {g["routes"][key]!r}')
