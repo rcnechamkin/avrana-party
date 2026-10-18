@@ -67,17 +67,21 @@ viewport and can cover, hide or full-screen over any frame.
   like AssistiveTouch, showing the Party mark and the unread count. It floats above the game; it
   starts on the right edge, a third of the way down, inside `env(safe-area-inset-*)`.
 - **Tap** (or Enter / Space) opens the Party drawer. **Long-press** (about 400 ms, with a small
-  scale-up as the cue) then **drag** moves it. On release it settles on the nearer left or right
-  edge, kept clear of the safe areas, the notch and the home indicator. A quick fling toward an
-  edge, or a drop past it, **tucks it away**: it slides mostly off screen and leaves a 24 × 60 px
-  tab with a chevron. Tap the tab to bring the button back. Position and tucked state are kept per
-  phone (Party-origin storage), so the button is where the player left it in the next round.
+  scale-up as the cue) then **drag** moves it, and it **stays exactly where it is let go**, inside
+  the safe areas (AVR-579 replaced the earlier snap to the nearer edge). Its place is kept per
+  phone as fractions of the usable area, **one for portrait and one for landscape**, so it survives
+  a rotation or a resize; the first time in an orientation it follows the other's. **Parking** is
+  deliberate: the drawer's **Park on the left / right edge** turns it into a 24 × 60 px tab with a
+  chevron at the same height; tap the tab to bring the button back at that edge. A fling or a drop
+  at the edge no longer parks it. The frame is exactly the button's box, so a tap anywhere else
+  reaches the game.
 - **Mechanics.** The frame tracks the finger in `screenX/screenY`, which do not jump as the frame
-  itself moves, and asks the page to move the frame (`drag {x, y}`, then `place`); the page may
-  only place the frame where asked, clamped inside the viewport. The button sets `touch-action: none` and
+  itself moves, and asks the page to move the frame (`drag {x, y}`, which the page keeps until the
+  next request; `place` for a tab or the open drawer); the page may only place the frame where
+  asked, clamped inside the viewport and its safe areas. The button sets `touch-action: none` and
   `-webkit-touch-callout: none`, so a long-press opens no Safari callout or text selection.
-- **Accessibility.** A drag has a non-drag equivalent (WCAG 2.5.7): the drawer has **Move button
-  to the other side** and **Tuck button away**, and the tucked tab is a real button named "Show
+- **Accessibility.** A drag has a non-drag equivalent (WCAG 2.5.7): the drawer has **Move up / down /
+  left / right** (48 px steps; the arrow keys do the same on the focused button), **Park on the left / right edge** and **Reset position**, and the tucked tab is a real button named "Show
   the Party button". The button's name carries the unread count. It honours reduced motion: no
   slide or fling animation.
 - **The drawer.** Opening moves focus into the frame's dialog (`aria-modal`); the game gets
