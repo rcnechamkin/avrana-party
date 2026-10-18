@@ -602,7 +602,8 @@
   .avrana-drawer > .where { flex: none; margin: 0; padding: 0 1rem 0.375rem; color: var(--color-muted); font-size: var(--text-supporting); }
   .avrana-drawer > .compose { flex: none; display: flex; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem; border-top: 1px solid var(--color-line); }
   /* With the chat on screen the drawer keeps a steady height, so the message field does not jump. */
-  .avrana-drawer:has(#chat:not([hidden])) { height: min(86dvh, 40rem); }
+  /* --avrana-vvh is the height the phone shows with its keyboard up (lib/viewport.js); 100dvh until then. */
+  .avrana-drawer:has(#chat:not([hidden])) { height: min(calc(var(--avrana-vvh, 100dvh) * 0.86), 40rem); }
 
   /* Chat or People: two words, the one on screen underlined (and aria-pressed). */
   .avrana-tabs { flex: none; display: flex; gap: 1.25rem; padding: 0 1rem; border-bottom: 1px solid var(--color-line); }
@@ -650,6 +651,12 @@
   .avrana-layer-backdrop { position: absolute; inset: 0; background: rgb(4 4 6 / 0.6); }
   .avrana-layer-sheet { display: flex; padding-top: var(--li-top, 0px); padding-left: var(--li-left, 0px); padding-right: var(--li-right, 0px); }
   .avrana-layer-sheet:has(#chat:not([hidden])) { height: min(86dvh, 40rem); }
+  /* A short frame (landscape, or the keyboard up): the chat takes it, and the where-line steps aside,
+     so the message field stays above the keys. */
+  @media (max-height: 24rem) {
+    .avrana-layer-sheet:has(#chat:not([hidden])) { height: calc(100dvh - 2.5rem); }
+    .avrana-layer-sheet:has(#chat:not([hidden])) > .where { display: none; }
+  }
   .avrana-layer-host { display: grid; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-line); }
   .avrana-layer-actions { display: grid; gap: 0.5rem; }
   .avrana-layer-actions .btn { min-height: 2.75rem; height: auto; white-space: normal; text-align: left; }

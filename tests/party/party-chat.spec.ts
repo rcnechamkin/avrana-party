@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { place, smallTargets } from '../lib/frame';
+import { keyboard, visibleHeight, withKeyboardModel } from '../lib/keyboard';
 import { phone, post, type Phone } from '../lib/phones';
 
 /**
@@ -174,6 +175,59 @@ test('a small phone: the composer is on screen with the keyboard space, nothing 
     await small.context.close();
   }
 });
+
+/**
+ * UX-07 / AVR-579: with the software keyboard up, the composer must stay above it, the drawer must
+ * stay open, and what was typed and where the history was scrolled to must survive. The keyboard is
+ * SIMULATED (tests/lib/keyboard.ts: visualViewport shrinks, the layout viewport does not, as on
+ * iPhone Safari and Android Chrome). Real iOS/Android keyboards are an owner check on a phone.
+ */
+for (const size of [
+  { name: 'small portrait', viewport: { width: 320, height: 568 }, keys: 260 },
+  { name: 'portrait', viewport: { width: 390, height: 844 }, keys: 336 },
+  { name: 'landscape', viewport: { width: 740, height: 360 }, keys: 170 },
+]) {
+  test(`keyboard (${size.name}): composer stays above the keys; drawer, draft, focus and scroll survive`, async ({ browser }) => {
+    const dee = await phone(browser, 'Dee', { viewport: size.viewport, isMobile: true, hasTouch: true });
+    const eve = await phone(browser, 'Eve');
+    try {
+      for (let i = 0; i < 5; i++) {   // history from another phone, so Dee's own rate limit is untouched
+        expect((await post(eve, 'messages', { party: await partyId(eve), text: `message number ${i} with a few more words in it so that it wraps`, client_id: `kb-${size.name.replace(/ /g, "-")}-${i}` })).status()).toBe(200);
+      }
+      await withKeyboardModel(dee.context);
+      await dee.page.reload();
+      await expect(dee.page.locator('html')).toHaveAttribute('data-ready', 'true');
+      await openChat(dee);
+      await expect(lines(dee.page)).toHaveCount(5, { timeout: 15_000 });
+      const text = dee.page.locator('#chat-text');
+      await text.fill('half a thought');
+      await text.focus();
+      await dee.page.locator('#chat').evaluate((el) => { el.scrollTop = 40; });
+      const scrolled = await dee.page.locator('#chat').evaluate((el) => el.scrollTop);
+
+      for (const cycle of [size.keys, 0, size.keys]) {
+        await keyboard(dee.page, cycle);
+        const visible = await visibleHeight(dee.page);
+        await expect(dee.page.locator('#social')).toBeVisible();
+        await expect(text).toBeFocused();
+        await expect(text).toHaveValue('half a thought');
+        const input = (await text.boundingBox())!, send = (await dee.page.locator('#chat-send').boundingBox())!;
+        for (const b of [input, send]) {
+          expect(b.y, 'composer top is on screen').toBeGreaterThanOrEqual(0);
+          expect(b.y + b.height, `composer bottom ${b.y + b.height} is above the keys (${visible})`).toBeLessThanOrEqual(visible + 0.5);
+        }
+        const drawer = (await dee.page.locator('#social').boundingBox())!;
+        expect(drawer.y + drawer.height).toBeLessThanOrEqual(visible + 0.5);
+        expect(await dee.page.locator('#chat').evaluate((el) => el.scrollTop)).toBe(scrolled);
+      }
+      await text.press('Enter');   // and it can still be sent
+      await expect(text).toHaveValue('');
+      await expect(lines(dee.page).last().locator('p')).toHaveText('half a thought');
+    } finally {
+      await dee.context.close(); await eve.context.close();
+    }
+  });
+}
 
 test('one phone alone: the room says so, and is not a dead end', async ({ browser }) => {
   const solo = await phone(browser, 'Eve');

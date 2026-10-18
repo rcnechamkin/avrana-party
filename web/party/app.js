@@ -19,6 +19,7 @@ import { evaluateSeat, explain } from './lib/evaluate.js';
 import { registerShell } from './lib/shell.js';
 import { capitalize, h, howText, kindIcon, playersText, screenText } from './lib/ui.js';
 import { hydrateIcons, icon } from './lib/icons.js';
+import { trackVisibleHeight } from './lib/viewport.js';
 
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
@@ -1286,6 +1287,7 @@ async function boot() {
 }
 
 hydrateIcons();
+trackVisibleHeight();
 
 let storage;
 try { storage = window.localStorage; } catch { /* compatibility model reports persistence failure */ }
