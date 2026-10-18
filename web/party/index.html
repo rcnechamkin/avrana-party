@@ -149,9 +149,10 @@
       <section id="games-section" class="mb-6" aria-labelledby="games-h">
         <h2 id="games-h" class="sr-only" tabindex="-1">Games</h2>
         <p id="game-count" class="sr-only" role="status"></p>
-        <div id="catalog-error" class="avrana-surface mb-4 flex flex-wrap items-center gap-3 p-4" role="status" hidden>
-          <p class="m-0 flex-1">Game list unavailable.</p>
-          <button type="button" id="catalog-retry" class="btn btn-primary">Try again</button>
+        <div id="catalog-error" class="avrana-notice warn" role="status" hidden>
+          <span class="mark" data-icon="triangle-alert"></span>
+          <p><b>Game list unavailable.</b><span>The games can’t be shown until it loads.</span></p>
+          <button type="button" id="catalog-retry" class="btn">Try again</button>
         </div>
         <div class="avrana-tools">
           <label for="game-search" class="sr-only">Search games</label>
@@ -165,7 +166,10 @@
           <button type="button" data-view="recent" aria-pressed="false">Recent</button>
         </div>
         <div id="games" class="avrana-shelf" aria-busy="true">
-          <div class="skeleton h-44 rounded-box" aria-hidden="true"></div>
+          <div class="avrana-loading" aria-hidden="true">
+            <div class="skeleton"></div>
+            <ul class="avrana-grid medium"><li><div class="skeleton"></div></li><li><div class="skeleton"></div></li><li><div class="skeleton"></div></li><li><div class="skeleton"></div></li><li><div class="skeleton"></div></li></ul>
+          </div>
         </div>
       </section>
     </section>
@@ -317,12 +321,10 @@
 <!-- How to play: one sheet, easy to open and to leave; the page underneath (a game's page, or
      the briefing) is untouched. A tap outside it closes it (app.js); there is no second, unseen
      Close button for a keyboard or a screen reader to land on. -->
-<dialog id="rules" class="modal modal-bottom sm:modal-middle" aria-labelledby="rules-title">
-  <div class="modal-box flex max-h-[85dvh] flex-col gap-4 overflow-hidden bg-base-200">
-    <div class="flex flex-none items-center gap-2"><h2 id="rules-title" class="m-0 text-xl font-bold">How to play</h2><button id="rules-close" type="button" class="btn btn-ghost btn-square ml-auto" aria-label="Close"><span data-icon="x"></span></button></div>
-    <div id="rules-body" class="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto overscroll-contain"></div>
-    <button id="rules-ok" type="button" class="btn btn-primary btn-block flex-none">Got it</button>
-  </div>
+<dialog id="rules" class="avrana-sheet" aria-labelledby="rules-title">
+  <div class="head"><h2 id="rules-title" class="m-0">How to play</h2><button id="rules-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
+  <div id="rules-body" class="body grid content-start gap-4"></div>
+  <div class="foot"><button id="rules-ok" type="button" class="btn btn-primary btn-block">Got it</button></div>
 </dialog>
 
 <!-- Where the party is, while this phone goes there (a moment, never something to act on). -->

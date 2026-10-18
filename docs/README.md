@@ -36,6 +36,7 @@ what the software does, and [SYSTEM](SYSTEM.md) describes what is running on the
 | [SYSTEM](SYSTEM.md) | What is deployed on the Pi, on which machines, services and ports |
 | [Deploy](runbooks/deploy.md) | Releasing a Party/Games pair with `ops/deploy.sh`, and rolling back |
 | [Network](runbooks/network.md), [Party HTTPS](runbooks/party-https.md) | The Wi-Fi access point, local DNS and the certificate |
+| [Game origins](runbooks/game-origin.md) | Serving a game on its registered origin, certificates and verification |
 | [Service recovery](runbooks/service-recovery.md), [logs and retention](runbooks/logs-and-retention.md) | Diagnosing and recovering services |
 | [Install a game](runbooks/install-game.md), [provision a game](runbooks/provision-game.md), [prepare native games](runbooks/prepare-native-games.md) | Native-game and package installation (not yet used on the appliance) |
 | [Rebuild](runbooks/rebuild.md) | Building an appliance from a clean device (procedure, not yet run on hardware) |
