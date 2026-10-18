@@ -1,4 +1,5 @@
 import { test, expect, type FrameLocator, type Page } from '@playwright/test';
+import { keyboard, visibleHeight, withKeyboardModel } from '../lib/keyboard';
 import { phone, post, version, view, type Phone } from '../lib/phones';
 
 /**
@@ -275,6 +276,60 @@ test('a small phone: the drawer fits, nothing sideways, every control a thumb ca
     expect(await small.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   } finally { await small.context.close(); await other.context.close(); }
 });
+
+/**
+ * UX-07 / AVR-579: the keyboard opens over the Party chat inside a game. SIMULATED (tests/lib/
+ * keyboard.ts: visualViewport shrinks, the layout viewport does not, as on iPhone Safari and
+ * Android Chrome); not a real iOS or Android keyboard, and not the game's own pan or scroll.
+ */
+for (const size of [
+  { name: 'small portrait', viewport: { width: 320, height: 568 }, keys: 260 },
+  { name: 'landscape', viewport: { width: 740, height: 360 }, keys: 170 },
+]) {
+  test(`keyboard over the in-game chat (${size.name}): composer above the keys, drawer open, draft and game kept`, async ({ browser }) => {
+    const dee = await phone(browser, 'Dee', { viewport: size.viewport, isMobile: true, hasTouch: true });
+    const eve = await phone(browser, 'Eve');
+    try {
+      await withLayer(dee);
+      await withKeyboardModel(dee.context);
+      await startRound(dee, [eve]);
+      for (let i = 0; i < 5; i++) {
+        expect((await post(eve, 'messages', { party: (await view(eve)).party, text: `message number ${i} with a few more words in it so that it wraps`,
+          client_id: `kb-layer-${size.name.replace(/ /g, '-')}-${i}` })).status()).toBe(200);
+      }
+      await dee.page.evaluate(() => { (window as unknown as { gameState: number }).gameState = 42; });
+      const layer = layerOf(dee.page);
+      await placed(dee.page);
+      await layer.locator('#layer-button').tap();
+      await layer.locator('#layer-tab-chat').tap();
+      await expect(layer.locator('#chat-send')).toBeEnabled();
+      await expect(layer.locator('#chat-messages .avrana-chat-line')).toHaveCount(5);
+      const text = layer.locator('#chat-text');
+      await text.fill('half a thought');
+      await text.focus();
+      await layer.locator('#chat').evaluate((el) => { el.scrollTop = 40; });
+      const scrolled = await layer.locator('#chat').evaluate((el) => el.scrollTop);
+
+      for (const cycle of [size.keys, 0, size.keys]) {
+        await keyboard(dee.page, cycle);
+        const visible = await visibleHeight(dee.page);
+        await expect(dee.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'open');
+        await expect(layer.locator('#layer-sheet')).toBeVisible();
+        await expect(text).toBeFocused();
+        await expect(text).toHaveValue('half a thought');
+        // measured in the page's coordinates: the frame sits at the page's top-left when open
+        await expect.poll(async () => {
+          const f = (await dee.page.locator(FRAME).boundingBox())!;
+          const b = (await layer.locator('#chat-form').boundingBox())!;
+          return f.y + b.y + b.height;
+        }).toBeLessThanOrEqual(visible + 0.5);
+        expect(await layer.locator('#chat').evaluate((el) => el.scrollTop)).toBe(scrolled);
+      }
+      expect(await dee.page.evaluate(() => (window as unknown as { gameState: number }).gameState)).toBe(42);
+      await expect(dee.page).toHaveURL(atGame);
+    } finally { await dee.context.close(); await eve.context.close(); }
+  });
+}
 
 test('layer.html may be framed by the Party itself and the game origin, nothing else', async ({ request }) => {
   const res = await request.get('/party/layer.html');
