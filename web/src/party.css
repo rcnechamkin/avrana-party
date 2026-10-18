@@ -701,6 +701,12 @@
   @media (max-height: 24rem) {
     .avrana-layer-sheet:has(#chat:not([hidden])) { height: calc(100dvh - 2.5rem); }
     .avrana-layer-sheet:has(#chat:not([hidden])) > .where { display: none; }
+    /* Keep the 44px controls above a landscape keyboard after the tabs gained edges.
+       Only spacing shrinks; the message list takes the remaining height. */
+    .avrana-layer-sheet:has(#chat:not([hidden])) > .head { padding-block: 0; }
+    .avrana-layer-sheet:has(#chat:not([hidden])) > .avrana-tabs { padding-block: 0; }
+    .avrana-layer-sheet:has(#chat:not([hidden])) > .body { padding-block: 0; }
+    .avrana-layer-sheet:has(#chat:not([hidden])) > .compose { padding-block: 0.25rem; }
   }
   .avrana-layer-host { display: grid; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-line); }
   .avrana-layer-actions { display: grid; gap: 0.5rem; }
