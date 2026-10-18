@@ -39,6 +39,9 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await open(page);
   await expect(page.locator('#status')).toContainText('Connected to the party');
   await expect(page.locator('#secure')).toBeVisible();
+  // all is well: the line is there for a screen reader and takes no room on the page (AVR-429)
+  await expect(page.locator('#status')).toHaveAttribute('data-quiet', 'true');
+  expect((await page.locator('#status').boundingBox())!.height).toBeLessThanOrEqual(1);
   await place(page, 'library');
   await expect(page.locator('#games [data-game]')).toHaveCount(6);
   await expect(page.locator('#games [data-game^="lan-"]')).toHaveCount(0);       // no retired LAN Games title is offered

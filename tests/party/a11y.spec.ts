@@ -37,6 +37,8 @@ test.describe('three phones at one party', () => {
   async function audit(p: Phone, screen: string, reach: string[] = []) {
     const page: Page = p.page;
     const over = (await page.locator('dialog[open]').count()) > 0;
+    // a sheet or the drawer opened a moment ago may still be arriving (AVR-429): measure it once it is in place
+    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => null))));
     const root = over ? 'dialog[open]' : '#main';
     const bad = [...await lowContrast(page, root), ...await faintEdges(page), ...await unnamed(page, root),
       ...await outOfOrder(page, over ? [root] : undefined)];
