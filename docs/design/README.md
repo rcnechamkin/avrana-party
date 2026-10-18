@@ -50,6 +50,9 @@ Read in this order:
    - `ONBOARDING.md` — tap/scan to join, the party address, party LAN vs upstream internet
    - `GAME-INSTALLATION.md` — open installation without a store; trust tiers; canonical manifest
      and per-game process direction; signing kept separate from isolation
+   - `foundation/README.md` — proposed (AVR-424): the Design Foundation shared with Avrana Media
+     (token roles, state and component contracts, validation); `foundation/PARTY-MAPPING.md` maps
+     the shell to it. Changes no shipped styling.
    - `ACCESSIBILITY.md` — what every page and game must do; the manifest's accessibility block;
      the hub/BLUFF audit
    - `DEVICE-REQUIREMENTS.md` — EXPERIMENTAL (AVR-469): measured device needs in the Game Contract,
