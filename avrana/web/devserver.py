@@ -211,6 +211,10 @@ SHELL_HEADERS = {
                                 "connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; "
                                 "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"),
 }
+BRIDGE_ISOLATION_HEADERS = {
+    'Cross-Origin-Resource-Policy': 'same-site',
+    'Cross-Origin-Embedder-Policy': 'require-corp',
+}
 TYPES = {'.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
          '.json': 'application/json', '.svg': 'image/svg+xml', '.html': 'text/html; charset=utf-8'}
 HUB = b'<!doctype html><meta charset="utf-8"><title>LAN GAMES (stub)</title><h1 class="hub-logo">LAN GAMES stub</h1>'
@@ -310,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
             # The one Party page a game origin may frame (ADR 0013); everything else stays 'none'.
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
                 "frame-ancestors 'none'", 'frame-ancestors ' + cfg['party'].game_origin)
-            return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
+            return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **BRIDGE_ISOLATION_HEADERS, **{'Content-Security-Policy': csp}))
         if path == '/party/layer.html' and cfg['party'] is not None:
             # The Party layer (AVR-292): framed by a game page on this origin or the game origin.
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
