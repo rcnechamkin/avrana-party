@@ -47,6 +47,8 @@
     {"path": "docs/findings/2026-10-02-avr130-deploy.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-02"},
     {"path": "docs/findings/2026-10-06-ux-redesign-slice-1-acceptance.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-06"},
     {"path": "docs/findings/2026-10-06-wifi-channel-36-vs-149.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-06"},
+    {"path": "docs/findings/2026-10-11-flutter-owner-app-feasibility.md", "class": "evidence", "status": "historical", "authority": "historical-observation", "observed": "2026-10-11"},
+    {"path": "experiments/owner-app-flutter/README.md", "class": "design", "status": "experimental", "authority": "none", "status_marker": "Status: **experiment (2026-10-11, AVR-424). Not production, not an accepted architecture, and not connected to any Party service.**", "notes": "Flutter owner-app prototype on synthetic data; four screens, widget tests, screenshots. Disposable."},
     {"path": "AGENTS.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "agent-invariants"},
     {"path": "CLAUDE.md", "class": "canonical", "status": "current", "authority": "entry-point-only"},
     {"path": "CONTRIBUTING.md", "class": "canonical", "status": "current", "authority": "reference", "canonical_for": "contribution-workflow"},
