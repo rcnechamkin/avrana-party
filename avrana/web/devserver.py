@@ -56,6 +56,16 @@ BRIDGE_GAME = (b'<!doctype html><meta charset="utf-8"><title>bridge test game</t
                b'window.party = connectParty({ partyOrigin: q.get("party"), game: q.get("game") });'
                b'window.party.onChange((v) => window.partyViews.push(v));'
                b'</script>')
+# A game page on the GAME origin that mounts the Party layer (AVR-292) from its own vendored copy of
+# layer-mount.js (served below as /__test__/avrana-party-layer.js, as a game repository would ship it).
+LAYER_GAME = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, viewport-fit=cover">'
+              b'<title>layer test game</title><h1>stub game on the game origin</h1>'
+              b'<script type="module">import { mountPartyLayer } from "/__test__/avrana-party-layer.js";'
+              b'const q = new URLSearchParams(location.search);'
+              b'window.layerEvents = [];'
+              b'document.addEventListener("avrana-party-layer", (e) => window.layerEvents.push(e.detail.open));'
+              b'window.layer = mountPartyLayer({ partyOrigin: q.get("party"), game: q.get("game") });'
+              b'</script>')
 RETURN = ('content-type', 'cache-control', 'set-cookie', 'x-content-type-options')
 GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
              b'<title>%s (stub game)</title><h1 data-game="%s">%s stub</h1>'
@@ -211,6 +221,10 @@ SHELL_HEADERS = {
                                 "connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; "
                                 "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"),
 }
+BRIDGE_ISOLATION_HEADERS = {
+    'Cross-Origin-Resource-Policy': 'same-site',
+    'Cross-Origin-Embedder-Policy': 'require-corp',
+}
 TYPES = {'.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
          '.json': 'application/json', '.svg': 'image/svg+xml', '.html': 'text/html; charset=utf-8'}
 HUB = b'<!doctype html><meta charset="utf-8"><title>LAN GAMES (stub)</title><h1 class="hub-logo">LAN GAMES stub</h1>'
@@ -310,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
             # The one Party page a game origin may frame (ADR 0013); everything else stays 'none'.
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
                 "frame-ancestors 'none'", 'frame-ancestors ' + cfg['party'].game_origin)
-            return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
+            return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **BRIDGE_ISOLATION_HEADERS, **{'Content-Security-Policy': csp}))
         if path == '/party/layer.html' and cfg['party'] is not None:
             # The Party layer (AVR-292): framed by a game page on this origin or the game origin.
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
@@ -329,6 +343,10 @@ class Handler(BaseHTTPRequestHandler):
                               dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
         if cfg['test_controls'] and path == '/__test__/bridge-game.html':
             return self._send(200, BRIDGE_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
+        if cfg['test_controls'] and path == '/__test__/layer-game.html':
+            return self._send(200, LAYER_GAME, 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
+        if cfg['test_controls'] and path == '/__test__/avrana-party-layer.js':
+            return self._file(cfg['web'], 'bridge/layer-mount.js', {'Cache-Control': 'no-store'})
         if path.startswith('/party/covers/'):
             return self._cover(path[len('/party/covers/'):])
         if path.startswith('/party/'):

@@ -25,7 +25,7 @@ from pathlib import Path
 from avrana import REPO_ROOT
 from avrana.party import identity, service
 from avrana.web import build
-from avrana.web.devserver import SHELL_HEADERS
+from avrana.web.devserver import BRIDGE_ISOLATION_HEADERS, SHELL_HEADERS
 
 SITE = (REPO_ROOT / 'avrana-party.nginx').read_text(encoding='utf-8')
 APPLE_SUCCESS = '<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>\n'
@@ -1019,7 +1019,7 @@ http {{
         self.assertEqual(res.status, 200)
         self.assertEqual(payload, (self.tmp / 'web' / 'current' / 'bridge.html').read_bytes())
         self.assertEqual(res.msg.get_all('Content-Security-Policy'), [BRIDGE_CSP])      # one policy, not two
-        for key, value in SHELL_HEADERS.items():
+        for key, value in dict(SHELL_HEADERS, **BRIDGE_ISOLATION_HEADERS).items():
             if key != 'Content-Security-Policy':
                 self.assertEqual(res.getheader(key), value, key)
         self.assertIsNone(res.getheader('X-Frame-Options'))
@@ -1105,7 +1105,7 @@ class GameOriginStaticRules(unittest.TestCase):
     def test_only_the_bridge_page_may_be_framed_and_only_by_the_game_origin(self):
         body = location_body(self.party, '= /party/bridge.html')
         headers = dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body))
-        self.assertEqual(headers, dict(SHELL_HEADERS, **{'Content-Security-Policy': BRIDGE_CSP}))
+        self.assertEqual(headers, dict(SHELL_HEADERS, **BRIDGE_ISOLATION_HEADERS, **{'Content-Security-Policy': BRIDGE_CSP}))
         self.assertIn('alias /var/www/avrana-party/web/current/bridge.html;', body)
         self.assertEqual(self.party.count('frame-ancestors https://games.avrana.net'), 1)    # in that location only
         self.assertEqual(self.party.count("frame-ancestors 'self' https://games.avrana.net"), 1)   # the layer (AVR-292)

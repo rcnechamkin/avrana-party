@@ -23,6 +23,7 @@ parser.add_argument('--port', type=int, default=8182)
 parser.add_argument('--party-session', action='store_true')
 parser.add_argument('--bind', default='127.0.0.1')
 parser.add_argument('--game-origin', action='store_true')
+parser.add_argument('--expo-game', action='store_true', help='also run EXPO as a real Party game (AVR-292); off, it cannot start here')
 parser.add_argument('--native-game', help='run a grant-declared native process (POSIX tests only)')
 args = parser.parse_args()
 if args.native_game and not (args.party_session and args.game_origin):
@@ -37,7 +38,7 @@ sys.path.insert(0, str(games))
 sys.path.insert(1, str(platform))
 if args.party_session:
     import party_harness
-    party_key, party_port = party_harness.prepare_keys()   # before the donor reads its env
+    party_key, party_port = party_harness.prepare_keys(expo=args.expo_game)   # before the donor reads its env
 import asyncio
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -108,6 +109,12 @@ async def shell_headers(request, call_next):
             # the one Party page a game origin may frame (nginx sends this on the appliance)
             response.headers['Content-Security-Policy'] = SHELL_HEADERS['Content-Security-Policy'].replace(
                 "frame-ancestors 'none'", f'frame-ancestors http://{GAMES_HOST}')
+        if path == '/party/layer.html':
+            # the Party layer (AVR-292): framed by a game page on this origin or the game origin,
+            # as avrana-party.nginx sends it
+            origins = "'self'" + (f' http://{GAMES_HOST}' if args.game_origin else '')
+            response.headers['Content-Security-Policy'] = SHELL_HEADERS['Content-Security-Policy'].replace(
+                "frame-ancestors 'none'", f'frame-ancestors {origins}')
     return response
 
 if args.party_session:
@@ -143,7 +150,7 @@ if args.party_session:
         party_harness.attach(donor.app, party_key, args.port, public | {'party.avrana.test'}, party_port,
                              game_origins={f'http://{GAMES_HOST}': '*'}, native=native)
     else:
-        party_harness.attach(donor.app, party_key, args.port, public, party_port)
+        party_harness.attach(donor.app, party_key, args.port, public, party_port, expo=args.expo_game)
 
 donor.app.mount('/party', StaticFiles(directory=platform / 'web/party', html=True))
 if args.bind == '127.0.0.1':
