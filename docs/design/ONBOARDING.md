@@ -77,8 +77,10 @@ power on Avrana → tap / scan → join the Avrana Wi-Fi → open the REAL brows
 > `/party/`, HTTPS only). The discussion below predates HTTPS.
 > - `http://10.42.0.1` stays the always-resolving HTTP origin for captive probes, LAN Games and
 >   recovery.
-> - The QR target is still OPEN: an HTTP doorway that hands off to HTTPS, or the HTTPS name
->   directly. That depends on how Party DNS behaves under Private DNS or VPNs.
+> - **QR target, decided 2026-10-19 (owner, AVR-76):** the join card's QR code
+>   targets `https://party.avrana.net/party/` directly. `http://10.42.0.1` is the documented
+>   recovery fallback (typed, or `--party-url` for a recovery card); how both behave under Private
+>   DNS, VPNs and captive mini-browsers is checked on real phones under AVR-11/AVR-295.
 >
 > **Update 2026-10-02 (accepted direction, not implemented):**
 > - "One canonical origin" below means one canonical **Party** origin. It still matters exactly as
@@ -151,9 +153,9 @@ NFC first-record rule; which browser the camera opens.
 ## The device and the join card
 
 - **Card (built, AVR-76):** `tools/join-card/join-card.mjs` makes it offline; usage and the real-phone
-  check are in [join-card](../runbooks/join-card.md). Contents: network name, password, both QR codes, "then open <the party address>" (which address is canonical is open —
-  `PARTY-PLATFORM.md` §16.1), NFC marks, the
-  troubleshooting lines.
+  check are in [join-card](../runbooks/join-card.md). Contents: network name, password, both QR codes (QR 2 is `https://party.avrana.net/party/`,
+  owner decision 2026-10-19), the typed address, the `http://10.42.0.1` recovery fallback and the
+  troubleshooting lines. NFC marks are not part of this card.
 - **Screen:** a ≥ 2.9-inch e-ink panel fits both QR codes side by side; a 128×64 OLED is too small.
 - **Per-party codes (Public/Demo mode only; not in v0):** the join link may carry a short
   **multi-use** code, valid for one party, in the URL fragment (never a device token) with a typed

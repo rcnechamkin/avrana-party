@@ -9,6 +9,7 @@
 // never written inside this repository.
 import { realpathSync, writeFileSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { basename, dirname, resolve, relative, isAbsolute, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { renderCard } from './card.mjs';
@@ -33,6 +34,16 @@ function real(p) {
 function insideRepo(p) {
   const rel = relative(real(REPO), real(p));
   return rel === '' || !(rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel));
+}
+
+// Any Git working tree, not only this checkout: a card written into another clone or worktree of
+// this repository (or any other) could be committed there. Asks git from the nearest existing
+// directory; without git, insideRepo() still guards this checkout.
+function insideGitWorkTree(p) {
+  let dir = dirname(resolve(p));
+  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
+  const res = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', windowsHide: true });
+  return res.status === 0 && res.stdout.trim() === 'true';
 }
 
 function promptHidden(question) {
@@ -74,6 +85,9 @@ async function main(argv) {
   const out = resolve(values.out);
   if (!partyOnly && insideRepo(out)) {
     throw new JoinCardError('refusing to write a card with the Wi-Fi password inside the repository; choose a path outside it');
+  }
+  if (!partyOnly && insideGitWorkTree(out)) {
+    throw new JoinCardError('refusing to write a card with the Wi-Fi password inside a Git working tree, where it could be committed; choose a path outside it');
   }
   let password;
   if (!partyOnly) {

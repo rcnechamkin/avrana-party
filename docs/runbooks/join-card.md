@@ -35,9 +35,10 @@ a browser and print it (A6 landscape, or any size with each QR code at least 3 c
 - QR 1 uses `T:WPA`, right for WPA2-Personal and WPA2/WPA3 transition, not a WPA3-only access point.
 
 `--party-only` makes a card with only QR 2 and no password (for a screen, a chat, or a second card).
-`--party-url http://10.42.0.1/` targets the port-80 page instead; it resolves under every DNS
-condition but adds a tap, and today it only links on to Full Mode. Until the Limited Mode doorway
-(LIMITED-MODE 3.1) is served there, the HTTPS link is the default.
+QR 2's target is decided (owner, 2026-10-19, AVR-76): `https://party.avrana.net/party/` is the
+canonical destination. `http://10.42.0.1` is the documented recovery fallback, printed on the card;
+`--party-url http://10.42.0.1/` makes a recovery card that targets it. It resolves under every DNS
+condition but adds a tap, and today it only links on to Full Mode.
 
 ## Real-phone check
 
@@ -63,5 +64,6 @@ the phone actually showed.
 | 11 | Lab only, a throwaway card for a test network whose password is all digits (e.g. `12345678`) | QR 1 still joins on both phones; some parsers mishandle digit-only or hex-looking passwords |
 | 12 | First-timer with no help, card only | Seconds from first scan to Party Home; number of questions asked |
 
-Report results on AVR-11 (per-device findings) and AVR-76 (the handoff), with dates. A FAIL is a
+Real-device acceptance is pending under AVR-11 and AVR-295; record per-device results there, with
+dates. A FAIL is a
 finding, not a reason to change the access point, probes or DNS without the owner.

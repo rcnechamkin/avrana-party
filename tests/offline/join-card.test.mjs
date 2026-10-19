@@ -251,6 +251,17 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
       assert.ok(!res.said.includes('test-only'), res.said);
     }
     assert.ok(!existsSync(out));
+
+    // Another Git working tree (a second clone or worktree of this repository, or any repository)
+    // is refused too: the card could be committed there.
+    const other = join(dir, 'other-clone');
+    if (spawnSync('git', ['init', '-q', other]).status === 0) {
+      const res = cli(['--ssid', 'Avrana Party', '--out', join(other, 'sub', 'card.html')], { AVRANA_WIFI_PASSWORD: PASSWORD });
+      assert.equal(res.status, 2, res.said);
+      assert.match(res.said, /inside a Git working tree/);
+      assert.ok(!existsSync(join(other, 'sub', 'card.html')));
+      assert.equal(cli(['--ssid', 'Avrana Party', '--party-only', '--out', join(other, 'party.html')]).status, 0);
+    }
     assert.ok(!existsSync(new URL('../../join-card.html', import.meta.url)));
     assert.ok(!existsSync(new URL('../../..zz-avr76', import.meta.url)));
   } finally {
