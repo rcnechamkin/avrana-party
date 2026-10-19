@@ -126,7 +126,7 @@ or Public/Demo admission is claimed implemented here.
 Grace and succession are implemented; voluntary transfer below remains the broader design.
 Current Core selects the earliest-joined eligible member who is here or playing. A Host's
 Leave (AVR-580) uses the same rule at once, with confirmation; with no eligible successor the role
-is vacant and nothing is ended (owner decision open, `PartyCore._no_successor`).
+is vacant and nothing is ended (owner decision 2026-10-18, `PartyCore._no_successor`).
 
 ```mermaid
 stateDiagram-v2

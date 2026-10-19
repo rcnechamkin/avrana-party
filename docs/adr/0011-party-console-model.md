@@ -166,7 +166,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   Mode preferred) at once and keeps no authority; coming back never restores it. A live round, its
   seats and `nav` are untouched. Unchanged: away-grace (silence, lock, signal loss is never Leave),
   AVR-475 abandoned-round recovery, AVR-132 Quit & Spectate boundaries (D5b mid-round stays
-  undecided). **Open owner decision:** a Host leaving with no eligible successor. Source does the
-  non-destructive thing (the role is vacant, the round goes on, the next member seen claims it,
+  undecided). **Owner decision (2026-10-18):** a Host leaving with no eligible successor keeps the
+  non-destructive default (the role is vacant, the round goes on, the next member seen claims it,
   nothing is ended or refused) and the confirmation says so; `PartyCore._no_successor` is the
   one place to change. Not deployed; not checked on a phone.

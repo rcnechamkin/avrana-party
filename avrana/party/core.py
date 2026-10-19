@@ -477,8 +477,8 @@ class PartyCore:
         self._commit()
 
     def _no_successor(self, leaver):
-        """OWNER DECISION (AVR-580, open): what a Host's Leave does when nobody else is here to
-        take over. Until the owner decides, nothing destructive happens: the role is vacant, the
+        """OWNER DECISION (AVR-580, decided 2026-10-18: keep vacant): what a Host's Leave does when nobody else is here to
+        take over. Nothing destructive happens (the owner chose this): the role is vacant, the
         round (if any) goes on untouched, and the next member to arrive or be seen claims it
         (touch/join). A round is not ended, and the Leave is not refused. Returns the new host id."""
         return None

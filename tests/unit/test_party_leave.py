@@ -181,7 +181,7 @@ class HostLeave(unittest.TestCase):
         self.assertGreater(pc.party.version, before)
 
     def test_no_eligible_successor_is_not_destructive(self):
-        """OWNER DECISION (open): the lone Host leaves mid-round. Until it is made, nothing is
+        """OWNER DECISION (2026-10-18, keep vacant): the lone Host leaves mid-round. Nothing is
         ended and nothing is refused: the role is vacant, the round goes on, and the next member
         who arrives or is seen claims the role. TABLE_ABANDON (AVR-475) is the only clock."""
         pc, clock = make()
