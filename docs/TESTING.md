@@ -238,6 +238,27 @@ Real iPhone Safari and Android Chrome behaviour (captive probes offline, `party.
 WebRTC on iOS), real Wi-Fi with several phones (the AP's client ceiling), H.264 on the Pi's encoder,
 input-to-photon latency, and power under load. The runbooks in `docs/runbooks/` are the manual tests.
 
+### Party chat above the keyboard: phone acceptance (AVR-583; for AVR-295 / AVR-579)
+
+Chromium simulates the keyboard (`tests/lib/keyboard.ts`: `visualViewport` height and `offsetTop`, a resize
+on rotation). It does not scroll, pan or animate like a phone. Unchecked until a person does these on the
+device; record phone, OS, browser (or installed PWA), Party commit and result for each.
+
+Devices: iPhone Safari, the installed PWA (Add to Home Screen), Android Chrome. Try Full Mode and Limited
+Mode, in Party Home and, with BLUFF and EXPO running, in the in-game Party layer (floating button, then Chat).
+
+1. Open Chat, tap the message field. The keys rise; the whole drawer (header, Chat/People, field, Send) is on
+   screen and the history scrolls by itself. Nothing needs a pinch or a page scroll to reach Send.
+2. Type half a message, dismiss the keyboard (Done or tap outside the field), tap the field again. The draft is still there.
+3. With the keyboard up, turn the phone both ways and back. The drawer stays open, the draft stays, the field keeps
+   focus or one tap restores it, and Send is still above the keys. In a game: the game did not reload or pause.
+4. Send one message with the keyboard up, then close the drawer. Close is reachable with the keyboard up.
+5. Set larger text (iOS Display & Brightness, Android Font size) and repeat 1 and 3 on the smallest phone.
+6. Safe areas: on a notched phone in landscape the field and Send are clear of the notch and home indicator.
+7. Collapsed button: with the drawer closed and the keyboard gone, a tap one finger-width from the button reaches the game.
+8. Reduced motion on: the drawer opens without sliding and nothing jumps when the keys come up.
+9. Host and non-host phones: the same, and a non-host sees no Host controls in the layer.
+
 ## LAN Games provider cross-repository tests
 
 Private source: rcnechamkin/avrana-party-games. Use two explicit local checkouts,

@@ -73,11 +73,13 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
     const vv = win.visualViewport;
     const cs = win.getComputedStyle ? win.getComputedStyle(probe) : null;
     const px = (v) => Math.max(0, parseFloat(v) || 0);
+    // ox/oy: where the visible region starts inside the layout viewport (a panned iPhone keyboard); the frame is fixed to the latter
     return { w: Math.round(vv ? vv.width : win.innerWidth), h: Math.round(vv ? vv.height : win.innerHeight),
+      ox: vv ? Math.round(vv.offsetLeft) : 0, oy: vv ? Math.round(vv.offsetTop) : 0,
       insets: cs ? { top: px(cs.paddingTop), right: px(cs.paddingRight), bottom: px(cs.paddingBottom), left: px(cs.paddingLeft) }
         : { top: 0, right: 0, bottom: 0, left: 0 } };
   }
-  let vp = { w: 0, h: 0, insets: { top: 0, right: 0, bottom: 0, left: 0 } };
+  let vp = { w: 0, h: 0, ox: 0, oy: 0, insets: { top: 0, right: 0, bottom: 0, left: 0 } };
   let last = null;
 
   const send = (msg) => { if (frame.contentWindow) frame.contentWindow.postMessage({ avrana: LAYER_PROTOCOL, ...msg }, partyOrigin); };
@@ -94,28 +96,30 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
       return;
     }
     const box = layerBox(msg, vp);
-    Object.assign(frame.style, { left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', visibility: 'visible' });
+    Object.assign(frame.style, { left: box.x + vp.ox + 'px', top: box.y + vp.oy + 'px', width: box.w + 'px', height: box.h + 'px', visibility: 'visible' });
     const mode = msg.type === 'drag' ? 'button' : msg.mode;
     frame.dataset.avranaPartyLayer = mode;
     setOpen(mode === 'open');
   }
   function onResize() {
-    vp = viewport();
-    if (ready) send({ type: 'viewport', ...vp });
+    const next = viewport();
+    const sized = next.w !== vp.w || next.h !== vp.h || Object.keys(next.insets).some((k) => next.insets[k] !== vp.insets[k]);
+    vp = next;
+    if (ready && sized) send({ type: 'viewport', w: vp.w, h: vp.h, insets: vp.insets });   // a pan alone changes nothing the frame lays out
     if (last) apply(last);
   }
   function onMessage(ev) {
     if (stopped || ev.origin !== partyOrigin || ev.source !== frame.contentWindow) return;
     const msg = parseLayerMessage(ev.data);
     if (!msg) return;
-    if (msg.type === 'ready') { ready = true; vp = viewport(); send({ type: 'viewport', ...vp }); return; }
+    if (msg.type === 'ready') { ready = true; vp = viewport(); send({ type: 'viewport', w: vp.w, h: vp.h, insets: vp.insets }); return; }
     if (msg.type === 'place' || msg.type === 'hide' || msg.type === 'drag') last = msg;   // a drag's last point stays
     apply(msg);
   }
 
   win.addEventListener('message', onMessage);
   win.addEventListener('resize', onResize);
-  if (win.visualViewport) win.visualViewport.addEventListener('resize', onResize);
+  if (win.visualViewport) { win.visualViewport.addEventListener('resize', onResize); win.visualViewport.addEventListener('scroll', onResize); }
   const root = doc.body || doc.documentElement;
   root.append(probe);
   root.append(frame);
@@ -126,7 +130,7 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
       stopped = true;
       win.removeEventListener('message', onMessage);
       win.removeEventListener('resize', onResize);
-      if (win.visualViewport) win.visualViewport.removeEventListener('resize', onResize);
+      if (win.visualViewport) { win.visualViewport.removeEventListener('resize', onResize); win.visualViewport.removeEventListener('scroll', onResize); }
       frame.remove(); probe.remove();
       if (open && typeof win.CustomEvent === 'function') doc.dispatchEvent(new win.CustomEvent('avrana-party-layer', { detail: { open: false } }));
       open = false;
