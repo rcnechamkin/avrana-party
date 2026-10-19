@@ -417,6 +417,9 @@ class PartyCore:
             if m.left:
                 m.left = False
                 m.name = self._unique(clean, m)
+                live = self._live_session()
+                if live is not None and live.state == SETUP:
+                    live.choices.pop(m.id, None)     # back from Leave: choose Play or Watch again
             if avatar is not None:
                 m.avatar = clean_avatar(avatar)
             m.last_seen = now

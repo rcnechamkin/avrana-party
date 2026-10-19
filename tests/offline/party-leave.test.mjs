@@ -27,8 +27,9 @@ test('the marker follows Core: set by a departed view, cleared by a member view,
   assert.equal(d.apply(gone()).departed, true);
   assert.equal(s.values[LEFT_KEY], '1');
   assert.equal(d.apply(unknown()).departed, true);          // a restarted Pi: Core forgot, this browser remembers
-  assert.equal(d.apply(view()).departed, false);           // a real membership always wins
-  assert.equal(s.values[LEFT_KEY], undefined);
+  assert.equal(d.apply(view()).departed, false);           // a real membership always wins...
+  assert.equal(s.values[LEFT_KEY], '1');                   // ...but a view that may be older than the Leave never clears it
+  d.clear();                                               // only a confirmed Reconnect does
   assert.equal(d.apply(unknown()).departed, false);
 });
 

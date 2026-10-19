@@ -104,6 +104,48 @@ test.describe('the Party layer on a game page', () => {
     expect(await bob.page.evaluate(() => (window as unknown as { layerEvents: boolean[] }).layerEvents)).toEqual([true, false]);
   });
 
+  test('Leave Party from the drawer (AVR-580): confirmed, the follower leaves, nobody else moves, and the page goes to Reconnect?', async () => {
+    await startRound(host, [bob]);
+    const before = await view(host);
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-leave-ask').click();
+    await expect(layer.locator('#layer-leave-text')).toContainText('Everyone else stays where they are, and the round goes on');
+    await expect(layer.locator('#layer-leave-host')).toBeHidden();
+    await layer.locator('#layer-leave-no').click();                       // Stay: nothing happened
+    expect((await view(bob)).me).not.toBeNull();
+    await layer.locator('#layer-leave-ask').click();
+    await layer.locator('#layer-leave-yes').click();
+    await expect(bob.page).toHaveURL(/\/party\/$/);
+    await expect(bob.page.locator('#reconnect')).toBeVisible();
+    const after = await view(host);
+    for (const key of ['nav', 'location', 'host', 'state']) expect(after[key]).toEqual(before[key]);
+    await expect(host.page).toHaveURL(atGame);
+  });
+
+  test('the Host leaves from the drawer: the confirmation names who hosts next, the round goes on', async () => {
+    await startRound(host, [bob]);
+    const layer = await openLayer(host.page);
+    await layer.locator('#layer-leave-ask').click();
+    await expect(layer.locator('#layer-leave-host')).toContainText('You are the Host. Bob becomes the Host right away.');
+    await layer.locator('#layer-leave-yes').click();
+    await expect(host.page).toHaveURL(/\/party\/$/);
+    const v = await view(bob);
+    expect([v.me.host, v.state, v.location.at]).toEqual([true, 'active', 'game']);
+    await expect(bob.page).toHaveURL(atGame);
+  });
+
+  test('Leave from the drawer with no network says it is unconfirmed and leaves the phone in the Party', async () => {
+    await startRound(host, [bob]);
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-leave-ask').click();
+    await bob.context.route('**/party/api/leave', (route) => route.abort());
+    await layer.locator('#layer-leave-yes').click();
+    await expect(layer.locator('#layer-leave-error')).toContainText('Couldn’t confirm that you left');
+    expect((await view(host)).members.map((m: { name: string }) => m.name)).toContain('Bob');
+    await expect(bob.page).toHaveURL(atGame);
+    await bob.context.unroute('**/party/api/leave');
+  });
+
   test('chat from the game: a line from another phone is unread on the button, read in the drawer', async () => {
     await startRound(host, [bob]);
     const ada = await openLayer(host.page);

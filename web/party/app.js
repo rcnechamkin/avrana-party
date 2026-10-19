@@ -365,7 +365,7 @@ async function ensurePresent(view) {
   state.joining = true;
   const res = await party.join(who.name, who.avatar);
   state.joining = false;
-  if (!res.ok) $('party-note').textContent = res.message ? `${res.message} Change it in your profile.` : '';
+  if (!res.ok && res.error !== 'left_party') $('party-note').textContent = res.message ? `${res.message} Change it in your profile.` : '';
 }
 
 /** Reconnect (AVR-580): the person's own opt back in after Leave. Party Core then puts this phone

@@ -85,6 +85,19 @@ class LeaveIsIntentional(unittest.TestCase):
         self.assertFalse(pc.view('device-a')['departed'])
 
 
+class ReconnectDuringSetup(unittest.TestCase):
+    def test_a_member_back_from_leave_chooses_again(self):
+        pc, _ = make([PREGAME])
+        pc.join('device-a', 'Ana')
+        pc.join('device-b', 'Ben')
+        s = pc.launch('device-a', 'bluff', pc.party.version)
+        pc.choose('device-b', 'player')
+        pc.leave('device-b')
+        pc.reconnect('device-b', 'Ben')
+        self.assertNotIn(pc._member_of('device-b').id, s.choices)
+        self.assertEqual(pc.view('device-b')['session']['setup']['mine'], None)
+
+
 class NonHostLeaveMovesNobody(unittest.TestCase):
     def table(self):
         pc, clock = make()

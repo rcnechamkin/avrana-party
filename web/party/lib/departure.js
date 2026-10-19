@@ -3,7 +3,8 @@
 // covers what Core cannot: a new Party after the Pi restarted, when the device is unknown again
 // and an automatic join would otherwise bring a person back who chose to leave. Same browser
 // only, kept at the Party origin (the bridge frame shares it with game pages); it is never the
-// reason to hide a real membership: a view that has `me` clears it.
+// reason to hide a real membership: a view that has `me` wins over it, and only a confirmed
+// Reconnect clears it (a view that arrives late must not undo a Leave).
 export const LEFT_KEY = 'avrana-left-party';
 
 export function createDeparture(storage = (() => { try { return globalThis.localStorage; } catch { return null; } })()) {
@@ -17,7 +18,7 @@ export function createDeparture(storage = (() => { try { return globalThis.local
      * purpose (Core says so, or this browser remembers it and Core has no member for it). */
     apply(view) {
       if (!view || typeof view !== 'object') return view;
-      if (view.me) { if (read()) write(false); view.departed = false; return view; }
+      if (view.me) { view.departed = false; return view; }   // never clears: this view may be older than a Leave (reconnect() clears)
       if (view.departed === true) write(true);
       else if (read()) view.departed = true;
       else view.departed = false;
