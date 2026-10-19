@@ -122,6 +122,19 @@ test.describe('the Party layer on a game page', () => {
     await expect(host.page).toHaveURL(atGame);
   });
 
+  test('an open Leave question does not outlive the drawer (AVR-580)', async () => {
+    await startRound(host, [bob]);
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-leave-ask').click();
+    await expect(layer.locator('#layer-leave-confirm')).toBeVisible();
+    await bob.page.keyboard.press('Escape');
+    await expect(layer.locator('#layer-sheet')).toBeHidden();
+    await openLayer(bob.page);
+    await expect(layer.locator('#layer-leave-confirm')).toBeHidden();
+    await expect(layer.locator('#layer-leave-ask')).toBeVisible();
+    expect((await view(bob)).me).not.toBeNull();
+  });
+
   test('the Host leaves from the drawer: the confirmation names who hosts next, the round goes on', async () => {
     await startRound(host, [bob]);
     const layer = await openLayer(host.page);

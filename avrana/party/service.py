@@ -717,7 +717,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.service.call('reconnect' if explicit else 'join', device, body.get('name'), body.get('avatar'),
                               self.cfg.mode)
         except core.Refused as e:
-            return _refused(self, e)       # left_party: the cookie, if just minted, is still sent below
+            return _refused(self, e)       # left_party: only a device that already has a member can be refused, so it already has its cookie
         return _send(self, 200, self._view(device), cookie)
 
 

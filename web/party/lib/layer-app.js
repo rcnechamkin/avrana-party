@@ -6,6 +6,7 @@ import { hydrateIcons, icon } from './icons.js';
 import { h } from './ui.js';
 import { avatarNode } from './profile-ui.js';
 import { createPartyClient } from './party-client.js';
+import { createDeparture } from './departure.js';
 import { createPartyChat, systemText } from './party-chat.js';
 import { locationOf, partyGame, roster } from './party-mode.js';
 import { unreadMark } from './frame.js';
@@ -147,6 +148,7 @@ function openLayer(tab = null) {
 function closeLayer() {
   if (state.mode !== 'open') return;
   state.confirm = null;
+  state.leaving = false;
   state.mode = closedMode();
   show();
   (state.mode === 'tab' ? $('layer-tab') : button).focus({ preventScroll: true });
@@ -189,7 +191,7 @@ $('layer-reset').addEventListener('click', () => {
 });
 
 // ---- the Party ---------------------------------------------------------------------------------------
-const client = createPartyClient({ base: '/party/api/', onView, onLink: ({ ok }) => { state.link = ok ? 'ok' : 'offline'; render(); } });
+const client = createPartyClient({ base: '/party/api/', departure: createDeparture(), onView, onLink: ({ ok }) => { state.link = ok ? 'ok' : 'offline'; render(); } });
 let storageTab;
 try { storageTab = window.sessionStorage; } catch { /* unread starts over */ }
 const chat = createPartyChat({ base: '/party/api/', storage: storageTab, onChange: renderChat });
@@ -267,7 +269,7 @@ function renderHost(view) {
  * Home's Reconnect?; nothing here joins again. */
 function renderLeave(view) {
   const impact = view.me && view.me.leave;
-  $('layer-leave').hidden = !impact;
+  $('layer-leave').hidden = !impact || Boolean(state.confirm);   // one confirmation at a time
   if (!impact) { state.leaving = false; return; }
   $('layer-leave-confirm').hidden = !state.leaving;
   $('layer-leave-ask').hidden = state.leaving;
