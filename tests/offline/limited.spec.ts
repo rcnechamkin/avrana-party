@@ -403,15 +403,18 @@ test('a Limited phone that opens a game page or the Arcade, or comes back from o
     await home(gus.page, LIMITED);
     await expect(page.locator('#party-members li')).toHaveCount(2);
     const following = (p: Page) => p.waitForFunction(() => Boolean((window as any).AvranaParty?.active));
+    // A page that follows the Party leaves at once, so the browser may call the visit itself
+    // "interrupted" (a race in the visit, not in the page); where the phone ends up is the check.
+    const visit = (p: Page, url: string) => p.goto(url).catch(() => undefined);
     // On load, at Party Home: a game page and the Arcade both lead to Party Home.
-    await gus.page.goto(`${LIMITED}/games/expo/?avrana=1`);
+    await visit(gus.page, `${LIMITED}/games/expo/?avrana=1`);
     await expect(gus.page).toHaveURL(`${LIMITED}/party/`);
-    await gus.page.goto(`${LIMITED}/arcade/`);
+    await visit(gus.page, `${LIMITED}/arcade/`);
     await expect(gus.page).toHaveURL(`${LIMITED}/party/`);
     // On load, with the Party in a game: any other page leads to it.
     expect(await hostMove(page, 'session/launch', 'expo')).toBe(200);
     await expect(page).toHaveURL(/\/games\/expo\/\?avrana=1$/);
-    await gus.page.goto(`${LIMITED}/arcade/`);
+    await visit(gus.page, `${LIMITED}/arcade/`);
     await expect(gus.page).toHaveURL(`${LIMITED}/games/expo/?avrana=1`);
     // A move made while this phone is offline is followed once the network is back.
     await following(gus.page);
