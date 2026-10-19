@@ -7,8 +7,8 @@
 // The Wi-Fi password is read from AVRANA_WIFI_PASSWORD or typed at a hidden prompt, never from the
 // command line (shell history, process lists). It is never printed, and a card that contains it is
 // never written inside this repository.
-import { realpathSync, writeFileSync, existsSync } from 'node:fs';
-import { basename, dirname, resolve, relative, isAbsolute } from 'node:path';
+import { realpathSync, writeFileSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
+import { basename, dirname, resolve, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { renderCard } from './card.mjs';
@@ -26,13 +26,13 @@ function real(p) {
   let head = resolve(p);
   const rest = [];
   while (!existsSync(head) && dirname(head) !== head) { rest.unshift(basename(head)); head = dirname(head); }
-  const out = resolve(realpathSync(head), ...rest);
+  const out = resolve(realpathSync.native(head), ...rest);
   return process.platform === 'win32' ? out.toLowerCase() : out;
 }
 
 function insideRepo(p) {
   const rel = relative(real(REPO), real(p));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  return rel === '' || !(rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel));
 }
 
 function promptHidden(question) {
@@ -84,7 +84,12 @@ async function main(argv) {
     ssid, password, partyOnly, hidden: values.hidden, partyLink: values['party-url'],
     generatedOn: new Date().toISOString().slice(0, 10), level: values.level,
   });
-  writeFileSync(out, html, { mode: 0o600 });
+  // Never follow a link at the output path; replace a previous card only if it is a plain file.
+  let old;
+  try { old = lstatSync(out); } catch { /* new file */ }
+  if (old && !old.isFile()) throw new JoinCardError('the output path exists and is not a plain file');
+  if (old) unlinkSync(out);
+  writeFileSync(out, html, { mode: 0o600, flag: 'wx' });
   console.log(`Wrote ${out}`);
   console.log(partyOnly ? 'Party-only card: no Wi-Fi password on it.' : 'It shows the Wi-Fi password: print it, keep it with the box, do not commit or post it.');
   return 0;
@@ -92,6 +97,9 @@ async function main(argv) {
 
 main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (err) => {
   // Only JoinCardError messages are known to be free of the password; anything else gets a generic line.
-  console.error(err instanceof JoinCardError || err?.code?.startsWith?.('ERR_PARSE_ARGS') ? `join-card: ${err.message}` : `join-card: failed (${err?.code || err?.name || 'error'})`);
+  // Argument errors are not echoed: a password pasted as an argument would be repeated.
+  if (err?.code?.startsWith?.('ERR_PARSE_ARGS')) console.error(`join-card: unrecognized arguments (the password goes in AVRANA_WIFI_PASSWORD or the prompt)
+${USAGE}`);
+  else console.error(err instanceof JoinCardError ? `join-card: ${err.message}` : `join-card: failed (${err?.code || err?.name || 'error'})`);
   process.exitCode = 2;
 });

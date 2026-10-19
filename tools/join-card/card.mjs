@@ -1,10 +1,11 @@
 // The printable two-QR join card (AVR-76): one self-contained HTML page with inline SVG and CSS,
 // no script and no external resource, so it renders and prints with no network.
 import { encodeQr, qrToSvg } from './qr.mjs';
-import { FULL_MODE_URL, HTTP_DOORWAY_URL, checkSsid, partyUrl, wifiPayload } from './payloads.mjs';
+import { FULL_MODE_URL, HTTP_DOORWAY_URL, JoinCardError, checkSsid, partyUrl, wifiPayload } from './payloads.mjs';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const DOORWAY_TYPED = HTTP_DOORWAY_URL.replace(/^http:\/\//, '').replace(/\/$/, '');
+// Typed with http://: a bare address may be tried over HTTPS first and hit a certificate warning.
+const DOORWAY_TYPED = HTTP_DOORWAY_URL.replace(/\/$/, '');
 
 // The Party mark from web/party/icon.svg.
 const MARK = '<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0e0c1d"/>' +
@@ -41,7 +42,12 @@ footer { padding: 6px 20px 10px; background: #f6f4f0; font-size: 11px; color: #6
 `;
 
 function qrBlock(payload, label, level) {
-  return `<div class="qr">${qrToSvg(encodeQr(payload, { level }), { dark: '#121214', light: '#ffffff', title: label })}</div>`;
+  let qr;
+  try { qr = encodeQr(payload, { level }); } catch (err) {
+    if (err instanceof RangeError) throw new JoinCardError(`network name and password are too long for one QR code at level ${level}; try --level M or L`);
+    throw err;
+  }
+  return `<div class="qr">${qrToSvg(qr, { dark: '#121214', light: '#ffffff', title: label })}</div>`;
 }
 
 /**
@@ -70,10 +76,10 @@ ${qrBlock(link, 'Party link QR code', level)}
 <p class="how">Scan with the Camera after step 1. It opens in Safari or Chrome. No app, no account, no internet.${full ? '' : ' Then tap <em>Open Avrana Party</em>.'}</p></section>`;
 
   const tips = [
-    'Asked “No internet, stay connected?” Choose <strong>Stay</strong> or <strong>Keep</strong>.',
+    'Phone says the Wi-Fi has no internet? Choose to <strong>stay connected</strong>.',
     'Page did not open? Check you are on ' + `<strong>${esc(ssid)}</strong>, pause any VPN or Private DNS, and turn off mobile data.`,
     full ? `Still stuck? Type <span class="mono">${esc(DOORWAY_TYPED)}</span> and tap <em>Open Avrana Party</em>.` : '',
-    'A small sign-in window opened? Close it and scan step 2 with the Camera: play in Safari or Chrome.',
+    'A small sign-in window opened? Leave it (<em>Cancel</em>, <em>Done</em> or <em>Use Without Internet</em>), then scan step 2 with the Camera: play in Safari or Chrome.',
     'Chrome on iPhone: allow <em>Local Network</em> if asked.',
   ].filter(Boolean).map((t) => `<li>${t}</li>`).join('');
 

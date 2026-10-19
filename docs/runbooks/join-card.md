@@ -7,11 +7,18 @@ access point, captive probes, DNS or nginx.
 
 ## Make the card (laptop, offline)
 
-```bash
-AVRANA_WIFI_PASSWORD='<the Party Wi-Fi password>' node tools/join-card/join-card.mjs --ssid "Avrana Party" --out ~/avrana-join-card.html
+Type the password at the hidden prompt (it then stays out of shell history). Use a path outside
+this repository:
+
+```powershell
+node tools/join-card/join-card.mjs --ssid "Avrana Party" --out "$HOME\Documents\avrana-join-card.html"
 ```
 
-Or leave `AVRANA_WIFI_PASSWORD` unset and type the password at the hidden prompt. Open the file in
+```bash
+node tools/join-card/join-card.mjs --ssid "Avrana Party" --out "$HOME/avrana-join-card.html"
+```
+
+Without a terminal (a script), set `AVRANA_WIFI_PASSWORD` in the environment instead. Open the file in
 a browser and print it (A6 landscape, or any size with each QR code at least 3 cm wide). The tool:
 
 - writes **QR 1**, the standard `WIFI:T:WPA;S:…;P:…;;` string, and **QR 2**, the Party link
@@ -23,7 +30,9 @@ a browser and print it (A6 landscape, or any size with each QR code at least 3 c
   Network prompt on iPhone).
 - refuses to write a card with the password inside this repository and never prints the password.
   The card itself contains it: keep it with the box, do not commit, post or photograph it.
-- **Password changed?** Generate and print a new card; the card shows the date it was printed.
+- **Password changed?** Generate and print a new card (the same `--out` path is replaced); the card
+  shows the date it was printed.
+- QR 1 uses `T:WPA`, right for WPA2-Personal and WPA2/WPA3 transition, not a WPA3-only access point.
 
 `--party-only` makes a card with only QR 2 and no password (for a screen, a chat, or a second card).
 `--party-url http://10.42.0.1/` targets the port-80 page instead; it resolves under every DNS
@@ -51,7 +60,8 @@ the phone actually showed.
 | 8 | Close the browser, lock the phone 2 minutes, reopen the tab | Party Home resumes the same person, no rejoin |
 | 9 | Walk out of range and back | Phone rejoins the Party Wi-Fi on its own; page recovers |
 | 10 | Chrome on iPhone (not Safari) | Local Network prompt shown? Party loads after "Allow"? Record "Don't allow" behavior |
-| 11 | First-timer with no help, card only | Seconds from first scan to Party Home; number of questions asked |
+| 11 | Lab only, a throwaway card for a test network whose password is all digits (e.g. `12345678`) | QR 1 still joins on both phones; some parsers mishandle digit-only or hex-looking passwords |
+| 12 | First-timer with no help, card only | Seconds from first scan to Party Home; number of questions asked |
 
 Report results on AVR-11 (per-device findings) and AVR-76 (the handoff), with dates. A FAIL is a
 finding, not a reason to change the access point, probes or DNS without the owner.

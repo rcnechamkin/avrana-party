@@ -3,16 +3,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import jsQR from 'jsqr';
 import { encodeQr, qrToSvg } from '../../tools/join-card/qr.mjs';
 import { FULL_MODE_URL, HTTP_DOORWAY_URL, JoinCardError, partyUrl, wifiPayload } from '../../tools/join-card/payloads.mjs';
 import { renderCard } from '../../tools/join-card/card.mjs';
 
 const PASSWORD = 'test-only;pass:word,"x\\';
-const CLI = new URL('../../tools/join-card/join-card.mjs', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
+const CLI = fileURLToPath(new URL('../../tools/join-card/join-card.mjs', import.meta.url));
 
 function raster(qr, { scale = 4, border = 4, flip = [] } = {}) {
   const dim = (qr.size + border * 2) * scale, px = new Uint8ClampedArray(dim * dim * 4).fill(255);
@@ -100,7 +101,7 @@ test('Wi-Fi payload follows the WIFI: convention and escapes \\ ; , : "', () => 
   assert.equal(wifiPayload({ ssid: 'Avrana Party', password: 'abcdefgh' }), 'WIFI:T:WPA;S:Avrana Party;P:abcdefgh;;');
   assert.equal(wifiPayload({ ssid: 'A;B', password: PASSWORD }), 'WIFI:T:WPA;S:A\\;B;P:test-only\\;pass\\:word\\,\\"x\\\\;;');
   assert.equal(wifiPayload({ ssid: 'Hidden', password: 'abcdefgh', hidden: true }), 'WIFI:T:WPA;S:Hidden;P:abcdefgh;H:true;;');
-  assert.equal(wifiPayload({ ssid: 'x', password: 'A'.repeat(64).replace(/A/g, 'f') }).length > 64, true);
+  assert.equal(wifiPayload({ ssid: 'x', password: 'f'.repeat(64) }), `WIFI:T:WPA;S:x;P:${'f'.repeat(64)};;`);
 });
 
 test('missing or invalid Wi-Fi settings fail with messages that never echo the password', () => {
@@ -149,10 +150,10 @@ test('the card is two decodable QR codes plus readable fallbacks, with nothing f
   // Offline: no script, no fetched resource of any kind.
   assert.doesNotMatch(html, /<script|<link|<img|<iframe|\ssrc=|\shref=|url\(|@import/i);
   for (const url of html.match(/https?:\/\/[^\s"<]+/g)) {
-    assert.ok([FULL_MODE_URL, 'http://www.w3.org/2000/svg'].includes(url), url);
+    assert.ok([FULL_MODE_URL, 'http://10.42.0.1', 'http://www.w3.org/2000/svg'].includes(url), url);
   }
   // Readable fallbacks for each failure the card can name.
-  for (const words of ['Avrana Party', 'test-only;pass:word,&#34;x\\', FULL_MODE_URL, '10.42.0.1', 'Stay', 'VPN', 'Private DNS',
+  for (const words of ['Avrana Party', 'test-only;pass:word,&#34;x\\', FULL_MODE_URL, '>http://10.42.0.1<', 'stay connected', 'Use Without Internet', 'VPN', 'Private DNS',
     'mobile data', 'Local Network', 'sign-in window', 'Print a new card', 'Printed 2026-10-19']) {
     assert.ok(html.includes(words), words);
   }
@@ -187,7 +188,7 @@ test('the HTTP doorway link drops the redundant typed fallback, and names are HT
 
 function cli(args, env = {}) {
   const res = spawnSync(process.execPath, [CLI, ...args], {
-    encoding: 'utf8', input: '', env: { ...process.env, AVRANA_WIFI_PASSWORD: '', AVRANA_WIFI_SSID: '', ...env },
+    cwd: fileURLToPath(new URL('../../', import.meta.url)), encoding: 'utf8', input: '', env: { ...process.env, AVRANA_WIFI_PASSWORD: '', AVRANA_WIFI_SSID: '', ...env },
   });
   return { ...res, said: res.stdout + res.stderr };
 }
@@ -203,6 +204,19 @@ test('the CLI writes a card outside the repository and never prints the password
     const html = readFileSync(out, 'utf8');
     assert.equal(svgsIn(html).length, 2);
     decodesTo(encodeQr(wifiPayload({ ssid: 'Avrana Party', password: PASSWORD })), wifiPayload({ ssid: 'Avrana Party', password: PASSWORD }));
+
+    // A previous card at the same path is replaced (password rotation); a link there is refused.
+    const again = cli(['--ssid', 'Avrana Party', '--out', out], { AVRANA_WIFI_PASSWORD: 'rotated-password-2' });
+    assert.equal(again.status, 0, again.said);
+    assert.ok(readFileSync(out, 'utf8').includes('rotated-password-2') && !readFileSync(out, 'utf8').includes('test-only'));
+    const link = join(dir, 'link.html');
+    let linked = true;
+    try { symlinkSync(join(dir, 'target.html'), link); } catch { linked = false; }   // Windows may lack the privilege
+    if (linked) {
+      const res = cli(['--ssid', 'Avrana Party', '--out', link], { AVRANA_WIFI_PASSWORD: PASSWORD });
+      assert.equal(res.status, 2, res.said);
+      assert.ok(!existsSync(join(dir, 'target.html')));
+    }
 
     const party = join(dir, 'party.html');
     assert.equal(cli(['--ssid', 'Avrana Party', '--party-only', '--out', party]).status, 0);
@@ -224,7 +238,11 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
       [['--ssid', 'Avrana Party', '--out', 'join-card.html'], { AVRANA_WIFI_PASSWORD: PASSWORD }, /inside the repository/],
       [['--ssid', 'Avrana Party', '--out', 'docs/x/../join-card.html'], { AVRANA_WIFI_PASSWORD: PASSWORD }, /inside the repository/],
       [['--ssid', 'Avrana Party'], {}, /--out is required/],
-      [['--ssid', 'Avrana Party', '--out', out, '--password', 'x'], {}, /Unknown option/],
+      [['--ssid', 'Avrana Party', '--out', out, '--password', 'test-only-argv'], {}, /unrecognized arguments/],
+      [['--ssid', 'Avrana Party', '--out', out, 'test-only-positional'], {}, /unrecognized arguments/],
+      [['--ssid', ';'.repeat(32), '--out', out, '--level', 'H'], { AVRANA_WIFI_PASSWORD: 'p'.repeat(63) }, /too long for one QR code/],
+      [['--ssid', 'Avrana Party', '--out', join('..zz-avr76', 'c.html')], { AVRANA_WIFI_PASSWORD: PASSWORD }, /inside the repository/],
+      [['--ssid', 'Avrana Party', '--out', dir], { AVRANA_WIFI_PASSWORD: PASSWORD }, /not a plain file/],
     ];
     for (const [args, env, message] of cases) {
       const res = cli(args, env);
@@ -234,6 +252,7 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
     }
     assert.ok(!existsSync(out));
     assert.ok(!existsSync(new URL('../../join-card.html', import.meta.url)));
+    assert.ok(!existsSync(new URL('../../..zz-avr76', import.meta.url)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
