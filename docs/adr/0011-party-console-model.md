@@ -169,4 +169,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   undecided). **Owner decision (2026-10-18):** a Host leaving with no eligible successor keeps the
   non-destructive default (the role is vacant, the round goes on, the next member seen claims it,
   nothing is ended or refused) and the confirmation says so; `PartyCore._no_successor` is the
-  one place to change. Not deployed; not checked on a phone.
+  one place to change. **Owner decision (AVR-580):** the opt-out is not persisted by the server; after a
+  Pi restart only the same browser's marker keeps a person out, and a different browser or profile on
+  the same phone joins automatically. Server persistence stays a separate, unapproved change. Not
+  deployed; not checked on a phone.
