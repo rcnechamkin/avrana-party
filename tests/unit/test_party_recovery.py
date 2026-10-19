@@ -154,7 +154,7 @@ class HostGoneMidGame(unittest.TestCase):
         self.assertIsNone(pc.party.host_id)
         clock.advance(core.LIVE_WINDOW * 4)
         pc.tick()
-        pc.join('device-a', 'Ana')
+        pc.reconnect('device-a', 'Ana')
         self.assertEqual(pc.party.host_id, solo.id)
         _, p = pc.participant_for('device-a', 'bluff')
         self.assertEqual((p.id, p.role), (pid, 'player'))

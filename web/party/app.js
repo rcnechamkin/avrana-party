@@ -29,6 +29,8 @@ import { pickCover } from './lib/cover-art.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
+import { createDeparture } from './lib/departure.js';
+import { leaveWords } from './lib/states.js';
 import { createGameOrigins, gameAddress } from './lib/game-origins.js';
 import { createGoingWatchdog } from './lib/going-watchdog.js';
 import { createDeviceChecker, deviceRequirements } from './lib/device-check.js';
@@ -306,6 +308,9 @@ function partyAction(game, mode, host) {
     return h('button', { type: 'button', class: 'btn btn-outline', text: 'Choose your name to play',
       onclick: () => openProfile() });
   }
+  if (mode.kind === 'reconnect') {
+    return h('button', { type: 'button', class: 'btn btn-outline', text: 'Reconnect to play', onclick: () => reconnect() });
+  }
   if (mode.kind === 'start') {
     // Busy is said, not enforced by removing the button from reach: it keeps its place and the
     // focus while the start is on its way (hostStart ignores a second press).
@@ -354,13 +359,57 @@ function partyIdentity() {
 /** Presence is automatic (ADR 0011): once this phone has a profile it is in the party. Called on
  * every view, so a reopened page, a new party after a restart or a fresh profile all just join. */
 async function ensurePresent(view) {
-  if (view.me || state.joining) return;
+  if (view.me || view.departed || state.joining) return;   // left on purpose (AVR-580): only Reconnect brings it back
   const who = partyIdentity();
   if (!who) return;
   state.joining = true;
   const res = await party.join(who.name, who.avatar);
   state.joining = false;
   if (!res.ok) $('party-note').textContent = res.message ? `${res.message} Change it in your profile.` : '';
+}
+
+/** Reconnect (AVR-580): the person's own opt back in after Leave. Party Core then puts this phone
+ * where the Party is now; nothing here remembers where it was. */
+async function reconnect() {
+  const who = partyIdentity();
+  if (!who) { openProfile(); return; }
+  if (state.joining) return;
+  state.joining = true;
+  $('reconnect-btn').disabled = true;
+  const res = await party.reconnect(who.name, who.avatar);
+  state.joining = false;
+  $('reconnect-btn').disabled = false;
+  $('reconnect-note').textContent = res.ok ? '' : res.error === 'offline' || res.status >= 500
+    ? 'Couldn’t reach the party. Check the Wi-Fi and try again.' : res.message || 'Couldn’t reconnect. Please try again.';
+  if (!res.ok) $('reconnect-btn').focus();
+}
+
+/** Leave Party (AVR-580): say what it does, to the Host most of all, then ask. It changes only this
+ * person's membership; it is not Home, End or Quit & Spectate. */
+function openLeave() {
+  const view = party.view(), impact = view && view.me && view.me.leave;
+  if (!impact) return;
+  const words = leaveWords(impact);
+  $('leave-text').textContent = words.text;
+  $('leave-host').textContent = words.host;
+  $('leave-note').textContent = '';
+  $('leave-confirm').disabled = false;
+  if (!$('leave').open) $('leave').showModal();
+  $('leave-cancel').focus();
+}
+
+async function confirmLeave() {
+  $('leave-confirm').disabled = true;
+  const res = await party.leave();
+  if (!res.ok) {          // not confirmed: Party Core may or may not have removed this phone, so do not claim it
+    $('leave-note').textContent = 'Couldn’t confirm that you left. Check the Wi-Fi and try again.';
+    $('leave-confirm').disabled = false;
+    return;
+  }
+  $('leave').close();
+  if (state.page !== 'home') { history.pushState(null, '', location.pathname + location.search); showPage('home'); }
+  renderParty(party.view());
+  $('reconnect-h').focus({ preventScroll: true });
 }
 
 /** A person at the party: face, name, and what is true of them in words (never colour or an
@@ -503,7 +552,7 @@ function renderHome() {
 
 /** Everything open over the frame. None of it may stay over a place that changed underneath, or
  * over the Party moving (to a briefing, to a game, home again). */
-const SHEETS = ['social', 'about-limited', 'lib-filters', 'lib-views'];
+const SHEETS = ['social', 'about-limited', 'lib-filters', 'lib-views', 'leave'];
 function closeSheets() {
   for (const id of SHEETS) if ($(id).open) $(id).close();
   if ($('rules').open) $('rules').close();
@@ -565,13 +614,17 @@ function openSocial(want) {
 
 function renderParty(view) {
   const me = view.me;
+  const gone = !me && Boolean(view.departed);              // left on purpose: Reconnect? (AVR-580)
   $('party').hidden = false;
-  $('party-people').hidden = false;
+  $('party-people').hidden = gone;
+  $('reconnect').hidden = !gone;
+  $('party-leave-row').hidden = !me;
+  if (me) $('reconnect-note').textContent = '';
   const count = view.members.length;
   $('party-count').textContent = count === 1 ? '1 person' : `${count} people`;
   const host = view.members.find((m) => m.host);
   const people = roster(view);
-  $('party-lede').textContent = me ? hereLine(count)
+  $('party-lede').textContent = me ? hereLine(count) : gone ? 'You left the party.'
     : partyIdentity() ? 'Joining the party…' : 'Choose your name to join the party.';
   $('party-names').textContent = me ? namesLine(people) : '';
   const away = awayHost(view);
@@ -1351,7 +1404,8 @@ function syncPresence() {
   if (!state.partyMode || !view || !who) return;
   if (view.me) party.rename(who.name, who.avatar); else ensurePresent(view);
 }
-const party = createPartyClient({ onView: onPartyView, onLink });
+const departure = createDeparture(storage);
+const party = createPartyClient({ onView: onPartyView, onLink, departure });
 const gameOrigins = createGameOrigins();
 const goingWatch = createGoingWatchdog({ retry: goToRound, giveUp: () => goingStuck(true) });
 $('going-retry').onclick = () => {
@@ -1446,6 +1500,11 @@ function syncChat() {
 }
 $('hud').onclick = () => openSocial(null);
 $('party-chat').onclick = () => openSocial('chat');
+$('party-leave').onclick = () => openLeave();
+$('leave-confirm').onclick = () => confirmLeave();
+$('leave-cancel').onclick = () => $('leave').close();
+$('leave-close').onclick = () => $('leave').close();
+$('reconnect-btn').onclick = () => reconnect();
 $('social-tabs').onclick = (event) => {
   const button = event.target.closest('button[data-tab]');
   if (!button) return;

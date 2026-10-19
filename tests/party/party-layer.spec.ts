@@ -408,7 +408,8 @@ test('mounted by a page itself (the vendored file): a phone that is no longer a 
     await openLayer(bob.page);
     await expect(bob.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'open');
     await bob.page.evaluate(() => localStorage.removeItem('wc-name'));   // so nothing joins again
-    expect((await post(bob, 'leave', {})).status()).toBe(200);
+    // the box starts over (not a Leave: a phone that left on purpose goes to Party Home, AVR-580)
+    expect((await bob.page.request.post('/__test__/party/reset')).status()).toBe(204);
     await expect(bob.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'hidden');
     await expect(bob.page.locator(FRAME)).toHaveCSS('visibility', 'hidden');
     const box = (await bob.page.locator('h1').boundingBox())!;

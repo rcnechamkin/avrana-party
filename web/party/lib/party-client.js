@@ -19,7 +19,8 @@ export const FIRST_RETRY_MS = [1000, 2000, 5000, 10000, 20000, 30000];
 export const transient = (res) => !res.ok && (res.status === 0 || res.status >= 500);
 
 export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), base = 'api/', onView, onLink = () => {},
-  schedule = setTimeout, cancel = clearTimeout } = {}) {
+  schedule = setTimeout, cancel = clearTimeout, departure = null } = {}) {
+  const settle = (v) => (departure ? departure.apply(v) : v);   // left-by-choice (AVR-580) rides on every view
   let view = null, gen = 0, epoch = 0, poll = null, wake = null;
 
   async function request(path, body) {
@@ -38,6 +39,7 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
 
   function accept(v, force = false) {
     if (!v) return false;
+    settle(v);
     if (!force && view && v.party === view.party && v.version <= view.version) return false;
     const previous = view;
     view = v;
@@ -66,7 +68,7 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
         const res = await fetch(`${base}state?since=${view ? view.version : 0}&wait=${failures ? 0 : WAIT_S}`,
           { cache: 'no-store', credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
         answered = true;
-        v = res.ok ? readView(await res.json().catch(() => null)) : null;
+        v = res.ok ? settle(readView(await res.json().catch(() => null))) : null;
       } catch { /* aborted, offline, or the Pi is restarting */ }
       cancel(timer);
       if (g !== gen) return;
@@ -122,14 +124,14 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     /** The first look: a Party Core view, or null (no Party here: catalog mode). Observes only. */
     async probe() {
       const res = await request('state');
-      return res.ok ? readView(res.body) : null;
+      return res.ok ? settle(readView(res.body)) : null;
     },
     /** probe(), retried on a transient failure (FIRST_RETRY_MS); null once Party Core answers that
      * it is not here (a 4xx) or the retries are used up. */
     async probeRetrying(delays = FIRST_RETRY_MS) {
       for (let i = 0; ; i++) {
         const res = await request('state');
-        if (res.ok) return readView(res.body);
+        if (res.ok) return settle(readView(res.body));
         if (!transient(res) || i >= delays.length) return null;
         await sleep(delays[i]);
       }
@@ -147,7 +149,15 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
      * so reopening a page simply restores it. */
     join: (name, avatar) => act('join', { name, avatar }),
     rename: (name, avatar) => act('rename', { name, avatar }),
+    /** Leave Party: the person's intentional departure (AVR-580). Only a 200 means Core removed
+     * them; anything else is unconfirmed and the page must say so. */
     leave: () => act('leave', {}),
+    /** The person's own opt back in after Leave: the only way back (an automatic join is refused). */
+    async reconnect(name, avatar) {
+      const res = await act('reconnect', { name, avatar });
+      if (res.ok && res.body && res.body.me && departure) departure.clear();
+      return res;
+    },
     /** The host, from a round's results: everyone back to Party Home. */
     goHome: () => act('home', { if_version: view ? view.version : null }),
     end: () => act('session/end', { if_version: view ? view.version : null }),

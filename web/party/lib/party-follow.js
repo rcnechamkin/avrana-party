@@ -24,6 +24,7 @@
 // The device cookie (Path=/party/, HttpOnly) is the only identity; this module never sees or
 // sends a token.
 import { createPartyClient } from './party-client.js';
+import { createDeparture } from './departure.js';
 import { createProfile } from './profile.js';
 import { destination, locationOf, partyGame } from './party-mode.js';
 import { createGameOrigins, gameAddress } from './game-origins.js';
@@ -74,10 +75,14 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
   let ready = false, moving = false, endBtn = null, armed = null, mounted = null;
   const gameOrigins = createGameOrigins({ fetch });
   let originsFor = null;                      // the game list the registrations were asked for
-  const client = createPartyClient({ fetch, base: '/party/api/', onView });
+  const client = createPartyClient({ fetch, base: '/party/api/', onView, departure: createDeparture(storage) });
   let first = await client.probeRetrying(retryMs);  // a blip at load must not leave this page unfollowed (AVR-475)
   if (!first) return null;                    // no Party Core here: the page stays as it is
   if (!first.me) {                            // presence is automatic once there is a profile
+    if (first.departed) {                     // ...unless this phone left on purpose (AVR-580): Party Home asks it
+      go('/party/');
+      return null;
+    }
     const who = profileIdentity(storage);
     if (!who) return null;
     const res = await client.join(who.name, who.avatar);
@@ -165,6 +170,10 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
     if (!ready || moving) return;           // the first join answers before the page is wired
     if (!v.me) {                              // no longer a member (a new party after a restart)
       dropLayer();
+      if (v.departed) {                       // left on purpose (here or in another tab): never rejoin from a game page
+        moving = true;
+        return leave('/party/');
+      }
       const who = profileIdentity(storage);
       if (who) client.join(who.name, who.avatar);
       return;

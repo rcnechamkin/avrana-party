@@ -66,7 +66,7 @@ class Membership(unittest.TestCase):
         a = pc.join('device-a', 'Ana')
         pc.leave('device-a')
         self.assertEqual(pc.view('device-a')['members'], [])
-        self.assertIs(pc.join('device-a', 'Ana'), a)
+        self.assertIs(pc.reconnect('device-a', 'Ana'), a)
 
     def test_duplicate_names_are_numbered_and_names_never_authorize(self):
         pc, _ = make()
@@ -325,7 +325,7 @@ class Session(unittest.TestCase):
         self.pc.leave('device-b')
         with self.assertRaises(Refused):
             self.pc.participant_for('device-b')                # left: no ticket
-        self.pc.join('device-b', 'Ben')
+        self.pc.reconnect('device-b', 'Ben')
         _, p3 = self.pc.participant_for('device-b')
         self.assertEqual(p3.id, p1.id)                         # back: the same game identity
         self.pc.game_reported_end(s.id, 'completed')
@@ -1254,7 +1254,7 @@ class QuitAndSpectate(unittest.TestCase):
         self.pc.leave('device-c')
         self.refused('no_successor', self.pc.quit_and_spectate, 'device-a', self.v())
         self.assertEqual((self.pc.party.host_id, s.choices), (self.a.id, {}))
-        self.pc.join('device-b', 'Ben')
+        self.pc.reconnect('device-b', 'Ben')
         self.clock.advance(core.LIVE_WINDOW + 1)                                # Ben is away now
         self.pc.touch('device-a')
         self.refused('no_successor', self.pc.quit_and_spectate, 'device-a', self.v())
@@ -1266,7 +1266,7 @@ class QuitAndSpectate(unittest.TestCase):
         self.pc.touch('device-a')
         self.assertEqual(self.pc.party.host_id, self.b.id)
         self.pc.leave('device-a')
-        self.pc.join('device-a', 'Ana')                                         # left and came back
+        self.pc.reconnect('device-a', 'Ana')                                    # left and came back
         self.assertEqual(self.pc.party.host_id, self.b.id)
         # the new host going quiet still passes hosting on by the timer, as before
         self.clock.advance(core.LIVE_WINDOW + core.HOST_GRACE + 1)

@@ -152,3 +152,21 @@ The decision above is unchanged. This adds the product-level invariant it alread
   during a round is a change to ADR 0010's role boundary whose details (the seat, and what the
   quitter may see) are still open. Decisions 1 to 4, 6 and 7 are unchanged. Design:
   [2026-10-16 Control Center](../design/proposals/2026-10-16-control-center.md).
+- **2026-10-18 (owner decision, AVR-580; implemented in source, PROPOSED for ADR review).** Decision 2
+  ("There is no Join and no Leave button") is amended: **Leave Party** is an intentional departure
+  from the membership, and nothing else. It is not Home, End, a switch, hand-over or Quit & Spectate,
+  and a non-host's Leave never moves the Party. Presence stays automatic *except* for a device that
+  left on purpose: Party Core holds that opt-out (`leave` marks the member left; `join` is refused
+  with `left_party` for it, from any tab, page, wake or stale URL) until the person's own
+  `POST /party/api/reconnect`. The view carries `departed` for that device, `me.leave` (what Leave
+  would do: Host or not, who would host next, whether a round is on) so the confirmation says it
+  first, and the browser keeps a same-origin marker so a Party that restarted (memory-only) still
+  does not bring a person back who chose to leave. Leave is authenticated by the device cookie
+  and idempotent. A Host who leaves hands the role to the earliest-joined member who is here (Full
+  Mode preferred) at once and keeps no authority; coming back never restores it. A live round, its
+  seats and `nav` are untouched. Unchanged: away-grace (silence, lock, signal loss is never Leave),
+  AVR-475 abandoned-round recovery, AVR-132 Quit & Spectate boundaries (D5b mid-round stays
+  undecided). **Open owner decision:** a Host leaving with no eligible successor. Source does the
+  non-destructive thing (the role is vacant, the round goes on, the next member seen claims it,
+  nothing is ended or refused) and the confirmation says so; `PartyCore._no_successor` is the
+  one place to change. Not deployed; not checked on a phone.

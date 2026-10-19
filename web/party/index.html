@@ -46,7 +46,8 @@
     <!-- Home: who is here and who hosts. -->
     <section id="view-home" data-page="home">
       <!-- Party mode (ADR 0011, the console model): shown only when Party Core answers. Being here is
-           automatic once this phone has a profile; there is no Join and no Leave. -->
+           automatic once this phone has a profile, until its person deliberately leaves (AVR-580):
+           then only Reconnect brings it back. -->
       <section id="party" class="mt-2" hidden aria-label="Who is here">
         <p id="party-lede" class="avrana-lede"></p>
         <p id="party-names" class="avrana-sub empty:hidden"></p>
@@ -54,6 +55,13 @@
         <p id="party-result" class="avrana-sub" role="status" hidden></p>
         <!-- The Host stopped answering, or hosting passed on: Party Core's own rule, said where it applies. -->
         <p id="party-state" class="avrana-state" role="status" hidden></p>
+        <!-- This phone left the Party on purpose: no automatic join, from any tab, until Reconnect. -->
+        <div id="reconnect" class="avrana-surface mt-3 grid gap-2 px-4 py-5" role="region" aria-labelledby="reconnect-h" hidden>
+          <h2 id="reconnect-h" class="m-0 text-xl font-semibold" tabindex="-1">Reconnect?</h2>
+          <p class="m-0">You left the party. Your name and settings are still on this phone.</p>
+          <button type="button" id="reconnect-btn" class="btn btn-primary btn-block">Reconnect</button>
+          <p id="reconnect-note" class="m-0 text-body text-warning empty:hidden" role="status"></p>
+        </div>
       </section>
       <p id="status" class="avrana-status mt-3" role="status" data-state="checking">
         <span class="dot" aria-hidden="true"></span>
@@ -140,6 +148,7 @@
       </section>
       <ul class="avrana-list mt-6">
         <li id="party-chat-row" hidden><button id="party-chat" type="button" aria-haspopup="dialog"><span data-icon="message-circle"></span><span>Party chat</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
+        <li id="party-leave-row" hidden><button id="party-leave" type="button" aria-haspopup="dialog"><span data-icon="wifi-off"></span><span>Leave Party</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
       </ul>
     </section>
 
@@ -264,6 +273,18 @@
     <label for="chat-text" class="sr-only">Message</label>
     <input id="chat-text" class="input min-w-0 flex-1 text-base" maxlength="400" autocomplete="off" placeholder="Message the Party" required><button id="chat-send" type="submit" class="btn btn-primary" disabled><span data-icon="send-horizontal"></span>Send</button>
   </form>
+</dialog>
+
+<!-- Leave Party (AVR-580): an intentional departure, confirmed. It says what happens, never moves the
+     Party, and is not Home, End or Quit & Spectate. -->
+<dialog id="leave" class="avrana-sheet" aria-labelledby="leave-h">
+  <div class="head"><h2 id="leave-h" class="m-0">Leave the Party?</h2><button id="leave-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
+  <div class="body grid gap-3">
+    <p id="leave-text" class="m-0"></p>
+    <p id="leave-host" class="m-0 empty:hidden"></p>
+    <p id="leave-note" class="m-0 text-warning empty:hidden" role="status"></p>
+  </div>
+  <div class="foot grid gap-2"><button id="leave-confirm" type="button" class="btn btn-primary btn-block">Leave Party</button><button id="leave-cancel" type="button" class="btn btn-ghost btn-block">Stay</button></div>
 </dialog>
 
 <!-- What Limited Mode means on this phone (ADR 0012), from the mark in the top bar. -->

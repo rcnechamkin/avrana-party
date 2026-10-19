@@ -83,6 +83,23 @@ export function briefLine(panel, { away = null, passed = null } = {}) {
   return lead + (panel.hostName ? `Waiting for ${panel.hostName} to start` : 'Nobody is hosting right now.');
 }
 
+/** What Leave Party does, in words, for the confirmation (AVR-580). `impact` is Party Core's own
+ * answer (view.me.leave), so what is promised is what Core will do. Never silent about the Host's
+ * consequence; nothing here ends a round or moves anyone. */
+export function leaveWords(impact) {
+  const text = impact.host
+    ? 'You will leave the Party. Your name and settings stay on this phone, and you can reconnect later.'
+    : 'You will leave the Party. Everyone else stays where they are' + (impact.round ? ', and the round goes on.' : '.')
+      + ' Your name and settings stay on this phone, and you can reconnect later.';
+  if (!impact.host) return { text, host: '' };
+  const round = impact.round ? ' The round goes on.' : '';
+  const host = impact.successor
+    ? `You are the Host. ${impact.successor} becomes the Host right away. You won’t be the Host when you come back.${round}`
+    : `You are the Host and nobody else is here to take over. The Party will have no Host until someone arrives`
+      + (impact.round ? ', and the round goes on with nobody able to end it.' : '.');
+  return { text, host };
+}
+
 const listed = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
 
 /** Trouble on the Party box that changes what can be played, for the Host: from the status
