@@ -150,7 +150,8 @@ NFC first-record rule; which browser the camera opens.
 
 ## The device and the join card
 
-- **Card:** network name, password, both QR codes, "then open <the party address>" (which address is canonical is open —
+- **Card (built, AVR-76):** `tools/join-card/join-card.mjs` makes it offline; usage and the real-phone
+  check are in [join-card](../runbooks/join-card.md). Contents: network name, password, both QR codes, "then open <the party address>" (which address is canonical is open —
   `PARTY-PLATFORM.md` §16.1), NFC marks, the
   troubleshooting lines.
 - **Screen:** a ≥ 2.9-inch e-ink panel fits both QR codes side by side; a 128×64 OLED is too small.
