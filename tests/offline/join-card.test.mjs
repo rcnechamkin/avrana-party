@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -261,6 +261,16 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
       assert.match(res.said, /inside a Git working tree/);
       assert.ok(!existsSync(join(other, 'sub', 'card.html')));
       assert.equal(cli(['--ssid', 'Avrana Party', '--party-only', '--out', join(other, 'party.html')]).status, 0);
+
+      // A GIT_DIR/GIT_WORK_TREE inherited from a hook or alias must not answer for another repository.
+      const plain = join(dir, 'plain');
+      mkdirSync(plain);
+      const env = { AVRANA_WIFI_PASSWORD: PASSWORD, GIT_DIR: join(other, '.git'), GIT_WORK_TREE: other };
+      const inherited = cli(['--ssid', 'Avrana Party', '--out', join(other, 'card2.html')], env);
+      assert.equal(inherited.status, 2, inherited.said);
+      assert.ok(!existsSync(join(other, 'card2.html')));
+      const outside = cli(['--ssid', 'Avrana Party', '--out', join(plain, 'card.html')], env);   // and a plain directory is not refused because of it
+      assert.equal(outside.status, 0, outside.said);
     }
     assert.ok(!existsSync(new URL('../../join-card.html', import.meta.url)));
     assert.ok(!existsSync(new URL('../../..zz-avr76', import.meta.url)));

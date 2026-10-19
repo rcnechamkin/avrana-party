@@ -38,12 +38,26 @@ function insideRepo(p) {
 
 // Any Git working tree, not only this checkout: a card written into another clone or worktree of
 // this repository (or any other) could be committed there. Asks git from the nearest existing
-// directory; without git, insideRepo() still guards this checkout.
+// directory, with the caller's GIT_* location variables removed (a hook or alias sets GIT_DIR,
+// which would answer for another repository). Fails closed: only git's own "not a git repository"
+// counts as outside. Without git at all, insideRepo() still guards this checkout and a warning says
+// other clones are unchecked.
+const GIT_LOCATION_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES',
+  'GIT_COMMON_DIR', 'GIT_DISCOVERY_ACROSS_FILESYSTEM'];
 function insideGitWorkTree(p) {
   let dir = dirname(resolve(p));
   while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
-  const res = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', windowsHide: true });
-  return res.status === 0 && res.stdout.trim() === 'true';
+  const env = { ...process.env };
+  for (const name of GIT_LOCATION_VARS) delete env[name];
+  env.LC_ALL = 'C';                                    // git's messages in English, for the check below
+  const res = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', windowsHide: true, env });
+  if (res.error) {
+    console.error('join-card: git was not found, so only this checkout is guarded; do not write the card into another clone');
+    return false;
+  }
+  if (res.status === 0) return res.stdout.trim() === 'true';
+  if (/not a git repository/i.test(res.stderr || '')) return false;
+  throw new JoinCardError('could not tell whether the output path is inside a Git working tree (git refused it); choose a path outside any repository');
 }
 
 function promptHidden(question) {
