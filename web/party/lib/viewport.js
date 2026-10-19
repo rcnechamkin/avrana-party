@@ -11,7 +11,7 @@ export function trackVisibleHeight(win = window) {
   const root = win.document.documentElement;
   const sync = () => {
     root.style.setProperty('--avrana-vvh', `${Math.round(vv.height)}px`);
-    root.style.setProperty('--avrana-vvt', `${Math.round(vv.offsetTop)}px`);
+    root.style.setProperty('--avrana-vvt', `${Math.max(0, Math.round(vv.offsetTop))}px`);
   };
   sync();
   vv.addEventListener('resize', sync);

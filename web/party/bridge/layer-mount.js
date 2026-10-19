@@ -75,7 +75,7 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
     const px = (v) => Math.max(0, parseFloat(v) || 0);
     // ox/oy: where the visible region starts inside the layout viewport (a panned iPhone keyboard); the frame is fixed to the latter
     return { w: Math.round(vv ? vv.width : win.innerWidth), h: Math.round(vv ? vv.height : win.innerHeight),
-      ox: vv ? Math.round(vv.offsetLeft) : 0, oy: vv ? Math.round(vv.offsetTop) : 0,
+      ox: vv ? Math.max(0, Math.round(vv.offsetLeft)) : 0, oy: vv ? Math.max(0, Math.round(vv.offsetTop)) : 0,   // never negative: iOS rubber-banding
       insets: cs ? { top: px(cs.paddingTop), right: px(cs.paddingRight), bottom: px(cs.paddingBottom), left: px(cs.paddingLeft) }
         : { top: 0, right: 0, bottom: 0, left: 0 } };
   }

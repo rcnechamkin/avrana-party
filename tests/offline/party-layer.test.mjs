@@ -238,6 +238,8 @@ test('a panned keyboard moves the open frame with the visible region; a pan alon
   vv.offsetTop = 60; for (const f of vvl.scroll) f();           // panned further: moves, sends nothing
   assert.equal(layer.frame.style.top, '60px');
   assert.equal(page.posted.slice(sent).filter(([m]) => m.type === 'viewport').length, 1);
+  vv.offsetTop = -14; for (const f of vvl.scroll) f();          // rubber-banding past the top never lifts the frame off screen
+  assert.equal(layer.frame.style.top, '0px');
   layer.stop();
   assert.equal(vvl.resize.size + vvl.scroll.size, 0, 'both visualViewport listeners are removed');
 });
