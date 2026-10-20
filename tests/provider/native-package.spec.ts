@@ -160,3 +160,34 @@ test('a package played to its end by its driver: the Party accepts the signed re
     for (const p of [ana, ben]) expect(p.errors).toEqual([]);
   } finally { await close(ana, ben); }
 });
+
+// Party 1.0: the Party moves every phone, never the game (ADR 0011). For any package, through the real Party:
+// a phone that went offline mid-round and a phone that joins mid-round both follow the Party; the late one
+// watches; a non-Host cannot end the round; the Host's End (Party Core's own endpoint, not a game button)
+// takes every phone home.
+test('a package follows the Party: offline and back, a late joiner watches, only the Host ends, and End moves everyone', async ({ browser, request }) => {
+  const { id } = await packageRow(request);
+  const { ana, ben } = await table(browser, request, id);
+  let dana: any = null;
+  try {
+    await ben.context.setOffline(true);
+    await ben.page.waitForTimeout(5_000);                              // well inside away-grace
+    await ben.context.setOffline(false);
+    await expect(ben.page).toHaveURL(`${GAMES}/games/${id}/`);
+    dana = await phone(browser, 'Dana', 2);                           // joins Party Home while the round is on
+    await expect(dana.page).toHaveURL(`${GAMES}/games/${id}/`);       // taken to the round, nobody pressed Join
+    await expect.poll(async () => (await redeemed(dana.page)).filter((r: any) => r.ok).at(-1)?.role).toBe('spectator');
+    const api = async (p: any, path: string) => {
+      const state = await (await p.context.request.get(`${PARTY}/party/api/state`)).json();
+      // as the Party's own page would send it: its Origin, JSON, the phone's cookie
+      return p.context.request.post(`${PARTY}/party/api/${path}`, { headers: { Origin: PARTY }, data: { if_version: state.version } });
+    };
+    const refused = await api(ben, 'session/end');                    // not the Host: refused, nobody moves
+    expect(refused.status()).toBe(403);
+    expect((await refused.json()).error).toBe('not_host');
+    await expect(ana.page).toHaveURL(`${GAMES}/games/${id}/`);
+    expect((await api(ana, 'session/end')).ok()).toBe(true);
+    for (const p of [ana, ben, dana]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
+    for (const p of [ana, ben, dana]) { expect(p.direct).toEqual([]); expect(p.errors).toEqual([]); }
+  } finally { await close(ana, ben, dana); }
+});
