@@ -3,7 +3,7 @@
 - **Status:** **PROPOSED (2026-10-20). Not started; needs owner approval of scope, game and the decisions in §6.**
 - **Reads with:** [SDK readiness audit](../../findings/2026-10-20-sdk-readiness-audit.md),
   Games `docs/DEVELOPING-A-GAME.md`, [ADR 0011](../../adr/0011-party-console-model.md),
-  [ADR 0013](../../adr/0013-party-and-game-browser-origins.md), AVR-512, AVR-421, AVR-59.
+  [ADR 0013](../../adr/0013-party-and-game-browser-origins.md), AVR-676 (this sprint), AVR-512, AVR-421, AVR-59.
 
 ## 1. Question
 
