@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Owner-run, offline: write the printable two-QR join card (AVR-76). See docs/runbooks/join-card.md.
 //
-//   node tools/join-card/join-card.mjs --ssid "Avrana Party" --out ~/avrana-join-card.html
+//   node tools/join-card/join-card.mjs --ssid "Avrana Party" --out <local, non-synced dir>/avrana-join-card.html
 //   node tools/join-card/join-card.mjs --ssid "Avrana Party" --party-only --out party-link.html
 //
 // The Wi-Fi password is read from AVRANA_WIFI_PASSWORD or typed at a hidden prompt, never from the
 // command line (shell history, process lists). It is never printed, and a card that contains it is
-// never written inside this repository.
+// never written inside a Git working tree.
 import { realpathSync, writeFileSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { basename, dirname, resolve, relative, isAbsolute, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -40,8 +40,7 @@ function insideRepo(p) {
 // this repository (or any other) could be committed there. Asks git from the nearest existing
 // directory, with the caller's GIT_* location variables removed (a hook or alias sets GIT_DIR,
 // which would answer for another repository). Fails closed: only git's own "not a git repository"
-// counts as outside. Without git at all, insideRepo() still guards this checkout and a warning says
-// other clones are unchecked.
+// counts as outside; if git cannot run at all, the card is refused.
 const GIT_LOCATION_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES',
   'GIT_COMMON_DIR', 'GIT_DISCOVERY_ACROSS_FILESYSTEM'];
 function insideGitWorkTree(p) {
@@ -52,8 +51,7 @@ function insideGitWorkTree(p) {
   env.LC_ALL = 'C';                                    // git's messages in English, for the check below
   const res = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', windowsHide: true, env });
   if (res.error) {
-    console.error('join-card: git was not found, so only this checkout is guarded; do not write the card into another clone');
-    return false;
+    throw new JoinCardError('git could not run, so the tool cannot check that the output path is outside every Git working tree; install git or put it on PATH (a --party-only card needs no check)');
   }
   if (res.status === 0) return res.stdout.trim() === 'true';
   if (/not a git repository/i.test(res.stderr || '')) return false;

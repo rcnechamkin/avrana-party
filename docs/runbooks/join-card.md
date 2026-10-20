@@ -7,16 +7,23 @@ access point, captive probes, DNS or nginx.
 
 ## Make the card (laptop, offline)
 
-Type the password at the hidden prompt (it then stays out of shell history). Use a path outside
-this repository:
+Write the card to a **local folder that no cloud service syncs** and that is not inside any Git
+repository. Not Desktop or Documents (OneDrive and iCloud often sync them), and not OneDrive,
+iCloud Drive, Dropbox or Google Drive. Type the password at the hidden prompt, which keeps it out
+of shell history. Git must be installed: the tool refuses a password card if it cannot check for
+a working tree.
 
 ```powershell
-node tools/join-card/join-card.mjs --ssid "Avrana Party" --out "$HOME\Documents\avrana-join-card.html"
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Avrana\join-cards" | Out-Null
+node tools/join-card/join-card.mjs --ssid "Avrana Party" --out "$env:LOCALAPPDATA\Avrana\join-cards\avrana-join-card.html"
 ```
 
 ```bash
-node tools/join-card/join-card.mjs --ssid "Avrana Party" --out "$HOME/avrana-join-card.html"
+mkdir -p ~/.local/share/avrana/join-cards    # macOS: ~/Library/Application\ Support/Avrana/join-cards
+node tools/join-card/join-card.mjs --ssid "Avrana Party" --out ~/.local/share/avrana/join-cards/avrana-join-card.html
 ```
+
+Delete the file after printing, or keep it only in that folder.
 
 Without a terminal (a script), set `AVRANA_WIFI_PASSWORD` in the environment instead. Open the file in
 a browser and print it (A6 landscape, or any size with each QR code at least 3 cm wide). The tool:
@@ -28,7 +35,8 @@ a browser and print it (A6 landscape, or any size with each QR code at least 3 c
 - prints the network name, password and typed address under the codes, and the fixes for the known
   failures (no-internet prompt, VPN/Private DNS, mobile data, captive mini-browser, Chrome's Local
   Network prompt on iPhone).
-- refuses to write a card with the password inside this repository and never prints the password.
+- refuses to write a card with the password inside any Git working tree (or if git cannot run), and
+  never prints the password.
   The card itself contains it: keep it with the box, do not commit, post or photograph it.
 - **Password changed?** Generate and print a new card (the same `--out` path is replaced); the card
   shows the date it was printed.

@@ -255,7 +255,8 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
     // Another Git working tree (a second clone or worktree of this repository, or any repository)
     // is refused too: the card could be committed there.
     const other = join(dir, 'other-clone');
-    if (spawnSync('git', ['init', '-q', other]).status === 0) {
+    assert.equal(spawnSync('git', ['init', '-q', other]).status, 0, 'git is required for this test and for password cards');
+    {
       const res = cli(['--ssid', 'Avrana Party', '--out', join(other, 'sub', 'card.html')], { AVRANA_WIFI_PASSWORD: PASSWORD });
       assert.equal(res.status, 2, res.said);
       assert.match(res.said, /inside a Git working tree/);
@@ -274,6 +275,33 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
     }
     assert.ok(!existsSync(new URL('../../join-card.html', import.meta.url)));
     assert.ok(!existsSync(new URL('../../..zz-avr76', import.meta.url)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('without a runnable git, a password card is refused (fail closed); a Party-only card still works', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'avr76-'));
+  try {
+    const empty = join(dir, 'empty-path');
+    mkdirSync(empty);
+    // PATH holds only an empty directory, so git cannot be found. Node itself runs by full path.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^path$/i.test(k)));
+    const run = (args, extra = {}) => {
+      const res = spawnSync(process.execPath, [CLI, ...args], {
+        encoding: 'utf8', input: '', env: { ...env, AVRANA_WIFI_SSID: '', PATH: empty, ...extra },
+      });
+      return { ...res, said: res.stdout + res.stderr };
+    };
+    const out = join(dir, 'card.html');
+    const res = run(['--ssid', 'Avrana Party', '--out', out], { AVRANA_WIFI_PASSWORD: PASSWORD });
+    assert.equal(res.status, 2, res.said);
+    assert.match(res.said, /git could not run/);
+    assert.ok(!res.said.includes('test-only'), res.said);
+    assert.ok(!existsSync(out));
+    const party = join(dir, 'party.html');
+    assert.equal(run(['--ssid', 'Avrana Party', '--party-only', '--out', party]).status, 0);
+    assert.ok(existsSync(party));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
