@@ -23,11 +23,11 @@ test.beforeEach(({}, info) => test.skip(process.platform === 'win32' || !process
 test.setTimeout(600_000);
 const expect = baseExpect.configure({ timeout: 15_000 });
 
-async function packageId(request: any) {
+async function packageRow(request: any) {
   const catalog = await (await request.get(`${LOOPBACK}/party/catalog.json`)).json();
   const rows = catalog.games.filter((g: any) => g.tier === 'community');
   expect(rows).toHaveLength(1);
-  return rows[0].id as string;
+  return rows[0] as { id: string, players: { min: number, max: number } };
 }
 
 async function phone(browser: Browser, name: string, n = 0) {
@@ -68,26 +68,29 @@ const redeemed = (page: Page) => page.evaluate(() => (window as any).__pkg?.rede
 const token = (page: Page) => page.evaluate(() => (window as any).__pkg?.tokens.at(-1));
 async function close(...phones: any[]) { for (const p of phones) if (p) await p.context.close(); }
 
-async function table(browser: Browser, request: any, id: string, spectator = false) {
+// Ana and Ben always play. With `seats`, the game's remaining seats are filled first (Party Core seats
+// members as players in join order up to the game's players.max), so that Cleo, the last to join, watches.
+async function table(browser: Browser, request: any, id: string, seats = 0) {
   expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
   const ana = await phone(browser, 'Ana'), ben = await phone(browser, 'Ben', 1);
-  const cleo = spectator ? await phone(browser, 'Cleo') : null;
+  const extra = [];
+  for (let i = 2; i < seats; i++) extra.push(await phone(browser, `Seat ${i + 1}`, i));
+  const cleo = seats ? await phone(browser, 'Cleo') : null;
   await startForEveryone(ana.page, id);
-  for (const p of [ana, ben, ...(cleo ? [cleo] : [])]) {
+  for (const p of [ana, ben, ...extra, ...(cleo ? [cleo] : [])]) {
     await expect(p.page).toHaveURL(`${GAMES}/games/${id}/`);
     await expect.poll(async () => (await redeemed(p.page)).filter((r: any) => r.ok).length).toBeGreaterThan(0);
   }
-  return { ana, ben, cleo };
+  return { ana, ben, extra, cleo };
 }
 
 test('a package: seats through the bridge, isolated game origin, reload keeps the seat, Host End returns everyone', async ({ browser, request }) => {
-  const id = await packageId(request);
-  const { ana, ben, cleo } = await table(browser, request, id, true);
+  const { id, players } = await packageRow(request);
+  const { ana, ben, extra, cleo } = await table(browser, request, id, Math.max(players.max, 2));
   try {
-    expect((await redeemed(ana.page)).at(-1).role).toBe('player');
-    expect((await redeemed(ben.page)).at(-1).role).toBe('player');
+    for (const p of [ana, ben, ...extra]) expect((await redeemed(p.page)).at(-1).role).toBe('player');
     expect((await redeemed(cleo!.page)).at(-1).role).toBe('spectator');
-    for (const p of [ana, ben, cleo!]) {
+    for (const p of [ana, ben, ...extra, cleo!]) {
       expect(await p.page.evaluate(() => document.cookie)).toBe('');
       expect(await p.context.cookies(GAMES)).toEqual([]);
       await expect(p.page.locator('iframe[title="Avrana Party"]')).toHaveAttribute('src', `${PARTY}/party/bridge.html`);
@@ -100,19 +103,19 @@ test('a package: seats through the bridge, isolated game origin, reload keeps th
     // The kit's "End game for everyone" (the Host's; it asks the Party through the bridge).
     ana.page.once('dialog', (d) => d.accept());
     await ana.page.locator('#end').click();
-    for (const p of [ana, ben, cleo!]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
+    for (const p of [ana, ben, ...extra, cleo!]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
     // The game's authority is gone with the session, whatever the phones do.
     expect((await request.post(`${LOOPBACK}/games/${id}/api/poll`, {
       headers: { Host: new URL(GAMES).host }, data: { token: oldToken, since: -1 },
     })).status()).toBe(403);
-    for (const p of [ana, ben, cleo!]) expect(p.errors).toEqual([]);
-  } finally { await close(ana, ben, cleo); }
+    for (const p of [ana, ben, ...extra, cleo!]) expect(p.errors).toEqual([]);
+  } finally { await close(ana, ben, ...extra, cleo); }
 });
 
 test('a package played to its end by its driver: the Party accepts the signed result', async ({ browser, request }) => {
   test.skip(!DRIVER, 'AVRANA_NATIVE_DRIVER names the game developer\'s driver module');
   const driver = await import(pathToFileURL(DRIVER!).href);
-  const id = await packageId(request);
+  const { id } = await packageRow(request);
   const { ana, ben } = await table(browser, request, id);
   try {
     const deadline = Date.now() + 540_000;
