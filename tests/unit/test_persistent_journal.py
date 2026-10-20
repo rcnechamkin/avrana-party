@@ -95,15 +95,19 @@ case $1 in --version) echo 'systemd 257 (stand-in)';; is-active) echo inactive; 
 exit 0
 '''
 
-# `journalctl --flush` creates the persistent system journal when the effective storage is
-# persistent, as journald does; AVRANA_TEST_NO_FLUSH=1 simulates a journald that did not switch.
+# `journalctl --flush` stands for journald switching to the card: it creates the persistent system
+# journal and removes the runtime one under /run. It does not read the configuration itself (the
+# script's effective-value check is what is under test); AVRANA_TEST_NO_FLUSH=1 simulates a journald
+# that did not switch.
 STUB_JOURNALCTL = r'''#!/usr/bin/env bash
 echo "journalctl $*" >>"$AVRANA_TEST_CALLS"
 case $1 in
   --flush)
     [[ ${AVRANA_TEST_NO_FLUSH:-} == 1 ]] && exit 0
-    mkdir -p "$AVRANA_JOURNALD_ROOT/var/log/journal/$(cat "$AVRANA_JOURNALD_ROOT/etc/machine-id")"
-    : >"$AVRANA_JOURNALD_ROOT/var/log/journal/$(cat "$AVRANA_JOURNALD_ROOT/etc/machine-id")/system.journal";;
+    mid=$(cat "$AVRANA_JOURNALD_ROOT/etc/machine-id")
+    mkdir -p "$AVRANA_JOURNALD_ROOT/var/log/journal/$mid"
+    : >"$AVRANA_JOURNALD_ROOT/var/log/journal/$mid/system.journal"
+    rm -rf "$AVRANA_JOURNALD_ROOT/run/log/journal/$mid";;
   --disk-usage) echo 'Archived and active journals take up 11.4M in the file system.';;
 esac
 '''
@@ -132,6 +136,9 @@ class Installer(unittest.TestCase):
         (self.root / 'etc/systemd/journald.conf.d').mkdir(parents=True)
         (self.root / 'usr/lib/systemd/journald.conf.d').mkdir(parents=True)
         (self.root / 'var').mkdir()
+        runtime = self.root / f'run/log/journal/{MACHINE_ID}'          # volatile: this boot's journal is in RAM
+        runtime.mkdir(parents=True)
+        (runtime / 'system.journal').write_bytes(b'')
         (self.root / 'etc/machine-id').write_text(MACHINE_ID + '\n', encoding='utf-8')
         (self.root / 'etc/systemd/journald.conf').write_text('[Journal]\n#Storage=auto\n#SystemMaxUse=\n', encoding='utf-8')
         (self.root / f'usr/lib/systemd/journald.conf.d/{RPI_DROPIN}').write_text('[Journal]\nStorage=volatile\n', encoding='utf-8')
@@ -140,10 +147,10 @@ class Installer(unittest.TestCase):
         self.dest = self.root / 'etc/systemd/journald.conf.d/avrana.conf'
         self.dest.write_text(self.size_only, encoding='utf-8', newline='\n')
 
-    def run_script(self, *args, **env):
+    def run_script(self, *args, script=None, **env):
         path = self.bin.as_posix() if os.name != 'nt' else '/' + self.bin.as_posix().replace(':', '', 1)
         full = {**os.environ, 'AVRANA_JOURNALD_ROOT': self.root.as_posix(), 'AVRANA_TEST_CALLS': self.calls.as_posix(), **env}
-        script = SCRIPT.as_posix()
+        script = (script or SCRIPT).as_posix()
         return subprocess.run([posix_bash(), '-c', f'PATH="{path}:$PATH" exec bash "{script}" "$@"', 'x', *args],
                               capture_output=True, text=True, env=full)
 
@@ -229,7 +236,51 @@ class Installer(unittest.TestCase):
 
     def test_usage_and_a_bad_root_are_refused(self):
         self.assertEqual(self.run_script('nonsense').returncode, 2)
-        self.assertEqual(self.run_script('preflight', AVRANA_JOURNALD_ROOT='/').returncode, 2)
+        for root in ('/', '//', '/.', self.tmp.as_posix() + '/missing'):
+            self.assertEqual(self.run_script('preflight', AVRANA_JOURNALD_ROOT=root).returncode, 2, root)
+
+    def test_installed_but_never_activated_is_activated_by_install_without_a_backup(self):
+        self.dest.write_bytes(CONF.read_bytes())                         # e.g. a rebuild without --activate
+        self.assertNotEqual(self.run_script('verify').returncode, 0)     # still writing to /run
+        out = self.run_script('install')
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn('has not switched yet', out.stdout)
+        self.assertEqual(self.restarts(), ['systemctl restart systemd-journald'])
+        self.assertIn('journalctl --flush', self.calls_made())
+        self.assertFalse((self.root / 'var/backups/avrana-party').exists())
+
+    def test_a_system_journal_left_from_earlier_does_not_pass_while_journald_is_volatile(self):
+        self.dest.write_bytes(CONF.read_bytes())
+        old = self.root / f'var/log/journal/{MACHINE_ID}'
+        old.mkdir(parents=True)
+        (old / 'system.journal').write_bytes(b'')                       # stale; /run still has this boot's
+        out = self.run_script('verify')
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn('still keeps a runtime journal under /run', out.stdout)
+
+    def test_rollback_steps_back_one_install_at_a_time(self):
+        # Two releases of the drop-in installed one after the other, then two rollbacks.
+        release = self.tmp / 'release'
+        release.mkdir()
+        script = release / 'install-persistent-journal.sh'
+        shutil.copy(SCRIPT, script)
+        shutil.copy(CONF, release / 'avrana-journald.conf')
+        self.assertEqual(self.run_script('install', script=script).returncode, 0)
+        v1 = (release / 'avrana-journald.conf').read_bytes()
+        (release / 'avrana-journald.conf').write_bytes(v1 + b'# a later release' + bytes([10]))
+        out = self.run_script('install', script=script)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        first = self.run_script('rollback', script=script)
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertEqual(self.dest.read_bytes(), v1)
+        self.assertIn('effective Storage now: persistent', first.stdout)   # said as it is, not "volatile"
+        second = self.run_script('rollback', script=script)
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertEqual(self.dest.read_text(encoding='utf-8'), self.size_only)
+        self.assertIn('effective Storage now: volatile', second.stdout)
+        third = self.run_script('rollback', script=script)
+        self.assertEqual(third.returncode, 1)
+        self.assertIn('nothing to roll back to', third.stderr)
 
 
 if __name__ == '__main__':

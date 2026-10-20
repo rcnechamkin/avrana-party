@@ -95,6 +95,7 @@ jobs:
         env:
           AVRANA_REQUIRE_NGINX: '1'
           AVRANA_REQUIRE_LOGROTATE: '1'
+          AVRANA_REQUIRE_SYSTEMD_ANALYZE: '1'     # AVR-29: journald precedence by systemd's own ordering
         run: |
           command -v nginx >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q nginx; }
           command -v logrotate >/dev/null || [ -x /usr/sbin/logrotate ] || { sudo apt-get update -q && sudo apt-get install -y -q logrotate; }

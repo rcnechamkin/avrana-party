@@ -78,10 +78,11 @@ deletes its oldest files to stay inside both. Each file covers at most a week. B
 early in boot it keeps at most 64 MB in RAM.
 
 **The SD-card writes.** Persistence moves the journal from RAM to the card. The size bound caps the space, not
-the writes, so the cost is the log volume itself. On 2026-10-12 one boot of about 53 hours, mostly idle, held
-11.4 MB: roughly 5 MB a day, more during parties. journald also rewrites its own indexes and syncs at most every
-5 minutes (immediately for critical messages). That is an estimate, not a measurement, and small next to a
-card's write endurance. To measure it, read the seventh field of `/sys/block/mmcblk0/stat` (512-byte sectors
+the writes, so the cost is the log volume plus journald's overhead. On 2026-10-12 one boot of about 53 hours,
+mostly idle, held 11.4 MB: roughly 5 MB a day, more during parties. The bytes the card actually writes are
+higher than that: journald rewrites its own indexes and file headers, the card rewrites whole pages, and
+journald syncs at most every 5 minutes (immediately for critical messages). That is an estimate, not a
+measurement; even several times that volume is small next to a card's write endurance. To measure it, read the seventh field of `/sys/block/mmcblk0/stat` (512-byte sectors
 written) a day apart, with and without the change. A power cut can lose the last few minutes of ordinary
 messages; critical ones are synced at once. With `ForwardToSyslog=yes`, an installed and running rsyslog would
 write a second copy under `/var/log`; preflight says whether rsyslog is active.
@@ -101,9 +102,15 @@ bash deploy/journald/install-persistent-journal.sh verify          # read only; 
   boot's journal moves to `/var/log/journal` now. Then it verifies. If verification fails it puts the previous
   file back and restarts journald again (exit 1). A second run with nothing to change does not restart journald.
 - **verify** passes only if the effective `Storage` is `persistent`, the bounds are the effective values, the
-  installed file matches this release and `/var/log/journal/<machine-id>/system.journal` exists.
-- **Rollback:** `sudo bash deploy/journald/install-persistent-journal.sh rollback` restores the most recent backup
-  (or `rollback /var/backups/avrana-party/journald-<time>` a chosen one) and restarts journald: volatile again.
+  installed file matches this release, `/var/log/journal/<machine-id>/system.journal` exists and this boot's
+  runtime journal under `/run/log/journal` is gone (journald removes it when it switches to the card). If the
+  file is installed but journald never switched (for example a rebuild without `--activate`), `install`
+  restarts journald and flushes, changing no file.
+- **Rollback:** `sudo bash deploy/journald/install-persistent-journal.sh rollback` undoes the last install: it
+  restores the file that install replaced, restarts journald and prints the effective `Storage`. Run it again
+  to step one install further back (each backup it used is renamed `*.restored`), or name one:
+  `rollback /var/backups/avrana-party/journald-<time>`. After undoing the first install the journal is volatile
+  again.
   The files already under `/var/log/journal` stay (bounded, still readable). Removing them is a separate,
   deliberate step: `sudo journalctl --vacuum-size=1M`, then delete `/var/log/journal/<machine-id>` by hand.
 
@@ -113,6 +120,7 @@ This is A-19 in [offline-acceptance](offline-acceptance.md). Only this, on the P
 repository tests prove the script and the precedence on a simulated host, never a reboot.
 
 ```bash
+# as root, or as a user in the adm or systemd-journal group (journalctl -b -1 needs it to read system logs)
 # before: after install and a passing verify
 journalctl --list-boots | tail -n 2
 logger -t avrana-journal "AVR-29 marker before reboot $(date -u +%FT%TZ)"
@@ -164,7 +172,8 @@ The arcade's stats-log rotation goes live when the arcade next restarts on the n
     appends to the fresh file; a small file is left alone.
 - `tests/unit/test_persistent_journal.py` (AVR-29): the drop-in, its name sorting after the Raspberry Pi OS
   drop-in, and the installer on a simulated host (preflight, install, idempotent second run, a failed
-  verification restored, rollback, a later drop-in caught). Linux uses the real `systemd-analyze`.
+  verification restored, an installed-but-inactive journald activated, a stale journal rejected, rollback
+  one install at a time, a later drop-in caught). Linux CI requires the real `systemd-analyze`.
 - `tests/unit/test_arcade_stream.py` `ClientStatsLog`: the stats log rotates, the newest record
   is kept, and there are never more than two files.
 - games `tests/test_chat.py`: chat media is capped by bytes, the newest files are kept, and the
