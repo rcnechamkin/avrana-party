@@ -186,6 +186,7 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
     if (!holding) return;
     holding = false;
     const v = client.view();
+    if (v && !v.me && v.departed) return onView(v);              // left on purpose meanwhile: Party Home
     if (v && v.me && destination(v, here, catalog)) onView(v);   // still somewhere to go: go
   }
 
