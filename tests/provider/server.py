@@ -148,7 +148,7 @@ if args.party_session:
             f'/games/{args.native_game}/{{rest:path}}', native_page, methods=['GET', 'POST']))
     if args.game_origin:
         party_harness.attach(donor.app, party_key, args.port, public | {'party.avrana.test'}, party_port,
-                             game_origins={f'http://{GAMES_HOST}': '*'}, native=native)
+                             game_origins={f'http://{GAMES_HOST}': '*'}, native=native, expo=args.expo_game)
     else:
         party_harness.attach(donor.app, party_key, args.port, public, party_port, expo=args.expo_game)
 

@@ -34,6 +34,7 @@ deployed together (one merge set).
 | Host End asks first; End takes everyone home and removes the layer | same | same |
 | Offline shows a connection line and recovers | same (`setOffline`) | same |
 | Game-origin page mounts the layer from a vendored copy; Host sees only End and Bring everyone back | `tests/offline/bridge.spec.ts` | Chromium, two host names, HTTP |
+| Real BLUFF and EXPO on the game origin mount the layer from Games' vendored copy; people, chat, connection line, drag, parking, orientation, keyboard; Host offered only End and Bring everyone back; End removes the frame; forged messages and an unregistered origin get nothing; the game host gets no Party cookie, storage key or API call from the page | `tests/provider/game-origin-layer.spec.ts` (real games server and Party Core) | Chromium 390 x 844, two host names, HTTP |
 
 ## 1. Touch gestures (A, then B)
 
