@@ -173,5 +173,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   Pi restart only the same browser's marker keeps a person out, and a different browser or profile on
   the same phone joins automatically. Server persistence stays a separate, unapproved change. Leave is
   offered on the Party's own pages and in the Party layer over a Party-origin page; over a game page of
-  another origin the drawer offers only End and Party Home (the D3 limit, `actions()`), so Leave, like
-  hand-over, is done from Party Home there. Not deployed; not checked on a phone.
+  another origin the drawer offers only End and Party Home to the Host (the D3 limit, `actions()`) and no Leave
+  (`layer-app.js`), so Leave, like hand-over, is done from Party Home. A guest on such a page has no way to Party
+  Home during the round, so a guest cannot Leave until the round ends; whether to allow a guest's Leave there
+  is an open owner decision (it would widen D3). Not deployed; not checked on a phone.

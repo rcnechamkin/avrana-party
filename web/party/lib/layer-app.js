@@ -270,7 +270,7 @@ function renderHost(view) {
  * frame element and could cover it with a lure (D3), so there the drawer offers only what bridge v1
  * lets a game page do (actions(): End, Party Home), and Leave, like hand-over, stays on Party Home. */
 function renderLeave(view) {
-  const impact = !state.crossOrigin && view.me && view.me.leave;
+  const impact = state.crossOrigin === false && view.me && view.me.leave;   // only once the page is known to be the Party's
   $('layer-leave').hidden = !impact || Boolean(state.confirm);   // one confirmation at a time
   if (!impact) { state.leaving = false; return; }
   $('layer-leave-confirm').hidden = !state.leaving;
