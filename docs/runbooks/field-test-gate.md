@@ -1,32 +1,39 @@
 # Owner field-test gate: execution order
 
+Status: **PROPOSED owner-run procedure, NOT RUN on the Pi or on a phone** (2026-10-20).
+
 This page only puts the existing procedures in order. Every command lives in the runbook it links to, and that runbook wins if anything here disagrees. The one exception is the certificate-name gate in step 2, whose checks are written out below.
 
-**Who runs it:** the owner, with sudo, at the Pi. Nothing here is run by an agent. A step passes only when its record sheet says PASS.
+**Who runs it:** the owner, with sudo, at the Pi. Nothing here is run by an agent.
 
 **Two separate sittings:**
 - **Part 1 is the minimum friend-ready gate.** Its GO / NO-GO decides whether four people can use the appliance offline.
 - **Part 2 is the disruptive appliance acceptance for AVR-33.** It is a different sitting, never with guests.
 
-A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 is recorded.
+A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 and the other AVR-33 tests are recorded.
 
 **Stop rule:**
-- A FAIL stops the sequence at that step. It is a finding, not a reason to change the access point, DNS, captive probes or certificates on the spot.
+- A step passes only when its record sheet says PASS.
+- A FAIL stops the sequence at that step. The one exception is an A-19 FAIL in step 3.3, which does not block the night.
+- A FAIL is a finding, not a reason to change the access point, DNS, captive probes or certificates on the spot.
 - If the party cannot continue, roll back (step 4).
+- The offline-acceptance sheets were written against an older deployed pair (`c59f1c8`). Read their "expected today" against the pair you actually deployed.
 
 ---
 
 ## Part 1: minimum friend-ready gate (four people, offline)
 
-### 0. Decide the release pair (laptop, no Pi changes)
+### 0. Decide the release pair and the game origin (laptop, no Pi changes)
 
-1. **Choose the two commits.**
-   - Party `main` (today `c903346`, which carries AVR-29 and AVR-33), plus #167 (Leave and Reconnect) and #173 (harness evidence only) if you merge them first.
-   - Games `main` (today `4acc5ae`), plus #87 (realtime input coalescing) if you merge it first.
-   - Record the full SHAs.
+1. **Choose the two commits and record the full SHAs.**
+   - **Party:** `main` (today `c903346`, which carries AVR-29 and AVR-33), plus #167 (Leave and Reconnect) and #173 (harness evidence only) if you merge them first.
+   - **Games: the checklist's minimum keeps Games at `bd7e01d`** ([friend-ready-owner-checklist](friend-ready-owner-checklist.md) "Before the night").
+   - Deploying Games `main` instead (today `4acc5ae`, plus #87 if merged) is a deliberate owner choice that widens the change set. Record it if you make it.
 2. **Accept the local evidence in place of CI.** [deploy](deploy.md) "Before" item 1 asks for green CI lanes, but hosted CI is billing-blocked. Record that you accept local test evidence instead, and name the PR comments that hold it.
-3. **Decide whether this test uses native games on the game origin.** That means Checkers or any title listed in Party Core's `game_origins`, served from `https://games.avrana.net` ([game-origin](game-origin.md)). If yes, the certificate-name gate in step 2 applies. If no, leave `game_origins` empty and run the Party-only test. Party itself does not need the second name.
-4. **Check the deploy preconditions.** Work through [deploy](deploy.md) "Before" items 2-8: stage the Games commit, confirm no live session, run `--status`, check the certificate names, and confirm `nginx -t` passes.
+3. **Decide whether this test uses native games on the game origin.** That means Checkers or any title listed in Party Core's `game_origins`, served from `https://games.avrana.net` ([game-origin](game-origin.md)).
+   - **If yes:** the certificate with both names ([game-origin](game-origin.md) §1) must already exist from an **earlier, separate sitting**. It needs the DNS-challenge path, which is not available offline or mid-test. The certificate-name gate in step 2 then applies. The game origin's DNS, site file and `game_origins` steps ([game-origin](game-origin.md) §2-§4) come after the deploy, with no party running.
+   - **If no:** leave `game_origins` empty and run the Party-only test. Party itself does not need the second name.
+4. **Check the deploy preconditions.** Work through [deploy](deploy.md) "Before" items 2-8: stage the Games commit if it changes, confirm no live session, run `--status`, check the certificate names, and confirm `nginx -t` passes.
 
 ### 1. Preflight and backups (Pi, read-only plus backups)
 
@@ -42,21 +49,27 @@ A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 is rec
 
 `nginx -t` is not this check. It parses the configuration and loads the certificate files. It does not check that a certificate's names cover the `server_name` it is served for. A one-name certificate passes `nginx -t`, and phones then get a name-mismatch error on `games.avrana.net`.
 
-Check the actual subject alternative names on the Pi before the deploy, then deploy with refusal on.
+Check the actual subject alternative names on the Pi before the deploy.
 
-1. **Installed certificate** (the file the 443 blocks name; [game-origin](game-origin.md) §1 and "Verify"):
+1. **Installed certificate.** This is the file both 443 blocks name ([game-origin](game-origin.md) §1 and "Verify"). The directory is root-only:
 
    ```bash
    C=/etc/avrana-party/tls/current/fullchain.pem
-   openssl x509 -in "$C" -noout -ext subjectAltName      # must list DNS:party.avrana.net AND DNS:games.avrana.net
-   openssl x509 -in "$C" -noout -checkhost games.avrana.net    # "does match"
-   openssl x509 -in "$C" -noout -checkhost party.avrana.net    # "does match"
-   openssl x509 -in "$C" -noout -checkend 1209600 && echo "valid for 14 more days"   # record the runway, not just "valid"
+   sudo openssl x509 -in "$C" -noout -ext subjectAltName          # must list DNS:party.avrana.net AND DNS:games.avrana.net
+   sudo openssl x509 -in "$C" -noout -checkhost games.avrana.net  # "does match certificate"
+   sudo openssl x509 -in "$C" -noout -checkhost party.avrana.net  # "does match certificate"
+   sudo openssl x509 -in "$C" -noout -checkend 1814400 && echo "valid for 21+ more days"
    ```
 
-2. **Deploy with refusal on.** Add `--require-cert-names` to the dry run and the real run in step 2 below ([deploy](deploy.md) "Before" item 6 and the options table). With the flag, a certificate that does not cover a 443 block's `server_name` makes the deploy exit before anything is installed or stopped. Without it, the deploy only warns (`nginx_site.cert_name_mismatch`).
+   21 days is the threshold at which `status` and the deploy's smoke report the certificate as expiring (`EXPIRING_DAYS`).
 
-3. **Served certificate, after the deploy.** This is what a phone receives for each name:
+2. **Dry run and real run.**
+   - Run the dry run with `sudo` and read its `nginx site: <name> is covered by <cert>` line for both names.
+     - Without root it logs `could not check ... root is needed` and checks nothing.
+     - A dry run never refuses; it only prints a `WARNING`.
+   - Run the real run with `--require-cert-names` ([deploy](deploy.md) "Before" item 6 and the options table). A certificate that does not cover a 443 block's `server_name` then makes the deploy exit before anything is installed or stopped.
+
+3. **Served certificate, after the deploy.** This is what a phone receives for each name; no root needed:
 
    ```bash
    for n in party.avrana.net games.avrana.net; do
@@ -67,32 +80,37 @@ Check the actual subject alternative names on the Pi before the deploy, then dep
 
    Both answers must list both names. Then run the verifying `curl` checks in [game-origin](game-origin.md) §3. They use `--resolve` and never `-k`, so a name mismatch fails them.
 
-4. **If any check fails:** NO-GO for native games on the game origin.
-   - Do not add the `game_origins` entry, or remove it.
-   - The Party-only test may continue.
-   - The fix is [game-origin](game-origin.md) §1, a new certificate with both names. It needs the DNS-challenge path and is not an on-the-spot change during the field test.
+4. **If any check before the deploy fails:** NO-GO for native games on the game origin.
+   - Set step 0.3 to no and leave `game_origins` empty.
+   - Deploy **without** `--require-cert-names`. The deploy prints the expected `WARNING: the certificate ... does not cover games.avrana.net` and still deploys ([deploy](deploy.md) "Before" item 6). Party is unaffected.
+   - Do not get a new certificate during the field test.
 
-**Deploy.**
+**Deploy block.**
 - Do the dry run, then the real run, with explicit SHAs. Follow [friend-ready-acceptance](friend-ready-acceptance.md) §2 and [deploy](deploy.md) "Deploy", using `ops/deploy.sh` taken from the target commit.
-- Add `--require-cert-names` when the gate applies.
+- Add `sudo` to the dry run, and `--require-cert-names` to the real run, when the gate applies.
 - Pass condition: the smoke check passes and `--status` shows the new last known good.
+- A run that dies or exits 2, 3 or 4: follow [deploy](deploy.md) "Which command next" (`--status`, then `--recover`, `--finish` or `--rollback`).
 
 Units the script does not own keep their own runbooks:
 - socket and `avrana-game@*`: [party-core-deploy](party-core-deploy.md);
 - service users: [service-users-migration](service-users-migration.md);
-- game origin: [game-origin](game-origin.md).
+- the game origin's DNS, site file and `game_origins`: [game-origin](game-origin.md) §2-§4.
 
-Do these only if this field test needs them. The game origin comes only after the certificate gate passes.
+Do these only if this field test needs them, with no party running, and the game origin only after the certificate gate passed.
 
 ### 3. AVR-29: persistent journal and the reboot proof (Pi, sudo; no party live)
 
 1. **Install.** Follow [logs-and-retention](logs-and-retention.md) "Persistent journal": `preflight`, then `install`, then `verify`.
 2. **Reboot proof.** Follow [logs-and-retention](logs-and-retention.md) "Prove it survives a reboot", recorded as **A-19** in [offline-acceptance](offline-acceptance.md): write the marker, do a planned reboot with no phone joined, then read the marker back from `-b -1`.
-3. **Record the result on AVR-29.** Only this closes its appliance acceptance. An A-19 FAIL does not block the friend-ready night: undo the journal install only (`install-persistent-journal.sh rollback`), record the result, and continue.
+   - This reboot is not A-17, which is a reboot mid-party.
+3. **Record the result on AVR-29.** Only this closes its appliance acceptance.
+   - An A-19 FAIL does not block the friend-ready night: undo the journal install only (`install-persistent-journal.sh rollback`), record the result, and continue.
+   - This step is optional for the night. Skip it to keep Part 1 minimal, and do it before Part 2 instead.
 
 ### 4. Rollback, known before it is needed (unchanged procedures)
 
 - **Code pair:** `ops/deploy.sh --rollback` returns to the last known good ([deploy](deploy.md) "After a failed smoke").
+- **Failed or dead deploy:** follow [deploy](deploy.md) "Which command next".
 - **Explicit before-pair:** use [friend-ready-acceptance](friend-ready-acceptance.md) §9, in reverse order of installation and with no session live.
 - **Journal only:** `install-persistent-journal.sh rollback` ([logs-and-retention](logs-and-retention.md)).
 - **Game origin:** its own reverse in [game-origin](game-origin.md) "Reverse, in this order".
@@ -101,7 +119,9 @@ Do these only if this field test needs them. The game origin comes only after th
 
 ### 5. QR onboarding (truly offline, upstream unplugged)
 
-- Print the card, then do the real-phone check in [join-card](join-card.md), steps 1-12.
+- Print the card, then do the real-phone check in [join-card](join-card.md), steps 1-10 and 12.
+  - Step 11 is lab-only.
+  - Steps 5-6 deliberately turn mobile data and VPN on. Do them on a spare phone, not the four used for the night.
   - Use at least one iPhone with Safari and one Android with Chrome.
   - Start every phone with the network forgotten.
 - Record the per-device results on AVR-11 and AVR-295.
@@ -109,18 +129,20 @@ Do these only if this field test needs them. The game origin comes only after th
 ### 6. Four-phone night: the GO / NO-GO
 
 - Run [friend-ready-owner-checklist](friend-ready-owner-checklist.md): four phones, offline, BLUFF to the end with no help. **Its GO / NO-GO is the Part 1 result.**
-- Its cold boot (row 1) is the AVR-10 check. It is not one of the AVR-33 recovery tests.
+- Its row 1 is a clean shutdown and cold boot, the AVR-10 check. It is neither an AVR-33 recovery test nor A-17 evidence.
 
 ### 7. Extras for what was deployed (recorded, not part of the GO / NO-GO)
 
-- **If #167 is deployed:** run [party-layer-device-validation](party-layer-device-validation.md) §6-§7 (host controls, Leave, Reconnect, Limited Mode) on two phones.
+- **If #167 is deployed:** run the host-control and lifecycle checks in [party-layer-device-validation](party-layer-device-validation.md) §6, and the Reconnect checks in §7, on its three phones (A, B, C).
+  - Record Limited Mode (§7.5-§7.6) as NOT SUPPORTED where friend-ready D6 keeps it out of scope.
+  - Leave Party has no step there. Its record is the #167 PR evidence until a phone check is added.
 - **If Games #87 is deployed:** run the realtime game with 2, 4 and 6 phones. Follow [performance-measurement](performance-measurement.md) §2, step 4: Games CPU on the Pi, per-station airtime, and frame pacing.
   - Laptop figures do not stand in for this.
-  - Dodgeball's resting-ball `bounce` traffic is AVR-675, out of scope.
+  - Dodgeball's resting-ball `bounce` traffic is a separate Linear issue, out of scope.
 
 ### 8. After Part 1
 
-- Re-check health: `curl -s https://party.avrana.net/party/api/status`, then `python3 -m avrana.ops.smoke`, then one phone to Party Home ([friend-ready-acceptance](friend-ready-acceptance.md) §9 "After any rollback" lists the same checks).
+- Re-check health: `curl -s https://party.avrana.net/party/api/status`, then `python3 -m avrana.ops.smoke`, then one phone to Party Home. These are the same checks as the "After any rollback" line in [friend-ready-acceptance](friend-ready-acceptance.md) §9.
 - File every FAIL as an issue with its evidence file. Do not leave a changed configuration behind without recording it.
 
 ---
@@ -131,19 +153,22 @@ These tests stop, kill, reboot and unplug the appliance on purpose.
 
 **When to run them:**
 - after Part 1's deploy, on a day without guests, or after the four-phone night;
-- with the backups and rollback from steps 1 and 4 still at hand;
-- with [service-recovery](service-recovery.md) open.
+- with [service-recovery](service-recovery.md) open;
+- with **fresh backups taken before A-18** ([friend-ready-acceptance](friend-ready-acceptance.md) §1, as the offline-acceptance run header requires).
 
 They are **not** part of the friend-ready GO / NO-GO, and **AVR-33 stays open until their results are recorded**, whatever Part 1 shows.
 
-Use the record sheets in [offline-acceptance](offline-acceptance.md), in this order, least disruptive first:
+Use the record sheets in [offline-acceptance](offline-acceptance.md), in this order, least disruptive first. Each test's own Expect / Pass wording is the criterion.
 
-| Test | What | AVR-33 scope it answers |
-|---|---|---|
-| A-16 | Restart each service | Games, Arcade and nginx restart; one service never strands another |
-| A-25 | Game process failure (LAN Games and BLUFF) | Games crash recovery; health shows a failed recovery |
-| A-17 | Full reboot mid-party | Every service comes back unaided |
-| A-18 | Power interruption: idle, mid-game, during a join | Recovery after power loss; repeated failures stay bounded |
+| Test | What it does |
+|---|---|
+| A-16 | Restarts each service one at a time: Games, Arcade, nginx, then Party Core (never NetworkManager) |
+| A-25 | Kills the Games service (`avranaparty-games`) during a four-phone BLUFF round |
+| A-17 | Full reboot mid-party |
+| A-18 | Power interruption: idle, mid-game, during a join (the only deliberately unclean test) |
 
+- **Also AVR-33, not in this sitting.** offline-acceptance marks A-26 (Games bundle staging, operations), B-03 (native game process failure) and B-04 (restart the native units and Party Core's socket) as serving AVR-33.
+  - B-03 and B-04 need Checkers provisioned, which means prepare-native-games and the game origin.
+  - They stay **NOT RUN** and open; scheduling them is the owner's decision.
 - `close_lost_game` stays **off**. C-08 is a separate owner decision and is not part of this gate.
-- AVR-33's "Remaining scope" checklist is the acceptance list. Tick only what a recorded PASS shows. The Party Core evidence from 2026-09-29 already stands; do not rerun it as if unknown.
+- AVR-33's "Remaining scope" checklist in Linear is the acceptance list. Tick only what a recorded PASS shows. The Party Core evidence from 2026-09-29 already stands; do not rerun it as if unknown.
