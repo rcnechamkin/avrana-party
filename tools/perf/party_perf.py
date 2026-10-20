@@ -16,10 +16,12 @@ Evidence, per scenario (also written into the result):
                   running Games server, not a process start), tickets, WebSocket hello, a reconnect,
                   End. Python WebSocket clients stand in for phones.
   realtime        REAL Games server running dodgeball's real 30 Hz simulation, joined by Python
-                  WebSocket clients sending the joystick at dodgeball.js's moving rate (about 11 Hz,
-                  without its 4 Hz idle keepalive) plus a 1 Hz ping the real page does not send.
-                  STANDALONE admission: dodgeball has no Party contract, so this measures game-server
-                  overhead, not a Party session.
+                  WebSocket clients. A moving player sends the joystick at dodgeball.js's moving rate
+                  (about 11 Hz) and reverses every 0.6 s, timing each reversal until a state frame
+                  shows it (input to authority); an idle player (the `mixed` workload: half the
+                  players) sends only dodgeball.js's 4 Hz keepalive. Every player also sends a 1 Hz
+                  ping the real page does not send. STANDALONE admission: dodgeball has no Party
+                  contract, so this measures game-server overhead, not a Party session.
 Timings taken by the clients include their own scheduling (all simulated phones share one Python
 process); every scenario reports this harness's own CPU so a client-bound run can be recognised.
 Laptop numbers are laptop numbers: none of this is a Pi, a phone or a radio measurement
@@ -61,6 +63,10 @@ SAMPLE_EVERY = 0.25                                 # s between process samples
 LAST_LOG_TAIL = ''                                  # the last Stack's process output, for a failed repeat
 MOVE_EVERY = 0.09                                   # s: dodgeball.js sends a changed joystick at most every 90 ms
 PING_EVERY = 1.0                                    # s: keeps moves + pings (~12/s) under the server's 30 per 2 s
+KEEPALIVE_EVERY = 0.25                              # s: dodgeball.js's unconditional keepalive while the stick rests
+REVERSE_EVERY = 0.6                                 # s: a moving player reverses this often; each reversal is a probe
+PROBE_TIMEOUT = 1.0                                 # s: a reversal no frame shows by then is counted as unmatched
+RT_MIXES = ('moving', 'mixed')                      # every player moving; half of them idle
 CLIENT_BOUND_PCT = 70.0                             # harness CPU above this: the result may be client-bound
 
 
@@ -583,9 +589,85 @@ def scenario_lifecycle(cfg, games_root):
         stack.stop()
 
 
+TICK_RE = re.compile(r'"tick":\s*(-?\d+)')
+NOW_RE = re.compile(r'"now":\s*(\d+)')
+
+
+class FrameLog:
+    """What one realtime client saw in its state frames: distinct simulation ticks and the gaps
+    between their arrivals, frames that repeat the last tick (pushes the tick did not make), each
+    frame's age since the server stamped it (`now`, the same host's wall clock, ms resolution), and
+    input probes: a reversal of the joystick, timed until a frame shows this player's own unit
+    moving the new way. Thread-safe: the receive thread logs, the driving thread probes."""
+
+    def __init__(self):
+        self.states = 0
+        self.ticks = 0
+        self.repeats = 0
+        self.first_tick = self.last_tick = None
+        self.last_at = None
+        self.intervals_ms = []
+        self.ages_ms = []
+        self.probe_ms = []
+        self.unmatched = 0
+        self.probe = None                        # (perf_counter at send, +1 or -1)
+        self._lock = threading.Lock()
+
+    def state(self, raw, now, wall_ms):
+        self.states += 1
+        m = TICK_RE.search(raw)
+        if m:
+            tick = int(m.group(1))
+            if tick == self.last_tick:
+                self.repeats += 1
+            else:
+                if self.last_at is not None:
+                    self.intervals_ms.append((now - self.last_at) * 1000.0)
+                if self.first_tick is None:
+                    self.first_tick = tick
+                self.ticks += 1
+                self.last_tick, self.last_at = tick, now
+        m = NOW_RE.search(raw, 0, 64)
+        if m:
+            self.ages_ms.append(wall_ms - int(m.group(1)))
+        with self._lock:
+            probe = self.probe
+        if probe is not None:
+            self._check(raw, now, probe)
+
+    def start_probe(self, sign, now):
+        with self._lock:
+            if self.probe is not None:
+                self.unmatched += 1              # the last reversal never showed
+            self.probe = (now, sign)
+
+    def end(self):
+        with self._lock:
+            if self.probe is not None:
+                self.unmatched += 1
+                self.probe = None
+
+    def _check(self, raw, now, probe):
+        sent, sign = probe
+        try:
+            g = json.loads(raw).get('game') or {}
+        except ValueError:
+            return
+        me = next((u for u in g.get('units') or [] if u.get('seat') == g.get('my_seat')), None)
+        with self._lock:
+            if self.probe is not probe:
+                return
+            if me is not None and me.get('alive') and (me.get('vx') or 0) * sign > 0:
+                self.probe_ms.append((now - sent) * 1000.0)
+                self.probe = None
+            elif now - sent > PROBE_TIMEOUT:
+                self.unmatched += 1
+                self.probe = None
+
+
 class RealtimeClient:
-    """A standalone dodgeball player over WebSocket: counts frames and bytes, sends ~11 Hz moves and
-    measures ping -> pong round trips through the server's WebSocket handler."""
+    """A standalone dodgeball player over WebSocket: counts frames and bytes (FrameLog for state
+    frames) and measures ping -> pong round trips through the server's WebSocket handler."""
 
     def __init__(self, port, name):
         from websockets.sync.client import connect
@@ -601,6 +683,7 @@ class RealtimeClient:
         self.phase = None
         self.counting = False
         self.closed = False
+        self.log = FrameLog()
         self._lock = threading.Lock()
         self._t = threading.Thread(target=self._recv, daemon=True)
         self._t.start()
@@ -628,6 +711,7 @@ class RealtimeClient:
                     self.bytes += len(raw)
                     if raw.startswith('{"type": "state"'):
                         self.states += 1
+                        self.log.state(raw, now, time.time() * 1000.0)
         except Exception:
             self.closed = True
 
@@ -646,10 +730,13 @@ class RealtimeClient:
             pass
 
 
-def scenario_realtime(cfg, games_root, n):
+def scenario_realtime(cfg, games_root, n, mix='moving'):
     """n dodgeball players on the real Games server: ready, start, 3-2-1, then `window` seconds of
-    joystick input at the rate dodgeball.js sends while moving (about 11 Hz) and a 1 Hz ping, while
-    the server runs its 30 Hz simulation. A run that is not in play for the whole window fails."""
+    play while the server runs its 30 Hz simulation. `moving`: every player sends the joystick at
+    dodgeball.js's moving rate (about 11 Hz), reversing every 0.6 s; each reversal is timed until a
+    state frame shows it. `mixed`: half the players (rounded down) rest the stick and send only the
+    4 Hz keepalive. Every player pings at 1 Hz. A run that is not in play at the end fails."""
+    moving = n if mix == 'moving' else n - n // 2
     stack = Stack(games_root)
     clients = []
     try:
@@ -662,20 +749,29 @@ def scenario_realtime(cfg, games_root, n):
         wait_until(lambda: all(c.phase == 'play' for c in clients), 10, 'the play phase')
         stop = threading.Event()
 
-        def drive(c):
+        def drive(c, moves):
             rnd = random.Random(c.name)
             next_ping = 0.0
+            sign, next_turn = 1, time.perf_counter() + rnd.uniform(0, REVERSE_EVERY)
             while not stop.is_set():
                 try:
-                    c.send(t='move', x=round(rnd.uniform(-1, 1), 3), y=round(rnd.uniform(-1, 1), 3))
+                    now = time.perf_counter()
+                    if moves:
+                        if now >= next_turn:
+                            sign, next_turn = -sign, now + REVERSE_EVERY
+                            c.log.start_probe(sign, now)
+                        c.send(t='move', x=float(sign), y=round(rnd.uniform(-0.3, 0.3), 3))
+                    else:
+                        c.send(t='move', x=0, y=0)
                     if time.perf_counter() >= next_ping:
                         c.ping()
                         next_ping = time.perf_counter() + PING_EVERY
                 except Exception:
                     return
-                stop.wait(MOVE_EVERY)
+                stop.wait(MOVE_EVERY if moves else KEEPALIVE_EVERY)
 
-        drivers = [threading.Thread(target=drive, args=(c,), daemon=True) for c in clients]
+        drivers = [threading.Thread(target=drive, args=(c, i < moving), daemon=True)
+                   for i, c in enumerate(clients)]
         sampler = Sampler(stack.games_pid).start()
         harness = Sampler(os.getpid()).start()
         t0 = time.perf_counter()
@@ -688,6 +784,7 @@ def scenario_realtime(cfg, games_root, n):
         elapsed = time.perf_counter() - t0
         for c in clients:
             c.counting = False
+            c.log.end()
         cpu = sampler.stop()
         generator = harness.stop()
         for d in drivers:
@@ -695,12 +792,20 @@ def scenario_realtime(cfg, games_root, n):
         rtt = [x for c in clients for x in c.rtt_ms]
         if any(c.phase != 'play' for c in clients):
             raise RuntimeError(f'the round left play during the window: {[c.phase for c in clients]}')
-        return {'clients': n, 'phase_at_end': [c.phase for c in clients],
+        logs = [c.log for c in clients]
+        return {'clients': n, 'mix': mix, 'moving_clients': moving, 'phase_at_end': [c.phase for c in clients],
                 'lost_pings': sum(c.lost_pings for c in clients), 'notes': stack.notes,
                 'window_s': round(elapsed, 2),
                 'frames_per_s_per_client': perfstats.summary([c.msgs / elapsed for c in clients], 2),
                 'state_frames_per_s_per_client': perfstats.summary([c.states / elapsed for c in clients], 2),
                 'kbytes_per_s_per_client': perfstats.summary([c.bytes / elapsed / 1024 for c in clients], 2),
+                'repeated_tick_frames_per_s_per_client': perfstats.summary([lg.repeats / elapsed for lg in logs], 2),
+                'ticks_per_s': perfstats.summary([(lg.last_tick - lg.first_tick) / elapsed for lg in logs
+                                                  if lg.first_tick is not None], 2),
+                'tick_interval_ms': perfstats.summary([x for lg in logs for x in lg.intervals_ms]),
+                'authority_to_client_ms': perfstats.summary([x for lg in logs for x in lg.ages_ms]),
+                'input_to_authority_ms': perfstats.summary([x for lg in logs for x in lg.probe_ms]),
+                'input_probes_unmatched': sum(lg.unmatched for lg in logs),
                 'ping_rtt_ms': perfstats.summary(rtt), 'games_server': cpu, 'load_generator': generator}
     finally:
         for c in clients:
@@ -766,6 +871,15 @@ METRICS = {
     'realtime': [('messages received per client', 'per s', 'frames_per_s_per_client.p50'),
                  ('full state frames per client', 'per s', 'state_frames_per_s_per_client.p50'),
                  ('payload received per client', 'KB/s (decoded, not wire)', 'kbytes_per_s_per_client.p50'),
+                 ('state frames repeating the last tick, per client', 'per s', 'repeated_tick_frames_per_s_per_client.p50'),
+                 ('simulation ticks seen', 'per s', 'ticks_per_s.p50'),
+                 ('gap between new ticks at a client p50', 'ms', 'tick_interval_ms.p50'),
+                 ('gap between new ticks at a client p95', 'ms', 'tick_interval_ms.p95'),
+                 ('authority to client (frame age) p50', 'ms (wall clock, 1 ms steps)', 'authority_to_client_ms.p50'),
+                 ('authority to client (frame age) p95', 'ms (wall clock, 1 ms steps)', 'authority_to_client_ms.p95'),
+                 ('input to authority (reversal shown) p50', 'ms', 'input_to_authority_ms.p50'),
+                 ('input to authority (reversal shown) p95', 'ms', 'input_to_authority_ms.p95'),
+                 ('reversals no frame showed within 1 s', 'count', 'input_probes_unmatched'),
                  ('ping round trip p50 (WebSocket handler, not the tick)', 'ms', 'ping_rtt_ms.p50'),
                  ('ping round trip p95 (WebSocket handler, not the tick)', 'ms', 'ping_rtt_ms.p95'),
                  ('pings not counted (lost or ambiguous)', 'count', 'lost_pings'),
@@ -796,8 +910,9 @@ def run(cfg, games_root, only):
     plan += [(f'longpoll_{n}_clients', (lambda n=n: scenario_longpoll(cfg, games_root, n)), 'longpoll')
              for n in cfg['clients']]
     plan.append(('lifecycle_bluff_4_phones', lambda: scenario_lifecycle(cfg, games_root), 'lifecycle'))
-    plan += [(f'realtime_dodgeball_{n}_players', (lambda n=n: scenario_realtime(cfg, games_root, n)), 'realtime')
-             for n in cfg['rt_clients']]
+    plan += [(f'realtime_dodgeball_{n}_players' + ('' if mix == 'moving' else f'_{mix}'),
+              (lambda n=n, mix=mix: scenario_realtime(cfg, games_root, n, mix)), 'realtime')
+             for mix in cfg['rt_mix'] for n in cfg['rt_clients']]
     scenarios = {}
     for name, fn, kind in plan:
         if only and kind not in only:
@@ -821,6 +936,13 @@ def run(cfg, games_root, only):
     return scenarios
 
 
+def rt_mix(text):
+    mixes = [m for m in text.split(',') if m]
+    if not mixes or any(m not in RT_MIXES for m in mixes):
+        raise ValueError(f'rt-mix: {text!r}; expected some of {",".join(RT_MIXES)}')
+    return mixes
+
+
 def config(args):
     quick = args.quick
     cfg = {'repeats': perfstats.bounded(args.repeats if args.repeats else (1 if quick else 3), 1, 10, 'repeats'),
@@ -835,6 +957,8 @@ def config(args):
            'client_bound_pct': CLIENT_BOUND_PCT,
            'clients': [perfstats.bounded(int(x), 1, MAX_CLIENTS, 'clients') for x in args.clients.split(',')],
            'rt_clients': [perfstats.bounded(int(x), 1, MAX_CLIENTS, 'rt-clients') for x in args.rt_clients.split(',')],
+           'rt_mix': rt_mix(getattr(args, 'rt_mix', None) or ','.join(RT_MIXES)),
+           'keepalive_every_s': KEEPALIVE_EVERY, 'reverse_every_s': REVERSE_EVERY,
            'quick': quick}
     return cfg
 
@@ -848,6 +972,8 @@ def main(argv=None):
     ap.add_argument('--cycles', type=int, help='launch/end cycles per lifecycle run (default 5, quick 2)')
     ap.add_argument('--clients', default='1,4,8', help='long-poll client counts (default 1,4,8)')
     ap.add_argument('--rt-clients', default='2,4,6', help='realtime player counts (default 2,4,6)')
+    ap.add_argument('--rt-mix', default='moving,mixed',
+                    help='realtime workloads: moving (every player) and/or mixed (half idle); default both')
     ap.add_argument('--only', help='comma-separated: idle,longpoll,lifecycle,realtime')
     ap.add_argument('--quick', action='store_true', help='a short smoke run (not a measurement)')
     ap.add_argument('--out', type=Path, default=Path('perf-results'), help='directory for the JSON and Markdown')
