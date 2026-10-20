@@ -1,7 +1,8 @@
 # Sprint 04 findings: a clean-room Hearts adaptation on the game kit
 
-- **Status:** evidence of one exercise (AVR-676, 2026-10-20). It decides nothing, freezes no SDK and does not
-  claim third-party readiness. AVR-512 (an external Node/Colyseus server) is the complementary validation.
+- **Status:** evidence of one exercise (AVR-676, 2026-10-20). The owner approved its technical conclusions at
+  closure (§7); the SDK stays experimental. It freezes no SDK and claims no v1 readiness, no redistribution
+  clearance and no physical acceptance. AVR-512 (an external Node/Colyseus server) is the complementary validation.
 - **Reads with:** [the Sprint 04 proposal](../design/proposals/2026-10-20-sdk-clean-room-validation.md) (§6 has the
   owner decisions), [the SDK readiness audit](2026-10-20-sdk-readiness-audit.md),
   [install-game runbook](../runbooks/install-game.md) ("Rehearsal").
@@ -44,6 +45,18 @@ their own words.
 | Install rehearsal (Party PR #179): install, list, catalog, reinstall refusal, remove, injected rollback | 11/11, both | r1: 11/11; `test_install_*` 79 OK, 1 skipped (root) |
 
 Hosted CI was unavailable (billing). That is missing CI evidence, not a code failure.
+
+**What the real-Party runs cover, and what they do not** (Linux, Chromium at phone size, Party #180):
+- **A full game by two people:** in test 2 Ana and Ben play a whole Hearts game through the page, against
+  the game's two bots, and the Party records a completed round with two players. Each package passed it 3
+  times.
+- **Four-player seating:** in test 1 four phones are seated as players through the real bridge (Hearts'
+  `players.max` is 4) and a fifth watches. No four-person game was played to the end on the real Party; r2's
+  own four-browser `match` used the stand-in Party and was not re-run by the orchestrator.
+- **The Party layer over a kit game:** Party #182 runs it on a fresh kit scaffold that opts in, 3/3. The Hearts
+  pages do not opt in.
+- **Physical devices:** none. No iPhone, Android, Safari, installed PWA, touch, screen reader, real Wi-Fi,
+  nginx, TLS, systemd or appliance.
 
 The rehearsal calls the real `install_game.main` against a scratch root with the system calls injected. It is
 not install acceptance: its `NOT_REPRODUCED` list (systemd, real ownership and modes, trusted-path checks, the
@@ -122,17 +135,32 @@ G-10 (bots) partly recurred: r2 G04 asks what the Party shows for a bot.
 
 None in either run. Neither agent was blocked or asked a question. r2 had one tool permission denial, when it read a file outside its directory. It re-ran the job with the output inside its own directory, which is the brief's rule working.
 
-## 7. Open owner decisions
+## 7. Owner decisions (2026-10-20, at closure)
 
-1. **Redistribution** of the Party files vendored into every kit package (`core/party_protocol.py`,
-   `core/party_result.py`, `web/avrana-party-bridge.js`, `web/avrana-party-layer.js`). Until decided, a package
-   should not be handed to a third party.
-2. **Game options:** the launch carries a roster only, so a Host cannot pick a target score or difficulty. A
-   channel would be a Party protocol change.
-3. **A Python timer:** add a `changed()`/wake-up hook to the Python kit, or keep "timed games use Node".
-4. **Community game origins:** opting in to the layer is safe because `game_origins` is owner-registered. Who may
-   register an origin for a community game, and whether origins become per game, is not decided. Nothing in
-   Sprint 04 widens it.
+The technical conclusions are approved; the SDK stays experimental. Each direction below is approved and
+nothing is built until its own proposal is approved:
+1. **Redistribution:** a narrowly scoped redistribution of the public SDK and runtime parts; Party Core stays
+   proprietary. First an audit of copyright, third-party licences, notices and exactly which files a package
+   carries, then a proposed SDK licence and packaging policy. No licence change and no external distribution
+   without a separate final approval. Until then no package goes to a third party.
+2. **Game options:** a versioned, declarative, Party-validated options mechanism. A focused proposal covers Host
+   configuration, value types, defaults, capability negotiation and backward compatibility. The launch protocol
+   is not changed yet.
+3. **Python timers:** a bounded wake-up or timer mechanism for turn clocks, disconnection recovery and
+   asynchronous progress. A review of scheduling, cancellation, state-change reporting, process safety and
+   testability comes first, with no speculative runtime rewrite.
+4. **Community origins:** Party Core keeps authority over origin registration, and a community package cannot
+   authorise its own origin. Per-game isolation is preferred for untrusted community games. The trust-tier
+   policy and its implementation requirements are to be documented.
+5. **Pregame:** optional, declared from a game's setup needs. The Party owns Play/Watch and the launch. The
+   guide now says when to ask for it (Games #91).
+
+The tracking issues are linked from AVR-676.
+
+**The evidence format in Games #92:** the two tested packages, pinned by sha256, the game's own source,
+the records and the drivers. The kit trees copied beside each game are dropped: they could not be rebuilt
+once the kit PRs are squash-merged, and the packages hold their bytes. `verify/check_packages.py` checks that
+the committed game files are the ones the packages carry.
 
 ## 8. PRs (none merged; all owner-gated)
 
@@ -141,6 +169,7 @@ None in either run. Neither agent was blocked or asked a question. r2 had one to
 | Party | #177 | audit, proposal, owner decisions |
 | Party | #179 | disposable install rehearsal |
 | Party | #180 | real-Party harness for a native package |
+| Party | #182 | the Party layer over a packaged kit game, real Party (on #180) |
 | Party | #181 | this note (on #177) |
 | Games | #89 | discovery and stale-doc fixes |
 | Games | #90 | Party layer opt-in for kit games (on #89) |
