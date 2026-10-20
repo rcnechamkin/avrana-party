@@ -198,17 +198,20 @@ scratch root laid out like the appliance, with the effects that need root inject
 installer's unit tests inject them. Each step is checked against the scratch root:
 
 1. the dry run writes nothing;
-2. install writes the record, registry entry, key, units and staged tree, and asks for
-   `daemon-reload`, the socket and a Party Core reload;
+2. install writes the record, registry entry, key, the instance drop-in and the staged tree, and asks
+   for `daemon-reload`, the socket and a Party Core reload (the shared template units are copied
+   into the scratch root beforehand, as an appliance already has them);
 3. the effective catalog lists the package;
 4. `verify` and `list` find it;
 5. a second install is refused;
-6. a failed install (the first `systemctl` call fails) leaves a fresh root exactly as it was;
+6. a failed install (the first `systemctl` call fails, after files are written) leaves a fresh root
+   exactly as it was (a failure while publishing the catalog is not rehearsed);
 7. `remove` leaves the root as it was (the empty records and catalog directories stay).
 
-It prints what it does **not** reproduce: root ownership, systemd and its sandbox, the socket-activated
-game process, a running Party Core (its reload, registry read and a refusal to remove during a session),
-nginx serving the catalog, and the appliance itself. Those are covered only by
+It prints what it does **not** reproduce: root ownership and the installer's root-ownership checks,
+file modes on Windows, systemd and its sandbox, the socket-activated game process, a running Party Core
+(its reload, registry read and a refusal to remove during a session), nginx serving the catalog, and
+the appliance itself. A node-runtime package also needs `node` on the rehearsal host. Those are covered only by
 `experiments/native-game/package-proof.sh` on a disposable Linux machine with systemd, and on an
 appliance only by an owner. A rehearsal PASS is not install acceptance.
 
