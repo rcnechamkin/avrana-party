@@ -134,10 +134,7 @@ real bridge; a package with a Party pregame goes through the Party's Play/Watch 
 Party is on the game origin (no cookie, no direct Party API call), a reload keeps the seat, and the Host's End
 returns everyone with the game's authority gone. `AVRANA_NATIVE_DRIVER=/path/driver.mjs` (the game developer's own module,
 `export async function step(page)` returning `done`, `acted` or `waiting`) also plays a whole game through the
-page and checks the Party recorded a completed round. A package whose page opts in to the Party layer
-(`<html data-avrana-party-layer="avrana.party-layer/v1">`, Games kit) also gets the layer test: the Party's frame
-mounts, opens and closes, a guest has no Host controls, a reload remounts it, and the game origin holds no
-Party cookie, storage or API call; it is skipped for a page that does not opt in. Python packages only. Same limits as the Checkers
+page and checks the Party recorded a completed round. Python packages only. Same limits as the Checkers
 scenario: no systemd, nginx, TLS, Pi or real phones; staging without root is not install acceptance.
 
 Result projection privacy is pinned by `test_party_result.py` (observer/departed refusal,

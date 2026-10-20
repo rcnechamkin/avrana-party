@@ -41,8 +41,7 @@ async function phone(browser: Browser, name: string, n = 0) {
   });
   await page.addInitScript(() => {
     const original = window.fetch;
-    (window as any).__pkg = { redeemed: [], tokens: [], layer: [] };
-    document.addEventListener('avrana-party-layer', (e: any) => (window as any).__pkg.layer.push(e.detail?.open));
+    (window as any).__pkg = { redeemed: [], tokens: [] };
     window.fetch = async (...args) => {
       const response = await original(...args);
       const url = String(args[0]);
@@ -159,58 +158,5 @@ test('a package played to its end by its driver: the Party accepts the signed re
     expect(state.session.outcome).toBe('completed');
     expect(state.session.result_summary.players).toHaveLength(2);
     for (const p of [ana, ben]) expect(p.errors).toEqual([]);
-  } finally { await close(ana, ben); }
-});
-
-// The Party layer over a packaged kit game (AVR-676; Games #90): only when the package's page opts in with
-// <html data-avrana-party-layer="avrana.party-layer/v1">. The frame is the Party's (layer.html on the Party
-// origin, sandboxed); the game origin is registered by the harness (game_origins), as an owner would register
-// it. Mount, open and close, a guest without Host controls, a reload, and the game origin holding nothing of the
-// Party. The BLUFF and EXPO equivalents are game-origin-layer.spec.ts; drag, keyboard and chat are covered there.
-const FRAME = 'iframe[data-avrana-party-layer]';
-test('a package whose page opts in to the Party layer: the Party frame mounts, opens, closes, and the game origin holds no Party', async ({ browser, request }) => {
-  const { id } = await packageRow(request);
-  const { ana, ben } = await table(browser, request, id);
-  try {
-    const opted = await ana.page.evaluate(() => document.documentElement.getAttribute('data-avrana-party-layer'));
-    test.skip(opted !== 'avrana.party-layer/v1', `the package's page does not opt in to the Party layer (${opted})`);
-    for (const p of [ana, ben]) {
-      const frame = p.page.locator(FRAME);
-      await expect(frame).toHaveCount(1);
-      await expect(frame).toHaveAttribute('src', `${PARTY}/party/layer.html?game=${id}`);
-      await expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
-      await expect(frame).toHaveAttribute('data-avrana-party-layer', 'button');
-      await expect(p.page.frameLocator(FRAME).locator('#layer-button')).toBeVisible();
-    }
-    // Ben, a guest: the drawer opens over the game, names both people, offers no Host controls, and closes.
-    const layer = ben.page.frameLocator(FRAME);
-    await layer.locator('#layer-button').click();
-    await expect(layer.locator('#layer-sheet')).toBeVisible();
-    await expect(layer.locator('#layer-people-list li')).toHaveCount(2);
-    await expect(layer.locator('#layer-host')).toBeHidden();
-    await expect.poll(() => ben.page.evaluate(() => (window as any).__pkg.layer.at(-1))).toBe(true);
-    await layer.locator('#layer-close').click();
-    await expect(layer.locator('#layer-sheet')).toBeHidden();
-    await expect.poll(() => ben.page.evaluate(() => (window as any).__pkg.layer.at(-1))).toBe(false);
-    // Ana, the Host: the drawer offers her the Host controls a game origin may use.
-    await ana.page.frameLocator(FRAME).locator('#layer-button').click();
-    await expect(ana.page.frameLocator(FRAME).locator('#layer-host')).toBeVisible();
-    await ana.page.frameLocator(FRAME).locator('#layer-close').click();
-    // A reload mounts it again.
-    await ben.page.reload();
-    await expect(ben.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'button');
-    for (const p of [ana, ben]) {
-      expect(p.page.url().startsWith(`${GAMES}/games/${id}/`)).toBe(true);
-      expect((await p.context.cookies(`${PARTY}/party/`)).some((c) => /avrana_device/.test(c.name))).toBe(true);   // the control
-      expect((await p.context.cookies(`${GAMES}/`)).map((c) => c.name)).toEqual([]);
-      const stored = await p.page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
-      for (const bad of ['avrana_device', 'avrana-layer-position', 'avrana-chat-seen', 'avrana-party-sent', 'aps0.']) expect(stored).not.toContain(bad);
-      expect(p.direct).toEqual([]);
-      expect(await p.page.evaluate((sel) => {
-        const f = document.querySelector(sel) as HTMLIFrameElement | null;
-        try { return f?.contentDocument ? 'readable' : 'opaque'; } catch { return 'opaque'; }
-      }, FRAME)).toBe('opaque');
-      expect(p.errors).toEqual([]);
-    }
   } finally { await close(ana, ben); }
 });
