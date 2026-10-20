@@ -186,6 +186,32 @@ precaution. The rule is an owner decision of 2026-10-10 for the experimental for
 `install-game remove ID` (units, key, registry entry, socket, state, record, staged files, one more Party
 reload). It leaves nothing for that id. The shared template units stay (other games use them).
 
+## Rehearsal (disposable, not acceptance)
+
+To try a package's install, catalog registration, failed-install rollback and removal without root,
+systemd or an appliance (AVR-676), on any OS:
+
+    python tools/install_rehearsal.py game.avrgame --grant party_roster [--keep DIR] [--json]
+
+It is not a second installer. It runs this same `install-game` (`avrana.ops.install_game.main`) against a
+scratch root laid out like the appliance, with the effects that need root injected the way the
+installer's unit tests inject them. Each step is checked against the scratch root:
+
+1. the dry run writes nothing;
+2. install writes the record, registry entry, key, units and staged tree, and asks for
+   `daemon-reload`, the socket and a Party Core reload;
+3. the effective catalog lists the package;
+4. `verify` and `list` find it;
+5. a second install is refused;
+6. a failed install (the first `systemctl` call fails) leaves a fresh root exactly as it was;
+7. `remove` leaves the root as it was (the empty records and catalog directories stay).
+
+It prints what it does **not** reproduce: root ownership, systemd and its sandbox, the socket-activated
+game process, a running Party Core (its reload, registry read and a refusal to remove during a session),
+nginx serving the catalog, and the appliance itself. Those are covered only by
+`experiments/native-game/package-proof.sh` on a disposable Linux machine with systemd, and on an
+appliance only by an owner. A rehearsal PASS is not install acceptance.
+
 ## Limitations (known, deliberate)
 
 - Not run on the Pi. No upgrade, rollback, signing, repository or permission prompts.
