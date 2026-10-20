@@ -266,9 +266,11 @@ function renderHost(view) {
 
 /** Leave Party from the in-game drawer (AVR-580): Core's own answer says what it would do. The frame
  * hides itself when Core drops this phone from the Party (onView), and the game page follows to Party
- * Home's Reconnect?; nothing here joins again. */
+ * Home's Reconnect?; nothing here joins again. Not over a page of another origin: that page owns the
+ * frame element and could cover it with a lure (D3), so there the drawer offers only what bridge v1
+ * lets a game page do (actions(): End, Party Home), and Leave, like hand-over, stays on Party Home. */
 function renderLeave(view) {
-  const impact = view.me && view.me.leave;
+  const impact = !state.crossOrigin && view.me && view.me.leave;
   $('layer-leave').hidden = !impact || Boolean(state.confirm);   // one confirmation at a time
   if (!impact) { state.leaving = false; return; }
   $('layer-leave-confirm').hidden = !state.leaving;

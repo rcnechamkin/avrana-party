@@ -171,5 +171,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   nothing is ended or refused) and the confirmation says so; `PartyCore._no_successor` is the
   one place to change. **Owner decision (AVR-580):** the opt-out is not persisted by the server; after a
   Pi restart only the same browser's marker keeps a person out, and a different browser or profile on
-  the same phone joins automatically. Server persistence stays a separate, unapproved change. Not
-  deployed; not checked on a phone.
+  the same phone joins automatically. Server persistence stays a separate, unapproved change. Leave is
+  offered on the Party's own pages and in the Party layer over a Party-origin page; over a game page of
+  another origin the drawer offers only End and Party Home (the D3 limit, `actions()`), so Leave, like
+  hand-over, is done from Party Home there. Not deployed; not checked on a phone.

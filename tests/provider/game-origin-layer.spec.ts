@@ -184,6 +184,20 @@ test('the Host on the game origin is offered only End and Party Home, asked firs
   await close(ana, ben);
 });
 
+test('Leave Party is not offered over the game origin (AVR-580 under D3): not to a guest, not to the Host', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  for (const p of [ben, ana]) {
+    await openDrawer(p.page);
+    await expect(layer(p.page).locator('#layer-people-list li')).toHaveCount(2);     // the drawer has rendered a view
+    await expect(layer(p.page).locator('#layer-leave')).toBeHidden();
+    await closeDrawer(p.page);
+  }
+  // The same phone on the Party's own page is offered Leave there (Party Home's row; party lane covers the flow).
+  const view = await (await ben.page.goto(`${PARTY}/party/api/state`))!.json();
+  expect(view.me.leave).toBeTruthy();
+  await close(ana, ben);
+});
+
 test('chat across origins: sent in one drawer, an unread count on the other button, read there', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
   await openDrawer(ben.page);
