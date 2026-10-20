@@ -14,7 +14,7 @@ A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 and th
 
 **Stop rule:**
 - A step passes only when its record sheet says PASS.
-- A FAIL stops the sequence at that step. The one exception is an A-19 FAIL in step 3.3, which does not block the night.
+- A FAIL stops the sequence at that step. The one exception is an A-19 FAIL in step 3, which does not block the night.
 - A FAIL is a finding, not a reason to change the access point, DNS, captive probes or certificates on the spot.
 - If the party cannot continue, roll back (step 4).
 - The offline-acceptance sheets were written against an older deployed pair (`c59f1c8`). Read their "expected today" against the pair you actually deployed.
@@ -27,8 +27,9 @@ A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 and th
 
 1. **Choose the two commits and record the full SHAs.**
    - **Party:** `main` (today `c903346`, which carries AVR-29 and AVR-33), plus #167 (Leave and Reconnect) and #173 (harness evidence only) if you merge them first.
-   - **Games: the checklist's minimum keeps Games at `bd7e01d`** ([friend-ready-owner-checklist](friend-ready-owner-checklist.md) "Before the night").
-   - Deploying Games `main` instead (today `4acc5ae`, plus #87 if merged) is a deliberate owner choice that widens the change set. Record it if you make it.
+   - **Games: a commit that contains Games #84** (merge `51accf0`), which is Games `main` today (`4acc5ae`, plus #87 if merged).
+     - Party `main` carries the Party layer, Party #162, merged 2026-10-16. Its Games half is #84, and the two must be deployed together as one merge set ([party-layer-device-validation](party-layer-device-validation.md)).
+     - The checklist's "Games stays `bd7e01d`" predates #162. `bd7e01d` does not contain #84, so do not pair it with today's Party `main`.
 2. **Accept the local evidence in place of CI.** [deploy](deploy.md) "Before" item 1 asks for green CI lanes, but hosted CI is billing-blocked. Record that you accept local test evidence instead, and name the PR comments that hold it.
 3. **Decide whether this test uses native games on the game origin.** That means Checkers or any title listed in Party Core's `game_origins`, served from `https://games.avrana.net` ([game-origin](game-origin.md)).
    - **If yes:** the certificate with both names ([game-origin](game-origin.md) §1) must already exist from an **earlier, separate sitting**. It needs the DNS-challenge path, which is not available offline or mid-test. The certificate-name gate in step 2 then applies. The game origin's DNS, site file and `game_origins` steps ([game-origin](game-origin.md) §2-§4) come after the deploy, with no party running.
@@ -66,7 +67,7 @@ Check the actual subject alternative names on the Pi before the deploy.
 2. **Dry run and real run.**
    - Run the dry run with `sudo` and read its `nginx site: <name> is covered by <cert>` line for both names.
      - Without root it logs `could not check ... root is needed` and checks nothing.
-     - A dry run never refuses; it only prints a `WARNING`.
+     - A dry run never refuses on certificate names; it only prints a `WARNING`. It can still stop on other preconditions.
    - Run the real run with `--require-cert-names` ([deploy](deploy.md) "Before" item 6 and the options table). A certificate that does not cover a 443 block's `server_name` then makes the deploy exit before anything is installed or stopped.
 
 3. **Served certificate, after the deploy.** This is what a phone receives for each name; no root needed:
@@ -94,7 +95,7 @@ Check the actual subject alternative names on the Pi before the deploy.
 Units the script does not own keep their own runbooks:
 - socket and `avrana-game@*`: [party-core-deploy](party-core-deploy.md);
 - service users: [service-users-migration](service-users-migration.md);
-- the game origin's DNS, site file and `game_origins`: [game-origin](game-origin.md) §2-§4.
+- the game origin's DNS and `game_origins`: [game-origin](game-origin.md) §2 and §4. The deploy already installed the site file, so §3 is only its verification checks.
 
 Do these only if this field test needs them, with no party running, and the game origin only after the certificate gate passed.
 
@@ -104,7 +105,7 @@ Do these only if this field test needs them, with no party running, and the game
 2. **Reboot proof.** Follow [logs-and-retention](logs-and-retention.md) "Prove it survives a reboot", recorded as **A-19** in [offline-acceptance](offline-acceptance.md): write the marker, do a planned reboot with no phone joined, then read the marker back from `-b -1`.
    - This reboot is not A-17, which is a reboot mid-party.
 3. **Record the result on AVR-29.** Only this closes its appliance acceptance.
-   - An A-19 FAIL does not block the friend-ready night: undo the journal install only (`install-persistent-journal.sh rollback`), record the result, and continue.
+   - An A-19 FAIL does not block the friend-ready night. Record exactly what was seen, then decide whether to undo the journal install (`install-persistent-journal.sh rollback`, [logs-and-retention](logs-and-retention.md)), and continue.
    - This step is optional for the night. Skip it to keep Part 1 minimal, and do it before Part 2 instead.
 
 ### 4. Rollback, known before it is needed (unchanged procedures)
@@ -133,9 +134,9 @@ Do these only if this field test needs them, with no party running, and the game
 
 ### 7. Extras for what was deployed (recorded, not part of the GO / NO-GO)
 
-- **If #167 is deployed:** run the host-control and lifecycle checks in [party-layer-device-validation](party-layer-device-validation.md) §6, and the Reconnect checks in §7, on its three phones (A, B, C).
+- **Party layer (Party #162 with Games #84, both in the step 0 pair):** run the host-control and lifecycle checks in [party-layer-device-validation](party-layer-device-validation.md) §6, and the Reconnect checks in §7, on its three phones (A, B, C). If the deployed pair lacks either half, record NOT RUN.
   - Record Limited Mode (§7.5-§7.6) as NOT SUPPORTED where friend-ready D6 keeps it out of scope.
-  - Leave Party has no step there. Its record is the #167 PR evidence until a phone check is added.
+  - **If #167 is deployed:** Leave Party has no step there. Its record is the #167 PR evidence until a phone check is added.
 - **If Games #87 is deployed:** run the realtime game with 2, 4 and 6 phones. Follow [performance-measurement](performance-measurement.md) §2, step 4: Games CPU on the Pi, per-station airtime, and frame pacing.
   - Laptop figures do not stand in for this.
   - Dodgeball's resting-ball `bounce` traffic is a separate Linear issue, out of scope.
@@ -168,7 +169,8 @@ Use the record sheets in [offline-acceptance](offline-acceptance.md), in this or
 | A-18 | Power interruption: idle, mid-game, during a join (the only deliberately unclean test) |
 
 - **Also AVR-33, not in this sitting.** offline-acceptance marks A-26 (Games bundle staging, operations), B-03 (native game process failure) and B-04 (restart the native units and Party Core's socket) as serving AVR-33.
+  - A-26 is not disruptive and can run in any sitting.
   - B-03 and B-04 need Checkers provisioned, which means prepare-native-games and the game origin.
-  - They stay **NOT RUN** and open; scheduling them is the owner's decision.
+  - All three stay **NOT RUN** and open until recorded; scheduling them is the owner's decision.
 - `close_lost_game` stays **off**. C-08 is a separate owner decision and is not part of this gate.
 - AVR-33's "Remaining scope" checklist in Linear is the acceptance list. Tick only what a recorded PASS shows. The Party Core evidence from 2026-09-29 already stands; do not rerun it as if unknown.
