@@ -331,8 +331,8 @@ class Inventory(unittest.TestCase):
             self.assertIn('is not one of the commands this tool runs', broken(lambda i: i['files'][0].update(activate=[argv])))
         self.assertIn('unknown owner step', broken(lambda i: i['files'][0].update(owner_activate=['sudo rm -rf /'])))
         shipped = [argv for section in ('files', 'links', 'absent') for e in INV[section] for argv in e.get('activate', [])]
-        self.assertEqual({tuple(a) for a in shipped}, {tuple(a) for a in rebuild.ACTIVATIONS})    # the seven, no spare
-        self.assertEqual(len(rebuild.ACTIVATIONS), 7)
+        self.assertEqual({tuple(a) for a in shipped}, {tuple(a) for a in rebuild.ACTIVATIONS})    # the eight, no spare
+        self.assertEqual(len(rebuild.ACTIVATIONS), 8)
         for secret_path in SECRET_PATHS:
             self.assertTrue(rebuild.is_secret(secret_path), secret_path)
         # ...and the host refuses by itself, with no inventory loaded at all.

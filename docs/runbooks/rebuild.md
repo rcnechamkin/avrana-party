@@ -268,7 +268,7 @@ certificate. `apply` installs them, links the site into `sites-enabled`, removes
 `default` site (it claims the same `default_server`), and with `--activate` runs, in this
 order, `systemctl daemon-reload`, the journal restart, `modprobe uinput`, the two `udevadm`
 lines, `nginx -t`, the nginx reload, and `systemctl enable --now` for each unit whose needs are
-met (providers before Party Core; never NetworkManager). Those seven reload commands are fixed
+met (providers before Party Core; never NetworkManager). Those eight reload commands are fixed
 in the code: the inventory cannot add one. If one fails nothing after it runs; see "Rollback
 and recovery".
 
@@ -543,7 +543,7 @@ says, and treat a surprise as a finding.
 | `has_package`, `has_group`, `user_groups` (for a user that exists) | `dpkg-query`, the group and password databases |
 | `Host.unit`, `unit_sign`, `systemctl_show`, `_query` against a real systemd | `systemctl show`, `is-enabled`, `is-active`; the tests feed the parser text, they never ask systemd |
 | `_own`, `_parents`, and the `chmod`/`chown` in `install` and `mkdir` | ownership and modes; a missing user or group ends the run with exit 1 |
-| real `symlink`, `remove`, `run` | the `sites-enabled` link, removing Debian's default site, and every command: `apt-get`, `groupadd`, `useradd`, `usermod`, the seven reload commands, `systemctl enable --now` |
+| real `symlink`, `remove`, `run` | the `sites-enabled` link, removing Debian's default site, and every command: `apt-get`, `groupadd`, `useradd`, `usermod`, the eight reload commands, `systemctl enable --now` |
 | `hostname`, `identity` | `socket.gethostname()` and `/etc/os-release`, which `--target-hostname` and the marker rely on |
 | `live_checks`, all of it | the smoke set, `tools/avrana-topology-check`, the service boundary, the `party-core.json` check and the `/dev/uinput` check, as called from `verify` |
 | the marker written, `seal` and `restore` on a real filesystem | atomic replace under `/var/lib/avrana-rebuild` and `/var/backups/avrana-party` |

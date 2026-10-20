@@ -92,6 +92,7 @@ MARKER_SCHEMA = 'avrana.rebuild-marker/v0'
 ACTIVATIONS = (
     ['systemctl', 'daemon-reload'],
     ['systemctl', 'restart', 'systemd-journald'],
+    ['journalctl', '--flush'],                     # AVR-29: move the boot's journal to /var/log/journal
     ['modprobe', 'uinput'],
     ['udevadm', 'control', '--reload-rules'],
     ['udevadm', 'trigger', '--subsystem-match=misc'],
