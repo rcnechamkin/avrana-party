@@ -19,7 +19,7 @@ node tools/join-card/join-card.mjs --ssid "Avrana Party" --out "$env:LOCALAPPDAT
 ```
 
 ```bash
-mkdir -p ~/.local/share/avrana/join-cards    # macOS: ~/Library/Application\ Support/Avrana/join-cards
+mkdir -p ~/.local/share/avrana/join-cards    # macOS: use ~/Library/Application\ Support/Avrana/join-cards in both lines
 node tools/join-card/join-card.mjs --ssid "Avrana Party" --out ~/.local/share/avrana/join-cards/avrana-join-card.html
 ```
 
@@ -36,8 +36,8 @@ a browser and print it (A6 landscape, or any size with each QR code at least 3 c
   failures (no-internet prompt, VPN/Private DNS, mobile data, captive mini-browser, Chrome's Local
   Network prompt on iPhone).
 - refuses to write a card with the password inside any Git working tree (or if git cannot run), and
-  never prints the password.
-  The card itself contains it: keep it with the box, do not commit, post or photograph it.
+  never prints the password. The card itself contains it: keep it with the box, do not commit, post
+  or photograph it.
 - **Password changed?** Generate and print a new card (the same `--out` path is replaced); the card
   shows the date it was printed.
 - QR 1 uses `T:WPA`, right for WPA2-Personal and WPA2/WPA3 transition, not a WPA3-only access point.
@@ -73,5 +73,4 @@ the phone actually showed.
 | 12 | First-timer with no help, card only | Seconds from first scan to Party Home; number of questions asked |
 
 Real-device acceptance is pending under AVR-11 and AVR-295; record per-device results there, with
-dates. A FAIL is a
-finding, not a reason to change the access point, probes or DNS without the owner.
+dates. A FAIL is a finding, not a reason to change the access point, probes or DNS without the owner.

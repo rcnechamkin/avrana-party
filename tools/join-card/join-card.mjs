@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { renderCard } from './card.mjs';
+import { typeKeys } from './hidden-input.mjs';
 import { FULL_MODE_URL, JoinCardError, checkPassword } from './payloads.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -47,13 +48,13 @@ function insideGitWorkTree(p) {
   let dir = dirname(resolve(p));
   while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
   const env = { ...process.env };
-  for (const name of GIT_LOCATION_VARS) delete env[name];
+  for (const name of [...GIT_LOCATION_VARS, 'AVRANA_WIFI_PASSWORD']) delete env[name];
   env.LC_ALL = 'C';                                    // git's messages in English, for the check below
   const res = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', windowsHide: true, env });
   if (res.error) {
     throw new JoinCardError('git could not run, so the tool cannot check that the output path is outside every Git working tree; install git or put it on PATH (a --party-only card needs no check)');
   }
-  if (res.status === 0) return res.stdout.trim() === 'true';
+  if (res.status === 0) return true;                   // a work tree, or inside a .git directory or bare repository
   if (/not a git repository/i.test(res.stderr || '')) return false;
   throw new JoinCardError('could not tell whether the output path is inside a Git working tree (git refused it); choose a path outside any repository');
 }
@@ -68,13 +69,12 @@ function promptHidden(question) {
     stdin.setEncoding('utf8');
     let value = '';
     const onData = (chunk) => {
-      for (const ch of chunk) {
-        if (ch === '\r' || ch === '\n') { finish(); return; }
-        if (ch === '\u0003') { finish(); fail(new JoinCardError('cancelled')); return; }
-        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1); else value += ch;
-      }
+      const typed = typeKeys(value, chunk);
+      value = typed.value;
+      if (!typed.end) return;
+      stdin.off('data', onData); stdin.setRawMode(false); stdin.pause(); stderr.write('\n');
+      if (typed.end === 'cancel') fail(new JoinCardError('cancelled')); else done(value);
     };
-    const finish = () => { stdin.off('data', onData); stdin.setRawMode(false); stdin.pause(); stderr.write('\n'); done(value); };
     stdin.on('data', onData);
   });
 }

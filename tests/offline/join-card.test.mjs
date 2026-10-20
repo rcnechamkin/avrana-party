@@ -11,6 +11,15 @@ import jsQR from 'jsqr';
 import { encodeQr, qrToSvg } from '../../tools/join-card/qr.mjs';
 import { FULL_MODE_URL, HTTP_DOORWAY_URL, JoinCardError, partyUrl, wifiPayload } from '../../tools/join-card/payloads.mjs';
 import { renderCard } from '../../tools/join-card/card.mjs';
+import { typeKeys } from '../../tools/join-card/hidden-input.mjs';
+
+test('the hidden prompt submits on Enter and cancels on Ctrl-C without submitting what was typed', () => {
+  assert.deepEqual(typeKeys('', 'abcdefgh\r'), { value: 'abcdefgh', end: 'enter' });
+  assert.deepEqual(typeKeys('abc', 'd\u007fe\bf\n'), { value: 'abcf', end: 'enter' });
+  assert.deepEqual(typeKeys('', 'partial-password'), { value: 'partial-password', end: null });
+  assert.deepEqual(typeKeys('partial-password', '\u0003'), { value: '', end: 'cancel' });
+  assert.deepEqual(typeKeys('', 'abcdefgh\u0003\r'), { value: '', end: 'cancel' });
+});
 
 const PASSWORD = 'test-only;pass:word,"x\\';
 const CLI = fileURLToPath(new URL('../../tools/join-card/join-card.mjs', import.meta.url));
@@ -262,6 +271,10 @@ test('the CLI refuses missing settings, bad links and in-repository output', () 
       assert.match(res.said, /inside a Git working tree/);
       assert.ok(!existsSync(join(other, 'sub', 'card.html')));
       assert.equal(cli(['--ssid', 'Avrana Party', '--party-only', '--out', join(other, 'party.html')]).status, 0);
+      // Inside a .git directory git answers "false" with success: still refused (fail closed).
+      const inGitDir = cli(['--ssid', 'Avrana Party', '--out', join(other, '.git', 'card.html')], { AVRANA_WIFI_PASSWORD: PASSWORD });
+      assert.equal(inGitDir.status, 2, inGitDir.said);
+      assert.ok(!existsSync(join(other, '.git', 'card.html')));
 
       // A GIT_DIR/GIT_WORK_TREE inherited from a hook or alias must not answer for another repository.
       const plain = join(dir, 'plain');
