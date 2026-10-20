@@ -77,6 +77,25 @@ async function table(browser: Browser, request: any, id: string, seats = 0) {
   for (let i = 2; i < seats; i++) extra.push(await phone(browser, `Seat ${i + 1}`, i));
   const cleo = seats ? await phone(browser, 'Cleo') : null;
   await startForEveryone(ana.page, id);
+  // A package with a Party pregame (extensions."net.avrana.party".pregame) opens the Party's setup scene
+  // first: everyone answers Play or Watch (a first Play shows the rules), then the Host starts. The catalog
+  // row does not say which, so look for the scene. The flow itself is party-pregame.spec.ts's.
+  await expect.poll(async () => ana.page.url().startsWith(GAMES) || await ana.page.locator('#scene-start').isVisible()).toBe(true);
+  if (!ana.page.url().startsWith(GAMES)) {
+    for (const p of [ana, ben, ...extra]) {
+      await p.page.locator('#choose-play').click();
+      const gotIt = p.page.locator('#rules').getByRole('button', { name: /I.ll play/ });
+      await expect(p.page.locator('#choose-play[aria-pressed="true"]').or(gotIt)).toBeVisible();
+      if (await gotIt.isVisible()) await gotIt.click();
+      await expect(p.page.locator('#choose-play')).toHaveAttribute('aria-pressed', 'true');
+    }
+    if (cleo) {
+      await cleo.page.locator('#choose-watch').click();
+      await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
+    }
+    await expect(ana.page.locator('#scene-start')).toBeEnabled();
+    await ana.page.locator('#scene-start').click();
+  }
   for (const p of [ana, ben, ...extra, ...(cleo ? [cleo] : [])]) {
     await expect(p.page).toHaveURL(`${GAMES}/games/${id}/`);
     await expect.poll(async () => (await redeemed(p.page)).filter((r: any) => r.ok).length).toBeGreaterThan(0);

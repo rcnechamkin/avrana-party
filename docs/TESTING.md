@@ -129,9 +129,10 @@ unpacks the package with the Party's own `avrana.avrgame`, writes its install re
 `--grant`s (`AVRANA_NATIVE_GRANTS`, default `party_roster`, checked by install-game's own rule), serves the
 effective catalog `catalog_overlay` builds from that record (and any package artwork), and runs the package's
 `server.args` from the staged tree as a socket-activated child of real Party Core, on the game origin. The spec
-is generic: two players and a watcher seated through the real bridge, nothing of the Party on the game origin
-(no cookie, no direct Party API call), a reload keeps the seat, and the Host's End returns everyone with the
-game's authority gone. `AVRANA_NATIVE_DRIVER=/path/driver.mjs` (the game developer's own module,
+is generic: as many players as the game's `players.max` (at least two) and then a watcher, seated through the
+real bridge; a package with a Party pregame goes through the Party's Play/Watch setup first. Nothing of the
+Party is on the game origin (no cookie, no direct Party API call), a reload keeps the seat, and the Host's End
+returns everyone with the game's authority gone. `AVRANA_NATIVE_DRIVER=/path/driver.mjs` (the game developer's own module,
 `export async function step(page)` returning `done`, `acted` or `waiting`) also plays a whole game through the
 page and checks the Party recorded a completed round. Python packages only. Same limits as the Checkers
 scenario: no systemd, nginx, TLS, Pi or real phones; staging without root is not install acceptance.
