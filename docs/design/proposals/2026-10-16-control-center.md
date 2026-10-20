@@ -122,7 +122,7 @@ viewport and can cover, hide or full-screen over any frame.
   `provider/avrana-contract.json`, serve it at `/shared/avrana-party-layer.js`, and mount it from
   `avrana-integration.js` on the game origin under the same rule as `party-follow.js` (a member,
   the round or its results in this game); `ops/vendor_party.py --party <checkout> [--check]`
-  re-vendors every Party file and its digest in one step. Proven over the real pages in
+  re-vendors every Party file and its digest in one step. Exercised over the real pages in
   `tests/provider/game-origin-layer.spec.ts` (Tier 2, Chromium, two host names, HTTP). **Not
   built:** the SDK export and `comply` (no kit game is approved for the layer) and any installed
   `.avrgame` that mounts it. **Not deployed:** nginx serves BLUFF and EXPO only on the Party origin

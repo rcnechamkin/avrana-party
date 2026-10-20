@@ -13,7 +13,7 @@ import { test, expect as baseExpect, devices, type Browser, type BrowserContext,
  * what bridge v1 already allows a game origin (End, Party Home); End takes everyone to Party Home on
  * the Party origin and removes the frame; drag, edge parking and orientation; the keyboard; the game
  * stays usable with the layer closed; forged messages and an unregistered origin get nothing; the
- * game page holds no Party credential before, during or after.
+ * game origin holds no Party cookie, storage or API call when each test is done (holdsNoParty).
  * Laptop Chromium at phone size, plain HTTP: TESTED here, not a phone measurement. Safari, HTTPS,
  * the __Host- cookie, nginx, touch and screen readers are Tier 3 (party-layer-device-validation).
  */
@@ -96,12 +96,17 @@ async function closeDrawer(page: Page) {
   await expect(layer(page).locator('#layer-sheet')).toBeHidden();
   await expect.poll(() => isOpen(page)).toBe(false);
 }
-/** Nothing of the Party on the game origin: no cookie, no Party storage, no call to the Party API. */
+/** Nothing of the Party on the game origin: the browser holds the device cookie for the Party host
+ * only (checked against the cookie jar, since it is HttpOnly and document.cookie never shows it), the
+ * game origin's storage has none of the Party's keys or a ticket, and the page called no Party API. */
 async function holdsNoParty(p: Phone) {
   expect(p.page.url().startsWith(GAMES)).toBe(true);
-  expect(await p.page.evaluate(() => document.cookie)).toBe('');
+  const party = (await p.context.cookies(`${PARTY}/party/`)).map((c) => c.name);
+  expect(party.some((n) => /avrana_device/.test(n))).toBe(true);           // the control: this phone is a member
+  expect((await p.context.cookies(`${GAMES}/`)).map((c) => c.name)).toEqual([]);
+  expect((await p.context.cookies(`${GAMES}/games/bluff/`)).map((c) => c.name)).toEqual([]);
   const stored = await p.page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
-  for (const bad of ['member-', 'device-', 'participant-', 'avrana_device', 'avrana-profile', 'aps0.']) expect(stored).not.toContain(bad);
+  for (const bad of ['avrana_device', 'avrana-layer-position', 'avrana-chat-seen', 'avrana-party-sent', 'aps0.']) expect(stored).not.toContain(bad);
   expect(p.direct).toEqual([]);
   // The frame is the Party's document: the game page can neither read it nor reach into it.
   expect(await p.page.evaluate((sel) => {
@@ -238,6 +243,7 @@ test('drag, edge parking and orientation: the frame is the button or the tab onl
   await closeDrawer(page);
   await page.setViewportSize(PORTRAIT);
   await expect.poll(async () => { const b = await frameBox(page); return b.x + b.width <= PORTRAIT.width && b.y + b.height <= PORTRAIT.height; }).toBe(true);
+  await holdsNoParty(ben);
   await close(ana, ben);
 });
 
@@ -258,6 +264,7 @@ test('the keyboard: the button opens with Enter, Escape closes it and focus retu
   await page.keyboard.press('Escape');
   await expect(page.locator('#briefing')).toBeHidden();
   await expect(page.locator('#rules')).toBeFocused();
+  await holdsNoParty(ben);
   await close(ana, ben);
 });
 
@@ -277,9 +284,13 @@ test('BLUFF stays quiet while the drawer is open and catches up when it closes',
   await openDrawer(watcher.page);
   await income(mover).click();
   await expect.poll(async () => (await rx(watcher.page)).length, { timeout: 20_000 }).toBeGreaterThan(seen);
-  expect(await live()).toBe(before);
+  for (let i = 0; i < 6; i++) {                                           // still nothing said, after BLUFF has had time to render
+    expect(await live()).toBe(before);
+    await watcher.page.waitForTimeout(250);
+  }
   await closeDrawer(watcher.page);
   await expect.poll(live, { timeout: 10_000 }).not.toBe(before);
+  await holdsNoParty(watcher);
   await close(ana, ben);
 });
 
@@ -293,10 +304,11 @@ test('a lost connection is said in the drawer and recovers; the seat is kept', a
   await expect(layer(ben.page).locator('#layer-people-list li')).toHaveCount(2);
   await expect.poll(async () => (await rx(ben.page)).filter((m: any) => m.type === 'state' && m.game).at(-1)?.game?.me?.cards?.length ?? 0).toBe(2);
   await expect(ben.page.locator(FRAME)).toHaveCount(1);
+  await holdsNoParty(ben);
   await close(ana, ben);
 });
 
-test('forged layer messages from the game page move nothing, and the page cannot ask the frame for anything', async ({ browser, request }) => {
+test('forged layer messages move nothing: from the page itself, from another Party frame, and to the frame', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
   const page = ben.page;
   const before = await frameBox(page);
@@ -307,6 +319,7 @@ test('forged layer messages from the game page move nothing, and the page cannot
     // and asks the frame for what it does not answer: Host verbs, a view, other protocols
     const f = (document.querySelector('iframe[data-avrana-party-layer]') as HTMLIFrameElement).contentWindow!;
     for (const m of [{ avrana: 'avrana.party-layer/v1', type: 'end' }, { avrana: 'avrana.party-layer/v1', type: 'open' },
+      { avrana: 'avrana.party-layer/v1', type: 'viewport', w: 'wide', h: -1, insets: null },
       { avrana: 'avrana.party-bridge/v1', type: 'end', id: 'r1' }, { avrana: 'avrana.party-bridge/v1', type: 'ticket', id: 'r2' }, 'end'])
       f.postMessage(m, '*');
   });
@@ -315,31 +328,61 @@ test('forged layer messages from the game page move nothing, and the page cannot
   await expect(page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'button');
   expect(await isOpen(page)).toBe(false);
   await expect(layer(page).locator('#layer-sheet')).toBeHidden();
+  // A second Party frame on the same page (same origin as the real one, another source): its
+  // drawer opening grows only itself; the page's own frame listens to its own frame alone.
+  await page.evaluate(async () => {
+    const { mountPartyLayer } = await import('/shared/avrana-party-layer.js?second');
+    const party = (await (await fetch('/api/avrana', { cache: 'no-store' })).json()).partyOrigin;
+    (window as any).second = mountPartyLayer({ partyOrigin: party, game: 'bluff' });
+    (window as any).second.frame.id = 'second-layer';
+  });
+  const second = page.frameLocator('#second-layer');
+  await expect(second.locator('#layer-button')).toBeVisible();
+  await second.locator('#layer-button').click();
+  await expect(second.locator('#layer-sheet')).toBeVisible();
+  await expect(page.locator('#second-layer')).toHaveAttribute('data-avrana-party-layer', 'open');
+  const own = page.locator(`${FRAME}:not(#second-layer)`);
+  await expect(own).toHaveAttribute('data-avrana-party-layer', 'button');
+  expect(await own.boundingBox()).toEqual(before);
+  await page.evaluate(() => (window as any).second.stop());
+  // and the real frame still works after the malformed viewport it was sent
+  await openDrawer(page);
+  await closeDrawer(page);
+  await holdsNoParty(ben);
   const state = await (await ana.page.goto(`${PARTY}/party/api/state`))!.json();
   expect(state.state).toBe('active');                                     // nothing ended: the round is still on
   await close(ana, ben);
 });
 
-test('an origin the Party has not registered gets no layer: the frame is refused and says nothing', async ({ browser, request }) => {
+test('an origin the Party has not registered gets no layer: the browser refuses the frame, which says nothing', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
-  const eve = await phone(browser);
-  await eve.page.goto(`${STRANGER}/shared/avrana-party-layer.js`);       // any document on that origin
-  const shown = await eve.page.evaluate(async (party) => {
-    const { mountPartyLayer } = await import('/shared/avrana-party-layer.js');
-    const got: unknown[] = [];
-    addEventListener('message', (e) => { if (e.origin === party) got.push(e.data); });
+  // The same mount, the same wait, on the registered game origin and on another one: only the
+  // registered one hears the frame. (Party Core's own per-game check, layer-app.js allowed(), is
+  // not reached here: frame-ancestors refuses first, and this harness registers '*'.)
+  const tryMount = (page: Page) => page.evaluate(async (party) => {
+    const { mountPartyLayer } = await import('/shared/avrana-party-layer.js?try');
+    const got: string[] = [];
+    addEventListener('message', (e) => { if (e.origin === party && e.data && e.data.type) got.push(e.data.type); });
     const l = mountPartyLayer({ partyOrigin: party, game: 'bluff' });
     await new Promise((r) => setTimeout(r, 4000));
     const out = { visible: l.frame.style.visibility, got };
     l.stop();
     return out;
   }, PARTY);
+  const control = await tryMount(ben.page);
+  expect(control.got).toContain('ready');                                  // the control: a registered origin is answered
+  const eve = await phone(browser);
+  const refused: string[] = [];
+  eve.page.on('console', (m) => { if (/frame-ancestors|Refused to frame/i.test(m.text())) refused.push(m.text()); });
+  await eve.page.goto(`${STRANGER}/shared/avrana-party-layer.js`);       // any document on that origin
+  const shown = await tryMount(eve.page);
   expect(shown.visible).toBe('hidden');                                   // never placed, never shown
-  expect(shown.got).toEqual([]);                                          // frame-ancestors refused it: not even `ready`
+  expect(shown.got).toEqual([]);                                          // not even `ready`
+  expect(refused.length, 'the browser names the frame-ancestors refusal').toBeGreaterThan(0);
   await close(ana, ben, eve);
 });
 
-test('mounting and stopping again and again leaves one frame or none, and no listener behind', async ({ browser, request }) => {
+test('mounting and stopping again and again leaves only the page\'s own frame, which still works; a new round mounts one', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
   const page = ben.page;
   const left = await page.evaluate(async () => {
@@ -368,6 +411,7 @@ test('mounting and stopping again and again leaves one frame or none, and no lis
     await p.page.goto(`${GAMES}/games/bluff/?avrana=1`);
     await placed(p.page);
     await expect(p.page.locator(FRAME)).toHaveCount(1);
+    await holdsNoParty(p);
   }
   await close(ana, ben);
 });

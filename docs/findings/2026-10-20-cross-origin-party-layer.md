@@ -45,21 +45,23 @@ Trust boundary (ADR 0013): a game page holds no Party identity and reaches the P
 
 | Question | Answer | Evidence |
 |---|---|---|
-| Does the game page gain a cookie, token, member id or Party storage? | No. The page creates the frame element. The frame's document is the Party's (opaque to the page), loaded with the phone's own credential. | spec "holds no Party" in every test: `document.cookie` empty, no Party keys in storage, no Party API request from the page, frame document opaque |
+| Does the game page gain a cookie, token, member id or Party storage? | No. The page creates the frame element. The frame's document is the Party's (opaque to the page), loaded with the phone's own credential. | spec `holdsNoParty`, at the end of each of the 10 tests that end on the game origin. The browser's cookie jar holds the device cookie for the Party host (the control) and none for the game host. The game origin's storage has none of the Party's keys (`avrana-layer-position`, `avrana-chat-seen`, `avrana-party-sent`) and no ticket. The page sent no `/party/api/` request (WebSockets and other paths are not counted; the harness game origin answers `/party*` with 404). The frame's document is opaque to the page. |
 | What does the page receive? | Only placement messages (`ready`, `place`, `drag`, `hide`) and the `avrana-party-layer` `{open}` event. No member, view, chat or message text. | `layer-mount.js` `parseLayerMessage`; the vectors are unchanged |
-| What can the page send to the frame? | Only `viewport` (size and safe areas). Host verbs, bridge messages and anything else are ignored. | spec "forged layer messages": the round is still `active` |
-| Can a page forge the frame's messages? | No. The mount accepts only messages from `partyOrigin` whose source is its own frame. | spec "forged layer messages": no movement, no open |
-| Can another origin frame the layer? | No. `frame-ancestors` refuses it in the browser, and `layer-app.js` stays silent for an origin Party Core does not register for that game. | spec "an origin the Party has not registered": no `ready`, never shown |
+| What can the page send to the frame? | Only `viewport` (size and safe areas). Host verbs, bridge messages, other types and a malformed `viewport` are ignored. | spec "forged layer messages": the round is still `active`, and the frame still opens afterwards |
+| Can a page forge the frame's messages? | No. The mount accepts only messages from `partyOrigin` whose source is its own frame. | spec "forged layer messages". Messages the page posts to itself fail the origin check. A second Party-origin frame on the same page (same origin, another source) opens its own drawer, and the page's own frame does not move or open. |
+| Can another origin frame the layer? | No. The browser refuses the frame (`frame-ancestors`). Behind that, `layer-app.js` stays silent for an origin Party Core does not register for that game. | spec "an origin the Party has not registered". The same mount from the registered game origin gets `ready`; from another origin it gets nothing, and the browser logs the `frame-ancestors` refusal. `allowed()` itself is not reached there (the browser refuses first, and the harness registers `'*'`); it has Party's own unit tests. |
 | Are Host privileges wider across origins? | No. Across origins the drawer offers only `end` and `lobby` (what bridge v1 already allows a game page), each confirmed inside the frame. Handover and stop-hosting stay on Party pages. Party Core decides each verb again. | spec "the Host on the game origin is offered only End and Party Home" |
 | Where does the Party origin come from? | The games server's configuration only (`/api/avrana` from `AVRANA_PARTY_ORIGIN`), as for the bridge, never from the address or a message. | Games `test_the_page_takes_the_party_origin_from_this_server_only` (unchanged) |
 | Frame sandbox | `allow-scripts allow-same-origin allow-forms`: no top navigation, no popups. After End, navigation goes to the configured Party origin plus `/party/`, through the bridge. | spec asserts the attribute; End lands on `party…/party/` |
 | New protocol or contract change? | None. Bridge v1 and its vectors are untouched. `avrana.party-layer/v1` and the optional `layer` block existed. | `contract_check.py` compatible |
 
 Residual risks (accepted earlier, unchanged, recorded so they are not lost):
-- **The page owns the frame element.** A hostile or buggy game can hide, remove, move or cover the frame (a lure).
+- **The page owns the frame element.** A hostile or buggy game can hide, remove, move, resize, make transparent or cover the frame (a lure).
   - Denial of the layer is the worst case for hiding it.
   - A lure needs two taps inside the frame for End (action, then confirm), and End is a verb a game page already has through bridge v1.
   - Owner decision D3 accepted "coverable" for first-party games only. This is why the layer is opt-in per game (`LAYER_GAMES`, or `<html data-avrana-party-layer>`).
+- **The embedder names the game.** The page supplies `?game=` in the frame's address. Party Core's per-game registration (`game_origins`) is therefore only as strong as the origin: any page on a registered origin can claim any game that origin is registered for.
+- **Version skew is caught only where the two repositories meet.** Games' tests pin its copy. That the pin is Party's current digest is checked by `contract_check.py --games` in Party's CI, which is billing-blocked. Run it locally before pairing commits.
 - **A same-site frame relies on the browser sending the Party cookie into it.** `party.` and `games.avrana.net` are the same site, so `SameSite` does not block it. Safari's tracking prevention on a framed Party page is unproven (device validation 7.7). If it blocks the cookie, the frame sees no member and hides: the game is unaffected, but there is no button.
 
 ## 4. Vendoring and compatibility
@@ -89,6 +91,7 @@ nginx serves BLUFF and EXPO only on the Party origin. `games.avrana.net` serves 
 
 Moving them to the game origin is a separate owner-approved change, set together:
 - a `games.avrana.net` location for `/games/(bluff|expo)/`, their WebSocket, `/shared/` and `/api/avrana`, with the Cookie header cleared;
+- if those pages are given a Content-Security-Policy there, `frame-src` must allow the Party origin (the bridge and the layer frames);
 - `AVRANA_PARTY_ORIGIN` in the games drop-in;
 - `bluff` and `expo` in `game_origins`;
 - then device validation.
@@ -99,8 +102,8 @@ Nothing in these PRs makes that change.
 
 | Check | Result | Where |
 |---|---|---|
-| Real BLUFF and EXPO on the game origin (12 tests) | 12 passed (4.1 min) | `tests/provider/game-origin-layer.spec.ts`, Chromium (Pixel 7 project; iPhone 13 device profile in the contexts) |
-| Same-origin layer, game-origin bridge and Party session regression | 26 of 27 passed in one run. The failure, `game-origin.spec.ts` "same pages on the Party origin keep the same-origin path", read `AvranaIntegration` after the page had already followed the party away. It passed 3 of 3 when repeated alone, and it is on the same-origin path this change does not touch, so it is a timing flake of that test. | `party-layer.spec.ts`, `game-origin.spec.ts`, `game-origin-home.spec.ts`, `party-session.spec.ts` |
+| Real BLUFF and EXPO on the game origin (12 tests) | 12 passed (4.3 min, final spec and Games runtime code) | `tests/provider/game-origin-layer.spec.ts`, Chromium (Pixel 7 project; iPhone 13 device profile in the contexts) |
+| Same-origin layer, game-origin bridge and Party session regression | 26 of 27 passed in one run. The failure, `game-origin.spec.ts` "same pages on the Party origin keep the same-origin path", read `AvranaIntegration` after the page had already followed the party away. It is pre-existing and depends on test order: run after `game-origin-home.spec.ts` it fails the same way with Games `main` `4acc5ae` (2 of 2 runs) as with this branch (2 of 2), and it passes alone (3 of 3). Not caused by this change; left for its own fix. | `party-layer.spec.ts`, `game-origin.spec.ts`, `game-origin-home.spec.ts`, `party-session.spec.ts` |
 | Games: the mount's lifecycle on the game origin (including leave-and-return while loading, one retry at a time, a refused or unloadable layer) | 37/37 | `tests/avrana_bridge_test.mjs` |
 | Games: pin, serving, vendor tool (including hostile paths and a refusal part way), contract | 38 passed; kit export 24 passed | `tests/test_avrana_bridge.py`, `test_vendor_party.py`, `test_avrana_contract.py`, `test_avrana_provider.py`, `test_export.py` |
 | Cross-repository contract | compatible | `tools/contract_check.py --games` |
