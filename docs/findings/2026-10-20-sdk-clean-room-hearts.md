@@ -141,7 +141,7 @@ None in either run. Neither agent was blocked or asked a question. r2 had one to
 | Party | #177 | audit, proposal, owner decisions |
 | Party | #179 | disposable install rehearsal |
 | Party | #180 | real-Party harness for a native package |
-| Party | FINDINGS_PR | this note |
+| Party | #181 | this note (on #177) |
 | Games | #89 | discovery and stale-doc fixes |
 | Games | #90 | Party layer opt-in for kit games (on #89) |
 | Games | #91 | reusable kit and guide fixes (on #90) |
