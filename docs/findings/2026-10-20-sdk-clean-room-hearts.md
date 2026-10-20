@@ -46,11 +46,11 @@ their own words.
 
 Hosted CI was unavailable (billing). That is missing CI evidence, not a code failure.
 
-**What the real-Party runs cover, and what they do not** (Linux, Chromium at phone size, Party #180):
+**What the real-Party runs cover, and what they do not** (Linux, Chromium with mobile viewport emulation in a cloud container, Party #180):
 - **A full game by two people:** in test 2 Ana and Ben play a whole Hearts game through the page, against
   the game's two bots, and the Party records a completed round with two players. Each package passed it 3
   times.
-- **Four-player seating:** in test 1 four phones are seated as players through the real bridge (Hearts'
+- **Four-player seating:** in test 1 four browser contexts are seated as players through the real bridge (Hearts'
   `players.max` is 4) and a fifth watches. No four-person game was played to the end on the real Party; r2's
   own four-browser `match` used the stand-in Party and was not re-run by the orchestrator.
 - **The Party layer over a kit game:** Party #182 runs it on a fresh kit scaffold that opts in, 3/3. The Hearts
@@ -137,8 +137,9 @@ None in either run. Neither agent was blocked or asked a question. r2 had one to
 
 ## 7. Owner decisions (2026-10-20, at closure)
 
-The technical conclusions are approved; the SDK stays experimental. Each direction below is approved and
-nothing is built until its own proposal is approved:
+The technical conclusions are approved; the SDK stays experimental. Directions 1 to 4 are approved and
+nothing is built until each one's own proposal is approved (AVR-677 to AVR-680); 5 is guidance, already in the
+guide:
 1. **Redistribution:** a narrowly scoped redistribution of the public SDK and runtime parts; Party Core stays
    proprietary. First an audit of copyright, third-party licences, notices and exactly which files a package
    carries, then a proposed SDK licence and packaging policy. No licence change and no external distribution
@@ -155,7 +156,7 @@ nothing is built until its own proposal is approved:
 5. **Pregame:** optional, declared from a game's setup needs. The Party owns Play/Watch and the launch. The
    guide now says when to ask for it (Games #91).
 
-The tracking issues are linked from AVR-676.
+The tracking issues are linked from AVR-676; the SDK follow-ups are AVR-681.
 
 **The evidence format in Games #92:** the two tested packages, pinned by sha256, the game's own source,
 the records and the drivers. The kit trees copied beside each game are dropped: they could not be rebuilt
