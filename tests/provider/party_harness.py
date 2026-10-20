@@ -15,7 +15,8 @@ on the appliance:
 Harness-only routes (loopback callers only):
     POST /__harness__/party/reset[?pregame=1]   a fresh party; ?pregame=1: BLUFF runs the Party's
                                      pregame, as in production (AVR-129). A round the previous party left
-                                     running is ended at its game first, so no test inherits another's room
+                                     running, or its results, is ended at its game first, so no test
+                                     inherits another's room
     GET  /__harness__/party-lab      a bare Join / Launch / Open page (the protocol checks predate
                                      Party Home's own Join and host start, AVR-127)
 
@@ -134,11 +135,12 @@ def attach(app, key, port, public_hosts, party_port, game_origins=None, native=N
         chosen = pregame if request.query_params.get('pregame') == '1' else games
         # The previous party's round is ended at its game, as the Host's End would: replacing Party
         # Core alone left the games server holding that round (a paused table with the last test's
-        # seats), and a later test that opens the game page without launching saw it. Off the event
-        # loop: the end goes to the games server this same app serves.
+        # seats), and a later test that opens the game page without launching saw it. A completed
+        # round is ended too: its game keeps the results until the party releases it (service.py,
+        # 'release'). Off the event loop: the end goes to the games server this same app serves.
         with svc.lock:
             last = svc.core.party.session
-        if last is not None and last.state != core.ENDED:
+        if last is not None and (last.state != core.ENDED or last.outcome == 'completed'):
             await anyio.to_thread.run_sync(link.end, last)
         if native:
             native.stop_process()
