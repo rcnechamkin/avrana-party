@@ -1,6 +1,6 @@
 # Sprint 04: SDK clean-room adaptation validation
 
-- **Status:** **PROPOSED (2026-10-20). Not started; needs owner approval of scope, game and the decisions in §6.**
+- **Status:** **APPROVED (owner, 2026-10-20) as AVR-676, with the decisions in §6. In progress.**
 - **Reads with:** [SDK readiness audit](../../findings/2026-10-20-sdk-readiness-audit.md),
   Games `docs/DEVELOPING-A-GAME.md`, [ADR 0011](../../adr/0011-party-console-model.md),
   [ADR 0013](../../adr/0013-party-and-game-browser-origins.md), AVR-676 (this sprint), AVR-512, AVR-421, AVR-59.
@@ -78,10 +78,25 @@ Also:
 - Games #88 and Party #175 merged or explicitly deferred, so the adapter's pinned commits are stable.
 - Party #176 (provider ordering fix) merged, so the real-Party harness runs clean in any order.
 
-## 6. Owner decisions
+## 6. Owner decisions (taken 2026-10-20)
 
-1. Approve the sprint and the game (recommended Hearts; Bingo as a warm-up only if wanted).
-2. Do kit games get the Party layer (opt-in, the #88 mechanism) for this sprint, or explicitly not?
-3. "Installed" for this sprint: a throwaway-Party install path (design work in Party), or "validated" as the last step.
-4. Whether the adapter may read legacy LAN Games code for the chosen title (needed to adapt it; it
-   is donor/reference code under AVR-228).
+1. **Sprint approved, with Hearts as the donor game.** It tests the adaptation pipeline and the SDK. It is
+   not a commitment to ship Hearts as a supported Party title.
+2. **Party layer:** SDK games should support the existing Party System Interface through an explicit,
+   versioned opt-in. First-party opt-in does not authorize arbitrary untrusted community games. The
+   approved origin, credential, sandbox and trust boundaries stay. Unresolved policy is documented, not
+   silently widened.
+3. **Installed:** beyond package validation. A disposable, reproducible environment exercises the real
+   install, catalog-registration and removal/rollback code, with no second installer. What cannot be
+   reproduced safely is documented, and no full install acceptance is claimed. No Pi operations or
+   production deployment.
+4. **Donor code:** the adapter may read Hearts in the legacy Games repository as donor source only, not as a
+   supported runtime. Provenance and licensing are verified and kept; no standalone LAN Games behavior is
+   maintained.
+5. **Independence:** a fresh adapter agent works from documented SDK materials and the donor source only.
+   Every undocumented intervention is recorded, and a second independent agent reproduces the result from
+   the corrected instructions. Title-specific work is kept apart from reusable SDK fixes.
+6. **Sequencing and limits:** merge the Sprint 03 PRs first, then the small discovery and documentation
+   fixes, then the adaptation, multi-browser test, packaging, disposable install and reproduction. The SDK
+   is not frozen and third-party readiness is not claimed from this one exercise; AVR-512 provides the
+   external Node/Colyseus validation. Sprint 04 implementation PRs are not merged without approval.
