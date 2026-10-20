@@ -18,7 +18,7 @@ recovery runs on the appliance are **NOT RUN** (AVR-33, owner).
 | `avranaparty-games` (BLUFF, EXPO, ...) | restarts (`Restart=on-failure`); the new process holds no session. The delay is **not verified on the appliance**: its unit file is in the games repository, which marks it reconstructed and its `RestartSec=3` as still to be checked there (`systemctl cat avranaparty-games`) | Party Home and Party Core keep running |
 | `avranaparty-arcade` | restarts after 3 s | the same |
 | one native game, `avrana-game@<slug>` | its socket starts it again on the next connection. Five quick failures hit systemd's start limit: the instance **and its socket** end `failed` and that game is refused | other games, Party Core and nginx are untouched |
-| any game, while a round is on | phones keep being sent to the game and bounce. With `session_recovery.close_lost_game` on (default off), three failed checks within the window (10 s, or 17 s when each check waits out the 5 s connect timeout; about 4 s when the game refuses connections outright) close the round as `abandoned` / `game_lost` and send everyone home | |
+| any game, while a round is on | phones keep being sent to the game and bounce. With `session_recovery.close_lost_game` on (default off), three failed checks within the window (at least 10 s, and three of the game's connect timeouts + 2 s: 17 s at the default 5 s, 77 s for the arcade's 25 s; about 4 s when the game refuses connections outright and phones ask every 2 s) close the round as `abandoned` / `game_lost` and send everyone home | |
 
 A crash loop is bounded to one start per 3 s and never stops on its own: with `RestartSec=3` the
 default start limit (5 in 10 s) is never reached, so the unit shows `activating`, not `failed`.
@@ -69,21 +69,26 @@ times, and for Party Core killed mid-round:
 
 - other phones' `/party/api/state` stays under 1 s while a game is dead or silent: Party Core calls
   games outside its lock;
-- the host's End returns within the link's bound (`END_LINK_TIMEOUT` + 3 s) and everyone is home;
-- a Start against a game that is down, or a wedged arcade slot, fails within the link timeout with a
-  reason, and leaves nothing launching or orphaned (the late `end` lands after the late launch);
+- the host's End returns within one end call (the game's link timeout, capped at `END_LINK_TIMEOUT`,
+  12 s: 5 s for BLUFF, 12 s for the arcade on the appliance) and everyone is home;
+- a Start against a game that is down, or a wedged arcade slot, fails within the launch timeout plus
+  the rollback `end` (on the appliance up to 25 + 12 s for the arcade, still under Party Core's own
+  60 s launch limit) with a reason, and leaves nothing launching or orphaned (the late `end` lands
+  after the late launch);
 - after five crash-and-restart cycles there is one host, one session at the game, versions only rise,
-  and (Linux) Party Core's thread count does not grow;
+  and (Linux) Party Core's thread count stays within 4 of where it started;
 - a restarted Party Core comes back clean; the old host's stale request is refused; the next Start
   replaces the game's orphan.
 
 It also pins the two limitations in "Not decided here": a restarted game refuses Party tickets until
 the host ends the round (followers bounce), and a game that is wedged but still listening is never
 counted as lost, because the lost-game check is a TCP connect. Party Core's rollback of a failed Start
-assumes a game handles launch and end one at a time, in order. Every shipped runtime does (the managed
-arcade runtime holds a lock; the Games server and the gamekit run one event loop), and the arcade's own
-start timeout (15 s) ends before Party Core's link gives up (25 s). The stand-in does the same; a game
-that handled them concurrently could keep a late launch as an orphan.
+assumes a game handles launch and end one at a time, so the rollback `end` lands after a late launch.
+The managed arcade runtime does (`avrana.party.managed` holds a lock), and its own start timeout (15 s)
+ends before Party Core's link gives up (25 s). The gamekit and the Games server live in the games
+repository: the gamekit serves on threads under its own lock, and neither was checked for this
+ordering here (AVR-673 follow-up). The stand-in serializes like the arcade; a game that handled them
+concurrently could keep a late launch as an orphan until the next Start replaces it.
 
 ## A stopped journal and native Node games
 

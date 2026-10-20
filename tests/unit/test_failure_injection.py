@@ -23,6 +23,7 @@ proposal, docs/design/proposals/2026-10-12-session-probe.md section 5):
   * the lost-game check is a TCP connect, so a game that is wedged but still listening is never
     counted as lost (LostGameCheck.test_a_wedged_game_...).
 """
+import inspect
 import json
 import os
 import shutil
@@ -44,13 +45,32 @@ REPO = Path(__file__).resolve().parents[2]
 GAME_PROCESS = REPO / 'tests' / 'fixtures' / 'failure' / 'game_process.py'
 QUICK = 1.0                 # s: a state read while a game is failing must stay this fast
 ARCADE_TIMEOUT = 6          # s: the arcade's link timeout here (25 on the appliance, the same code path)
-END_BOUND = sessions.END_LINK_TIMEOUT + 3.0
+MARGIN = 2.0                # s: scheduling slack on a loaded box, not part of any bound
+LINK_TIMEOUT = inspect.signature(sessions.HttpGameLink).parameters['timeout'].default   # BLUFF: no own timeout
+
+
+def end_bound(timeout):
+    """The host's End against a dead or silent game: one end call, capped at END_LINK_TIMEOUT."""
+    return min(timeout, sessions.END_LINK_TIMEOUT) + MARGIN
+
+
+def failed_start_bound(timeout):
+    """A Start whose launch fails or times out: the launch call, then the rollback end (AVR-134)."""
+    return timeout + min(timeout, sessions.END_LINK_TIMEOUT) + MARGIN
+
+
+_ports = set()
 
 
 def free_port():
-    with socket.socket() as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
+    """A loopback port nothing listens on, never one already handed out in this run."""
+    while True:
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            port = s.getsockname()[1]
+        if port not in _ports:
+            _ports.add(port)
+            return port
 
 
 def wait_for(predicate, timeout, what):
@@ -81,7 +101,7 @@ class GameProc:
     def start(self):
         self.proc = subprocess.Popen([sys.executable, str(GAME_PROCESS), '--port', str(self.port), '--key-file',
                                       str(self.key_file), '--game', self.game, '--hang-file', str(self.hang_file)],
-                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                                     stdout=subprocess.PIPE, text=True)   # stderr: the test run's own
         self.proc.stdout.readline()                                  # 'ready' once bound
         wait_for(lambda: answers(self.port), 10, f'{self.game} to listen')
 
@@ -211,7 +231,12 @@ class Rig(unittest.TestCase):
         return v['state'], v['location']['at'], v['nav']['to'], s.get('state'), s.get('outcome'), s.get('reason')
 
     def host(self):
-        return next(m['name'] for m in self.view('Ben')['members'] if m['host'])
+        """The one host's name: exactly one member holds it, and it is the party's host."""
+        v = self.view('Ben')
+        hosts = [m for m in v['members'] if m['host']]
+        self.assertEqual(len(hosts), 1, v['members'])
+        self.assertEqual(hosts[0]['id'], v['host'], v)
+        return hosts[0]['name']
 
     def act(self, name, path, body=None):
         v = self.view(name)
@@ -246,7 +271,10 @@ class Rig(unittest.TestCase):
         box = {}
 
         def run():
-            box['out'], box['took'] = self.timed(fn)
+            try:
+                box['out'], box['took'] = self.timed(fn)
+            except BaseException as e:                              # re-raised below, not lost
+                box['error'] = e
 
         t = threading.Thread(target=run, daemon=True)
         t.start()
@@ -255,13 +283,15 @@ class Rig(unittest.TestCase):
             self.quick('Ben')
             reads += 1
             t.join(probe_every)
-        self.assertNotIn('error', box, box)
+        if 'error' in box:
+            raise box['error']
         return box['out'], box['took'], reads
 
     def everyone_home(self):
         for name in self.phones:
             state, at, nav, *_ = self.seen(name)
             self.assertEqual((state, at, nav), ('lobby', 'home', 'home'), name)
+        self.host()                                                     # and still exactly one host
 
 
 class GameProcessDies(Rig):
@@ -275,7 +305,7 @@ class GameProcessDies(Rig):
         self.assertEqual(status, 200)                                       # still sends phones there
         (status, v, _), took = self.timed(lambda: self.act('Ana', 'session/end'))
         self.assertEqual(status, 200)
-        self.assertLess(took, END_BOUND)
+        self.assertLess(took, end_bound(LINK_TIMEOUT))
         self.everyone_home()
         self.assertEqual(self.host(), 'Ana')
         # Start while the game is still down fails cleanly: home, a reason, nothing left launching.
@@ -314,7 +344,7 @@ class Unresponsive(Rig):
         self.games['bluff'].hang()
         (status, v, _), took, reads = self.while_running(lambda: self.act('Ana', 'session/end'))
         self.assertEqual(status, 200)
-        self.assertLess(took, END_BOUND)
+        self.assertLess(took, end_bound(LINK_TIMEOUT))
         self.assertGreater(reads, 1)
         self.everyone_home()                                                 # home before the game answered
         # The game wakes and handles the End that waited for it: nothing is left orphaned there.
@@ -333,7 +363,7 @@ class Unresponsive(Rig):
         finally:
             self.games['bluff'].signal(signal.SIGCONT)
         self.assertEqual(status, 200)
-        self.assertLess(took, END_BOUND)
+        self.assertLess(took, end_bound(LINK_TIMEOUT))
         self.everyone_home()
 
     def test_a_wedged_arcade_fails_its_start_within_its_timeout_and_is_told_to_end(self):
@@ -341,10 +371,13 @@ class Unresponsive(Rig):
         a reason, and the runtime is told to end (AVR-134), so it holds nothing once it wakes."""
         arcade = self.games['arcade-gauntlet2']
         arcade.hang()
-        threading.Timer(ARCADE_TIMEOUT + 2.0, arcade.hang, args=(False,)).start()   # wakes after the link gave up
+        wake = threading.Timer(ARCADE_TIMEOUT + 2.0, arcade.hang, args=(False,))   # after the link gave up
+        wake.daemon = True
+        self.addCleanup(wake.cancel)
+        wake.start()
         (status, v), took, _ = self.while_running(lambda: self.launch('arcade-gauntlet2'))
         self.assertEqual(status, 200)
-        self.assertLess(took, ARCADE_TIMEOUT + END_BOUND)
+        self.assertLess(took, failed_start_bound(ARCADE_TIMEOUT))
         self.assertEqual((v['state'], v['session']['state']), ('lobby', 'ended'), v)
         wait_for(lambda: not arcade.hang_file.exists(), 10, 'the arcade to wake')
         wait_for(lambda: arcade.held() is None, 15, 'the arcade to hold no session')
@@ -356,7 +389,7 @@ class DependencyUnavailable(Rig):
         self.games['bluff'].kill()
         (status, v), took = self.timed(self.launch)
         self.assertEqual(status, 200)
-        self.assertLess(took, END_BOUND)
+        self.assertLess(took, failed_start_bound(LINK_TIMEOUT))
         self.assertEqual((v['state'], v['session']['state']), ('lobby', 'ended'), v)
         self.quick()
         time.sleep(1.0)                                                     # the service comes back later
@@ -368,6 +401,9 @@ class DependencyUnavailable(Rig):
 
 
 class RepeatedFailures(Rig):
+    """Each cycle replaces the game process, so the orphan check that matters is the last one: the
+    game holds exactly the final round."""
+
     def test_five_crash_and_restart_cycles_leave_one_host_one_session_and_no_thread_growth(self):
         before = self.party.threads()
         sids, versions = [], []
@@ -384,8 +420,9 @@ class RepeatedFailures(Rig):
         self.assertEqual(versions, sorted(versions))
         self.assertEqual(self.games['bluff'].held(), last)
         after = self.party.threads()
-        if before is not None:
-            self.assertLessEqual(after, before + 4, (before, after))
+        if before is not None:                                          # Linux only (/proc)
+            self.assertIsNotNone(after)
+            self.assertLessEqual(after, before + 4, (before, after))     # a small constant, not per cycle
 
     def test_starts_against_a_crash_looping_game_each_fail_cleanly(self):
         self.games['bluff'].kill()
@@ -407,8 +444,8 @@ class PartyCoreDies(Rig):
         v = self.view('Ben')
         self.assertIsNone(v['me'])                                          # the party is memory-only
         # The old host's request against the old party is refused, not applied.
-        status, _, _ = self.phones['Ana'].post('session/end', {'if_version': stale})
-        self.assertNotEqual(status, 200)
+        status, body, _ = self.phones['Ana'].post('session/end', {'if_version': stale})
+        self.assertIn(status, (403, 409), body)
         for name in ('Ben', 'Ana', 'Cat'):                                  # Ben rejoins first: host
             self.assertEqual(self.phones[name].post('join', {'name': name})[0], 200)
         self.assertEqual(self.host(), 'Ben')
@@ -443,15 +480,15 @@ class LostGameCheck(Rig):
 
     def test_a_wedged_game_that_still_listens_is_never_counted_as_lost(self):
         """KNOWN GAP (contract decision): the check is a TCP connect, which a wedged process still
-        accepts. Ticket requests stay quick (one check at a time, outside the lock); the host's End
-        remains the way out."""
+        accepts. Other phones' state reads stay quick meanwhile (the check runs outside the lock);
+        the host's End remains the way out."""
         self.launched()
         self.games['bluff'].hang()
         v = self.poll_tickets(12)
         self.assertEqual(v['state'], 'active')
         (status, _, _), took, _ = self.while_running(lambda: self.act('Ana', 'session/end'))
         self.assertEqual(status, 200)
-        self.assertLess(took, END_BOUND)
+        self.assertLess(took, end_bound(LINK_TIMEOUT))
         self.everyone_home()
 
 

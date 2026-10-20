@@ -7,7 +7,7 @@ not a stopped thread. A new process holds no session, as a restarted game does.
 
     python game_process.py --port N --key-file K --game G [--hang-file F]
 
-Routes: the protocol's launch and end (one at a time, in arrival order); test-only
+Routes: the protocol's launch and end (one at a time); test-only
 POST /__test__/hello {ticket} (a phone arriving with a Party ticket) and GET /__test__/held (the
 session it holds). While --hang-file exists, every
 request is accepted and never answered (a wedged runtime that still listens).
@@ -34,9 +34,9 @@ def main():
     ap.add_argument('--hang-file')
     args = ap.parse_args()
     side = protocol.GameSide(protocol.read_key(args.key_file), args.game)
-    # Launch and end are handled one at a time, in arrival order, as every shipped runtime does
-    # (avrana.party.managed holds a lock; the Games server and the gamekit run one event loop).
-    # Party Core's rollback of a failed Start relies on it: its `end` lands after the late launch.
+    # Launch and end are handled one at a time, as the managed arcade runtime does (avrana.party.managed
+    # holds a lock). Party Core's rollback of a failed Start relies on it: its `end` waits behind the
+    # late launch. threading.Lock is not FIFO, but here at most one call ever waits for it.
     protocol_lock = threading.Lock()
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -49,11 +49,14 @@ def main():
 
         def reply(self, status, out):
             data = json.dumps(out).encode()
-            self.send_response(status)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except ConnectionError:
+                pass                    # Party Core stopped waiting: the hang outlived its link timeout
 
         def do_GET(self):
             self.hang()
