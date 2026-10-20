@@ -195,6 +195,8 @@ test('a package whose page opts in to the Party layer: the Party frame mounts, o
     // Ana, the Host: the drawer offers her the Host controls a game origin may use.
     await ana.page.frameLocator(FRAME).locator('#layer-button').click();
     await expect(ana.page.frameLocator(FRAME).locator('#layer-host')).toBeVisible();
+    const offered = await ana.page.frameLocator(FRAME).locator('#layer-actions [data-action]').evaluateAll((els) => els.map((e) => e.getAttribute('data-action')));
+    expect(offered.sort()).toEqual(['end', 'lobby']);                  // over a game origin, only what bridge v1 allows (D3)
     await ana.page.frameLocator(FRAME).locator('#layer-close').click();
     // A reload mounts it again.
     await ben.page.reload();
@@ -203,6 +205,7 @@ test('a package whose page opts in to the Party layer: the Party frame mounts, o
       expect(p.page.url().startsWith(`${GAMES}/games/${id}/`)).toBe(true);
       expect((await p.context.cookies(`${PARTY}/party/`)).some((c) => /avrana_device/.test(c.name))).toBe(true);   // the control
       expect((await p.context.cookies(`${GAMES}/`)).map((c) => c.name)).toEqual([]);
+      expect((await p.context.cookies(`${GAMES}/games/${id}/`)).map((c) => c.name)).toEqual([]);
       const stored = await p.page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
       for (const bad of ['avrana_device', 'avrana-layer-position', 'avrana-chat-seen', 'avrana-party-sent', 'aps0.']) expect(stored).not.toContain(bad);
       expect(p.direct).toEqual([]);
