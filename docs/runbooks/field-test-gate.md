@@ -27,7 +27,8 @@ A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 and th
 
 1. **Choose the two commits and record the full SHAs.**
    - **Party:** `main` (today `c903346`, which carries AVR-29 and AVR-33), plus #167 (Leave and Reconnect) and #173 (harness evidence only) if you merge them first.
-   - **Games: a commit that contains Games #84** (merge `51accf0`), which is Games `main` today (`4acc5ae`, plus #87 if merged).
+   - **Games: a commit that contains Games #84** (merge `51accf0`), which is Games `main` today (`4acc5ae`).
+     - Games #87 (AVR-674) is held as an experimental optimization and is not part of this pair. It only changes `lan-dodgeball`, a donor title rather than a supported Party game.
      - Party `main` carries the Party layer, Party #162, merged 2026-10-16. Its Games half is #84, and the two must be deployed together as one merge set ([party-layer-device-validation](party-layer-device-validation.md)).
      - The checklist's "Games stays `bd7e01d`" predates #162. `bd7e01d` does not contain #84, so do not pair it with today's Party `main`.
 2. **Accept the local evidence in place of CI.** [deploy](deploy.md) "Before" item 1 asks for green CI lanes, but hosted CI is billing-blocked. Record that you accept local test evidence instead, and name the PR comments that hold it.
@@ -137,9 +138,6 @@ Do these only if this field test needs them, with no party running, and the game
 - **Party layer (Party #162 with Games #84, both in the step 0 pair):** run the host-control and lifecycle checks in [party-layer-device-validation](party-layer-device-validation.md) §6, and the Reconnect checks in §7, on its three phones (A, B, C). If the deployed pair lacks either half, record NOT RUN.
   - Record Limited Mode (§7.5-§7.6) as NOT SUPPORTED where friend-ready D6 keeps it out of scope.
   - **If #167 is deployed:** Leave Party has no step there. Its record is the #167 PR evidence until a phone check is added.
-- **If Games #87 is deployed:** run the realtime game with 2, 4 and 6 phones. Follow [performance-measurement](performance-measurement.md) §2, step 4: Games CPU on the Pi, per-station airtime, and frame pacing.
-  - Laptop figures do not stand in for this.
-  - Dodgeball's resting-ball `bounce` traffic is a separate Linear issue, out of scope.
 
 ### 8. After Part 1
 
