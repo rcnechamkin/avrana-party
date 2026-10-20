@@ -409,6 +409,7 @@ def scenario_idle(cfg, games_root):
     phones = []
     try:
         time.sleep(cfg['settle'])
+        harness = Sampler(os.getpid()).start()
         empty = Sampler(stack.party_pid).start()
         time.sleep(cfg['window'])
         empty = empty.stop()
@@ -420,6 +421,7 @@ def scenario_idle(cfg, games_root):
         window = cfg['idle_poll_window']             # long enough for every poll to complete once
         time.sleep(window)
         waiting = waiting.stop()
+        generator = harness.stop()
         stop_all(phones)
         # an idle phone renews its poll once per poll duration: rates from completed idle polls
         polls = [x for p in phones for x in p.idle_polls]
@@ -430,7 +432,7 @@ def scenario_idle(cfg, games_root):
                 'idle_poll_seconds': seconds, 'idle_bytes_per_poll': per_poll,
                 'idle_requests_per_client_per_min': rate,
                 'idle_bytes_per_client_per_min': round(rate * per_poll['mean']) if rate else None,
-                'poll_errors': poll_errors(phones)}
+                'poll_errors': poll_errors(phones), 'load_generator': generator, 'notes': stack.notes}
     finally:
         stop_all(phones)
         stack.stop()
@@ -582,8 +584,8 @@ def scenario_lifecycle(cfg, games_root):
 
 
 class RealtimeClient:
-    """A standalone dodgeball player over WebSocket: counts frames and bytes, sends 20 Hz moves and
-    measures ping -> pong round trips through the game server's loop."""
+    """A standalone dodgeball player over WebSocket: counts frames and bytes, sends ~11 Hz moves and
+    measures ping -> pong round trips through the server's WebSocket handler."""
 
     def __init__(self, port, name):
         from websockets.sync.client import connect
@@ -619,7 +621,7 @@ class RealtimeClient:
                         if len(self.pings) == 1 and self.counting:
                             self.rtt_ms.append((now - self.pings[0]) * 1000.0)
                         elif len(self.pings) > 1:
-                            self.lost_pings += len(self.pings) - 1
+                            self.lost_pings += len(self.pings)   # one dropped, the rest ambiguous
                         self.pings.clear()
                 if self.counting:
                     self.msgs += 1
