@@ -25,13 +25,13 @@
 
 ## 2. Where it is enforced and tested
 
-| Surface | Enforced by | Tested (Chromium, not a phone) | Gap |
+| Surface | Enforced by | Tested (Chromium; not a phone or real device) | Gap |
 |---|---|---|---|
 | Party Core | `location`, Host-only moves, roles | `test_party_core`, `test_party_service`, `test_party_session_flow` (pregame, late arrivals, switch, abandonment) | none found |
 | Party shell, same-origin game pages | `destination()` in `app.js`, `party-follow.js` | party lane: Host start, switch ("the old page follows"), End, late or reopened phones, pregame, Host leaving mid-game | none found |
 | First-party games on a game origin (BLUFF, EXPO) | Party frame → bridge `navigate` | provider: `game-origin*.spec.ts` (start, End, reload, socket drop, a phone opening Party Home mid-round) | switching is covered on the Party origin only; on a game origin it uses the same `navigate`, but it is not tested there |
 | Limited Mode | the same `destination()` | offline lane: `limited.spec.ts` ("Host moves reach Limited phones...", "comes back from offline") | none found |
-| Native `.avrgame` packages, real Party | the shell, plus the kit's vendored bridge | provider `native-package.spec.ts` (#180): Host start direct and with pregame, seats up to `players.max` and a watcher, reload, End. The follow-up branch adds offline and back, a late joiner who watches, a non-Host refused, and End through Core | Limited Mode, wake and switch not run for packages; Python packages only (no Node package through the harness) |
+| Native `.avrgame` packages, real Party | the shell, plus the kit's vendored bridge | provider `native-package.spec.ts` (#180): Host start direct and with pregame, seats up to `players.max` and a watcher, reload, End. The follow-up branch adds a late joiner who watches, a non-Host refused, and the Host's End through Core moving every page, including one that was offline when it happened | Limited Mode, wake and switch not run for packages; Python packages only (no Node package through the harness) |
 | SDK tooling (`play`, `match`, `comply` with the stand-in Party) | the stand-in Party sends `navigate` only on End | `comply` lifecycle (Host End), `match` | no Host start from Party Home, no late watcher, no switch. Nothing checks that a page does not navigate itself or hold the page (`beforeunload`, `location.assign`, `window.open`), so a game could break rule 4 and pass `comply` |
 | Physical phones (Safari, Android, an installed PWA, a real Wi-Fi drop, a Pi reboot) | — | not run | all of it |
 

@@ -161,33 +161,47 @@ test('a package played to its end by its driver: the Party accepts the signed re
   } finally { await close(ana, ben); }
 });
 
-// Party 1.0: the Party moves every phone, never the game (ADR 0011). For any package, through the real Party:
-// a phone that went offline mid-round and a phone that joins mid-round both follow the Party; the late one
-// watches; a non-Host cannot end the round; the Host's End (Party Core's own endpoint, not a game button)
-// takes every phone home.
-test('a package follows the Party: offline and back, a late joiner watches, only the Host ends, and End moves everyone', async ({ browser, request }) => {
+// Party 1.0: the Party moves every page, never the game (ADR 0011). For any package, through the real Party:
+// a late joiner is taken to the round and watches; a non-Host cannot end it; the Host's End (Party Core's own
+// endpoint, not a game button) moves every page home, including one that was offline when it happened.
+/** Party Core's API as the Party's own page calls it: a script-less Party document in the same browser context. */
+async function partyApi(p: any) {
+  const page = await p.context.newPage();
+  await page.goto(`${PARTY}/party/api/state`);
+  return {
+    page,
+    async post(path: string) {
+      return page.evaluate(async (path: string) => {
+        const state = await (await fetch('/party/api/state', { cache: 'no-store' })).json();
+        const res = await fetch('/party/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ if_version: state.version }) });
+        return { status: res.status, body: await res.json().catch(() => null) };
+      }, path);
+    },
+  };
+}
+test('a package follows the Party: a late joiner watches, only the Host ends, and End moves everyone, offline or not', async ({ browser, request }) => {
   const { id } = await packageRow(request);
   const { ana, ben } = await table(browser, request, id);
   let dana: any = null;
   try {
-    await ben.context.setOffline(true);
-    await ben.page.waitForTimeout(5_000);                              // well inside away-grace
-    await ben.context.setOffline(false);
-    await expect(ben.page).toHaveURL(`${GAMES}/games/${id}/`);
     dana = await phone(browser, 'Dana', 2);                           // joins Party Home while the round is on
     await expect(dana.page).toHaveURL(`${GAMES}/games/${id}/`);       // taken to the round, nobody pressed Join
     await expect.poll(async () => (await redeemed(dana.page)).filter((r: any) => r.ok).at(-1)?.role).toBe('spectator');
-    const api = async (p: any, path: string) => {
-      const state = await (await p.context.request.get(`${PARTY}/party/api/state`)).json();
-      // as the Party's own page would send it: its Origin, JSON, the phone's cookie
-      return p.context.request.post(`${PARTY}/party/api/${path}`, { headers: { Origin: PARTY }, data: { if_version: state.version } });
-    };
-    const refused = await api(ben, 'session/end');                    // not the Host: refused, nobody moves
-    expect(refused.status()).toBe(403);
-    expect((await refused.json()).error).toBe('not_host');
-    await expect(ana.page).toHaveURL(`${GAMES}/games/${id}/`);
-    expect((await api(ana, 'session/end')).ok()).toBe(true);
-    for (const p of [ana, ben, dana]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
+    const benApi = await partyApi(ben), anaApi = await partyApi(ana);
+    const refused = await benApi.post('session/end');                 // not the Host: refused, nobody moves
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe('not_host');
+    await benApi.page.close();
+    for (const p of [ana, ben, dana]) await expect(p.page).toHaveURL(`${GAMES}/games/${id}/`);
+    // Ben's page is offline (well inside away-grace) when the Host ends the round; back online, it follows.
+    await ben.context.setOffline(true);
+    expect((await anaApi.post('session/end')).status).toBe(200);
+    await anaApi.page.close();
+    for (const p of [ana, dana]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
+    await expect(ben.page).toHaveURL(`${GAMES}/games/${id}/`);        // the control: offline, it cannot have moved
+    await ben.context.setOffline(false);
+    await expect(ben.page).toHaveURL(`${PARTY}/party/`, { timeout: 60_000 });
     for (const p of [ana, ben, dana]) { expect(p.direct).toEqual([]); expect(p.errors).toEqual([]); }
   } finally { await close(ana, ben, dana); }
 });
