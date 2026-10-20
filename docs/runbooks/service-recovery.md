@@ -6,7 +6,8 @@ nothing and changes no configuration.
 
 **Evidence.** Party Core restart, crash and rollback recovery were verified on the Pi on 2026-09-29
 (Party PR #29). Everything else here is source and Tier 1-2 tests (`tests/unit/test_service_isolation.py`,
-`test_ops_status.py` `FailedRecovery`, `test_party_recovery.py`). The Games, arcade, nginx and network
+`test_ops_status.py` `FailedRecovery`, `test_party_recovery.py`) and the local failure-injection harness
+below (`test_failure_injection.py`, real processes, synthetic games). The Games, arcade, nginx and network
 recovery runs on the appliance are **NOT RUN** (AVR-33, owner).
 
 ## What happens without you
@@ -56,6 +57,34 @@ you need (`journalctl -u <unit> --since -1h > ~/avr-<unit>-$(date +%F-%H%M).log`
 After any of these, the status `summary.state` should be `ok` (or list only notes), and one phone
 should complete Join, Start and End.
 
+## Failure-injection harness (local, not the appliance)
+
+`python3 -m unittest discover -s tests/unit -p test_failure_injection.py` (AVR-33, about 90 s). Party
+Core runs as its own process from a config file, as on the Pi; each game is its own process: a
+**synthetic stand-in** (`tests/fixtures/failure/game_process.py`) that speaks the real session protocol.
+It is not BLUFF, the Games server or the arcade, and nothing here is systemd or nginx. Kills are real
+(SIGKILL), a freeze is SIGSTOP (Linux only) and a hang is a process that accepts connections and never
+answers. On 2026-10-19 it showed, for a game killed, hung, frozen, down at Start, crash-looping five
+times, and for Party Core killed mid-round:
+
+- other phones' `/party/api/state` stays under 1 s while a game is dead or silent: Party Core calls
+  games outside its lock;
+- the host's End returns within the link's bound (`END_LINK_TIMEOUT` + 3 s) and everyone is home;
+- a Start against a game that is down, or a wedged arcade slot, fails within the link timeout with a
+  reason, and leaves nothing launching or orphaned (the late `end` lands after the late launch);
+- after five crash-and-restart cycles there is one host, one session at the game, versions only rise,
+  and (Linux) Party Core's thread count does not grow;
+- a restarted Party Core comes back clean; the old host's stale request is refused; the next Start
+  replaces the game's orphan.
+
+It also pins the two limitations in "Not decided here": a restarted game refuses Party tickets until
+the host ends the round (followers bounce), and a game that is wedged but still listening is never
+counted as lost, because the lost-game check is a TCP connect. Party Core's rollback of a failed Start
+assumes a game handles launch and end one at a time, in order. Every shipped runtime does (the managed
+arcade runtime holds a lock; the Games server and the gamekit run one event loop), and the arcade's own
+start timeout (15 s) ends before Party Core's link gives up (25 s). The stand-in does the same; a game
+that handled them concurrently could keep a late launch as an orphan.
+
 ## A stopped journal and native Node games
 
 Until Games PR #71, a Node game (`avrana_gamekit/js/game-runtime.mjs`) whose stdout or stderr broke
@@ -73,3 +102,8 @@ ended are owner decisions recorded in
 [the session-probe proposal](../design/proposals/2026-10-12-session-probe.md) section 5. Whether
 Party Core, Games and the arcade get an explicit `StartLimitIntervalSec`/`StartLimitBurst` is also the
 owner's (AVR-33): today a crash loop retries indefinitely, which favours self-healing over stopping.
+
+The lost-game check counts a refused connection, not a game that accepts connections and never
+answers: making a wedged game count needs an application-level health answer from games, a
+Party↔game contract change (AVR-33 follow-up), not built here.
+
