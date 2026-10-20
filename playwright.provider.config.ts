@@ -26,6 +26,11 @@ export default defineConfig({
     // AVR-292: EXPO as a real Party game too (party-layer.spec.ts); on the other ports it cannot start
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8186 --party-session --expo-game`,
     url: 'http://127.0.0.1:8186/party/', reuseExistingServer: false, timeout: 60000,
+  }, {
+    // The Party layer on the game origin (game-origin-layer.spec.ts): BLUFF and EXPO both real
+    // Party games, served on the game host name, with the Party on the Party host name
+    command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8187 --party-session --game-origin --expo-game`,
+    url: 'http://127.0.0.1:8187/party/', reuseExistingServer: false, timeout: 60000,
   }, ...(process.platform === 'win32' ? [] : [{
     command: `"${python}" tests/provider/server.py --games "${resolve(games)}" --port 8185 --party-session --game-origin --native-game checkers`,
     url: 'http://127.0.0.1:8185/party/', reuseExistingServer: false, timeout: 60000,
