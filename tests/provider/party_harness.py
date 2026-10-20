@@ -80,7 +80,8 @@ def attach(app, key, port, public_hosts, party_port, game_origins=None, native=N
     if native:
         from avrana.contracts import party_config
         from native_runtime import ActivatedLink
-        metadata = party_config.resolve({native.slug: {}})
+        # A package brings its own Game Contract (install-game registers it); a first-party game's is in contracts/games/.
+        metadata = party_config.resolve({native.slug: {}}, contracts={native.slug: native.contract} if native.contract else None)
         games.update(metadata)
         pregame.update(metadata)
         endpoints[native.slug] = native.endpoint
