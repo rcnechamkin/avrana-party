@@ -218,3 +218,28 @@ test('the mount leaves a dragged button where it is put, and keeps it inside whe
   assert.equal(layer.frame.style.width, `${TAB.w}px`);
   layer.stop();
 });
+
+test('a panned keyboard moves the open frame with the visible region; a pan alone is not a resize, and stop leaks nothing', () => {
+  const page = fakePage(), vvl = {};
+  const vv = { width: 375, height: 667, offsetTop: 0, offsetLeft: 0,
+    addEventListener: (n, f) => { (vvl[n] ||= new Set()).add(f); }, removeEventListener: (n, f) => { vvl[n]?.delete(f); } };
+  page.win.visualViewport = vv;
+  const layer = mountPartyLayer({ partyOrigin: 'https://party.test', game: 'bluff', window: page.win });
+  page.say(P({ type: 'ready' }));
+  page.say(P({ type: 'place', mode: 'open', side: 'right', y: 200 }));
+  const sent = page.posted.length;
+  vv.height = 331; vv.offsetTop = 120;                          // keyboard up, and Safari panned the page to the field
+  for (const f of [...vvl.resize, ...vvl.scroll]) f();
+  assert.equal(layer.frame.style.top, '120px', 'the frame starts where the visible region starts');
+  assert.equal(layer.frame.style.height, '331px', 'and is only as tall as what is visible');
+  const sizes = page.posted.slice(sent).filter(([m]) => m.type === 'viewport');
+  assert.equal(sizes.length, 1, 'one for the new size; the scroll that follows repeats nothing');
+  assert.deepEqual(sizes[0][0], P({ type: 'viewport', w: 375, h: 331, insets: VP.insets }), 'the bridge message is unchanged: no offsets on the wire');
+  vv.offsetTop = 60; for (const f of vvl.scroll) f();           // panned further: moves, sends nothing
+  assert.equal(layer.frame.style.top, '60px');
+  assert.equal(page.posted.slice(sent).filter(([m]) => m.type === 'viewport').length, 1);
+  vv.offsetTop = -14; for (const f of vvl.scroll) f();          // rubber-banding past the top never lifts the frame off screen
+  assert.equal(layer.frame.style.top, '0px');
+  layer.stop();
+  assert.equal(vvl.resize.size + vvl.scroll.size, 0, 'both visualViewport listeners are removed');
+});
