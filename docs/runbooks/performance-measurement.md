@@ -20,10 +20,10 @@ python tools/perf/party_perf.py --games ../avrana-party-games --out perf-results
 
 | Scenario | What it measures | Real | Simulated |
 |---|---|---|---|
-| `idle` | Party Core CPU, RSS and threads with no members, then with 8 members long-polling; idle long-poll requests and bytes per client | Party Core process | phones: Python HTTP clients using the page's own wait (`party-client.js` `WAIT_S`) |
-| `longpoll_{1,4,8}_clients` | host action POST latency; delay until every phone's long poll has the new state (p50, p95); Party Core and harness CPU; bytes per client per update | Party Core process | phones as above |
-| `lifecycle_bluff_4_phones` | Start, which includes Party Core launching the game; ticket + WebSocket hello + first state; one phone's reconnect; End; everyone home; Party Core and Games memory and threads after each of 5 cycles | Party Core + Games server processes, BLUFF | phones: Python WebSocket clients |
-| `realtime_dodgeball_{2,4,6}_players` | messages, full state frames and KB/s per client; ping round trip through the game loop; Games server CPU and RSS; harness CPU | Games server, dodgeball's 30 Hz simulation | players: Python WebSocket clients sending the joystick at dodgeball.js's moving rate (~11 Hz); **standalone admission**, because dodgeball has no Party contract |
+| `idle` | Party Core CPU, RSS and threads with no members, then with 8 members long-polling; idle long-poll duration, requests and bytes per client (from completed idle polls) | Party Core process | phones: Python HTTP clients using the page's own wait (`party-client.js` `WAIT_S`) |
+| `longpoll_{1,4,8}_clients` | host action POST latency; delay from the host's tap until every phone's long poll has the new state (p50, p95); Party Core and harness CPU; bytes per client per update | Party Core process | phones as above |
+| `lifecycle_bluff_4_phones` | Start (Party Core's launch call to the already-running Games server, not a process start); ticket + WebSocket hello + first state; one phone's reconnect; End; everyone home; Party Core and Games memory and threads after each of 5 cycles, and growth after the first | Party Core + Games server processes, BLUFF | phones: Python WebSocket clients |
+| `realtime_dodgeball_{2,4,6}_players` | messages, full state frames and decoded payload KB/s per client; 1 Hz ping round trip through the server's WebSocket handler (not the 30 Hz tick); Games server CPU and RSS; harness CPU. A repeat fails if the round is not in play for the whole window | Games server, dodgeball's 30 Hz simulation | players: Python WebSocket clients sending the joystick at dodgeball.js's moving rate (~11 Hz; no 4 Hz idle keepalive) plus the 1 Hz ping; **standalone admission**, because dodgeball has no Party contract |
 
 **Method.**
 - Every repeat starts fresh processes.
@@ -32,8 +32,9 @@ python tools/perf/party_perf.py --games ../avrana-party-games --out perf-results
 - The report gives the median across repeats, the range, and the coefficient of variation.
 
 **Reading the results.**
-- **Harness CPU.** "load generator CPU" is the harness's own CPU. If it nears a full core, the result is bound by the client, not the server.
-- **Windows.** Use a Linux host for numbers you intend to keep. On Windows, timers and CPU accounting are coarse (about 15.6 ms), so dodgeball's 30 Hz tick runs near 21 Hz there and short CPU windows read as 0.
+- **Harness CPU.** "load generator CPU" is the harness's own CPU. All simulated phones share one Python process, so their timings include their own scheduling. Above 70% of a core the report marks the repeat as possibly client-bound.
+- **Windows.** Use a Linux host for numbers you intend to keep. On Windows, timers and CPU accounting are coarse (about 15.6 ms), and short CPU windows read as 0. On 2026-10-19 dodgeball sent 21 full state frames per second with no input on a Windows host, against its 30 Hz tick.
+- **Failures.** A failed repeat keeps its error and the tail of the processes' output in the JSON.
 
 Regression coverage for the harness itself is in `tests/unit/test_perf_harness.py`: statistics, bounds, the report, and a few-second smoke run against a real Party Core.
 

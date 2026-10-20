@@ -53,9 +53,11 @@ def across(repeats, field='p50', digits=3):
     if not vals:
         return {'n': 0, 'values': []}
     mean = statistics.fmean(vals)
-    cv = (statistics.stdev(vals) / mean) if len(vals) > 1 and mean else 0.0
+    sd = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    # relative spread; undefined around a zero mean (growth deltas, idle CPU), where it would read as 0
+    cv = 0.0 if sd == 0 else (round(sd / abs(mean), 3) if mean else None)
     return {'n': len(vals), 'values': [round(v, digits) for v in vals], 'median': round(statistics.median(vals), digits),
-            'min': round(min(vals), digits), 'max': round(max(vals), digits), 'cv': round(cv, 3)}
+            'min': round(min(vals), digits), 'max': round(max(vals), digits), 'cv': cv}
 
 
 def bounded(value, lo, hi, name):
@@ -109,7 +111,8 @@ def _cell(s, field='p50', unit=''):
 def _spread(a):
     if not a or not a.get('n'):
         return 'n/a'
-    return f"{a['median']:g} ({a['min']:g}-{a['max']:g}, cv {a['cv']:.2f})"
+    cv = 'n/a' if a.get('cv') is None else f"{a['cv']:.2f}"
+    return f"{a['median']:g} ({a['min']:g}-{a['max']:g}, cv {cv})"
 
 
 def markdown(result):
@@ -135,9 +138,17 @@ def markdown(result):
         lines.append('')
         lines.append(f"Evidence: {sc.get('evidence', 'unstated')}.")
         lines.append('')
+        bound = cfg.get('client_bound_pct', 70.0)
         for i, run in enumerate(sc.get('runs', [])):
             if 'error' in run:
                 lines.append(f"- **repeat {i + 1} failed:** {run['error']}")
+            gen = (run.get('load_generator') or {}).get('cpu_pct_window')
+            if gen is not None and gen > bound:
+                lines.append(f"- repeat {i + 1}: this harness used {gen:g}% of a core; the result may be client-bound")
+            for note in run.get('notes') or []:
+                lines.append(f"- repeat {i + 1}: {note}")
+            if run.get('poll_errors'):
+                lines.append(f"- repeat {i + 1}: poll errors {run['poll_errors']}")
         if sc.get('errors'):
             lines.append('')
         lines.append('| metric | unit | median across repeats (range, cv) |')

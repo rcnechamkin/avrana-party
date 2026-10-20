@@ -11,12 +11,17 @@ Evidence, per scenario (also written into the result):
   idle, longpoll  REAL Party Core process (`python -m avrana.party.service --config`). SIMULATED phones:
                   Python HTTP clients on loopback that poll /party/api/state the way party-client.js
                   does (same wait). No browser, no nginx/TLS, no Wi-Fi.
-  lifecycle       REAL Party Core + REAL Games server (server.py, uvicorn) processes; BLUFF through the
-                  Party pregame, Start, tickets, WebSocket hello, a reconnect, End. Python WebSocket
-                  clients stand in for phones.
+  lifecycle       REAL Party Core + REAL Games server (server.py, uvicorn) processes, both already
+                  running; BLUFF through the Party pregame, Start (Party Core's launch call to the
+                  running Games server, not a process start), tickets, WebSocket hello, a reconnect,
+                  End. Python WebSocket clients stand in for phones.
   realtime        REAL Games server running dodgeball's real 30 Hz simulation, joined by Python
-                  WebSocket clients that send 20 Hz input and ping. STANDALONE admission: dodgeball has
-                  no Party contract, so this measures game-server overhead, not a Party session.
+                  WebSocket clients sending the joystick at dodgeball.js's moving rate (about 11 Hz,
+                  without its 4 Hz idle keepalive) plus a 1 Hz ping the real page does not send.
+                  STANDALONE admission: dodgeball has no Party contract, so this measures game-server
+                  overhead, not a Party session.
+Timings taken by the clients include their own scheduling (all simulated phones share one Python
+process); every scenario reports this harness's own CPU so a client-bound run can be recognised.
 Laptop numbers are laptop numbers: none of this is a Pi, a phone or a radio measurement
 (docs/runbooks/performance-measurement.md has the procedure for those).
 
@@ -53,7 +58,10 @@ ORIGIN = 'https://party.perf.test'
 NAMES = ['Ana', 'Ben', 'Cat', 'Dev', 'Eli', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kim', 'Lu', 'Mo', 'Ned', 'Oz', 'Pia']
 MAX_CLIENTS = len(NAMES)
 SAMPLE_EVERY = 0.25                                 # s between process samples
+LAST_LOG_TAIL = ''                                  # the last Stack's process output, for a failed repeat
 MOVE_EVERY = 0.09                                   # s: dodgeball.js sends a changed joystick at most every 90 ms
+PING_EVERY = 1.0                                    # s: keeps moves + pings (~12/s) under the server's 30 per 2 s
+CLIENT_BOUND_PCT = 70.0                             # harness CPU above this: the result may be client-bound
 
 
 def client_wait():
@@ -88,6 +96,29 @@ def listening(port):
 
 # ---- process metrics ------------------------------------------------------------------------------
 
+def measured_pid(pid, marker):
+    """The pid that actually runs `marker` (a module or script name): `pid` itself, or the child a
+    launcher started (a Windows venv python.exe is a stub that spawns the real interpreter). Returns
+    (pid, note); without psutil, (pid, None)."""
+    try:
+        import psutil
+    except ImportError:
+        return pid, None
+    try:
+        proc = psutil.Process(pid)
+        for _ in range(50):
+            if marker in ' '.join(proc.cmdline()) and not proc.children():
+                return pid, None
+            kids = [c for c in proc.children(recursive=True) if marker in ' '.join(c.cmdline())]
+            if kids:
+                kid = max(kids, key=lambda c: c.memory_info().rss)
+                return kid.pid, f'sampled child {kid.pid} of launcher {pid}'
+            time.sleep(0.05)
+    except psutil.Error:
+        pass
+    return pid, f'could not confirm that {pid} runs {marker}'
+
+
 class Sampler:
     """CPU (% of one core), RSS and thread count of one process, sampled on a thread over a window.
     Without psutil every figure is None and `unavailable` says why."""
@@ -119,6 +150,9 @@ class Sampler:
         if self.proc is None:
             return self
         self._start = (time.perf_counter(), self._cpu_seconds())
+        rss, threads = self.snapshot()              # one sample even for a window shorter than SAMPLE_EVERY
+        self.rss.append(rss)
+        self.threads.append(threads)
         self._stop.clear()
 
         def loop():
@@ -175,7 +209,15 @@ class Stack:
                                       'key_file': str(keys / 'bluff.key')}}}
         (self.tmp / 'party-core.json').write_text(json.dumps(config), encoding='utf-8')
         self.log = open(self.tmp / 'processes.log', 'ab')
-        self.games = None
+        self.games = self.party = None
+        self.notes = []
+        try:
+            self._launch(games_root, keys)
+        except Exception:
+            self.stop()
+            raise
+
+    def _launch(self, games_root, keys):
         if games_root is not None:
             env = dict(os.environ, AVRANA_PARTY_KEYS=str(keys), AVRANA_PARTY_URL=f'http://127.0.0.1:{self.party_port}',
                        LANGAMES_PORT=str(self.games_port), LANGAMES_HOST='127.0.0.1')
@@ -184,15 +226,16 @@ class Stack:
         self.party = subprocess.Popen([sys.executable, '-m', 'avrana.party.service', '--config',
                                        str(self.tmp / 'party-core.json'), '--port', str(self.party_port)],
                                       cwd=str(PARTY_ROOT), stdout=self.log, stderr=self.log)
-        try:
-            wait_until(lambda: self.party.poll() is None and listening(self.party_port), 20, 'Party Core')
-            if self.games is not None:
-                wait_until(lambda: self.games.poll() is None and listening(self.games_port), 60, 'the Games server')
-        except Exception:
-            self.stop()
-            raise
+        wait_until(lambda: self.party.poll() is None and listening(self.party_port), 20, 'Party Core')
+        self.party_pid, note = measured_pid(self.party.pid, 'avrana.party.service')
+        self.notes += [note] if note else []
+        if self.games is not None:
+            wait_until(lambda: self.games.poll() is None and listening(self.games_port), 60, 'the Games server')
+            self.games_pid, note = measured_pid(self.games.pid, 'server.py')
+            self.notes += [note] if note else []
 
     def stop(self):
+        global LAST_LOG_TAIL
         for p in (self.party, self.games):
             if p is not None and p.poll() is None:
                 p.terminate()
@@ -202,6 +245,10 @@ class Stack:
                     p.kill()
                     p.wait(timeout=10)
         self.log.close()
+        try:                                     # kept for a failed repeat's error (run() reads it)
+            LAST_LOG_TAIL = (self.tmp / 'processes.log').read_bytes()[-2000:].decode('utf-8', 'replace')
+        except OSError:
+            LAST_LOG_TAIL = ''
         shutil.rmtree(self.tmp, True)
 
 
@@ -220,6 +267,8 @@ class Phone:
         self.bytes_out = 0
         self.version = 0
         self.received = []                       # (monotonic time, version) of each long-poll answer
+        self.idle_polls = []                     # (seconds, bytes) of polls that returned with no change
+        self.poll_error = None                   # the first thing that went wrong in the poll loop
         self.view = None
         self._poll = None
         self._stop = threading.Event()
@@ -266,23 +315,31 @@ class Phone:
     def start_polling(self, wait):
         def loop():
             while not self._stop.is_set():
+                started, before = time.perf_counter(), self.bytes_in + self.bytes_out
                 try:
                     status, v = self.req('GET', f'/party/api/state?since={self.version}&wait={wait}', timeout=wait + 10)
-                except OSError:
+                except Exception as e:           # a dead server, a reset, a body that is not JSON
                     if self._stop.is_set():
                         return
-                    time.sleep(0.2)
+                    self.poll_error = self.poll_error or f'{type(e).__name__}: {e}'
+                    self._stop.wait(0.2)
                     continue
-                if status == 200 and v:
-                    self.view = v
-                    if v.get('version', 0) > self.version:
-                        self.version = v['version']
-                        self.received.append((time.perf_counter(), self.version))
-        self._poll = threading.Thread(target=loop, daemon=True)
+                if status != 200 or not v:
+                    self.poll_error = self.poll_error or f'HTTP {status}'
+                    self._stop.wait(0.2)
+                    continue
+                self.view = v
+                if v.get('version', 0) > self.version:
+                    self.version = v['version']
+                    self.received.append((time.perf_counter(), self.version))
+                else:
+                    self.idle_polls.append((time.perf_counter() - started, self.bytes_in + self.bytes_out - before))
+        self._poll = threading.Thread(target=loop, daemon=True, name=f'perf-poll-{self.name}')
         self._poll.start()
 
     def stop_polling(self):
         self._stop.set()
+
 
     def seen(self, version):
         """The monotonic time this phone's long poll first delivered `version` or newer, or None."""
@@ -320,6 +377,16 @@ class Phone:
             self.ws = None
 
 
+def stop_all(phones):
+    for p in phones:
+        p.stop_polling()
+        p.close_game()
+
+
+def poll_errors(phones):
+    return {p.name: p.poll_error for p in phones if p.poll_error}
+
+
 def join_all(stack, n):
     phones = [Phone(stack, NAMES[i]) for i in range(n)]
     for p in phones:
@@ -339,27 +406,33 @@ def traffic(phones):
 def scenario_idle(cfg, games_root):
     """Party Core alone, no phones, then with members long-polling and nothing happening."""
     stack = Stack(None)
+    phones = []
     try:
         time.sleep(cfg['settle'])
-        empty = Sampler(stack.party.pid).start()
+        empty = Sampler(stack.party_pid).start()
         time.sleep(cfg['window'])
         empty = empty.stop()
         phones = join_all(stack, 8)
         for p in phones:
             p.start_polling(cfg['wait'])
         time.sleep(cfg['settle'])
-        before = traffic(phones)
-        waiting = Sampler(stack.party.pid).start()
-        window = cfg['idle_poll_window']             # long enough to see each poll renew at least once
+        waiting = Sampler(stack.party_pid).start()
+        window = cfg['idle_poll_window']             # long enough for every poll to complete once
         time.sleep(window)
         waiting = waiting.stop()
-        after = traffic(phones)
-        for p in phones:
-            p.stop_polling()
+        stop_all(phones)
+        # an idle phone renews its poll once per poll duration: rates from completed idle polls
+        polls = [x for p in phones for x in p.idle_polls]
+        seconds = perfstats.summary([d for d, _ in polls])
+        per_poll = perfstats.summary([b for _, b in polls])
+        rate = round(60.0 / seconds['mean'], 2) if seconds['n'] else None
         return {'no_members': empty, 'eight_waiting': waiting, 'idle_poll_window_s': window,
-                'idle_requests_per_client_per_min': round((after[0] - before[0]) / 8 / window * 60, 2),
-                'idle_bytes_per_client_per_min': round((after[1] + after[2] - before[1] - before[2]) / 8 / window * 60)}
+                'idle_poll_seconds': seconds, 'idle_bytes_per_poll': per_poll,
+                'idle_requests_per_client_per_min': rate,
+                'idle_bytes_per_client_per_min': round(rate * per_poll['mean']) if rate else None,
+                'poll_errors': poll_errors(phones)}
     finally:
+        stop_all(phones)
         stack.stop()
 
 
@@ -385,15 +458,17 @@ def propagation(phones, target, t0, timeout=5.0):
 
 def scenario_longpoll(cfg, games_root, n):
     """n phones long-polling; the host repeatedly moves the party (launch -> setup, then lobby): the
-    POST's own latency, and the delay until each phone's long poll delivers the new version."""
+    POST's own latency, and the delay from the host's tap until each phone's long poll delivers the
+    new version (the host's own phone included)."""
     stack = Stack(None)
+    phones = []
     try:
         phones = join_all(stack, n)
         host = phones[0]
         for p in phones:
             p.start_polling(cfg['wait'])
         time.sleep(cfg['settle'])
-        sampler = Sampler(stack.party.pid).start()
+        sampler = Sampler(stack.party_pid).start()
         harness = Sampler(os.getpid()).start()
         before = traffic(phones)
         action_ms, propagate_ms, missed = [], [], 0
@@ -410,8 +485,7 @@ def scenario_longpoll(cfg, games_root, n):
         after = traffic(phones)
         cpu = sampler.stop()
         generator = harness.stop()
-        for p in phones:
-            p.stop_polling()
+        stop_all(phones)
         updates = cfg['actions'] * n
         return {'clients': n, 'actions': cfg['actions'], 'host_action_ms': perfstats.summary(action_ms),
                 'propagation_ms': perfstats.summary(propagate_ms), 'missed_deliveries': missed,
@@ -419,22 +493,26 @@ def scenario_longpoll(cfg, games_root, n):
                 # includes the host's own untimed state reads before each action
                 'requests_per_client_update': round((after[0] - before[0]) / updates, 3),
                 'bytes_in_per_client_update': round((after[1] - before[1]) / updates, 1),
-                'bytes_out_per_client_update': round((after[2] - before[2]) / updates, 1)}
+                'bytes_out_per_client_update': round((after[2] - before[2]) / updates, 1),
+                'poll_errors': poll_errors(phones), 'notes': stack.notes}
     finally:
+        stop_all(phones)
         stack.stop()
 
 
 def scenario_lifecycle(cfg, games_root):
-    """Four phones play BLUFF's way in and out `cycles` times: pregame, Start (Party Core launches
-    the real Games server), each phone's ticket + WebSocket hello, one phone's reconnect, End and
-    everyone home. Party Core and Games server memory and threads after every cycle."""
+    """Four phones play BLUFF's way in and out `cycles` times: pregame, Start (Party Core's launch
+    call to the running Games server), each phone's ticket + WebSocket hello, one phone's reconnect,
+    End and everyone home. Party Core and Games server memory and threads after every cycle."""
     stack = Stack(games_root)
+    phones = []
     try:
         phones = join_all(stack, 4)
         host = phones[0]
         for p in phones:
             p.start_polling(cfg['wait'])
-        party, games = Sampler(stack.party.pid), Sampler(stack.games.pid)
+        party, games = Sampler(stack.party_pid), Sampler(stack.games_pid)
+        harness = Sampler(os.getpid()).start()
         growth = {'party_rss_mb': [], 'party_threads': [], 'games_rss_mb': [], 'games_threads': []}
 
         def mark():
@@ -467,7 +545,7 @@ def scenario_lifecycle(cfg, games_root):
             start_ms.append(ms)
             join_ms.extend(p.open_game() * 1000.0 for p in phones)
             # the lightweight game at rest with four phones on it
-            ps, gs = Sampler(stack.party.pid).start(), Sampler(stack.games.pid).start()
+            ps, gs = Sampler(stack.party_pid).start(), Sampler(stack.games_pid).start()
             time.sleep(cfg['window'])
             connected.append({'party_core': ps.stop(), 'games_server': gs.stop()})
             # a phone that dropped comes back: a fresh state read, a fresh ticket, a new hello
@@ -485,8 +563,8 @@ def scenario_lifecycle(cfg, games_root):
                 p.close_game()
             time.sleep(0.3)
             mark()
-        for p in phones:
-            p.stop_polling()
+        generator = harness.stop()
+        stop_all(phones)
         delta = {k: (round(vals[-1] - vals[0], 2) if None not in (vals[0], vals[-1]) else None)
                  for k, vals in growth.items()}
         # after the first round: warm-up (imports, caches) is not a leak; a steady climb would be
@@ -496,8 +574,10 @@ def scenario_lifecycle(cfg, games_root):
                 'reconnect_ms': perfstats.summary(reconnect_ms), 'end_ms': perfstats.summary(end_ms),
                 'home_propagation_ms': perfstats.summary(home_ms), 'growth_series': growth, 'growth': delta,
                 'growth_after_first_cycle': after_first,
-                'connected_rest': connected}
+                'connected_rest': connected, 'load_generator': generator,
+                'poll_errors': poll_errors(phones), 'notes': stack.notes}
     finally:
+        stop_all(phones)
         stack.stop()
 
 
@@ -507,6 +587,7 @@ class RealtimeClient:
 
     def __init__(self, port, name):
         from websockets.sync.client import connect
+        self.name = name
         self.ws = connect(f'ws://127.0.0.1:{port}/games/dodgeball/ws', open_timeout=10, max_size=None)
         self.ws.send(json.dumps({'t': 'hello', 'name': name, 'token': secrets.token_urlsafe(12)}))
         self.msgs = 0
@@ -514,6 +595,7 @@ class RealtimeClient:
         self.bytes = 0
         self.rtt_ms = []
         self.pings = []
+        self.lost_pings = 0                      # pongs never matched: their RTTs are not counted
         self.phase = None
         self.counting = False
         self.closed = False
@@ -532,10 +614,13 @@ class RealtimeClient:
                         self.phase = m.group(1)
                 if '"pong"' in raw:
                     with self._lock:
-                        if self.pings:
-                            sent = self.pings.pop(0)
-                            if self.counting:
-                                self.rtt_ms.append((now - sent) * 1000.0)
+                        # pongs carry no id: with more than one ping outstanding (one was dropped by
+                        # the server's rate limit) a FIFO match would be wrong, so none is counted
+                        if len(self.pings) == 1 and self.counting:
+                            self.rtt_ms.append((now - self.pings[0]) * 1000.0)
+                        elif len(self.pings) > 1:
+                            self.lost_pings += len(self.pings) - 1
+                        self.pings.clear()
                 if self.counting:
                     self.msgs += 1
                     self.bytes += len(raw)
@@ -561,8 +646,8 @@ class RealtimeClient:
 
 def scenario_realtime(cfg, games_root, n):
     """n dodgeball players on the real Games server: ready, start, 3-2-1, then `window` seconds of
-    joystick input at the rate dodgeball.js sends while moving (about 11 Hz) and 4 Hz pings, while the
-    server runs its 30 Hz simulation."""
+    joystick input at the rate dodgeball.js sends while moving (about 11 Hz) and a 1 Hz ping, while
+    the server runs its 30 Hz simulation. A run that is not in play for the whole window fails."""
     stack = Stack(games_root)
     clients = []
     try:
@@ -572,32 +657,28 @@ def scenario_realtime(cfg, games_root, n):
             c.send(t='ready', ready=True)
         time.sleep(0.2)
         clients[0].send(t='start')
-        try:
-            wait_until(lambda: all(c.phase == 'play' for c in clients), 10, 'the play phase')
-        except TimeoutError:
-            pass
-        play_seen = all(c.phase == 'play' for c in clients)
+        wait_until(lambda: all(c.phase == 'play' for c in clients), 10, 'the play phase')
         stop = threading.Event()
 
         def drive(c):
-            rnd = random.Random(id(c))
+            rnd = random.Random(c.name)
             next_ping = 0.0
             while not stop.is_set():
                 try:
                     c.send(t='move', x=round(rnd.uniform(-1, 1), 3), y=round(rnd.uniform(-1, 1), 3))
                     if time.perf_counter() >= next_ping:
                         c.ping()
-                        next_ping = time.perf_counter() + 0.25
+                        next_ping = time.perf_counter() + PING_EVERY
                 except Exception:
                     return
                 stop.wait(MOVE_EVERY)
 
-        for c in clients:
-            c.counting = True
         drivers = [threading.Thread(target=drive, args=(c,), daemon=True) for c in clients]
-        sampler = Sampler(stack.games.pid).start()
+        sampler = Sampler(stack.games_pid).start()
         harness = Sampler(os.getpid()).start()
         t0 = time.perf_counter()
+        for c in clients:
+            c.counting = True
         for d in drivers:
             d.start()
         time.sleep(cfg['window'])
@@ -610,7 +691,10 @@ def scenario_realtime(cfg, games_root, n):
         for d in drivers:
             d.join(timeout=2)
         rtt = [x for c in clients for x in c.rtt_ms]
-        return {'clients': n, 'play_seen': play_seen, 'phase_at_end': [c.phase for c in clients],
+        if any(c.phase != 'play' for c in clients):
+            raise RuntimeError(f'the round left play during the window: {[c.phase for c in clients]}')
+        return {'clients': n, 'phase_at_end': [c.phase for c in clients],
+                'lost_pings': sum(c.lost_pings for c in clients), 'notes': stack.notes,
                 'window_s': round(elapsed, 2),
                 'frames_per_s_per_client': perfstats.summary([c.msgs / elapsed for c in clients], 2),
                 'state_frames_per_s_per_client': perfstats.summary([c.states / elapsed for c in clients], 2),
@@ -650,6 +734,7 @@ METRICS = {
              ('Party Core CPU, 8 members waiting', '% of one core', 'eight_waiting.cpu_pct_window'),
              ('Party Core RSS, 8 members waiting', 'MB', 'eight_waiting.rss_mb.p50'),
              ('Party Core threads, 8 members waiting', 'count', 'eight_waiting.threads.p50'),
+             ('idle poll duration', 's', 'idle_poll_seconds.mean'),
              ('idle long-poll requests', 'per client per min', 'idle_requests_per_client_per_min'),
              ('idle long-poll traffic', 'B per client per min', 'idle_bytes_per_client_per_min')],
     'longpoll': [('host action POST p50', 'ms', 'host_action_ms.p50'),
@@ -662,7 +747,7 @@ METRICS = {
                  ('load generator CPU (this harness)', '% of one core', 'load_generator.cpu_pct_window'),
                  ('bytes in per client per update', 'B', 'bytes_in_per_client_update'),
                  ('requests per client per update', 'count', 'requests_per_client_update')],
-    'lifecycle': [('Start (launch the game) p50', 'ms', 'start_ms.p50'),
+    'lifecycle': [('Start (launch call to the running game) p50', 'ms', 'start_ms.p50'),
                   ('ticket + hello + first state p50', 'ms', 'join_ms.p50'),
                   ('reconnect p50', 'ms', 'reconnect_ms.p50'),
                   ('End p50', 'ms', 'end_ms.p50'),
@@ -674,12 +759,14 @@ METRICS = {
                   ('Games server RSS growth over the cycles', 'MB', 'growth.games_rss_mb'),
                   ('Games server thread growth', 'count', 'growth.games_threads'),
                   ('Party Core RSS growth after cycle 1', 'MB', 'growth_after_first_cycle.party_rss_mb'),
-                  ('Games server RSS growth after cycle 1', 'MB', 'growth_after_first_cycle.games_rss_mb')],
+                  ('Games server RSS growth after cycle 1', 'MB', 'growth_after_first_cycle.games_rss_mb'),
+                  ('load generator CPU (this harness)', '% of one core', 'load_generator.cpu_pct_window')],
     'realtime': [('messages received per client', 'per s', 'frames_per_s_per_client.p50'),
                  ('full state frames per client', 'per s', 'state_frames_per_s_per_client.p50'),
-                 ('bytes received per client', 'KB/s', 'kbytes_per_s_per_client.p50'),
-                 ('ping round trip p50', 'ms', 'ping_rtt_ms.p50'),
-                 ('ping round trip p95', 'ms', 'ping_rtt_ms.p95'),
+                 ('payload received per client', 'KB/s (decoded, not wire)', 'kbytes_per_s_per_client.p50'),
+                 ('ping round trip p50 (WebSocket handler, not the tick)', 'ms', 'ping_rtt_ms.p50'),
+                 ('ping round trip p95 (WebSocket handler, not the tick)', 'ms', 'ping_rtt_ms.p95'),
+                 ('pings not counted (lost or ambiguous)', 'count', 'lost_pings'),
                  ('Games server CPU', '% of one core', 'games_server.cpu_pct_window'),
                  ('Games server RSS', 'MB', 'games_server.rss_mb.p50'),
                  ('load generator CPU (this harness)', '% of one core', 'load_generator.cpu_pct_window')],
@@ -723,7 +810,7 @@ def run(cfg, games_root, only):
             try:
                 r = fn()
             except Exception as e:                  # recorded, never silently dropped
-                r = {'error': f'{type(e).__name__}: {e}'}
+                r = {'error': f'{type(e).__name__}: {e}', 'process_output_tail': LAST_LOG_TAIL}
             r['duration_s'] = round(time.perf_counter() - started, 2)
             runs.append(r)
         scenarios[name] = {'evidence': EVIDENCE[kind], 'what': (globals()[f'scenario_{kind}'].__doc__ or '').strip(),
@@ -742,6 +829,8 @@ def config(args):
            'idle_poll_window': 2.0 if quick else float(client_wait() + 2),
            'cycles': perfstats.bounded(args.cycles or (2 if quick else 5), 1, 20, 'cycles'),
            'wait': client_wait(),
+           'sample_every_s': SAMPLE_EVERY, 'move_every_s': MOVE_EVERY, 'ping_every_s': PING_EVERY,
+           'client_bound_pct': CLIENT_BOUND_PCT,
            'clients': [perfstats.bounded(int(x), 1, MAX_CLIENTS, 'clients') for x in args.clients.split(',')],
            'rt_clients': [perfstats.bounded(int(x), 1, MAX_CLIENTS, 'rt-clients') for x in args.rt_clients.split(',')],
            'quick': quick}
@@ -763,6 +852,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     cfg = config(args)
     games_root = args.games.resolve() if args.games else None
+    if games_root is not None and not (games_root / 'server.py').is_file():
+        raise SystemExit(f'--games {games_root}: no server.py there (expected a Games checkout)')
     only = set(args.only.split(',')) if args.only else None
     print(f'AVR-138 local performance run: repeats={cfg["repeats"]} games={games_root or "not used"}', flush=True)
     result = {'schema': perfstats.SCHEMA,
