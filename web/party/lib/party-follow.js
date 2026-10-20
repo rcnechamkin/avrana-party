@@ -72,6 +72,7 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
   mountLayer = null } = {}) {
   const listeners = new Set();
   let ready = false, moving = false, endBtn = null, armed = null, mounted = null;
+  let offlineHeld = false;                    // a move was held for the network; the next view or `online` goes
   const gameOrigins = createGameOrigins({ fetch });
   let originsFor = null;                      // the game list the registrations were asked for
   const client = createPartyClient({ fetch, base: '/party/api/', onView });
@@ -152,13 +153,18 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
 
   function leave(url) {
     // A move that arrives while this phone is offline (a Wi-Fi drop, a wake-up) waits for the
-    // network, so the page never lands on the browser's own error screen.
+    // network, so the page never lands on the browser's own error screen. It waits without
+    // parking the page (AVR-33): the next view decides afresh, from where the party is then, and
+    // a view that arrives at all proves the Party answers, so it goes even if the browser still
+    // says offline. The `online` event also decides afresh, never from this stale `url`.
     const nav = globalThis.navigator;
-    if (nav && nav.onLine === false && typeof globalThis.addEventListener === 'function') {
-      globalThis.addEventListener('online', () => go(url), { once: true });
-    } else {
-      go(url);
+    if (!offlineHeld && nav && nav.onLine === false && typeof globalThis.addEventListener === 'function') {
+      offlineHeld = true;
+      moving = false;
+      globalThis.addEventListener('online', () => { const v = client.view(); if (v) onView(v); }, { once: true });
+      return;
     }
+    go(url);
   }
 
   function onView(v) {
