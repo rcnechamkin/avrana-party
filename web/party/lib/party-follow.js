@@ -73,9 +73,11 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
   mountLayer = null } = {}) {
   const listeners = new Set();
   let ready = false, moving = false, endBtn = null, armed = null, mounted = null;
+  let offlineHeld = null;                     // the `online` listener of a move held for the network
+  let holding = false;                        // that move still waits: `online` or any Party answer re-checks it
   const gameOrigins = createGameOrigins({ fetch });
   let originsFor = null;                      // the game list the registrations were asked for
-  const client = createPartyClient({ fetch, base: '/party/api/', onView, departure: createDeparture(storage) });
+  const client = createPartyClient({ fetch, base: '/party/api/', onView, onLink, departure: createDeparture(storage) });
   let first = await client.probeRetrying(retryMs);  // a blip at load must not leave this page unfollowed (AVR-475)
   if (!first) return null;                    // no Party Core here: the page stays as it is
   if (!first.me) {                            // presence is automatic once there is a profile
@@ -157,17 +159,39 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
 
   function leave(url) {
     // A move that arrives while this phone is offline (a Wi-Fi drop, a wake-up) waits for the
-    // network, so the page never lands on the browser's own error screen.
+    // network, so the page never lands on the browser's own error screen. It waits without
+    // parking the page (AVR-33): the next view decides afresh, from where the party is then, and
+    // any answer from the Party (a newer view, or a poll that answers) proves it is reachable, so
+    // the page goes even if the browser still says offline. The `online` event and a poll answer
+    // re-check from the latest view, never from this stale `url`, and only if it still leads away.
     const nav = globalThis.navigator;
-    if (nav && nav.onLine === false && typeof globalThis.addEventListener === 'function') {
-      globalThis.addEventListener('online', () => go(url), { once: true });
-    } else {
-      go(url);
+    if (!offlineHeld && nav && nav.onLine === false && typeof globalThis.addEventListener === 'function') {
+      moving = false;
+      holding = true;
+      offlineHeld = () => { offlineHeld = null; recheck(); };   // back online: a later drop holds again
+      globalThis.addEventListener('online', offlineHeld, { once: true });
+      return;
     }
+    go(url);
+  }
+
+  // A poll that answers proves the Party is reachable even when it brings no newer view (the held
+  // move was the last one, and the browser's onLine flag can stay stale). Re-check after that
+  // answer's own view, if any, has been delivered, so the page never goes to a stale destination.
+  function onLink(link) {
+    if (link.ok && holding) Promise.resolve().then(recheck);
+  }
+
+  function recheck() {
+    if (!holding) return;
+    holding = false;
+    const v = client.view();
+    if (v && v.me && destination(v, here, catalog)) onView(v);   // still somewhere to go: go
   }
 
   function onView(v) {
     if (!ready || moving) return;           // the first join answers before the page is wired
+    holding = false;                          // a view decides from where the party is now
     if (!v.me) {                              // no longer a member (a new party after a restart)
       dropLayer();
       if (v.departed) {                       // left on purpose (here or in another tab): never rejoin from a game page
@@ -243,6 +267,7 @@ export async function startPartyFollow({ here = null, container = null, fetch = 
     dropLayer();
     if (doc) doc.removeEventListener('visibilitychange', wake);
     if (net) net.removeEventListener('online', back);
+    if (net && offlineHeld) net.removeEventListener('online', offlineHeld);
   };
   return api;
 }

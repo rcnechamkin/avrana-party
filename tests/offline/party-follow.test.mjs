@@ -32,7 +32,7 @@ function origin(first, polls = [], { party = true, answer = () => [200, first], 
     if (url.startsWith('/party/api/state?') && queue.length) return reply(200, queue.shift());
     return new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted'))));
   };
-  return { fetch, posts };
+  return { fetch, posts, queue };
 }
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); };
 
@@ -268,4 +268,71 @@ test('the Party layer (AVR-292): mounted for a member at this game\'s round or r
   const left = await layered(view(), 'bluff', { polls: [view({ version: 9, me: null })] });
   assert.equal(left.mounts[0].stopped, true);                                           // no longer a member
   left.api.stop();
+});
+
+// AVR-33 / AVR-216 finding 4: a move that arrives while the browser says it is offline used to
+// park the page (moving = true) until an `online` event, ignoring every later view, and then go to
+// the address of the stale move. A view that arrives proves the Party answers.
+async function offlineRun(polls, { fireOnline = false, thenOffline = null } = {}) {
+  const listeners = [];
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const savedAdd = globalThis.addEventListener, savedRemove = globalThis.removeEventListener;
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: false }, configurable: true, writable: true });
+  globalThis.addEventListener = (type, fn) => { if (type === 'online') listeners.push(fn); };
+  globalThis.removeEventListener = (type, fn) => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); };
+  try {
+    const went = [];
+    const o = origin(view({ location: at('game') }), polls);
+    const api = await startPartyFollow({ here: 'bluff', fetch: o.fetch, go: (url) => went.push(url), storage: PROFILE,
+      root: null, partyOrigin: 'http://party.avrana.test' });
+    await settle();
+    const wentBeforeOnline = [...went];
+    if (fireOnline) {
+      if (thenOffline) o.queue.push(...thenOffline);      // answered to the poll the `online` event asks
+      globalThis.navigator.onLine = true;
+      for (const fn of listeners.splice(0)) fn();
+      if (thenOffline) globalThis.navigator.onLine = false; // the Wi-Fi drops again before that answer
+      await settle();
+    }
+    const pending = listeners.length;
+    api.stop();
+    return { wentBeforeOnline, went, pending, leftAfterStop: listeners.length };
+  } finally {
+    if (saved) Object.defineProperty(globalThis, 'navigator', saved); else delete globalThis.navigator;
+    globalThis.addEventListener = savedAdd;
+    globalThis.removeEventListener = savedRemove;
+  }
+}
+
+test('offline at a move: the page waits, but the next view (the Party answered) takes it along', async () => {
+  const home = (version) => view({ version, location: at('home') });
+  const { wentBeforeOnline } = await offlineRun([home(9), home(10)]);
+  assert.deepEqual(wentBeforeOnline, ['/party/']);                       // not parked forever on onLine === false
+});
+
+test('offline at a move: if the party comes back here before the network does, the page stays', async () => {
+  const { went } = await offlineRun([view({ version: 9, location: at('home') }), view({ version: 10, location: at('game') })],
+    { fireOnline: true });
+  assert.deepEqual(went, []);                                            // never the stale /party/
+});
+
+test('offline at a move with no later view: it goes once the browser is online again', async () => {
+  const { wentBeforeOnline, went } = await offlineRun([view({ version: 9, location: at('home') })], { fireOnline: true });
+  assert.deepEqual(wentBeforeOnline, []);                                // no navigation into the browser's error page
+  assert.deepEqual(went, ['/party/']);
+});
+
+test('offline at the last move, with no `online` event: a poll that answers (no change) takes the page along', async () => {
+  const home = view({ version: 9, location: at('home') });
+  const { went } = await offlineRun([home, home]);                       // the second answer is the same view
+  assert.deepEqual(went, ['/party/']);                                   // a stale onLine flag does not strand it
+});
+
+test('offline twice: after the network returns, a second drop holds the next move again', async () => {
+  const { went, pending, leftAfterStop } = await offlineRun(
+    [view({ version: 9, location: at('home') }), view({ version: 10, location: at('game') })],
+    { fireOnline: true, thenOffline: [view({ version: 11, location: at('home') })] });
+  assert.deepEqual(went, []);                                            // never into the browser's error page
+  assert.equal(pending, 1);                                              // waiting for `online` again
+  assert.equal(leftAfterStop, 0);                                        // stop() leaves no listener behind
 });

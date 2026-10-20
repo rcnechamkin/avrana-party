@@ -114,7 +114,7 @@
   ],
   "files": [
     {"path": "/etc/systemd/journald.conf.d/avrana.conf", "source": "party:deploy/journald/avrana-journald.conf", "owner": "root", "group": "root", "mode": "0644", "area": "health",
-     "activate": [["systemctl", "restart", "systemd-journald"]]},
+     "activate": [["systemctl", "restart", "systemd-journald"], ["journalctl", "--flush"]]},
     {"path": "/etc/modules-load.d/avrana-uinput.conf", "source": "party:arcade/avrana-uinput.conf", "owner": "root", "group": "root", "mode": "0644", "area": "arcade",
      "activate": [["modprobe", "uinput"]]},
     {"path": "/etc/udev/rules.d/70-avrana-uinput.rules", "source": "party:arcade/70-avrana-uinput.rules", "owner": "root", "group": "root", "mode": "0644", "area": "arcade",
