@@ -1,0 +1,4516 @@
+{
+  "schema": "avrana.perf-result/v1",
+  "evidence": "local loopback simulation on one machine",
+  "environment": {
+    "captured_at": "2026-10-20T03:16:55+00:00",
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "python": "3.12.3",
+    "logical_cpus": 4,
+    "party": {
+      "commit": "d38d77077dcbfe3fd3e86bceedd0329d02bb40fe",
+      "dirty": false
+    },
+    "games": {
+      "commit": "e0d20357ef71b0b70c7055f4ee642e31b296ad0c",
+      "dirty": false
+    },
+    "psutil": "7.0.0",
+    "memory_total_mb": 16027,
+    "cpu_mhz_max": 2001
+  },
+  "config": {
+    "repeats": 3,
+    "settle": 1.0,
+    "window": 5.0,
+    "actions": 30,
+    "gap": 0.05,
+    "idle_poll_window": 22.0,
+    "cycles": 5,
+    "wait": 20,
+    "sample_every_s": 0.25,
+    "move_every_s": 0.09,
+    "ping_every_s": 1.0,
+    "client_bound_pct": 70.0,
+    "clients": [
+      1,
+      4,
+      8
+    ],
+    "rt_clients": [
+      2,
+      4,
+      6
+    ],
+    "quick": false
+  },
+  "scenarios": {
+    "idle": {
+      "evidence": "real Party Core process; simulated phones (Python HTTP long polls)",
+      "what": "Party Core alone, no phones, then with members long-polling and nothing happening.",
+      "runs": [
+        {
+          "no_members": {
+            "cpu_pct_window": 0.0,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "stdev": 0.0
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 28.52,
+              "p50": 28.52,
+              "p95": 28.52,
+              "max": 28.52,
+              "mean": 28.52,
+              "stdev": 0.0
+            },
+            "threads": {
+              "n": 19,
+              "min": 5.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 5.0,
+              "stdev": 0.0
+            }
+          },
+          "eight_waiting": {
+            "cpu_pct_window": 0.0,
+            "cpu_pct": {
+              "n": 69,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "stdev": 0.0
+            },
+            "rss_mb": {
+              "n": 70,
+              "min": 28.89,
+              "p50": 28.89,
+              "p95": 28.89,
+              "max": 28.93,
+              "mean": 28.89,
+              "stdev": 0.0
+            },
+            "threads": {
+              "n": 70,
+              "min": 13.0,
+              "p50": 13.0,
+              "p95": 13.0,
+              "max": 15.0,
+              "mean": 13.0,
+              "stdev": 0.2
+            }
+          },
+          "idle_poll_window_s": 22.0,
+          "idle_poll_seconds": {
+            "n": 8,
+            "min": 20.022,
+            "p50": 20.107,
+            "p95": 20.139,
+            "max": 20.146,
+            "mean": 20.101,
+            "stdev": 0.038
+          },
+          "idle_bytes_per_poll": {
+            "n": 8,
+            "min": 1904.0,
+            "p50": 1905.0,
+            "p95": 1905.0,
+            "max": 1905.0,
+            "mean": 1904.875,
+            "stdev": 0.354
+          },
+          "idle_requests_per_client_per_min": 2.98,
+          "idle_bytes_per_client_per_min": 5677,
+          "poll_errors": {},
+          "duration_s": 31.0
+        },
+        {
+          "no_members": {
+            "cpu_pct_window": 0.0,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "stdev": 0.0
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 29.05,
+              "p50": 29.05,
+              "p95": 29.05,
+              "max": 29.05,
+              "mean": 29.05,
+              "stdev": 0.0
+            },
+            "threads": {
+              "n": 19,
+              "min": 5.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 5.0,
+              "stdev": 0.0
+            }
+          },
+          "eight_waiting": {
+            "cpu_pct_window": 0.07,
+            "cpu_pct": {
+              "n": 57,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 3.13,
+              "mean": 0.05,
+              "stdev": 0.41
+            },
+            "rss_mb": {
+              "n": 58,
+              "min": 29.25,
+              "p50": 29.39,
+              "p95": 29.39,
+              "max": 29.39,
+              "mean": 29.38,
+              "stdev": 0.04
+            },
+            "threads": {
+              "n": 58,
+              "min": 7.0,
+              "p50": 13.0,
+              "p95": 13.0,
+              "max": 13.0,
+              "mean": 12.5,
+              "stdev": 1.5
+            }
+          },
+          "idle_poll_window_s": 22.0,
+          "idle_poll_seconds": {
+            "n": 8,
+            "min": 20.116,
+            "p50": 20.605,
+            "p95": 20.607,
+            "max": 20.608,
+            "mean": 20.423,
+            "stdev": 0.252
+          },
+          "idle_bytes_per_poll": {
+            "n": 8,
+            "min": 1904.0,
+            "p50": 1905.0,
+            "p95": 1905.0,
+            "max": 1905.0,
+            "mean": 1904.875,
+            "stdev": 0.354
+          },
+          "idle_requests_per_client_per_min": 2.94,
+          "idle_bytes_per_client_per_min": 5600,
+          "poll_errors": {},
+          "duration_s": 30.79
+        },
+        {
+          "no_members": {
+            "cpu_pct_window": 0.0,
+            "cpu_pct": {
+              "n": 11,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "stdev": 0.0
+            },
+            "rss_mb": {
+              "n": 12,
+              "min": 28.34,
+              "p50": 28.34,
+              "p95": 28.34,
+              "max": 28.34,
+              "mean": 28.34,
+              "stdev": 0.0
+            },
+            "threads": {
+              "n": 12,
+              "min": 5.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 5.0,
+              "stdev": 0.0
+            }
+          },
+          "eight_waiting": {
+            "cpu_pct_window": 0.07,
+            "cpu_pct": {
+              "n": 56,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 3.23,
+              "mean": 0.06,
+              "stdev": 0.43
+            },
+            "rss_mb": {
+              "n": 57,
+              "min": 28.54,
+              "p50": 28.7,
+              "p95": 28.72,
+              "max": 28.72,
+              "mean": 28.69,
+              "stdev": 0.04
+            },
+            "threads": {
+              "n": 57,
+              "min": 8.0,
+              "p50": 15.0,
+              "p95": 15.0,
+              "max": 15.0,
+              "mean": 13.8,
+              "stdev": 1.6
+            }
+          },
+          "idle_poll_window_s": 22.0,
+          "idle_poll_seconds": {
+            "n": 7,
+            "min": 20.639,
+            "p50": 22.754,
+            "p95": 23.272,
+            "max": 23.382,
+            "mean": 22.332,
+            "stdev": 1.069
+          },
+          "idle_bytes_per_poll": {
+            "n": 7,
+            "min": 1904.0,
+            "p50": 1905.0,
+            "p95": 1905.0,
+            "max": 1905.0,
+            "mean": 1904.857,
+            "stdev": 0.378
+          },
+          "idle_requests_per_client_per_min": 2.69,
+          "idle_bytes_per_client_per_min": 5124,
+          "poll_errors": {},
+          "duration_s": 58.53
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "Party Core CPU, no members": {
+          "n": 3,
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "cv": 0.0,
+          "unit": "% of one core"
+        },
+        "Party Core RSS, no members": {
+          "n": 3,
+          "values": [
+            28.52,
+            29.05,
+            28.34
+          ],
+          "median": 28.52,
+          "min": 28.34,
+          "max": 29.05,
+          "cv": 0.013,
+          "unit": "MB"
+        },
+        "Party Core threads, no members": {
+          "n": 3,
+          "values": [
+            5.0,
+            5.0,
+            5.0
+          ],
+          "median": 5.0,
+          "min": 5.0,
+          "max": 5.0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Party Core CPU, 8 members waiting": {
+          "n": 3,
+          "values": [
+            0.0,
+            0.07,
+            0.07
+          ],
+          "median": 0.07,
+          "min": 0.0,
+          "max": 0.07,
+          "cv": 0.866,
+          "unit": "% of one core"
+        },
+        "Party Core RSS, 8 members waiting": {
+          "n": 3,
+          "values": [
+            28.89,
+            29.39,
+            28.7
+          ],
+          "median": 28.89,
+          "min": 28.7,
+          "max": 29.39,
+          "cv": 0.012,
+          "unit": "MB"
+        },
+        "Party Core threads, 8 members waiting": {
+          "n": 3,
+          "values": [
+            13.0,
+            13.0,
+            15.0
+          ],
+          "median": 13.0,
+          "min": 13.0,
+          "max": 15.0,
+          "cv": 0.084,
+          "unit": "count"
+        },
+        "idle poll duration": {
+          "n": 3,
+          "values": [
+            20.101,
+            20.423,
+            22.332
+          ],
+          "median": 20.423,
+          "min": 20.101,
+          "max": 22.332,
+          "cv": 0.058,
+          "unit": "s"
+        },
+        "idle long-poll requests": {
+          "n": 3,
+          "values": [
+            2.98,
+            2.94,
+            2.69
+          ],
+          "median": 2.94,
+          "min": 2.69,
+          "max": 2.98,
+          "cv": 0.055,
+          "unit": "per client per min"
+        },
+        "idle long-poll traffic": {
+          "n": 3,
+          "values": [
+            5677,
+            5600,
+            5124
+          ],
+          "median": 5600,
+          "min": 5124,
+          "max": 5677,
+          "cv": 0.055,
+          "unit": "B per client per min"
+        }
+      }
+    },
+    "longpoll_1_clients": {
+      "evidence": "real Party Core process; simulated phones (Python HTTP long polls)",
+      "what": "n phones long-polling; the host repeatedly moves the party (launch -> setup, then lobby): the\n    POST's own latency, and the delay from the host's tap until each phone's long poll delivers the\n    new version (the host's own phone included).",
+      "runs": [
+        {
+          "clients": 1,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 29.015,
+            "p50": 79.037,
+            "p95": 120.998,
+            "max": 171.519,
+            "mean": 83.683,
+            "stdev": 28.504
+          },
+          "propagation_ms": {
+            "n": 30,
+            "min": 29.375,
+            "p50": 79.58,
+            "p95": 123.378,
+            "max": 171.143,
+            "mean": 83.984,
+            "stdev": 28.674
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 2.16,
+            "cpu_pct": {
+              "n": 24,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 10.11,
+              "max": 15.89,
+              "mean": 2.13,
+              "stdev": 4.29
+            },
+            "rss_mb": {
+              "n": 25,
+              "min": 28.52,
+              "p50": 28.54,
+              "p95": 28.55,
+              "max": 28.56,
+              "mean": 28.54,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 25,
+              "min": 6.0,
+              "p50": 6.0,
+              "p95": 7.0,
+              "max": 7.0,
+              "mean": 6.5,
+              "stdev": 0.5
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 7.73,
+            "cpu_pct": {
+              "n": 24,
+              "min": 0.0,
+              "p50": 9.52,
+              "p95": 14.77,
+              "max": 15.61,
+              "mean": 7.69,
+              "stdev": 4.63
+            },
+            "rss_mb": {
+              "n": 25,
+              "min": 32.05,
+              "p50": 32.05,
+              "p95": 32.05,
+              "max": 32.06,
+              "mean": 32.05,
+              "stdev": 0.0
+            },
+            "threads": {
+              "n": 25,
+              "min": 4.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 5.0,
+              "stdev": 0.2
+            }
+          },
+          "requests_per_client_update": 3.0,
+          "bytes_in_per_client_update": 3401.5,
+          "bytes_out_per_client_update": 519.1,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 29.55
+        },
+        {
+          "clients": 1,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 39.179,
+            "p50": 74.17,
+            "p95": 140.89,
+            "max": 273.796,
+            "mean": 84.213,
+            "stdev": 44.593
+          },
+          "propagation_ms": {
+            "n": 30,
+            "min": 39.513,
+            "p50": 73.933,
+            "p95": 141.604,
+            "max": 274.182,
+            "mean": 84.426,
+            "stdev": 44.691
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 2.08,
+            "cpu_pct": {
+              "n": 24,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 5.38,
+              "max": 9.36,
+              "mean": 2.31,
+              "stdev": 2.81
+            },
+            "rss_mb": {
+              "n": 25,
+              "min": 29.25,
+              "p50": 29.28,
+              "p95": 29.29,
+              "max": 29.29,
+              "mean": 29.27,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 25,
+              "min": 5.0,
+              "p50": 7.0,
+              "p95": 7.0,
+              "max": 7.0,
+              "mean": 6.5,
+              "stdev": 0.7
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 4.51,
+            "cpu_pct": {
+              "n": 25,
+              "min": 0.0,
+              "p50": 5.0,
+              "p95": 10.76,
+              "max": 15.32,
+              "mean": 4.84,
+              "stdev": 4.22
+            },
+            "rss_mb": {
+              "n": 26,
+              "min": 32.11,
+              "p50": 32.11,
+              "p95": 32.12,
+              "max": 32.14,
+              "mean": 32.11,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 26,
+              "min": 4.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 4.9,
+              "stdev": 0.3
+            }
+          },
+          "requests_per_client_update": 3.0,
+          "bytes_in_per_client_update": 3401.5,
+          "bytes_out_per_client_update": 519.1,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 28.92
+        },
+        {
+          "clients": 1,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 30.958,
+            "p50": 63.008,
+            "p95": 362.318,
+            "max": 428.09,
+            "mean": 97.095,
+            "stdev": 101.598
+          },
+          "propagation_ms": {
+            "n": 30,
+            "min": 30.487,
+            "p50": 62.901,
+            "p95": 310.188,
+            "max": 427.166,
+            "mean": 93.351,
+            "stdev": 95.429
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 1.99,
+            "cpu_pct": {
+              "n": 24,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 7.13,
+              "max": 16.59,
+              "mean": 2.29,
+              "stdev": 3.98
+            },
+            "rss_mb": {
+              "n": 25,
+              "min": 28.89,
+              "p50": 28.91,
+              "p95": 28.92,
+              "max": 28.92,
+              "mean": 28.91,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 25,
+              "min": 4.0,
+              "p50": 5.0,
+              "p95": 6.0,
+              "max": 6.0,
+              "mean": 5.3,
+              "stdev": 0.6
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 6.58,
+            "cpu_pct": {
+              "n": 24,
+              "min": 0.0,
+              "p50": 6.26,
+              "p95": 12.74,
+              "max": 15.24,
+              "mean": 6.85,
+              "stdev": 4.6
+            },
+            "rss_mb": {
+              "n": 25,
+              "min": 32.12,
+              "p50": 32.12,
+              "p95": 32.12,
+              "max": 32.12,
+              "mean": 32.12,
+              "stdev": 0.0
+            },
+            "threads": {
+              "n": 25,
+              "min": 4.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 5.0,
+              "stdev": 0.2
+            }
+          },
+          "requests_per_client_update": 3.0,
+          "bytes_in_per_client_update": 3401.5,
+          "bytes_out_per_client_update": 519.1,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 23.27
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "host action POST p50": {
+          "n": 3,
+          "values": [
+            79.037,
+            74.17,
+            63.008
+          ],
+          "median": 74.17,
+          "min": 63.008,
+          "max": 79.037,
+          "cv": 0.114,
+          "unit": "ms"
+        },
+        "host action POST p95": {
+          "n": 3,
+          "values": [
+            120.998,
+            140.89,
+            362.318
+          ],
+          "median": 140.89,
+          "min": 120.998,
+          "max": 362.318,
+          "cv": 0.644,
+          "unit": "ms"
+        },
+        "state propagation p50": {
+          "n": 3,
+          "values": [
+            79.58,
+            73.933,
+            62.901
+          ],
+          "median": 73.933,
+          "min": 62.901,
+          "max": 79.58,
+          "cv": 0.118,
+          "unit": "ms"
+        },
+        "state propagation p95": {
+          "n": 3,
+          "values": [
+            123.378,
+            141.604,
+            310.188
+          ],
+          "median": 141.604,
+          "min": 123.378,
+          "max": 310.188,
+          "cv": 0.537,
+          "unit": "ms"
+        },
+        "missed deliveries (>5 s)": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Party Core CPU during actions": {
+          "n": 3,
+          "values": [
+            2.16,
+            2.08,
+            1.99
+          ],
+          "median": 2.08,
+          "min": 1.99,
+          "max": 2.16,
+          "cv": 0.041,
+          "unit": "% of one core"
+        },
+        "Party Core threads during actions": {
+          "n": 3,
+          "values": [
+            7.0,
+            7.0,
+            6.0
+          ],
+          "median": 7.0,
+          "min": 6.0,
+          "max": 7.0,
+          "cv": 0.087,
+          "unit": "count"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            7.73,
+            4.51,
+            6.58
+          ],
+          "median": 6.58,
+          "min": 4.51,
+          "max": 7.73,
+          "cv": 0.26,
+          "unit": "% of one core"
+        },
+        "bytes in per client per update": {
+          "n": 3,
+          "values": [
+            3401.5,
+            3401.5,
+            3401.5
+          ],
+          "median": 3401.5,
+          "min": 3401.5,
+          "max": 3401.5,
+          "cv": 0.0,
+          "unit": "B"
+        },
+        "requests per client per update": {
+          "n": 3,
+          "values": [
+            3.0,
+            3.0,
+            3.0
+          ],
+          "median": 3.0,
+          "min": 3.0,
+          "max": 3.0,
+          "cv": 0.0,
+          "unit": "count"
+        }
+      }
+    },
+    "longpoll_4_clients": {
+      "evidence": "real Party Core process; simulated phones (Python HTTP long polls)",
+      "what": "n phones long-polling; the host repeatedly moves the party (launch -> setup, then lobby): the\n    POST's own latency, and the delay from the host's tap until each phone's long poll delivers the\n    new version (the host's own phone included).",
+      "runs": [
+        {
+          "clients": 4,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 34.998,
+            "p50": 87.043,
+            "p95": 373.955,
+            "max": 514.933,
+            "mean": 134.852,
+            "stdev": 121.778
+          },
+          "propagation_ms": {
+            "n": 120,
+            "min": 35.34,
+            "p50": 86.231,
+            "p95": 379.436,
+            "max": 514.37,
+            "mean": 135.966,
+            "stdev": 119.536
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 1.03,
+            "cpu_pct": {
+              "n": 59,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 5.55,
+              "max": 9.97,
+              "mean": 1.23,
+              "stdev": 2.4
+            },
+            "rss_mb": {
+              "n": 60,
+              "min": 28.5,
+              "p50": 28.57,
+              "p95": 28.62,
+              "max": 28.62,
+              "mean": 28.57,
+              "stdev": 0.03
+            },
+            "threads": {
+              "n": 60,
+              "min": 4.0,
+              "p50": 8.0,
+              "p95": 9.0,
+              "max": 9.0,
+              "mean": 7.4,
+              "stdev": 1.5
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 6.41,
+            "cpu_pct": {
+              "n": 59,
+              "min": 0.0,
+              "p50": 5.55,
+              "p95": 15.71,
+              "max": 20.56,
+              "mean": 6.85,
+              "stdev": 5.37
+            },
+            "rss_mb": {
+              "n": 60,
+              "min": 31.58,
+              "p50": 31.61,
+              "p95": 31.62,
+              "max": 31.62,
+              "mean": 31.61,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 60,
+              "min": 7.0,
+              "p50": 8.0,
+              "p95": 8.0,
+              "max": 8.0,
+              "mean": 8.0,
+              "stdev": 0.1
+            }
+          },
+          "requests_per_client_update": 1.5,
+          "bytes_in_per_client_update": 2412.0,
+          "bytes_out_per_client_update": 239.9,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 38.54
+        },
+        {
+          "clients": 4,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 46.18,
+            "p50": 93.736,
+            "p95": 602.739,
+            "max": 661.91,
+            "mean": 190.498,
+            "stdev": 180.634
+          },
+          "propagation_ms": {
+            "n": 120,
+            "min": 46.584,
+            "p50": 91.304,
+            "p95": 647.377,
+            "max": 671.758,
+            "mean": 192.344,
+            "stdev": 178.762
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 0.99,
+            "cpu_pct": {
+              "n": 72,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 5.44,
+              "max": 11.19,
+              "mean": 1.09,
+              "stdev": 2.33
+            },
+            "rss_mb": {
+              "n": 73,
+              "min": 28.86,
+              "p50": 28.95,
+              "p95": 28.99,
+              "max": 29.05,
+              "mean": 28.94,
+              "stdev": 0.04
+            },
+            "threads": {
+              "n": 73,
+              "min": 4.0,
+              "p50": 8.0,
+              "p95": 9.4,
+              "max": 11.0,
+              "mean": 7.7,
+              "stdev": 1.6
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 4.64,
+            "cpu_pct": {
+              "n": 72,
+              "min": 0.0,
+              "p50": 5.0,
+              "p95": 10.76,
+              "max": 21.5,
+              "mean": 5.12,
+              "stdev": 4.08
+            },
+            "rss_mb": {
+              "n": 73,
+              "min": 31.62,
+              "p50": 31.65,
+              "p95": 32.24,
+              "max": 32.25,
+              "mean": 31.73,
+              "stdev": 0.21
+            },
+            "threads": {
+              "n": 73,
+              "min": 7.0,
+              "p50": 8.0,
+              "p95": 8.0,
+              "max": 8.0,
+              "mean": 8.0,
+              "stdev": 0.1
+            }
+          },
+          "requests_per_client_update": 1.5,
+          "bytes_in_per_client_update": 2412.0,
+          "bytes_out_per_client_update": 239.9,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 51.86
+        },
+        {
+          "clients": 4,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 56.836,
+            "p50": 171.075,
+            "p95": 1253.652,
+            "max": 1365.888,
+            "mean": 369.844,
+            "stdev": 387.036
+          },
+          "propagation_ms": {
+            "n": 120,
+            "min": 57.202,
+            "p50": 173.399,
+            "p95": 1327.992,
+            "max": 1366.248,
+            "mean": 371.097,
+            "stdev": 383.163
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 0.52,
+            "cpu_pct": {
+              "n": 107,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 4.89,
+              "max": 11.72,
+              "mean": 0.62,
+              "stdev": 1.95
+            },
+            "rss_mb": {
+              "n": 108,
+              "min": 28.71,
+              "p50": 28.8,
+              "p95": 28.86,
+              "max": 28.86,
+              "mean": 28.79,
+              "stdev": 0.04
+            },
+            "threads": {
+              "n": 108,
+              "min": 5.0,
+              "p50": 9.0,
+              "p95": 11.0,
+              "max": 11.0,
+              "mean": 8.4,
+              "stdev": 1.7
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 4.2,
+            "cpu_pct": {
+              "n": 102,
+              "min": 0.0,
+              "p50": 4.47,
+              "p95": 10.8,
+              "max": 14.39,
+              "mean": 4.29,
+              "stdev": 3.68
+            },
+            "rss_mb": {
+              "n": 103,
+              "min": 31.54,
+              "p50": 32.12,
+              "p95": 32.37,
+              "max": 32.37,
+              "mean": 31.96,
+              "stdev": 0.28
+            },
+            "threads": {
+              "n": 103,
+              "min": 9.0,
+              "p50": 10.0,
+              "p95": 10.0,
+              "max": 10.0,
+              "mean": 10.0,
+              "stdev": 0.1
+            }
+          },
+          "requests_per_client_update": 1.5,
+          "bytes_in_per_client_update": 2412.0,
+          "bytes_out_per_client_update": 239.9,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 60.47
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "host action POST p50": {
+          "n": 3,
+          "values": [
+            87.043,
+            93.736,
+            171.075
+          ],
+          "median": 93.736,
+          "min": 87.043,
+          "max": 171.075,
+          "cv": 0.398,
+          "unit": "ms"
+        },
+        "host action POST p95": {
+          "n": 3,
+          "values": [
+            373.955,
+            602.739,
+            1253.652
+          ],
+          "median": 602.739,
+          "min": 373.955,
+          "max": 1253.652,
+          "cv": 0.614,
+          "unit": "ms"
+        },
+        "state propagation p50": {
+          "n": 3,
+          "values": [
+            86.231,
+            91.304,
+            173.399
+          ],
+          "median": 91.304,
+          "min": 86.231,
+          "max": 173.399,
+          "cv": 0.418,
+          "unit": "ms"
+        },
+        "state propagation p95": {
+          "n": 3,
+          "values": [
+            379.436,
+            647.377,
+            1327.992
+          ],
+          "median": 647.377,
+          "min": 379.436,
+          "max": 1327.992,
+          "cv": 0.623,
+          "unit": "ms"
+        },
+        "missed deliveries (>5 s)": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Party Core CPU during actions": {
+          "n": 3,
+          "values": [
+            1.03,
+            0.99,
+            0.52
+          ],
+          "median": 0.99,
+          "min": 0.52,
+          "max": 1.03,
+          "cv": 0.335,
+          "unit": "% of one core"
+        },
+        "Party Core threads during actions": {
+          "n": 3,
+          "values": [
+            9.0,
+            11.0,
+            11.0
+          ],
+          "median": 11.0,
+          "min": 9.0,
+          "max": 11.0,
+          "cv": 0.112,
+          "unit": "count"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            6.41,
+            4.64,
+            4.2
+          ],
+          "median": 4.64,
+          "min": 4.2,
+          "max": 6.41,
+          "cv": 0.23,
+          "unit": "% of one core"
+        },
+        "bytes in per client per update": {
+          "n": 3,
+          "values": [
+            2412.0,
+            2412.0,
+            2412.0
+          ],
+          "median": 2412.0,
+          "min": 2412.0,
+          "max": 2412.0,
+          "cv": 0.0,
+          "unit": "B"
+        },
+        "requests per client per update": {
+          "n": 3,
+          "values": [
+            1.5,
+            1.5,
+            1.5
+          ],
+          "median": 1.5,
+          "min": 1.5,
+          "max": 1.5,
+          "cv": 0.0,
+          "unit": "count"
+        }
+      }
+    },
+    "longpoll_8_clients": {
+      "evidence": "real Party Core process; simulated phones (Python HTTP long polls)",
+      "what": "n phones long-polling; the host repeatedly moves the party (launch -> setup, then lobby): the\n    POST's own latency, and the delay from the host's tap until each phone's long poll delivers the\n    new version (the host's own phone included).",
+      "runs": [
+        {
+          "clients": 8,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 14.356,
+            "p50": 72.3,
+            "p95": 469.317,
+            "max": 7364.421,
+            "mean": 342.929,
+            "stdev": 1331.545
+          },
+          "propagation_ms": {
+            "n": 240,
+            "min": 14.074,
+            "p50": 73.725,
+            "p95": 626.851,
+            "max": 7366.31,
+            "mean": 294.665,
+            "stdev": 1049.77
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 1.71,
+            "cpu_pct": {
+              "n": 32,
+              "min": 0.0,
+              "p50": 0.86,
+              "p95": 9.88,
+              "max": 16.74,
+              "mean": 2.5,
+              "stdev": 3.95
+            },
+            "rss_mb": {
+              "n": 33,
+              "min": 29.12,
+              "p50": 29.23,
+              "p95": 29.32,
+              "max": 29.33,
+              "mean": 29.23,
+              "stdev": 0.06
+            },
+            "threads": {
+              "n": 33,
+              "min": 4.0,
+              "p50": 12.0,
+              "p95": 12.0,
+              "max": 13.0,
+              "mean": 10.8,
+              "stdev": 2.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 5.96,
+            "cpu_pct": {
+              "n": 30,
+              "min": 0.0,
+              "p50": 6.7,
+              "p95": 17.22,
+              "max": 22.77,
+              "mean": 7.7,
+              "stdev": 4.89
+            },
+            "rss_mb": {
+              "n": 31,
+              "min": 31.91,
+              "p50": 32.49,
+              "p95": 32.52,
+              "max": 32.52,
+              "mean": 32.4,
+              "stdev": 0.22
+            },
+            "threads": {
+              "n": 31,
+              "min": 13.0,
+              "p50": 14.0,
+              "p95": 14.0,
+              "max": 14.0,
+              "mean": 14.0,
+              "stdev": 0.2
+            }
+          },
+          "requests_per_client_update": 1.25,
+          "bytes_in_per_client_update": 2783.4,
+          "bytes_out_per_client_update": 193.5,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 37.72
+        },
+        {
+          "clients": 8,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 22.913,
+            "p50": 81.202,
+            "p95": 572.715,
+            "max": 658.795,
+            "mean": 158.95,
+            "stdev": 185.414
+          },
+          "propagation_ms": {
+            "n": 240,
+            "min": 19.479,
+            "p50": 87.762,
+            "p95": 660.071,
+            "max": 1924.326,
+            "mean": 193.91,
+            "stdev": 319.815
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 2.67,
+            "cpu_pct": {
+              "n": 37,
+              "min": 0.0,
+              "p50": 1.91,
+              "p95": 10.77,
+              "max": 13.45,
+              "mean": 3.09,
+              "stdev": 3.8
+            },
+            "rss_mb": {
+              "n": 38,
+              "min": 28.65,
+              "p50": 28.8,
+              "p95": 28.85,
+              "max": 28.86,
+              "mean": 28.77,
+              "stdev": 0.07
+            },
+            "threads": {
+              "n": 38,
+              "min": 4.0,
+              "p50": 10.5,
+              "p95": 13.0,
+              "max": 13.0,
+              "mean": 9.4,
+              "stdev": 3.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 6.99,
+            "cpu_pct": {
+              "n": 36,
+              "min": 0.0,
+              "p50": 5.49,
+              "p95": 24.02,
+              "max": 49.44,
+              "mean": 8.7,
+              "stdev": 9.74
+            },
+            "rss_mb": {
+              "n": 37,
+              "min": 31.96,
+              "p50": 32.56,
+              "p95": 32.57,
+              "max": 32.57,
+              "mean": 32.4,
+              "stdev": 0.27
+            },
+            "threads": {
+              "n": 37,
+              "min": 12.0,
+              "p50": 12.0,
+              "p95": 14.0,
+              "max": 14.0,
+              "mean": 12.2,
+              "stdev": 0.6
+            }
+          },
+          "requests_per_client_update": 1.25,
+          "bytes_in_per_client_update": 2783.4,
+          "bytes_out_per_client_update": 193.5,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 33.74
+        },
+        {
+          "clients": 8,
+          "actions": 30,
+          "host_action_ms": {
+            "n": 30,
+            "min": 20.013,
+            "p50": 73.251,
+            "p95": 486.147,
+            "max": 973.245,
+            "mean": 151.555,
+            "stdev": 204.225
+          },
+          "propagation_ms": {
+            "n": 240,
+            "min": 19.427,
+            "p50": 77.62,
+            "p95": 667.245,
+            "max": 980.027,
+            "mean": 161.815,
+            "stdev": 216.873
+          },
+          "missed_deliveries": 0,
+          "party_core": {
+            "cpu_pct_window": 1.9,
+            "cpu_pct": {
+              "n": 40,
+              "min": 0.0,
+              "p50": 1.41,
+              "p95": 6.15,
+              "max": 22.62,
+              "mean": 2.53,
+              "stdev": 4.12
+            },
+            "rss_mb": {
+              "n": 41,
+              "min": 29.03,
+              "p50": 29.19,
+              "p95": 29.28,
+              "max": 29.31,
+              "mean": 29.19,
+              "stdev": 0.07
+            },
+            "threads": {
+              "n": 41,
+              "min": 4.0,
+              "p50": 12.0,
+              "p95": 14.0,
+              "max": 14.0,
+              "mean": 10.5,
+              "stdev": 3.1
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 5.47,
+            "cpu_pct": {
+              "n": 41,
+              "min": 0.0,
+              "p50": 4.56,
+              "p95": 15.59,
+              "max": 20.16,
+              "mean": 6.68,
+              "stdev": 5.39
+            },
+            "rss_mb": {
+              "n": 42,
+              "min": 31.79,
+              "p50": 32.46,
+              "p95": 32.55,
+              "max": 32.55,
+              "mean": 32.23,
+              "stdev": 0.31
+            },
+            "threads": {
+              "n": 42,
+              "min": 11.0,
+              "p50": 12.0,
+              "p95": 12.0,
+              "max": 12.0,
+              "mean": 12.0,
+              "stdev": 0.2
+            }
+          },
+          "requests_per_client_update": 1.25,
+          "bytes_in_per_client_update": 2783.4,
+          "bytes_out_per_client_update": 193.5,
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 37.07
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "host action POST p50": {
+          "n": 3,
+          "values": [
+            72.3,
+            81.202,
+            73.251
+          ],
+          "median": 73.251,
+          "min": 72.3,
+          "max": 81.202,
+          "cv": 0.065,
+          "unit": "ms"
+        },
+        "host action POST p95": {
+          "n": 3,
+          "values": [
+            469.317,
+            572.715,
+            486.147
+          ],
+          "median": 486.147,
+          "min": 469.317,
+          "max": 572.715,
+          "cv": 0.109,
+          "unit": "ms"
+        },
+        "state propagation p50": {
+          "n": 3,
+          "values": [
+            73.725,
+            87.762,
+            77.62
+          ],
+          "median": 77.62,
+          "min": 73.725,
+          "max": 87.762,
+          "cv": 0.091,
+          "unit": "ms"
+        },
+        "state propagation p95": {
+          "n": 3,
+          "values": [
+            626.851,
+            660.071,
+            667.245
+          ],
+          "median": 660.071,
+          "min": 626.851,
+          "max": 667.245,
+          "cv": 0.033,
+          "unit": "ms"
+        },
+        "missed deliveries (>5 s)": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Party Core CPU during actions": {
+          "n": 3,
+          "values": [
+            1.71,
+            2.67,
+            1.9
+          ],
+          "median": 1.9,
+          "min": 1.71,
+          "max": 2.67,
+          "cv": 0.243,
+          "unit": "% of one core"
+        },
+        "Party Core threads during actions": {
+          "n": 3,
+          "values": [
+            13.0,
+            13.0,
+            14.0
+          ],
+          "median": 13.0,
+          "min": 13.0,
+          "max": 14.0,
+          "cv": 0.043,
+          "unit": "count"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            5.96,
+            6.99,
+            5.47
+          ],
+          "median": 5.96,
+          "min": 5.47,
+          "max": 6.99,
+          "cv": 0.126,
+          "unit": "% of one core"
+        },
+        "bytes in per client per update": {
+          "n": 3,
+          "values": [
+            2783.4,
+            2783.4,
+            2783.4
+          ],
+          "median": 2783.4,
+          "min": 2783.4,
+          "max": 2783.4,
+          "cv": 0.0,
+          "unit": "B"
+        },
+        "requests per client per update": {
+          "n": 3,
+          "values": [
+            1.25,
+            1.25,
+            1.25
+          ],
+          "median": 1.25,
+          "min": 1.25,
+          "max": 1.25,
+          "cv": 0.0,
+          "unit": "count"
+        }
+      }
+    },
+    "lifecycle_bluff_4_phones": {
+      "evidence": "real Party Core + real Games server (BLUFF); Python WebSocket clients",
+      "what": "Four phones play BLUFF's way in and out `cycles` times: pregame, Start (Party Core's launch\n    call to the running Games server), each phone's ticket + WebSocket hello, one phone's reconnect,\n    End and everyone home. Party Core and Games server memory and threads after every cycle.",
+      "runs": [
+        {
+          "cycles": 5,
+          "start_ms": {
+            "n": 5,
+            "min": 12.253,
+            "p50": 16.234,
+            "p95": 153.034,
+            "max": 172.191,
+            "mean": 57.958,
+            "stdev": 69.404
+          },
+          "join_ms": {
+            "n": 20,
+            "min": 9.5,
+            "p50": 16.595,
+            "p95": 27.125,
+            "max": 70.762,
+            "mean": 18.563,
+            "stdev": 13.177
+          },
+          "reconnect_ms": {
+            "n": 5,
+            "min": 13.145,
+            "p50": 29.526,
+            "p95": 214.923,
+            "max": 250.812,
+            "mean": 76.673,
+            "stdev": 99.992
+          },
+          "end_ms": {
+            "n": 5,
+            "min": 16.22,
+            "p50": 22.28,
+            "p95": 36.6,
+            "max": 36.664,
+            "mean": 26.509,
+            "stdev": 9.401
+          },
+          "home_propagation_ms": {
+            "n": 20,
+            "min": 15.825,
+            "p50": 25.132,
+            "p95": 53.345,
+            "max": 57.07,
+            "mean": 32.432,
+            "stdev": 13.49
+          },
+          "growth_series": {
+            "party_rss_mb": [
+              28.65,
+              28.72,
+              28.77,
+              28.77,
+              28.77,
+              28.77
+            ],
+            "party_threads": [
+              8,
+              9,
+              11,
+              11,
+              11,
+              11
+            ],
+            "games_rss_mb": [
+              58.7,
+              59.66,
+              60.02,
+              60.37,
+              61.04,
+              61.54
+            ],
+            "games_threads": [
+              4,
+              4,
+              4,
+              4,
+              4,
+              4
+            ]
+          },
+          "growth": {
+            "party_rss_mb": 0.12,
+            "party_threads": 3,
+            "games_rss_mb": 2.84,
+            "games_threads": 0
+          },
+          "growth_after_first_cycle": {
+            "party_rss_mb": 0.05,
+            "party_threads": 2,
+            "games_rss_mb": 1.88,
+            "games_threads": 0
+          },
+          "connected_rest": [
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 14,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 15,
+                  "min": 28.72,
+                  "p50": 28.72,
+                  "p95": 28.72,
+                  "max": 28.72,
+                  "mean": 28.72,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 15,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 14,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 15,
+                  "min": 59.42,
+                  "p50": 59.42,
+                  "p95": 59.43,
+                  "max": 59.43,
+                  "mean": 59.42,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 15,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.72,
+                  "p50": 28.72,
+                  "p95": 28.76,
+                  "max": 28.76,
+                  "mean": 28.73,
+                  "stdev": 0.02
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 9.4,
+                  "stdev": 0.8
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.31,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.88,
+                  "max": 5.84,
+                  "mean": 0.32,
+                  "stdev": 1.38
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 59.97,
+                  "p50": 59.97,
+                  "p95": 59.99,
+                  "max": 59.99,
+                  "mean": 59.98,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.77,
+                  "p50": 28.77,
+                  "p95": 28.77,
+                  "max": 28.77,
+                  "mean": 28.77,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 11.0,
+                  "p50": 11.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 11.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 60.35,
+                  "p50": 60.35,
+                  "p95": 60.36,
+                  "max": 60.36,
+                  "mean": 60.35,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.77,
+                  "p50": 28.77,
+                  "p95": 28.77,
+                  "max": 28.77,
+                  "mean": 28.77,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 11.0,
+                  "p50": 11.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 11.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.31,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.83,
+                  "max": 5.56,
+                  "mean": 0.31,
+                  "stdev": 1.31
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 60.98,
+                  "p50": 60.98,
+                  "p95": 61.01,
+                  "max": 61.01,
+                  "mean": 60.99,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 17,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 18,
+                  "min": 28.77,
+                  "p50": 28.77,
+                  "p95": 28.77,
+                  "max": 28.77,
+                  "mean": 28.77,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 18,
+                  "min": 11.0,
+                  "p50": 11.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 11.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.94,
+                "cpu_pct": {
+                  "n": 17,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 5.88,
+                  "max": 5.92,
+                  "mean": 1.0,
+                  "stdev": 2.22
+                },
+                "rss_mb": {
+                  "n": 18,
+                  "min": 61.51,
+                  "p50": 61.51,
+                  "p95": 61.52,
+                  "max": 61.52,
+                  "mean": 61.51,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 18,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            }
+          ],
+          "load_generator": {
+            "cpu_pct_window": 9.87,
+            "cpu_pct": {
+              "n": 133,
+              "min": 0.0,
+              "p50": 5.94,
+              "p95": 23.56,
+              "max": 47.22,
+              "mean": 9.93,
+              "stdev": 9.47
+            },
+            "rss_mb": {
+              "n": 134,
+              "min": 32.1,
+              "p50": 35.2,
+              "p95": 37.79,
+              "max": 37.86,
+              "mean": 35.47,
+              "stdev": 1.3
+            },
+            "threads": {
+              "n": 134,
+              "min": 6.0,
+              "p50": 17.0,
+              "p95": 17.0,
+              "max": 17.0,
+              "mean": 13.9,
+              "stdev": 4.6
+            }
+          },
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 55.2
+        },
+        {
+          "cycles": 5,
+          "start_ms": {
+            "n": 5,
+            "min": 9.325,
+            "p50": 11.777,
+            "p95": 71.73,
+            "max": 84.505,
+            "mean": 27.481,
+            "stdev": 32.176
+          },
+          "join_ms": {
+            "n": 20,
+            "min": 7.269,
+            "p50": 20.029,
+            "p95": 37.405,
+            "max": 60.957,
+            "mean": 20.536,
+            "stdev": 12.501
+          },
+          "reconnect_ms": {
+            "n": 5,
+            "min": 12.679,
+            "p50": 43.053,
+            "p95": 194.166,
+            "max": 227.457,
+            "mean": 71.431,
+            "stdev": 89.622
+          },
+          "end_ms": {
+            "n": 5,
+            "min": 12.38,
+            "p50": 31.325,
+            "p95": 62.129,
+            "max": 68.409,
+            "mean": 35.215,
+            "stdev": 20.676
+          },
+          "home_propagation_ms": {
+            "n": 20,
+            "min": 13.061,
+            "p50": 37.585,
+            "p95": 95.079,
+            "max": 108.769,
+            "mean": 46.047,
+            "stdev": 27.206
+          },
+          "growth_series": {
+            "party_rss_mb": [
+              29.02,
+              29.14,
+              29.15,
+              29.15,
+              29.19,
+              29.19
+            ],
+            "party_threads": [
+              6,
+              9,
+              9,
+              9,
+              11,
+              11
+            ],
+            "games_rss_mb": [
+              58.27,
+              59.43,
+              60.05,
+              60.45,
+              60.98,
+              61.48
+            ],
+            "games_threads": [
+              4,
+              4,
+              4,
+              4,
+              4,
+              4
+            ]
+          },
+          "growth": {
+            "party_rss_mb": 0.17,
+            "party_threads": 5,
+            "games_rss_mb": 3.21,
+            "games_threads": 0
+          },
+          "growth_after_first_cycle": {
+            "party_rss_mb": 0.05,
+            "party_threads": 2,
+            "games_rss_mb": 2.05,
+            "games_threads": 0
+          },
+          "connected_rest": [
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 29.13,
+                  "p50": 29.13,
+                  "p95": 29.13,
+                  "max": 29.13,
+                  "mean": 29.13,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.62,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 5.89,
+                  "max": 5.9,
+                  "mean": 0.65,
+                  "stdev": 1.91
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 59.2,
+                  "p50": 59.2,
+                  "p95": 59.21,
+                  "max": 59.21,
+                  "mean": 59.2,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 29.15,
+                  "p50": 29.15,
+                  "p95": 29.15,
+                  "max": 29.15,
+                  "mean": 29.15,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 59.96,
+                  "p50": 59.96,
+                  "p95": 59.98,
+                  "max": 59.98,
+                  "mean": 59.97,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 29.15,
+                  "p50": 29.15,
+                  "p95": 29.15,
+                  "max": 29.15,
+                  "mean": 29.15,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 60.39,
+                  "p50": 60.39,
+                  "p95": 60.42,
+                  "max": 60.42,
+                  "mean": 60.4,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 13,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 14,
+                  "min": 29.15,
+                  "p50": 29.15,
+                  "p95": 29.15,
+                  "max": 29.15,
+                  "mean": 29.15,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 14,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 13,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 14,
+                  "min": 60.93,
+                  "p50": 60.93,
+                  "p95": 60.94,
+                  "max": 60.94,
+                  "mean": 60.93,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 14,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 29.19,
+                  "p50": 29.19,
+                  "p95": 29.19,
+                  "max": 29.19,
+                  "mean": 29.19,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 11.0,
+                  "p50": 11.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 11.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.62,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 5.41,
+                  "max": 5.84,
+                  "mean": 0.62,
+                  "stdev": 1.81
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 61.45,
+                  "p50": 61.45,
+                  "p95": 61.46,
+                  "max": 61.46,
+                  "mean": 61.45,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            }
+          ],
+          "load_generator": {
+            "cpu_pct_window": 10.85,
+            "cpu_pct": {
+              "n": 125,
+              "min": 0.0,
+              "p50": 11.46,
+              "p95": 19.12,
+              "max": 38.85,
+              "mean": 10.91,
+              "stdev": 7.44
+            },
+            "rss_mb": {
+              "n": 126,
+              "min": 34.83,
+              "p50": 36.12,
+              "p95": 36.56,
+              "max": 36.56,
+              "mean": 36.0,
+              "stdev": 0.43
+            },
+            "threads": {
+              "n": 126,
+              "min": 6.0,
+              "p50": 17.0,
+              "p95": 17.0,
+              "max": 17.0,
+              "mean": 14.0,
+              "stdev": 4.5
+            }
+          },
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 39.53
+        },
+        {
+          "cycles": 5,
+          "start_ms": {
+            "n": 5,
+            "min": 27.021,
+            "p50": 43.292,
+            "p95": 66.693,
+            "max": 68.845,
+            "mean": 44.866,
+            "stdev": 18.62
+          },
+          "join_ms": {
+            "n": 20,
+            "min": 12.445,
+            "p50": 29.447,
+            "p95": 49.713,
+            "max": 50.569,
+            "mean": 29.342,
+            "stdev": 11.047
+          },
+          "reconnect_ms": {
+            "n": 5,
+            "min": 24.571,
+            "p50": 26.66,
+            "p95": 80.938,
+            "max": 90.045,
+            "mean": 42.119,
+            "stdev": 28.058
+          },
+          "end_ms": {
+            "n": 5,
+            "min": 18.418,
+            "p50": 22.366,
+            "p95": 26.417,
+            "max": 26.702,
+            "mean": 22.813,
+            "stdev": 3.278
+          },
+          "home_propagation_ms": {
+            "n": 20,
+            "min": 19.195,
+            "p50": 28.608,
+            "p95": 51.439,
+            "max": 65.498,
+            "mean": 33.369,
+            "stdev": 12.771
+          },
+          "growth_series": {
+            "party_rss_mb": [
+              28.8,
+              28.9,
+              28.9,
+              28.9,
+              28.95,
+              28.95
+            ],
+            "party_threads": [
+              8,
+              9,
+              9,
+              9,
+              11,
+              11
+            ],
+            "games_rss_mb": [
+              58.05,
+              59.18,
+              59.66,
+              60.04,
+              60.6,
+              61.22
+            ],
+            "games_threads": [
+              4,
+              4,
+              4,
+              4,
+              4,
+              4
+            ]
+          },
+          "growth": {
+            "party_rss_mb": 0.15,
+            "party_threads": 3,
+            "games_rss_mb": 3.17,
+            "games_threads": 0
+          },
+          "growth_after_first_cycle": {
+            "party_rss_mb": 0.05,
+            "party_threads": 2,
+            "games_rss_mb": 2.04,
+            "games_threads": 0
+          },
+          "connected_rest": [
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.89,
+                  "p50": 28.89,
+                  "p95": 28.89,
+                  "max": 28.89,
+                  "mean": 28.89,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.31,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.89,
+                  "max": 5.95,
+                  "mean": 0.33,
+                  "stdev": 1.4
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 58.79,
+                  "p50": 58.79,
+                  "p95": 58.81,
+                  "max": 58.81,
+                  "mean": 58.8,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.9,
+                  "p50": 28.9,
+                  "p95": 28.9,
+                  "max": 28.9,
+                  "mean": 28.9,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 59.62,
+                  "p50": 59.62,
+                  "p95": 59.62,
+                  "max": 59.62,
+                  "mean": 59.62,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.9,
+                  "p50": 28.9,
+                  "p95": 28.9,
+                  "max": 28.9,
+                  "mean": 28.9,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 9.0,
+                  "max": 9.0,
+                  "mean": 9.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 60.0,
+                  "p50": 60.0,
+                  "p95": 60.02,
+                  "max": 60.02,
+                  "mean": 60.01,
+                  "stdev": 0.01
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 28.9,
+                  "p50": 28.9,
+                  "p95": 28.95,
+                  "max": 28.95,
+                  "mean": 28.92,
+                  "stdev": 0.02
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 9.0,
+                  "p50": 9.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 9.7,
+                  "stdev": 1.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.31,
+                "cpu_pct": {
+                  "n": 18,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.87,
+                  "max": 5.8,
+                  "mean": 0.32,
+                  "stdev": 1.37
+                },
+                "rss_mb": {
+                  "n": 19,
+                  "min": 60.56,
+                  "p50": 60.56,
+                  "p95": 60.56,
+                  "max": 60.56,
+                  "mean": 60.56,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 19,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            },
+            {
+              "party_core": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 16,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 17,
+                  "min": 28.95,
+                  "p50": 28.95,
+                  "p95": 28.95,
+                  "max": 28.95,
+                  "mean": 28.95,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 17,
+                  "min": 11.0,
+                  "p50": 11.0,
+                  "p95": 11.0,
+                  "max": 11.0,
+                  "mean": 11.0,
+                  "stdev": 0.0
+                }
+              },
+              "games_server": {
+                "cpu_pct_window": 0.0,
+                "cpu_pct": {
+                  "n": 17,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p95": 0.0,
+                  "max": 0.0,
+                  "mean": 0.0,
+                  "stdev": 0.0
+                },
+                "rss_mb": {
+                  "n": 18,
+                  "min": 61.2,
+                  "p50": 61.2,
+                  "p95": 61.21,
+                  "max": 61.21,
+                  "mean": 61.2,
+                  "stdev": 0.0
+                },
+                "threads": {
+                  "n": 18,
+                  "min": 4.0,
+                  "p50": 4.0,
+                  "p95": 4.0,
+                  "max": 4.0,
+                  "mean": 4.0,
+                  "stdev": 0.0
+                }
+              }
+            }
+          ],
+          "load_generator": {
+            "cpu_pct_window": 9.54,
+            "cpu_pct": {
+              "n": 129,
+              "min": 0.0,
+              "p50": 6.21,
+              "p95": 22.29,
+              "max": 38.44,
+              "mean": 9.6,
+              "stdev": 7.17
+            },
+            "rss_mb": {
+              "n": 130,
+              "min": 34.86,
+              "p50": 36.0,
+              "p95": 36.99,
+              "max": 37.02,
+              "mean": 36.11,
+              "stdev": 0.53
+            },
+            "threads": {
+              "n": 130,
+              "min": 6.0,
+              "p50": 17.0,
+              "p95": 17.0,
+              "max": 17.0,
+              "mean": 14.0,
+              "stdev": 4.6
+            }
+          },
+          "poll_errors": {},
+          "notes": [],
+          "duration_s": 42.25
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "Start (launch call to the running game) p50": {
+          "n": 3,
+          "values": [
+            16.234,
+            11.777,
+            43.292
+          ],
+          "median": 16.234,
+          "min": 11.777,
+          "max": 43.292,
+          "cv": 0.718,
+          "unit": "ms"
+        },
+        "ticket + hello + first state p50": {
+          "n": 3,
+          "values": [
+            16.595,
+            20.029,
+            29.447
+          ],
+          "median": 20.029,
+          "min": 16.595,
+          "max": 29.447,
+          "cv": 0.302,
+          "unit": "ms"
+        },
+        "reconnect p50": {
+          "n": 3,
+          "values": [
+            29.526,
+            43.053,
+            26.66
+          ],
+          "median": 29.526,
+          "min": 26.66,
+          "max": 43.053,
+          "cv": 0.265,
+          "unit": "ms"
+        },
+        "End p50": {
+          "n": 3,
+          "values": [
+            22.28,
+            31.325,
+            22.366
+          ],
+          "median": 22.366,
+          "min": 22.28,
+          "max": 31.325,
+          "cv": 0.205,
+          "unit": "ms"
+        },
+        "everyone home after End p95": {
+          "n": 3,
+          "values": [
+            53.345,
+            95.079,
+            51.439
+          ],
+          "median": 53.345,
+          "min": 51.439,
+          "max": 95.079,
+          "cv": 0.37,
+          "unit": "ms"
+        },
+        "Games server CPU, 4 phones at rest": {
+          "n": 3,
+          "values": [
+            0.0,
+            0.62,
+            0.31
+          ],
+          "median": 0.31,
+          "min": 0.0,
+          "max": 0.62,
+          "cv": 1.0,
+          "unit": "% of one core"
+        },
+        "Games server RSS": {
+          "n": 3,
+          "values": [
+            58.7,
+            58.27,
+            58.05
+          ],
+          "median": 58.27,
+          "min": 58.05,
+          "max": 58.7,
+          "cv": 0.006,
+          "unit": "MB"
+        },
+        "Party Core RSS growth over the cycles": {
+          "n": 3,
+          "values": [
+            0.12,
+            0.17,
+            0.15
+          ],
+          "median": 0.15,
+          "min": 0.12,
+          "max": 0.17,
+          "cv": 0.172,
+          "unit": "MB"
+        },
+        "Party Core thread growth": {
+          "n": 3,
+          "values": [
+            3,
+            5,
+            3
+          ],
+          "median": 3,
+          "min": 3,
+          "max": 5,
+          "cv": 0.315,
+          "unit": "count"
+        },
+        "Games server RSS growth over the cycles": {
+          "n": 3,
+          "values": [
+            2.84,
+            3.21,
+            3.17
+          ],
+          "median": 3.17,
+          "min": 2.84,
+          "max": 3.21,
+          "cv": 0.066,
+          "unit": "MB"
+        },
+        "Games server thread growth": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Party Core RSS growth after cycle 1": {
+          "n": 3,
+          "values": [
+            0.05,
+            0.05,
+            0.05
+          ],
+          "median": 0.05,
+          "min": 0.05,
+          "max": 0.05,
+          "cv": 0.0,
+          "unit": "MB"
+        },
+        "Games server RSS growth after cycle 1": {
+          "n": 3,
+          "values": [
+            1.88,
+            2.05,
+            2.04
+          ],
+          "median": 2.04,
+          "min": 1.88,
+          "max": 2.05,
+          "cv": 0.048,
+          "unit": "MB"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            9.87,
+            10.85,
+            9.54
+          ],
+          "median": 9.87,
+          "min": 9.54,
+          "max": 10.85,
+          "cv": 0.068,
+          "unit": "% of one core"
+        }
+      }
+    },
+    "realtime_dodgeball_2_players": {
+      "evidence": "real Games server, real dodgeball 30 Hz simulation; standalone admission (not a Party session); Python WebSocket clients",
+      "what": "n dodgeball players on the real Games server: ready, start, 3-2-1, then `window` seconds of\n    joystick input at the rate dodgeball.js sends while moving (about 11 Hz) and a 1 Hz ping, while\n    the server runs its 30 Hz simulation. A run that is not in play for the whole window fails.",
+      "runs": [
+        {
+          "clients": 2,
+          "phase_at_end": [
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.04,
+          "frames_per_s_per_client": {
+            "n": 2,
+            "min": 113.68,
+            "p50": 113.68,
+            "p95": 113.68,
+            "max": 113.68,
+            "mean": 113.68,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 2,
+            "min": 42.26,
+            "p50": 42.26,
+            "p95": 42.26,
+            "max": 42.26,
+            "mean": 42.26,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 2,
+            "min": 126.95,
+            "p50": 126.95,
+            "p95": 126.95,
+            "max": 126.95,
+            "mean": 126.95,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 10,
+            "min": 0.933,
+            "p50": 6.019,
+            "p95": 17.229,
+            "max": 18.843,
+            "mean": 7.445,
+            "stdev": 6.245
+          },
+          "games_server": {
+            "cpu_pct_window": 7.02,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 5.69,
+              "p95": 17.43,
+              "max": 17.47,
+              "mean": 6.93,
+              "stdev": 6.08
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 58.9,
+              "p50": 58.93,
+              "p95": 58.93,
+              "max": 58.93,
+              "mean": 58.93,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 19,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 7.68,
+            "cpu_pct": {
+              "n": 17,
+              "min": 0.0,
+              "p50": 5.8,
+              "p95": 16.62,
+              "max": 16.85,
+              "mean": 8.0,
+              "stdev": 6.06
+            },
+            "rss_mb": {
+              "n": 18,
+              "min": 34.76,
+              "p50": 35.53,
+              "p95": 35.54,
+              "max": 35.54,
+              "mean": 35.42,
+              "stdev": 0.26
+            },
+            "threads": {
+              "n": 18,
+              "min": 11.0,
+              "p50": 14.0,
+              "p95": 14.0,
+              "max": 14.0,
+              "mean": 13.8,
+              "stdev": 0.7
+            }
+          },
+          "duration_s": 17.58
+        },
+        {
+          "clients": 2,
+          "phase_at_end": [
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.03,
+          "frames_per_s_per_client": {
+            "n": 2,
+            "min": 104.72,
+            "p50": 104.72,
+            "p95": 104.72,
+            "max": 104.72,
+            "mean": 104.72,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 2,
+            "min": 44.11,
+            "p50": 44.11,
+            "p95": 44.11,
+            "max": 44.11,
+            "mean": 44.11,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 2,
+            "min": 131.04,
+            "p50": 131.04,
+            "p95": 131.04,
+            "max": 131.04,
+            "mean": 131.04,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 10,
+            "min": 1.611,
+            "p50": 2.416,
+            "p95": 7.416,
+            "max": 9.174,
+            "mean": 3.363,
+            "stdev": 2.344
+          },
+          "games_server": {
+            "cpu_pct_window": 5.8,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 5.15,
+              "p95": 18.51,
+              "max": 23.29,
+              "mean": 6.03,
+              "stdev": 7.07
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 58.65,
+              "p50": 58.68,
+              "p95": 58.68,
+              "max": 58.68,
+              "mean": 58.68,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 19,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 10.17,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 8.48,
+              "p95": 23.9,
+              "max": 27.91,
+              "mean": 9.78,
+              "stdev": 9.22
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 34.9,
+              "p50": 35.5,
+              "p95": 35.53,
+              "max": 35.57,
+              "mean": 35.3,
+              "stdev": 0.3
+            },
+            "threads": {
+              "n": 19,
+              "min": 11.0,
+              "p50": 14.0,
+              "p95": 14.0,
+              "max": 14.0,
+              "mean": 13.8,
+              "stdev": 0.7
+            }
+          },
+          "duration_s": 15.08
+        },
+        {
+          "clients": 2,
+          "phase_at_end": [
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.01,
+          "frames_per_s_per_client": {
+            "n": 2,
+            "min": 121.6,
+            "p50": 121.6,
+            "p95": 121.6,
+            "max": 121.6,
+            "mean": 121.6,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 2,
+            "min": 44.73,
+            "p50": 44.73,
+            "p95": 44.73,
+            "max": 44.73,
+            "mean": 44.73,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 2,
+            "min": 134.43,
+            "p50": 134.43,
+            "p95": 134.43,
+            "max": 134.43,
+            "mean": 134.43,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 10,
+            "min": 0.715,
+            "p50": 2.417,
+            "p95": 7.9,
+            "max": 8.617,
+            "mean": 3.489,
+            "stdev": 2.822
+          },
+          "games_server": {
+            "cpu_pct_window": 3.4,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 16.52,
+              "max": 21.92,
+              "mean": 3.35,
+              "stdev": 6.19
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 58.89,
+              "p50": 58.93,
+              "p95": 58.93,
+              "max": 58.93,
+              "mean": 58.93,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 19,
+              "min": 5.0,
+              "p50": 5.0,
+              "p95": 5.0,
+              "max": 5.0,
+              "mean": 5.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 7.15,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 5.71,
+              "p95": 13.5,
+              "max": 23.52,
+              "mean": 6.64,
+              "stdev": 6.4
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 34.9,
+              "p50": 34.96,
+              "p95": 35.52,
+              "max": 35.53,
+              "mean": 35.2,
+              "stdev": 0.3
+            },
+            "threads": {
+              "n": 19,
+              "min": 11.0,
+              "p50": 14.0,
+              "p95": 14.0,
+              "max": 14.0,
+              "mean": 13.8,
+              "stdev": 0.7
+            }
+          },
+          "duration_s": 13.28
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "messages received per client": {
+          "n": 3,
+          "values": [
+            113.68,
+            104.72,
+            121.6
+          ],
+          "median": 113.68,
+          "min": 104.72,
+          "max": 121.6,
+          "cv": 0.075,
+          "unit": "per s"
+        },
+        "full state frames per client": {
+          "n": 3,
+          "values": [
+            42.26,
+            44.11,
+            44.73
+          ],
+          "median": 44.11,
+          "min": 42.26,
+          "max": 44.73,
+          "cv": 0.029,
+          "unit": "per s"
+        },
+        "payload received per client": {
+          "n": 3,
+          "values": [
+            126.95,
+            131.04,
+            134.43
+          ],
+          "median": 131.04,
+          "min": 126.95,
+          "max": 134.43,
+          "cv": 0.029,
+          "unit": "KB/s (decoded, not wire)"
+        },
+        "ping round trip p50 (WebSocket handler, not the tick)": {
+          "n": 3,
+          "values": [
+            6.019,
+            2.416,
+            2.417
+          ],
+          "median": 2.417,
+          "min": 2.416,
+          "max": 6.019,
+          "cv": 0.575,
+          "unit": "ms"
+        },
+        "ping round trip p95 (WebSocket handler, not the tick)": {
+          "n": 3,
+          "values": [
+            17.229,
+            7.416,
+            7.9
+          ],
+          "median": 7.9,
+          "min": 7.416,
+          "max": 17.229,
+          "cv": 0.51,
+          "unit": "ms"
+        },
+        "pings not counted (lost or ambiguous)": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Games server CPU": {
+          "n": 3,
+          "values": [
+            7.02,
+            5.8,
+            3.4
+          ],
+          "median": 5.8,
+          "min": 3.4,
+          "max": 7.02,
+          "cv": 0.341,
+          "unit": "% of one core"
+        },
+        "Games server RSS": {
+          "n": 3,
+          "values": [
+            58.93,
+            58.68,
+            58.93
+          ],
+          "median": 58.93,
+          "min": 58.68,
+          "max": 58.93,
+          "cv": 0.002,
+          "unit": "MB"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            7.68,
+            10.17,
+            7.15
+          ],
+          "median": 7.68,
+          "min": 7.15,
+          "max": 10.17,
+          "cv": 0.194,
+          "unit": "% of one core"
+        }
+      }
+    },
+    "realtime_dodgeball_4_players": {
+      "evidence": "real Games server, real dodgeball 30 Hz simulation; standalone admission (not a Party session); Python WebSocket clients",
+      "what": "n dodgeball players on the real Games server: ready, start, 3-2-1, then `window` seconds of\n    joystick input at the rate dodgeball.js sends while moving (about 11 Hz) and a 1 Hz ping, while\n    the server runs its 30 Hz simulation. A run that is not in play for the whole window fails.",
+      "runs": [
+        {
+          "clients": 4,
+          "phase_at_end": [
+            "play",
+            "play",
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.03,
+          "frames_per_s_per_client": {
+            "n": 4,
+            "min": 155.09,
+            "p50": 155.09,
+            "p95": 155.09,
+            "max": 155.09,
+            "mean": 155.09,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 4,
+            "min": 63.83,
+            "p50": 63.83,
+            "p95": 63.83,
+            "max": 63.83,
+            "mean": 63.83,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 4,
+            "min": 188.9,
+            "p50": 188.9,
+            "p95": 188.9,
+            "max": 188.9,
+            "mean": 188.9,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 20,
+            "min": 2.065,
+            "p50": 16.239,
+            "p95": 35.402,
+            "max": 35.506,
+            "mean": 17.129,
+            "stdev": 11.032
+          },
+          "games_server": {
+            "cpu_pct_window": 17.9,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 16.73,
+              "p95": 32.36,
+              "max": 50.08,
+              "mean": 16.95,
+              "stdev": 12.07
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 58.95,
+              "p50": 59.01,
+              "p95": 59.02,
+              "max": 59.02,
+              "mean": 59.0,
+              "stdev": 0.02
+            },
+            "threads": {
+              "n": 19,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 14.23,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 11.35,
+              "p95": 27.51,
+              "max": 49.85,
+              "mean": 13.21,
+              "stdev": 11.53
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 35.18,
+              "p50": 35.95,
+              "p95": 35.98,
+              "max": 36.0,
+              "mean": 35.84,
+              "stdev": 0.24
+            },
+            "threads": {
+              "n": 19,
+              "min": 17.0,
+              "p50": 22.0,
+              "p95": 22.0,
+              "max": 22.0,
+              "mean": 21.7,
+              "stdev": 1.1
+            }
+          },
+          "duration_s": 16.32
+        },
+        {
+          "clients": 4,
+          "phase_at_end": [
+            "play",
+            "play",
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.01,
+          "frames_per_s_per_client": {
+            "n": 4,
+            "min": 173.17,
+            "p50": 173.17,
+            "p95": 173.17,
+            "max": 173.17,
+            "mean": 173.17,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 4,
+            "min": 68.11,
+            "p50": 68.11,
+            "p95": 68.11,
+            "max": 68.11,
+            "mean": 68.11,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 4,
+            "min": 202.28,
+            "p50": 202.28,
+            "p95": 202.28,
+            "max": 202.28,
+            "mean": 202.28,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 20,
+            "min": 1.719,
+            "p50": 12.935,
+            "p95": 22.089,
+            "max": 22.475,
+            "mean": 12.853,
+            "stdev": 7.027
+          },
+          "games_server": {
+            "cpu_pct_window": 15.48,
+            "cpu_pct": {
+              "n": 17,
+              "min": 0.0,
+              "p50": 11.78,
+              "p95": 31.56,
+              "max": 32.37,
+              "mean": 15.08,
+              "stdev": 11.48
+            },
+            "rss_mb": {
+              "n": 18,
+              "min": 58.67,
+              "p50": 58.7,
+              "p95": 58.7,
+              "max": 58.7,
+              "mean": 58.7,
+              "stdev": 0.01
+            },
+            "threads": {
+              "n": 18,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 14.93,
+            "cpu_pct": {
+              "n": 17,
+              "min": 5.52,
+              "p50": 11.72,
+              "p95": 29.62,
+              "max": 29.7,
+              "mean": 14.92,
+              "stdev": 7.72
+            },
+            "rss_mb": {
+              "n": 18,
+              "min": 35.08,
+              "p50": 35.89,
+              "p95": 35.91,
+              "max": 35.91,
+              "mean": 35.69,
+              "stdev": 0.3
+            },
+            "threads": {
+              "n": 18,
+              "min": 15.0,
+              "p50": 20.0,
+              "p95": 20.0,
+              "max": 20.0,
+              "mean": 19.7,
+              "stdev": 1.2
+            }
+          },
+          "duration_s": 14.62
+        },
+        {
+          "clients": 4,
+          "phase_at_end": [
+            "play",
+            "play",
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.04,
+          "frames_per_s_per_client": {
+            "n": 4,
+            "min": 142.19,
+            "p50": 142.19,
+            "p95": 142.19,
+            "max": 142.19,
+            "mean": 142.19,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 4,
+            "min": 57.91,
+            "p50": 57.91,
+            "p95": 57.91,
+            "max": 57.91,
+            "mean": 57.91,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 4,
+            "min": 171.52,
+            "p50": 171.52,
+            "p95": 171.52,
+            "max": 171.52,
+            "mean": 171.52,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 20,
+            "min": 1.306,
+            "p50": 11.321,
+            "p95": 59.411,
+            "max": 59.532,
+            "mean": 20.5,
+            "stdev": 21.003
+          },
+          "games_server": {
+            "cpu_pct_window": 18.34,
+            "cpu_pct": {
+              "n": 17,
+              "min": 4.59,
+              "p50": 16.71,
+              "p95": 51.58,
+              "max": 59.25,
+              "mean": 19.37,
+              "stdev": 15.53
+            },
+            "rss_mb": {
+              "n": 18,
+              "min": 58.79,
+              "p50": 58.85,
+              "p95": 58.85,
+              "max": 58.85,
+              "mean": 58.84,
+              "stdev": 0.02
+            },
+            "threads": {
+              "n": 18,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 9.53,
+            "cpu_pct": {
+              "n": 16,
+              "min": 0.0,
+              "p50": 11.34,
+              "p95": 17.9,
+              "max": 18.96,
+              "mean": 10.1,
+              "stdev": 6.5
+            },
+            "rss_mb": {
+              "n": 17,
+              "min": 35.48,
+              "p50": 36.04,
+              "p95": 36.27,
+              "max": 36.37,
+              "mean": 35.95,
+              "stdev": 0.27
+            },
+            "threads": {
+              "n": 17,
+              "min": 15.0,
+              "p50": 20.0,
+              "p95": 20.0,
+              "max": 20.0,
+              "mean": 19.7,
+              "stdev": 1.2
+            }
+          },
+          "duration_s": 13.3
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "messages received per client": {
+          "n": 3,
+          "values": [
+            155.09,
+            173.17,
+            142.19
+          ],
+          "median": 155.09,
+          "min": 142.19,
+          "max": 173.17,
+          "cv": 0.099,
+          "unit": "per s"
+        },
+        "full state frames per client": {
+          "n": 3,
+          "values": [
+            63.83,
+            68.11,
+            57.91
+          ],
+          "median": 63.83,
+          "min": 57.91,
+          "max": 68.11,
+          "cv": 0.081,
+          "unit": "per s"
+        },
+        "payload received per client": {
+          "n": 3,
+          "values": [
+            188.9,
+            202.28,
+            171.52
+          ],
+          "median": 188.9,
+          "min": 171.52,
+          "max": 202.28,
+          "cv": 0.082,
+          "unit": "KB/s (decoded, not wire)"
+        },
+        "ping round trip p50 (WebSocket handler, not the tick)": {
+          "n": 3,
+          "values": [
+            16.239,
+            12.935,
+            11.321
+          ],
+          "median": 12.935,
+          "min": 11.321,
+          "max": 16.239,
+          "cv": 0.186,
+          "unit": "ms"
+        },
+        "ping round trip p95 (WebSocket handler, not the tick)": {
+          "n": 3,
+          "values": [
+            35.402,
+            22.089,
+            59.411
+          ],
+          "median": 35.402,
+          "min": 22.089,
+          "max": 59.411,
+          "cv": 0.485,
+          "unit": "ms"
+        },
+        "pings not counted (lost or ambiguous)": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Games server CPU": {
+          "n": 3,
+          "values": [
+            17.9,
+            15.48,
+            18.34
+          ],
+          "median": 17.9,
+          "min": 15.48,
+          "max": 18.34,
+          "cv": 0.089,
+          "unit": "% of one core"
+        },
+        "Games server RSS": {
+          "n": 3,
+          "values": [
+            59.01,
+            58.7,
+            58.85
+          ],
+          "median": 58.85,
+          "min": 58.7,
+          "max": 59.01,
+          "cv": 0.003,
+          "unit": "MB"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            14.23,
+            14.93,
+            9.53
+          ],
+          "median": 14.23,
+          "min": 9.53,
+          "max": 14.93,
+          "cv": 0.228,
+          "unit": "% of one core"
+        }
+      }
+    },
+    "realtime_dodgeball_6_players": {
+      "evidence": "real Games server, real dodgeball 30 Hz simulation; standalone admission (not a Party session); Python WebSocket clients",
+      "what": "n dodgeball players on the real Games server: ready, start, 3-2-1, then `window` seconds of\n    joystick input at the rate dodgeball.js sends while moving (about 11 Hz) and a 1 Hz ping, while\n    the server runs its 30 Hz simulation. A run that is not in play for the whole window fails.",
+      "runs": [
+        {
+          "clients": 6,
+          "phase_at_end": [
+            "play",
+            "play",
+            "play",
+            "play",
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.04,
+          "frames_per_s_per_client": {
+            "n": 6,
+            "min": 176.31,
+            "p50": 176.31,
+            "p95": 176.91,
+            "max": 177.11,
+            "mean": 176.45,
+            "stdev": 0.32
+          },
+          "state_frames_per_s_per_client": {
+            "n": 6,
+            "min": 84.29,
+            "p50": 84.29,
+            "p95": 84.88,
+            "max": 85.08,
+            "mean": 84.42,
+            "stdev": 0.32
+          },
+          "kbytes_per_s_per_client": {
+            "n": 6,
+            "min": 319.0,
+            "p50": 319.0,
+            "p95": 321.21,
+            "max": 321.94,
+            "mean": 319.49,
+            "stdev": 1.2
+          },
+          "ping_rtt_ms": {
+            "n": 30,
+            "min": 3.134,
+            "p50": 18.378,
+            "p95": 50.608,
+            "max": 50.751,
+            "mean": 24.22,
+            "stdev": 16.829
+          },
+          "games_server": {
+            "cpu_pct_window": 28.26,
+            "cpu_pct": {
+              "n": 18,
+              "min": 11.61,
+              "p50": 27.61,
+              "p95": 40.54,
+              "max": 40.56,
+              "mean": 27.97,
+              "stdev": 8.95
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 59.37,
+              "p50": 59.5,
+              "p95": 59.5,
+              "max": 59.5,
+              "mean": 59.48,
+              "stdev": 0.03
+            },
+            "threads": {
+              "n": 19,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 14.8,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 15.57,
+              "p95": 25.05,
+              "max": 33.83,
+              "mean": 15.0,
+              "stdev": 8.22
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 35.66,
+              "p50": 36.75,
+              "p95": 36.9,
+              "max": 36.9,
+              "mean": 36.61,
+              "stdev": 0.36
+            },
+            "threads": {
+              "n": 19,
+              "min": 21.0,
+              "p50": 28.0,
+              "p95": 28.0,
+              "max": 28.0,
+              "mean": 27.6,
+              "stdev": 1.6
+            }
+          },
+          "duration_s": 14.8
+        },
+        {
+          "clients": 6,
+          "phase_at_end": [
+            "play",
+            "play",
+            "play",
+            "play",
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.19,
+          "frames_per_s_per_client": {
+            "n": 6,
+            "min": 179.25,
+            "p50": 179.44,
+            "p95": 180.5,
+            "max": 180.79,
+            "mean": 179.64,
+            "stdev": 0.6
+          },
+          "state_frames_per_s_per_client": {
+            "n": 6,
+            "min": 83.46,
+            "p50": 83.65,
+            "p95": 84.13,
+            "max": 84.23,
+            "mean": 83.72,
+            "stdev": 0.31
+          },
+          "kbytes_per_s_per_client": {
+            "n": 6,
+            "min": 316.27,
+            "p50": 316.98,
+            "p95": 318.81,
+            "max": 319.18,
+            "mean": 317.23,
+            "stdev": 1.18
+          },
+          "ping_rtt_ms": {
+            "n": 30,
+            "min": 3.785,
+            "p50": 19.283,
+            "p95": 98.427,
+            "max": 147.123,
+            "mean": 31.372,
+            "stdev": 33.594
+          },
+          "games_server": {
+            "cpu_pct_window": 30.06,
+            "cpu_pct": {
+              "n": 19,
+              "min": 11.66,
+              "p50": 29.25,
+              "p95": 53.2,
+              "max": 53.67,
+              "mean": 30.31,
+              "stdev": 12.01
+            },
+            "rss_mb": {
+              "n": 20,
+              "min": 59.23,
+              "p50": 59.29,
+              "p95": 59.3,
+              "max": 59.3,
+              "mean": 59.28,
+              "stdev": 0.02
+            },
+            "threads": {
+              "n": 20,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 16.2,
+            "cpu_pct": {
+              "n": 18,
+              "min": 0.0,
+              "p50": 17.3,
+              "p95": 33.85,
+              "max": 35.05,
+              "mean": 16.5,
+              "stdev": 9.91
+            },
+            "rss_mb": {
+              "n": 19,
+              "min": 36.02,
+              "p50": 37.05,
+              "p95": 37.11,
+              "max": 37.11,
+              "mean": 36.86,
+              "stdev": 0.38
+            },
+            "threads": {
+              "n": 19,
+              "min": 21.0,
+              "p50": 28.0,
+              "p95": 28.0,
+              "max": 28.0,
+              "mean": 27.6,
+              "stdev": 1.6
+            }
+          },
+          "duration_s": 17.76
+        },
+        {
+          "clients": 6,
+          "phase_at_end": [
+            "play",
+            "play",
+            "play",
+            "play",
+            "play",
+            "play"
+          ],
+          "lost_pings": 0,
+          "notes": [],
+          "window_s": 5.04,
+          "frames_per_s_per_client": {
+            "n": 6,
+            "min": 165.06,
+            "p50": 165.06,
+            "p95": 165.06,
+            "max": 165.06,
+            "mean": 165.06,
+            "stdev": 0.0
+          },
+          "state_frames_per_s_per_client": {
+            "n": 6,
+            "min": 79.75,
+            "p50": 79.75,
+            "p95": 79.75,
+            "max": 79.75,
+            "mean": 79.75,
+            "stdev": 0.0
+          },
+          "kbytes_per_s_per_client": {
+            "n": 6,
+            "min": 301.63,
+            "p50": 301.63,
+            "p95": 301.63,
+            "max": 301.63,
+            "mean": 301.63,
+            "stdev": 0.0
+          },
+          "ping_rtt_ms": {
+            "n": 30,
+            "min": 5.078,
+            "p50": 27.744,
+            "p95": 72.95,
+            "max": 87.296,
+            "mean": 34.166,
+            "stdev": 18.926
+          },
+          "games_server": {
+            "cpu_pct_window": 36.95,
+            "cpu_pct": {
+              "n": 17,
+              "min": 21.77,
+              "p50": 39.37,
+              "p95": 54.05,
+              "max": 55.56,
+              "mean": 37.84,
+              "stdev": 10.82
+            },
+            "rss_mb": {
+              "n": 18,
+              "min": 59.48,
+              "p50": 59.57,
+              "p95": 59.57,
+              "max": 59.57,
+              "mean": 59.55,
+              "stdev": 0.04
+            },
+            "threads": {
+              "n": 18,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.0,
+              "max": 4.0,
+              "mean": 4.0,
+              "stdev": 0.0
+            }
+          },
+          "load_generator": {
+            "cpu_pct_window": 18.84,
+            "cpu_pct": {
+              "n": 17,
+              "min": 8.1,
+              "p50": 16.68,
+              "p95": 33.24,
+              "max": 33.33,
+              "mean": 18.91,
+              "stdev": 8.28
+            },
+            "rss_mb": {
+              "n": 18,
+              "min": 37.04,
+              "p50": 37.57,
+              "p95": 37.68,
+              "max": 37.71,
+              "mean": 37.42,
+              "stdev": 0.27
+            },
+            "threads": {
+              "n": 18,
+              "min": 21.0,
+              "p50": 28.0,
+              "p95": 28.0,
+              "max": 28.0,
+              "mean": 27.6,
+              "stdev": 1.6
+            }
+          },
+          "duration_s": 15.46
+        }
+      ],
+      "errors": 0,
+      "aggregate": {
+        "messages received per client": {
+          "n": 3,
+          "values": [
+            176.31,
+            179.44,
+            165.06
+          ],
+          "median": 176.31,
+          "min": 165.06,
+          "max": 179.44,
+          "cv": 0.044,
+          "unit": "per s"
+        },
+        "full state frames per client": {
+          "n": 3,
+          "values": [
+            84.29,
+            83.65,
+            79.75
+          ],
+          "median": 83.65,
+          "min": 79.75,
+          "max": 84.29,
+          "cv": 0.03,
+          "unit": "per s"
+        },
+        "payload received per client": {
+          "n": 3,
+          "values": [
+            319.0,
+            316.98,
+            301.63
+          ],
+          "median": 316.98,
+          "min": 301.63,
+          "max": 319.0,
+          "cv": 0.03,
+          "unit": "KB/s (decoded, not wire)"
+        },
+        "ping round trip p50 (WebSocket handler, not the tick)": {
+          "n": 3,
+          "values": [
+            18.378,
+            19.283,
+            27.744
+          ],
+          "median": 19.283,
+          "min": 18.378,
+          "max": 27.744,
+          "cv": 0.237,
+          "unit": "ms"
+        },
+        "ping round trip p95 (WebSocket handler, not the tick)": {
+          "n": 3,
+          "values": [
+            50.608,
+            98.427,
+            72.95
+          ],
+          "median": 72.95,
+          "min": 50.608,
+          "max": 98.427,
+          "cv": 0.323,
+          "unit": "ms"
+        },
+        "pings not counted (lost or ambiguous)": {
+          "n": 3,
+          "values": [
+            0,
+            0,
+            0
+          ],
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0.0,
+          "unit": "count"
+        },
+        "Games server CPU": {
+          "n": 3,
+          "values": [
+            28.26,
+            30.06,
+            36.95
+          ],
+          "median": 30.06,
+          "min": 28.26,
+          "max": 36.95,
+          "cv": 0.144,
+          "unit": "% of one core"
+        },
+        "Games server RSS": {
+          "n": 3,
+          "values": [
+            59.5,
+            59.29,
+            59.57
+          ],
+          "median": 59.5,
+          "min": 59.29,
+          "max": 59.57,
+          "cv": 0.002,
+          "unit": "MB"
+        },
+        "load generator CPU (this harness)": {
+          "n": 3,
+          "values": [
+            14.8,
+            16.2,
+            18.84
+          ],
+          "median": 16.2,
+          "min": 14.8,
+          "max": 18.84,
+          "cv": 0.123,
+          "unit": "% of one core"
+        }
+      }
+    }
+  }
+}

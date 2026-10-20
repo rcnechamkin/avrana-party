@@ -1,5 +1,5 @@
 import { test, expect, type FrameLocator, type Page } from '@playwright/test';
-import { keyboard, visibleHeight, withKeyboardModel } from '../lib/keyboard';
+import { keyboard, visibleHeight, visibleTop, withKeyboardModel } from '../lib/keyboard';
 import { phone, post, version, view, type Phone } from '../lib/phones';
 
 /**
@@ -565,4 +565,58 @@ test('layer.html may be framed by the Party itself and the game origin, nothing 
   expect(csp).toMatch(/frame-ancestors 'self' \S+/);
   expect(csp).not.toContain("frame-ancestors 'none'");
   expect((await request.get('/party/')).headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+});
+
+/**
+ * AVR-583: the same panned keyboard and a turn of the phone with the keyboard up, in the Party-origin
+ * layer over a game. The open frame is placed in the game page's layout coordinates, so it must follow
+ * visualViewport.offsetTop; the draft, the open drawer, the game's state and the URL must survive, and a
+ * collapsed button must remain only its own box afterwards. SIMULATED (tests/lib/keyboard.ts).
+ */
+test('layer: keyboard panned and the phone turned keep the drawer inside the visible region, the draft and the game', async ({ browser }) => {
+  const dee = await phone(browser, 'Dee', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const eve = await phone(browser, 'Eve');
+  try {
+    await withLayer(dee);
+    await withKeyboardModel(dee.context);
+    await startRound(dee, [eve]);
+    await dee.page.evaluate(() => { (window as unknown as { gameState: number }).gameState = 42; });
+    const layer = layerOf(dee.page);
+    await placed(dee.page);
+    await layer.locator('#layer-button').tap();
+    await layer.locator('#layer-tab-chat').tap();
+    await expect(layer.locator('#chat-send')).toBeEnabled();
+    const text = layer.locator('#chat-text');
+    await text.fill('half a thought');
+    await text.focus();
+
+    const inRegion = async (label: string) => {
+      const top = await visibleTop(dee.page), height = await visibleHeight(dee.page);
+      await expect(dee.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'open');
+      await expect.poll(async () => {
+        // a frame locator's boxes are already in the page's coordinates
+        const sheet = (await layer.locator('#layer-sheet').boundingBox())!, form = (await layer.locator('#chat-form').boundingBox())!;
+        return [sheet.y >= top - 0.5, form.y + form.height <= top + height + 0.5];
+      }, { message: `${label}: sheet top and composer bottom inside the visible region (${top}..${top + height})` }).toEqual([true, true]);
+      await expect(text).toBeFocused();
+      await expect(text).toHaveValue('half a thought');
+    };
+
+    await keyboard(dee.page, 336, 120);
+    await inRegion('portrait, keyboard up and panned');
+    await dee.page.setViewportSize({ width: 844, height: 390 });
+    await keyboard(dee.page, 170, 60);
+    await inRegion('landscape, keyboard up and panned');
+    await dee.page.setViewportSize({ width: 390, height: 844 });
+    await keyboard(dee.page, 0, 0);
+    await inRegion('portrait, keyboard closed');
+
+    expect(await dee.page.evaluate(() => (window as unknown as { gameState: number }).gameState)).toBe(42);
+    await expect(dee.page).toHaveURL(atGame);
+    await layer.locator('#layer-sheet').press('Escape');   // closing returns the frame to the button alone
+    await expect(dee.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'button');
+    const box = await frameBox(dee.page);
+    expect(box.width).toBeLessThanOrEqual(48 + 0.5);
+    expect(box.height).toBeLessThanOrEqual(48 + 0.5);
+  } finally { await dee.context.close(); await eve.context.close(); }
 });
