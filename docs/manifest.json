@@ -177,6 +177,7 @@
     {"path": "docs/runbooks/party-core-deploy.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/party-https.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/party-load-test.md", "class": "runbook", "status": "proposed", "authority": "procedure"},
+    {"path": "docs/runbooks/performance-measurement.md", "class": "runbook", "status": "current", "authority": "procedure", "notes": "AVR-138 local harness (tools/perf); the appliance and real-phone procedure is not run."},
     {"path": "docs/runbooks/ps1-bomberman-party-test.md", "class": "runbook", "status": "experimental", "authority": "procedure"},
     {"path": "docs/runbooks/ps1-titles.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "Owner checklist for the PS1 titles (AVR-309): what remains before anything launches. Not run; owner-only; no step is authorized by it.", "status_marker": "Status: **OWNER CHECKLIST, NOT RUN** (2026-10-07). No step here is authorized by this document."},
     {"path": "experiments/README.md", "class": "canonical", "status": "current", "authority": "reference"},
