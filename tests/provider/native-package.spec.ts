@@ -2,7 +2,7 @@ import { test, expect as baseExpect, devices, type Browser, type Page } from '@p
 import { pathToFileURL } from 'node:url';
 import { place, startForEveryone } from '../lib/frame';
 
-// EXPERIMENTAL (AVR-676): any Python `.avrgame` package against the real Party. The harness
+// EXPERIMENTAL (AVR-676; Node: AVR-512): any Python or Node `.avrgame` package against the real Party. The harness
 // (server.py --native-package) validates and stages it with the Party's own avrgame and
 // install-game code, serves the effective catalog the installer would publish, and runs it as a
 // socket-activated child of a real Party Core, on the game origin. Nothing here is title-specific:
@@ -12,7 +12,8 @@ import { place, startForEveryone } from '../lib/frame';
 //
 // A driver (the game developer's, never committed here) plays the game through its page:
 //   export async function step(page): 'done' | 'acted' | 'waiting'
-// Without one, the full-game test is skipped. Linux only (Unix sockets). Chromium phone sizes are
+// Without one, the full-game test is skipped. A Node package runs on a local Node of the appliance's pinned
+// major version (AVRANA_NODE, else `node` on PATH), with the appliance's options. Linux only (Unix sockets). Chromium phone sizes are
 // Tier 2 automation, not Safari, Android hardware or appliance acceptance; there is no systemd here.
 const PORT = 8188;
 const PARTY = `http://party.avrana.test:${PORT}`, GAMES = `http://games.avrana.test:${PORT}`;
