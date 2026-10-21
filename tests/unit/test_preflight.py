@@ -10,6 +10,7 @@ import tempfile
 import threading
 import unittest
 from unittest import mock
+import urllib.request
 
 from avrana import REPO_ROOT
 from avrana.contracts import party_games
@@ -49,6 +50,13 @@ def gate(verdict='PASS', hours_ago=2.0, channel=36, schema='avrana.wifi-gate/v1'
             'results': [{'level': verdict, 'text': f'idle p99 RTT {verdict.lower()}'}]}
 
 
+TOPOLOGY_OK = [('PASS', t) for t in ('wlan1 absent', 'wlan0 is the internal radio', 'wlan0 is in AP mode',
+                                     'wlan0 holds only 10.42.0.1/24', 'wlan0 runs the Party profile',
+                                     'no default route on wlan0', 'exactly one AP profile autoconnects',
+                                     'DNS (port 53) listens only on 10.42.0.1', 'NM dnsmasq serves 10.42.0.1')] + [
+    ('INFO', 'eth0 192.168.1.40/24 gw 192.168.1.1'), ('PASS', 'upstream path via eth0')]
+
+
 def cert(days=80, names=('party.avrana.net',), verified=True, error=None):
     return {'verified': verified, 'error': error, 'not_after': NOW + timedelta(days=days), 'names': list(names)}
 
@@ -64,11 +72,11 @@ class FakeProbes:
         self.certs = over.pop('certs', {'party.avrana.net': cert(), 'games.avrana.net': cert(names=('party.avrana.net',
                                                                                                   'games.avrana.net'))})
         self.dns = over.pop('dns', {'party.avrana.net': '10.42.0.1', 'games.avrana.net': '10.42.0.1'})
-        self.topo = over.pop('topology', ([('PASS', 'wlan0 is in AP mode'), ('INFO', 'channel 36')], None))
+        self.topo = over.pop('topology', (TOPOLOGY_OK, None, 0))
         self.channel = over.pop('channel', 36)
         self.health = over.pop('health', ({'state': 'HEALTHY', 'reasons': [], 'evidence': {'ts': '2026-10-21T17:55:00Z'}},
                                           'timer state file', None))
-        self.clock_doc = over.pop('clock', {'synchronized': False, 'now': NOW})
+        self.clock_doc = over.pop('clock', {'synchronized': True, 'now': NOW})
         self.files = over.pop('files', set())
         self.journal = over.pop('journal', 'persistent')
         self.disks = over.pop('disks', {'/': {'total': 64 << 30, 'free': 40 << 30},
@@ -215,6 +223,15 @@ class WifiGate(unittest.TestCase):
     def test_the_age_limit_is_configurable(self):
         self.assertEqual(self.status(doc=gate(hours_ago=30), max_age_h=48)['status'], 'PASS')
 
+    def test_an_unknown_channel_on_either_side_is_unknown_on_the_appliance(self):
+        self.assertEqual(preflight.wifi_checks(gate(), NOW, None, check_channel=True)[0]['status'], 'UNKNOWN')
+        self.assertEqual(preflight.wifi_checks(dict(gate(), ap=None), NOW, 36, check_channel=True)[0]['status'], 'UNKNOWN')
+        self.assertEqual(by_id(run(FakeProbes(channel=None)), 'wifi.gate')['status'], 'UNKNOWN')
+
+    def test_malformed_gate_fields_never_crash(self):
+        for bad in (dict(gate(), results=['x']), dict(gate(), ap='ch36'), dict(gate(), ap={'channel': 'auto'})):
+            self.assertIn(preflight.wifi_checks(bad, NOW, 36, check_channel=True)[0]['status'], ('UNKNOWN', 'PASS'))
+
     def test_another_channel_is_unknown(self):
         c = self.status(doc=gate(channel=149), channel=36)
         self.assertEqual(c['status'], 'UNKNOWN')
@@ -329,6 +346,23 @@ class Services(unittest.TestCase):
         self.assertEqual(by_id(doc, 'service.nginx')['status'], 'UNKNOWN')
         self.assertIn('not yet stable', by_id(doc, 'service.avranaparty-games')['reason'])
 
+    def test_a_status_without_the_core_units_is_unknown(self):
+        doc = run(FakeProbes(doc=status_doc(services={})))
+        self.assertEqual(by_id(doc, 'service.avrana-party-core')['status'], 'UNKNOWN')
+        self.assertEqual(doc['verdict'], 'UNKNOWN')
+
+    def test_a_crashing_probe_is_unknown_not_a_traceback(self):
+        probes = FakeProbes(health=([1, 2], 'one bounded run', None),
+                            smoke=[smoke.Result('party_home', 'warn', 'x')])
+        probes.served_certificate = lambda name: 1 / 0
+        doc = run(probes)
+        self.assertEqual(by_id(doc, 'tls.crashed')['status'], 'UNKNOWN')
+        self.assertEqual(by_id(doc, 'pi.health')['status'], 'UNKNOWN')
+        self.assertEqual(by_id(doc, 'serving.party_home')['status'], 'UNKNOWN')
+        self.assertEqual(doc['verdict'], 'UNKNOWN')
+        self.assertIsNone(preflight.dns_query('127.0.0.1', 'p\u00e4rty.avrana.net', 0.2))
+        self.assertIsNone(preflight.dns_query('127.0.0.1', 'x' * 70 + '.net', 0.2))
+
     def test_optional_unit_absent_is_not_a_fault(self):
         c = by_id(run(), 'service.avrana-party-certificate.timer')
         self.assertEqual((c['status'], c['blocking']), ('PASS', False))
@@ -359,6 +393,16 @@ class PiAndPackages(unittest.TestCase):
             self.assertEqual(by_id(doc, 'pi.health')['status'], want, state)
         doc = run(FakeProbes(health=(None, 'none', 'pi-health-check.py not found')))
         self.assertEqual(by_id(doc, 'pi.health')['status'], 'UNKNOWN')
+
+    def test_an_unsynchronized_clock_is_unknown_unless_the_laptop_vouches(self):
+        unsynced = {'synchronized': False, 'now': NOW}
+        doc = run(FakeProbes(clock=unsynced))
+        self.assertEqual((by_id(doc, 'pi.clock')['status'], doc['verdict']), ('UNKNOWN', 'UNKNOWN'))
+        doc = run(FakeProbes(clock=unsynced), reference=NOW - timedelta(seconds=4))
+        self.assertEqual((by_id(doc, 'pi.clock')['status'], doc['verdict']), ('PASS', 'READY'))
+        doc = run(FakeProbes(clock=unsynced), reference=NOW + timedelta(days=40))
+        self.assertEqual((by_id(doc, 'pi.clock')['status'], doc['verdict']), ('FAIL', 'NOT_READY'))
+        self.assertIn('behind the laptop', by_id(doc, 'pi.clock')['reason'])
 
     def test_a_clock_behind_the_last_deploy_fails(self):
         doc = preflight.run(FakeProbes(clock={'synchronized': False, 'now': datetime(2026, 1, 1, tzinfo=timezone.utc)}),
@@ -393,6 +437,18 @@ class PiAndPackages(unittest.TestCase):
         self.assertEqual((c['status'], c['reason']), ('FAIL', 'wlan0 not in AP mode'))
         self.assertEqual(by_id(run(FakeProbes(topology=(None, 'no bash'))), 'network.topology')['status'], 'UNKNOWN')
 
+    def test_no_upstream_at_a_venue_is_not_a_failure(self):
+        lines = [l for l in TOPOLOGY_OK if not l[1].startswith('upstream')] + [('FAIL', 'upstream path not via eth0')]
+        c = by_id(run(FakeProbes(topology=(lines, None, 1))), 'network.topology')
+        self.assertEqual(c['status'], 'PASS')
+        self.assertIn('no upstream', c['reason'])
+
+    def test_a_topology_check_that_stopped_part_way_is_unknown_and_info_lines_are_not_kept(self):
+        c = by_id(run(FakeProbes(topology=([('PASS', 'wlan1 absent')], None, 1))), 'network.topology')
+        self.assertEqual(c['status'], 'UNKNOWN')
+        c = by_id(run(), 'network.topology')
+        self.assertFalse(any('192.168.1.40' in line for line in c['detail']['lines']))
+
     def test_offline_mode_is_noted(self):
         doc = run(FakeProbes(files={preflight.OFFLINE_MARK}))
         self.assertTrue(any('offline mode is ON' in n for n in doc['notes']))
@@ -405,6 +461,11 @@ class LocalMode(unittest.TestCase):
         self.assertEqual(doc['verdict'], 'UNKNOWN')
         for category in ('tls', 'network', 'pi', 'packages', 'runtime'):
             self.assertEqual(by_id(doc, f'{category}.appliance')['status'], 'UNKNOWN')
+
+    def test_local_mode_can_never_be_waived_to_ready(self):
+        ids = [f'{c}.appliance' for c in ('tls', 'network', 'pi', 'packages', 'runtime')]
+        doc = run(local='http://127.0.0.1:8180', waive=ids + ['wifi.gate'])
+        self.assertEqual(doc['verdict'], 'UNKNOWN')
 
 
 class DnsQuery(unittest.TestCase):
@@ -496,6 +557,22 @@ class Cli(unittest.TestCase):
         cmd = wrapper.remote_command('/opt/avrana-party/current', args)
         self.assertTrue(cmd.startswith('cd /opt/avrana-party/current && exec python3 -m avrana.ops.preflight --json'))
         self.assertIn("'wifi.gate; rm -rf /'", cmd)
+        self.assertIn('--reference-time 2026-10-21T18:00:00+00:00', wrapper.remote_command('/x', args, NOW.isoformat()))
+        naive = json.dumps(dict(gate(), started='2026-10-21T10:00:00'))
+        moved = json.loads(wrapper.with_utc_start(naive))['started']
+        self.assertTrue(moved.endswith('Z'))
+        self.assertEqual(preflight._parse_time(moved), datetime(2026, 10, 21, 10, 0).astimezone())
+        self.assertEqual(wrapper.with_utc_start('not json'), 'not json')
+
+    def test_cli_rejects_nonsense_limits(self):
+        for argv in (['--wifi-max-age-h', 'nan'], ['--wifi-max-age-h', 'inf'], ['--wifi-max-age-h', '0'],
+                     ['--reference-time', 'yesterday']):
+            with self.assertRaises(SystemExit), mock.patch('sys.stderr', new_callable=io.StringIO):
+                preflight.main(argv)
+
+    def test_loopback_requests_ignore_an_environment_proxy(self):
+        self.assertFalse(any(isinstance(h, urllib.request.ProxyHandler) and h.proxies
+                             for h in preflight._DIRECT.handlers))
 
 
 if __name__ == '__main__':

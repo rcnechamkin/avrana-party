@@ -55,6 +55,8 @@ from avrana.ops import smoke as smoke_module
 from avrana.ops import status as status_module
 
 SCHEMA = 'avrana.preflight/v0'
+# Loopback requests never go through an http_proxy from the environment.
+_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 PASS, WARN, FAIL, UNKNOWN = 'PASS', 'WARN', 'FAIL', 'UNKNOWN'
 READY, NOT_READY = 'READY', 'NOT_READY'
 EXIT = {READY: 0, NOT_READY: 1, UNKNOWN: 3}
@@ -76,9 +78,11 @@ STORAGE = {'/': {'warn_bytes': 2 << 30, 'fail_bytes': 512 << 20, 'warn_pct': 10.
            '/var/lib': {'warn_bytes': 1 << 30, 'fail_bytes': 256 << 20, 'warn_pct': 10.0, 'fail_pct': 5.0}}
 PI_HEALTH_MAX_AGE_S = 30 * 60
 WIFI_GATE_MAX_AGE_H = 24.0
+CLOCK_SKEW_S = 120
 WIFI_GATE_SCHEMA = 'avrana.wifi-gate/v1'
 COMMAND_TIMEOUT_S = 10.0
 PI_HEALTH_TIMEOUT_S = 40.0
+REQUIRED_UNITS = ('avrana-party-core', 'avranaparty-games', 'nginx')
 REQUIRED_TOOLS = ('systemctl', 'openssl', 'nginx', 'git', 'nft', 'nmcli', 'iw')
 PYTHON_MINIMUM = (3, 11)
 
@@ -164,7 +168,7 @@ class Probes:
         one built here; (doc, source). The source says which, because the second has no party_core."""
         req = urllib.request.Request(self.party_core_url + '/party/api/status', headers={'Host': self.host})
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            with _DIRECT.open(req, timeout=self.timeout) as r:
                 doc = json.loads(r.read(1 << 20).decode('utf-8'))
                 if isinstance(doc, dict) and doc.get('schema') == status_module.SCHEMA:
                     return doc, 'party-core'
@@ -186,7 +190,7 @@ class Probes:
 
     def local_status(self, base):
         try:
-            with urllib.request.urlopen(base.rstrip('/') + '/party/api/status', timeout=self.timeout) as r:
+            with _DIRECT.open(base.rstrip('/') + '/party/api/status', timeout=self.timeout) as r:
                 doc = json.loads(r.read(1 << 20).decode('utf-8'))
             return (doc, 'party-core') if isinstance(doc, dict) else (None, 'unreachable')
         except (urllib.error.URLError, OSError, ValueError):
@@ -320,10 +324,10 @@ class Probes:
         """[(level, text)] from tools/avrana-topology-check, or (None, error)."""
         bash = shutil.which('bash')
         if bash is None or not Path(TOPOLOGY_CHECK).is_file():
-            return None, 'avrana-topology-check or bash not available'
+            return None, 'avrana-topology-check or bash not available', None
         rc, out, err = run_bounded([bash, TOPOLOGY_CHECK, str(REPO_ROOT)], 20.0)
         lines = [tuple(line.split(' ', 1)) for line in out.splitlines() if re.match(r'^(PASS|FAIL|WARN|INFO) ', line)]
-        return (lines, None) if lines else (None, err or 'no output')
+        return (lines, None, rc) if lines else (None, err or 'no output', rc)
 
     def ap_channel(self):
         rc, out, _ = run_bounded(['iw', 'dev', AP_INTERFACE, 'info'], self.timeout)
@@ -343,7 +347,13 @@ def dns_query(server, name, timeout=COMMAND_TIMEOUT_S):
     import random
     import struct
     qid = random.randrange(1 << 16)
-    qname = b''.join(bytes([len(p)]) + p.encode('ascii') for p in name.strip('.').split('.')) + b'\0'
+    try:
+        labels = [p.encode('ascii') for p in name.strip('.').split('.')]
+    except UnicodeEncodeError:
+        return None
+    if not labels or any(not 0 < len(p) < 64 for p in labels):
+        return None
+    qname = b''.join(bytes([len(p)]) + p for p in labels) + b'\0'
     packet = struct.pack('>HHHHHH', qid, 0x0100, 1, 0, 0, 0) + qname + struct.pack('>HH', 1, 1)
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -445,7 +455,11 @@ def service_checks(doc, optional=tuple(status_module.DEFAULT_CONFIG['optional_un
         return [check('services', 'services', UNKNOWN, 'no status document')]
     out = []
     recovery = (doc.get('recovery') or {}).get('units') or {}
-    for unit, state in (doc.get('services') or {}).items():
+    services = doc.get('services') if isinstance(doc.get('services'), dict) else {}
+    for unit in REQUIRED_UNITS:
+        if unit not in services:
+            out.append(check(f'service.{unit}', 'services', UNKNOWN, f'{unit} is not in the status document'))
+    for unit, state in services.items():
         facts = recovery.get(unit) or {}
         n = facts.get('restarts') or 0
         if state == 'active' and n and (facts.get('active_for_s') or 0) < status_module.RECENT_RESTART_S:
@@ -479,7 +493,7 @@ SMOKE_LEVEL = {'pass': PASS, 'fail': FAIL, 'skip': UNKNOWN}
 
 
 def smoke_checks(results):
-    return [check(f'serving.{r.name}', 'serving', SMOKE_LEVEL[r.status], r.detail or r.status,
+    return [check(f'serving.{r.name}', 'serving', SMOKE_LEVEL.get(r.status, UNKNOWN), r.detail or r.status,
                   blocking=r.name != 'encoder') for r in results]
 
 
@@ -562,8 +576,10 @@ PI_HEALTH_LEVEL = {'HEALTHY': PASS, 'DEGRADED': WARN, 'FIRMWARE_MAILBOX_SUSPECT'
                    'POWER_THROTTLE_DETECTED': FAIL, 'UNKNOWN': UNKNOWN}
 
 
-def pi_checks(health, health_source, health_error, clock, deployed_at, reboot_required, journal):
+def pi_checks(health, health_source, health_error, clock, deployed_at, reboot_required, journal, reference=None):
     out = []
+    if not isinstance(health, dict):
+        health_error, health = health_error or 'not a JSON object', None
     if health is None:
         out.append(check('pi.health', 'pi', UNKNOWN, f'Pi health unavailable ({health_error})'))
     else:
@@ -572,17 +588,28 @@ def pi_checks(health, health_source, health_error, clock, deployed_at, reboot_re
         out.append(check('pi.health', 'pi', PI_HEALTH_LEVEL.get(state, UNKNOWN),
                          f'{state} ({health_source}): {reasons}' if state != 'HEALTHY' else f'HEALTHY ({health_source})',
                          detail={'state': state, 'evidence_ts': (health.get('evidence') or {}).get('ts')}))
+    # Certificate runway and the gate's age are computed from this clock, and an offline Pi without a
+    # battery-backed RTC can be days off. Trusted: NTP synchronized, or within CLOCK_SKEW_S of the laptop's
+    # clock passed by tools/preflight.py (--reference-time). Otherwise UNKNOWN (waivable after checking `date`).
     now = clock['now']
-    behind = deployed_at is not None and now < deployed_at
     synced = clock.get('synchronized')
-    if behind:
+    skew = None if reference is None else (now - reference).total_seconds()
+    if deployed_at is not None and now < deployed_at:
         out.append(check('pi.clock', 'pi', FAIL,
                          f'the clock ({_iso(now)}) is before the last deployment ({_iso(deployed_at)}): '
                          'certificate and staleness checks would be wrong'))
+    elif skew is not None and abs(skew) > CLOCK_SKEW_S:
+        out.append(check('pi.clock', 'pi', FAIL,
+                         f'the clock ({_iso(now)}) is {abs(skew):.0f} s {"ahead of" if skew > 0 else "behind"} the laptop\'s: '
+                         'certificate and staleness checks would be wrong (set it, e.g. `sudo date -s`, before the party)'))
+    elif skew is not None:
+        out.append(check('pi.clock', 'pi', PASS, f'{_iso(now)}, within {abs(skew):.0f} s of the laptop\'s clock'))
+    elif synced:
+        out.append(check('pi.clock', 'pi', PASS, f'{_iso(now)}, NTP synchronized'))
     else:
-        out.append(check('pi.clock', 'pi', PASS,
-                         f'{_iso(now)}, ' + {True: 'NTP synchronized', False: 'not NTP synchronized (normal offline)',
-                                             None: 'sync state unreadable'}[synced], blocking=False))
+        out.append(check('pi.clock', 'pi', UNKNOWN,
+                         f'{_iso(now)} is ' + ('not NTP synchronized' if synced is False else 'of unknown sync state') +
+                         ': run from the laptop (tools/preflight.py compares the clocks), or check `date` and --waive pi.clock'))
     out.append(check('pi.reboot_required', 'pi', WARN if reboot_required else PASS,
                      'a package update asks for a reboot; do it before guests arrive, not during'
                      if reboot_required else 'no pending reboot', blocking=False))
@@ -630,19 +657,35 @@ def runtime_checks(have, python_version):
 TOPOLOGY_LEVEL = {'PASS': PASS, 'FAIL': FAIL, 'WARN': WARN}
 
 
-def topology_checks(lines, error):
+# tools/avrana-topology-check asserts the DEVELOPMENT topology (home LAN on eth0). At a venue there is no
+# upstream, which is the point of the appliance, so those assertions are notes here, never failures.
+UPSTREAM_ONLY = ('upstream path',)
+TOPOLOGY_MIN_ASSERTIONS = 8          # the script makes about a dozen; fewer means it stopped part-way
+
+
+def topology_checks(lines, error, returncode=None):
     if lines is None:
         return [check('network.topology', 'network', UNKNOWN, f'topology check did not run ({error})')]
-    fails = [t for level, t in lines if level == 'FAIL']
-    warns = [t for level, t in lines if level == 'WARN']
-    passes = sum(1 for level, _ in lines if level == 'PASS')
-    out = [check('network.topology', 'network', FAIL if fails else WARN if warns else PASS,
-                 '; '.join(fails or warns) if fails or warns else f'{passes} topology assertions passed',
-                 detail={'lines': [f'{level} {text}' for level, text in lines]})]
-    return out
+    asserted = [(level, t) for level, t in lines if level in ('PASS', 'FAIL', 'WARN')]
+    upstream = [t for level, t in asserted if level != 'PASS' and t.startswith(UPSTREAM_ONLY)]
+    asserted = [(level, t) for level, t in asserted if not (level != 'PASS' and t.startswith(UPSTREAM_ONLY))]
+    fails = [t for level, t in asserted if level == 'FAIL']
+    warns = [t for level, t in asserted if level == 'WARN']
+    # INFO lines (home-LAN address, gateway) stay out of the saved document.
+    detail = {'lines': [f'{level} {text}' for level, text in asserted], 'upstream_notes': upstream}
+    if fails:
+        return [check('network.topology', 'network', FAIL, '; '.join(fails), detail=detail)]
+    if len(asserted) + len(upstream) < TOPOLOGY_MIN_ASSERTIONS:
+        return [check('network.topology', 'network', UNKNOWN,
+                      f'the topology check stopped after {len(asserted)} assertion(s)'
+                      + (f' (exit {returncode})' if returncode not in (None, 0) else ''), detail=detail)]
+    reason = '; '.join(warns) if warns else f'{len(asserted)} topology assertions passed'
+    if upstream:
+        reason += ' (no upstream: expected away from home)'
+    return [check('network.topology', 'network', WARN if warns else PASS, reason, detail=detail)]
 
 
-def wifi_checks(gate, now, current_channel, max_age_h=WIFI_GATE_MAX_AGE_H, source=None):
+def wifi_checks(gate, now, current_channel, max_age_h=WIFI_GATE_MAX_AGE_H, source=None, check_channel=False):
     """The latest tools/wifi-lab gate result (AVR-296). Missing, unparseable, stale or taken on another
     channel is UNKNOWN: an old measurement says nothing about tonight's radio."""
     if gate is None:
@@ -655,7 +698,11 @@ def wifi_checks(gate, now, current_channel, max_age_h=WIFI_GATE_MAX_AGE_H, sourc
     if started is None:
         return [check('wifi.gate', 'network', UNKNOWN, 'gate result has no readable start time')]
     age_h = (now - started).total_seconds() / 3600
-    channel = (gate.get('ap') or {}).get('channel')
+    ap = gate.get('ap') if isinstance(gate.get('ap'), dict) else {}
+    try:
+        channel = int(ap.get('channel')) if ap.get('channel') is not None else None
+    except (TypeError, ValueError):
+        channel = None
     detail = {'verdict': gate['verdict'], 'started': _iso(started), 'age_h': round(age_h, 1), 'channel': channel,
               'client': ((gate.get('client') or {}).get('model')), 'source': source,
               'thresholds_status': gate.get('thresholds_status')}
@@ -664,10 +711,15 @@ def wifi_checks(gate, now, current_channel, max_age_h=WIFI_GATE_MAX_AGE_H, sourc
                       f'the latest gate ({gate["verdict"]}) is {age_h:.0f} h old (limit {max_age_h:g} h): run it again', detail=detail)]
     if age_h < -0.25:
         return [check('wifi.gate', 'network', UNKNOWN, 'the gate result is dated in the future: a clock is wrong', detail=detail)]
-    if current_channel is not None and channel is not None and int(channel) != int(current_channel):
+    if check_channel and (channel is None or current_channel is None):
+        return [check('wifi.gate', 'network', UNKNOWN,
+                      'cannot tell whether the gate ran on the AP\'s current channel (' +
+                      ('the gate recorded none' if channel is None else 'the AP channel is unreadable') + ')', detail=detail)]
+    if channel is not None and current_channel is not None and channel != int(current_channel):
         return [check('wifi.gate', 'network', UNKNOWN,
                       f'the gate ran on channel {channel}; the AP is on {current_channel} now', detail=detail)]
-    worst = [r['text'] for r in gate.get('results', []) if r.get('level') == gate['verdict']][:3]
+    results = gate.get('results') if isinstance(gate.get('results'), list) else []
+    worst = [str(r.get('text')) for r in results if isinstance(r, dict) and r.get('level') == gate['verdict']][:3]
     level = {'PASS': PASS, 'WARN': WARN, 'FAIL': FAIL}[gate['verdict']]
     reason = f'wifi-lab gate {gate["verdict"]} {age_h:.1f} h ago on channel {channel}'
     if level != PASS and worst:
@@ -704,22 +756,33 @@ def _names(config):
     return hosts[:1] + [h for h in hosts[1:] if h not in hosts[:1]], [g for g in games if g not in hosts]
 
 
+def _guarded(category, fn):
+    """A probe or evaluator that raises becomes one blocking UNKNOWN, never a traceback (or a PASS)."""
+    try:
+        return fn()
+    except Exception as e:      # noqa: BLE001 - the whole point is that nothing here ends the run
+        return [check(f'{category}.crashed', category, UNKNOWN, f'the {category} check crashed ({type(e).__name__})')]
+
+
 def run(probes=None, wifi_gate=None, wifi_source=None, horizon_days=0, waive=(), config_path=PARTY_CONFIG,
-        wifi_max_age_h=WIFI_GATE_MAX_AGE_H, local=None, now=None):
+        wifi_max_age_h=WIFI_GATE_MAX_AGE_H, local=None, now=None, reference=None):
     probes = probes or Probes()
     started = time.monotonic()
-    clock = probes.clock() if local is None else {'synchronized': None, 'now': datetime.now(timezone.utc)}
+    try:
+        clock = probes.clock() if local is None else {'synchronized': None, 'now': datetime.now(timezone.utc)}
+    except Exception:           # noqa: BLE001
+        clock = {'synchronized': None, 'now': datetime.now(timezone.utc)}
     now = now or clock['now']
-    checks, notes = [], []
+    checks, notes, doc = [], [], None
     if local is not None:
         doc, source = probes.local_status(local)
-        checks += revision_checks(doc, source)
-        checks += service_checks(doc)
-        checks += smoke_checks(probes.smoke_local(local))
+        checks += _guarded('revision', lambda: revision_checks(doc, source))
+        checks += _guarded('services', lambda: service_checks(doc))
+        checks += _guarded('serving', lambda: smoke_checks(probes.smoke_local(local)))
         not_here = ('tls', 'network', 'pi', 'packages', 'runtime')
         checks += [check(f'{c}.appliance', c, UNKNOWN, f'--local: {c} checks only run on the appliance') for c in not_here]
-        checks += wifi_checks(wifi_gate, now, None, wifi_max_age_h, wifi_source)
-        config, party_names, game_names = None, [], []
+        checks += _guarded('network', lambda: wifi_checks(wifi_gate, now, None, wifi_max_age_h, wifi_source))
+        party_names, game_names = [], []
     else:
         config, config_error = probes.party_config(config_path)
         if config is None:
@@ -727,25 +790,32 @@ def run(probes=None, wifi_gate=None, wifi_source=None, horizon_days=0, waive=(),
                                 f'{config_path} {config_error}: names and status paths are the defaults', blocking=False))
         party_names, game_names = _names(config)
         status_config = status_module.load_config(config or {})
-        doc, source = probes.status_doc(status_config)
-        checks += revision_checks(doc, source)
-        checks += service_checks(doc, status_config.get('optional_units', ()))
-        checks += smoke_checks(probes.smoke())
+        try:
+            doc, source = probes.status_doc(status_config)
+        except Exception:       # noqa: BLE001
+            doc, source = None, 'local'
         names = party_names + game_names
-        checks += tls_checks(names, {n: probes.served_certificate(n) for n in names}, now, horizon_days)
-        checks += dns_checks(names, {n: probes.resolve(n) for n in names})
-        checks += topology_checks(*probes.topology())
-        checks += wifi_checks(wifi_gate, now, probes.ap_channel(), wifi_max_age_h, wifi_source)
+        checks += _guarded('revision', lambda: revision_checks(doc, source))
+        checks += _guarded('services', lambda: service_checks(doc, status_config.get('optional_units', ())))
+        checks += _guarded('serving', lambda: smoke_checks(probes.smoke()))
+        checks += _guarded('tls', lambda: tls_checks(names, {n: probes.served_certificate(n) for n in names}, now,
+                                                     horizon_days))
+        checks += _guarded('network', lambda: dns_checks(names, {n: probes.resolve(n) for n in names}))
+        checks += _guarded('network', lambda: topology_checks(*probes.topology()))
+        checks += _guarded('network', lambda: wifi_checks(wifi_gate, now, probes.ap_channel(), wifi_max_age_h, wifi_source,
+                                                          check_channel=True))
         deployed_at = _parse_time(((doc or {}).get('deployment') or {}).get('deployed_at'))
-        health, health_source, health_error = probes.pi_health(now)
-        checks += pi_checks(health, health_source, health_error, clock, deployed_at, probes.exists(REBOOT_REQUIRED),
-                            probes.journal_storage())
-        checks += storage_checks({p: probes.disk(p) for p in STORAGE})
-        checks += package_checks(*probes.packages(), probes.node_runtime())
-        checks += runtime_checks({t: probes.which(t) for t in REQUIRED_TOOLS + ('dig',)}, probes.python_version())
+        checks += _guarded('pi', lambda: pi_checks(*probes.pi_health(now), clock, deployed_at, probes.exists(REBOOT_REQUIRED),
+                                                   probes.journal_storage(), reference))
+        checks += _guarded('pi', lambda: storage_checks({p: probes.disk(p) for p in STORAGE}))
+        checks += _guarded('packages', lambda: package_checks(*probes.packages(), probes.node_runtime()))
+        checks += _guarded('runtime', lambda: runtime_checks({t: probes.which(t) for t in REQUIRED_TOOLS + ('dig',)},
+                                                             probes.python_version()))
         if probes.exists(OFFLINE_MARK):
             notes.append('development offline mode is ON (tools/avrana-offline): party clients have no upstream')
-    waived = sorted(set(waive) & {c['id'] for c in checks if c['status'] == UNKNOWN and c['blocking']})
+    # --local can never be READY: what it cannot see is the appliance itself.
+    waivable = {c['id'] for c in checks if c['status'] == UNKNOWN and c['blocking'] and not c['id'].endswith('.appliance')}
+    waived = sorted(set(waive) & waivable)
     unknown_waivers = sorted(set(waive) - set(waived))
     if unknown_waivers:
         notes.append(f'--waive ignored for {", ".join(unknown_waivers)}: only a blocking UNKNOWN can be waived')
@@ -846,6 +916,8 @@ def load_wifi_gate(path):
         return None, None
     try:
         if path == '-':
+            if sys.stdin is None or sys.stdin.isatty():
+                return None, 'stdin is a terminal'
             text = sys.stdin.read(1 << 20)
             return (json.loads(text), 'stdin') if text.strip() else (None, None)
         p = Path(path)
@@ -875,12 +947,22 @@ def main(argv=None):
                     help='accept a blocking UNKNOWN for this run (recorded in the report); never a FAIL')
     ap.add_argument('--config', default=PARTY_CONFIG, help=f'Party Core configuration (default {PARTY_CONFIG})')
     ap.add_argument('--local', metavar='BASE_URL', help='against the dev server; appliance-only checks are UNKNOWN')
+    ap.add_argument('--reference-time', metavar='ISO',
+                    help='a trusted clock reading taken just before this run (tools/preflight.py sends the laptop\'s)')
     args = ap.parse_args(argv)
     if args.horizon_days < 0:
         ap.error('--horizon-days must be 0 or more')
+    if not 0 < args.wifi_max_age_h < float('inf'):
+        ap.error('--wifi-max-age-h must be a positive number of hours')
+    reference = None
+    if args.reference_time:
+        reference = _parse_time(args.reference_time)
+        if reference is None:
+            ap.error('--reference-time must be an ISO 8601 instant')
     gate, source = load_wifi_gate(args.wifi_gate)
     doc = run(wifi_gate=None if gate == 'unreadable' else gate, wifi_source=source, horizon_days=args.horizon_days,
-              waive=args.waive, config_path=args.config, wifi_max_age_h=args.wifi_max_age_h, local=args.local)
+              waive=args.waive, config_path=args.config, wifi_max_age_h=args.wifi_max_age_h, local=args.local,
+              reference=reference)
     if gate == 'unreadable':
         doc['notes'].append(f'--wifi-gate {source} could not be read')
     if args.out:

@@ -1,9 +1,9 @@
-Avrana preflight: UNKNOWN (UNKNOWN)   2026-10-21T21:57:27Z   local on laptop (dev server)
+Avrana preflight: UNKNOWN (UNKNOWN)   2026-10-21T22:34:13Z   local on laptop (dev server)
   party  deployed unknown
   games  deployed unknown
-  checks 4 pass, 1 warn, 0 fail, 11 unknown (0.7 s)
+  checks 4 pass, 1 warn, 0 fail, 14 unknown (0.3 s)
 
-Blocking: revision.manifest, revision.party, revision.games, revision.web_release, revision.nginx_site, tls.appliance, network.appliance, pi.appliance, packages.appliance, runtime.appliance, wifi.gate
+Blocking: revision.manifest, revision.party, revision.games, revision.web_release, revision.nginx_site, service.avrana-party-core, service.avranaparty-games, service.nginx, tls.appliance, network.appliance, pi.appliance, packages.appliance, runtime.appliance, wifi.gate
 
 UNKNOWN network.appliance: --local: network checks only run on the appliance
 UNKNOWN wifi.gate: no Wi-Fi qualification result: run `python tools/wifi-lab/wifilab.py gate` from the laptop (docs/runbooks/wifi-qualification.md) and pass it with --wifi-gate
@@ -12,9 +12,12 @@ UNKNOWN pi.appliance: --local: pi checks only run on the appliance
 UNKNOWN revision.games: games: no deployed revision recorded; checkout at unknown
 UNKNOWN revision.manifest: no deployment manifest: the deployed revisions cannot be named (ops/deploy.sh writes it)
 UNKNOWN revision.nginx_site: nginx site file could not be compared
-UNKNOWN revision.party: party: no deployed revision recorded; checkout at 8de7ef20835a1d98ec55cb772c216cbd348084fa
+UNKNOWN revision.party: party: no deployed revision recorded; checkout at 4713f5c5e90f455dcaafb87b874977932c3f4874
 UNKNOWN revision.web_release: installed web build has no readable version.json
 UNKNOWN runtime.appliance: --local: runtime checks only run on the appliance
+UNKNOWN service.avrana-party-core: avrana-party-core is not in the status document
+UNKNOWN service.avranaparty-games: avranaparty-games is not in the status document
+UNKNOWN service.nginx: nginx is not in the status document
 UNKNOWN tls.appliance: --local: tls checks only run on the appliance
 WARN    revision.last_known_good (advisory): no last-known-good record: `ops/deploy.sh --rollback` has no target
 PASS    4: serving.captive_probe, serving.party_home, serving.party_core, serving.status

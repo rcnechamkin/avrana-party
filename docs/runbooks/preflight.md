@@ -50,6 +50,26 @@ the preflight said READY.
 | packages | `install-game list/verify`, `node_runtime verify` | yes |
 | runtime | Python 3.11+, systemctl, openssl, nginx, git, nft, nmcli, iw | yes |
 
+**The clock.** Certificate runway and the gate's age are computed from the Pi's clock. An offline Pi
+can be days off. It is trusted when:
+- NTP is synchronized; or
+- it is within 120 s of the laptop's clock, which `tools/preflight.py` sends as `--reference-time`.
+
+Otherwise `pi.clock` is UNKNOWN. Run it from the laptop, or check `date` and `--waive pi.clock`. More
+than 120 s off from the laptop, or earlier than the last deployment, is a FAIL.
+
+**The topology check** asserts the home development layout. Away from home there is no upstream on
+`eth0`, which is expected: those lines become notes, never a FAIL. A topology run that stops part-way
+is UNKNOWN. Its INFO lines (home-LAN addresses) are not saved.
+
+**Other rules.**
+- The gate's channel must match the AP's channel, and both must be readable. If either side is
+  unknown, `wifi.gate` is UNKNOWN.
+- A status document without the core units is UNKNOWN.
+- A check that crashes becomes `<category>.crashed` UNKNOWN.
+- `--local` can never be waived to READY.
+- Loopback requests ignore `http_proxy`.
+
 Storage thresholds are provisional (`STORAGE` in `avrana/ops/preflight.py`): FAIL under 512 MiB or 5 %
 free on `/`, WARN under 2 GiB or 10 %.
 

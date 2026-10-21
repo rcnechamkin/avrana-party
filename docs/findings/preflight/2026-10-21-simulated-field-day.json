@@ -42,16 +42,17 @@
     "game_origins": []
   },
   "counts": {
-    "PASS": 19,
+    "PASS": 18,
     "WARN": 2,
     "FAIL": 4,
-    "UNKNOWN": 1
+    "UNKNOWN": 2
   },
   "blocking": [
     "service.avranaparty-games",
     "serving.games_provider",
     "tls.party.avrana.net",
     "wifi.gate",
+    "pi.clock",
     "storage./"
   ],
   "waived": [],
@@ -182,12 +183,21 @@
       "category": "network",
       "status": "PASS",
       "blocking": true,
-      "reason": "1 topology assertions passed",
+      "reason": "10 topology assertions passed",
       "detail": {
         "lines": [
+          "PASS wlan1 absent",
+          "PASS wlan0 is the internal radio",
           "PASS wlan0 is in AP mode",
-          "INFO channel 36"
-        ]
+          "PASS wlan0 holds only 10.42.0.1/24",
+          "PASS wlan0 runs the Party profile",
+          "PASS no default route on wlan0",
+          "PASS exactly one AP profile autoconnects",
+          "PASS DNS (port 53) listens only on 10.42.0.1",
+          "PASS NM dnsmasq serves 10.42.0.1",
+          "PASS upstream path via eth0"
+        ],
+        "upstream_notes": []
       }
     },
     {
@@ -220,9 +230,9 @@
     {
       "id": "pi.clock",
       "category": "pi",
-      "status": "PASS",
-      "blocking": false,
-      "reason": "2026-10-21T18:00:00Z, not NTP synchronized (normal offline)"
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "2026-10-21T18:00:00Z is not NTP synchronized: run from the laptop (tools/preflight.py compares the clocks), or check `date` and --waive pi.clock"
     },
     {
       "id": "pi.reboot_required",

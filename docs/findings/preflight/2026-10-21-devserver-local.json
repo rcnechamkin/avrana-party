@@ -1,11 +1,11 @@
 {
   "schema": "avrana.preflight/v0",
-  "generated_at": "2026-10-21T21:57:27Z",
-  "seconds": 0.7,
+  "generated_at": "2026-10-21T22:34:13Z",
+  "seconds": 0.3,
   "mode": "local",
   "host": "laptop (dev server)",
   "tool": {
-    "party_sha": "8de7ef20835a1d98ec55cb772c216cbd348084fa"
+    "party_sha": "552441cc00325bac2edc547983483a70094b3bcd"
   },
   "verdict": "UNKNOWN",
   "overall": "UNKNOWN",
@@ -13,9 +13,9 @@
   "revisions": {
     "party": {
       "deployed_sha": null,
-      "checkout_sha": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
+      "checkout_sha": "4713f5c5e90f455dcaafb87b874977932c3f4874",
       "dirty": false,
-      "ref": "claude/avr-696-preflight"
+      "ref": "claude/avr-697-field-diagnostics"
     },
     "games": {
       "deployed_sha": null,
@@ -43,7 +43,7 @@
     "PASS": 4,
     "WARN": 1,
     "FAIL": 0,
-    "UNKNOWN": 11
+    "UNKNOWN": 14
   },
   "blocking": [
     "revision.manifest",
@@ -51,6 +51,9 @@
     "revision.games",
     "revision.web_release",
     "revision.nginx_site",
+    "service.avrana-party-core",
+    "service.avranaparty-games",
+    "service.nginx",
     "tls.appliance",
     "network.appliance",
     "pi.appliance",
@@ -72,14 +75,14 @@
       "category": "revision",
       "status": "UNKNOWN",
       "blocking": true,
-      "reason": "party: no deployed revision recorded; checkout at 8de7ef20835a1d98ec55cb772c216cbd348084fa",
+      "reason": "party: no deployed revision recorded; checkout at 4713f5c5e90f455dcaafb87b874977932c3f4874",
       "detail": {
         "deployed_sha": null,
-        "checkout_sha": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
+        "checkout_sha": "4713f5c5e90f455dcaafb87b874977932c3f4874",
         "dirty": false,
-        "untracked": 3,
+        "untracked": 0,
         "deployed_dirty": null,
-        "ref": "claude/avr-696-preflight",
+        "ref": "claude/avr-697-field-diagnostics",
         "mismatch": false
       }
     },
@@ -121,6 +124,27 @@
       "reason": "no last-known-good record: `ops/deploy.sh --rollback` has no target"
     },
     {
+      "id": "service.avrana-party-core",
+      "category": "services",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "avrana-party-core is not in the status document"
+    },
+    {
+      "id": "service.avranaparty-games",
+      "category": "services",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "avranaparty-games is not in the status document"
+    },
+    {
+      "id": "service.nginx",
+      "category": "services",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "nginx is not in the status document"
+    },
+    {
       "id": "serving.captive_probe",
       "category": "serving",
       "status": "PASS",
@@ -146,7 +170,7 @@
       "category": "serving",
       "status": "PASS",
       "blocking": true,
-      "reason": "summary unknown; party 8de7ef20835a; no deployment manifest, nginx site file unavailable to compare, certificate expiry unavailable"
+      "reason": "summary unknown; party 4713f5c5e90f; no deployment manifest, nginx site file unavailable to compare, certificate expiry unavailable"
     },
     {
       "id": "tls.appliance",

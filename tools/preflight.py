@@ -17,6 +17,7 @@ The appliance runs the preflight from its deployed code release (/opt/avrana-par
 --remote-dir names another tree, e.g. the operator's checkout before this tool is deployed.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shlex
@@ -31,9 +32,11 @@ DEFAULT_RESULTS = ROOT / 'tools' / 'wifi-lab' / 'results'
 DEFAULT_REMOTE_DIR = '/opt/avrana-party/current'
 
 
-def remote_command(remote_dir, args):
+def remote_command(remote_dir, args, reference=None):
     flags = ['--json', '--wifi-gate', '-', '--horizon-days', str(args.horizon_days),
              '--wifi-max-age-h', str(args.wifi_max_age_h)]
+    if reference:
+        flags += ['--reference-time', reference]
     for check_id in args.waive:
         flags += ['--waive', check_id]
     return f'cd {shlex.quote(remote_dir)} && exec python3 -m avrana.ops.preflight ' + ' '.join(map(shlex.quote, flags))
@@ -51,9 +54,22 @@ def gate_text(args):
             path = preflight.newest_gate(path)
             if path is None:
                 return '', f'none found under {args.wifi_gate}'
-        return path.read_text(encoding='utf-8'), str(path)
+        return with_utc_start(path.read_text(encoding='utf-8')), str(path)
     except OSError as e:
         return '', f'{path} unreadable ({e.strerror})'
+
+
+def with_utc_start(text):
+    """wifi-lab writes `started` in the laptop's local time without an offset; the Pi would read it in
+    its own zone. Give it this machine's offset before it travels. Anything unparseable goes as it is."""
+    try:
+        doc = json.loads(text)
+        started = datetime.fromisoformat(doc['started'])
+    except (ValueError, KeyError, TypeError):
+        return text
+    if started.tzinfo is None:
+        doc['started'] = started.astimezone().astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return json.dumps(doc)
 
 
 def main(argv=None):
@@ -63,15 +79,22 @@ def main(argv=None):
     ap.add_argument('--wifi-gate', metavar='PATH', help='a gate.json or results directory (default: the newest local one)')
     ap.add_argument('--no-wifi', action='store_true', help='send no gate result')
     ap.add_argument('--wifi-max-age-h', type=float, default=preflight.WIFI_GATE_MAX_AGE_H)
+    ap.add_argument('--no-clock-check', action='store_true', help='do not send this machine clock as the reference')
     ap.add_argument('--horizon-days', type=int, default=0)
     ap.add_argument('--waive', action='append', default=[], metavar='CHECK_ID')
     ap.add_argument('--out', default=str(ROOT / 'test-results' / 'preflight'))
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--timeout', type=float, default=180.0)
     args = ap.parse_args(argv)
+    if not 0 < args.wifi_max_age_h < float('inf'):
+        ap.error('--wifi-max-age-h must be a positive number of hours')
+    if args.ssh.startswith('-'):
+        ap.error('--ssh must be a destination, not an option')
     text, described = gate_text(args)
     print(f'wifi-lab gate: {described}', file=sys.stderr)
-    cmd = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', args.ssh, remote_command(args.remote_dir, args)]
+    reference = None if args.no_clock_check else datetime.now(timezone.utc).isoformat()
+    cmd = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', args.ssh,
+           remote_command(args.remote_dir, args, reference)]
     try:
         p = subprocess.run(cmd, input=text, capture_output=True, text=True, timeout=args.timeout)
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -79,6 +102,8 @@ def main(argv=None):
         return 3
     try:
         doc = json.loads(p.stdout)
+        if not isinstance(doc, dict) or doc.get('schema') != preflight.SCHEMA or 'generated_at' not in doc:
+            raise ValueError('not an avrana.preflight/v0 document')
     except ValueError:
         tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
         hint = ' (is avrana.ops.preflight deployed? try --remote-dir /home/cody/avrana-party)' \
