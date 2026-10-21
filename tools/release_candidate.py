@@ -28,8 +28,9 @@ that come BEFORE the owner runs ops/deploy.sh on the Pi:
 
 Exit codes. assemble: 0 CANDIDATE_OK, 1 CANDIDATE_FLAGGED (the files are still written), 2 error (nothing written).
 verify: 0 reproduced, 1 differences, 2 error. prereq: 0 only for CLEARED_FOR_OWNER, 1 for BLOCKED (also for a missing or
-unreadable input; a cleared result is never printed then). rehearse-rollback: 0 no step failed, 1 a step failed, 2 the
-rehearsal could not be set up. A usage error is 2 everywhere. Stdlib only.
+unreadable input; a cleared result is never printed then). rehearse-rollback: 0 every step passed, 1 a step failed,
+2 the rehearsal could not be set up, 3 partial (a step could not be reproduced here: not a pass). A usage error is 2
+everywhere. Stdlib only.
 """
 import argparse
 import datetime
@@ -62,7 +63,7 @@ DEFAULT_DEPLOY_SCRIPT = '/home/cody/avrana-party/ops/deploy.sh'
 REQUIRED_TOOLS = ('python3', 'git', 'nginx', 'openssl', 'curl', 'sudo')   # named by deploy/appliance-inventory.json
 VERDICTS = ('CANDIDATE_OK', 'CANDIDATE_FLAGGED')
 # Fields that differ between two honest assemblies of the same pair: never compared by `verify`.
-VERIFY_IGNORED = ('generated_at', 'tool', 'bundles')
+VERIFY_IGNORED = ('generated_at', 'tool', 'bundles', 'manifest_sha256')
 # Fields that move when origin/main moves on, without the candidate changing: a note, not a difference.
 VERIFY_NOTE_ONLY = ('party.origin_main_sha', 'games.origin_main_sha')
 
@@ -84,10 +85,14 @@ def iso(moment):
 
 
 def parse_time(text):
+    """An ISO-8601 time WITH a zone (Z or an offset). A naive time is refused: guessing UTC could make a stale
+    document look fresh by the local offset."""
     if not isinstance(text, str) or not text:
         raise ValueError('no timestamp')
     moment = datetime.datetime.fromisoformat(text.strip().replace('Z', '+00:00'))
-    return moment if moment.tzinfo else moment.replace(tzinfo=datetime.timezone.utc)
+    if moment.tzinfo is None:
+        raise ValueError(f'{text!r} has no time zone')
+    return moment
 
 
 def sha256_bytes(data):
@@ -131,12 +136,25 @@ def rmtree(path):
 
 # ---- git --------------------------------------------------------------------------------------
 def git_cmd(repo, *args):
+    # tar.umask is pinned (to git's default) so a user's git config cannot change the archive digest
     return ['git', '-c', 'core.autocrlf=false', '-c', 'core.safecrlf=false', '-c', 'core.quotepath=false',
-            '-C', str(repo), *args]
+            '-c', 'tar.umask=0002', '-C', str(repo), *args]
+
+
+PROXY_VARS = ('http_proxy', 'https_proxy', 'all_proxy', 'ftp_proxy', 'no_proxy')
+
+
+def clean_env(**extra):
+    """The environment every child runs with: no inherited GIT_* (GIT_DIR or GIT_WORK_TREE from a hook would
+    point git at another repository than `-C` names) and no proxy (loopback must never go through one)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_') and k.lower() not in PROXY_VARS}
+    env.update(NO_PROXY='*', no_proxy='*')
+    env.update(extra)
+    return env
 
 
 def git_env():
-    return dict(os.environ, GIT_OPTIONAL_LOCKS='0', GIT_TERMINAL_PROMPT='0')
+    return clean_env(GIT_OPTIONAL_LOCKS='0', GIT_TERMINAL_PROMPT='0')
 
 
 def git(repo, *args, check=True, timeout=600):
@@ -268,7 +286,7 @@ def run_contract_check(party_tree, games_tree):
     if not (games_tree / 'provider/avrana-contract.json').is_file():
         return {'status': 'not_checkable', 'exit_code': None,
                 'message': 'the Games commit has no provider/avrana-contract.json; the pair was not checked'}
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
+    env = clean_env(PYTHONDONTWRITEBYTECODE='1')
     try:
         p = subprocess.run([sys.executable, '-I', 'tools/contract_check.py', '--party', str(party_tree),
                             '--games', str(games_tree)], cwd=party_tree, capture_output=True, env=env, timeout=180)
@@ -363,8 +381,7 @@ def run_sbom(party_tree):
         return {'status': 'not_checkable', 'message': 'tools/sbom.py is not in this Party commit'}
     try:
         p = subprocess.run([sys.executable, '-I', 'tools/sbom.py', '--check', '--root', str(party_tree)],
-                           cwd=party_tree, capture_output=True, timeout=180,
-                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))
+                           cwd=party_tree, capture_output=True, timeout=180, env=clean_env(PYTHONDONTWRITEBYTECODE='1'))
     except (OSError, subprocess.TimeoutExpired) as e:
         return {'status': 'not_checkable', 'message': f'the inventory check could not run ({type(e).__name__})'}
     lines = (p.stdout.decode('utf-8', 'replace') + p.stderr.decode('utf-8', 'replace')).strip().splitlines()
@@ -440,6 +457,13 @@ def make_flags(doc):
     for note in doc.get('declaration_notes', []):
         flag('declaration_unreadable', 'WARN', note)
     return flags
+
+
+def seal(doc):
+    """The SHA-256 of the manifest's canonical JSON without this field: an edit after assembly breaks it. It is a
+    tamper-evident seal, not a signature (anyone can recompute it); `verify` re-derives everything."""
+    body = {k: v for k, v in doc.items() if k != 'manifest_sha256'}
+    return sha256_bytes(json.dumps(body, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode())
 
 
 def derive(party_repo, games_repo, party_rev, games_rev):
@@ -574,11 +598,19 @@ def cmd_assemble(args):
     doc = derive(args.party_repo, args.games_repo, args.party, args.games)
     out.mkdir(parents=True, exist_ok=True)
     if args.bundle:
-        doc['bundles'] = {'party': make_bundle(args.party_repo, doc['party']['sha'], out / 'party.bundle'),
-                          'games': make_bundle(args.games_repo, doc['games']['sha'], out / 'games.bundle')}
-        for name, b in doc['bundles'].items():
-            if not b['verified_heads']:
-                raise ReleaseError(f'{name}.bundle does not hold exactly {doc[name]["sha"]}')
+        written = []
+        try:
+            doc['bundles'] = {}
+            for name in ('party', 'games'):
+                written.append(out / f'{name}.bundle')
+                doc['bundles'][name] = make_bundle(getattr(args, f'{name}_repo'), doc[name]['sha'], written[-1])
+                if not doc['bundles'][name]['verified_heads']:
+                    raise ReleaseError(f'{name}.bundle does not hold exactly {doc[name]["sha"]}')
+        except BaseException:
+            for path in written:                       # "nothing written" means no half-made bundle either
+                Path(path).unlink(missing_ok=True)
+            raise
+    doc['manifest_sha256'] = seal(doc)
     write_text(manifest_path, json.dumps(doc, indent=2) + '\n')
     write_text(out / SUMMARY_NAME, render_summary(doc))
     print(f'{manifest_path}: {doc["verdict"]} (party {doc["party"]["short"]}, games {doc["games"]["short"]})')
@@ -619,10 +651,12 @@ def load_manifest(path):
     return doc
 
 
-def verify_manifest(manifest_path, party_repo, games_repo, bundle_dir=None):
+def verify_manifest(manifest_path, party_repo, games_repo, bundle_dir=None, bundles=True):
     """(differences, notes): what the manifest says that the repositories no longer (or never) agreed with."""
     manifest = load_manifest(manifest_path)
     differences, notes = [], []
+    if manifest.get('manifest_sha256') != seal(manifest):
+        differences.append('manifest_sha256: the manifest was edited after assembly (or predates the seal)')
     fresh = derive(party_repo, games_repo, manifest['party']['sha'], manifest['games']['sha'])
     recorded, now = flatten(manifest), flatten(fresh)
     for key in sorted(set(recorded) | set(now)):
@@ -645,8 +679,11 @@ def verify_manifest(manifest_path, party_repo, games_repo, bundle_dir=None):
         if not rec:
             continue
         path = directory / rec['file']
+        if not bundles:
+            notes.append(f'{name}: bundle {rec["file"]} not checked (--no-bundles)')
+            continue
         if not path.is_file():
-            notes.append(f'{name}: bundle {rec["file"]} is not in {directory}; not checked')
+            differences.append(f'bundles.{name}: {rec["file"]} is not in {directory} (pass --no-bundles to verify without it)')
             continue
         actual = sha256_file(path)
         if actual != rec['sha256']:
@@ -657,7 +694,8 @@ def verify_manifest(manifest_path, party_repo, games_repo, bundle_dir=None):
 
 
 def cmd_verify(args):
-    differences, notes = verify_manifest(args.manifest, args.party_repo, args.games_repo, args.bundle_dir)
+    differences, notes = verify_manifest(args.manifest, args.party_repo, args.games_repo, args.bundle_dir,
+                                         not args.no_bundles)
     for n in notes:
         print(f'note: {n}')
     if differences:
@@ -713,12 +751,89 @@ def owner_commands(party, games, flags, script):
     return cmds
 
 
-def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=None, script=DEFAULT_DEPLOY_SCRIPT):
+PREFLIGHT_STATUSES = ('PASS', 'WARN', 'FAIL', 'UNKNOWN')
+
+
+def check_manifest(manifest, manifest_path, blocked, warnings, party_repo, games_repo, accept_unchecked):
+    """Nothing in the manifest is taken on trust: its seal, its flags and verdict against its own facts, the contract
+    check and (with both repositories) a full re-derivation."""
+    flags = manifest.get('flags') if isinstance(manifest.get('flags'), list) else []
+    if manifest.get('manifest_sha256') != seal(manifest):
+        blocked.append('candidate manifest: its manifest_sha256 seal does not match, so it was edited after assembly '
+                       '(or predates the seal); assemble it again')
+    if manifest.get('verdict') not in VERDICTS:
+        blocked.append(f'candidate manifest: verdict {manifest.get("verdict")!r} is not one of {", ".join(VERDICTS)}')
+    for f in flags:
+        if not isinstance(f, dict):
+            continue
+        line = f'{f.get("id")}: {f.get("reason")}'
+        if f.get('severity') == 'FAIL':
+            blocked.append(f'candidate is flagged FAIL - {line}')
+        else:
+            warnings.append(f'candidate flag WARN - {line}')
+    if manifest.get('verdict') == 'CANDIDATE_FLAGGED' and not flags:
+        blocked.append('candidate manifest: verdict CANDIDATE_FLAGGED but no flags are listed; assemble it again')
+    try:
+        derived = make_flags(manifest)
+    except (KeyError, TypeError, AttributeError, IndexError):
+        blocked.append('candidate manifest: incomplete, so its flags cannot be re-derived from its own facts; assemble it again')
+    else:
+        listed = sorted(str(f.get('id')) for f in flags if isinstance(f, dict))
+        expected = sorted(f['id'] for f in derived)
+        if listed != expected:
+            blocked.append(f'candidate manifest: it lists flags {listed} but its own facts give {expected}')
+        if manifest.get('verdict') != ('CANDIDATE_FLAGGED' if derived else 'CANDIDATE_OK'):
+            blocked.append(f'candidate manifest: verdict {manifest.get("verdict")!r} does not follow from its own facts')
+        for f in derived:
+            if f['severity'] == 'FAIL' and f['id'] not in listed:
+                blocked.append(f'candidate facts say FAIL - {f["id"]}: {f["reason"]}')
+    check = dig(manifest, 'contract_check', 'status')
+    if check != 'compatible':
+        if check == 'not_checkable' and accept_unchecked:
+            warnings.append('the pair was NOT checked by tools/contract_check.py; accepted with --accept-unchecked')
+        else:
+            blocked.append(f'candidate: tools/contract_check.py did not show the pair compatible (status {check!r}); '
+                           '--accept-unchecked accepts only a pair it could not check, never one it rejected')
+    if party_repo and games_repo:
+        try:
+            differences, _ = verify_manifest(manifest_path, party_repo, games_repo, bundles=False)
+        except ReleaseError as e:
+            blocked.append(f'candidate manifest: could not be re-derived ({e})')
+        else:
+            blocked += [f'candidate manifest does not reproduce: {d}' for d in differences]
+        return True
+    warnings.append('the manifest was not re-derived from the repositories (pass --party-repo and --games-repo); '
+                    'only its seal and its internal consistency were checked')
+    return False
+
+
+def document_age(doc, now, what, max_age_min, blocked):
+    """Minutes since doc.generated_at, or None (and a blocking reason) when that cannot be shown to be fresh."""
+    try:
+        age = (now - parse_time(doc.get('generated_at'))).total_seconds() / 60.0
+    except (ValueError, TypeError):
+        blocked.append(f'{what}: generated_at is missing or not an ISO-8601 time with a zone, so it cannot be shown to be fresh')
+        return None
+    if age > max_age_min:
+        blocked.append(f'{what}: stale, taken {age:.0f} minutes ago (limit {max_age_min:g}); take a new one')
+    elif age < -5:
+        blocked.append(f'{what}: generated_at is {-age:.0f} minutes in the future (clock skew); take a new one')
+    return age
+
+
+def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=None, script=DEFAULT_DEPLOY_SCRIPT,
+           party_repo=None, games_repo=None, accept_unchecked=False):
+    if not (isinstance(max_age_min, (int, float)) and 0 < max_age_min < float('inf')):
+        raise ReleaseError(f'--max-age-min must be a positive finite number of minutes, not {max_age_min!r}')
+    clock_overridden = now is not None
     now = now or utcnow()
     blocked, warnings, notes = [], [], []
-    result = {'schema': PREREQ_SCHEMA, 'checked_at': iso(now), 'result': 'BLOCKED', 'manifest': None, 'preflight': None,
-              'rollback_target': None, 'blocked_by': blocked, 'warnings': warnings, 'notes': notes,
-              'physically_unverified': [], 'owner_commands': None}
+    result = {'schema': PREREQ_SCHEMA, 'checked_at': iso(now), 'clock_overridden': clock_overridden, 'result': 'BLOCKED',
+              'manifest': None, 'preflight': None, 'rollback_target': None, 'blocked_by': blocked, 'warnings': warnings,
+              'notes': notes, 'physically_unverified': [], 'owner_commands': None}
+    if clock_overridden:
+        warnings.append(f'CLOCK OVERRIDDEN: evaluated as of {iso(now)} (--now), not the real time; '
+                        'this result is a demonstration and is not valid for a real installation')
     # 1. the candidate manifest
     manifest = None
     try:
@@ -726,21 +841,10 @@ def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=
     except ReleaseError as e:
         blocked.append(f'candidate manifest: {e}')
     if manifest is not None:
-        flags = manifest.get('flags') if isinstance(manifest.get('flags'), list) else []
         result['manifest'] = {'path': str(manifest_path), 'party': manifest['party']['sha'], 'games': manifest['games']['sha'],
                               'verdict': manifest.get('verdict')}
-        if manifest.get('verdict') not in VERDICTS:
-            blocked.append(f'candidate manifest: verdict {manifest.get("verdict")!r} is not one of {", ".join(VERDICTS)}')
-        for f in flags:
-            if not isinstance(f, dict):
-                continue
-            line = f'{f.get("id")}: {f.get("reason")}'
-            if f.get('severity') == 'FAIL':
-                blocked.append(f'candidate is flagged FAIL - {line}')
-            else:
-                warnings.append(f'candidate flag WARN - {line}')
-        if manifest.get('verdict') == 'CANDIDATE_FLAGGED' and not flags:
-            blocked.append('candidate manifest: verdict CANDIDATE_FLAGGED but no flags are listed; assemble it again')
+        result['manifest']['reverified'] = check_manifest(manifest, manifest_path, blocked, warnings, party_repo,
+                                                          games_repo, accept_unchecked)
     # 2. the preflight document
     preflight, problem = read_json_file(preflight_path, 'preflight')
     if problem:
@@ -749,24 +853,29 @@ def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=
         blocked.append(f'preflight: not a {PREFLIGHT_SCHEMA} document (schema {dig(preflight, "schema")!r})')
         preflight = None
     if preflight is not None:
-        age = None
-        try:
-            age = (now - parse_time(preflight.get('generated_at'))).total_seconds() / 60.0
-        except (ValueError, TypeError):
-            blocked.append('preflight: generated_at is missing or not an ISO-8601 time, so it cannot be shown to be fresh')
-        if age is not None:
-            if age > max_age_min:
-                blocked.append(f'preflight: stale, taken {age:.0f} minutes ago (limit {max_age_min:g}); take a new one')
-            elif age < -5:
-                blocked.append(f'preflight: generated_at is {-age:.0f} minutes in the future (clock skew); take a new one')
+        age = document_age(preflight, now, 'preflight', max_age_min, blocked)
+        if preflight.get('mode') != 'appliance':
+            blocked.append(f'preflight: mode {preflight.get("mode")!r}, not "appliance"; a dev-server (--local) or '
+                           'unlabelled preflight never clears an installation')
         verdict, overall = preflight.get('verdict'), preflight.get('overall')
         raw_checks = preflight.get('checks')
         checks = [c for c in raw_checks if isinstance(c, dict)] if isinstance(raw_checks, list) else []
-        bad = [c for c in checks if c.get('blocking') and c.get('status') != 'PASS']
+        if not checks:
+            blocked.append('preflight: it lists no checks, so READY would mean nothing')
+        raw_waived = preflight.get('waived')
+        waived = {w for w in raw_waived if isinstance(w, str)} if isinstance(raw_waived, list) else set()
+        for w in sorted(waived):
+            if w.endswith('.appliance'):
+                blocked.append(f'preflight: {w} is waived, but an appliance-only check can never be waived')
+        # A blocking FAIL is never acceptable; a blocking UNKNOWN only when the operator waived it (06A --waive).
+        bad = [c for c in checks if c.get('blocking') and (
+            c.get('status') == 'FAIL' or c.get('status') not in PREFLIGHT_STATUSES
+            or (c.get('status') == 'UNKNOWN' and c.get('id') not in waived))]
         failed = [c for c in checks if c.get('status') == 'FAIL' and c not in bad]
         result['preflight'] = {'path': str(preflight_path), 'generated_at': preflight.get('generated_at'),
-                               'age_minutes': None if age is None else round(age, 1), 'verdict': verdict, 'overall': overall,
-                               'blocking_checks': [c.get('id') for c in bad]}
+                               'age_minutes': None if age is None else round(age, 1), 'mode': preflight.get('mode'),
+                               'verdict': verdict, 'overall': overall, 'blocking_checks': [c.get('id') for c in bad],
+                               'waived': sorted(waived)}
         if verdict == 'READY':
             if overall not in ('PASS', 'WARN'):
                 blocked.append(f'preflight: verdict READY but overall is {overall!r}; the document disagrees with itself')
@@ -785,6 +894,8 @@ def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=
         else:
             blocked.append(f'preflight: verdict {verdict!r} is not READY')
         warnings += [f'preflight check {c.get("id")}: {c.get("reason")}' for c in checks if c.get('status') == 'WARN']
+        warnings += [f'preflight check {c.get("id")} was UNKNOWN and WAIVED by the operator: {c.get("reason")}'
+                     for c in checks if c.get('status') == 'UNKNOWN' and c.get('id') in waived]
         unverified = preflight.get('physically_unverified')
         if isinstance(unverified, list):
             result['physically_unverified'] = [str(u) for u in unverified]
@@ -800,28 +911,37 @@ def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=
                 changed = [n for n, d, c in (('Party', dp, manifest['party']['sha']), ('Games', dg, manifest['games']['sha']))
                            if d != c]
                 notes.append(f'deployed pair: Party {dp[:12]}, Games {dg[:12]}; the deploy changes: {", ".join(changed)}')
-    # 4. the rollback target
-    if status_path is None:
-        warnings.append('no --status given: the rollback target (last known good) was not checked; '
-                        'save /party/api/status and pass it, or read it with ops/deploy.sh --status')
-    else:
+    # 4. the rollback target: from --status when given (checked against the preflight), else from the preflight
+    lkg, lkg_source = None, None
+    if status_path is not None:
         status, status_problem = read_json_file(status_path, 'status')
         if status_problem is None and (not isinstance(status, dict) or status.get('schema') != STATUS_SCHEMA):
             status_problem = f'status {status_path} is not a {STATUS_SCHEMA} document'
         if status_problem:
-            warnings.append(f'{status_problem}: the rollback target was not checked')
+            blocked.append(f'{status_problem}; it was given with --status, so it must be usable')
         else:
-            lkg = status.get('last_known_good')
-            if not (isinstance(lkg, dict) and SHA_RX.match(str(lkg.get('party_sha'))) and SHA_RX.match(str(lkg.get('games_sha')))):
-                warnings.append('no last known good is recorded: ops/deploy.sh --rollback has no target, so a failed smoke '
-                                'on this deploy can only be undone by deploying explicit SHAs (docs/runbooks/deploy.md)')
-            else:
-                result['rollback_target'] = {k: lkg.get(k) for k in ('party_sha', 'games_sha', 'smoke_at', 'recorded_at')}
-                if preflight is not None:
-                    dp, dg = deployed_sha(preflight, 'party'), deployed_sha(preflight, 'games')
-                    if dp and dg and (dp, dg) != (lkg['party_sha'], lkg['games_sha']):
-                        warnings.append('the last known good differs from the deployed pair, so --rollback returns to '
-                                        f'Party {lkg["party_sha"][:12]} / Games {lkg["games_sha"][:12]}, not to what runs now')
+            document_age(status, now, 'status', max_age_min, blocked)
+            if preflight is not None:
+                for name in ('party', 'games'):
+                    a, b = dig(status, name, 'deployed_sha'), deployed_sha(preflight, name)
+                    if a != b:
+                        blocked.append(f'status and preflight disagree on the deployed {name} commit ({str(a)[:12]} vs '
+                                       f'{str(b)[:12]}): they were not taken of the same deployment')
+            lkg, lkg_source = status.get('last_known_good'), '--status'
+    elif preflight is not None:
+        lkg, lkg_source = dig(preflight, 'revisions', 'last_known_good'), 'the preflight'
+    if not (isinstance(lkg, dict) and SHA_RX.match(str(lkg.get('party_sha'))) and SHA_RX.match(str(lkg.get('games_sha')))):
+        warnings.append(f'no last known good is recorded{" in " + lkg_source if lkg_source else ""}: ops/deploy.sh --rollback '
+                        'has no target, so a failed smoke on this deploy can only be undone by deploying explicit SHAs '
+                        '(docs/runbooks/deploy.md)')
+    else:
+        result['rollback_target'] = dict({k: lkg.get(k) for k in ('party_sha', 'games_sha', 'smoke_at', 'recorded_at')},
+                                         source=lkg_source)
+        if preflight is not None:
+            dp, dg = deployed_sha(preflight, 'party'), deployed_sha(preflight, 'games')
+            if dp and dg and (dp, dg) != (lkg['party_sha'], lkg['games_sha']):
+                warnings.append('the last known good differs from the deployed pair, so --rollback returns to '
+                                f'Party {lkg["party_sha"][:12]} / Games {lkg["games_sha"][:12]}, not to what runs now')
     if not blocked:
         result['result'] = 'CLEARED_FOR_OWNER'
         result['owner_commands'] = owner_commands(manifest['party']['sha'], manifest['games']['sha'],
@@ -830,7 +950,9 @@ def prereq(manifest_path, preflight_path, status_path=None, max_age_min=60, now=
 
 
 def render_prereq(r):
-    lines = [f'{r["result"]}  (checked {r["checked_at"]})']
+    lines = [f'{r["result"]}  (checked {r["checked_at"]})'
+             + ('  [CLOCK OVERRIDDEN with --now: a demonstration, not valid for a real installation]'
+                if r.get('clock_overridden') else '')]
     if r['manifest']:
         m = r['manifest']
         lines.append(f'candidate: Party {m["party"]}, Games {m["games"]} ({m["verdict"]})')
@@ -862,8 +984,10 @@ def render_prereq(r):
 
 
 def cmd_prereq(args):
-    r = prereq(args.manifest, args.preflight, args.status, args.max_age_min,
-               parse_time(args.now) if args.now else None, args.deploy_script)
+    if bool(args.party_repo) != bool(args.games_repo):
+        raise ReleaseError('give both --party-repo and --games-repo, or neither')
+    r = prereq(args.manifest, args.preflight, args.status, args.max_age_min, args.now, args.deploy_script,
+               args.party_repo, args.games_repo, args.accept_unchecked)
     if args.json_out:
         write_text(args.json_out, json.dumps(r, indent=2) + '\n')
     print(json.dumps(r, indent=2) if args.json else render_prereq(r))
@@ -881,7 +1005,14 @@ NOT_REPRODUCED = (
     'a real rollback: only --rollback --dry-run is run; the "deployed" state is a throwaway checkout moved by this tool',
     'phones, Wi-Fi, the game origin certificate and anything physical',
 )
-ROOT_ONLY_RX = re.compile(r'run as root|needs root|root is needed|Permission denied|sudo: ', re.I)
+# NOT_REPRODUCED only when the script's OWN refusal (deploy.sh die(), exit 1) is the last thing it said: a log line
+# that merely mentions root (the dry run's "root is needed" certificate note) never turns a failure into a pass.
+ROOT_REFUSAL_RX = re.compile(r'^deploy: (?:run as root\b|.*\bneeds root\b)')
+# The paths the rehearsal moves into its scratch root. A candidate ops/deploy.sh that does not read one of them
+# would act on the real path, so it is not run at all.
+REQUIRED_OVERRIDES = ('AVRANA_PARTY_CHECKOUT', 'AVRANA_GAMES_CHECKOUT', 'AVRANA_WEB_ROOT', 'AVRANA_PARTY_RELEASES',
+                      'AVRANA_GAMES_RELEASES', 'AVRANA_DEPLOYMENT_MANIFEST', 'AVRANA_LAST_KNOWN_GOOD', 'AVRANA_BACKUP_ROOT',
+                      'AVRANA_DEPLOY_LOCK', 'AVRANA_NGINX_SITE', 'AVRANA_NGINX_ENABLED')
 PLAN_RX = re.compile(r'plan: party ([0-9a-f]{40}) -> ([0-9a-f]{40}) \(changed=(\d)\), '
                      r'games ([0-9a-f]{40}) -> ([0-9a-f]{40}) \(changed=(\d)\)')
 
@@ -906,8 +1037,9 @@ def repo_state(repo):
             'status': git(repo, 'status', '--porcelain=v1', '--untracked-files=all').stdout.decode('utf-8', 'replace')}
 
 
-def tree_snapshot(root, skip=('origin', 'logs')):
-    """Every file under root (not git internals, the scratch origins or this tool's own logs) with its digest."""
+def tree_snapshot(root, skip=('origin', 'logs', 'locks')):
+    """Every file under root (not git internals, the scratch origins, this tool's own logs or the deploy lock, which
+    deploy.sh creates with `exec 9>` wherever flock exists) with its digest."""
     snap = {}
     root = Path(root)
     for dirpath, dirnames, filenames in os.walk(root):
@@ -947,9 +1079,17 @@ def make_origin(origin, source_repo, main_sha, extra):
 
 
 def run_deploy(bash, script, args, env, cwd, timeout=300):
-    p = subprocess.run([bash, posix(script), *args], capture_output=True, text=True, env=env, cwd=cwd, timeout=timeout,
-                       errors='replace')
+    try:
+        p = subprocess.run([bash, posix(script), *args], capture_output=True, text=True, env=env, cwd=cwd, timeout=timeout,
+                           errors='replace')
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ReleaseError(f'ops/deploy.sh {" ".join(args[:1])} could not finish ({type(e).__name__})')
     return p.returncode, p.stdout, p.stderr
+
+
+def root_refusal(rc, err):
+    lines = [l.strip() for l in err.splitlines() if l.strip()]
+    return rc == 1 and bool(lines) and bool(ROOT_REFUSAL_RX.match(lines[-1]))
 
 
 def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_games=None, keep=False):
@@ -987,7 +1127,7 @@ def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_ga
     real_before = {'party': repo_state(party_repo), 'games': repo_state(games_repo)}
     scratch = Path(tempfile.mkdtemp(prefix='avrana-rc-rehearsal-')).resolve()
     try:
-        for d in ('logs', 'tmp', 'state', 'shim', 'cand', 'origin'):
+        for d in ('logs', 'tmp', 'state', 'shim', 'cand', 'origin', 'locks'):
             (scratch / d).mkdir()
         logs = scratch / 'logs'
         # -- 1. throwaway clones with a local origin
@@ -1001,6 +1141,11 @@ def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_ga
             script = cand_tree / 'ops/deploy.sh'
             if not script.is_file():
                 raise ReleaseError('the candidate Party commit has no ops/deploy.sh')
+            text = script.read_text(encoding='utf-8', errors='replace')
+            ignored = [v for v in REQUIRED_OVERRIDES if not re.search(r'\b' + v + r'\b', text)]
+            if ignored:
+                raise ReleaseError('the candidate ops/deploy.sh does not read ' + ', '.join(ignored) +
+                                   ', so it would act on the real paths; it was not run')
         except ReleaseError as e:
             step('setup', 'throwaway clones of both repositories with a local origin', 'FAIL', str(e))
             return done()
@@ -1010,7 +1155,7 @@ def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_ga
         shim = scratch / 'shim'
         write_text(shim / 'python3', f'#!/bin/sh\nexec "{posix(sys.executable)}" "$@"\n')
         os.chmod(shim / 'python3', 0o755)
-        env = {k: v for k, v in os.environ.items() if not k.startswith('AVRANA_')}
+        env = {k: v for k, v in clean_env().items() if not k.startswith('AVRANA_')}
         env.update({
             'PATH': str(shim) + os.pathsep + env.get('PATH', ''),
             'AVRANA_PARTY_CHECKOUT': posix(scratch / 'party'), 'AVRANA_GAMES_CHECKOUT': posix(scratch / 'games'),
@@ -1018,7 +1163,7 @@ def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_ga
             'AVRANA_GAMES_RELEASES': posix(scratch / 'opt/avrana-party-games'),
             'AVRANA_DEPLOYMENT_MANIFEST': posix(scratch / 'state/deployment.json'),
             'AVRANA_LAST_KNOWN_GOOD': posix(scratch / 'state/last-known-good.json'),
-            'AVRANA_BACKUP_ROOT': posix(scratch / 'backups'), 'AVRANA_DEPLOY_LOCK': posix(scratch / 'state/deploy.lock'),
+            'AVRANA_BACKUP_ROOT': posix(scratch / 'backups'), 'AVRANA_DEPLOY_LOCK': posix(scratch / 'locks/deploy.lock'),
             'AVRANA_NGINX_SITE': posix(scratch / 'nginx/sites-available/avrana-party'),
             'AVRANA_NGINX_ENABLED': posix(scratch / 'nginx/sites-enabled/avrana-party'),
             'AVRANA_PARTY_CORE_URL': 'http://127.0.0.1:1', 'AVRANA_CHECKOUT_USER': getpass.getuser(),
@@ -1035,8 +1180,11 @@ def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_ga
                 ['last-known-good', 'record', f'{state}/deployment.json', f'{state}/last-known-good.json']]
         seed_out = ''
         for sub in seed:
-            p = subprocess.run([sys.executable, '-m', 'avrana.ops.manifest', *sub], cwd=tooling, capture_output=True,
-                               text=True, errors='replace', env=env, timeout=120)
+            try:
+                p = subprocess.run([sys.executable, '-m', 'avrana.ops.manifest', *sub], cwd=tooling, capture_output=True,
+                                   text=True, errors='replace', env=env, timeout=120)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                raise ReleaseError(f'avrana.ops.manifest {sub[0]} could not finish ({type(e).__name__})')
             seed_out += f'$ python -m avrana.ops.manifest {sub[0]}\n{p.stdout}{p.stderr}'
             if p.returncode != 0:
                 step('seed-last-known-good', 'seed a last-known-good record for the before pair', 'FAIL',
@@ -1055,9 +1203,9 @@ def rehearse(manifest_path, party_repo, games_repo, before_party=None, before_ga
             rc, out, err = run_deploy(bash, script, args, env, cand_tree)
             text = out + (('\n[stderr]\n' + err) if err.strip() else '')
             write_text(logs / f'{sid}.log', text)
-            if rc != 0 and ROOT_ONLY_RX.search(text):
+            if root_refusal(rc, err):
                 return step(sid, title, 'NOT_REPRODUCED',
-                            f'exit {rc}: the script needs something only root (or the Pi) has here; not faked', text)
+                            f'exit {rc}: the script refused to run without root here; not faked', text)
             problems = [] if rc == 0 else [f'exit status {rc}, expected 0']
             problems += [msg for good, msg in checks_of(out) if not good]
             added, gone, changed = snapshot_diff(before_snap, tree_snapshot(scratch))
@@ -1145,10 +1293,27 @@ def cmd_rehearse(args):
     if args.json_out:
         write_text(args.json_out, json.dumps(report, indent=2) + '\n')
     print(render_rehearsal(report))
-    return 1 if report['verdict'] == 'REHEARSAL_FAILED' else 0
+    return {'REHEARSAL_PASSED': 0, 'REHEARSAL_FAILED': 1}.get(report['verdict'], 3)
 
 
 # ---- command line -----------------------------------------------------------------------------
+def positive_minutes(text):
+    try:
+        value = float(text)
+    except ValueError:
+        value = None
+    if value is None or not 0 < value < float('inf'):          # nan and inf would switch the staleness check off
+        raise argparse.ArgumentTypeError(f'{text!r} is not a positive finite number of minutes')
+    return value
+
+
+def zoned_time(text):
+    try:
+        return parse_time(text)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f'{text!r} is not an ISO-8601 time with a zone ({e})')
+
+
 def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     sub = ap.add_subparsers(dest='command', required=True)
@@ -1165,16 +1330,23 @@ def build_parser():
     v.add_argument('--party-repo', required=True)
     v.add_argument('--games-repo', required=True)
     v.add_argument('--bundle-dir', default=None, help='where the bundles are (default: beside the manifest)')
+    v.add_argument('--no-bundles', action='store_true', help='do not check the bundles (a missing one is otherwise a difference)')
     r = sub.add_parser('prereq', help='check the prerequisites of an intended installation (does not install)')
     r.add_argument('manifest')
     r.add_argument('--preflight', required=True, metavar='PREFLIGHT.json')
-    r.add_argument('--status', default=None, metavar='STATUS.json', help='saved /party/api/status (avrana.status/v0)')
-    r.add_argument('--max-age-min', type=float, default=60.0)
+    r.add_argument('--status', default=None, metavar='STATUS.json',
+                   help='saved /party/api/status (avrana.status/v0); must be fresh and agree with the preflight')
+    r.add_argument('--party-repo', default=None, help='with --games-repo: re-derive the manifest (as verify does)')
+    r.add_argument('--games-repo', default=None)
+    r.add_argument('--accept-unchecked', action='store_true',
+                   help='accept a pair tools/contract_check.py could not check (never one it rejected)')
+    r.add_argument('--max-age-min', type=positive_minutes, default=60.0)
     r.add_argument('--deploy-script', default=DEFAULT_DEPLOY_SCRIPT, help='path of ops/deploy.sh on the Pi, for the printed commands')
     r.add_argument('--json', action='store_true', help='print the JSON document instead of the text report')
     r.add_argument('--json-out', default=None, metavar='FILE', help='also write the JSON document')
-    r.add_argument('--now', default=None, metavar='ISO8601',
-                   help='evaluate as of this UTC time instead of the clock (tests, reproducible demonstrations)')
+    r.add_argument('--now', default=None, metavar='ISO8601', type=zoned_time,
+                   help='evaluate as of this time (with a zone) instead of the clock; for tests and demonstrations only, '
+                        'and the result says CLOCK OVERRIDDEN')
     b = sub.add_parser('rehearse-rollback', help='ops/deploy.sh --dry-run and --rollback --dry-run in a disposable root')
     b.add_argument('manifest')
     b.add_argument('--party-repo', required=True)

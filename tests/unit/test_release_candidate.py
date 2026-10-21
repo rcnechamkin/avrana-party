@@ -173,6 +173,7 @@ class Assemble(Base):
         self.assertRegex(m['generated_at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
         self.assertEqual(m['tool']['name'], 'tools/release_candidate.py')
         self.assertTrue(m['tool']['party_sha'] is None or re.match(r'^[0-9a-f]{40}$', m['tool']['party_sha']))
+        self.assertEqual(m['manifest_sha256'], rc.seal(m))
         summary = (out / 'release-candidate.md').read_text(encoding='utf-8')
         self.assertIn('CANDIDATE_OK', summary)
         self.assertIn(party.sha(), summary)
@@ -284,6 +285,32 @@ class Assemble(Base):
             self.assertEqual(rc.archive_digest(party.path, party.sha()), plain)
         self.assertIn('core.autocrlf=false', self.assemble(party, games, 'o')[1]['digest_method'])
 
+    def test_the_digest_does_not_depend_on_tar_umask_or_an_inherited_git_dir(self):
+        party, games = self.pair()
+        plain = rc.archive_digest(party.path, party.sha())
+        config = self.root / 'gitconfig'
+        config.write_text('[tar]\n\tumask = 0077\n', encoding='utf-8')
+        with unittest.mock.patch.dict(os.environ, {'GIT_CONFIG_GLOBAL': str(config), 'GIT_CONFIG_SYSTEM': os.devnull}):
+            self.assertEqual(rc.archive_digest(party.path, party.sha()), plain)
+        # GIT_DIR from a hook or `rebase --exec` would otherwise point every `git -C party` at the Games repository
+        with unittest.mock.patch.dict(os.environ, {'GIT_DIR': str(games.path / '.git'), 'GIT_WORK_TREE': str(games.path)}):
+            self.assertEqual(rc.archive_digest(party.path, party.sha()), plain)
+            self.assertEqual(rc.resolve_commit(party.path, 'HEAD'), party.sha())
+
+    def test_a_failed_bundle_leaves_no_half_written_files(self):
+        party, games = self.pair()
+        real = rc.make_bundle
+
+        def games_fails(repo, sha, dest):
+            if Path(dest).name == 'games.bundle':
+                raise rc.ReleaseError('simulated failure')
+            return real(repo, sha, dest)
+        with unittest.mock.patch.object(rc, 'make_bundle', games_fails):
+            code, manifest, out, text = self.assemble(party, games, 'out', '--bundle')
+        self.assertEqual(code, 2, text)
+        self.assertIsNone(manifest)
+        self.assertEqual(sorted(p.name for p in out.iterdir()) if out.exists() else [], [])
+
     def test_the_trees_come_from_the_commits_not_from_the_working_tree(self):
         party, games = self.pair(games=games_files(stub_exit=1))
         (games.path / 'provider/avrana-contract.json').write_text(json.dumps(
@@ -386,8 +413,13 @@ class Verify(Base):
         m['generated_at'] = '2020-01-01T00:00:00Z'
         m['tool']['party_sha'] = 'a' * 40
         (out / 'release-candidate.json').write_text(json.dumps(m), encoding='utf-8')
-        code, *_ = self.cli('verify', out / 'release-candidate.json', '--party-repo', party.path, '--games-repo', games.path)
-        self.assertEqual(code, 0)
+        code, text, _ = self.cli('verify', out / 'release-candidate.json', '--party-repo', party.path, '--games-repo', games.path)
+        self.assertEqual(code, 1)                                  # an edit, however harmless, breaks the seal
+        self.assertIn('manifest_sha256', text)
+        m['manifest_sha256'] = rc.seal(m)
+        (out / 'release-candidate.json').write_text(json.dumps(m), encoding='utf-8')
+        code, text, _ = self.cli('verify', out / 'release-candidate.json', '--party-repo', party.path, '--games-repo', games.path)
+        self.assertEqual(code, 0, text)                            # ... but those fields are not compared
 
     def test_origin_main_moving_on_is_a_note_not_a_difference(self):
         party, games = self.pair()
@@ -406,7 +438,7 @@ class Verify(Base):
         self.assertEqual(code, 0, text)
         self.assertIn("'HEAD' now resolves to a different commit", text)
 
-    def test_a_tampered_bundle_is_a_difference_and_a_missing_one_a_note(self):
+    def test_a_tampered_or_missing_bundle_is_a_difference(self):
         party, games = self.pair()
         _, _, out, _ = self.assemble(party, games, 'out', '--bundle')
         manifest = out / 'release-candidate.json'
@@ -418,8 +450,12 @@ class Verify(Base):
         (out / 'games.bundle').unlink()
         (out / 'party.bundle').unlink()
         code, text, _ = self.cli('verify', manifest, '--party-repo', party.path, '--games-repo', games.path)
-        self.assertEqual(code, 0)
-        self.assertIn('not checked', text)
+        self.assertEqual(code, 1, text)
+        self.assertIn('bundles.party', text)
+        self.assertIn('--no-bundles', text)
+        code, text, _ = self.cli('verify', manifest, '--party-repo', party.path, '--games-repo', games.path, '--no-bundles')
+        self.assertEqual(code, 0, text)
+        self.assertIn('not checked (--no-bundles)', text)
 
     def test_a_file_that_is_not_a_manifest_is_an_error(self):
         party, games = self.pair()
@@ -436,15 +472,34 @@ OLD_PARTY = 'c' * 40
 OLD_GAMES = 'd' * 40
 
 
-def fake_manifest(flags=(), verdict=None):
-    flags = list(flags)
-    return {'schema': rc.SCHEMA, 'party': {'sha': PARTY, 'short': PARTY[:12]}, 'games': {'sha': GAMES, 'short': GAMES[:12]},
-            'flags': flags, 'verdict': verdict or ('CANDIDATE_FLAGGED' if flags else 'CANDIDATE_OK')}
+def fake_manifest(flags=None, verdict=None, seal=True, **changes):
+    """A complete, sealed manifest whose flags and verdict follow from its facts (as assemble writes it). A change
+    is given as section__field=value; flags and verdict, when given, override what the facts say."""
+    doc = {'schema': rc.SCHEMA, 'generated_at': rc.iso(NOW),
+           'party': {'sha': PARTY, 'short': PARTY[:12], 'on_origin_main': True, 'origin_main_sha': PARTY},
+           'games': {'sha': GAMES, 'short': GAMES[:12], 'on_origin_main': True, 'origin_main_sha': GAMES},
+           'contract_check': {'status': 'compatible', 'exit_code': 0, 'message': 'compatible'},
+           'contracts': {'party_games': {'party': 'avrana.party-games/v0', 'games': 'avrana.party-games/v0', 'match': True}},
+           'layer': {'status': 'match', 'party_file': rc.LAYER_MOUNT, 'party_actual_sha256': LAYER_SHA,
+                     'party_declared_sha256': LAYER_SHA, 'games_pinned_sha256': LAYER_SHA},
+           'runtime': {'package_lock_sha256': '0' * 64, 'python_minimum': '3.11', 'node_runtime_version': '22.22.2'},
+           'sbom': {'status': 'ok', 'message': ''}, 'declaration_notes': [], 'bundles': None}
+    for path, value in changes.items():
+        *keys, last = path.split('__')
+        target = doc
+        for key in keys:
+            target = target[key]
+        target[last] = value
+    doc['flags'] = rc.make_flags(doc) if flags is None else list(flags)
+    doc['verdict'] = verdict or ('CANDIDATE_FLAGGED' if doc['flags'] else 'CANDIDATE_OK')
+    if seal:
+        doc['manifest_sha256'] = rc.seal(doc)
+    return doc
 
 
 def fake_preflight(age_min=5, verdict='READY', overall='PASS', checks=None, deployed=(OLD_PARTY, OLD_GAMES), **extra):
     doc = {'schema': 'avrana.preflight/v0', 'generated_at': rc.iso(NOW - datetime.timedelta(minutes=age_min)),
-           'verdict': verdict, 'overall': overall,
+           'mode': 'appliance', 'waived': [], 'verdict': verdict, 'overall': overall,
            'revisions': {'party': {'deployed_sha': deployed[0]}, 'games': {'deployed_sha': deployed[1]}},
            'checks': checks if checks is not None else [
                {'id': 'disk', 'category': 'storage', 'status': 'PASS', 'blocking': True, 'reason': 'ok'}],
@@ -453,8 +508,9 @@ def fake_preflight(age_min=5, verdict='READY', overall='PASS', checks=None, depl
     return doc
 
 
-def fake_status(lkg=(OLD_PARTY, OLD_GAMES)):
-    return {'schema': 'avrana.status/v0', 'generated_at': rc.iso(NOW),
+def fake_status(lkg=(OLD_PARTY, OLD_GAMES), deployed=(OLD_PARTY, OLD_GAMES), age_min=1):
+    return {'schema': 'avrana.status/v0', 'generated_at': rc.iso(NOW - datetime.timedelta(minutes=age_min)),
+            'party': {'deployed_sha': deployed[0]}, 'games': {'deployed_sha': deployed[1]},
             'last_known_good': None if lkg is None else {'party_sha': lkg[0], 'games_sha': lkg[1],
                                                          'smoke_at': '2026-10-06T10:00:00Z', 'recorded_at': '2026-10-06T10:00:01Z'}}
 
@@ -526,6 +582,8 @@ class Prereq(Base):
         self.assertEqual(self.run_prereq(preflight=fake_preflight(age_min=61), max_age_min=120)['result'], 'CLEARED_FOR_OWNER')
         self.assertBlocked(self.run_prereq(preflight=fake_preflight(age_min=-30)), 'in the future')
         self.assertBlocked(self.run_prereq(preflight=fake_preflight(generated_at='yesterday')), 'generated_at')
+        naive = rc.iso(NOW - datetime.timedelta(minutes=5)).rstrip('Z')          # no zone: not silently UTC
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(generated_at=naive)), 'with a zone')
         doc = fake_preflight()
         del doc['generated_at']
         self.assertBlocked(self.run_prereq(preflight=doc), 'generated_at')
@@ -557,17 +615,79 @@ class Prereq(Base):
         self.assertEqual(r['result'], 'CLEARED_FOR_OWNER')
         self.assertTrue(any('clock' in w for w in r['warnings']))
 
+    def test_only_a_real_appliance_preflight_with_checks_clears(self):
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(mode='local')), 'mode')
+        doc = fake_preflight()
+        del doc['mode']
+        self.assertBlocked(self.run_prereq(preflight=doc), 'mode')
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(checks=[])), 'no checks')
+
+    def test_a_waived_unknown_and_a_blocking_warn_clear_but_say_so(self):
+        clock = {'id': 'pi.clock', 'category': 'pi', 'status': 'UNKNOWN', 'blocking': True, 'reason': 'not synced'}
+        r = self.run_prereq(preflight=fake_preflight(overall='WARN', checks=[clock], waived=['pi.clock']))
+        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
+        self.assertTrue(any('WAIVED' in w and 'pi.clock' in w for w in r['warnings']))
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(overall='WARN', checks=[clock])), 'pi.clock')
+        failing = dict(clock, status='FAIL')
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(checks=[failing], waived=['pi.clock'])), 'pi.clock')
+        appliance = dict(clock, id='serving.appliance')
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(checks=[appliance], waived=['serving.appliance'])),
+                           'can never be waived')
+        warn = {'id': 'tls.horizon', 'category': 'tls', 'status': 'WARN', 'blocking': True, 'reason': '5 days left'}
+        r = self.run_prereq(preflight=fake_preflight(overall='WARN', checks=[warn]))
+        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
+        odd = dict(warn, status='MAYBE')
+        self.assertBlocked(self.run_prereq(preflight=fake_preflight(checks=[odd])), 'tls.horizon')
+
     def test_a_flagged_candidate_with_a_fail_flag_blocks_and_one_with_only_warnings_does_not(self):
-        fail = {'id': 'layer_digest_mismatch', 'severity': 'FAIL', 'reason': 'Games pins another layer'}
-        warn = {'id': 'party_not_on_origin_main', 'severity': 'WARN', 'reason': 'off main'}
-        self.assertBlocked(self.run_prereq(manifest=fake_manifest([warn, fail])), 'layer_digest_mismatch')
-        r = self.run_prereq(manifest=fake_manifest([warn]))
-        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER')
+        mismatch = {'layer__status': 'mismatch', 'layer__games_pinned_sha256': OTHER_SHA}
+        self.assertBlocked(self.run_prereq(manifest=fake_manifest(**mismatch)), 'layer_digest_mismatch')
+        r = self.run_prereq(manifest=fake_manifest(party__on_origin_main=False))
+        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
         self.assertTrue(any('party_not_on_origin_main' in w for w in r['warnings']))
         self.assertTrue(any('--allow-branch' in n for n in r['owner_commands']['notes']))
-        self.assertBlocked(self.run_prereq(manifest=fake_manifest([fail], verdict='CANDIDATE_OK')), 'layer_digest_mismatch')
-        self.assertBlocked(self.run_prereq(manifest=fake_manifest(verdict='CANDIDATE_FLAGGED')), 'no flags')
+        self.assertBlocked(self.run_prereq(manifest=fake_manifest(flags=[], verdict='CANDIDATE_OK', **mismatch)),
+                           'layer_digest_mismatch', 'its own facts')
+        self.assertBlocked(self.run_prereq(manifest=fake_manifest(flags=[], verdict='CANDIDATE_FLAGGED')), 'no flags')
         self.assertBlocked(self.run_prereq(manifest=fake_manifest(verdict='LGTM')), 'verdict')
+
+    def test_a_manifest_edited_after_assembly_does_not_clear(self):
+        incompatible = {'contract_check': {'status': 'incompatible', 'exit_code': 1, 'message': 'CONTRACT DRIFT'}}
+        m = fake_manifest(**incompatible)
+        m['verdict'], m['flags'] = 'CANDIDATE_OK', []                       # the review's repro: hand-cleared
+        self.assertBlocked(self.run_prereq(manifest=m), 'seal', 'did not show the pair compatible', 'its own facts')
+        m['manifest_sha256'] = rc.seal(m)                                     # even re-sealed: the facts still say no
+        self.assertBlocked(self.run_prereq(manifest=m), 'did not show the pair compatible', 'contract_incompatible')
+        unsealed = fake_manifest(seal=False)
+        self.assertBlocked(self.run_prereq(manifest=unsealed), 'seal')
+        incomplete = fake_manifest()
+        del incomplete['layer']
+        incomplete['manifest_sha256'] = rc.seal(incomplete)
+        self.assertBlocked(self.run_prereq(manifest=incomplete), 'incomplete')
+
+    def test_an_unchecked_pair_needs_an_explicit_acceptance_and_a_rejected_one_never_clears(self):
+        unchecked = fake_manifest(contract_check={'status': 'not_checkable', 'exit_code': None, 'message': 'predates it'})
+        self.assertBlocked(self.run_prereq(manifest=unchecked), 'did not show the pair compatible')
+        r = self.run_prereq(manifest=unchecked, accept_unchecked=True)
+        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
+        self.assertTrue(any('--accept-unchecked' in w for w in r['warnings']))
+        rejected = fake_manifest(contract_check={'status': 'incompatible', 'exit_code': 1, 'message': 'drift'})
+        self.assertBlocked(self.run_prereq(manifest=rejected, accept_unchecked=True), 'did not show the pair compatible')
+
+    def test_with_both_repositories_the_manifest_is_re_derived(self):
+        party, games = self.pair()
+        code, m, out, text = self.assemble(party, games)
+        self.assertEqual(code, 0, text)
+        args = dict(party_repo=party.path, games_repo=games.path)
+        r = self.run_prereq(manifest=m, **args)
+        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
+        self.assertTrue(r['manifest']['reverified'])
+        m['layer']['party_actual_sha256'] = '9' * 64                        # consistent, re-sealed, and false
+        m['manifest_sha256'] = rc.seal(m)
+        self.assertBlocked(self.run_prereq(manifest=m, **args), 'does not reproduce', 'layer.party_actual_sha256')
+        r = self.run_prereq(manifest=fake_manifest())
+        self.assertFalse(r['manifest']['reverified'])
+        self.assertTrue(any('not re-derived' in w for w in r['warnings']))
 
     def test_a_manifest_that_cannot_be_used_blocks(self):
         self.assertBlocked(self.run_prereq(manifest={'schema': 'other'}), 'avrana.release-candidate/v0')
@@ -578,23 +698,37 @@ class Prereq(Base):
         self.assertBlocked(r, 'candidate manifest', 'preflight')
 
     def test_the_deployed_pair_is_noted(self):
-        r = self.run_prereq(preflight=fake_preflight(deployed=(PARTY, GAMES)))
+        r = self.run_prereq(preflight=fake_preflight(deployed=(PARTY, GAMES)), status=None)
         self.assertEqual(r['result'], 'CLEARED_FOR_OWNER')
         self.assertIn('nothing to install', ' '.join(r['notes']))
-        r = self.run_prereq(preflight=fake_preflight(deployed=(PARTY, OLD_GAMES)))
+        r = self.run_prereq(preflight=fake_preflight(deployed=(PARTY, OLD_GAMES)), status=None)
         self.assertNotIn('nothing to install', ' '.join(r['notes']))
         self.assertIn('changes: Games', ' '.join(r['notes']))
-        r = self.run_prereq(preflight=fake_preflight(deployed=(None, None)))
+        r = self.run_prereq(preflight=fake_preflight(deployed=(None, None)), status=None)
         self.assertIn('not stated', ' '.join(r['notes']))
 
     def test_no_last_known_good_warns_that_rollback_has_no_target(self):
-        for status in (fake_status(lkg=None), None, '{broken', {'schema': 'other'}):
+        for status in (fake_status(lkg=None), None):
             r = self.run_prereq(status=status)
-            self.assertEqual(r['result'], 'CLEARED_FOR_OWNER')
+            self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
             self.assertIsNone(r['rollback_target'])
-            self.assertTrue(any('rollback' in w.lower() for w in r['warnings']), (status, r['warnings']))
-        r = self.run_prereq(status=fake_status(lkg=None))
-        self.assertTrue(any('--rollback has no target' in w for w in r['warnings']))
+            self.assertTrue(any('--rollback has no target' in w for w in r['warnings']), (status, r['warnings']))
+
+    def test_without_status_the_rollback_target_comes_from_the_preflight(self):
+        doc = fake_preflight()
+        doc['revisions']['last_known_good'] = {'party_sha': OLD_PARTY, 'games_sha': OLD_GAMES}
+        r = self.run_prereq(preflight=doc, status=None)
+        self.assertEqual(r['result'], 'CLEARED_FOR_OWNER', r['blocked_by'])
+        self.assertEqual((r['rollback_target']['party_sha'], r['rollback_target']['source']), (OLD_PARTY, 'the preflight'))
+
+    def test_a_status_that_is_unusable_stale_or_of_another_deployment_blocks(self):
+        for status in ('{broken', {'schema': 'other'}):
+            self.assertBlocked(self.run_prereq(status=status), '--status')
+        self.assertBlocked(self.run_prereq(status=fake_status(age_min=600)), 'status: stale')
+        self.assertBlocked(self.run_prereq(status=fake_status(age_min=-30)), 'status: generated_at')
+        self.assertBlocked(self.run_prereq(status=fake_status(deployed=('e' * 40, OLD_GAMES))), 'disagree', 'party')
+        r = self.run_prereq(status=fake_status())
+        self.assertEqual((r['result'], r['rollback_target']['source']), ('CLEARED_FOR_OWNER', '--status'))
 
     def test_a_last_known_good_that_is_not_the_deployed_pair_is_noted(self):
         r = self.run_prereq(status=fake_status(lkg=('e' * 40, 'f' * 40)))
@@ -623,6 +757,25 @@ class Prereq(Base):
         self.assertNotIn('CLEARED', p.stdout)
         self.assertEqual(json.loads((self.root / 'o.json').read_text())['result'], 'BLOCKED')
         self.assertEqual(subprocess.run([sys.executable, '-I', str(TOOL), 'prereq'], capture_output=True).returncode, 2)
+
+    def test_the_staleness_check_cannot_be_switched_off_and_a_clock_override_is_announced(self):
+        (self.root / 'm.json').write_text(json.dumps(fake_manifest()), encoding='utf-8')
+        (self.root / 'p.json').write_text(json.dumps(fake_preflight(age_min=50)), encoding='utf-8')
+        base = ['prereq', self.root / 'm.json', '--preflight', self.root / 'p.json']
+        for bad in (['--max-age-min', 'nan'], ['--max-age-min', 'inf'], ['--max-age-min', '-5'], ['--max-age-min', '0'],
+                    ['--now', 'yesterday'], ['--now', '2026-10-21T12:00:00']):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit) as stop, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc.main([str(a) for a in base + bad])
+            self.assertEqual(stop.exception.code, 2)
+        code, out, _ = self.cli(*base, '--max-age-min', '10', '--now', rc.iso(NOW))
+        self.assertEqual(code, 1)
+        self.assertIn('stale', out)
+        code, out, _ = self.cli(*base, '--now', rc.iso(NOW))
+        self.assertEqual(code, 0, out)
+        self.assertIn('CLOCK OVERRIDDEN', out.splitlines()[0])
+        with self.assertRaises(rc.ReleaseError):
+            rc.prereq(self.root / 'm.json', self.root / 'p.json', max_age_min=float('nan'))
 
     def test_the_committed_fixtures_behave_as_the_demonstration_says(self):
         fixtures = REPO_ROOT / 'tests/fixtures/release_candidate'
@@ -653,6 +806,12 @@ class Prereq(Base):
 
 
 DEPLOY_SCRIPT = (REPO_ROOT / 'ops/deploy.sh').read_text(encoding='utf-8')
+# A stub must name every path the rehearsal overrides, or the rehearsal refuses to run it (a real-path guard).
+HONOURS = ': ' + ' '.join(f'"${{{v}:-}}"' for v in rc.REQUIRED_OVERRIDES) + '\n'
+
+
+def stub(body):
+    return '#!/usr/bin/env bash\n' + HONOURS + body
 
 
 @unittest.skipUnless(BASH, 'bash is not available: ops/deploy.sh cannot be rehearsed here')
@@ -666,8 +825,8 @@ class RehearseRollback(Base):
     def state(self):
         return {r.path.name: (r.sha(), r.run('status', '--porcelain'), r.run('for-each-ref')) for r in (self.party, self.games)}
 
-    def build(self, script):
-        self.party, self.games = self.pair(deploy_script=script, two_commits=True)
+    def build(self, script, extra=None):
+        self.party, self.games = self.pair(party_extra=extra, deploy_script=script, two_commits=True)
         _, _, out, text = self.assemble(self.party, self.games)
         return out
 
@@ -702,7 +861,7 @@ class RehearseRollback(Base):
         self.assertEqual(code, 2)
 
     def test_a_deploy_script_that_fails_is_a_failed_rehearsal_not_a_pass(self):
-        out = self.build('#!/usr/bin/env bash\necho "something is wrong" >&2\nexit 3\n')
+        out = self.build(stub('echo "something is wrong" >&2\nexit 3\n'))
         code, text, report = self.rehearse(out)
         self.assertEqual(code, 1, text)
         self.assertEqual(report['verdict'], 'REHEARSAL_FAILED')
@@ -710,16 +869,16 @@ class RehearseRollback(Base):
         self.assertIn('something is wrong', text)
 
     def test_a_deploy_script_that_wants_root_is_not_reproduced_rather_than_faked(self):
-        out = self.build('#!/usr/bin/env bash\necho "deploy: run as root (sudo)" >&2\nexit 1\n')
+        out = self.build(stub('echo "deploy: run as root (sudo); services and the web root need it" >&2\nexit 1\n'))
         code, text, report = self.rehearse(out)
-        self.assertEqual(code, 0, text)
+        self.assertEqual(code, 3, text)                                # partial is not a pass
         self.assertEqual(report['verdict'], 'REHEARSAL_PARTIAL')
         statuses = {s['id']: s['status'] for s in report['steps']}
         self.assertEqual((statuses['deploy-dry-run'], statuses['rollback-dry-run']), ('NOT_REPRODUCED', 'NOT_REPRODUCED'))
 
     def test_a_script_that_plans_the_wrong_pair_fails(self):
-        wrong = ('#!/usr/bin/env bash\necho "plan: party %s -> %s (changed=1), games %s -> %s (changed=1)"\n'
-                 'echo "dry run: nothing changed"\n' % ('1' * 40, '2' * 40, '3' * 40, '4' * 40))
+        wrong = stub('echo "plan: party %s -> %s (changed=1), games %s -> %s (changed=1)"\n'
+                     'echo "dry run: nothing changed"\n' % ('1' * 40, '2' * 40, '3' * 40, '4' * 40))
         out = self.build(wrong)
         code, text, report = self.rehearse(out)
         self.assertEqual(code, 1, text)
@@ -728,15 +887,15 @@ class RehearseRollback(Base):
         self.assertIn('does not go from the before pair to the candidate pair', step['detail'])
 
     def test_a_script_that_changes_the_scratch_root_fails(self):
-        meddling = ('#!/usr/bin/env bash\nmkdir -p "$AVRANA_BACKUP_ROOT"\necho x > "$AVRANA_BACKUP_ROOT/deploy.journal"\n'
-                    'echo "dry run: nothing changed"\n')
+        meddling = stub('mkdir -p "$AVRANA_BACKUP_ROOT"\necho x > "$AVRANA_BACKUP_ROOT/deploy.journal"\n'
+                        'echo "dry run: nothing changed"\n')
         out = self.build(meddling)
         code, text, report = self.rehearse(out)
         self.assertEqual(code, 1, text)
         self.assertIn('the scratch root changed', next(s for s in report['steps'] if s['id'] == 'deploy-dry-run')['detail'])
 
     def test_it_stays_inside_its_scratch_root(self):
-        out = self.build('#!/usr/bin/env bash\nenv | grep "^AVRANA_" | sort\necho "dry run: nothing changed"\n')
+        out = self.build(stub('env | grep "^AVRANA_" | sort\necho "dry run: nothing changed"\n'))
         _, _, report = self.rehearse(out)
         env_lines = next(s for s in report['steps'] if s['id'] == 'deploy-dry-run')['excerpt']
         scratch_names = set(re.findall(r'avrana-rc-rehearsal-\w+', env_lines))
@@ -747,6 +906,39 @@ class RehearseRollback(Base):
             if re.match(r'AVRANA_(PARTY_CHECKOUT|GAMES_CHECKOUT|WEB_ROOT|PARTY_RELEASES|GAMES_RELEASES|DEPLOYMENT_MANIFEST|'
                          r'LAST_KNOWN_GOOD|BACKUP_ROOT|DEPLOY_LOCK|NGINX_SITE|NGINX_ENABLED)=', line):
                 self.assertIn(next(iter(scratch_names)), line)
+
+    def test_a_failure_whose_log_only_mentions_root_is_a_failure(self):
+        # the review's repro: deploy.sh dies after its "root is needed" certificate note
+        out = self.build(stub('echo "[12:00:00Z] nginx site: could not check x against y (unreadable here? root is needed)"\n'
+                              'echo "Permission denied" >&2\nexit 1\n'))
+        code, text, report = self.rehearse(out)
+        self.assertEqual(code, 1, text)
+        self.assertEqual(report['verdict'], 'REHEARSAL_FAILED')
+        self.assertEqual({s['id']: s['status'] for s in report['steps']}['deploy-dry-run'], 'FAIL')
+
+    def test_the_deploy_lock_that_flock_creates_is_not_a_change(self):
+        # deploy.sh opens its lock with `exec 9>` wherever flock exists (the Pi, CI); Git Bash has no flock
+        out = self.build(stub('exec 9>"$AVRANA_DEPLOY_LOCK"\nexec bash "$(dirname "$0")/deploy-real.sh" "$@"\n'),
+                         extra={'ops/deploy-real.sh': DEPLOY_SCRIPT})
+        code, text, report = self.rehearse(out)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(report['verdict'], 'REHEARSAL_PASSED', text)
+
+    def test_a_script_that_ignores_a_path_override_is_not_run(self):
+        out = self.build('#!/usr/bin/env bash\ntouch "$TMPDIR/ran"\necho "dry run: nothing changed"\n')
+        code, text, report = self.rehearse(out)
+        self.assertEqual(code, 1, text)
+        steps = {s['id']: s for s in report['steps']}
+        self.assertEqual(steps['setup']['status'], 'FAIL')
+        self.assertIn('does not read AVRANA_PARTY_CHECKOUT', steps['setup']['detail'])
+        self.assertNotIn('deploy-dry-run', steps)
+
+    def test_an_inherited_git_dir_does_not_redirect_the_rehearsal(self):
+        out = self.build(DEPLOY_SCRIPT)
+        with unittest.mock.patch.dict(os.environ, {'GIT_DIR': str(self.games.path / '.git'), 'http_proxy': 'http://127.0.0.1:9'}):
+            code, text, report = self.rehearse(out)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(report['verdict'], 'REHEARSAL_PASSED', text)
 
     def test_a_missing_candidate_commit_is_an_error(self):
         out = self.build(DEPLOY_SCRIPT)

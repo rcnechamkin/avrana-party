@@ -2,6 +2,12 @@
   "_fixture": "HAND-WRITTEN excerpt in the avrana.status/v0 shape (avrana/ops/status.py last_known_good). It was NOT read from /party/api/status on an appliance.",
   "schema": "avrana.status/v0",
   "generated_at": "2026-10-21T22:30:00Z",
+  "party": {
+    "deployed_sha": "c59f1c819de169b55d0bdadde34ae5cec57fc74a"
+  },
+  "games": {
+    "deployed_sha": "a4489729e1d0522a302b0475a7631ed90c219812"
+  },
   "last_known_good": {
     "party_sha": "c59f1c819de169b55d0bdadde34ae5cec57fc74a",
     "games_sha": "a4489729e1d0522a302b0475a7631ed90c219812",

@@ -1,6 +1,6 @@
 # Release candidate: Party 8de7ef20835a + Games 1dc48d22fc18
 
-Verdict: **CANDIDATE_OK**. Generated 2026-10-21T22:20:49Z by `tools/release_candidate.py` (Party 20df1e307b45). Schema `avrana.release-candidate/v0`. This is paperwork: nothing was installed or deployed, and nothing here was run on the Pi.
+Verdict: **CANDIDATE_OK**. Generated 2026-10-21T22:45:00Z by `tools/release_candidate.py` (Party 160aa3bb02df). Schema `avrana.release-candidate/v0`. This is paperwork: nothing was installed or deployed, and nothing here was run on the Pi.
 
 | | Party | Games |
 |---|---|---|

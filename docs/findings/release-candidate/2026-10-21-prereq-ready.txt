@@ -1,7 +1,8 @@
-CLEARED_FOR_OWNER  (checked 2026-10-21T22:45:00Z)
+CLEARED_FOR_OWNER  (checked 2026-10-21T22:45:00Z)  [CLOCK OVERRIDDEN with --now: a demonstration, not valid for a real installation]
 candidate: Party 8de7ef20835a1d98ec55cb772c216cbd348084fa, Games 1dc48d22fc189cc6e92fce23109d639230c471df (CANDIDATE_OK)
 preflight: READY/WARN, taken 2026-10-21T22:30:00Z (15.0 min before this check)
 WARNINGS:
+  - CLOCK OVERRIDDEN: evaluated as of 2026-10-21T22:45:00Z (--now), not the real time; this result is a demonstration and is not valid for a real installation
   - preflight check certificate_names: example: the installed certificate covers party.avrana.net only; games.avrana.net is not covered (fine unless native games use the game origin)
 NOTES:
   - deployed pair: Party c59f1c819de1, Games a4489729e1d0; the deploy changes: Party, Games

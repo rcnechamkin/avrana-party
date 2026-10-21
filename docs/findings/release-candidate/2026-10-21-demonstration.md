@@ -10,11 +10,13 @@ Party `main` `8de7ef20835a1d98ec55cb772c216cbd348084fa` (PR #167) with Games `ma
 |---|---|---|
 | `assemble --bundle` | exit 0, `CANDIDATE_OK`, **no flags** | [json](2026-10-21-release-candidate.json), [md](2026-10-21-release-candidate.md) |
 | `verify` | exit 0, REPRODUCED, bundles re-checked | [txt](2026-10-21-verify.txt) |
-| `prereq`, READY fixture, last-known-good fixture | exit 0, `CLEARED_FOR_OWNER`, commands printed | [txt](2026-10-21-prereq-ready.txt), [json](2026-10-21-prereq-ready.json) |
+| `prereq`, READY fixture, last-known-good fixture, both repositories (re-derived) | exit 0, `CLEARED_FOR_OWNER` (with `CLOCK OVERRIDDEN`), commands printed | [txt](2026-10-21-prereq-ready.txt), [json](2026-10-21-prereq-ready.json) |
 | `prereq`, NOT_READY fixture | exit 1, `BLOCKED` by `no_live_session` (FAIL) and `nginx_config` (UNKNOWN), no commands printed | [txt](2026-10-21-prereq-not-ready.txt), [json](2026-10-21-prereq-not-ready.json) |
 | `rehearse-rollback`, before pair Party `c59f1c8` / Games `a448972` | exit 0, `REHEARSAL_PASSED`, 7 of 7 steps PASS | [txt](2026-10-21-rehearse-rollback.txt), [json](2026-10-21-rehearse-rollback.json) |
 
 What `assemble` recorded: `tools/contract_check.py` run on the two exact `git archive` trees said `Party <-> Games contract: compatible`; contract `avrana.party-games/v0` on both sides; the Party layer digest Games pins equals the one Party's `web/party/bridge/layer-mount.js` has (`2b60de2d...3088`); Python 3.11 or newer; the optional Node runtime pin 22.22.2; `tools/sbom.py --check` ok (36 components); both commits are ancestors of their `origin/main`. Archive digests: Party `4c02093e...569c`, Games `f9cf133c...56b0`. Bundles (not committed): `party.bundle` sha256 `5a9f63ea...d176`, `games.bundle` sha256 `98d07f23...7ad0`; each holds exactly its SHA as `HEAD` and `refs/heads/release-candidate`.
+
+Re-run after the independent review (same day): the manifest now carries `manifest_sha256`; the archive and bundle digests did not change. `prereq` was also run on the three committed AVR-696 preflight examples (`docs/findings/preflight/` on that branch): the simulated READY clears; the simulated field day is BLOCKED by its nine blocking checks; the dev-server run is BLOCKED, first of all by `mode 'local'`.
 
 ## The rehearsal
 

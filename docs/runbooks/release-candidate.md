@@ -24,8 +24,8 @@ python tools/release_candidate.py rehearse-rollback $OUT/release-candidate.json 
     --games-repo ../avrana-party-games --before-party <deployed Party sha> --before-games <deployed Games sha>
 ```
 
-4. **Preflight (Pi, read-only).** On the Pi, `python3 -m avrana.ops.preflight --json > preflight.json` (a sibling track, not part of this tool), and save `curl -s https://party.avrana.net/party/api/status > status.json` for the last known good. Copy both to the laptop. A preflight is good for 60 minutes.
-5. **Prerequisites.** `python tools/release_candidate.py prereq $OUT/release-candidate.json --preflight preflight.json --status status.json`. It prints `CLEARED_FOR_OWNER` (exit 0) or `BLOCKED` (exit 1) and, only when cleared, the exact owner commands. It runs none of them.
+4. **Preflight (read-only).** From the laptop, `python tools/preflight.py --ssh party --json` (AVR-696; it saves under `test-results/preflight/`). The preflight carries the deployed pair and the last known good, so `--status` is optional; when given (`curl -s https://party.avrana.net/party/api/status > status.json`), it must be as fresh as the preflight and name the same deployed pair. Both are good for 60 minutes.
+5. **Prerequisites.** `python tools/release_candidate.py prereq $OUT/release-candidate.json --preflight preflight.json --party-repo ../avrana-party --games-repo ../avrana-party-games`. It prints `CLEARED_FOR_OWNER` (exit 0) or `BLOCKED` (exit 1) and, only when cleared, the exact owner commands. It runs none of them.
 6. **Owner's dry run (Pi, sudo).** The first printed command pair: `--status`, then `ops/deploy.sh --party <sha> --games <sha> --dry-run`. Take the script from the target commit when the checkout is older ([deploy](deploy.md), "First run"). Stage the Games commit on the Pi first if it is not there: copy `games.bundle` over and `git fetch` from it ([games-fork-deploy](games-fork-deploy.md)); `git clone` of a bundle checks out the exact commit too.
 7. **Owner's deploy (Pi, sudo).** The same line without `--dry-run`, with `--require-cert-names` only when native games use the game origin and the certificate-name gate passed (field-test gate runbook, step 2).
 8. **Rollback.** `ops/deploy.sh --rollback --dry-run`, then `--rollback`, or the route in [deploy](deploy.md) "Which command next". `prereq` warns when no last known good exists: then `--rollback` has no target.
@@ -37,7 +37,13 @@ python tools/release_candidate.py rehearse-rollback $OUT/release-candidate.json 
 | `assemble` | `CANDIDATE_OK` | `CANDIDATE_FLAGGED` (files are still written) | error, nothing written |
 | `verify` | reproduced | differences listed | error |
 | `prereq` | `CLEARED_FOR_OWNER` only | `BLOCKED`, including a missing or unreadable input | usage |
-| `rehearse-rollback` | no step failed | a step failed | could not be set up |
+| `rehearse-rollback` | every step passed | a step failed | could not be set up (3: partial, a step was not reproducible here; not a pass) |
+
+## What `prereq` refuses to trust
+
+- **The manifest.** `assemble` seals it (`manifest_sha256`, the SHA-256 of its canonical JSON); an edited manifest is BLOCKED. Its flags and verdict must be the ones its own facts give. The pair must be `compatible` by `tools/contract_check.py`; `--accept-unchecked` accepts a pair the checker could not run on (an old commit), never one it rejected. With `--party-repo` and `--games-repo` the whole manifest is re-derived, as `verify` does; without them `prereq` says it was not.
+- **The preflight.** It must be `mode: appliance` (a `--local` dev-server run never clears), list its checks, carry a time with a zone, and be at most `--max-age-min` old (a positive finite number). A blocking FAIL always blocks; a blocking UNKNOWN blocks unless the operator waived it on the Pi (`--waive`), and the waiver is repeated in the warnings.
+- **The clock.** `--now` is for tests and demonstrations: the result then says `CLOCK OVERRIDDEN`.
 
 ## What the manifest flags
 
@@ -46,6 +52,7 @@ python tools/release_candidate.py rehearse-rollback $OUT/release-candidate.json 
 ## What is proved, and what is not
 
 - Proved: the manifest is re-derivable from the two SHAs; the checker passed on the exact trees; the candidate's own `ops/deploy.sh` plans the candidate pair and plans `--rollback` back to a seeded last known good, exits 0, and changes nothing in the scratch root or either real repository.
+- The rehearsal runs the candidate's `ops/deploy.sh` only if it reads every path the rehearsal moves (`AVRANA_PARTY_CHECKOUT`, `..._RELEASES`, `AVRANA_NGINX_SITE` and the rest); an older script that would act on a real path is not run. Children get no inherited `GIT_*` or proxy variables. A step is `NOT_REPRODUCED` only when the script's own last word is a root refusal (`deploy: run as root`); any other failure is a FAIL.
 - Not reproduced, so still the owner's: root and `sudo -u`, systemd restarts, `nginx -t` and the reload, real `/opt` releases and the web release flip, the post-deploy smoke, a real rollback, certificates, Wi-Fi, iPhone Safari and every phone. The rehearsal's last-known-good record is seeded with `avrana.ops.manifest`; it stands for an earlier deployment and is not one.
 - The archive digest is that of `git -c core.autocrlf=false archive --format=tar`, which is what the Pi stages. A Windows git with `autocrlf=true` would otherwise put CRLF in the archive and change the digest.
 - The demonstration on the 2026-10-21 mains is in [findings](../findings/release-candidate/2026-10-21-demonstration.md). Its preflight files are hand-written fixtures, not an appliance's.

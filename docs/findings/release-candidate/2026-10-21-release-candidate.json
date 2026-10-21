@@ -1,16 +1,16 @@
 {
   "schema": "avrana.release-candidate/v0",
-  "generated_at": "2026-10-21T22:20:49Z",
+  "generated_at": "2026-10-21T22:45:00Z",
   "tool": {
     "name": "tools/release_candidate.py",
-    "party_sha": "20df1e307b45ceadb5eaf83a515d4775c62240d1",
-    "dirty": false,
-    "script_sha256": "a4fc93e6b12b2ec7bf29b2543c69c9060ec63892f1f3801b92d8e352045715ac",
+    "party_sha": "160aa3bb02dff7cae4ec1d6759f50753d51e1ddb",
+    "dirty": true,
+    "script_sha256": "a47a77cf2e009ba6fa120511fb47a36f824082c9b8c334a2c0390dd202ac8c13",
     "python": "3.12.3"
   },
   "digest_method": "sha256 of `git -c core.autocrlf=false archive --format=tar <sha>` (the bytes ops/deploy.sh stages on Linux)",
   "party": {
-    "requested": "origin/main",
+    "requested": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
     "sha": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
     "short": "8de7ef20835a",
     "subject": "Merge pull request #167 from rcnechamkin/claude/avr-580-party-lifecycle-5316e0",
@@ -26,7 +26,7 @@
     "archive_bytes": 29921280
   },
   "games": {
-    "requested": "origin/main",
+    "requested": "1dc48d22fc189cc6e92fce23109d639230c471df",
     "sha": "1dc48d22fc189cc6e92fce23109d639230c471df",
     "short": "1dc48d22fc18",
     "subject": "Merge pull request #92 from rcnechamkin/claude/avr-676-hearts-cleanroom",
@@ -142,5 +142,6 @@
     }
   },
   "flags": [],
-  "verdict": "CANDIDATE_OK"
+  "verdict": "CANDIDATE_OK",
+  "manifest_sha256": "4036303ef7c778ecb06ca30aaaa8f29e6cd646139e691bf8c2cdfe43f8c5408d"
 }
