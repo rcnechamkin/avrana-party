@@ -1,0 +1,358 @@
+"""Field-session diagnostics (avrana.ops.fieldsession) and its privacy rules (avrana.ops.redact).
+
+The redaction suite plants every kind of secret and private datum the appliance could log into
+realistic text and documents, and checks both halves: scrubbing removes each one, and the
+validator finds each one when it was NOT scrubbed (so a scrubber regression cannot pass silently).
+"""
+from datetime import datetime, timedelta, timezone
+import io
+import json
+from pathlib import Path
+import random
+import secrets
+import string
+import tarfile
+import tempfile
+import unittest
+from unittest import mock
+
+from avrana.ops import fieldsession as fs
+from avrana.ops import redact
+
+T0 = datetime(2026, 10, 21, 19, 0, tzinfo=timezone.utc)
+PARTY = '8de7ef20835a1d98ec55cb772c216cbd348084fa'
+GAMES = '1dc48d2a3b4c5d6e7f8091a2b3c4d5e6f7a8b9c0'
+FIXTURES = Path(__file__).resolve().parents[1] / 'fixtures' / 'field-session'
+
+# One of each thing that must never leave the appliance, in the shape it would really have.
+PEM = '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----'
+GAME_KEY = secrets.token_hex(32)                       # ops/provision-game writes token_hex(32)
+DEVICE_TOKEN = secrets.token_urlsafe(32)               # avrana.party.identity mints token_urlsafe(32)
+PLANTED = {
+    'pem': f'loaded key {PEM} ok',
+    'game_key': f'game bluff key {GAME_KEY} rotated',
+    'device_token': f'resume with {DEVICE_TOKEN}',
+    'host_cookie': f'Cookie: __Host-avrana_device={DEVICE_TOKEN}; theme=dark',
+    'legacy_cookie': f'sent avrana_device={DEVICE_TOKEN} over http',
+    'limited_cookie': f'avrana_limited={DEVICE_TOKEN}',
+    'set_cookie': f'Set-Cookie: __Host-avrana_device={DEVICE_TOKEN}; Path=/; HttpOnly',
+    'authorization': 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl',
+    'basic': 'proxy sent Basic dXNlcjpwYXNzd29yZA== to us',
+    'password': 'wifi password=hunter2isnotgood configured',
+    'ticket': f'ticket={secrets.token_urlsafe(24)} accepted',
+    'member_id': f'member-{secrets.token_hex(16)} joined',
+    'device_id': f'device-{secrets.token_hex(16)} reconnected',
+    'phone_ipv4': 'request from 10.42.0.57 port 51234',
+    'home_ipv4': 'upstream 192.168.1.23',
+    'ipv6': 'peer fe80::1c2a:3bff:fe4d:5e6f%wlan0',
+    'ipv6_full': 'peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+    'mac': 'station a4:83:e7:12:34:56 associated',
+    'email': 'owner mail cody.example@example.com',
+    'player_name': 'player "Benjamin" took seat 2',
+    'chat': 'chat from seat 2: meet me at the bar later',
+}
+
+
+class FakeProbes:
+    def __init__(self):
+        self.doc = status(PARTY, GAMES)
+        self.entries = []
+        self.health = {'state': 'HEALTHY', 'reasons': [], 'notes': []}
+        self.throttle = []
+
+    def status(self):
+        return (self.doc, None) if self.doc is not None else (None, 'status unreachable (ConnectionRefusedError)')
+
+    def pi_health(self):
+        return self.health, None
+
+    def throttle_lines(self):
+        return self.throttle, None
+
+    def journal(self, since, until, units):
+        return self.entries, None
+
+
+def status(party, games, games_state='active', reasons=(), members=3, session=None):
+    return {'schema': 'avrana.status/v0', 'generated_at': '2026-10-21T19:00:00Z',
+            'deployment': {'deployed_at': '2026-10-20T12:00:00Z', 'party': {'sha': party, 'short': party[:12]},
+                           'games': {'sha': games, 'short': games[:12]}},
+            'party': {'deployed_sha': party, 'checkout_sha': party}, 'games': {'deployed_sha': games, 'checkout_sha': games},
+            'web_release': {'build': '20261020T120000Z', 'commit': party},
+            'nginx_site': {'status': 'match', 'sha256': 'ab' * 32},
+            'contract': {'party_games': 'avrana.party-games/v0', 'lan_launch': 'avrana.lan-launch/v1'},
+            'services': {'avrana-party-core': 'active', 'avranaparty-games': games_state, 'nginx': 'active'},
+            'party_core': {'ok': True, 'members': members, 'session': session},
+            'summary': {'state': 'ok' if not reasons else 'degraded', 'reasons': list(reasons), 'notes': []}}
+
+
+def entry(at, message, unit='avrana-party-core.service', priority=6):
+    return {'__REALTIME_TIMESTAMP': str(int(at.timestamp() * 1e6)), 'MESSAGE': message, 'PRIORITY': str(priority),
+            '_SYSTEMD_UNIT': unit, '_HOSTNAME': 'avrana', '_CMDLINE': 'python3 -m avrana.party.service', '_PID': '812'}
+
+
+class Redaction(unittest.TestCase):
+    def test_every_planted_secret_is_scrubbed_and_the_raw_one_is_caught(self):
+        for kind, text in PLANTED.items():
+            with self.subTest(kind):
+                raw_hits = redact.violations_in_text(text, log=True)
+                self.assertTrue(raw_hits, f'the validator missed raw {kind}')
+                clean = redact.scrub_log_line(text) if kind == 'chat' else redact.scrub_text(text)
+                if clean is None:
+                    continue                                  # the whole chat line is dropped
+                self.assertEqual(redact.violations_in_text(clean, log=True), [], f'{kind} survived: {clean!r}')
+                for secret in (GAME_KEY, DEVICE_TOKEN, 'hunter2isnotgood', 'Benjamin', '10.42.0.57', 'a4:83:e7:12:34:56'):
+                    self.assertNotIn(secret, clean)
+
+    def test_useful_operational_text_survives(self):
+        text = ('2026-10-21T18:00:00Z avranaparty-games.service restarted at 18:00:05 on 10.42.0.1 via 127.0.0.1:8096; '
+                'python 3.11.2; registry reloaded: 3 games (added bluff); HTTP 502 for /party/api/state')
+        self.assertEqual(redact.scrub_text(text), text)
+        self.assertEqual(redact.violations_in_text(text, log=True), [])
+
+    def test_revisions_survive_only_in_their_own_fields(self):
+        doc = {'party': PARTY, 'sha256': 'ab' * 32, 'note': f'deployed {PARTY}'}
+        out = redact.scrub_json(doc)
+        self.assertEqual((out['party'], out['sha256']), (PARTY, 'ab' * 32))
+        self.assertNotIn(PARTY, out['note'])
+        self.assertEqual(redact.violations_in_json(out), [])
+        self.assertTrue(redact.violations_in_json({'note': f'key {GAME_KEY}'}))
+        self.assertTrue(redact.violations_in_json({'party': GAME_KEY + 'zz'}))      # not a bare digest: checked
+
+    def test_secret_named_fields_are_dropped_whatever_they_hold(self):
+        doc = {'token': 'short', 'cookie': 'x', 'Authorization': 'y', 'nickname': 'Ben', 'user_agent': 'iPhone',
+               'peer': '1.2.3.4', 'device_id': 'abc', 'members': 4, 'state': 'ok', 'name': 'captive_probe',
+               'nested': [{'password': 'p'}, {'session_key': 'k', 'game': 'bluff'}]}
+        out = redact.scrub_json(doc)
+        for k in ('token', 'cookie', 'Authorization', 'nickname', 'user_agent', 'peer', 'device_id'):
+            self.assertEqual(out[k], redact.REDACTED, k)
+        self.assertEqual((out['members'], out['state'], out['name']), (4, 'ok', 'captive_probe'))
+        self.assertEqual(out['nested'], [{'password': redact.REDACTED}, {'session_key': redact.REDACTED, 'game': 'bluff'}])
+
+    def test_fuzz_secrets_in_random_text_never_survive(self):
+        rng = random.Random(697)
+        words = ['party', 'game', 'seat', 'lobby', 'round', 'host', 'ok', 'retry', 'phone', 'state', '502']
+        makers = [lambda: secrets.token_hex(32), lambda: secrets.token_urlsafe(32),
+                  lambda: f'member-{secrets.token_hex(16)}', lambda: f'__Host-avrana_device={secrets.token_urlsafe(32)}',
+                  lambda: '.'.join(str(rng.randrange(11, 223)) for _ in range(4)),
+                  lambda: ':'.join(f'{rng.randrange(256):02x}' for _ in range(6)),
+                  lambda: f'"{rng.choice(["Ada", "Ben", "Cleo", "Dev"])} {rng.choice(["Smith", "Jones"])}"']
+        for _ in range(400):
+            secret = rng.choice(makers)()
+            parts = [rng.choice(words) for _ in range(rng.randrange(1, 8))]
+            parts.insert(rng.randrange(len(parts) + 1), secret)
+            text = ' '.join(parts)
+            clean = redact.scrub_text(text)
+            self.assertEqual(redact.violations_in_text(clean), [], (text, clean))
+            self.assertNotIn(secret.strip('"'), clean)
+
+    def test_device_tokens_are_caught_by_shape_alone(self):
+        """Without a cookie or key=value around it, a bare device token is still caught (the shape rule)."""
+        missed = sum(1 for _ in range(20000) if not redact.violations_in_text(secrets.token_urlsafe(32)))
+        self.assertEqual(missed, 0)
+        for benign in ('ConnectionRefusedError', '20261021T190000Z-four-phones-bluff', 'avrana-party-certificate.timer'):
+            self.assertEqual(redact.violations_in_text(benign), [], benign)
+
+    def test_forbidden_terms_are_whole_words(self):
+        self.assertTrue(redact.violations_in_text('Cleo joined late', ('cleo',)))
+        self.assertFalse(redact.violations_in_text('cleopatra joined late', ('cleo',)))
+
+    def test_lengths_are_bounded(self):
+        self.assertLessEqual(len(redact.scrub_text('x' * 5000, 300)), 301)
+
+
+class Sessions(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / 'sessions'
+        self.store = fs.Store(self.root)
+        self.probes = FakeProbes()
+
+    def started(self, **kw):
+        return fs.start(self.store, 'four phones bluff', self.probes, now=T0, **kw)
+
+    def test_off_by_default_nothing_is_written_before_start(self):
+        out = io.StringIO()
+        with mock.patch('sys.stdout', out):
+            self.assertEqual(fs.main(['--root', str(self.root), 'status']), 0)
+        self.assertIn('diagnostics are off', out.getvalue())
+        self.assertFalse(self.root.exists())
+        with self.assertRaises(fs.Refused):
+            fs.mark(self.store, 'x', now=T0)
+        with self.assertRaises(fs.Refused):
+            fs.snapshot(self.store, self.probes, now=T0)
+
+    def test_start_records_revisions_and_refuses_a_second_session(self):
+        s = self.started()
+        self.assertEqual(s['revisions_at_start']['party'], PARTY)
+        self.assertEqual(s['revisions_at_start']['games'], GAMES)
+        self.assertEqual(s['id'], '20261021T190000Z-four-phones-bluff')
+        self.assertEqual(self.store.active_id(), s['id'])
+        with self.assertRaises(fs.Refused):
+            fs.start(self.store, 'again', self.probes, now=T0)
+
+    def test_marks_are_scrubbed_bounded_and_validated(self):
+        self.started()
+        e = fs.mark(self.store, f'phone C froze; token={DEVICE_TOKEN} ' + 'x' * 400, 'fail', 'A-12', now=T0)
+        self.assertNotIn(DEVICE_TOKEN, json.dumps(e))
+        self.assertLessEqual(len(e['note']), fs.MARK_CHARS + 1)
+        with self.assertRaises(fs.Refused):
+            fs.mark(self.store, 'x', 'great', now=T0)
+
+    def test_size_limit_stops_recording_but_not_the_stop(self):
+        self.started(max_bytes=4000)
+        with self.assertRaises(fs.Refused):
+            for i in range(200):
+                fs.mark(self.store, f'note {i} ' + 'y' * 150, now=T0 + timedelta(seconds=i))
+        s = fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=5))
+        self.assertIsNotNone(s['stopped_at'])
+        self.assertIn('session stop', (self.store.dir(s['id']) / 'timeline.md').read_text(encoding='utf-8'))
+
+    def test_a_session_expires(self):
+        self.started(max_hours=1)
+        with self.assertRaises(fs.Refused):
+            fs.mark(self.store, 'late', now=T0 + timedelta(hours=2))
+
+    def test_journal_window_scrubbing_chat_and_cap(self):
+        self.started()
+        self.probes.entries = [entry(T0 + timedelta(minutes=1), f'GET /party/api/join from 10.42.0.57 member-{"a" * 32}'),
+                               entry(T0 + timedelta(minutes=2), 'chat from seat 2: secret plans', 'avranaparty-games.service'),
+                               entry(T0 - timedelta(hours=1), 'before the session'),
+                               entry(T0 + timedelta(minutes=3), 'game bluff: session s1 closed, the game stopped answering',
+                                     priority=4),
+                               entry(T0 + timedelta(minutes=3), 'game bluff: session s1 closed, the game stopped answering',
+                                     priority=4)]
+        s = fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=10))
+        d = self.store.dir(s['id'])
+        rows = [json.loads(l) for l in (d / 'journal.jsonl').read_text(encoding='utf-8').splitlines()]
+        self.assertEqual(len(rows), 2)                   # duplicate collapsed, chat and outside dropped
+        self.assertEqual(s['collected']['journal_dropped'], {'chat': 1, 'cap': 0, 'outside': 1})
+        self.assertEqual(set(rows[0]), {'at', 'priority', 'unit', 'message'})   # no hostname, cmdline, pid
+        self.assertNotIn('10.42.0.57', rows[0]['message'])
+        self.assertIn('WARN avrana-party-core.service: game bluff', (d / 'timeline.md').read_text(encoding='utf-8'))
+
+    def test_journal_cap_keeps_warnings(self):
+        rows = [entry(T0 + timedelta(seconds=i), f'info {i}') for i in range(fs.JOURNAL_MAX_LINES + 50)]
+        rows.append(entry(T0 + timedelta(seconds=1), 'the important warning', priority=3))
+        kept, dropped = fs.journal_lines(rows, T0, T0 + timedelta(hours=1))
+        self.assertEqual((len(kept), dropped['cap']), (fs.JOURNAL_MAX_LINES, 51))
+        self.assertTrue(any(r['message'] == 'the important warning' for r in kept))
+
+    def test_throttle_window(self):
+        lines = [json.dumps({'ts': '2026-10-21T19:05:00Z', 'throttled': '0x0', 'temp_c': 61.2}),
+                 json.dumps({'ts': '2026-10-21T17:00:00Z', 'throttled': '0x50005'}), 'not json']
+        self.assertEqual(len(fs.throttle_window(lines, T0, T0 + timedelta(hours=1))), 1)
+
+    def simulated_failure(self):
+        """The acceptance story: baseline, a provider dies, the operator marks it, it comes back, export."""
+        self.started()
+        fs.mark(self.store, 'baseline: four phones on Party Home', 'pass', 'A-01', now=T0 + timedelta(minutes=1))
+        self.probes.doc = status(PARTY, GAMES, 'failed', ['avranaparty-games is failed', 'games provider unreachable'],
+                                 session={'game': 'bluff', 'state': 'playing'})
+        fs.snapshot(self.store, self.probes, now=T0 + timedelta(minutes=5))
+        fs.mark(self.store, 'phones B and D show the game is not responding', 'fail', 'A-12', now=T0 + timedelta(minutes=5, seconds=20))
+        self.probes.entries = [entry(T0 + timedelta(minutes=4, seconds=50), 'Main process exited, code=killed, status=9/KILL',
+                                     'avranaparty-games.service', 3)]
+        self.probes.doc = status(PARTY, GAMES)
+        fs.snapshot(self.store, self.probes, now=T0 + timedelta(minutes=8))
+        fs.mark(self.store, 'games back after systemd restart; round lost', 'observed', now=T0 + timedelta(minutes=8, seconds=30))
+        return fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=10))
+
+    def test_simulated_failure_is_reproducible_in_a_sanitized_package(self):
+        s = self.simulated_failure()
+        out = Path(self.tmp.name) / 'out'
+        path, digest, count, size = fs.export(self.store, out)
+        self.assertLessEqual(size, fs.EXPORT_MAX_BYTES)
+        members, problems = fs.validate(path)
+        self.assertEqual(problems, [])
+        timeline = members['timeline.md'].decode('utf-8')
+        self.assertIn('avranaparty-games: active -> failed', timeline)
+        self.assertIn('avranaparty-games: failed -> active', timeline)
+        self.assertIn('**MARK FAIL** [A-12]: phones B and D show the game is not responding', timeline)
+        self.assertIn('ERROR avranaparty-games.service: Main process exited', timeline)
+        self.assertIn(f'party: `{PARTY[:12]}`, games: `{GAMES[:12]}`', timeline)
+        manifest = json.loads(members['manifest.json'])
+        self.assertEqual(manifest['revisions_at_start']['party'], PARTY)
+        self.assertEqual(sorted(manifest['members']), sorted(n for n in members if n != 'manifest.json'))
+        # Reproducible: the same session exports to the same bytes.
+        path2, digest2, _, _ = fs.export(self.store, Path(self.tmp.name) / 'again')
+        self.assertEqual((digest, path.read_bytes()), (digest2, path2.read_bytes()))
+        with tarfile.open(path) as tar:
+            self.assertTrue(all(i.uid == 0 and i.uname == '' and i.mode == 0o644 for i in tar.getmembers()))
+            self.assertTrue(all(i.name.startswith(f'avrana-field-{s["id"]}/') for i in tar.getmembers()))
+
+    def test_export_needs_a_stopped_session(self):
+        self.started()
+        with self.assertRaises(fs.Refused):
+            fs.export(self.store, self.tmp.name)
+
+    def test_a_poisoned_session_is_refused_and_nothing_is_written(self):
+        s = self.simulated_failure()
+        d = self.store.dir(s['id'])
+        with open(d / 'events.jsonl', 'a', encoding='utf-8') as f:     # someone edits the evidence by hand
+            f.write(json.dumps({'at': 'x', 'kind': 'mark', 'note': f'Cookie: __Host-avrana_device={DEVICE_TOKEN}'}) + '\n')
+        out = Path(self.tmp.name) / 'out'
+        with self.assertRaises(fs.Refused) as cm:
+            fs.export(self.store, out)
+        self.assertIn('events.jsonl:cookie_header', str(cm.exception))
+        self.assertNotIn(DEVICE_TOKEN, str(cm.exception))
+        self.assertFalse(out.exists())
+
+    def test_guest_names_can_be_forbidden(self):
+        self.started()
+        fs.mark(self.store, 'Cleo could not see the lobby', 'fail', now=T0 + timedelta(minutes=1))
+        fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=2))
+        names = Path(self.tmp.name) / 'names.txt'
+        names.write_text('Ada\nCleo\n', encoding='utf-8')
+        with self.assertRaises(fs.Refused) as cm:
+            fs.export(self.store, self.tmp.name, forbid_terms=fs._read_terms(names))
+        self.assertIn('forbidden_term', str(cm.exception))
+        self.assertNotIn('Cleo', str(cm.exception))
+
+    def test_validate_finds_tampering_extra_members_and_size(self):
+        self.simulated_failure()
+        path, _, _, _ = fs.export(self.store, self.tmp.name)
+        members = fs.read_package(path)
+        members['timeline.md'] += b'\nedited\n'
+        members['notes.txt'] = b'hello'
+        tampered = Path(self.tmp.name) / 'tampered.tar.gz'
+        tampered.write_bytes(fs.tar_bytes('avrana-field-x', members, 0))
+        _, problems = fs.validate(tampered)
+        rules = {(p['member'], p['rule']) for p in problems}
+        self.assertIn(('timeline.md', 'digest_mismatch'), rules)
+        self.assertIn(('notes.txt', 'unexpected_member'), rules)
+        self.assertTrue(redact.validate_members({'timeline.md': b'x' * 100}, max_bytes=10))
+
+    def test_cli_round_trip(self):
+        root = ['--root', str(self.root), '--status-url', 'http://127.0.0.1:1/party/api/status', '--status-host', '']
+        out = io.StringIO()
+        with mock.patch('sys.stdout', out), mock.patch('sys.stderr', io.StringIO()):
+            self.assertEqual(fs.main(root + ['start', '--label', 'cli demo']), 0)
+            self.assertEqual(fs.main(root + ['mark', 'party core unreachable on purpose', '--outcome', 'observed']), 0)
+            self.assertEqual(fs.main(root + ['stop']), 0)
+            self.assertEqual(fs.main(root + ['export', '--out', self.tmp.name]), 0)
+            pkg = next(Path(self.tmp.name).glob('avrana-field-*.tar.gz'))
+            self.assertEqual(fs.main(root + ['validate', str(pkg)]), 0)
+        self.assertIn('privacy validation clean', out.getvalue())
+        self.assertIn('status unreachable', fs.read_package(pkg)['timeline.md'].decode('utf-8'))
+
+
+class PoisonedFixture(unittest.TestCase):
+    def test_the_poisoned_journal_fixture_comes_out_clean(self):
+        """tests/fixtures/field-session/poisoned-journal.json holds one journal entry per planted kind."""
+        entries = json.loads((FIXTURES / 'poisoned-journal.json').read_text(encoding='utf-8'))
+        start = datetime(2026, 10, 21, 0, 0, tzinfo=timezone.utc)
+        raw = {'journal.jsonl': ''.join(json.dumps({'message': e['MESSAGE']}) + '\n' for e in entries).encode()}
+        self.assertGreaterEqual(len({p['rule'] for p in redact.validate_members(raw)}), 10)
+        rows, dropped = fs.journal_lines(entries, start, start + timedelta(days=1))
+        clean = {'journal.jsonl': ''.join(json.dumps(r) + '\n' for r in rows).encode()}
+        self.assertEqual(redact.validate_members(clean), [])
+        self.assertGreaterEqual(dropped['chat'], 1)
+        text = clean['journal.jsonl'].decode()
+        for needle in ('BEGIN PRIVATE KEY', 'avrana_device=', 'Bearer', '10.42.0.57', 'a4:83:e7', 'Benjamin', '@example.com'):
+            self.assertNotIn(needle, text)
+
+
+if __name__ == '__main__':
+    unittest.main()
