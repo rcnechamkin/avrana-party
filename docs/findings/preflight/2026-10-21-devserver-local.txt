@@ -1,0 +1,31 @@
+Avrana preflight: UNKNOWN (UNKNOWN)   2026-10-21T21:57:27Z   local on laptop (dev server)
+  party  deployed unknown
+  games  deployed unknown
+  checks 4 pass, 1 warn, 0 fail, 11 unknown (0.7 s)
+
+Blocking: revision.manifest, revision.party, revision.games, revision.web_release, revision.nginx_site, tls.appliance, network.appliance, pi.appliance, packages.appliance, runtime.appliance, wifi.gate
+
+UNKNOWN network.appliance: --local: network checks only run on the appliance
+UNKNOWN wifi.gate: no Wi-Fi qualification result: run `python tools/wifi-lab/wifilab.py gate` from the laptop (docs/runbooks/wifi-qualification.md) and pass it with --wifi-gate
+UNKNOWN packages.appliance: --local: packages checks only run on the appliance
+UNKNOWN pi.appliance: --local: pi checks only run on the appliance
+UNKNOWN revision.games: games: no deployed revision recorded; checkout at unknown
+UNKNOWN revision.manifest: no deployment manifest: the deployed revisions cannot be named (ops/deploy.sh writes it)
+UNKNOWN revision.nginx_site: nginx site file could not be compared
+UNKNOWN revision.party: party: no deployed revision recorded; checkout at 8de7ef20835a1d98ec55cb772c216cbd348084fa
+UNKNOWN revision.web_release: installed web build has no readable version.json
+UNKNOWN runtime.appliance: --local: runtime checks only run on the appliance
+UNKNOWN tls.appliance: --local: tls checks only run on the appliance
+WARN    revision.last_known_good (advisory): no last-known-good record: `ops/deploy.sh --rollback` has no target
+PASS    4: serving.captive_probe, serving.party_home, serving.party_core, serving.status
+
+Needs a real phone (never shown by this preflight):
+  - Wi-Fi qualification: the wifi-lab gate did not PASS for this run
+  - a phone joins the Party Wi-Fi and gets an address (iPhone and Android, network forgotten first)
+  - the phone OS treats the network as offline-but-usable (captive sheet, "no internet" prompts, mobile data fallback)
+  - iPhone Safari and Android Chrome trust the served certificate and open https://party.avrana.net
+  - the join card QR code scans and lands on Party Home
+  - Wi-Fi capacity with the real number of phones (the wifi-lab gate measures one Android client)
+  - phones staying connected through screen lock, app switching and battery saver
+  - sound, vibration, rotation and on-screen keyboards on the real devices
+  - a TV or second screen, if the night uses one

@@ -1,0 +1,18 @@
+Avrana preflight: READY (WARN)   2026-10-21T18:00:00Z   appliance on avrana (SIMULATED: unit-test fake probes)
+  party  deployed aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  games  deployed bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  checks 25 pass, 0 warn, 0 fail, 1 unknown (0.0 s)
+
+UNKNOWN serving.encoder (advisory): emulator idle
+PASS    25: revision.party, revision.games, revision.web_release, revision.nginx_site, revision.last_known_good, service.avrana-party-core, service.avranaparty-games, service.nginx, service.avrana-party-certificate.timer, serving.captive_probe, serving.party_home, tls.party.avrana.net, dns.party.avrana.net, network.topology, wifi.gate, pi.health, pi.clock, pi.reboot_required, pi.journal, storage./, storage./var/lib, packages.installed, runtime.node, runtime.python, runtime.tools
+NOTE    SIMULATED with the unit tests' fake probes; not a run on the Pi
+
+Needs a real phone (never shown by this preflight):
+  - a phone joins the Party Wi-Fi and gets an address (iPhone and Android, network forgotten first)
+  - the phone OS treats the network as offline-but-usable (captive sheet, "no internet" prompts, mobile data fallback)
+  - iPhone Safari and Android Chrome trust the served certificate and open https://party.avrana.net
+  - the join card QR code scans and lands on Party Home
+  - Wi-Fi capacity with the real number of phones (the wifi-lab gate measures one Android client)
+  - phones staying connected through screen lock, app switching and battery saver
+  - sound, vibration, rotation and on-screen keyboards on the real devices
+  - a TV or second screen, if the night uses one

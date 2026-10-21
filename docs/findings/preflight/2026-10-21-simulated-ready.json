@@ -1,0 +1,303 @@
+{
+  "schema": "avrana.preflight/v0",
+  "generated_at": "2026-10-21T18:00:00Z",
+  "seconds": 0.0,
+  "mode": "appliance",
+  "host": "avrana (SIMULATED: unit-test fake probes)",
+  "tool": {
+    "party_sha": "(this branch)"
+  },
+  "verdict": "READY",
+  "overall": "WARN",
+  "horizon_days": 7,
+  "revisions": {
+    "party": {
+      "deployed_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "checkout_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "dirty": false,
+      "ref": "main"
+    },
+    "games": {
+      "deployed_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "checkout_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "dirty": false,
+      "ref": "main"
+    },
+    "web_release": {
+      "build": "20261020T120000Z",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "last_known_good": {
+      "party_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "games_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "contract": {
+      "party_games": "avrana.party-games/v0",
+      "party_session": "avrana.party-session/v0",
+      "lan_launch": "avrana.lan-launch/v1",
+      "games_advertises": "avrana.lan-launch/v1"
+    }
+  },
+  "names": {
+    "party": [
+      "party.avrana.net"
+    ],
+    "game_origins": []
+  },
+  "counts": {
+    "PASS": 25,
+    "WARN": 0,
+    "FAIL": 0,
+    "UNKNOWN": 1
+  },
+  "blocking": [],
+  "waived": [],
+  "checks": [
+    {
+      "id": "revision.party",
+      "category": "revision",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "party deployed at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "detail": {
+        "deployed_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "checkout_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dirty": false,
+        "deployed_dirty": false,
+        "ref": "main",
+        "mismatch": false
+      }
+    },
+    {
+      "id": "revision.games",
+      "category": "revision",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "games deployed at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "detail": {
+        "deployed_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "checkout_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "dirty": false,
+        "deployed_dirty": false,
+        "ref": "main",
+        "mismatch": false
+      }
+    },
+    {
+      "id": "revision.web_release",
+      "category": "revision",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "web build 20261020T120000Z from aaaaaaaaaaaa"
+    },
+    {
+      "id": "revision.nginx_site",
+      "category": "revision",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "installed nginx site is the deployed commit's"
+    },
+    {
+      "id": "revision.last_known_good",
+      "category": "revision",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "rollback target: party aaaaaaaaaaaa, games bbbbbbbbbbbb"
+    },
+    {
+      "id": "service.avrana-party-core",
+      "category": "services",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "avrana-party-core active"
+    },
+    {
+      "id": "service.avranaparty-games",
+      "category": "services",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "avranaparty-games active"
+    },
+    {
+      "id": "service.nginx",
+      "category": "services",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "nginx active"
+    },
+    {
+      "id": "service.avrana-party-certificate.timer",
+      "category": "services",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "avrana-party-certificate.timer not installed (optional)"
+    },
+    {
+      "id": "serving.captive_probe",
+      "category": "serving",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "ok"
+    },
+    {
+      "id": "serving.party_home",
+      "category": "serving",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "ok"
+    },
+    {
+      "id": "serving.encoder",
+      "category": "serving",
+      "status": "UNKNOWN",
+      "blocking": false,
+      "reason": "emulator idle"
+    },
+    {
+      "id": "tls.party.avrana.net",
+      "category": "tls",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "party.avrana.net: verified, 80.0 days left",
+      "detail": {
+        "not_after": "2027-01-09T18:00:00Z",
+        "days_left": 80.0,
+        "names": [
+          "party.avrana.net"
+        ]
+      }
+    },
+    {
+      "id": "dns.party.avrana.net",
+      "category": "network",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "party.avrana.net -> 10.42.0.1 from the Party DNS"
+    },
+    {
+      "id": "network.topology",
+      "category": "network",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "1 topology assertions passed",
+      "detail": {
+        "lines": [
+          "PASS wlan0 is in AP mode",
+          "INFO channel 36"
+        ]
+      }
+    },
+    {
+      "id": "wifi.gate",
+      "category": "network",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "wifi-lab gate PASS 2.0 h ago on channel 36 (one Android client, provisional thresholds)",
+      "detail": {
+        "verdict": "PASS",
+        "started": "2026-10-21T16:00:00Z",
+        "age_h": 2.0,
+        "channel": 36,
+        "client": "SM-T510",
+        "source": null,
+        "thresholds_status": "provisional"
+      }
+    },
+    {
+      "id": "pi.health",
+      "category": "pi",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "HEALTHY (timer state file)",
+      "detail": {
+        "state": "HEALTHY",
+        "evidence_ts": "2026-10-21T17:55:00Z"
+      }
+    },
+    {
+      "id": "pi.clock",
+      "category": "pi",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "2026-10-21T18:00:00Z, not NTP synchronized (normal offline)"
+    },
+    {
+      "id": "pi.reboot_required",
+      "category": "pi",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "no pending reboot"
+    },
+    {
+      "id": "pi.journal",
+      "category": "pi",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "journal is persistent: logs survive a reboot"
+    },
+    {
+      "id": "storage./",
+      "category": "pi",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "/: 40.0 GiB free (62%)",
+      "detail": {
+        "total": 68719476736,
+        "free": 42949672960
+      }
+    },
+    {
+      "id": "storage./var/lib",
+      "category": "pi",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "/var/lib: 40.0 GiB free (62%)",
+      "detail": {
+        "total": 68719476736,
+        "free": 42949672960
+      }
+    },
+    {
+      "id": "packages.installed",
+      "category": "packages",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "no .avrgame packages installed (none required)"
+    },
+    {
+      "id": "runtime.node",
+      "category": "runtime",
+      "status": "PASS",
+      "blocking": false,
+      "reason": "optional Node runtime not installed"
+    },
+    {
+      "id": "runtime.python",
+      "category": "runtime",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "python 3.11.2 (needs 3.11+)"
+    },
+    {
+      "id": "runtime.tools",
+      "category": "runtime",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "present: systemctl, openssl, nginx, git, nft, nmcli, iw"
+    }
+  ],
+  "notes": [
+    "SIMULATED with the unit tests' fake probes; not a run on the Pi"
+  ],
+  "physically_unverified": [
+    "a phone joins the Party Wi-Fi and gets an address (iPhone and Android, network forgotten first)",
+    "the phone OS treats the network as offline-but-usable (captive sheet, \"no internet\" prompts, mobile data fallback)",
+    "iPhone Safari and Android Chrome trust the served certificate and open https://party.avrana.net",
+    "the join card QR code scans and lands on Party Home",
+    "Wi-Fi capacity with the real number of phones (the wifi-lab gate measures one Android client)",
+    "phones staying connected through screen lock, app switching and battery saver",
+    "sound, vibration, rotation and on-screen keyboards on the real devices",
+    "a TV or second screen, if the night uses one"
+  ],
+  "level": "server-observable checks only; not a phone or human acceptance result"
+}
