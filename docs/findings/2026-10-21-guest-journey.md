@@ -75,6 +75,21 @@ Further cases, each its own test:
   case where the round ends while the phone is away. It fails on `main` (the navigation request goes
   out and the page never shows the waiting line) and passes with the fix.
 
+- **Independent review (same day), and what changed.** The first version released a held move on the
+  browser's `online` event from the view it already had (the held one), and otherwise only on the next
+  long-poll answer (up to 20 s). Reproduced: held for EXPO, the Party went home while the phone was
+  offline, and on `online` the phone navigated to the round that had ended. Now a held move asks Party
+  Core once at once, every 2 s and on `online` (`party.refresh()`, one short ask, its view accepted), and
+  the move is decided again only from that answer: a round that ended keeps the phone on Party Home, and
+  a stale `navigator.onLine === false` on a working network costs one request, not 20 s. The hold also
+  cancels an earlier navigation's watchdog (it could retry an old target while offline), and it ends when
+  the Party is no longer in a round. Second regression test: "a held move is decided again from a fresh
+  answer; a stale offline flag does not hold a working phone" (fails on the first version: the phone
+  is sent to the ended round).
+- **Left as it is.** While a move is held the going screen offers no way back to Party Home; it says it
+  is waiting for the connection. ADR 0011 says the move waits; a way out there is a UI change for the
+  owner, not part of this fix.
+
 ## 3. Looked at, not changed
 
 - **A successor Host's Back button.** The Host who started a round gets Party Home behind the game

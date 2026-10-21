@@ -465,6 +465,41 @@ test.describe('the guest journey: setup and the Party box', () => {
     await expectPeople(ada, ['Ada', 'Bob', 'Cleo'], {});
   });
 
+  test('AVR-698: a held move is decided again from a fresh answer; a stale offline flag does not hold a working phone', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const ada = keep(await phone(browser, 'Ada'));
+    const bob = keep(await phone(browser, 'Bob'));
+    const seen: string[] = [];
+    bob.page.on('framenavigated', (f) => { if (f === bob.page.mainFrame()) seen.push(f.url()); });
+
+    // 1 Held for EXPO; the Party goes home while Bob is away. Back online, the page must not act on the
+    //   view it held (it still says EXPO): it asks Party Core, hears "home" and stays on Party Home.
+    const held = await answerArrivesOffline(bob, (v) => v.location.at === 'game');
+    expect((await post(ada, 'session/launch', { game: 'expo', if_version: await version(ada) })).status()).toBe(200);
+    await held.answered;
+    await held.deliverOffline();
+    await expect(bob.page.locator('#going-text')).toHaveText('Waiting for the connection to take you to EXPO…');
+    expect((await post(ada, 'session/end', { if_version: await version(ada) })).status()).toBe(200);
+    await held.online();
+    await expect(bob.page.getByRole('region', { name: 'Who is here' })).toBeVisible({ timeout: 15_000 });   // Party Home
+    await expect(bob.page.locator('#going-text')).toBeHidden();
+    await bob.page.waitForTimeout(9_000);          // past the going watchdog's 8 s: no stale retry either
+    expect(bob.page.url()).toMatch(atHome);
+    expect(seen.filter((u) => /\/expo\b/.test(u) || u.includes('chrome-error')), 'never sent to the round that ended').toEqual([]);
+
+    // 2 The browser says offline but the Wi-Fi works (a stale flag): the phone looks at once and goes,
+    //   instead of sitting on "Waiting…" until the next long-poll answer (up to 20 s).
+    await bob.context.addInitScript(() => Object.defineProperty(Navigator.prototype, 'onLine', { get: () => false, configurable: true }));
+    await bob.page.reload();
+    await expect(bob.page.locator('html')).toHaveAttribute('data-ready', 'true');
+    expect(await bob.page.evaluate(() => navigator.onLine)).toBe(false);
+    const asked = Date.now();
+    expect((await post(ada, 'session/launch', { game: 'expo', if_version: await version(ada) })).status()).toBe(200);
+    await expect(bob.page).toHaveURL(atRound('expo'), { timeout: 10_000 });
+    expect(Date.now() - asked, 'well under the 20 s long-poll wait').toBeLessThan(10_000);
+    expect(seen.filter((u) => u.includes('chrome-error'))).toEqual([]);
+  });
+
   test('the Host leaves during setup: the next phone gets Start; she reconnects and chooses again; nobody is counted twice', async ({ browser }) => {
     test.setTimeout(120_000);
     const ada = keep(await phone(browser, 'Ada'));
