@@ -53,7 +53,7 @@ ownership zeroed.
 
 ## What never leaves the appliance
 
-The rules live in `avrana/ops/redact.py` (`avrana.redaction/v1`). Every string is scrubbed before
+The rules live in `avrana/ops/redact.py` (`avrana.redaction/v2`). Every string is scrubbed before
 it is written. The export runs the validator, and a package with any hit is not written.
 
 - **Credentials and keys:**
@@ -75,6 +75,18 @@ it is written. The export runs the validator, and a package with any hit is not 
   - every journal line that mentions chat is dropped whole;
   - quoted text is removed, because names land in logs as quoted strings;
   - fields named like `name`, `nickname`, `text`, `peer`, `user_agent` or `device_id` are replaced.
+- **Wi-Fi and other secrets in assignments:** `psk=`, `passphrase=`, `pwd=` and `pin=` values.
+- **Fields:** camelCase names (`playerName`, `deviceId`) are read like snake_case. JSON keys are
+  scrubbed like values. Count fields such as `members` keep only numbers.
+- **Digests:** a 40-character commit is kept only at revision paths, and a 64-character sha256 only at
+  `nginx_site.sha256` and the manifest's `files.<name>.sha256`. A game key under any other name is
+  redacted.
+
+A package someone hands you is refused by `validate` when:
+- a member's name is outside the package's own directory or unknown;
+- a member appears twice;
+- a member is not a regular file;
+- the manifest is malformed or does not list every member.
 
 The automated suite is `python -m unittest discover -s tests/unit -p test_fieldsession.py`. For every
 planted kind of secret, it checks two things:
@@ -89,7 +101,7 @@ It also covers:
 
 ## Bounds
 
-- A session directory refuses new data at `--max-bytes` (default 4 MiB). `stop` still records the end.
+- A session directory refuses new data at `--max-bytes` (default 1.5 MiB). `stop` then trims the journal and power records to the budget left, so a stopped session always fits one package (2 MiB).
 - A session expires after `--max-hours` (default 12). After that, marks and snapshots are refused.
 - Journal lines are cut at 300 characters each. A package over 2 MiB is not exported.
 - Sessions live under `~/avrana-field-sessions` (mode 0700) or `$AVRANA_FIELD_SESSIONS`. Delete a

@@ -24,7 +24,7 @@ under ~/avrana-field-sessions (or $AVRANA_FIELD_SESSIONS). It reuses what exists
 Every string goes through avrana.ops.redact before it is written, and the finished package is
 validated again before it is exported (`validate` repeats that on any package). A package that
 fails validation is not written. Bounds: the session directory stops accepting data at
---max-bytes (default 4 MiB), a session expires after --max-hours (default 12), journal lines are
+--max-bytes (default 1.5 MiB; `stop` trims what it adds so a session always fits one package), a session expires after --max-hours (default 12), journal lines are
 capped per run and per line, and an export is refused above 2 MiB. Party Core and its telemetry
 are not changed and nothing is recorded per member: the status document carries only counts.
 """
@@ -49,6 +49,8 @@ from avrana import REPO_ROOT
 from avrana.ops import redact
 
 SCHEMA = 'avrana.field-session/v0'
+# Loopback requests never go through an http_proxy from the environment.
+_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 PACKAGE_SCHEMA = 'avrana.field-package/v0'
 PREFLIGHT_SCHEMA = 'avrana.preflight/v0'
 STATUS_SCHEMA = 'avrana.status/v0'
@@ -57,7 +59,7 @@ STATUS_HOST = 'party.avrana.net'
 PI_HEALTH_STATE = '/run/avrana/pi-health.json'
 THROTTLE_LOG = '/var/log/avrana/pi-throttle.jsonl'
 DEFAULT_ROOT = Path.home() / 'avrana-field-sessions'
-DEFAULT_MAX_BYTES = 4 << 20
+DEFAULT_MAX_BYTES = 3 << 19          # 1.5 MiB; `stop` trims what it adds to fit one package
 DEFAULT_MAX_HOURS = 12.0
 EXPORT_MAX_BYTES = 2 << 20
 JOURNAL_MAX_LINES = 1500
@@ -106,7 +108,7 @@ class Probes:
         """(document or None, error or None)."""
         req = urllib.request.Request(self.status_url, headers={'Host': self.host} if self.host else {})
         try:
-            with urllib.request.urlopen(req, timeout=min(self.timeout, 5.0)) as r:
+            with _DIRECT.open(req, timeout=min(self.timeout, 5.0)) as r:
                 doc = json.loads(r.read(1 << 20).decode('utf-8'))
         except (urllib.error.URLError, OSError, ValueError) as e:
             return None, f'status unreachable ({type(getattr(e, "reason", e)).__name__})'
@@ -138,7 +140,8 @@ class Probes:
         for unit in units:
             cmd += ['-u', unit]
         entries, problems = [], []
-        for extra in (cmd, ['journalctl', '--no-pager', '-o', 'json', '-k', '-p', 'warning', '--since',
+        warnings = cmd[:-2] + ['-p', 'warning', '-n', str(JOURNAL_MAX_LINES)]
+        for extra in (cmd, warnings, ['journalctl', '--no-pager', '-o', 'json', '-k', '-p', 'warning', '--since',
                             f'@{int(since.timestamp())}', '--until', f'@{int(until.timestamp()) + 1}', '-n', '500']):
             try:
                 p = subprocess.run(extra, capture_output=True, timeout=self.timeout)
@@ -162,11 +165,25 @@ class Store:
         self.root = Path(root or os.environ.get('AVRANA_FIELD_SESSIONS') or DEFAULT_ROOT)
 
     def active_id(self):
+        """The running session, or None. A pointer to a session that is gone, unreadable or already
+        stopped (a crash between stop's last two steps) is cleared, so it can never wedge start or stop."""
+        pointer = self.root / 'ACTIVE'
         try:
-            sid = (self.root / 'ACTIVE').read_text(encoding='utf-8').strip()
+            sid = pointer.read_text(encoding='utf-8').strip()
         except OSError:
             return None
-        return sid if re.fullmatch(r'\d{8}T\d{6}Z-[a-z0-9-]{1,32}', sid) else None
+        try:
+            ok = (re.fullmatch(r'\d{8}T\d{6}Z-[a-z0-9-]{1,32}', sid) is not None and
+                  not _read_session(self.root / sid).get('stopped_at'))
+        except (OSError, ValueError):
+            ok = False
+        if not ok:
+            try:
+                pointer.unlink()
+            except OSError:
+                pass
+            return None
+        return sid
 
     def dir(self, sid):
         if not re.fullmatch(r'\d{8}T\d{6}Z-[a-z0-9-]{1,32}', sid or ''):
@@ -200,10 +217,11 @@ def _write_json(path, doc):
 
 
 def _dir_bytes(d):
-    return sum(p.stat().st_size for p in d.rglob('*') if p.is_file())
+    return sum(p.lstat().st_size for p in d.rglob('*') if p.is_file() and not p.is_symlink())
 
 
 def _append_event(d, event, max_bytes):
+    event = dict(event, seq=len(_events(d)))
     line = json.dumps(redact.scrub_json(event), sort_keys=True) + '\n'
     if _dir_bytes(d) + len(line) > max_bytes:
         raise Refused(f'the session reached its size limit ({max_bytes} bytes); stop and export it')
@@ -312,7 +330,12 @@ def start(store, label, probes, now=None, max_bytes=DEFAULT_MAX_BYTES, max_hours
     _, snap = take_snapshot(d, session, probes, now, reason='start')
     session['revisions_at_start'] = snap['revisions']
     _write_json(d / 'session.json', session)
-    (store.root / 'ACTIVE').write_text(sid + '\n', encoding='utf-8')
+    try:
+        fd = os.open(store.root / 'ACTIVE', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        raise Refused('another session started at the same moment') from None
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(sid + '\n')
     return session
 
 
@@ -358,9 +381,16 @@ def stop(store, probes, now=None, units=UNITS):
     started = _parse(session['started_at'])
     entries, journal_error = probes.journal(started, now, units)
     lines, dropped = journal_lines(entries, started, now)
+    budget = session['limits']['export_bytes'] - _dir_bytes(d) - 128 * 1024      # timeline and manifest
+    while lines and sum(len(json.dumps(r, sort_keys=True)) + 1 for r in lines) > max(budget // 2, 0):
+        victim = max(range(len(lines)), key=lambda i: (lines[i]['priority'], -i))     # newest info line first
+        del lines[victim]
+        dropped['cap'] += 1
     _write_jsonl(d / 'journal.jsonl', lines)
     raw, throttle_error = probes.throttle_lines()
     throttle = throttle_window(raw, started, now)
+    while throttle and sum(len(json.dumps(r, sort_keys=True)) + 1 for r in throttle) > max(budget // 4, 0):
+        throttle = throttle[len(throttle) // 10 + 1:]
     _write_jsonl(d / 'throttle.jsonl', throttle)
     session['stopped_at'] = _iso(now)
     session['collected'] = {'journal_lines': len(lines), 'journal_dropped': dropped, 'journal_error': journal_error,
@@ -377,6 +407,7 @@ def stop(store, probes, now=None, units=UNITS):
 
 def _append_event_unbounded(d, event):
     """The stop record is always written: a full session must still say that it ended."""
+    event = dict(event, seq=len(_events(d)))
     with open(d / 'events.jsonl', 'a', encoding='utf-8') as f:
         f.write(json.dumps(redact.scrub_json(event), sort_keys=True) + '\n')
 
@@ -387,8 +418,8 @@ def _write_jsonl(path, rows):
 
 def journal_lines(entries, since, until):
     """Scrubbed {at, unit, priority, message} rows inside the window; warnings first when over the cap.
-    Returns (rows sorted by time, {'chat': n, 'cap': n, 'outside': n})."""
-    rows, dropped = [], {'chat': 0, 'cap': 0, 'outside': 0}
+    Returns (rows sorted by time, {'conversation': n, 'cap': n, 'outside': n})."""
+    rows, dropped = [], {'conversation': 0, 'cap': 0, 'outside': 0}
     for e in entries:
         try:
             at = datetime.fromtimestamp(int(e.get('__REALTIME_TIMESTAMP')) / 1e6, timezone.utc)
@@ -399,10 +430,10 @@ def journal_lines(entries, since, until):
             continue
         message = e.get('MESSAGE')
         if isinstance(message, list):          # journald's byte-array form for non-UTF-8 messages
-            message = bytes(x for x in message if isinstance(x, int)).decode('utf-8', 'replace')
+            message = bytes(x for x in message if type(x) is int and 0 <= x < 256).decode('utf-8', 'replace')
         clean = redact.scrub_log_line(str(message or ''), JOURNAL_LINE_CHARS)
         if clean is None:
-            dropped['chat'] += 1
+            dropped['conversation'] += 1
             continue
         try:
             priority = int(e.get('PRIORITY', 6))
@@ -482,7 +513,7 @@ def timeline(d):
         at = e.get('at', '')
         if e.get('kind') == 'mark':
             step = f' [{e["step"]}]' if e.get('step') else ''
-            rows.append((at, 0, f'**MARK {e.get("outcome", "note").upper()}**{step}: {e.get("note", "")}'))
+            rows.append((at, (0, e.get('seq', 0)), f'**MARK {e.get("outcome", "note").upper()}**{step}: {e.get("note", "")}'))
         elif e.get('kind') == 'snapshot':
             snap = snaps.get(e.get('snapshot'))
             text = f'snapshot {e.get("snapshot")} ({e.get("reason")}): status {e.get("state")}'
@@ -508,14 +539,14 @@ def timeline(d):
                 if snap.get('preflight'):
                     text += f'; preflight {snap["preflight"].get("verdict")}'
                 prev = snap
-            rows.append((at, 1, text))
+            rows.append((at, (1, e.get('seq', 0)), text))
         elif e.get('kind') in ('start', 'stop', 'limit'):
             rank = {'start': -1, 'stop': 9}.get(e['kind'], 0)
-            rows.append((at, rank, f'session {e["kind"]}' + (f': {e.get("note")}' if e.get('note') else '')))
+            rows.append((at, (rank, e.get('seq', 0)), f'session {e["kind"]}' + (f': {e.get("note")}' if e.get('note') else '')))
     for j in journal:
         if j.get('priority', 6) <= 4:
             level = {0: 'EMERG', 1: 'ALERT', 2: 'CRIT', 3: 'ERROR', 4: 'WARN'}.get(j['priority'], 'WARN')
-            rows.append((j['at'][:19] + 'Z', 2, f'{level} {j.get("unit")}: {j.get("message")}'))
+            rows.append((j['at'][:19] + 'Z', (2, 0), f'{level} {j.get("unit")}: {j.get("message")}'))
     info = {}
     for j in journal:
         if j.get('priority', 6) > 4:
@@ -539,6 +570,8 @@ def package_members(d):
         raise Refused(f'session {session["id"]} is still running: stop it before exporting')
     members = {}
     for p in sorted(d.rglob('*')):
+        if p.is_symlink():
+            raise Refused(f'{p.relative_to(d).as_posix()} is a symbolic link: a session holds only its own files')
         name = p.relative_to(d).as_posix()
         if p.is_file() and MEMBER.match(name) and name != 'manifest.json':
             members[name] = p.read_bytes()
@@ -547,7 +580,7 @@ def package_members(d):
                 'stopped_at': session['stopped_at'], 'rules': redact.RULES_VERSION,
                 'revisions_at_start': session.get('revisions_at_start'),
                 'revisions_at_stop': session.get('revisions_at_stop'),
-                'members': {n: {'sha256': hashlib.sha256(b).hexdigest(), 'bytes': len(b)} for n, b in sorted(members.items())}}
+                'files': {n: {'sha256': hashlib.sha256(b).hexdigest(), 'bytes': len(b)} for n, b in sorted(members.items())}}
     members['manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode('utf-8')
     return session, members
 
@@ -573,6 +606,9 @@ def export(store, out_dir, sid=None, forbid_terms=(), max_bytes=EXPORT_MAX_BYTES
     d = store.resolve(sid)
     session, members = package_members(d)
     problems = redact.validate_members(members, forbid_terms, max_bytes, allowed_names=MEMBER.match)
+    if any(p['rule'] == 'size' for p in problems):
+        raise Refused(f'the package would be {sum(len(b) for b in members.values())} bytes, over the {max_bytes}-byte '
+                      'export limit, and was not written')
     if problems:
         raise Refused('the package failed privacy validation and was not written: ' +
                       ', '.join(f'{p["member"]}:{p["rule"]}x{p["count"]}' for p in problems))
@@ -589,12 +625,18 @@ def read_package(path):
     p = Path(path)
     if p.is_dir():
         return {q.relative_to(p).as_posix(): q.read_bytes() for q in sorted(p.rglob('*')) if q.is_file()}
-    members = {}
+    members, prefix = {}, None
     with tarfile.open(p, 'r:gz') as tar:
         for info in tar.getmembers():
             if not info.isfile():
                 raise Refused(f'{info.name}: not a regular file')
-            name = info.name.split('/', 1)[1] if '/' in info.name else info.name
+            top, _, name = info.name.partition('/')
+            if prefix is None:
+                prefix = top
+            if top != prefix or not re.fullmatch(r'avrana-field-[A-Za-z0-9-]{1,80}', top) or not MEMBER.match(name):
+                raise Refused(f'{info.name!r}: not a member of a field-session package')
+            if name in members:
+                raise Refused(f'{name}: appears twice in the package')
             if info.size > EXPORT_MAX_BYTES:
                 raise Refused(f'{name}: larger than the export limit')
             members[name] = tar.extractfile(info).read()
@@ -607,13 +649,18 @@ def validate(path, forbid_terms=(), max_bytes=EXPORT_MAX_BYTES):
     if 'manifest.json' in members:
         try:
             manifest = json.loads(members['manifest.json'])
-            for name, facts in (manifest.get('members') or {}).items():
+            listed = manifest.get('files') if isinstance(manifest, dict) else None
+            if not isinstance(listed, dict) or not all(isinstance(f, dict) for f in listed.values()):
+                raise ValueError('manifest members')
+            for name in sorted(set(members) - set(listed) - {'manifest.json'}):
+                problems.append({'member': name, 'rule': 'not_in_manifest', 'count': 1})
+            for name, facts in listed.items():
                 if name not in members:
                     problems.append({'member': name, 'rule': 'missing_member', 'count': 1})
                 elif hashlib.sha256(members[name]).hexdigest() != facts.get('sha256'):
                     problems.append({'member': name, 'rule': 'digest_mismatch', 'count': 1})
         except ValueError:
-            pass
+            problems.append({'member': 'manifest.json', 'rule': 'bad_manifest', 'count': 1})
     elif not Path(path).is_dir():
         problems.append({'member': 'manifest.json', 'rule': 'missing_member', 'count': 1})
     return members, problems
@@ -622,7 +669,7 @@ def validate(path, forbid_terms=(), max_bytes=EXPORT_MAX_BYTES):
 def _read_terms(path):
     if not path:
         return ()
-    return tuple(t.strip() for t in Path(path).read_text(encoding='utf-8').splitlines() if t.strip())
+    return tuple(t.strip() for t in Path(path).read_text(encoding='utf-8-sig').splitlines() if t.strip())
 
 
 def main(argv=None):

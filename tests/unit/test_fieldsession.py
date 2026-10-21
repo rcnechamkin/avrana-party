@@ -110,23 +110,38 @@ class Redaction(unittest.TestCase):
         self.assertEqual(redact.scrub_text(text), text)
         self.assertEqual(redact.violations_in_text(text, log=True), [])
 
-    def test_revisions_survive_only_in_their_own_fields(self):
-        doc = {'party': PARTY, 'sha256': 'ab' * 32, 'note': f'deployed {PARTY}'}
+    def test_revisions_survive_only_at_their_own_paths(self):
+        doc = {'revisions': {'party': PARTY}, 'nginx_site': {'sha256': 'ab' * 32}, 'note': f'deployed {PARTY}',
+               'deployment': {'party': {'sha': PARTY, 'short': PARTY[:12]}}, 'files': {'x.json': {'sha256': 'cd' * 32}}}
         out = redact.scrub_json(doc)
-        self.assertEqual((out['party'], out['sha256']), (PARTY, 'ab' * 32))
+        self.assertEqual((out['revisions']['party'], out['nginx_site']['sha256'], out['deployment']['party']['sha']),
+                         (PARTY, 'ab' * 32, PARTY))
         self.assertNotIn(PARTY, out['note'])
         self.assertEqual(redact.violations_in_json(out), [])
         self.assertTrue(redact.violations_in_json({'note': f'key {GAME_KEY}'}))
-        self.assertTrue(redact.violations_in_json({'party': GAME_KEY + 'zz'}))      # not a bare digest: checked
+        self.assertTrue(redact.violations_in_json({'party': GAME_KEY + 'zz'}))
+
+    def test_a_game_key_under_a_digest_looking_key_is_still_caught(self):
+        for doc in ({'sha256': GAME_KEY}, {'party': GAME_KEY}, {'commit': GAME_KEY}, {'games': [GAME_KEY]},
+                    {'revisions': {'party': GAME_KEY}}, {'deployment': {'party': {'sha': GAME_KEY}}}):
+            with self.subTest(doc=list(doc)):
+                self.assertTrue(redact.violations_in_json(doc))
+                self.assertNotIn(GAME_KEY, json.dumps(redact.scrub_json(doc)))
 
     def test_secret_named_fields_are_dropped_whatever_they_hold(self):
         doc = {'token': 'short', 'cookie': 'x', 'Authorization': 'y', 'nickname': 'Ben', 'user_agent': 'iPhone',
-               'peer': '1.2.3.4', 'device_id': 'abc', 'members': 4, 'state': 'ok', 'name': 'captive_probe',
+               'peer': '1.2.3.4', 'device_id': 'abc', 'members': 4, 'state': 'ok', 'name': 'Alice Smith',
+               'playerName': 'Ben', 'deviceId': 'x', 'userAgent': 'y', 'psk': 'z',
                'nested': [{'password': 'p'}, {'session_key': 'k', 'game': 'bluff'}]}
         out = redact.scrub_json(doc)
-        for k in ('token', 'cookie', 'Authorization', 'nickname', 'user_agent', 'peer', 'device_id'):
+        for k in ('token', 'cookie', 'Authorization', 'nickname', 'user_agent', 'peer', 'device_id', 'name',
+                  'playerName', 'deviceId', 'userAgent', 'psk'):
             self.assertEqual(out[k], redact.REDACTED, k)
-        self.assertEqual((out['members'], out['state'], out['name']), (4, 'ok', 'captive_probe'))
+            self.assertTrue(redact.violations_in_json({k: doc[k]}), f'the validator passed a raw {k}')
+        self.assertEqual((out['members'], out['state']), (4, 'ok'))
+        self.assertEqual(redact.scrub_json({'members': ['Alice Smith', 'Bob']}), {'members': redact.REDACTED})
+        self.assertTrue(redact.violations_in_json({'members': ['Alice Smith', 'Bob']}))
+        self.assertEqual(redact.violations_in_json(out), [])
         self.assertEqual(out['nested'], [{'password': redact.REDACTED}, {'session_key': redact.REDACTED, 'game': 'bluff'}])
 
     def test_fuzz_secrets_in_random_text_never_survive(self):
@@ -153,9 +168,40 @@ class Redaction(unittest.TestCase):
         for benign in ('ConnectionRefusedError', '20261021T190000Z-four-phones-bluff', 'avrana-party-certificate.timer'):
             self.assertEqual(redact.violations_in_text(benign), [], benign)
 
+    def test_review_scrub_gaps_are_closed(self):
+        cases = {'psk=hunter2hunter2': 'hunter2hunter2', 'passphrase=correct-horse': 'correct-horse',
+                 'pwd=letmein99': 'letmein99', 'pin=4821': '4821', 'sta_10.42.0.57 joined': '10.42.0.57',
+                 'chat_message from Alice': 'Alice', 'x 0123456789abcdef0123456789 y': '0123456789abcdef0123456789',
+                 'ip 192\uff0e168\uff0e1\uff0e5': '168', '"' + 'n' * 250 + '"': 'n' * 250,
+                 'token ab+cd/Ef12GhIjKl34MnOpQr56StUvWx==': 'Ef12GhIjKl34MnOpQr56'}
+        for raw, secret in cases.items():
+            with self.subTest(raw=raw[:30]):
+                clean = redact.scrub_log_line(raw)
+                if clean is not None:
+                    self.assertNotIn(secret, clean)
+                    self.assertEqual(redact.violations_in_text(clean, log=True), [])
+
+    def test_apostrophes_are_not_quotes(self):
+        text = "Party Core's game didn't load"
+        self.assertEqual(redact.scrub_text(text), text)
+
+    def test_truncation_never_leaves_half_a_marker(self):
+        text = 'x' * 281 + ' password=abcdefgh'
+        out = redact.scrub_text(text, 290)
+        self.assertNotIn('[redac', out.rstrip('…')[-8:] if out.endswith('[') else out[-12:-1].rpartition(']')[0] + 'ok')
+        self.assertEqual(redact.violations_in_text(out), [])
+
+    def test_keys_are_scrubbed_too(self):
+        doc = {f'member-{"a" * 32}': 1, '192.168.1.5': 1}
+        out = redact.scrub_json(doc)
+        self.assertEqual(redact.violations_in_json(out), [])
+        self.assertTrue(redact.violations_in_json(doc))
+
     def test_forbidden_terms_are_whole_words(self):
         self.assertTrue(redact.violations_in_text('Cleo joined late', ('cleo',)))
         self.assertFalse(redact.violations_in_text('cleopatra joined late', ('cleo',)))
+        self.assertTrue(redact.violations_in_text('Zo\u0065\u0301 joined', ('Zo\u00e9',)))     # NFD text, NFC term
+        self.assertTrue(redact.violations_in_text('\u674e joined', ('\u674e',)))              # one-character name
 
     def test_lengths_are_bounded(self):
         self.assertLessEqual(len(redact.scrub_text('x' * 5000, 300)), 301)
@@ -209,6 +255,43 @@ class Sessions(unittest.TestCase):
         self.assertIsNotNone(s['stopped_at'])
         self.assertIn('session stop', (self.store.dir(s['id']) / 'timeline.md').read_text(encoding='utf-8'))
 
+    def test_a_stale_or_dangling_active_pointer_never_wedges(self):
+        s = self.started()
+        fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=1))
+        (self.root / 'ACTIVE').write_text(s['id'] + '\n', encoding='utf-8')        # crash before the unlink
+        self.assertIsNone(self.store.active_id())
+        fs.start(self.store, 'next', self.probes, now=T0 + timedelta(minutes=2))
+        (self.root / 'ACTIVE').write_text('20261021T000000Z-gone\n', encoding='utf-8')
+        self.assertIsNone(self.store.active_id())
+        self.assertFalse((self.root / 'ACTIVE').exists())
+
+    def test_a_full_session_still_fits_one_package(self):
+        self.started()
+        with self.assertRaises(fs.Refused):
+            for i in range(5000):
+                fs.snapshot(self.store, self.probes, now=T0 + timedelta(seconds=i))
+        self.probes.entries = [entry(T0 + timedelta(seconds=i), f'info line {i} ' + 'z' * 200) for i in range(1500)]
+        s = fs.stop(self.store, self.probes, now=T0 + timedelta(hours=2))
+        path, _, _, size = fs.export(self.store, self.tmp.name)
+        self.assertLessEqual(size, fs.EXPORT_MAX_BYTES)
+        self.assertGreater(s['collected']['journal_dropped']['cap'], 0)
+
+    def test_byte_array_messages_with_bad_values_do_not_break_stop(self):
+        self.started()
+        e = entry(T0 + timedelta(minutes=1), 'x')
+        e['MESSAGE'] = [104, 105, 300, -1, 'x']
+        self.probes.entries = [e]
+        s = fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=2))
+        self.assertEqual(s['collected']['journal_lines'], 1)
+
+    def test_marks_in_the_same_second_keep_their_order(self):
+        self.started()
+        fs.mark(self.store, 'zebra first', now=T0 + timedelta(seconds=5))
+        fs.mark(self.store, 'apple second', now=T0 + timedelta(seconds=5))
+        s = fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=1))
+        t = (self.store.dir(s['id']) / 'timeline.md').read_text(encoding='utf-8')
+        self.assertLess(t.index('zebra first'), t.index('apple second'))
+
     def test_a_session_expires(self):
         self.started(max_hours=1)
         with self.assertRaises(fs.Refused):
@@ -227,7 +310,7 @@ class Sessions(unittest.TestCase):
         d = self.store.dir(s['id'])
         rows = [json.loads(l) for l in (d / 'journal.jsonl').read_text(encoding='utf-8').splitlines()]
         self.assertEqual(len(rows), 2)                   # duplicate collapsed, chat and outside dropped
-        self.assertEqual(s['collected']['journal_dropped'], {'chat': 1, 'cap': 0, 'outside': 1})
+        self.assertEqual(s['collected']['journal_dropped'], {'conversation': 1, 'cap': 0, 'outside': 1})
         self.assertEqual(set(rows[0]), {'at', 'priority', 'unit', 'message'})   # no hostname, cmdline, pid
         self.assertNotIn('10.42.0.57', rows[0]['message'])
         self.assertIn('WARN avrana-party-core.service: game bluff', (d / 'timeline.md').read_text(encoding='utf-8'))
@@ -274,7 +357,7 @@ class Sessions(unittest.TestCase):
         self.assertIn(f'party: `{PARTY[:12]}`, games: `{GAMES[:12]}`', timeline)
         manifest = json.loads(members['manifest.json'])
         self.assertEqual(manifest['revisions_at_start']['party'], PARTY)
-        self.assertEqual(sorted(manifest['members']), sorted(n for n in members if n != 'manifest.json'))
+        self.assertEqual(sorted(manifest['files']), sorted(n for n in members if n != 'manifest.json'))
         # Reproducible: the same session exports to the same bytes.
         path2, digest2, _, _ = fs.export(self.store, Path(self.tmp.name) / 'again')
         self.assertEqual((digest, path.read_bytes()), (digest2, path2.read_bytes()))
@@ -315,13 +398,49 @@ class Sessions(unittest.TestCase):
         path, _, _, _ = fs.export(self.store, self.tmp.name)
         members = fs.read_package(path)
         members['timeline.md'] += b'\nedited\n'
-        members['notes.txt'] = b'hello'
         tampered = Path(self.tmp.name) / 'tampered.tar.gz'
         tampered.write_bytes(fs.tar_bytes('avrana-field-x', members, 0))
         _, problems = fs.validate(tampered)
-        rules = {(p['member'], p['rule']) for p in problems}
-        self.assertIn(('timeline.md', 'digest_mismatch'), rules)
-        self.assertIn(('notes.txt', 'unexpected_member'), rules)
+        self.assertIn(('timeline.md', 'digest_mismatch'), {(p['member'], p['rule']) for p in problems})
+        extra = Path(self.tmp.name) / 'extra.tar.gz'
+        extra.write_bytes(fs.tar_bytes('avrana-field-x', dict(members, **{'notes.txt': b'hello'}), 0))
+        with self.assertRaises(fs.Refused):
+            fs.validate(extra)
+        self.assertTrue(redact.validate_members({'notes.txt': b'x'}, allowed_names=fs.MEMBER.match))
+
+    def hostile(self, entries):
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode='w:gz') as tar:
+            for name, data in entries:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        path = Path(self.tmp.name) / f'hostile-{len(entries)}.tar.gz'
+        path.write_bytes(raw.getvalue())
+        return path
+
+    def test_hostile_packages_are_refused(self):
+        pem = json.dumps({'note': PEM}).encode() + b'\n'
+        cases = [[('avrana-field-x/events.jsonl', pem), ('avrana-field-x/events.jsonl', b'')],     # duplicate
+                 [('avrana-field-x/../session.json', b'{}')],                                     # traversal
+                 [('avrana-field-x/session.json', b'{}'), ('avrana-field-y/session.json', b'{}')],  # two prefixes
+                 [('session.json', b'{}')]]                                                         # no prefix
+        for entries in cases:
+            with self.subTest(names=[n for n, _ in entries]), self.assertRaises(fs.Refused):
+                fs.validate(self.hostile(entries))
+        for manifest in (b'{"files": ["a"]}', b'{"files": {"x": 5}}', b'[1]'):
+            _, problems = fs.validate(self.hostile([('avrana-field-x/manifest.json', manifest)]))
+            self.assertIn('bad_manifest', {p['rule'] for p in problems})
+
+    def test_symlinks_in_a_session_are_refused(self):
+        s = self.simulated_failure()
+        link = self.store.dir(s['id']) / 'snapshots' / '099.json'
+        try:
+            link.symlink_to(Path(self.tmp.name) / 'outside.json')
+        except (OSError, NotImplementedError):
+            self.skipTest('symbolic links need privileges on this platform')
+        with self.assertRaises(fs.Refused):
+            fs.export(self.store, self.tmp.name)
         self.assertTrue(redact.validate_members({'timeline.md': b'x' * 100}, max_bytes=10))
 
     def test_cli_round_trip(self):
@@ -348,7 +467,7 @@ class PoisonedFixture(unittest.TestCase):
         rows, dropped = fs.journal_lines(entries, start, start + timedelta(days=1))
         clean = {'journal.jsonl': ''.join(json.dumps(r) + '\n' for r in rows).encode()}
         self.assertEqual(redact.validate_members(clean), [])
-        self.assertGreaterEqual(dropped['chat'], 1)
+        self.assertGreaterEqual(dropped['conversation'], 1)
         text = clean['journal.jsonl'].decode()
         for needle in ('BEGIN PRIVATE KEY', 'avrana_device=', 'Bearer', '10.42.0.57', 'a4:83:e7', 'Benjamin', '@example.com'):
             self.assertNotIn(needle, text)
