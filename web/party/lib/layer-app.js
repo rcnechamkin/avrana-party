@@ -6,9 +6,11 @@ import { hydrateIcons, icon } from './icons.js';
 import { h } from './ui.js';
 import { avatarNode } from './profile-ui.js';
 import { createPartyClient } from './party-client.js';
+import { createDeparture } from './departure.js';
 import { createPartyChat, systemText } from './party-chat.js';
 import { locationOf, partyGame, roster } from './party-mode.js';
 import { unreadMark } from './frame.js';
+import { leaveWords } from './states.js';
 import { originAllows } from './bridge.js';
 import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine,
   gesture, keptSpots, nudge, orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark } from './layer.js';
@@ -146,6 +148,7 @@ function openLayer(tab = null) {
 function closeLayer() {
   if (state.mode !== 'open') return;
   state.confirm = null;
+  state.leaving = false;
   state.mode = closedMode();
   show();
   (state.mode === 'tab' ? $('layer-tab') : button).focus({ preventScroll: true });
@@ -188,7 +191,7 @@ $('layer-reset').addEventListener('click', () => {
 });
 
 // ---- the Party ---------------------------------------------------------------------------------------
-const client = createPartyClient({ base: '/party/api/', onView, onLink: ({ ok }) => { state.link = ok ? 'ok' : 'offline'; render(); } });
+const client = createPartyClient({ base: '/party/api/', departure: createDeparture(), onView, onLink: ({ ok }) => { state.link = ok ? 'ok' : 'offline'; render(); } });
 let storageTab;
 try { storageTab = window.sessionStorage; } catch { /* unread starts over */ }
 const chat = createPartyChat({ base: '/party/api/', storage: storageTab, onChange: renderChat });
@@ -246,6 +249,7 @@ function render() {
   $('chat-form').hidden = state.tab !== 'chat';
   $('layer-people-list').replaceChildren(...roster(view).map(personItem));
   renderHost(view);
+  renderLeave(view);
 }
 
 function renderHost(view) {
@@ -259,6 +263,46 @@ function renderHost(view) {
   $('layer-confirm').hidden = !state.confirm;
   $('layer-actions').hidden = Boolean(state.confirm);
 }
+
+/** Leave Party from the in-game drawer (AVR-580): Core's own answer says what it would do. The frame
+ * hides itself when Core drops this phone from the Party (onView), and the game page follows to Party
+ * Home's Reconnect?; nothing here joins again. Not over a page of another origin: that page owns the
+ * frame element and could cover it with a lure (D3), so there the drawer offers only what bridge v1
+ * lets a game page do (actions(): End, Party Home), and Leave, like hand-over, stays on Party Home. */
+function renderLeave(view) {
+  const impact = state.crossOrigin === false && view.me && view.me.leave;   // only once the page is known to be the Party's
+  $('layer-leave').hidden = !impact || Boolean(state.confirm);   // one confirmation at a time
+  if (!impact) { state.leaving = false; return; }
+  $('layer-leave-confirm').hidden = !state.leaving;
+  $('layer-leave-ask').hidden = state.leaving;
+}
+$('layer-leave-ask').addEventListener('click', () => {
+  const impact = state.view && state.view.me && state.view.me.leave;
+  if (!impact) return;
+  const words = leaveWords(impact);
+  $('layer-leave-text').textContent = words.text;
+  $('layer-leave-host').textContent = words.host;
+  $('layer-leave-error').textContent = '';
+  state.leaving = true;
+  render();
+  $('layer-leave-text').focus({ preventScroll: true });
+});
+$('layer-leave-no').addEventListener('click', () => {
+  state.leaving = false;
+  render();
+  $('layer-leave-ask').focus({ preventScroll: true });
+});
+$('layer-leave-yes').addEventListener('click', async () => {
+  if (state.busy || !state.leaving) return;
+  state.busy = true;
+  $('layer-leave-yes').disabled = true;
+  const res = await client.leave();
+  state.busy = false;
+  $('layer-leave-yes').disabled = false;
+  if (res.ok) { state.leaving = false; return; }       // the view that followed hides this frame
+  $('layer-leave-error').textContent = res.error === 'offline' || res.status >= 500
+    ? 'Couldn’t confirm that you left. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
+});
 
 function askConfirm(action) {
   state.confirm = action;
