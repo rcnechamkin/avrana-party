@@ -1,0 +1,21 @@
+{
+  "_fixture": "HAND-WRITTEN example in the avrana.preflight/v0 shape that tools/release_candidate.py prereq reads. It was NOT produced by python3 -m avrana.ops.preflight and NOT taken from an appliance; it proves nothing about the Pi.",
+  "schema": "avrana.preflight/v0",
+  "generated_at": "2026-10-21T22:30:00Z",
+  "verdict": "NOT_READY",
+  "overall": "FAIL",
+  "revisions": {
+    "party": {"deployed_sha": "c59f1c819de169b55d0bdadde34ae5cec57fc74a"},
+    "games": {"deployed_sha": "a4489729e1d0522a302b0475a7631ed90c219812"}
+  },
+  "checks": [
+    {"id": "disk_free", "category": "storage", "status": "PASS", "blocking": true, "reason": "example: 18 GB free on /"},
+    {"id": "no_live_session", "category": "runtime", "status": "FAIL", "blocking": true, "reason": "example: Party Core reports a live BLUFF session (state active)"},
+    {"id": "nginx_config", "category": "web", "status": "UNKNOWN", "blocking": true, "reason": "example: nginx -t needs root and the preflight was not run with sudo"},
+    {"id": "certificate_names", "category": "tls", "status": "WARN", "blocking": false, "reason": "example: the installed certificate covers party.avrana.net only"}
+  ],
+  "physically_unverified": [
+    "Wi-Fi association and throughput of four phones",
+    "iPhone Safari and Android Chrome behavior"
+  ]
+}
