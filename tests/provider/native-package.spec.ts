@@ -30,7 +30,9 @@ async function packageRow(request: any) {
   return rows[0] as { id: string, players: { min: number, max: number } };
 }
 
-async function phone(browser: Browser, name: string, n = 0) {
+// `late`: the round is already on, so saving the profile takes this page straight to it (the Party moves it)
+// and Party Home's member list is gone before it could be read.
+async function phone(browser: Browser, name: string, n = 0, late = false) {
   const { defaultBrowserType, ...device } = [devices['Pixel 7'], devices['iPhone 13']][n % 2] as any;
   const context = await browser.newContext({ ...device, serviceWorkers: 'block' });
   const page = await context.newPage();
@@ -61,7 +63,7 @@ async function phone(browser: Browser, name: string, n = 0) {
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();
-  await expect(page.locator('#party-members')).toContainText(`${name} (you)`);
+  if (!late) await expect(page.locator('#party-members')).toContainText(`${name} (you)`);
   return { page, context, direct, errors };
 }
 const redeemed = (page: Page) => page.evaluate(() => (window as any).__pkg?.redeemed ?? []);
@@ -185,7 +187,7 @@ test('a package follows the Party: a late joiner watches, only the Host ends, an
   const { ana, ben } = await table(browser, request, id);
   let dana: any = null;
   try {
-    dana = await phone(browser, 'Dana', 2);                           // joins Party Home while the round is on
+    dana = await phone(browser, 'Dana', 2, true);                     // joins Party Home while the round is on
     await expect(dana.page).toHaveURL(`${GAMES}/games/${id}/`);       // taken to the round, nobody pressed Join
     await expect.poll(async () => (await redeemed(dana.page)).filter((r: any) => r.ok).at(-1)?.role).toBe('spectator');
     const benApi = await partyApi(ben), anaApi = await partyApi(ana);
@@ -196,6 +198,9 @@ test('a package follows the Party: a late joiner watches, only the Host ends, an
     for (const p of [ana, ben, dana]) await expect(p.page).toHaveURL(`${GAMES}/games/${id}/`);
     // Ben's page is offline (well inside away-grace) when the Host ends the round; back online, it follows.
     await ben.context.setOffline(true);
+    // Offline emulation fails new requests only: the bridge's long poll already in flight (up to 25 s) would
+    // still bring the End. Only once a poll has failed is the page really cut off.
+    await ben.page.waitForEvent('requestfailed', { predicate: (r) => r.url().includes('/party/api/state'), timeout: 30_000 });
     expect((await anaApi.post('session/end')).status).toBe(200);
     await anaApi.page.close();
     for (const p of [ana, dana]) await expect(p.page).toHaveURL(`${PARTY}/party/`);
