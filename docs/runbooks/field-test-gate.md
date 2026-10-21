@@ -25,12 +25,19 @@ A Part 1 GO says nothing about AVR-33: that issue stays open until Part 2 and th
 
 ### 0. Decide the release pair and the game origin (laptop, no Pi changes)
 
-1. **Choose the two commits and record the full SHAs.**
-   - **Party:** `main` (today `c903346`, which carries AVR-29 and AVR-33), plus #167 (Leave and Reconnect) and #173 (harness evidence only) if you merge them first.
-   - **Games: a commit that contains Games #84** (merge `51accf0`), which is Games `main` today (`4acc5ae`).
-     - Games #87 (AVR-674) is held as an experimental optimization and is not part of this pair. It only changes `lan-dodgeball`, a donor title rather than a supported Party game.
-     - Party `main` carries the Party layer, Party #162, merged 2026-10-16. Its Games half is #84, and the two must be deployed together as one merge set ([party-layer-device-validation](party-layer-device-validation.md)).
-     - The checklist's "Games stays `bd7e01d`" predates #162. `bd7e01d` does not contain #84, so do not pair it with today's Party `main`.
+1. **Choose the two commits and record the full SHAs.** Refreshed 2026-10-21 (Sprint 05); re-read both mains on the day.
+   - **Party:** `main` is `8de7ef2`. It carries AVR-29 and AVR-33 (#170, #171), the Sprint 03 cross-origin layer
+     (#175, #176), the Sprint 04 SDK work (#177-#183) and Leave/Reconnect (#167, merged with the ADR 0011 AVR-580
+     amendment). Optional, only if merged first by the owner: #173 (harness evidence only; updated to main at `bdb854b`),
+     #186 (guest exit from a game origin), #185 (font).
+   - **Games:** `main` is `1dc48d2`. It contains Games #84 (merge `51accf0`), Best Guess (#85, #86) and the Sprint 04 kit
+     work (#89-#92). The Party layer (Party #162) and Games #84 are one merge set: both mains carry them.
+     - Games #87 (AVR-674) stays out: an experimental optimization of `lan-dodgeball`, a donor title.
+     - Sprint 05 PRs are **not** part of this pair unless the owner merges them first. None changes what a phone runs
+       on the appliance except Games AVR-675 (dodgeball effects only; a donor title, so it can wait).
+   - **Deployed today (the "before" pair):** last recorded as Party `c59f1c8`, Games `a448972` (deployed 2026-10-06,
+     [baseline](../findings/2026-10-12-deployed-baseline.md)). Nothing has been deployed since by an agent. Read it again
+     with `--status` in step 1; do not assume it.
 2. **Accept the local evidence in place of CI.** [deploy](deploy.md) "Before" item 1 asks for green CI lanes, but hosted CI is billing-blocked. Record that you accept local test evidence instead, and name the PR comments that hold it.
 3. **Decide whether this test uses native games on the game origin.** That means Checkers or any title listed in Party Core's `game_origins`, served from `https://games.avrana.net` ([game-origin](game-origin.md)).
    - **If yes:** the certificate with both names ([game-origin](game-origin.md) §1) must already exist from an **earlier, separate sitting**. It needs the DNS-challenge path, which is not available offline or mid-test. The certificate-name gate in step 2 then applies. The game origin's DNS, site file and `game_origins` steps ([game-origin](game-origin.md) §2-§4) come after the deploy, with no party running.
@@ -172,3 +179,42 @@ Use the record sheets in [offline-acceptance](offline-acceptance.md), in this or
   - All three stay **NOT RUN** and open until recorded; scheduling them is the owner's decision.
 - `close_lost_game` stays **off**. C-08 is a separate owner decision and is not part of this gate.
 - AVR-33's "Remaining scope" checklist in Linear is the acceptance list. Tick only what a recorded PASS shows. The Party Core evidence from 2026-09-29 already stands; do not rerun it as if unknown.
+
+
+---
+
+## Appendix: the release candidate after Sprint 05 (2026-10-21)
+
+**Which owner gate each physical test needs.** Each gate is its own Linear issue and gets its own record. None is
+closed by source tests, Chromium emulation, a simulator, or a successful install rehearsal.
+
+| Gate | What it proves | On the deployed pair (`c59f1c8`/`a448972`, no deploy) | Needs the release pair above |
+|---|---|---|---|
+| AVR-10 | offline cold boot | yes (A-01 to A-26 run as "A: no deploy") | to prove it for the new pair |
+| AVR-12 | four phones connect | yes | to prove it for the new pair |
+| AVR-27 | four-human offline BLUFF | yes, for the old console | for the ADR 0011 launch authority, Leave/Reconnect (#167) and Host succession |
+| AVR-261 | Checkers on real phones over the Pi's Wi-Fi | yes, if Checkers is installed today | if native games run on the game origin (step 0.3 yes) |
+| AVR-139 | cached `.avrgame` relaunch on real phones | no: needs a rights-cleared package installed | yes, plus an owner-approved install |
+| AVR-295 | real-phone and accessibility pass of the shell-to-BLUFF journey | no: the redesigned shell is not deployed | yes |
+| AVR-301 | Wi-Fi latency with 1 to 10 clients | yes (an AP measurement) | to compare the pairs |
+
+**Prerequisites before any deploy** (each is a separate owner approval):
+- **Service users (AVR-256).** [service-users-migration](service-users-migration.md). The Linux test container has no
+  `cody` user, so the deploy-script unit tests are not evidence here.
+- **Game origin (AVR-319).** A certificate with both names, from an earlier sitting; then DNS, the nginx site and
+  `game_origins` after the deploy (step 0.3, [game-origin](game-origin.md)). BLUFF and EXPO still run on the Party
+  origin in nginx. Moving them is an owner decision (Sprint 03 finding §5).
+- **Native game provisioning (AVR-304)** and, for any Node package, the pinned Node runtime (`avrana.ops.node_runtime`;
+  not installed by any agent).
+- **Backups, health and rollback.** Steps 1 and 4 above, unchanged.
+
+**Approved versus experimental on 2026-10-21:**
+- Approved and on main: everything listed under the release pair.
+- Owner-gated, open: Party #186, #185, #173, #174 (this page), #178 (visualization only); Games #93 (font).
+- Experimental, kept off the appliance: Games #87, the AVR-512 Tanks reproduction, every Sprint 05 SDK change
+  (the kit's navigation conformance, the harness changes). Those change development tools, not what the appliance runs.
+- Physical validation that remains: every gate above, plus phones for the Party layer, Leave/Reconnect, and guest exit
+  if #186 merges.
+
+**Do not touch the appliance without the owner.** This appendix is planning only. It deploys nothing, changes no
+networking and records no acceptance.
