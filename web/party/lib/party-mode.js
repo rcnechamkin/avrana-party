@@ -113,11 +113,12 @@ export function destination(view, here, catalog, address = null) {
 
 /** How a catalog tile behaves while the party is home, or null when it is not a party game (then
  * the tile is exactly today's). Kinds: profile (no profile yet: choose a name first), start (the
- * host), wait (a member, not the host), starting (the host's direct start is on its way). */
+ * host), wait (a member, not the host), starting (the host's direct start is on its way),
+ * reconnect (this phone left the Party on purpose: AVR-580). */
 export function tileMode(game, view) {
   const id = coreId(game, view);
   if (!id || !game.installed || !launchTarget(game)) return null;   // not here: today's tile says so
-  if (!view.me) return { kind: 'profile' };
+  if (!view.me) return view.departed ? { kind: 'reconnect' } : { kind: 'profile' };
   if (liveSession(view)) return { kind: 'starting' };
   return { kind: view.me.host ? 'start' : 'wait', game: id };
 }

@@ -209,10 +209,14 @@ test('a phone that is not in the party gets no seat on the game origin', async (
 test('the same pages on the Party origin keep the same-origin path: no bridge frame', async ({ browser, request }) => {
   expect((await request.post(`${LOOPBACK}/__harness__/party/reset`)).ok()).toBe(true);
   const ana = await phone(browser, 0);
-  await join(ana.page, 'Ana');
+  const view = await join(ana.page, 'Ana');
+  // A BLUFF round is on, so the Party-origin BLUFF page is where the party is and stays there. With
+  // no round, the Party sends the page home (ADR 0011), and reading it would race that navigation.
+  expect((await api(ana.page, 'session/launch', { game: 'bluff', if_version: view.version })).status).toBe(200);
   await ana.page.goto(`${PARTY}/games/bluff/?avrana=1`);
-  await expect.poll(async () => welcomes(await log(ana.page)).length).toBeGreaterThan(0);
+  await expect.poll(async () => welcomes(await log(ana.page)).at(-1)?.pid).toBeTruthy();   // seated, by the same-origin ticket
   expect(await ana.page.locator('iframe[title="Avrana Party"]').count()).toBe(0);
   expect(await ana.page.evaluate(() => (window as any).AvranaIntegration.home)).toBe('/party/');
+  expect(ana.page.url()).toBe(`${PARTY}/games/bluff/?avrana=1`);                // still here: nothing moved it
   await close(ana);
 });

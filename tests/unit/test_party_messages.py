@@ -252,7 +252,7 @@ class SystemLines(unittest.TestCase):
         c.rename('d-ben', 'Benji'); self.step()
         c.transfer_host('d-ana', c._member_of('d-ben').id, c.party.version); self.step()
         c.leave('d-ana'); self.step()
-        c.join('d-ana', 'Ana'); self.step()
+        c.reconnect('d-ana', 'Ana'); self.step()
         self.assertEqual(self.lines(), [('joined', 'Ana'), ('joined', 'Ben'), ('renamed', 'Benji', 'Ben'),
                                         ('host', 'Benji'), ('left', 'Ana'), ('returned', 'Ana')])
 
@@ -295,7 +295,7 @@ class SystemLines(unittest.TestCase):
         c = self.core
         c.join('d-ana', 'Ana'); c.join('d-ben', 'Ben'); self.step()
         for _ in range(20):
-            c.leave('d-ben'); c.join('d-ben', 'Ben')
+            c.leave('d-ben'); c.reconnect('d-ben', 'Ben')
             self.clock.advance(0.1)
         system = [l for l in c.party.room.after(0) if l['kind'] == 'system']
         self.assertEqual(len(system), 2)                          # Ana's join, then one line
@@ -511,7 +511,7 @@ class Http(unittest.TestCase):
         for _ in range(6):
             ana.say('x')
         ana.req('POST', '/party/api/leave', {})
-        ana.join('Ana')
+        ana.req('POST', '/party/api/reconnect', {'name': 'Ana'})
         self.assertEqual(ana.say('x')[0], 429)
 
     def test_a_retry_after_a_lost_answer_never_doubles_a_line(self):
