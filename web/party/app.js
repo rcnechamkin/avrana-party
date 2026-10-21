@@ -53,7 +53,9 @@ const state = { catalog: null, report: null, shell: null, reachable: null, healt
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
   // round: the briefing on screen (its id)
   // left: the round this document is leaving for; held: the Host's way-out screen on show (goingHost)
-  left: null, held: null, lobbyBusy: false,
+  // moveHeld: a move to a round that arrived while this phone was offline waits for the network
+  // (ADR 0011 decision 3); proven: an answer from Party Core since then showed the box is reachable
+  left: null, held: null, lobbyBusy: false, moveHeld: false, proven: false,
   screen: 'main', declined: null, round: null, game: null, back: null, rulesGame: null,
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
@@ -685,6 +687,7 @@ function refocusFrom(el) {
  * client keeps trying throughout, so the first answer puts everything back by itself. */
 function onLink({ ok, answered }) {
   state.trying = false;
+  if (ok && state.moveHeld) Promise.resolve().then(releaseMove);   // after this answer's own view has been taken
   if (ok) {
     if (state.failingSince === null) return;
     state.failingSince = null;
@@ -1017,10 +1020,15 @@ function goToRound(to) {
 }
 
 function leaveForRound() {
+  const proven = state.proven;                    // read now: releaseMove clears it once this call has been made
   gameOrigins.settled().then(() => {
     const view = party.view();
     const to = view ? destination(view, HOME, state.catalog, addressOf) : null;
     if (to) {
+      // A move that arrives while this phone is offline (a Wi-Fi drop, a wake-up, a poll that was already
+      // on its way) waits for the network (ADR 0011 decision 3): navigating now would leave the phone on
+      // the browser's own error page, which does not come back when the Wi-Fi does.
+      if (!proven && navigator.onLine === false) return holdMove();
       const g = partyGame(state.catalog, locationOf(view).game);
       const round = roundToRemember(view);     // a round this phone plays, while it is on
       if (g && round) recordRound(g, round);   // only once it is really going there
@@ -1034,6 +1042,26 @@ function leaveForRound() {
     }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
+}
+
+/** Wait for the network before moving to a round. The `online` event, or an answer from Party Core to a
+ * try made since this began (the browser's own flag can stay stale), looks again from the latest view,
+ * never from the move that was held: the Party may have moved on while this phone was away. */
+function holdMove() {
+  $('going-text').textContent = `Waiting for the connection to take you to ${gameName(party.view())}…`;   // said, not a spinner alone
+  if (state.moveHeld) return;
+  state.moveHeld = true;
+  window.addEventListener('online', releaseMove, { once: true });
+}
+
+function releaseMove(event) {
+  if (!state.moveHeld) return;
+  state.moveHeld = false;
+  window.removeEventListener('online', releaseMove);
+  state.proven = !(event && event.type === 'online');   // the Party answered: go, whatever the flag says
+  const view = party.view();
+  if (view) onPartyView(view, view);
+  state.proven = false;
 }
 
 /** The navigation to the round has not arrived (lib/going-watchdog.js): one retry has been made, and
