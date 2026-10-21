@@ -1,0 +1,17 @@
+BLOCKED  (checked 2026-10-21T22:45:00Z)
+candidate: Party 8de7ef20835a1d98ec55cb772c216cbd348084fa, Games 1dc48d22fc189cc6e92fce23109d639230c471df (CANDIDATE_OK)
+preflight: NOT_READY/FAIL, taken 2026-10-21T22:30:00Z (15.0 min before this check)
+BLOCKED BY:
+  - preflight: verdict NOT_READY
+  - preflight: blocking check no_live_session (runtime) is FAIL - example: Party Core reports a live BLUFF session (state active)
+  - preflight: blocking check nginx_config (web) is UNKNOWN - example: nginx -t needs root and the preflight was not run with sudo
+WARNINGS:
+  - preflight check certificate_names: example: the installed certificate covers party.avrana.net only
+NOTES:
+  - deployed pair: Party c59f1c819de1, Games a4489729e1d0; the deploy changes: Party, Games
+NOT PROVEN (the preflight lists these as physically unverified; a clear result does not cover them):
+  - Wi-Fi association and throughput of four phones
+  - iPhone Safari and Android Chrome behavior
+rollback target (last known good): Party c59f1c819de169b55d0bdadde34ae5cec57fc74a, Games a4489729e1d0522a302b0475a7631ed90c219812
+
+No owner commands are printed: the prerequisites are not met.

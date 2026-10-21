@@ -1,0 +1,1 @@
+REPRODUCED: every field of docs/findings/release-candidate/2026-10-21-release-candidate.json was re-derived from the two repositories and agrees

@@ -1,0 +1,44 @@
+{
+  "schema": "avrana.release-prereq/v0",
+  "checked_at": "2026-10-21T22:45:00Z",
+  "result": "BLOCKED",
+  "manifest": {
+    "path": "docs/findings/release-candidate/2026-10-21-release-candidate.json",
+    "party": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
+    "games": "1dc48d22fc189cc6e92fce23109d639230c471df",
+    "verdict": "CANDIDATE_OK"
+  },
+  "preflight": {
+    "path": "tests/fixtures/release_candidate/preflight-not-ready.json",
+    "generated_at": "2026-10-21T22:30:00Z",
+    "age_minutes": 15.0,
+    "verdict": "NOT_READY",
+    "overall": "FAIL",
+    "blocking_checks": [
+      "no_live_session",
+      "nginx_config"
+    ]
+  },
+  "rollback_target": {
+    "party_sha": "c59f1c819de169b55d0bdadde34ae5cec57fc74a",
+    "games_sha": "a4489729e1d0522a302b0475a7631ed90c219812",
+    "smoke_at": "2026-10-06T18:00:00Z",
+    "recorded_at": "2026-10-06T18:00:01Z"
+  },
+  "blocked_by": [
+    "preflight: verdict NOT_READY",
+    "preflight: blocking check no_live_session (runtime) is FAIL - example: Party Core reports a live BLUFF session (state active)",
+    "preflight: blocking check nginx_config (web) is UNKNOWN - example: nginx -t needs root and the preflight was not run with sudo"
+  ],
+  "warnings": [
+    "preflight check certificate_names: example: the installed certificate covers party.avrana.net only"
+  ],
+  "notes": [
+    "deployed pair: Party c59f1c819de1, Games a4489729e1d0; the deploy changes: Party, Games"
+  ],
+  "physically_unverified": [
+    "Wi-Fi association and throughput of four phones",
+    "iPhone Safari and Android Chrome behavior"
+  ],
+  "owner_commands": null
+}

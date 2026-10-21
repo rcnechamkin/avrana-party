@@ -1,0 +1,74 @@
+{
+  "schema": "avrana.release-rehearsal/v0",
+  "generated_at": "2026-10-21T22:24:03Z",
+  "candidate": {
+    "party": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
+    "games": "1dc48d22fc189cc6e92fce23109d639230c471df"
+  },
+  "before": {
+    "party": "c59f1c819de169b55d0bdadde34ae5cec57fc74a",
+    "games": "a4489729e1d0522a302b0475a7631ed90c219812",
+    "source": "explicit (--before-party/--before-games)"
+  },
+  "steps": [
+    {
+      "id": "setup",
+      "title": "throwaway clones of both repositories with a local origin (no network); the candidate ops/deploy.sh exported",
+      "status": "PASS",
+      "detail": "checkouts detached at the before pair; the origins are local bare repositories inside the scratch root",
+      "excerpt": ""
+    },
+    {
+      "id": "seed-last-known-good",
+      "title": "seed a last-known-good record for the before pair",
+      "status": "PASS",
+      "detail": "the record names Party c59f1c819de1 / Games a4489729e1d0",
+      "excerpt": "$ python -m avrana.ops.manifest write\n{\"written\": \"C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/state/deployment.json\", \"party\": \"c59f1c819de1\", \"games\": \"a4489729e1d0\", \"dirty\": false}\n$ python -m avrana.ops.manifest smoke\nC:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/state/deployment.json: smoke passed\n$ python -m avrana.ops.manifest last-known-good\nC:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/state/last-known-good.json: last known good recorded"
+    },
+    {
+      "id": "deploy-dry-run",
+      "title": "ops/deploy.sh --party 8de7ef20835a --games 1dc48d22fc18 --dry-run",
+      "status": "PASS",
+      "detail": "the candidate pair is planned from the before pair; exit 0, the plan is as expected, the scratch root is unchanged",
+      "excerpt": "[22:22:47Z] before: party c59f1c819de169b55d0bdadde34ae5cec57fc74a, games a4489729e1d0522a302b0475a7631ed90c219812\n[22:22:56Z] contract: compatible (tools/contract_check.py on the two exact commits)\n[22:23:00Z] party core: unknown\nunknown\n[22:23:01Z] plan: party c59f1c819de169b55d0bdadde34ae5cec57fc74a -> 8de7ef20835a1d98ec55cb772c216cbd348084fa (changed=1), games a4489729e1d0522a302b0475a7631ed90c219812 -> 1dc48d22fc189cc6e92fce23109d639230c471df (changed=1)\n[22:23:01Z] plan: restart avrana-party-core avranaparty-arcade avranaparty-games; web release yes\n[22:23:03Z] nginx site: could not check party.avrana.net against /etc/avrana-party/tls/current/fullchain.pem\n (unreadable here? root is needed)\n[22:23:03Z] nginx site: could not check games.avrana.net against /etc/avrana-party/tls/current/fullchain.pem\n (unreadable here? root is needed)\n[22:23:03Z] nginx site: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/nginx/sites-available/avrana-party is absent; the deployed file (421 lines) would be created\n[22:23:05Z] prune: keeping the newest 5 of each (--keep), plus what the running state and a rollback point at\n[22:23:05Z] prune: party code releases: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/opt/avrana-party/releases is not a plain directory; nothing removed\n[22:23:05Z] prune: games code releases: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/opt/avrana-party-games/releases is not a plain directory; nothing removed\n[22:23:05Z] prune: web releases: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/web/releases is not a plain directory; nothing removed\n[22:23:05Z] prune: deploy backups: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/backups is not a plain directory; nothing removed\n[22:23:06Z] prune: 0 directories would be removed\n[22:23:06Z] dry run: nothing changed"
+    },
+    {
+      "id": "simulate-deployed",
+      "title": "move the scratch checkouts to the candidate pair (stands for a finished deployment)",
+      "status": "PASS",
+      "detail": "scratch only; the last-known-good record still names the before pair",
+      "excerpt": ""
+    },
+    {
+      "id": "rollback-dry-run",
+      "title": "ops/deploy.sh --rollback --dry-run",
+      "status": "PASS",
+      "detail": "the rollback target is the before pair; exit 0, the plan is as expected, the scratch root is unchanged",
+      "excerpt": "[22:23:48Z] manual: target is party c59f1c819de169b55d0bdadde34ae5cec57fc74a, games a4489729e1d0522a302b0475a7631ed90c219812\n[22:23:50Z] before: party 8de7ef20835a1d98ec55cb772c216cbd348084fa, games 1dc48d22fc189cc6e92fce23109d639230c471df\n[22:23:51Z] contract: not applied to a manual (it returns to a pair that already ran)\n[22:23:53Z] party core: unknown\nunknown\n[22:23:53Z] plan: party 8de7ef20835a1d98ec55cb772c216cbd348084fa -> c59f1c819de169b55d0bdadde34ae5cec57fc74a (changed=1), games 1dc48d22fc189cc6e92fce23109d639230c471df -> a4489729e1d0522a302b0475a7631ed90c219812 (changed=1)\n[22:23:54Z] plan: restart avrana-party-core avranaparty-arcade avranaparty-games; web release yes\n[22:23:55Z] nginx site: could not check party.avrana.net against /etc/avrana-party/tls/current/fullchain.pem\n (unreadable here? root is needed)\n[22:23:55Z] nginx site: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/nginx/sites-available/avrana-party is absent; the deployed file (244 lines) would be created\n[22:23:56Z] prune: keeping the newest 5 of each (--keep), plus what the running state and a rollback point at\n[22:23:56Z] prune: party code releases: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/opt/avrana-party/releases is not a plain directory; nothing removed\n[22:23:56Z] prune: games code releases: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/opt/avrana-party-games/releases is not a plain directory; nothing removed\n[22:23:56Z] prune: web releases: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/web/releases is not a plain directory; nothing removed\n[22:23:56Z] prune: deploy backups: C:/Users/cnech/AppData/Local/Temp/avrana-rc-rehearsal-pfk07wm5/backups is not a plain directory; nothing removed\n[22:23:56Z] prune: 0 directories would be removed\n[22:23:56Z] dry run: nothing changed"
+    },
+    {
+      "id": "no-side-effects",
+      "title": "no backup directory, web release, /opt release, nginx file, journal or temporary file was left",
+      "status": "PASS",
+      "detail": "only the seeded state/ files exist, and the temporary directory is empty",
+      "excerpt": ""
+    },
+    {
+      "id": "real-repositories-unchanged",
+      "title": "both real repositories have the same HEAD, branch and status as before the rehearsal",
+      "status": "PASS",
+      "detail": "Party 20df1e307b45 on claude/avr-699-release-candidate, Games e0d20357ef71 on main",
+      "excerpt": ""
+    }
+  ],
+  "cannot_reproduce": [
+    "root: nothing runs as root; file ownership, sudo -u and the root-only certificate directory are not exercised",
+    "systemd: no unit is stopped, started or checked; the real run only restarts them after the commit point",
+    "nginx: the site file is compared, never installed; nginx -t and the reload are not run",
+    "the real /opt/avrana-party and /opt/avrana-party-games releases, the web release flip and the Pi's own checkouts",
+    "the post-deploy smoke, the manifest write and the last-known-good record of a REAL deployment (the record here is seeded with avrana.ops.manifest to stand for the earlier deployment)",
+    "a real rollback: only --rollback --dry-run is run; the \"deployed\" state is a throwaway checkout moved by this tool",
+    "phones, Wi-Fi, the game origin certificate and anything physical"
+  ],
+  "verdict": "REHEARSAL_PASSED"
+}
