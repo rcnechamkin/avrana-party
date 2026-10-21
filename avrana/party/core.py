@@ -503,10 +503,13 @@ class PartyCore:
             raise Refused('host_uses_party_home', 'As the Host, leave from Party Home, where it says who hosts next.')
         if self.location()['at'] not in ('game', 'results'):
             raise Refused('not_in_round', 'Leave from Party Home.')
+        now = self.clock()
+        live = m.exit_id is not None and now < m.exit_until
         if m.exit_id is None:
             m.exit_id = new_id('exit')
-        m.exit_until = self.clock() + EXIT_INTENT
-        self._commit()
+        m.exit_until = now + EXIT_INTENT
+        if not live:
+            self._commit()                  # wakes this device's pages; a renewal moves nothing new
 
     def stay(self, device_id):
         """Stay in the Party: close this device's exit request, so its pages follow the party again.

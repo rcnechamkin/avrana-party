@@ -45,7 +45,7 @@ const PHONE_CHECKS = ['secure_context', 'webrtc', 'video.h264', 'wake_lock', 'we
 const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
 
-const state = { exit: null, staying: false, catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
+const state = { exit: null, staying: false, leaving: false, catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   gamesKey: null, partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
   mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatSaid: 0,
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
@@ -419,8 +419,8 @@ function exitOpen(view) {
     return false;
   }
   if (!state.exit && !(ex && ex.live)) return false;            // nothing asked, or asked too long ago
+  show('main');                                                 // before the request is held: a move closes sheets
   state.exit = ex.id;
-  show('main');
   renderParty(view);
   openLeave({ fromGame: true });
   return true;
@@ -428,6 +428,7 @@ function exitOpen(view) {
 
 /** Stay in the Party: close the request; the view that answers takes the page where the party is. */
 async function stayInParty() {
+  if (state.leaving) return;            // Leave is on its way: it answers the question
   state.staying = true;
   const res = await party.stay();
   state.staying = false;
@@ -442,7 +443,9 @@ async function stayInParty() {
 
 async function confirmLeave() {
   $('leave-confirm').disabled = true;
+  state.leaving = true;                   // the sheet cannot be dismissed (or mean Stay) while Leave is on its way
   const res = await party.leave();
+  state.leaving = false;
   if (!res.ok) {          // not confirmed: Party Core may or may not have removed this phone, so do not claim it
     $('leave-note').textContent = 'Couldn’t confirm that you left. Check the Wi-Fi and try again.';
     $('leave-confirm').disabled = false;
@@ -1548,7 +1551,9 @@ $('party-leave').onclick = () => openLeave();
 $('leave-confirm').onclick = () => confirmLeave();
 $('leave-cancel').onclick = () => $('leave').close();
 // Closing the sheet any way (Stay, its close button, Escape) while a guest's exit request is open is Stay.
-$('leave').addEventListener('close', () => { if (state.exit && !state.staying) stayInParty(); });
+// Closing the sheet any other way (Back, which closes sheets) is Stay too: it changes nothing.
+$('leave').addEventListener('close', () => { if (state.exit && !state.staying && !state.leaving) stayInParty(); });
+$('leave').addEventListener('cancel', (e) => { if (state.leaving) e.preventDefault(); });
 $('leave-close').onclick = () => $('leave').close();
 $('reconnect-btn').onclick = () => reconnect();
 $('social-tabs').onclick = (event) => {

@@ -93,6 +93,13 @@ class ExpiryAndRepeats(unittest.TestCase):
         ex = exit_of(pc, 'device-b')
         self.assertEqual((ex['id'], ex['live']), (first, True))
 
+    def test_a_live_renewal_wakes_nobody_so_a_hosts_move_is_not_made_stale(self):
+        pc, _, _ = table()
+        pc.request_exit('device-b')
+        version = pc.party.version
+        pc.request_exit('device-b')
+        self.assertEqual(pc.party.version, version)
+
     def test_stay_closes_it_and_is_idempotent(self):
         pc, _, _ = table()
         pc.stay('device-b')                                           # nothing open: nothing changes

@@ -135,6 +135,12 @@ in §7 for review.
     is closed (Stay here or in another tab, Leave, Reconnect). The 60 s only limits how long pages are
     moved: after it, a reload or a game page stays where it is.
   - **Offline at Stay**, the sheet stays and says it could not reach the Party.
+  - **While Leave is on its way** the sheet cannot be dismissed, so a Stay cannot race it.
+  - Anything else that closes the sheet (the phone's Back) also means Stay, which changes nothing.
+  - **Back from Party Home to the game** while the request is live (up to 60 s) brings the page back
+    here: Back is not Stay. Stay or the expiry ends that.
+  - **A new request after a Stay** gets a new id. A tab still showing the old one closes its sheet and
+    shows the new one on its next view.
 - **Tests:**
   - `tests/unit/test_party_guest_exit.py` (Core and HTTP: refusals, origins, cookies, expiry, repeats,
     tabs, succession);

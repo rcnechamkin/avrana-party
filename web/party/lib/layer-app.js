@@ -319,7 +319,13 @@ $('layer-exit-ask').addEventListener('click', async () => {
   const res = await client.requestExit();
   state.busy = false;
   $('layer-exit-ask').disabled = false;
-  if (res.ok) { $('layer-exit-note').textContent = 'Taking you to Party Home…'; return; }   // the page follows
+  $('layer-exit-ask').focus({ preventScroll: true });
+  if (res.ok) {                                          // the page follows; if it does not, say so again later
+    const note = $('layer-exit-note'), was = note.textContent;
+    note.textContent = 'Taking you to Party Home…';
+    setTimeout(() => { note.textContent = was; }, 60_000);
+    return;
+  }
   $('layer-exit-error').textContent = res.error === 'offline' || res.status >= 500
     ? 'Couldn’t reach the Party. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
 });

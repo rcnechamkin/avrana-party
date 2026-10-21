@@ -284,6 +284,24 @@ test('guest exit: the Host is refused, and a game page cannot ask on a guest\'s 
   await close(ana, ben);
 });
 
+test('guest exit: while Leave is on its way, Escape cannot turn it into a Stay', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  await askToLeave(ben);
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  await ben.page.route(`${PARTY}/party/api/leave`, async (route) => { await held; await route.continue(); });
+  const stays: string[] = [];
+  ben.page.on('request', (r) => { if (r.url().endsWith('/party/api/leave/stay')) stays.push(r.url()); });
+  await ben.page.locator('#leave-confirm').click();
+  await ben.page.keyboard.press('Escape');
+  await expect(sheet(ben.page)).toBeVisible();                                  // not dismissed mid-Leave
+  release();
+  await expect(ben.page.locator('#reconnect')).toBeVisible();
+  expect(stays).toEqual([]);
+  expect(ben.page.url()).toBe(`${PARTY}/party/`);
+  await close(ana, ben);
+});
+
 test('guest exit: a second tab shares the question, and Stay in one releases the other', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
   const tab = await ben.context.newPage();
