@@ -121,6 +121,22 @@ not prove TLS, production cookies, systemd identities/credentials/hardening, ngi
 real Safari/Android phones. Checkers-specific real-systemd provisioning and phase-2 boundary
 proof is the `checkers` job of `Service trust proof` above (disposable runner, not the Pi); the stand-in proof is not Checkers evidence.
 
+### A `.avrgame` package against the real Party (AVR-676, EXPERIMENTAL)
+
+`AVRANA_NATIVE_PACKAGE=/path/game.avrgame npx playwright test -c playwright.provider.config.ts tests/provider/native-package.spec.ts`
+(Linux; `AVRANA_GAMES_REPO` as above, for the shell's harness). `server.py --native-package` validates and
+unpacks the package with the Party's own `avrana.avrgame`, writes its install record with the operator's
+`--grant`s (`AVRANA_NATIVE_GRANTS`, default `party_roster`, checked by install-game's own rule), serves the
+effective catalog `catalog_overlay` builds from that record (and any package artwork), and runs the package's
+`server.args` from the staged tree as a socket-activated child of real Party Core, on the game origin. The spec
+is generic: as many players as the game's `players.max` (at least two) and then a watcher, seated through the
+real bridge; a package with a Party pregame goes through the Party's Play/Watch setup first. Nothing of the
+Party is on the game origin (no cookie, no direct Party API call), a reload keeps the seat, and the Host's End
+returns everyone with the game's authority gone. `AVRANA_NATIVE_DRIVER=/path/driver.mjs` (the game developer's own module,
+`export async function step(page)` returning `done`, `acted` or `waiting`) also plays a whole game through the
+page and checks the Party recorded a completed round. Python packages only. Same limits as the Checkers
+scenario: no systemd, nginx, TLS, Pi or real phones; staging without root is not install acceptance.
+
 Result projection privacy is pinned by `test_party_result.py` (observer/departed refusal,
 allowlisted detached summaries, missing/refused/abandoned result exclusion and next-session
 replacement) and `party-bridge.test.mjs` (no summary crosses the bridge). Executed results belong
