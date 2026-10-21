@@ -25,9 +25,15 @@ parser.add_argument('--bind', default='127.0.0.1')
 parser.add_argument('--game-origin', action='store_true')
 parser.add_argument('--expo-game', action='store_true', help='also run EXPO as a real Party game (AVR-292); off, it cannot start here')
 parser.add_argument('--native-game', help='run a grant-declared native process (POSIX tests only)')
+parser.add_argument('--native-package', metavar='FILE.avrgame',
+                    help='run an EXPERIMENTAL .avrgame package as a native process (AVR-676, POSIX tests only)')
+parser.add_argument('--grant', action='append', default=[], metavar='PERM',
+                    help="with --native-package: a permission the operator allows, as install-game's --grant")
 args = parser.parse_args()
-if args.native_game and not (args.party_session and args.game_origin):
-    parser.error('--native-game requires --party-session --game-origin')
+if (args.native_game or args.native_package) and not (args.party_session and args.game_origin):
+    parser.error('--native-game and --native-package require --party-session --game-origin')
+if args.native_game and args.native_package:
+    parser.error('--native-game and --native-package: one or the other')
 PARTY_HOST, GAMES_HOST = f'party.avrana.test:{args.port}', f'games.avrana.test:{args.port}'
 if args.game_origin:
     import os
@@ -120,9 +126,10 @@ async def shell_headers(request, call_next):
 if args.party_session:
     public = {args.bind} - {'127.0.0.1'}
     native = None
-    if args.native_game:
+    if args.native_game or args.native_package:
         from native_runtime import NativeRuntime
-        native = NativeRuntime(platform, games, args.native_game, f'http://{PARTY_HOST}')
+        native = NativeRuntime(platform, games, args.native_game, f'http://{PARTY_HOST}', package=args.native_package,
+                               allow=args.grant)
         # Browser routes have proxy headers; signed control routes are never exposed by the front.
         import anyio
         from starlette.responses import Response
@@ -145,7 +152,24 @@ if args.party_session:
                     response.headers[key] = value
             return response
         donor.app.router.routes.insert(0, __import__('starlette.routing', fromlist=['Route']).Route(
-            f'/games/{args.native_game}/{{rest:path}}', native_page, methods=['GET', 'POST']))
+            f'/games/{native.slug}/{{rest:path}}', native_page, methods=['GET', 'POST']))
+        if native.catalog_text:
+            # What nginx serves once a package is installed: the effective catalog and its artwork.
+            from starlette.responses import Response as Raw
+            from starlette.routing import Route
+            catalog_body = native.catalog_text.encode('utf-8')
+
+            async def effective_catalog(request: Request):
+                return Raw(catalog_body, media_type='application/json', headers={'Cache-Control': 'no-cache'})
+
+            async def package_art(request: Request):
+                data = native.art.get(request.path_params['rest'])
+                if data is None:
+                    return JSONResponse({'error': 'not_found'}, status_code=404)
+                kind = {'webp': 'image/webp', 'png': 'image/png', 'jpg': 'image/jpeg'}[request.path_params['rest'].rsplit('.', 1)[-1]]
+                return Raw(data, media_type=kind, headers={'X-Content-Type-Options': 'nosniff'})
+            donor.app.router.routes.insert(0, Route('/party/catalog.json', effective_catalog, methods=['GET']))
+            donor.app.router.routes.insert(0, Route('/party/pkgart/{rest:path}', package_art, methods=['GET']))
     if args.game_origin:
         party_harness.attach(donor.app, party_key, args.port, public | {'party.avrana.test'}, party_port,
                              game_origins={f'http://{GAMES_HOST}': '*'}, native=native, expo=args.expo_game)
