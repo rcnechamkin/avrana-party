@@ -106,21 +106,30 @@ stateDiagram-v2
   away --> removed: low-level removal or administrative cleanup
   playing --> removed: low-level removal or administrative cleanup
   removed --> here: automatic join if admission permits
+  here --> left: Leave Party (AVR-580)
+  away --> left: Leave Party
+  playing --> left: Leave Party
+  left --> here: explicit Reconnect only; automatic join is refused
 ```
 
-Normal browser flow has **no Leave Party UI**. Silence, screen lock, a tab closing or navigation
-into a game does not itself remove membership. Core derives liveness from authenticated Party
+**Leave Party (AVR-580, source; ADR 0011 amendment 2026-10-18):** a member can deliberately leave
+from the Party page, after a confirmation that says what happens. Core removes them from the
+connected roster and refuses every automatic join for that device (any tab, refresh, wake, stale
+page) until their own Reconnect; Reconnect follows the Party's location as it is then. It is
+idempotent, never moves the Party and never touches a round. Silence, screen lock, a tab closing or
+navigation into a game does not itself remove membership; that stays away-grace.
+(The text below describes presence for members who have not left; `left` above is left-by-choice.) Core derives liveness from authenticated Party
 requests (polls, game heartbeats, ticket fetches); active-session members count as playing.
-The game owns its own disconnect/autopilot timers. The lower-level `leave` operation still
-exists for removal/cleanup and tests; kick/admin/session cleanup policies still need explicit
+The game owns its own disconnect/autopilot timers. `leave` is now the person's own Leave; kick/admin/session cleanup policies still need explicit
 semantics. A future kick policy must prevent automatic re-admission for that Party. No kick UI
 or Public/Demo admission is claimed implemented here.
 
 ### Host role
 
 Grace and succession are implemented; voluntary transfer below remains the broader design.
-Current Core selects the earliest-joined eligible member who is here or playing. Removal uses
-the low-level operation; no ordinary Leave button is implied.
+Current Core selects the earliest-joined eligible member who is here or playing. A Host's
+Leave (AVR-580) uses the same rule at once, with confirmation; with no eligible successor the role
+is vacant and nothing is ended (owner decision 2026-10-18, `PartyCore._no_successor`).
 
 ```mermaid
 stateDiagram-v2

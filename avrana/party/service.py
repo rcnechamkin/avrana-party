@@ -11,7 +11,8 @@ Routes:
     POST /party/api/join        {name}       explicit Join; the only request that issues a cookie
     POST /party/api/heartbeat   {}           "still here" from a page that is not Party Home
     POST /party/api/rename      {name}
-    POST /party/api/leave       {}
+    POST /party/api/leave       {}                  (idempotent; the device stays out until reconnect)
+    POST /party/api/reconnect   {name, avatar?}     (the only way back after leave; join is refused)
     POST /party/api/host        {to, if_version}
     POST /party/api/host/spectate  {if_version}          host: stop hosting and watch, during setup
                                                          or at results (AVR-132)
@@ -480,7 +481,7 @@ def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
               'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
               'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409, 'no_successor': 409,
-              'player_count': 409, 'not_results': 409}.get(e.code, 400)
+              'player_count': 409, 'not_results': 409, 'left_party': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
 
@@ -621,6 +622,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return route(self, device, body)
             if path == '/party/api/join':
                 return self._join(device, body)
+            if path == '/party/api/reconnect':       # the person's own opt back in after Leave
+                return self._join(device, body, explicit=True)
             if device is None:
                 return _send(self, 403, {'error': 'not_member', 'message': 'Join the party first.'})
             if path == MESSAGES_ROUTE:
@@ -692,7 +695,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _local_peer(self):
         return self.client_address[0] in ('127.0.0.1', '::1')
 
-    def _join(self, device, body):
+    def _join(self, device, body, explicit=False):
         cookie = None
         limited = self.cfg.mode == core.LIMITED
         if device is None and identity.ambiguous(self.headers.get('Cookie'),
@@ -710,7 +713,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 token, device = self.service.store.issue()
                 cookie = identity.set_cookie(token, self.cfg.secure_cookie)
-        self.service.call('join', device, body.get('name'), body.get('avatar'), self.cfg.mode)
+        try:
+            self.service.call('reconnect' if explicit else 'join', device, body.get('name'), body.get('avatar'),
+                              self.cfg.mode)
+        except core.Refused as e:
+            return _refused(self, e)       # left_party: only a device that already has a member can be refused, so it already has its cookie
         return _send(self, 200, self._view(device), cookie)
 
 
