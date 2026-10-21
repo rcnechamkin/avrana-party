@@ -204,7 +204,16 @@ test('over the game origin no Leave is confirmed in the frame; a guest is offere
 
 // ---- A guest's exit (AVR-580 guest exit, Party PR #184) -------------------------------------------
 const sheet = (page: Page) => page.locator('#leave');
-const exitOf = async (page: Page) => (await (await page.context().request.get(`${PARTY}/party/api/state`)).json()).me?.exit ?? null;
+/** This phone's Party view, read from a Party-origin page of its own (names like *.avrana.test resolve
+ * only inside the browser). A state read is a heartbeat; it changes nothing else. */
+async function stateOf(context: BrowserContext) {
+  const page = await context.newPage();
+  const res = await page.goto(`${PARTY}/party/api/state`);
+  const body = await res!.json();
+  await page.close();
+  return body;
+}
+const exitOf = async (page: Page) => (await stateOf(page.context())).me?.exit ?? null;
 async function askToLeave(p: Phone) {
   await openDrawer(p.page);
   await layer(p.page).locator('#layer-exit-ask').click();
@@ -223,7 +232,7 @@ async function inBluff(p: Phone | { page: Page }) {
 test('guest exit: the request alone changes nothing; Leave is confirmed on top-level Party Home; the Host plays on', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
   await askToLeave(ben);
-  const asked = await (await ben.context.request.get(`${PARTY}/party/api/state`)).json();
+  const asked = await stateOf(ben.context);
   expect(asked.me).toBeTruthy();                                                // still a member: the request only asked
   expect(asked.me.exit.live).toBe(true);
   expect(asked.members.map((m: any) => m.name).sort()).toEqual(['Ana', 'Ben']);
@@ -232,7 +241,7 @@ test('guest exit: the request alone changes nothing; Leave is confirmed on top-l
   await ben.page.locator('#leave-confirm').click();
   await expect(sheet(ben.page)).toBeHidden();
   await expect(ben.page.locator('#reconnect')).toBeVisible();                  // #167's Reconnect?
-  const after = await (await ana.context.request.get(`${PARTY}/party/api/state`)).json();
+  const after = await stateOf(ana.context);
   expect(after.members.map((m: any) => m.name)).toEqual(['Ana']);
   expect(after.state).toBe('active');                                           // the round goes on
   expect(ana.page.url().startsWith(`${GAMES}/games/bluff/`)).toBe(true);
