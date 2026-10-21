@@ -152,7 +152,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   during a round is a change to ADR 0010's role boundary whose details (the seat, and what the
   quitter may see) are still open. Decisions 1 to 4, 6 and 7 are unchanged. Design:
   [2026-10-16 Control Center](../design/proposals/2026-10-16-control-center.md).
-- **2026-10-18 (owner decision, AVR-580; implemented in source, PROPOSED for ADR review).** Decision 2
+- **2026-10-18 (owner decision, AVR-580; ACCEPTED by the owner 2026-10-21).** Decision 2
   ("There is no Join and no Leave button") is amended: **Leave Party** is an intentional departure
   from the membership, and nothing else. It is not Home, End, a switch, hand-over or Quit & Spectate,
   and a non-host's Leave never moves the Party. Presence stays automatic *except* for a device that
@@ -175,5 +175,7 @@ The decision above is unchanged. This adds the product-level invariant it alread
   offered on the Party's own pages and in the Party layer over a Party-origin page; over a game page of
   another origin the drawer offers only End and Party Home to the Host (the D3 limit, `actions()`) and no Leave
   (`layer-app.js`), so Leave, like hand-over, is done from Party Home. A guest on such a page has no way to Party
-  Home during the round, so a guest cannot Leave until the round ends; whether to allow a guest's Leave there
-  is an open owner decision (it would widen D3). Not deployed; not checked on a phone.
+  Home during the round, so with this amendment alone a guest cannot Leave until the round ends. **Owner
+  decision (2026-10-21):** a guest there gets a safe exit whose final confirmation is on top-level Party Home,
+  never in the coverable frame, with no new bridge capability and no change to the Host's limit
+  (Party PR #184); it is built as a separate change. Not deployed; not checked on a phone.
