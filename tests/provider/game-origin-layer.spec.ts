@@ -184,17 +184,146 @@ test('the Host on the game origin is offered only End and Party Home, asked firs
   await close(ana, ben);
 });
 
-test('Leave Party is not offered over the game origin (AVR-580 under D3): not to a guest, not to the Host', async ({ browser, request }) => {
+test('over the game origin no Leave is confirmed in the frame; a guest is offered only the request, the Host nothing new (AVR-580, D3)', async ({ browser, request }) => {
   const { ana, ben } = await bluff(browser, request);
   for (const p of [ben, ana]) {
     await openDrawer(p.page);
     await expect(layer(p.page).locator('#layer-people-list li')).toHaveCount(2);     // the drawer has rendered a view
-    await expect(layer(p.page).locator('#layer-leave')).toBeHidden();
+    await expect(layer(p.page).locator('#layer-leave')).toBeHidden();                // #167's in-frame confirmation: never here
     await closeDrawer(p.page);
   }
-  // The same phone on the Party's own page is offered Leave there (Party Home's row; party lane covers the flow).
-  const view = await (await ben.page.goto(`${PARTY}/party/api/state`))!.json();
-  expect(view.me.leave).toBeTruthy();
+  await openDrawer(ben.page);
+  await expect(layer(ben.page).locator('#layer-exit-ask')).toBeVisible();
+  await expect(layer(ben.page).locator('#layer-exit-ask')).toHaveAccessibleDescription(/confirm on Party Home/);
+  await closeDrawer(ben.page);
+  await openDrawer(ana.page);
+  await expect(layer(ana.page).locator('#layer-exit')).toBeHidden();                 // the Host leaves from Party Home
+  await closeDrawer(ana.page);
+  await close(ana, ben);
+});
+
+// ---- A guest's exit (AVR-580 guest exit, Party PR #184) -------------------------------------------
+const sheet = (page: Page) => page.locator('#leave');
+const exitOf = async (page: Page) => (await (await page.context().request.get(`${PARTY}/party/api/state`)).json()).me?.exit ?? null;
+async function askToLeave(p: Phone) {
+  await openDrawer(p.page);
+  await layer(p.page).locator('#layer-exit-ask').click();
+  await p.page.waitForURL(`${PARTY}/party/`, { timeout: 30_000 });              // the bridge's own navigate
+  await expect(sheet(p.page)).toBeVisible();
+  await expect(p.page.locator('#leave-from-game')).toBeVisible();
+  await expect(p.page.locator('#leave-cancel')).toHaveText('Stay in Party');
+  await expect(p.page.locator('#leave-cancel')).toBeFocused();                  // the choice that changes nothing
+}
+async function inBluff(p: Phone | { page: Page }) {
+  await p.page.waitForURL(`${GAMES}/games/bluff/**`, { timeout: 30_000 });
+  await expect.poll(async () => (await rx(p.page)).filter((m: any) => m.type === 'state' && m.game).at(-1)?.game?.me?.cards?.length ?? 0,
+    { timeout: 30_000 }).toBe(2);
+}
+
+test('guest exit: the request alone changes nothing; Leave is confirmed on top-level Party Home; the Host plays on', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  await askToLeave(ben);
+  const asked = await (await ben.context.request.get(`${PARTY}/party/api/state`)).json();
+  expect(asked.me).toBeTruthy();                                                // still a member: the request only asked
+  expect(asked.me.exit.live).toBe(true);
+  expect(asked.members.map((m: any) => m.name).sort()).toEqual(['Ana', 'Ben']);
+  expect(ana.page.url().startsWith(`${GAMES}/games/bluff/`)).toBe(true);       // nobody else moved
+  expect(await exitOf(ana.page)).toBeNull();                                    // and nobody else hears of it
+  await ben.page.locator('#leave-confirm').click();
+  await expect(sheet(ben.page)).toBeHidden();
+  await expect(ben.page.locator('#reconnect')).toBeVisible();                  // #167's Reconnect?
+  const after = await (await ana.context.request.get(`${PARTY}/party/api/state`)).json();
+  expect(after.members.map((m: any) => m.name)).toEqual(['Ana']);
+  expect(after.state).toBe('active');                                           // the round goes on
+  expect(ana.page.url().startsWith(`${GAMES}/games/bluff/`)).toBe(true);
+  await holdsNoParty(ana);
+  await ben.page.reload();                                                      // the choice holds: no automatic rejoin
+  await expect(ben.page.locator('#reconnect')).toBeVisible();
+  await close(ana, ben);
+});
+
+test('guest exit: Stay, the close button and Escape all keep the seat and take the guest back to the round', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  for (const how of ['stay', 'escape', 'close']) {
+    if (how !== 'stay') { await ben.page.goto(`${GAMES}/games/bluff/?avrana=1`); await placed(ben.page); }
+    await askToLeave(ben);
+    if (how === 'stay') await ben.page.locator('#leave-cancel').click();
+    else if (how === 'escape') await ben.page.keyboard.press('Escape');
+    else await ben.page.locator('#leave-close').click();
+    await inBluff(ben);
+    expect(await exitOf(ben.page)).toBeNull();
+    await holdsNoParty(ben);
+  }
+  await close(ana, ben);
+});
+
+test('guest exit: the Host is refused, and a game page cannot ask on a guest\'s behalf', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  // The Host, from the Party's own origin and with the Host's own cookie: refused by Party Core.
+  const host = await ana.context.newPage();
+  await host.goto(`${PARTY}/party/api/state`);
+  const refused = await api(host, 'leave/request', {});
+  expect([refused.status, refused.body.error]).toEqual([403, 'host_uses_party_home']);
+  await host.close();
+  // The game page itself (the game origin, same site): a JSON post is stopped before it is sent (no
+  // CORS), and a simple no-cors post reaches the Party without an allowed Origin and is refused.
+  const tried = await ben.page.evaluate(async (party) => {
+    const out: string[] = [];
+    try {
+      await fetch(party + '/party/api/leave/request', { method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      out.push('sent');
+    } catch { out.push('blocked'); }
+    try { await fetch(party + '/party/api/leave/request', { method: 'POST', mode: 'no-cors', credentials: 'include', body: '{}' }); out.push('opaque'); }
+    catch { out.push('blocked'); }
+    return out;
+  }, PARTY);
+  expect(tried[0]).toBe('blocked');
+  expect(await exitOf(ben.page)).toBeNull();                                   // nothing was asked
+  expect(ben.page.url().startsWith(`${GAMES}/games/bluff/`)).toBe(true);
+  await close(ana, ben);
+});
+
+test('guest exit: a second tab shares the question, and Stay in one releases the other', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  const tab = await ben.context.newPage();
+  await tab.goto(`${GAMES}/games/bluff/?avrana=1`);
+  await placed(tab);
+  await askToLeave(ben);
+  await tab.waitForURL(`${PARTY}/party/`, { timeout: 30_000 });                  // the same device's other game page
+  await expect(sheet(tab)).toBeVisible();
+  await tab.locator('#leave-cancel').click();
+  await tab.waitForURL(`${GAMES}/games/bluff/**`, { timeout: 30_000 });
+  await inBluff(ben);                                                            // the first tab's question closed too
+  await close(ana, ben);
+});
+
+test('guest exit: offline at Stay, the question stays and says so; back online, Stay works', async ({ browser, request }) => {
+  const { ana, ben } = await bluff(browser, request);
+  await askToLeave(ben);
+  await ben.context.setOffline(true);
+  await ben.page.locator('#leave-cancel').click();
+  await expect(sheet(ben.page)).toBeVisible();
+  await expect(ben.page.locator('#leave-note')).toContainText('reach the Party');
+  await ben.context.setOffline(false);
+  await ben.page.locator('#leave-cancel').click();
+  await inBluff(ben);
+  await close(ana, ben);
+});
+
+test('guest exit: an open question outlives the request\'s expiry; a stale request moves nothing after a reload', async ({ browser, request }) => {
+  test.setTimeout(240_000);
+  const { ana, ben } = await bluff(browser, request);
+  await askToLeave(ben);
+  await ben.page.waitForTimeout(65_000);                                         // past the 60 s that moves pages
+  await expect(sheet(ben.page)).toBeVisible();                                   // nobody is taken away mid-decision
+  expect(ben.page.url()).toBe(`${PARTY}/party/`);
+  const stale = await exitOf(ben.page);
+  expect(stale.live).toBe(false);
+  await ben.page.goto(`${GAMES}/games/bluff/?avrana=1`);                          // a stale request moves no game page
+  await inBluff(ben);
+  await ben.page.waitForTimeout(3_000);
+  expect(ben.page.url().startsWith(`${GAMES}/games/bluff/`)).toBe(true);
   await close(ana, ben);
 });
 

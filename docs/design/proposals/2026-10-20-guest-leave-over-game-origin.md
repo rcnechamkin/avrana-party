@@ -1,7 +1,7 @@
 # A guest's Leave during a round on a game origin (assessment)
 
-- **Status:** **PROPOSED (2026-10-20, AVR-580). Nothing built.** A security assessment with one
-  recommendation for the owner. It changes no contract and adds no bridge capability.
+- **Status:** **DECIDED by the owner (2026-10-21, AVR-580); built in source (§7), not deployed, not checked on a phone.**
+  A security assessment with one recommendation, which the owner approved. It adds no bridge capability.
 - **Reads with:** [ADR 0011](../../adr/0011-party-console-model.md) (Leave is not a disconnect; a Host's
   Leave goes through succession), [ADR 0013](../../adr/0013-party-and-game-browser-origins.md) (origins),
   [the control centre](2026-10-16-control-center.md) (D3: over a game origin the layer is coverable),
@@ -49,6 +49,8 @@ confirmation must happen where the game cannot draw.
 
 ## 5. Recommendation: B, a Party-origin exit request
 
+§7 records how it was built where it differs from this first description.
+
 1. **Ask.** The layer drawer offers a guest **Leave Party…** during a round when `crossOrigin` is true.
    It is a request only, with no confirmation in the frame. The frame posts
    `POST /party/api/leave/request`. The Party origin is required and so is the device cookie, as for
@@ -94,9 +96,53 @@ confirmation must happen where the game cannot draw.
 - A request with no cookie, or from a game origin, is refused.
 - Physical: iPhone Safari and an installed PWA, plus Android, as part of #167's acceptance checklist.
 
-## 6. Decisions for the owner
+## 6. Decisions for the owner (taken 2026-10-21)
+
+The owner approved B, #167 merged first, and B is built as its own PR. The wording and the lifetime are
+in §7 for review.
 
 1. Approve B as the direction: an ADR 0011 amendment and a separate change after #167.
 2. Approve the marker's lifetime (60 s is suggested) and its wording on the sheet.
 3. Decide whether #167 merges first with E, as now, and B follows as its own PR. This is recommended,
    because B depends on #167's Leave and Reconnect.
+
+## 7. As built (2026-10-21)
+
+- **Core** (`avrana/party/core.py`): `request_exit` and `stay`.
+  - The request has an id (`exit_id`) and a time (`exit_until`, `EXIT_INTENT` = 60 s).
+  - It is refused for the Host (`host_uses_party_home`, 403), outside a round or its results
+    (`not_in_round`), for a device that left (`left_party`) and for a stranger (`not_member`).
+  - A repeat keeps the id and renews the time.
+  - Stay, Leave and Reconnect close it. It never touches membership, seats, roles or the location.
+- **Service:** `POST /party/api/leave/request` and `POST /party/api/leave/stay`.
+  - They have the same guards as every Party API post: the Party origin (game origins are never POST
+    origins), JSON, `Sec-Fetch-Site`, and the device cookie.
+- **View:** `me.exit = {id, live}` on this device's own view only. It is not in `members` and not in the
+  bridge's `publicView`, so no game page learns of it.
+- **One navigation decision:** `destination()` returns Party Home while `me.exit.live`. The shell, the
+  follower and the bridge all use it, so the bridge's existing `navigate {to:'party'}` moves the game
+  page.
+- **Drawer** (`layer.js` `exitOffered`, `layer-app.js`): **Leave Party…** for a guest over another origin
+  during a round or its results.
+  - It asks once, with no confirmation in the frame.
+  - It says "You will confirm on Party Home. Nothing changes until you do."
+- **Party Home** (`app.js` `exitOpen`): it shows #167's Leave sheet with a line saying the person asked
+  from the game and that their place in the round is kept until they choose, and with **Stay in
+  Party**.
+  - **Focus goes to Stay**, the choice that changes nothing.
+  - **Stay, the close button and Escape all mean Stay.**
+  - **Expiry never closes an open sheet.** The sheet belongs to its request id and stays until that id
+    is closed (Stay here or in another tab, Leave, Reconnect). The 60 s only limits how long pages are
+    moved: after it, a reload or a game page stays where it is.
+  - **Offline at Stay**, the sheet stays and says it could not reach the Party.
+- **Tests:**
+  - `tests/unit/test_party_guest_exit.py` (Core and HTTP: refusals, origins, cookies, expiry, repeats,
+    tabs, succession);
+  - `tests/offline/guest-exit.test.mjs` (drawer rule, `destination()`, client, bridge: one existing
+    `navigate`, no new word);
+  - `tests/provider/game-origin-layer.spec.ts` (real Party, real BLUFF on the game origin: Leave, Stay,
+    Escape and close, Host refusal, the game page cannot ask, two tabs, offline, expiry with the sheet
+    open).
+- **Not done:** real phones (iPhone Safari and an installed PWA, Android Chrome), Limited Mode (no game
+  origins there, so the drawer never offers it), VoiceOver and TalkBack on the sheet, and a real Pi
+  restart or Wi-Fi drop during the question.
