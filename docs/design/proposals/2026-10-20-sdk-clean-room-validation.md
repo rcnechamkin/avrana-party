@@ -1,6 +1,6 @@
 # Sprint 04: SDK clean-room adaptation validation
 
-- **Status:** **APPROVED (owner, 2026-10-20) as AVR-676, with the decisions in §6. In progress.**
+- **Status:** **COMPLETED (2026-10-20); technical conclusions approved by the owner, SDK experimental.** Results and the closure decisions: [findings](../../findings/2026-10-20-sdk-clean-room-hearts.md).
 - **Reads with:** [SDK readiness audit](../../findings/2026-10-20-sdk-readiness-audit.md),
   Games `docs/DEVELOPING-A-GAME.md`, [ADR 0011](../../adr/0011-party-console-model.md),
   [ADR 0013](../../adr/0013-party-and-game-browser-origins.md), AVR-676 (this sprint), AVR-512, AVR-421, AVR-59.
