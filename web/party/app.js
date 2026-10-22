@@ -1047,6 +1047,8 @@ function show(which, round = null) {
   // drawer and the sheet stay open over it: a briefing keeps its place under them.)
   if (moved) { closeSheets(); state.passed = null; }     // "hosting passed" was about the place that was
   if (moved && which !== 'main') { state.preview = null; delete state.previewNext; }   // (and so was Home's preview)
+  // tier 3: the briefing comes up, or the frame comes back (a first draw, or the same screen, is not a move)
+  if (moved && state.screen && state.screen !== which) enter(which === 'scene' ? $('scene') : which === 'main' ? $('content') : null);
   state.screen = which;
   $('main').hidden = which === 'going';
   $('content').hidden = which !== 'main';
@@ -1341,6 +1343,11 @@ function renderHomeShelves(entries, shelves, people) {
     line.note ? h('p', { class: 'avrana-meta', text: line.note }) : null,
     warnLine(lead.note, 'avrana-meta warn'))), just ? roundOver(game) : null].filter(Boolean));
   $('home-actions').toggleAttribute('data-just', Boolean(just));
+  const justKey = just ? game.id : '';
+  if (($('home-lead').dataset.justKey || '') !== justKey) {      // the stage turns to, or from, "Just played"
+    if ('justKey' in $('home-lead').dataset) enter($('home-lead'));
+    $('home-lead').dataset.justKey = justKey;
+  }
   sync($('home-actions'), just ? justActions(game) : stageActions(game));
   $('home-great-h').textContent = shelves.title;
   const great = shelves.great.filter((g) => g.id !== game.id);   // (the game on the stage is not on the rail too)
@@ -1540,6 +1547,26 @@ function closePreview(focus) {
 }
 
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** A tier-3 entrance (Concept K, AVR-711): the CSS animates what is marked, once; the mark goes
+ * when it ends (or soon after, if nothing ran: Reduce Motion, a hidden page). */
+function enter(el) {
+  if (!el) return;
+  el.removeAttribute('data-enter');
+  void el.offsetWidth;                    // (so the same entrance can run again)
+  el.setAttribute('data-enter', '');
+  const done = (event) => { if (!event || event.target === el || el.contains(event.target)) { el.removeAttribute('data-enter'); el.removeEventListener('animationend', done); } };
+  el.addEventListener('animationend', done);
+  setTimeout(() => done(), 1500);
+}
+
+/** Concept K proposals, from the address only and never kept: ?concept=motion runs tier 3 at
+ * AVR-704's 600 ms, and says "Proposal" on screen while it does. */
+const CONCEPTS = new Set((new URLSearchParams(location.search).get('concept') || '').split(',').map((c) => c.trim()).filter(Boolean));
+if (CONCEPTS.has('motion')) {
+  document.documentElement.dataset.concept = 'motion';
+  $('concept-badge').hidden = false;
+}
 
 /** A cover's art flies to where the same game is drawn next (a same-document View Transition with
  * one name on one element at a time), or the change just happens: with no View Transitions, under

@@ -156,7 +156,7 @@
   --motion-1: 150ms;
   --motion-2: 300ms;
   --motion-3: 200ms;
-  --motion-3-proposal: 600ms;       /* AVR-704; not in use */
+  --motion-3-proposal: 600ms;       /* AVR-704: only with ?concept=motion (the owner, 2026-10-21) */
   --ease-responsive: cubic-bezier(0.2, 0, 0, 1);
   --ease-meaningful: cubic-bezier(0.16, 1, 0.3, 1);
   /* The bar's lens: a spring (mass 1, stiffness 420, damping 28) sampled as linear(), a slight
@@ -705,6 +705,28 @@
   .avrana-preview .more { justify-self: start; }
   /* The art's flight between a cover and the preview (tier 2; none under Reduce Motion). */
   ::view-transition-group(avrana-art) { animation-duration: var(--motion-2); animation-timing-function: var(--ease-meaningful); }
+
+  /* Tier 3 (Concept K, AVR-711): the Party moving is a scene change. The briefing comes up from
+     below, the frame fades back in when it ends, and Home's stage fades to "Just played". 200 ms
+     (--motion-3) by default; 600 ms only as the AVR-704 proposal (?concept=motion). Nothing moves
+     under Reduce Motion (the rule above stops every animation). */
+  @keyframes avrana-rise { from { opacity: 0; transform: translateY(16px); } }
+  @keyframes avrana-fade { from { opacity: 0; } }
+  #scene[data-enter] { animation: avrana-rise var(--motion-3) var(--ease-meaningful); }
+  #content[data-enter] { animation: avrana-fade var(--motion-3) var(--ease-meaningful); }
+  #home-lead[data-enter] > .avrana-stage, #home-lead[data-enter] > .round-over { animation: avrana-fade var(--motion-3) var(--ease-meaningful); }
+  :root[data-concept~="motion"] { --motion-3: var(--motion-3-proposal); }
+
+  /* Tier 1: a press answers at once (and never under Reduce Motion) */
+  .btn, .avrana-card, .avrana-list > li > button, .avrana-list > li > a { transition: transform var(--motion-1) var(--ease-standard), background-color var(--motion-1) var(--ease-standard), color var(--motion-1) var(--ease-standard); }
+  .btn:active:not(:disabled):not([aria-disabled="true"]), .avrana-card:active { transform: scale(0.98); }
+
+  .avrana-proposal {
+    position: fixed; z-index: 70; top: calc(env(safe-area-inset-top) + 4px); left: 50%; transform: translateX(-50%);
+    margin: 0; padding: 2px 10px; border-radius: 999px; background: var(--color-purple); color: var(--color-ink);
+    font-size: var(--text-eyebrow); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+    pointer-events: none;
+  }
   ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--motion-1); }
   /* (the rail clips what leaves it, so it keeps a focus ring's width of room on every side) */
   .avrana-rail { display: flex; gap: 0.625rem; margin: -0.25rem; padding: 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 0.25rem; }
