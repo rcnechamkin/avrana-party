@@ -136,6 +136,18 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
         await sleep(delays[i]);
       }
     },
+    /** One look now, without the long poll's wait: an answer counts as a link answer (onLink) and its
+     * view is accepted even when unchanged, so the page decides again from it. True when Party Core answered. */
+    async refresh() {
+      epoch++;
+      const fresh = await request('state');
+      epoch++;
+      const v = fresh.ok ? readView(fresh.body) : null;
+      if (!v) return false;
+      onLink({ ok: true, answered: true });
+      accept(v, true);
+      return true;
+    },
     start(first) {
       gen++;
       view = null;
@@ -152,6 +164,11 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     /** Leave Party: the person's intentional departure (AVR-580). Only a 200 means Core removed
      * them; anything else is unconfirmed and the page must say so. */
     leave: () => act('leave', {}),
+    /** A guest's exit request from a game page of another origin: it asks only; this device's pages
+     * go to Party Home, where Leave is confirmed (AVR-580 guest exit). */
+    requestExit: () => act('leave/request', {}),
+    /** Stay in the Party: closes that request, and the pages follow the party again. */
+    stay: () => act('leave/stay', {}),
     /** The person's own opt back in after Leave: the only way back (an automatic join is refused). */
     async reconnect(name, avatar) {
       const res = await act('reconnect', { name, avatar });
