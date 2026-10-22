@@ -136,6 +136,18 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
         await sleep(delays[i]);
       }
     },
+    /** One look now, without the long poll's wait: an answer counts as a link answer (onLink) and its
+     * view is accepted even when unchanged, so the page decides again from it. True when Party Core answered. */
+    async refresh() {
+      epoch++;
+      const fresh = await request('state');
+      epoch++;
+      const v = fresh.ok ? readView(fresh.body) : null;
+      if (!v) return false;
+      onLink({ ok: true, answered: true });
+      accept(v, true);
+      return true;
+    },
     start(first) {
       gen++;
       view = null;

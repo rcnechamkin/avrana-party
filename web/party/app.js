@@ -53,7 +53,10 @@ const state = { exit: null, staying: false, leaving: false, catalog: null, repor
   // game: the title whose page is open; back: where that page was opened from, to return there exactly
   // round: the briefing on screen (its id)
   // left: the round this document is leaving for; held: the Host's way-out screen on show (goingHost)
-  left: null, held: null, lobbyBusy: false,
+  // moveHeld: a move to a round that arrived while this phone was offline waits for the network
+  // (ADR 0011 decision 3); answers: Party Core answers so far; heldAnswers: how many there were when
+  // the move began to wait (a later one proves the network); lookTimer: the next look while it waits
+  left: null, held: null, lobbyBusy: false, moveHeld: false, answers: 0, heldAnswers: 0, lookTimer: null,
   screen: 'main', declined: null, round: null, game: null, back: null, rulesGame: null,
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
@@ -731,6 +734,7 @@ function refocusFrom(el) {
  * client keeps trying throughout, so the first answer puts everything back by itself. */
 function onLink({ ok, answered }) {
   state.trying = false;
+  if (ok) state.answers += 1;
   if (ok) {
     if (state.failingSince === null) return;
     state.failingSince = null;
@@ -1023,13 +1027,14 @@ function onPartyView(view, previous = null) {
   if (url) {                                  // the party is in a round: this phone goes there
     // ...unless it is the Host's and was taken there already: the Host gets the Party's way out.
     const held = state.left === roundKey(view) ? null : hostReturn(view, kept('localStorage', SENT_KEY));
-    if (held) { show('going'); goingHost(held); return; }
+    if (held) { endHold(); show('going'); goingHost(held); return; }
     goingHost(null);
-    if (!goingWatch.gaveUp) $('going-text').textContent = `Taking you to ${gameName(view)}…`;   // not over the way out
+    if (!goingWatch.gaveUp && !state.moveHeld) $('going-text').textContent = `Taking you to ${gameName(view)}…`;   // not over the way out
     show('going');
     leaveForRound();
     return;
   }
+  endHold();                                  // the Party is not in a round (any more): nothing to wait for
   if (view.me && locationOf(view).at === 'setup') {
     show('scene', locationOf(view).session || locationOf(view).game || null);
     renderHud();                              // who is here, over the briefing too
@@ -1068,6 +1073,13 @@ function leaveForRound() {
     const view = party.view();
     const to = view ? destination(view, HOME, state.catalog, addressOf) : null;
     if (to) {
+      // A move that arrives while this phone is offline (a Wi-Fi drop, a wake-up, a poll that was already
+      // on its way) waits for the network (ADR 0011 decision 3): navigating now would leave the phone on
+      // the browser's own error page, which does not come back when the Wi-Fi does. An answer from Party
+      // Core since the wait began proves the network, whatever the browser's flag still says.
+      const proven = state.moveHeld && state.answers > state.heldAnswers;
+      if (!proven && navigator.onLine === false) return holdMove(view);
+      endHold();
       const g = partyGame(state.catalog, locationOf(view).game);
       const round = roundToRemember(view);     // a round this phone plays, while it is on
       if (g && round) recordRound(g, round);   // only once it is really going there
@@ -1081,6 +1093,41 @@ function leaveForRound() {
     }
     else if (view) onPartyView(view, view);   // the round ended, or the answer was refused: Party Home
   });
+}
+
+/** Wait for the network before moving to a round. The phone looks at Party Core again at once, every
+ * HELD_LOOK_MS and when the browser says `online` (one short ask each, not the 20 s long poll), and an
+ * answer is accepted as the latest view, so the move is decided again from where the Party is NOW, never
+ * replayed from the move that was held: a round that ended meanwhile keeps the phone on Party Home. Any
+ * earlier navigation's watchdog stops: it must not retry an old target while the phone is offline. */
+const HELD_LOOK_MS = 2000;
+
+function holdMove(view) {
+  goingWatch.cancel();
+  goingStuck(false);
+  const text = `Waiting for the connection to take you to ${gameName(view)}…`;   // said, not a spinner alone
+  if ($('going-text').textContent !== text) $('going-text').textContent = text;
+  if (state.moveHeld) return;
+  state.moveHeld = true;
+  state.heldAnswers = state.answers;
+  window.addEventListener('online', lookAgain);
+  lookAgain();                                      // at once: the browser's flag can be stale while the Wi-Fi works
+}
+
+async function lookAgain() {
+  if (!state.moveHeld) return;
+  clearTimeout(state.lookTimer);
+  state.lookTimer = null;
+  const answered = await party.refresh();          // an answer re-decides through onPartyView (leaveForRound)
+  if (state.moveHeld && !answered && state.lookTimer === null) state.lookTimer = setTimeout(lookAgain, HELD_LOOK_MS);
+}
+
+function endHold() {
+  if (!state.moveHeld) return;
+  state.moveHeld = false;
+  clearTimeout(state.lookTimer);
+  state.lookTimer = null;
+  window.removeEventListener('online', lookAgain);
 }
 
 /** The navigation to the round has not arrived (lib/going-watchdog.js): one retry has been made, and
