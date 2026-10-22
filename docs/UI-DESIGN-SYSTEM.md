@@ -118,7 +118,11 @@ repeat:
 | `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet (Filters, View, How to play, About Limited Mode), which is a centred panel from 44rem. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
 | `avrana-sub` | a quieter line under a heading (the Host line on the Party page) |
 | `avrana-list` | 52 px rows that lead somewhere (a place, a sheet), chevron on the right |
-| `avrana-faces`, `avrana-people` | people as faces with names (Party page) and as rows (drawer) |
+| `avrana-group-h`, `avrana-group` | Concept K's grouped lists (AVR-710): a small-caps heading ("In this Party · 3 people", "This phone · All set", "Help") over rows in one opaque `surface` panel with hairlines between |
+| `avrana-roster` | the Party page's people, one row each: face (dimmed when away), name, what is true of them in words under it ("Here", "Away", "Here · Limited"), the purple HOST tag on the Host's row, and for the Host a **Make host** button on the row of anyone else who is here (Party Core's `transfer_host`; it refuses anyone else and says why). Focus goes to the heading after a hand-over |
+| `avrana-people` | people as rows in the drawer |
+| `avrana-me-head` | Me's head: the person large (80 px face, the name light at page size) and Edit profile; the whole of it opens the profile |
+| `avrana-quiet` | a quiet text action at the end of a page (Leave Party) |
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
 | `avrana-screen` | page container with safe-area padding, for diagnostics |
 | `avrana-scene` | one full screen with one thing on it: the way to a game, and the doorway |
@@ -178,11 +182,15 @@ home), and the frame comes back in the same place, a game's page included.
   Home goes back to Featured). Nothing about how the round went: "Played by", scores and winners
   need results (AVR-71). K1 on Home (select-then-launch) needs AVR-701 and K2 (Home during a
   round) needs AVR-703; until then K1 is the briefing (below).
-- **Party**: everyone here as faces, the Chat row (with the unread count), Leave Party.
+- **Party** (Concept K, AVR-710): "In this Party" (everyone here, one row each, and the Host's
+  hand-over), "This Party" (the Chat row with the unread count), and Leave Party, quietly, last.
+  The Figma frame's "Selected game" row is select-then-launch (AVR-701) and is not built.
 - **Library**: the games (the centre of gravity): search, two filters, four views, and the
   All / Favorites / Recent tabs (below).
-- **Me** (was System; Concept K, AVR-707): you (the identity button and its form), how things
-  are, in one block (below); this phone's checklist; the way to diagnostics.
+- **Me** (was System; Concept K, AVR-707, AVR-710): you, large, with Edit profile (and its
+  form); how things are, in one block (below); "This phone": its checklist in a group, then
+  Limited Mode (Off, or On and opening its explanation) and Motion ("Follows Reduce Motion on
+  this phone": there is no setting of its own); "Help": Technical details.
 
 The Party drawer (Chat, and People) opens from the Party page's Chat row (Concept K retired the
 Party control at the top: what is new in the chat is a count on the Party tab). Today's chat is served by the old games runtime that ADR 0014 retires: it is

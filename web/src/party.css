@@ -853,7 +853,7 @@
   .avrana-group .sub { color: var(--color-stone); font-size: var(--text-secondary); overflow-wrap: anywhere; }
   .avrana-group.avrana-list button:disabled { cursor: default; opacity: 1; color: inherit; }
   .avrana-row-static { display: flex; align-items: center; gap: 12px; min-height: 64px; margin: 0; padding: 10px 0; }
-  .avrana-group.avrana-checks { padding-top: 4px; padding-bottom: 4px; }
+
 
   /* People in the drawer: one row each. */
   .avrana-people { margin: 0; padding: 0; list-style: none; }
@@ -1028,6 +1028,10 @@
   .avrana-checks li { display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.5rem; align-items: start; }
   .avrana-checks li .avrana-icon { margin-top: 0.125rem; color: var(--color-muted); }
   .avrana-checks li[data-status="yes"] .avrana-icon { color: var(--color-success); }
+  /* (Me's checks sit in a group panel, Concept K AVR-710) */
+  .avrana-group-h { display: block; }
+  .avrana-group.avrana-checks { gap: 0; padding: 4px 16px; }
+  .avrana-group.avrana-checks > li { align-items: center; min-height: 48px; padding: 10px 0; }
   .avrana-checks li[data-status="no"] .avrana-icon { color: var(--color-warning); }
 
   /* Diagnostics: denser, still legible; wide tables scroll sideways on phones. */
