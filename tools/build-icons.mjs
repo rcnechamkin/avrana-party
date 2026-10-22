@@ -19,7 +19,7 @@ const ICONS = [
   'wifi', 'wifi-off', 'x', 'hourglass',
   'house', 'library-big', 'settings', 'triangle-alert',
   'filter-x', 'grid-2x2', 'grid-3x3', 'heart', 'layout-grid', 'list', 'sliders-horizontal',
-  'book-open',
+  'book-open', 'move-right', 'info',
   'arrow-up-down', 'chevron-up', 'moon-star',
   'user-round',
 ];

@@ -826,6 +826,35 @@
   .avrana-faces .tags { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem; min-height: 1.25rem; margin-top: 0.125rem; }
   .avrana-faces li[data-away] .avrana-avatar, .avrana-people li[data-away] .avrana-avatar { filter: grayscale(1) brightness(0.6); }
 
+  /* Concept K's grouped lists (AVR-710): a small-caps heading over rows in one opaque panel. */
+  .avrana-group-h { margin: 0 0 0.5rem; font-size: var(--text-eyebrow); font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-stone); }
+  .avrana-group { margin: 0; padding: 0 16px; list-style: none; border-radius: var(--radius-panel); background: var(--color-surface); border: 1px solid var(--color-line); }
+  .avrana-group > li + li { border-top: 1px solid var(--color-line); }
+  .avrana-group.avrana-list > li > a, .avrana-group.avrana-list > li > button { padding-left: 0; padding-right: 0; }
+  .avrana-group .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--color-raised); color: var(--color-stone); }
+  .avrana-roster > li { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; }
+  .avrana-roster .line { display: grid; flex: 1; min-width: 0; }
+  .avrana-roster .who { font-size: var(--text-body); font-weight: 500; overflow-wrap: anywhere; }
+  .avrana-roster .sub { color: var(--color-stone); font-size: var(--text-secondary); overflow-wrap: anywhere; }
+  .avrana-roster .mode { color: var(--color-warning); }
+  .avrana-roster li[data-away] .avrana-avatar { opacity: 0.45; filter: grayscale(1); }
+  .avrana-roster .hand { flex: none; min-height: 44px; border-radius: var(--radius-button); }
+  .avrana-quiet-row { display: flex; justify-content: center; margin-top: 1.5rem; }
+  .avrana-quiet { min-height: 44px; padding: 0 1rem; color: var(--color-stone); font-size: var(--text-body); background: none; border: 0; cursor: pointer; }
+  .avrana-quiet:hover { color: var(--color-cream); }
+
+  /* Me's head: the person, large; the whole of it opens the profile. */
+  .avrana-me-head { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 96px; padding: 4px 0; text-align: left; background: none; border: 0; color: var(--color-cream); cursor: pointer; }
+  .avrana-me-head .name { font-size: var(--text-page); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+  .avrana-me-head .edit { display: inline-grid; place-items: center; min-height: 40px; padding: 0 14px; border-radius: var(--radius-button); background: var(--color-raised); border: 1px solid var(--color-line); font-size: var(--text-body); }
+  .avrana-me-head .sub { color: var(--color-stone); font-size: var(--text-body); }
+  .avrana-avatar.hero { width: 80px; height: 80px; font-size: 2.75rem; }
+  .avrana-group .t { display: grid; flex: 1; min-width: 0; text-align: left; }
+  .avrana-group .sub { color: var(--color-stone); font-size: var(--text-secondary); overflow-wrap: anywhere; }
+  .avrana-group.avrana-list button:disabled { cursor: default; opacity: 1; color: inherit; }
+  .avrana-row-static { display: flex; align-items: center; gap: 12px; min-height: 64px; margin: 0; padding: 10px 0; }
+
+
   /* People in the drawer: one row each. */
   .avrana-people { margin: 0; padding: 0; list-style: none; }
   .avrana-people > li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; min-height: 3.5rem; padding: 0.5rem 0; }
@@ -999,6 +1028,10 @@
   .avrana-checks li { display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.5rem; align-items: start; }
   .avrana-checks li .avrana-icon { margin-top: 0.125rem; color: var(--color-muted); }
   .avrana-checks li[data-status="yes"] .avrana-icon { color: var(--color-success); }
+  /* (Me's checks sit in a group panel, Concept K AVR-710) */
+  .avrana-group-h { display: block; }
+  .avrana-group.avrana-checks { gap: 0; padding: 4px 16px; }
+  .avrana-group.avrana-checks > li { align-items: center; min-height: 48px; padding: 10px 0; }
   .avrana-checks li[data-status="no"] .avrana-icon { color: var(--color-warning); }
 
   /* Diagnostics: denser, still legible; wide tables scroll sideways on phones. */

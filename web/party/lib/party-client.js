@@ -164,6 +164,8 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     /** Leave Party: the person's intentional departure (AVR-580). Only a 200 means Core removed
      * them; anything else is unconfirmed and the page must say so. */
     leave: () => act('leave', {}),
+    /** The Host hands hosting to someone who is here (Party Core's transfer_host). */
+    handHost: (to) => act('host', { to, if_version: view ? view.version : null }),
     /** A guest's exit request from a game page of another origin: it asks only; this device's pages
      * go to Party Home, where Leave is confirmed (AVR-580 guest exit). */
     requestExit: () => act('leave/request', {}),
