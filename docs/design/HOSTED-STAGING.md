@@ -1,6 +1,7 @@
 # Hosted staging: one Avrana Party, a second deployment target
 
-Status: **proposed (H1 audit, 2026-10-22) · awaiting owner approval · nothing built or deployed**
+Status: **architecture approved by the owner (2026-10-22, D1–D5 in §11) · repository work only ·
+no VM, tunnel, DNS, Access application or deploy exists; each needs its own owner approval**
 
 Avrana Party gets a second deployment target: a private staging site at `https://avrana.party`,
 for platform and gameplay testing between people on different networks. It runs the same Party
@@ -8,8 +9,8 @@ Core, Party Home, SDK contracts, game packages and runtimes as the Pi. Only the 
 differs. The Pi stays the product. It also stays the only place that proves Wi-Fi, the captive
 portal, local DNS, offline play and real-phone hardware behavior.
 
-This page is the H1 audit and the proposal for owner approval. Section 0 becomes ADR 0018 once
-accepted. Evidence is `file:line` on `main` at Party `aa3d7d4` and Games `9fee527`, plus a
+This page is the H1 audit and the approved architecture. Section 0 becomes ADR 0018 when the
+hosted site is accepted (H3). Evidence is `file:line` on `main` at Party `aa3d7d4` and Games `9fee527`, plus a
 read-only look at the Media host on 2026-10-22.
 
 ## 0. Proposed decision (becomes ADR 0018 on approval)
@@ -297,18 +298,30 @@ weakened. Hosted results never count as appliance evidence.
 | Tanks' systemd/socket path has never run anywhere | First Node run is an H3 finding, not an assumed pass |
 | VM reaching Media services on the LAN | Egress deny, both in the VM and in the host nwfilter |
 
-## 11. Owner decisions needed (H1 gate)
+## 11. Owner decisions (H1 gate, decided 2026-10-22)
 
-- **D1.** Deployment model: KVM VM on libvirt (recommended), LXD, or Docker.
-- **D2.** Add a second hostname, `games.avrana.party`. Native games cannot run without it (§3).
-- **D3.** Cloudflare Access with an email allow-list and OTP, 24 h sessions, plus one service token
-  for the harness. Which emails.
-- **D4.** Hosted game set for the first deploy. Recommended: Best Guess and Checkers (Python),
-  plus Tanks (Node, `test_only`, experimental) as the only Node coverage. Choose whether
-  BLUFF/EXPO (the legacy fork, with `AVRANA_STANDALONE_ADMISSION=0`) are also included. The arcade
-  is never hosted.
-- **D5.** Approve H2 repository work (H2A, H2B, H3 as draft PRs). Infrastructure steps stay
-  separately gated: VM creation, nwfilter, tunnel, DNS and the Access application.
+- **D1. Approved:** a Debian 13 KVM VM on the existing libvirt host, keeping the Party's systemd
+  deployment model. Storage, free space, resource limits, snapshot cost and isolation from Media
+  services are checked before the VM is created (`deploy/hosted/vm/host-preflight.sh`).
+- **D2. Approved:** `avrana.party` for the Party and `games.avrana.party` for native games. The
+  separate-origin contract (ADR 0013) is unchanged.
+- **D3. Approved in principle:** Cloudflare Access with an explicit email allow-list, OTP, 24 h
+  sessions and one narrowly scoped service token for the harness. At first only the owner's address
+  is allowed. Nothing in Cloudflare changes until the owner approves the address and the
+  Access configuration.
+- **D4. Approved, staged:** the first wave is Best Guess, Checkers and Tanks (experimental). BLUFF and
+  EXPO come in a second wave with standalone admission off; legacy games never block the first. The
+  arcade is never hosted.
+- **D5. Approved:** H2A, H2B and H3 repository work, local experiments, reviews, documentation, tests
+  and draft PRs. Each of these needs its own explicit approval: creating the VM, changing persistent
+  host configuration or network filters, the tunnel, DNS, Access, a deploy, merging, and exposing
+  anything publicly.
+
+The owner also requires that isolation is tested by attempted connections, not only firewall syntax.
+Access must be shown to work across both origins, game frames, reconnects and session expiry. The
+Pi deploy path and its tests stay unchanged. Party #143's package-artwork route is used only after
+its own approval. Deploys and rollbacks name explicit Party and Games SHAs. An unavailable CI check
+is never counted as passing.
 
 ## 12. Implementation plan and acceptance
 
