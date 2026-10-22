@@ -53,6 +53,16 @@ export function moveKey(view) {
   return `${view && view.party}:${view && view.nav ? view.nav.seq : ''}:${loc.at}:${loc.game}:${loc.session}`;
 }
 
+/** Home's "Just played" (Concept K's K3, AVR-709): the game of the round this phone was taken to,
+ * once the Party is home again from it. Only what this phone saw (`kept`: {party, session, game},
+ * written as it left for the round) and where Party Core says the Party is: no score, no winner, no
+ * one's name. Another Party, a round on its way or under way, or the Host's "Choose another game"
+ * (`kept.done`) ends it. */
+export function justPlayed(view, kept) {
+  if (!view || !view.me || !kept || typeof kept.game !== 'string' || kept.done || kept.party !== view.party) return null;
+  return locationOf(view).at === HOME && !liveSession(view) ? kept.game : null;
+}
+
 /** The round the Party is in or holds the results of, as one phone remembers it: null at home. */
 export function roundKey(view) {
   const loc = locationOf(view);

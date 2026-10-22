@@ -207,7 +207,7 @@ test('the host picks BLUFF: a briefing on every phone, host-only Start, then eve
   for (const p of phones) {
     await expect(p.page.locator('#avrana-navigation')).toBeHidden();
     await expect(p.page.locator(':is(a, button):visible', { hasText: 'Back to Party' })).toHaveCount(0);
-    await expect(p.page.locator('body :visible', { hasText: /playing ·|watching ·|Setting up/ })).toHaveCount(0);
+    await expect(p.page.locator('body :visible', { hasText: /Playing \d|Watching \d|Choosing|Setting up/ })).toHaveCount(0);
   }
   await expect(ana.page.locator('#party-end')).toBeVisible();            // the host's End, in the table
   await expect(ben.page.locator('#party-end')).toBeHidden();
@@ -408,7 +408,7 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
   for (const p of guests) await expect(p.page.locator('#scene-start')).toBeHidden();
   for (const p of [ana, ben]) await p.page.locator('#choose-play').click();
   for (const p of [cy, dee]) await p.page.locator('#choose-watch').click();
-  await expect(ana.page.locator('#scene-count')).toHaveText('2 playing · 2 watching');
+  await expect(ana.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 2');
   await expect(ana.page.locator('#scene-start')).toBeEnabled();
   await shot(ana, '4-briefing-host'); await shot(dee, '4-briefing-guest');
   await ana.page.locator('#scene-start').click();

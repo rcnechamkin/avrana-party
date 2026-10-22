@@ -930,14 +930,19 @@ async function renderScene(view) {
   if (!panel || !game) return;
   $('scene').dataset.game = game.id;
   $('scene-title').textContent = game.name;
-  sync($('scene-cover'), [tileCover(game, null, 'wide')]);
+  // the compact stage: the game's art (or its name, set large), and who hosts it
+  sync($('scene-cover'), [tileCover(game, null, 'stage'), h('span', { class: 'noart', text: game.name })]);
+  $('scene-meta').textContent = [playersText(game.players),
+    panel.host ? 'You host' : panel.hostName ? `${panel.hostName} hosts` : ''].filter(Boolean).join(' · ');
+  $('scene-host').hidden = !panel.host;
   const ob = await onboardingFor(game);
   $('scene-premise').textContent = (ob && ob.premise) || game.summary || '';
   // Each person's answer is an icon and a word; the Host is marked by the word.
   const words = { player: ['check', 'Playing'], spectator: ['eye', 'Watching'] };
   const people = roster(view);
   const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
-  $('scene-count').textContent = `${panel.players} playing · ${panel.spectators} watching`;
+  $('scene-count').textContent = countLine(panel);
+  $('scene-waiting').textContent = waitingLine(panel, view);
   $('scene-roster').replaceChildren(...people.map((m) => {
     const [ic, text] = words[m.choice] || ['hourglass', 'Choosing'];
     return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null, 'data-host': m.host ? '' : null },
@@ -958,10 +963,34 @@ async function renderScene(view) {
   $('choose-play').disabled = panel.starting || !limits.play || !device.play;
   $('choose-watch').disabled = panel.starting || !limits.watch;
   $('scene-seat').textContent = !limits.play ? limits.why || 'This phone can only watch this one.' : device.why;
+  // this phone's own check, and whether the game seats the people here (never another phone's)
+  const own = !limits.play ? ['eye', 'This phone can watch'] : device.play ? ['circle-check', 'This phone can play'] : ['hourglass', 'Checking this phone'];
+  if ($('scene-fit').textContent !== own[1]) { $('scene-fit').textContent = own[1]; $('scene-fit-mark').replaceChildren(icon(own[0])); }
+  $('scene-fit-mark').dataset.fit = !limits.play ? 'watch' : device.play ? 'ready' : 'checking';
+  const fit = fitLine(game, view.members.length);
+  $('scene-fit-sub').textContent = fit ? fit.text : '';
   $('scene-start').hidden = !panel.host;
+  $('scene-start').textContent = panel.starting ? `Starting ${game.name}…` : `Start ${game.name}`;
   $('scene-cancel').hidden = !panel.host || panel.starting;
   $('scene-start').disabled = !panel.canStart || state.partyBusy;
   $('scene-status').textContent = briefLine(panel, { away: awayHost(view), passed: state.passed });
+}
+
+/** Who has chosen what, in the briefing's words: "Playing 2 · Watching 1 · Choosing 1". */
+function countLine(panel) {
+  const parts = [`Playing ${panel.players}`, `Watching ${panel.spectators}`];
+  if (!panel.starting && panel.waiting.length) parts.push(`Choosing ${panel.waiting.length}`);
+  return parts.join(' · ');
+}
+
+/** Who is still choosing, by name ("you" for this phone), or that everyone has. */
+function waitingLine(panel, view) {
+  if (panel.starting) return '';
+  const ids = (view.session && view.session.setup && view.session.setup.waiting) || [];
+  if (!ids.length) return 'Everyone has chosen';
+  const byId = new Map(view.members.map((m) => [m.id, m.name]));
+  const names = ids.map((id) => (view.me && id === view.me.id ? 'you' : byId.get(id) || 'someone'));
+  return `Choosing: ${names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`}`;
 }
 
 /** Which screen has the phone: a place of the frame (main), the briefing (scene) or the way to a

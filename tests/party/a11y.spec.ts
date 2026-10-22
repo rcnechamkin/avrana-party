@@ -73,7 +73,7 @@ test.describe('three phones at one party', () => {
     await everyone('the briefing, nobody has answered');
     await bob.page.locator('#choose-play').click();
     await cleo.page.locator('#choose-watch').click();
-    await expect(host.page.locator('#scene-count')).toHaveText('1 playing · 1 watching');
+    await expect(host.page.locator('#scene-count')).toHaveText('Playing 1 · Watching 1 · Choosing 1');   // K1's words: the Host has not chosen yet
     await everyone('the briefing, answers in');
     for (const p of [bob, cleo]) { await p.page.locator('#scene-rules').click(); await expect(p.page.locator('#rules')).toBeVisible(); await expect(p.page.locator('#rules-ok')).toBeInViewport({ ratio: 1 }); }
     await everyone('How to play', [bob, cleo]);

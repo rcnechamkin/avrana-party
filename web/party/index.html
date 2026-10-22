@@ -227,18 +227,32 @@
        on screen until the Host starts. -->
   <section id="scene" class="avrana-brief" hidden aria-labelledby="scene-title">
     <div id="scene-scroll" class="scroll">
-      <div id="scene-cover"></div>
-      <h2 id="scene-title"></h2>
+      <!-- Concept K's K1 (AVR-709): the game the Host chose, on a compact stage. It is chosen, so it
+           says so: "Selected for Party" in purple with its bar (Home's "Featured" never does). -->
+      <div id="scene-stage" class="avrana-stage compact">
+        <div id="scene-cover" class="art" aria-hidden="true"></div>
+        <div class="copy">
+          <p class="avrana-eyebrow selected">Selected for Party</p>
+          <h2 id="scene-title" class="avrana-display"></h2>
+          <p id="scene-meta" class="avrana-meta"></p>
+        </div>
+      </div>
       <p id="scene-premise" class="avrana-premise empty:hidden"></p>
       <!-- Who is here (Concept K's presence row): it opens the people, and only them, over the
            briefing, which stays where it is (GAME-UX-CONTRACT rule 3.2, owner 2026-10-05). -->
-      <button id="scene-presence" type="button" class="avrana-presence" aria-haspopup="dialog"><span id="scene-faces" class="faces"></span><span id="scene-here" class="n"></span></button>
+      <button id="scene-presence" type="button" class="avrana-presence home" aria-haspopup="dialog"><span id="scene-faces" class="faces"></span><span id="scene-here" class="n"></span><span id="scene-host" class="avrana-tag host" hidden>Host</span></button>
+      <!-- Where the round stands: this phone's own check and the fit, then who has chosen what. Only
+           what Party Core and this phone know: no other phone's check is guessed. -->
+      <div id="scene-panel" class="avrana-panel">
+        <p class="prow"><span id="scene-fit-mark" class="well"></span><span><span id="scene-fit"></span><span id="scene-fit-sub" class="sub empty:hidden"></span></span></p>
+        <p class="prow"><span class="well"><span data-icon="users"></span></span><span><span id="scene-count"></span><span id="scene-waiting" class="sub empty:hidden"></span></span></p>
+      </div>
       <!-- the rules sit with what the game is, so they are on screen however many people there are -->
       <ul class="avrana-list">
         <li><button id="scene-rules" type="button" aria-haspopup="dialog"><span data-icon="book-open"></span><span>How to play</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
       </ul>
       <section aria-labelledby="scene-people-h">
-        <div class="avrana-sec"><h3 id="scene-people-h">This round</h3><span id="scene-count" class="meta"></span></div>
+        <div class="avrana-sec"><h3 id="scene-people-h">This round</h3></div>
         <ul id="scene-roster" class="avrana-lineup" aria-label="Who plays and who watches"></ul>
       </section>
     </div>
@@ -254,7 +268,7 @@
           <button id="choose-play" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Play this round</span></button>
           <button id="choose-watch" type="button" class="avrana-choice" aria-pressed="false"><span data-icon="check" class="tick"></span><span>Watch this round</span></button>
         </div>
-        <button id="scene-start" type="button" class="btn btn-primary btn-block" hidden>Start game</button>
+        <button id="scene-start" type="button" class="btn btn-primary btn-block" hidden>Start</button>
         <p id="scene-net" class="m-0 text-center text-supporting text-muted" role="status" hidden></p>
         <p class="line"><span id="scene-status" role="status" aria-live="polite"></span> <button id="scene-cancel" type="button" class="avrana-textlink" hidden>Choose another game</button></p>
       </div>

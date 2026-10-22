@@ -210,7 +210,7 @@ test.describe('three phones at one party', () => {
     // a person's answer, arriving while the drawer is open, does not close it
     await hud.click();
     await host.page.locator('#choose-watch').click();
-    await expect(page.locator('#scene-count')).toHaveText('0 playing · 2 watching');
+    await expect(page.locator('#scene-count')).toHaveText('Playing 0 · Watching 2');
     await expect(drawer).toBeVisible();
     // the Party moving does: the Host chooses another game, and the drawer does not follow anyone home
     await host.page.locator('#scene-cancel').click();
@@ -606,7 +606,7 @@ test.describe('three phones at one party', () => {
     }
     await cleo.page.locator('#choose-watch').click();
     await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 1 watching');
+    await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 1');
     await expect(line(host, 'You').locator('.ans')).toHaveText('Playing');
     await expect(line(host, 'Bob').locator('.ans')).toHaveText('Playing');
     await expect(line(host, 'Cleo').locator('.ans')).toHaveText('Watching');
@@ -724,7 +724,7 @@ test.describe('three phones at one party', () => {
         await expect(p.page.locator('#choose-play'), p.name).toHaveAttribute('aria-pressed', 'true');
       }
       for (const p of [cleo, dee]) await p.page.locator('#choose-watch').click();
-      await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 2 watching');
+      await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 2');
       await host.page.locator('#scene-start').click();
       for (const p of [host, ...guests]) await expect(p.page, p.name).toHaveURL(/\/games\/bluff\//);
       await endForEveryone(host);
