@@ -134,11 +134,11 @@ For now:
 
 ### 5.2 Interface typography
 
-Use **Geist** for general interface text where practical.
+Use **Plus Jakarta Sans** for general interface text where practical.
 
 The system UI should prioritize legibility over personality.
 
-Geist should cover:
+Plus Jakarta Sans should cover:
 
 - navigation
 - buttons

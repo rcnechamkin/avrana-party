@@ -56,11 +56,11 @@ tools/build-art.mjs ──(npm run build:art: contracts/artwork.json + assets/ve
 | control size | `--size-field: .3rem` → 48 px buttons and inputs | touch targets ≥ 44 px (tested, bars included) |
 | depth, noise | 0 | flat: no gradients or glow |
 
-Type: **Geist** (SIL OFL 1.1), one variable file bundled at `web/party/fonts/` and served by the Pi
+Type: **Plus Jakarta Sans** (SIL OFL 1.1), two variable files (Latin and Latin Extended) bundled at `web/party/fonts/` and served by the Pi
 like every other file (provenance: `assets/vendor/README.md`); the system face shows until it loads
 (`font-display: swap`) and if it never does. The words "Avrana Party" alone use the `brand` face:
 a light Helvetica where the phone really has one (`local()` only, so Android and Windows never
-fall back to Arial), Geist Light elsewhere. Sizes are rem, so they follow the phone's text size;
+fall back to Arial), Plus Jakarta Sans Light elsewhere. Sizes are rem, so they follow the phone's text size;
 body is 0.9375 rem; supporting lines (a sender's name in chat, a value on a list row, counts) are
 0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor. These sizes are
 named type roles in `party.css`'s `@theme` (AVR-425; the Design Foundation's roles): `headline`

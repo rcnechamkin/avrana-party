@@ -277,9 +277,10 @@
 
 <!-- Leave Party (AVR-580): an intentional departure, confirmed. It says what happens, never moves the
      Party, and is not Home, End or Quit & Spectate. -->
-<dialog id="leave" class="avrana-sheet" aria-labelledby="leave-h">
+<dialog id="leave" class="avrana-sheet" aria-labelledby="leave-h" aria-describedby="leave-from-game leave-text leave-host">
   <div class="head"><h2 id="leave-h" class="m-0">Leave the Party?</h2><button id="leave-close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
   <div class="body grid gap-3">
+    <p id="leave-from-game" class="m-0" hidden>You asked to leave from the game. You are still in the Party, and your place in the round is kept until you choose.</p>
     <p id="leave-text" class="m-0"></p>
     <p id="leave-host" class="m-0 empty:hidden"></p>
     <p id="leave-note" class="m-0 text-warning empty:hidden" role="status"></p>

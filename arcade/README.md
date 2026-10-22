@@ -112,7 +112,7 @@ from the three that named the old sound button and one more behaviour: a picture
 - **Tokens and icons are copies.** The page cannot load the Party's stylesheet (it may be served from
   the game's own origin, or over plain HTTP, where `/party/` does not exist), so it carries the
   colour and radius tokens of `web/src/party.css` and the Lucide icons it draws, inline, with the
-  system font stack (Geist cannot be fetched from another origin). `tests/unit/test_arcade_page.py`
+  system font stack (Plus Jakarta Sans cannot be fetched from another origin). `tests/unit/test_arcade_page.py`
   fails when a value drifts from the shell; when a pair of colours drops under 4.5:1 (3:1 for edges,
   icons and the focus ring), for every control at rest, held and disabled, upright and floating
   sideways, in both palettes; when an edge you can press is not the `control` token (the 3:1 edge

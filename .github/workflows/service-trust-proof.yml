@@ -30,24 +30,35 @@
 name: Service trust proof
 
 on:
-  pull_request:
-    paths:
-      - 'avrana/**'
-      - 'contracts/**'
-      - 'deploy/**'
-      - 'ops/provision-game'
-      - 'ops/prepare-native-games'
-      - 'ops/install-game'
-      - 'ops/install-node-runtime'
-      - 'tests/fixtures/node-game/**'
-      - 'ops/catalog-overlay'
-      - 'ops/install-party-web.sh'
-      - 'experiments/**'
-      - 'tests/package/**'
-      - 'avrana-party.nginx'
-      - 'web/party/**'
-      - 'tests/fixtures/appliances/**'
-      - '.github/workflows/service-trust-proof.yml'
+# AVR-305: no pull_request trigger and no paths filter of its own. ci-verdict.yml calls this workflow
+# when the change touches one of the paths below (the same list is tools/ci_verdict.py PLATFORM_PATHS).
+#    paths:
+#      - 'avrana/**'
+#      - 'contracts/**'
+#      - 'deploy/**'
+#      - 'ops/provision-game'
+#      - 'ops/prepare-native-games'
+#      - 'ops/install-game'
+#      - 'ops/install-node-runtime'
+#      - 'tests/fixtures/node-game/**'
+#      - 'ops/catalog-overlay'
+#      - 'ops/install-party-web.sh'
+#      - 'experiments/**'
+#      - 'tests/package/**'
+#      - 'avrana-party.nginx'
+#      - 'web/party/**'
+#      - 'tests/fixtures/appliances/**'
+#      - '.github/workflows/service-trust-proof.yml'
+  workflow_call:
+    inputs:
+      native_game:
+        description: run the native-game job (workflow_dispatch always runs it)
+        type: boolean
+        default: false
+    outputs:
+      native_game_result:
+        description: result of the native-game job
+        value: ${{ jobs.native-game-result.outputs.result }}
   workflow_dispatch:
 
 concurrency:
@@ -69,7 +80,7 @@ jobs:
         run: sudo AVRANA_TRUST_PROOF=1 bash experiments/service-trust/proof.sh
 
   native-game:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || inputs.native_game
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -78,6 +89,17 @@ jobs:
           persist-credentials: false
       - name: provision-game, a real session, the boundary checker, rotate and remove
         run: sudo AVRANA_NATIVE_GAME_PROOF=1 bash experiments/native-game/proof.sh
+
+  # (AVR-305) Reports the native-game job's result to the caller (a skipped job otherwise looks like success).
+  native-game-result:
+    needs: native-game
+    if: ${{ always() && inputs.native_game }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    outputs:
+      result: ${{ needs.native-game.result }}
+    steps:
+      - run: echo "native-game ${{ needs.native-game.result }}"
 
   # (AVR-304) `ops/prepare-native-games` on a host that has ADR 0016 phase 1 and Party Core's EARLIER
   # unit (no ExecReload=, no socket unit, no registry key): refused without phase 1; --dry-run changes

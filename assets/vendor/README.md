@@ -27,18 +27,19 @@ The mapping from game to artwork is `contracts/artwork.json`.
 Kenney's board-game vocabulary has no ships, balls, buzzers or letter tiles, so it is not used where
 it would only be a loose metaphor; titles without artwork show a generic icon.
 
-## Geist (served as is, from `web/party/fonts/`)
+## Plus Jakarta Sans (served as is, from `web/party/fonts/`)
 
-The one exception to "nothing here is served": the interface font is a single file and is committed
-where the pages load it, not under this directory.
+The one exception to "nothing here is served": the interface font is committed where the pages
+load it, not under this directory.
 
 | | |
 |---|---|
-| What | Geist, variable weight 100 to 900: `web/party/fonts/Geist-Variable.woff2` |
-| Source | npm package `geist` 1.7.2 (Vercel, with basement.studio), `dist/fonts/geist-sans/Geist-Variable.woff2`; SHA-256 `a369fcf5628ea2aa4e1b9e2ec6a5b3624e365bda588e1f0f2f12b564f728fbb8` |
-| License | SIL Open Font License 1.1: `web/party/fonts/OFL.txt` (unmodified, shipped beside the font) |
-| Modified? | No: byte-for-byte the package's file. The package is not a dependency of this repository |
-| Use | `@font-face` in `web/src/party.css`; both files are in the offline copy's list (`sw.js`) |
+| What | Plus Jakarta Sans, variable weight 200 to 800, in two files: `web/party/fonts/PlusJakartaSans-Latin-Variable.woff2` (SHA-256 `153fc85b70298beeb1d61a5f723331649e7f23bb77302a66e61cb3e2fbdb5e79`) and `PlusJakartaSans-LatinExt-Variable.woff2` (SHA-256 `38e3b8fd8045048eb311d90170a4429ed2c8f405852dc3d91b5af8452758703f`) |
+| Source | npm package `@fontsource-variable/plus-jakarta-sans` 5.3.0 (Fontsource, from the Plus Jakarta Sans Project by Tokotype), files `files/plus-jakarta-sans-latin-wght-normal.woff2` and `files/plus-jakarta-sans-latin-ext-wght-normal.woff2`; package tarball SHA-256 `271d7863880f0de211d9d44534e16907fba50cf6d47245de1938ff392ab5a30a` |
+| License | SIL Open Font License 1.1: `web/party/fonts/OFL.txt` (the package's `LICENSE`, unmodified, shipped beside the fonts) |
+| Modified? | No: byte-for-byte the package's files. The package is not a dependency of this repository |
+| Use | `@font-face` in `web/src/party.css`; the two files are in the offline copy's list (`sw.js`). The prototypes in `docs/design/ux-redesign/prototypes/shared/fonts/` ship the Latin file only |
+| Replaces | Geist (npm `geist` 1.7.2, SHA-256 `a369fcf5628ea2aa4e1b9e2ec6a5b3624e365bda588e1f0f2f12b564f728fbb8`), removed |
 
 ## Generated (not vendored)
 
