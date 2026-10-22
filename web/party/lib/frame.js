@@ -1,17 +1,20 @@
 // The frame of the Party shell: which of its four places is on screen, and the words that say who
 // is here. Pure: no DOM, no network, no storage.
 //
-// The places (Home, Party, Library, System) are views of one document, chosen by the address's
-// fragment. They are only ever on screen while the party itself is home: where the party is comes
-// from Party Core (lib/party-mode.js), and that always wins over the address.
+// The places (Home, Party, Library, Me: Concept K, AVR-707) are views of one document, chosen by
+// the address's fragment. They are only ever on screen while the party itself is home: where the
+// party is comes from Party Core (lib/party-mode.js), and that always wins over the address.
 
-export const PAGES = ['home', 'party', 'library', 'system'];
-const TITLES = { home: 'Avrana Party', party: 'Party', library: 'Library', system: 'System' };
+export const PAGES = ['home', 'party', 'library', 'me'];
+const TITLES = { home: 'Avrana Party', party: 'Party', library: 'Library', me: 'Me' };
+/** Older addresses that name a place by another word: System became Me (its settings live there). */
+const ALIASES = { system: 'me' };
 
 /** The place a fragment names; anything else (none, an old link, a typo) is Home. */
 export function pageOf(hash) {
   const name = String(hash || '').replace(/^#/, '');
-  return PAGES.includes(name) ? name : 'home';
+  const page = ALIASES[name] || name;
+  return PAGES.includes(page) ? page : 'home';
 }
 
 export const pageTitle = (page) => TITLES[page] || TITLES.home;
@@ -67,13 +70,26 @@ export function startTab({ party, chat, want } = {}) {
   return has.chat ? 'chat' : has.people ? 'people' : null;
 }
 
-/** The Party control's name for a screen reader. */
-export function hudLabel({ party, count, chat, unread = 0 } = {}) {
-  if (!party) return chat ? 'Party chat' : '';
-  const people = count === 1 ? '1 person' : `${count} people`;
-  const fresh = chat && unread > 0 ? `, ${unread === 1 ? '1 new message' : `${unread} new messages`}` : '';
-  return `Your Party: ${people} here${fresh}. Open people${chat ? ' and chat' : ''}`;
+/** The compact presence row (Concept K): how many are here as a number, and who is away by name
+ * ("4 here", "4 here · Riley away", "12 here · 2 away"). Away is said in words, never by a dimmed
+ * face alone. */
+export function presenceLine(people) {
+  const list = Array.isArray(people) ? people : [];
+  const away = list.filter((m) => m.away);
+  const gone = away.length === 1 ? ` · ${away[0].name} away` : away.length ? ` · ${away.length} away` : '';
+  return `${list.length} here${gone}`;
 }
 
-/** The unread mark on the Party control: a count, capped so it stays one small badge. */
+/** The presence row's name for a screen reader: what it says, and what it opens. */
+export function presenceLabel(count) {
+  return `Your Party: ${count === 1 ? '1 person' : `${count} people`} here. Open people`;
+}
+
+/** The Party tab's name for a screen reader: its word, and what is new in the Party's chat (the
+ * badge on its icon says the same as a number). */
+export function partyTabLabel(unread = 0) {
+  return unread > 0 ? `Party, ${unread === 1 ? '1 new message' : `${unread} new messages`}` : 'Party';
+}
+
+/** The unread mark on the Party tab: a count, capped so it stays one small badge. */
 export const unreadMark = (n) => (n > 0 ? (n > 9 ? '9+' : String(n)) : '');

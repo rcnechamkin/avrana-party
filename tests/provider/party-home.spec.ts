@@ -59,7 +59,7 @@ async function home(page: Page) {
 /** The only gate is a profile: saving it is being in the party (there is no Join). */
 async function joinParty(page: Page, name: string) {
   await home(page);
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();

@@ -45,8 +45,11 @@ ADR or contract conflict, stop and ask the owner.
 - A restrained monochromatic shell. Atomic Purple is a subtle smoky, translucent accent and
   material reference, never a purple interface, and never literal retro styling.
 - Type: Plus Jakarta Sans everywhere, the "Avrana Party" brand words included (Light 300). Concept K, owner decision 2026-10-21.
-- Bottom navigation: Home / Party / Library / System.
-- Social, chat and presence are a separate global layer, not a module or an embedded card.
+- Bottom navigation: one floating glass bar, Home / Party / Library / Me (Me drawn with the viewer's
+  avatar; System's settings live in Me). Concept K, owner 2026-10-21.
+- Glass on exactly three shell controls: the bar, the top-right utility (Search, Filter & view,
+  the Limited mark; never chat or people), the top-left Spire-A Home button. Nothing else.
+- Presence is a compact row (faces + "4 here"); the roster and chat live on the Party tab.
 - Healthy technical infrastructure stays mostly invisible; degraded notices state player impact.
 - The Host is a representative holding the remote: no crown, king or admin framing.
 - The Library is artwork-first and console-style, with several views (grids and list).

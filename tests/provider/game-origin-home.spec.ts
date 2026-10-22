@@ -34,7 +34,7 @@ async function joinParty(page: Page, name: string) {
   await page.goto(`${PARTY}/party/`);
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('html')).toHaveAttribute('data-party', 'on');
-  await page.locator('#nav a[data-go="party"]').click();
+  await page.locator('#nav a[data-go="me"]').click();
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();

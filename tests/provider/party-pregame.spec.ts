@@ -46,7 +46,7 @@ async function phone(browser: Browser, briefed = true): Promise<Phone> {
 async function arrive(page: Page, name: string) {
   await page.goto('/party/');
   await expect(page.locator('html')).toHaveAttribute('data-party', 'on');
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -153,7 +153,7 @@ test('the host picks BLUFF: a briefing on every phone, host-only Start, then eve
   expect(await api(ben.page, 'session/start', { if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
 
   // the people, over the real briefing: only them, and the briefing is given back as it was
-  await ben.page.locator('#hud').click();
+  await ben.page.locator('#scene-presence').click();
   await expect(ben.page.locator('#social')).toBeVisible();
   await expect(ben.page.locator('#social-where')).toHaveText('Getting ready for BLUFF.');
   await expect(ben.page.locator('#social-people li')).toHaveCount(3);
@@ -161,7 +161,7 @@ test('the host picks BLUFF: a briefing on every phone, host-only Start, then eve
   await ben.page.screenshot({ path: info.outputPath('setup-people-390x844.png') });
   await ben.page.keyboard.press('Escape');
   await expect(ben.page.locator('#social')).toBeHidden();
-  await expect(ben.page.locator('#hud')).toBeFocused();
+  await expect(ben.page.locator('#scene-presence')).toBeFocused();
   await expect(ben.page.locator('#scene')).toBeVisible();
   expect(await welcomeOf(ben.page)).toBeUndefined();                  // and still no table
 
@@ -265,7 +265,7 @@ test('a reopened or late phone lands where the party is: the setup scene, then t
   const cy = await phone(browser);
   await cy.page.goto('/party/');
   await cy.page.locator('#home-name').click();                         // Home asks a nameless phone for its name
-  await expect(cy.page.locator('html')).toHaveAttribute('data-place', 'party');
+  await expect(cy.page.locator('html')).toHaveAttribute('data-place', 'me');
   await cy.page.locator('#profile-name').fill('Cy');
   await cy.page.getByRole('button', { name: 'Save profile' }).click();  // the profile is presence
   await expect(cy.page.locator('#scene')).toBeVisible();              // and the party is here

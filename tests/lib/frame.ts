@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
-/** The shell's four places (web/party/lib/frame.js). They are views of one document. */
-export type Place = 'home' | 'party' | 'library' | 'system';
+/** The shell's four places (web/party/lib/frame.js; Concept K: Home, Party, Library, Me). They are views of one document. */
+export type Place = 'home' | 'party' | 'library' | 'me';
 
 /** Go to a place the way a person does: the bar at the bottom of the frame. It does not close a
  * sheet for the test: a sheet that should have closed by itself, and did not, fails here. */

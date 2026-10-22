@@ -46,7 +46,7 @@ test('legacy profile, favorites and history appear in the canonical shell', asyn
 });
 test('profile edits and a direct legacy game visit share the same backing identity', async ({ page }) => {
   await legacyProfile(page); await open(page);
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Robin Two');
   const choice = page.locator('#avatar-choices [data-avatar="gaze-17"]');
@@ -98,8 +98,9 @@ test('without a Party there is no chat: the old socket is never opened, nothing 
   page.on('websocket', (ws) => { if (ws.url().endsWith('/chat/ws')) sockets++; });
   await open(page);
   // Chat is the Party room, Party Core's own. With no Party Core here the catalog has no chat at
-  // all: no chat mark, no Party chat row, and no connection to the retiring runtime's chat.
-  await expect(page.locator('#hud')).toBeHidden();
+  // all: no chat count on the Party tab, no Party chat row, and no connection to the retiring
+  // runtime's chat.
+  await expect(page.locator('#nav-unread')).toBeHidden();
   await place(page, 'party');
   await expect(page.locator('#party-chat-row')).toBeHidden();
   await page.waitForTimeout(500);
@@ -114,7 +115,7 @@ test('missing donor service disables its titles without disabling the arcade or 
   await open(page);
   // Today's chat is served by that same runtime (ADR 0014 retires it): with it gone the shell
   // offers no chat at all, rather than a chat that reconnects for ever.
-  await expect(page.locator('#hud')).toBeHidden();
+  await expect(page.locator('#nav-unread')).toBeHidden();
   await place(page, 'party');
   await expect(page.locator('#party-chat-row')).toBeHidden();
   expect(sockets).toBe(0);
@@ -137,7 +138,7 @@ test('photo framing uses the shared avatar endpoint and removal handles failures
       return route.fulfill({ status: 503, body: 'offline' });
     return route.fulfill({ json: { url: '/avatars/0123456789abcdef0123.webp?v=12' } });
   });
-  await open(page); await place(page, 'party'); await page.locator('#player-chip').click();
+  await open(page); await place(page, 'me'); await page.locator('#player-chip').click();
   const image = await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 10; c.height = 20;
     const ctx = c.getContext('2d')!; ctx.fillStyle = 'red'; ctx.fillRect(0,0,10,20);

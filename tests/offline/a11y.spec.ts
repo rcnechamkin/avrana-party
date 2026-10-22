@@ -25,8 +25,8 @@ async function clear(page: Page) {
 /** Every screen of the shell without a Party, and how a person gets to it. */
 const SCREENS: Array<[string, (page: Page) => Promise<unknown>]> = [
   ['Home', (p) => place(p, 'home')],
-  ['Party', (p) => place(p, 'party')],
-  ['Party, the profile open', async (p) => { await place(p, 'party'); if (!(await p.locator('#profile-name').isVisible())) await p.locator('#player-chip').click(); await expect(p.locator('#profile-name')).toBeVisible(); }],
+  ['Party', (p) => place(p, 'me')],
+  ['Me, the profile open', async (p) => { await place(p, 'me'); if (!(await p.locator('#profile-name').isVisible())) await p.locator('#player-chip').click(); await expect(p.locator('#profile-name')).toBeVisible(); }],
   ['Library', async (p) => { await place(p, 'library'); await p.locator('#game-search').fill(''); await expect(p.locator('#games [data-game]').first()).toBeVisible(); }],
   ['Library, as a list', async (p) => { await place(p, 'library'); await p.locator('#lib-view').click(); await p.locator('#view-choices [data-v="list"]').click(); await expect(p.locator('#games .avrana-row').first()).toBeVisible(); }],
   ['Library, the view sheet', async (p) => { await place(p, 'library'); await p.locator('#lib-view').click(); await expect(p.locator('#lib-views')).toBeVisible(); }],
@@ -37,7 +37,7 @@ const SCREENS: Array<[string, (page: Page) => Promise<unknown>]> = [
   ['Library, filters that leave nothing', async (p) => { await place(p, 'library'); await p.locator('#game-views [data-view="all"]').click(); await p.locator('#lib-filter').click(); await p.locator('#filter-players [data-players="6"]').click(); await p.locator('#filter-screens [data-screen="tv_required"]').click(); await p.locator('#filters-show').click(); await expect(p.locator('#games [data-empty="filters"]')).toBeVisible(); }],
   ['a game’s page', async (p) => { await place(p, 'library'); await p.locator('#filters-reset').evaluate((b: HTMLButtonElement) => b.click()); await p.locator('#game-views [data-view="all"]').click(); await openGame(p, 'bluff'); }],
   ['a game that is not installed', async (p) => { await openGame(p, 'ps1-worms'); }],
-  ['System', (p) => place(p, 'system')],
+  ['Me', (p) => place(p, 'me')],
 ];
 
 /** Run `check` on every screen in turn; collect what each one found, named by screen. */
@@ -55,11 +55,11 @@ async function everyScreen(page: Page, check: (root: string, name: string) => Pr
 
 test('the checks themselves: each one catches a fault planted for it', async ({ page }) => {
   await open(page);
-  await place(page, 'system');
+  await place(page, 'me');
   const clean = async () => [...await lowContrast(page, '#main'), ...await faintEdges(page), ...await unnamed(page, '#main'), ...await outOfOrder(page)];
   expect(await clean()).toEqual([]);
   await page.evaluate(() => {
-    const view = document.getElementById('view-system')!;
+    const view = document.getElementById('view-me')!;
     const p = document.createElement('p'); p.id = 'planted-dim'; p.textContent = 'Hard to read'; p.style.color = '#4a4a4e';
     const icon = document.createElement('button'); icon.id = 'planted-nameless'; icon.type = 'button'; icon.className = 'btn btn-square'; icon.style.borderColor = '#2a2a2e';
     const tip = document.createElement('div'); tip.id = 'planted-label'; tip.setAttribute('aria-labelledby', 'planted-nothing'); tip.textContent = 'x';
@@ -77,7 +77,7 @@ test('the checks themselves: each one catches a fault planted for it', async ({ 
   // motion: something that runs is seen, and the page's own rule stops it when less motion is asked for
   await page.evaluate(() => { document.getElementById('planted-dim')!.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 60_000, iterations: Infinity }); });
   expect(await moving(page)).toEqual(expect.arrayContaining([expect.stringContaining('animation on')]));
-  expect((await outline(page)).h1).toEqual(['System']);
+  expect((await outline(page)).h1).toEqual(['Me']);
 });
 
 test('contrast: every word, every mark and every outlined control stands out, on every screen', async ({ page }) => {
@@ -201,7 +201,7 @@ test('How to play: however long the rules, "Got it" stays in reach and the rules
 test('"Choose your name" is a step the phone’s Back undoes, from Home and from a game’s page', async ({ page }) => {
   await open(page);
   await page.locator('#home-name').click();
-  await expect(page.locator('html')).toHaveAttribute('data-place', 'party');
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'me');
   await expect(page.locator('#profile-name')).toBeFocused();
   await page.goBack();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
@@ -210,7 +210,7 @@ test('"Choose your name" is a step the phone’s Back undoes, from Home and from
   await expect(page.locator('html')).toHaveAttribute('data-place', 'game');
   await expect(page.locator('#top-back')).toHaveAccessibleName('Home');
   await page.locator('#game-detail').getByRole('link', { name: /^(Play|Watch|Try anyway)$/ }).click();   // no name yet: asked for one first
-  await expect(page.locator('html')).toHaveAttribute('data-place', 'party');
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'me');
   await expect(page.locator('#profile-note')).toContainText('Choose your Party name');
   await page.goBack();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'game');

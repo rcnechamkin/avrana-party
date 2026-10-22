@@ -18,13 +18,14 @@ const tint = (page: Page) => page.evaluate(() => {
   return value;
 });
 
-test('what is chosen is tinted the same way in the bar, the tabs, a segment and a list', async ({ page }) => {
+test('what is chosen is tinted the same way in the tabs, a segment and a list; the bar says it with its lens', async ({ page }) => {
   await open(page);
   await place(page, 'library');
   const select = await tint(page);
   const ground = (selector: string, pseudo?: string) => page.locator(selector).first()
     .evaluate((el, p) => getComputedStyle(el, p || undefined).backgroundColor, pseudo);
-  expect(await ground('#nav a[aria-current="page"]', '::before')).toBe(select);
+  // Concept K (AVR-707): the bar's place is the glass lens, one capsule under the tabs (shell.spec.ts)
+  await expect(page.locator('#nav > .avrana-lens')).toHaveCount(1);
   expect(await ground('#game-views [aria-pressed="true"]')).toBe(select);
   await page.locator('#lib-filter').click();
   expect(await ground('#filter-players [aria-pressed="true"]')).toBe(select);

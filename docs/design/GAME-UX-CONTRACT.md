@@ -125,7 +125,9 @@ no link that leaves the page (the link that checks for the full version is on th
 pages); the Library, the navigation bar and "This phone" stay off the briefing. Chat over a
 briefing waits for a Party-owned chat and its own decision. ADR 0011 carries the matching
 amendment (2026-10-05); the drawings are in `docs/design/ux-redesign/`. As built, each of the
-proposed points holds: `renderSocial` and `renderLimited` in `web/party/app.js`, and
+proposed points holds: `renderSocial` and `renderLimited` in `web/party/app.js` (since Concept K,
+AVR-707, the people open from the briefing's own presence row, `#scene-presence`, in place of the
+retired Party control at the top), and
 `tests/party/multi-client.spec.ts` and `tests/offline/limited.spec.ts`.
 
 **Rule 3.3 [Accepted, AVR-56; Implemented].** While the Party is in a game, a non-host has no

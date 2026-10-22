@@ -50,7 +50,7 @@ async function phone(browser: Browser, base = BASE): Promise<Phone> {
 async function arrive(page: Page, name: string) {
   await page.goto('/party/');
   await expect(page.locator('html')).toHaveAttribute('data-party', 'on');
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();

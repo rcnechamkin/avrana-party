@@ -91,7 +91,7 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   await page.goto(`${BASE}/party/`);
   await ready(page);
   expect((await served(page)).build).toBe(releases.new.build);
-  await page.locator('#nav a[data-go="party"]').click();
+  await page.locator('#nav a[data-go="me"]').click();
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Rae');
   await page.getByRole('button', { name: 'Save profile' }).click();
