@@ -131,6 +131,23 @@ test.describe('Home K3 after a round', () => {
     await expect(host.page.locator('#home-lead .avrana-stage .avrana-eyebrow')).toHaveText('Featured');   // and it stays chosen
   });
 
+  test('tier 3: the briefing comes up when the Party moves to it, and the mark goes once it has (AVR-711)', async () => {
+    await place(bob.page, 'home');
+    // what was marked as entering, as it happened (an entrance is 200 ms: too quick to catch by looking)
+    await bob.page.evaluate(() => {
+      (window as any).entered = [];
+      new MutationObserver((list) => { for (const m of list) if ((m.target as Element).hasAttribute('data-enter')) (window as any).entered.push((m.target as Element).id); })
+        .observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-enter'] });
+    });
+    await startForEveryone(host.page, 'bluff');
+    await expect(bob.page.locator('#scene')).toBeVisible();
+    await expect.poll(() => bob.page.evaluate(() => (window as any).entered)).toContain('scene');
+    await expect(bob.page.locator('#scene')).not.toHaveAttribute('data-enter', '');      // gone once it has run
+    await host.page.locator('#scene-cancel').click();
+    await expect(bob.page.locator('#scene')).toBeHidden();
+    await expect.poll(() => bob.page.evaluate(() => (window as any).entered)).toContain('content');   // the frame comes back
+  });
+
   test('Play again is the Host’s start of the same game: everyone moves to it together', async () => {
     await roundThenHome();
     await host.page.locator('#home-actions button', { hasText: 'Play again' }).click();
