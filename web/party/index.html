@@ -130,15 +130,22 @@
       <p id="people-state" class="avrana-state mt-2" role="status" hidden></p>
       <!-- No Party view (the Party box is out of reach, or answers without Party Core): said, not left blank. -->
       <p id="party-off" class="avrana-sub mt-2" hidden></p>
-      <section id="party-people" class="mt-4" hidden aria-labelledby="party-h">
-        <h2 id="party-h" class="avrana-section-title">People here <span id="party-count" class="font-sans text-body font-normal text-muted"></span></h2>
+      <!-- Concept K's Party tab (AVR-710): grouped lists. Everyone here, one row each, with what is
+           true of them in words; the Host can hand hosting to someone who is here (Party Core's
+           transfer_host). Then this Party's own rows, and Leave Party, quietly, at the end. -->
+      <section id="party-people" class="mt-2" hidden aria-labelledby="party-h">
+        <h2 id="party-h" class="avrana-group-h" tabindex="-1">In this Party <span aria-hidden="true">·</span> <span id="party-count"></span></h2>
         <p id="party-host" class="avrana-sub mb-3 empty:hidden"></p>
-        <ul id="party-members" class="avrana-faces" aria-label="People at the party"></ul>
+        <p id="people-note" class="avrana-sub mb-3 text-warning empty:hidden" role="status"></p>
+        <ul id="party-members" class="avrana-group avrana-roster" aria-label="People at the party"></ul>
       </section>
-      <ul class="avrana-list mt-6">
-        <li id="party-chat-row" hidden><button id="party-chat" type="button" aria-haspopup="dialog"><span data-icon="message-circle"></span><span>Party chat</span><span class="val"><span id="party-chat-unread" class="unread" aria-hidden="true"></span><span data-icon="chevron-right"></span></span></button></li>
-        <li id="party-leave-row" hidden><button id="party-leave" type="button" aria-haspopup="dialog"><span data-icon="wifi-off"></span><span>Leave Party</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
-      </ul>
+      <section id="party-this" class="mt-6" aria-labelledby="party-this-h" hidden>
+        <h2 id="party-this-h" class="avrana-group-h">This Party</h2>
+        <ul class="avrana-group avrana-list">
+          <li id="party-chat-row" hidden><button id="party-chat" type="button" aria-haspopup="dialog"><span class="well"><span data-icon="message-circle"></span></span><span>Party chat</span><span class="val"><span id="party-chat-unread" class="unread" aria-hidden="true"></span><span data-icon="chevron-right"></span></span></button></li>
+        </ul>
+      </section>
+      <div id="party-leave-row" class="avrana-quiet-row" hidden><button id="party-leave" type="button" class="avrana-quiet" aria-haspopup="dialog">Leave Party</button></div>
     </section>
 
     <!-- Library: every title the Party box lists, as covers or as a list. The number of people here
@@ -174,7 +181,8 @@
          technical details). The viewer is always the viewer: it never shows anyone else. -->
     <section id="view-me" data-page="me" hidden>
       <h2 class="sr-only">You</h2>
-      <button id="player-chip" type="button" class="avrana-surface flex w-full min-h-18 cursor-pointer items-center gap-3 px-3 py-2.5 text-left text-lg font-semibold transition-colors hover:border-line-strong" aria-controls="profile">Choose your name</button>
+      <!-- Concept K's Me (AVR-710): this phone's person first, large, with Edit profile. -->
+      <button id="player-chip" type="button" class="avrana-me-head" aria-controls="profile">Choose your name</button>
       <details id="profile" class="avrana-surface mt-2 not-open:hidden">
         <summary hidden><h2>Your Avrana profile</h2></summary>
         <div class="p-4">
@@ -205,13 +213,22 @@
       <!-- How things are: one quiet line when all is well; otherwise what it means for play.
            Limited Mode's own words are kept here for as long as the phone is in it. -->
       <section id="health" class="mt-2 grid gap-3" aria-label="How things are" hidden></section>
-      <section id="phone" class="mt-5" aria-labelledby="phone-h">
-        <h2 id="phone-h" class="avrana-section-title">This phone <span id="phone-summary" class="font-sans text-body font-normal text-muted"></span></h2>
-        <ul id="phone-list" class="avrana-checks" aria-labelledby="phone-h"></ul>
+      <section id="phone" class="mt-6" aria-labelledby="phone-h">
+        <h2 id="phone-h" class="avrana-group-h">This phone <span aria-hidden="true">·</span> <span id="phone-summary"></span></h2>
+        <ul id="phone-list" class="avrana-group avrana-checks" aria-labelledby="phone-h"></ul>
+        <!-- How this phone reaches the Party, and how it moves: what is so, in words. Limited Mode
+             opens its own explanation while it is on; Motion follows the phone's own setting. -->
+        <ul class="avrana-group avrana-list mt-3" aria-label="How this phone takes part">
+          <li><button id="me-limited" type="button" aria-haspopup="dialog"><span class="well"><span data-icon="eye"></span></span><span class="t"><span>Limited Mode</span><span id="me-limited-v" class="sub">Off</span></span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
+          <li><p class="avrana-row-static"><span class="well"><span data-icon="move-right"></span></span><span class="t"><span>Motion</span><span id="me-motion" class="sub">Follows Reduce Motion on this phone</span></span></p></li>
+        </ul>
       </section>
-      <ul class="avrana-list mt-6">
-        <li><a href="diag/"><span data-icon="settings"></span><span>Technical details</span><span class="val"><span data-icon="chevron-right"></span></span></a></li>
-      </ul>
+      <section class="mt-6" aria-labelledby="help-h">
+        <h2 id="help-h" class="avrana-group-h">Help</h2>
+        <ul class="avrana-group avrana-list">
+          <li><a href="diag/"><span class="well"><span data-icon="info"></span></span><span>Technical details</span><span class="val"><span data-icon="chevron-right"></span></span></a></li>
+        </ul>
+      </section>
     </section>
 
     <!-- A game's own page: what it is, whether it suits the people here and this phone, and its

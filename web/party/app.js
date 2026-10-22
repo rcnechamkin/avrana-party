@@ -414,8 +414,43 @@ async function confirmLeave() {
   $('reconnect-h').focus({ preventScroll: true });
 }
 
+/** A person on the Party page (Concept K, AVR-710): one row of the group. The face (dimmed when
+ * away), the name, and what is true of them in words under it ("Here", "Away", "Here · Limited
+ * Mode"), never colour or a dimmed face alone. The Host's row has the HOST tag. The Host can make
+ * someone who is here the host (Party Core refuses anyone else, and says why). */
+function personRow(m, hands) {
+
+  return h('li', { 'data-id': m.id, 'data-away': m.away ? '' : null, 'data-mode': m.limited ? LIMITED : null },
+    avatarNode({ avatar: m.avatar || '' }, 'sm'),
+    h('span', { class: 'line' },
+      h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
+      // ("Limited", as the drawer and the line-up say it: ADR 0012 D4)
+      h('span', { class: 'sub' }, h('span', { text: m.away ? 'Away' : 'Here' }),
+        m.limited ? h('span', { 'aria-hidden': 'true', text: ' · ' }) : null, m.limited ? h('span', { class: 'mode', text: 'Limited' }) : null)),
+    m.host ? h('span', { class: 'avrana-tag host', text: 'Host' }) : null,
+    hands && !m.me && !m.away && !m.host
+      ? h('button', { type: 'button', class: 'btn btn-outline btn-sm hand', 'data-to': m.id, 'aria-label': `Make ${m.name} the host`,
+        onclick: (event) => handHost(event.currentTarget.dataset.to) }, 'Make host')
+      : null);
+}
+
+/** Hosting handed over: the page says so through the Party's own lines (host line, chat), and
+ * focus goes to the people's heading, since the button is gone. A refusal says Party Core's why. */
+async function handHost(to) {
+  if (state.partyBusy) return;
+  state.partyBusy = true;
+  $('people-note').textContent = '';
+  try {
+    const res = await party.handHost(to);
+    if (!res.ok) $('people-note').textContent = (res.body && res.body.message) || 'Hosting wasn’t handed over. Try again.';
+    else $('party-h').focus({ preventScroll: true });
+  } finally {
+    state.partyBusy = false;
+  }
+}
+
 /** A person at the party: face, name, and what is true of them in words (never colour or an
- * icon alone). The same item serves the Party page (large faces) and the drawer (rows). */
+ * icon alone). The drawer's rows. */
 function personItem(m, size = '') {
   return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null,
     'data-mode': m.limited ? LIMITED : null },
@@ -659,6 +694,7 @@ function renderParty(view) {
   $('party-people').hidden = gone;
   $('reconnect').hidden = !gone;
   $('party-leave-row').hidden = !me;
+  $('party-this').hidden = $('party-chat-row').hidden;     // (a heading over nothing is never shown)
   if (me) $('reconnect-note').textContent = '';
   const count = view.members.length;
   $('party-count').textContent = count === 1 ? '1 person' : `${count} people`;
@@ -668,7 +704,8 @@ function renderParty(view) {
   $('party-host').textContent = hostLine(me, host, Boolean(away));
   renderHostNote(me ? hostNote({ away, passed: state.passed }) : null);
   const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
-  $('party-members').replaceChildren(...people.map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'xl')));
+  const hands = Boolean(me && me.host);
+  sync($('party-members'), people.map((m) => personRow({ ...m, limited: limited.has(m.id) }, hands)));
   renderHome();
   renderBar();
   const s = view.session;
@@ -1589,6 +1626,11 @@ function renderPhone() {
   $('phone-list').replaceChildren(...items);
   const allSet = ESSENTIAL.every((name) => caps[name] && caps[name].status === 'yes');
   $('phone-summary').textContent = allSet ? 'All set' : 'Some things are limited';
+  // Limited Mode, in words: off, or on (and then it opens its explanation)
+  const lim = state.mode === LIMITED;
+  $('me-limited-v').textContent = lim ? 'On' : 'Off';
+  $('me-limited').disabled = !lim;
+  $('me-limited').querySelector('.val').hidden = !lim;
 }
 
 async function refreshHealth() {
@@ -1864,6 +1906,7 @@ $('skip').onclick = (event) => {
   ($('games-section').hidden ? $('top-title') : $('games-h')).focus();
 };
 $('limited-mark').onclick = () => { if (!$('about-limited').open) $('about-limited').showModal(); };
+$('me-limited').onclick = () => { if (state.mode === LIMITED && !$('about-limited').open) $('about-limited').showModal(); };
 $('about-close').onclick = () => $('about-limited').close();
 $('about-done').onclick = () => $('about-limited').close();
 // A tap outside either one closes it (the dialog element itself is only its backdrop and edge).

@@ -152,6 +152,8 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     /** Leave Party: the person's intentional departure (AVR-580). Only a 200 means Core removed
      * them; anything else is unconfirmed and the page must say so. */
     leave: () => act('leave', {}),
+    /** The Host hands hosting to someone who is here (Party Core's transfer_host). */
+    handHost: (to) => act('host', { to, if_version: view ? view.version : null }),
     /** The person's own opt back in after Leave: the only way back (an automatic join is refused). */
     async reconnect(name, avatar) {
       const res = await act('reconnect', { name, avatar });
