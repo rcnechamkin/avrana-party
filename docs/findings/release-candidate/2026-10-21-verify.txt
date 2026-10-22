@@ -1,0 +1,1 @@
+REPRODUCED: every field of C:/Users/cnech/AppData/Local/Temp/claude/C--Users-cnech-Projects/23d85d68-1f5f-4798-ae40-1616e215d9a5/scratchpad/rcdemo/out/release-candidate.json was re-derived from the two repositories and agrees

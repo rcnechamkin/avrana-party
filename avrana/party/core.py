@@ -72,6 +72,7 @@ HOST_GRACE = 30.0          # s an away host keeps the role before succession (PA
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
+EXIT_INTENT = 60.0         # s a guest's exit request moves their pages to Party Home (AVR-580 guest exit)
 TABLE_ABANDON = 5 * 60.0   # s after the last player turned away before an active round is abandoned (AVR-475)
 GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
 GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
@@ -131,7 +132,7 @@ def clean_avatar(raw):
 
 class Member:
     __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left', 'mode',
-                 'watch_next')
+                 'watch_next', 'exit_id', 'exit_until')
 
     def __init__(self, device_id, name, now, avatar=None, mode=FULL):
         self.id = new_id('member')
@@ -143,6 +144,8 @@ class Member:
         self.last_seen = now
         self.left = False
         self.watch_next = False         # Quit & Spectate at results: a spectator in the next round
+        self.exit_id = None             # a guest's open exit request (request_exit), until Stay or Leave
+        self.exit_until = 0.0           # until when that request moves this device's pages to Party Home
 
 
 class Participant:
@@ -416,6 +419,7 @@ class PartyCore:
         else:
             if m.left:
                 m.left = False
+                m.exit_id = None
                 m.name = self._unique(clean, m)
                 live = self._live_session()
                 if live is not None and live.state == SETUP:
@@ -474,9 +478,49 @@ class PartyCore:
         if m.left:
             return
         m.left = True
+        m.exit_id = None
         if m.id == self.party.host_id:
             nxt = self._successor(self.clock(), exclude=m.id)
             self._set_host(nxt.id if nxt else self._no_successor(m))
+        self._commit()
+
+    def request_exit(self, device_id):
+        """A guest's request to leave from a game page of another origin (AVR-580 guest exit). It only
+        asks: membership, seats, roles and the party's location are untouched. For EXIT_INTENT
+        seconds this device's pages go to Party Home (destination(), the bridge's existing
+        `navigate`), where the person confirms Leave or chooses Stay on a top-level Party page the
+        game cannot draw over. The open request (`exit_id`) lasts until Stay, Leave or Reconnect, so
+        a confirmation on screen is never taken away by the expiry; the expiry only stops moving
+        pages. A repeat keeps the same request and renews its time. Refused for the Host, whose Leave
+        names the successor on Party Home, and outside a round (Leave is on Party Home then)."""
+        self._timed()
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.left:
+            raise Refused('left_party', 'You left the party. Reconnect to come back.')
+        if m.id == self.party.host_id:
+            raise Refused('host_uses_party_home', 'As the Host, leave from Party Home, where it says who hosts next.')
+        if self.location()['at'] not in ('game', 'results'):
+            raise Refused('not_in_round', 'Leave from Party Home.')
+        now = self.clock()
+        live = m.exit_id is not None and now < m.exit_until
+        if m.exit_id is None:
+            m.exit_id = new_id('exit')
+        m.exit_until = now + EXIT_INTENT
+        if not live:
+            self._commit()                  # wakes this device's pages; a renewal moves nothing new
+
+    def stay(self, device_id):
+        """Stay in the Party: close this device's exit request, so its pages follow the party again.
+        Idempotent: nothing open changes nothing."""
+        self._timed()
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.exit_id is None:
+            return
+        m.exit_id = None
         self._commit()
 
     def _no_successor(self, leaver):
@@ -1010,7 +1054,9 @@ class PartyCore:
                 'members': members, 'host': party.host_id,
                 'me': ({'id': me.id, 'name': me.name, 'host': me.id == party.host_id,
                         'mode': me.mode, 'watch_next': me.watch_next,
-                        'leave': self.leave_impact(device_id)}
+                        'leave': self.leave_impact(device_id),
+                        # this device's own exit request, never shown to others; `live`: it moves pages
+                        'exit': ({'id': me.exit_id, 'live': now < me.exit_until} if me.exit_id else None)}
                        if me else None),
                 'departed': departed,     # this device left on purpose: no automatic join (AVR-580)
                 'session': session,

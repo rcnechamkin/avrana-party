@@ -41,19 +41,19 @@ together, so there is nowhere else to go (ADR 0011). The Party control stays (op
 
 | Role | Face | Size / weight | Use |
 |---|---|---|---|
-| Brand | Helvetica Neue Light or Helvetica Light where the phone has it, otherwise Geist at weight 300 | 23 px / 300 | the words "Avrana Party" only (temporary, brief §5.1) |
-| Statement | Geist | 28 px / 550, tight | one per screen |
-| Module title, game title | Geist | 22 px / 550 | top bar, hero |
-| Section | Geist | 17 px / 550 | shelf and group headings |
-| Body, controls | Geist | 15 px / 400 to 550 | everything else |
-| Supporting | Geist | 13 px / 400 | one line of metadata |
-| Smallest | Geist | 11 to 12 px / 500 | seat counts on covers, tags, tab labels |
+| Brand | Helvetica Neue Light or Helvetica Light where the phone has it, otherwise Plus Jakarta Sans at weight 300 | 23 px / 300 | the words "Avrana Party" only (temporary, brief §5.1) |
+| Statement | Plus Jakarta Sans | 28 px / 550, tight | one per screen |
+| Module title, game title | Plus Jakarta Sans | 22 px / 550 | top bar, hero |
+| Section | Plus Jakarta Sans | 17 px / 550 | shelf and group headings |
+| Body, controls | Plus Jakarta Sans | 15 px / 400 to 550 | everything else |
+| Supporting | Plus Jakarta Sans | 13 px / 400 | one line of metadata |
+| Smallest | Plus Jakarta Sans | 11 to 12 px / 500 | seat counts on covers, tags, tab labels |
 
 Sentence case everywhere. No all-caps labels, no label above a heading, no monospace anywhere
 (EXPO included: figures are tabular, in the same face). Sizes are `rem`. Android and Windows have no Helvetica (Windows silently substitutes
-Arial for the name), so the brand face is asked for by its installed names only and Geist Light
+Arial for the name), so the brand face is asked for by its installed names only and Plus Jakarta Sans Light
 stands in everywhere else; the brand line never falls back to a default sans. The screenshots
-were taken on Windows and therefore show the Geist Light stand-in, not Helvetica. Geist is bundled (SIL OFL 1.1); no font is
+were taken on Windows and therefore show the Geist Light stand-in, not Helvetica (the typeface was changed to Plus Jakarta Sans afterwards, so the pictures predate it). Plus Jakarta Sans is bundled (SIL OFL 1.1); no font is
 fetched from outside the appliance.
 
 ## 4. Colour, surface and elevation

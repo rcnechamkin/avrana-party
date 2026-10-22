@@ -17,6 +17,8 @@ task or in this document authorizes it. Merged is not deployed; deployed is not 
    `cross-repo` (Games).
 2. Write down the two full SHAs: Party `main` and Games `main` (or the exact Games commit the
    Party change was tested against).
+   `tools/release_candidate.py` records them with their contract check, makes the offline bundles and
+   rehearses this script's dry runs: [release-candidate](release-candidate.md).
 3. If the Games commit is not yet on the Pi (its clone comes from a bundle, see
    [games-fork-deploy](games-fork-deploy.md) §1), stage it first.
 4. No party in progress: the script refuses while a game session is live.

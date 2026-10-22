@@ -8,7 +8,7 @@
  * Layers, most general first: the `avrana` daisyUI theme (colour, radius, control size) ->
  * Tailwind @theme tokens (text/line colours, fonts) -> base element rules -> a small `avrana-*`
  * component layer for patterns the pages repeat. Layout and one-offs use Tailwind utilities in the
- * markup. One bundled font (Geist, served by the Pi like every other file), no remote assets, no
+ * markup. Bundled fonts (Plus Jakarta Sans, served by the Pi like every other file), no remote assets, no
  * inline styles (the /party/ CSP forbids them). */
 
 @import "tailwindcss" source(none);
@@ -19,20 +19,29 @@
 @source "../party/lib/ui.js";
 @source "../party/lib/profile-ui.js";
 
-/* Interface type: Geist (SIL OFL 1.1, web/party/fonts/OFL.txt), one variable file. */
+/* Interface type: Plus Jakarta Sans (SIL OFL 1.1, web/party/fonts/OFL.txt), two variable files
+   (Latin and Latin Extended, the same subsets Fontsource splits them into). Weights 200 to 800. */
 @font-face {
-  font-family: "Geist";
-  src: url("fonts/Geist-Variable.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Plus Jakarta Sans";
+  src: url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2");
+  font-weight: 200 800;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("fonts/PlusJakartaSans-LatinExt-Variable.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 /* The words "Avrana Party" only (temporary, UX/UI brief): a light Helvetica where the phone really
-   has one, Geist Light everywhere else. local() matches installed faces only, so Windows and
+   has one, Plus Jakarta Sans Light everywhere else. local() matches installed faces only, so Windows and
    Android never fall back to Arial. */
 @font-face {
   font-family: "Avrana Brand";
   src: local("Helvetica Neue Light"), local("HelveticaNeue-Light"), local("Helvetica Light"), local("Helvetica-Light"),
-       url("fonts/Geist-Variable.woff2") format("woff2");
+       url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2");
   font-weight: 300;
   font-display: swap;
 }
@@ -97,9 +106,9 @@
   --color-material-solid: #1c1a26;
   --color-material-edge: rgb(200 186 255 / 0.22);
   --color-select: rgb(185 169 232 / 0.16);
-  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-display: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-brand: "Avrana Brand", "Geist", system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-brand: "Avrana Brand", "Plus Jakarta Sans", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* Type roles (Design Foundation; docs/design/foundation/PARTY-MAPPING.md): name a size by what the
      text is, not by its value. Sizes only: a role sets no line height, so a rule's own line height holds. */
