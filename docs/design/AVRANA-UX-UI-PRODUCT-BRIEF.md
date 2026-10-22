@@ -198,7 +198,11 @@ The primary bottom navigation should contain:
 1. **Home / Play**
 2. **Party**
 3. **Library**
-4. **System / Settings**
+4. **Me** (was System / Settings)
+
+**Superseded in part by Concept K (owner, 2026-10-20/21).** The fourth tab is **Me**, drawn with
+the viewer's own avatar; System and settings live inside Me. The bar is one floating glass capsule
+with a lens that slides to the place on screen. `#system` still lands on Me.
 
 These are major product modules.
 
@@ -219,6 +223,11 @@ A useful structural model is:
 - **Top:** people, social, notifications
 - **Middle:** current content
 - **Bottom:** primary Avrana modules
+
+**Superseded in part by Concept K (owner, 2026-10-20/21).** The top right is a utility only
+(Search, Filter & view, the Limited Mode mark). Presence is a compact row on Home (tap → the
+Party tab) and on the briefing (it opens the people over it); the detailed roster and the chat are
+on the Party tab, whose icon carries the chat's unread count.
 
 Do not interpret this as a requirement to visually copy another console app.
 

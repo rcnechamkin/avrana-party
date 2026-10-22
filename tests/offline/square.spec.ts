@@ -32,7 +32,7 @@ const SCREENS: Array<[string, (page: Page) => Promise<unknown>]> = [
   ['Party', (p) => place(p, 'party')],
   ['Library', async (p) => { await place(p, 'library'); await p.locator('#game-search').fill(''); await expect(p.locator('#games [data-game]').first()).toBeVisible(); }],
   ['a game page', async (p) => { await place(p, 'library'); await openGame(p, 'bluff'); }],
-  ['System', (p) => place(p, 'system')],
+  ['Me', (p) => place(p, 'me')],
 ];
 
 const SHEETS: Array<[string, (page: Page) => Promise<string>]> = [
@@ -84,8 +84,10 @@ for (const c of CONDITIONS) {
         await clear(page); await go(page);
         const r = await page.evaluate(() => {
           const box = (s: string) => document.querySelector(s)?.getBoundingClientRect();
-          const content = box('#content'), nav = box('#nav'), top = box('#top');
-          return { content: content?.height ?? 0, navBottom: nav?.bottom ?? 0, navTop: nav?.top ?? 0, topH: top?.height ?? 0, vh: window.innerHeight };
+          // Concept K (AVR-707): the page scrolls under the floating top edge and bar, so the room is
+          // what lies between them, not the scroll container's own box (the whole screen).
+          const nav = box('#nav'), top = box('#top');
+          return { content: (nav?.top ?? window.innerHeight) - (top?.bottom ?? 0), navBottom: nav?.bottom ?? 0, navTop: nav?.top ?? 0, topH: top?.height ?? 0, vh: window.innerHeight };
         });
         if (r.navBottom > r.vh + 1 || r.navTop < 0) bad.push(`${name}: nav outside the viewport`);
         // 50% is an evidence threshold chosen for this note, not a product rule
@@ -108,7 +110,7 @@ for (const c of CONDITIONS) {
       await reachable('Library: a game', page.locator('#games [data-game="bluff"]'));
       const card = await openGame(page, 'bluff');
       await reachable('Game page: Play/Watch', card.getByRole('link', { name: /^(Play|Watch|Try anyway)$/ }).or(card.getByRole('button', { name: /^(Play|Watch|Start for everyone)$/ })));
-      for (const nav of ['home', 'party', 'library', 'system']) await reachable(`Nav: ${nav}`, page.locator(`#nav a[data-go="${nav}"]`));
+      for (const nav of ['home', 'party', 'library', 'me']) await reachable(`Nav: ${nav}`, page.locator(`#nav a[data-go="${nav}"]`));
       await page.screenshot({ path: info.outputPath('primary.png') });
       expect(bad).toEqual([]);
     });

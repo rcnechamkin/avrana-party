@@ -36,7 +36,7 @@ import { createGoingWatchdog } from './lib/going-watchdog.js';
 import { createDeviceChecker, deviceRequirements } from './lib/device-check.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
 import { VIEW_NAMES, arrange, consequence, filterLabel, fitLine, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf } from './lib/library.js';
-import { PAGES, backWord, chatOffered, gameOf, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab, unreadMark } from './lib/frame.js';
+import { PAGES, backWord, chatOffered, gameOf, hereLine, hostLine, namesLine, pageOf, pageTitle, partyTabLabel, presenceLabel, presenceLine, startTab, unreadMark } from './lib/frame.js';
 import { LOST_AFTER_MS, awayHost, briefLine, fineLine, hostNote, hostPassed, linkState, linkWords, offLine, troubles } from './lib/states.js';
 
 const $ = (id) => document.getElementById(id);
@@ -521,6 +521,7 @@ function showPage(page, focus = false, game = null, back = null) {
   for (const link of $('nav').querySelectorAll('a')) {
     if (link.dataset.go === under) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   }
+  $('nav').dataset.at = under;                   // where the lens slides to (CSS)
   document.documentElement.dataset.place = page;
   renderTop();
   renderLimited();
@@ -532,19 +533,34 @@ function showPage(page, focus = false, game = null, back = null) {
  * game's page the game's own name (the bar there holds the way back). */
 const titleEl = () => (state.screen === 'main' && state.page === 'game' ? $('game-title') || $('top-back') : $('top-title'));
 
-/** The top bar: the place's title; on a game's page, the way back; on a briefing, "Getting ready". */
+/** The top of the frame. Home: the Spire-A Home button (the page's name stays for a screen reader);
+ * Party, Library and Me: the place's name; a game's page: the way back; a briefing: "Getting
+ * ready". On the right, the utility: Search everywhere but a briefing (which has no Library),
+ * Filters and View on the Library, and the Limited mark where it applies (renderLimited). */
 function renderTop() {
   const brief = state.screen === 'scene', game = !brief && state.page === 'game';
+  const home = !brief && state.page === 'home';
   const from = state.back ? state.back.page : 'library';
   $('top-back').hidden = !game;
   $('top-back').setAttribute('href', '#' + from);
   $('top-back-word').textContent = backWord(from);
+  $('top-home').hidden = !home;
   $('top-title').hidden = game;
   const title = brief ? 'Getting ready' : pageTitle(state.page);
   $('top-title').textContent = title;
-  $('top-title').classList.toggle('brand', !brief && state.page === 'home');
+  $('top-title').classList.toggle('sr-only', home);
   $('top-title').classList.toggle('quiet', brief);
-  if (!game) document.title = !brief && state.page === 'home' ? title : `${title} · Avrana Party`;
+  $('util-search').hidden = brief || state.page === 'library';       // the Library has its own search field
+  for (const id of ['lib-filter', 'lib-view']) $(id).hidden = brief || state.page !== 'library';
+  if (!game) document.title = home ? title : `${title} · Avrana Party`;
+}
+
+/** Search, from the utility: the Library's search field, wherever it was asked for. */
+function openSearch() {
+  closeSheets();
+  if (state.page !== 'library') { history.pushState(null, '', '#library'); showPage('library'); }
+  // (no search field while the Pi is out of reach: focus then goes to the page's name, never nowhere)
+  if ($('game-search').getClientRects().length) $('game-search').focus(); else $('top-title').focus();
 }
 
 /** A cover was tapped: its page opens as a new history entry that carries where it was opened
@@ -583,10 +599,10 @@ function go(focus = true) {
   (cover || $('top-title')).focus({ preventScroll: true });
 }
 
-/** Your name and avatar live on the Party page. */
+/** Your name and avatar live on Me. */
 function openProfile() {
   closeSheets();
-  if (state.page !== 'party') { history.pushState(null, '', '#party'); showPage('party'); }
+  if (state.page !== 'me') { history.pushState(null, '', '#me'); showPage('me'); }
   $('profile').open = true;
   $('profile-name').focus();
 }
@@ -607,22 +623,39 @@ function closeSheets() {
   if ($('rules').open) $('rules').close();
 }
 
-/** The Party control: faces and a count while there is a party; a chat mark when there is only
- * the chat; nothing when there is neither. */
-function renderHud() {
+/** The bar's own signals (Concept K retired the Party control at the top): what is new in the
+ * Party's chat, as a count on the Party tab and its Chat row and in the tab's name; and Me drawn
+ * with this phone's own avatar, the same profile its person sees on Me, whatever page is open. */
+function renderBar() {
+  $('party-chat-row').hidden = !chatOn();
+  const fresh = chatOn() ? chat.state().unread : 0;
+  $('nav-unread').textContent = unreadMark(fresh);
+  $('party-chat-unread').textContent = unreadMark(fresh);
+  $('nav-party').setAttribute('aria-label', partyTabLabel(fresh));
+  $('party-chat').setAttribute('aria-label', fresh ? `Party chat, ${fresh === 1 ? '1 new message' : `${fresh} new messages`}` : 'Party chat');
+  const me = profile.snapshot();
+  const face = me.name || me.pfp ? avatarNode(me, 'nav') : icon('user-round');
+  const key = `${me.avatar || ''}|${me.pfp || ''}|${Boolean(me.name)}`;
+  if ($('nav-me').dataset.face !== key) { $('nav-me').dataset.face = key; $('nav-me').replaceChildren(face); }
+  renderPresence($('scene-presence'), $('scene-faces'), $('scene-here'));
+  if ($('social').open) renderSocial();
+}
+
+/** A compact presence row: up to five faces (away ones dimmed, and said in words beside them),
+ * then "+n", and how many are here. Hidden while there is no Party view. */
+function renderPresence(row, faces, words) {
   const view = state.partyMode ? party.view() : null;
   const people = view ? roster(view) : [];
-  $('party-chat-row').hidden = !chatOn();
-  const chatting = chatOn() && state.screen !== 'scene';      // people only over a briefing
-  $('hud').hidden = !(people.length || chatting);
-  const fresh = chatting ? chat.state().unread : 0;
-  $('hud').setAttribute('aria-label', hudLabel({ party: people.length > 0, count: people.length, chat: chatting, unread: fresh }));
-  $('hud-unread').textContent = unreadMark(fresh);
-  $('hud-faces').replaceChildren(...(people.length
-    ? people.slice(0, 3).map((m) => avatarNode({ avatar: m.avatar || '' }, 'xs'))
-    : [icon('message-circle')]));
-  $('hud-count').textContent = people.length > 3 ? `+${people.length - 3}` : '';
-  if ($('social').open) renderSocial();
+  row.hidden = !people.length;
+  if (!people.length) return;
+  const shown = people.length > 5 ? people.slice(0, 4) : people;
+  faces.replaceChildren(...shown.map((m) => {
+    const face = avatarNode({ avatar: m.avatar || '' }, 'xs');
+    if (m.away) face.dataset.away = '';
+    return face;
+  }), ...(people.length > shown.length ? [h('span', { class: 'more', text: `+${people.length - shown.length}` })] : []));
+  words.textContent = presenceLine(people);
+  row.setAttribute('aria-label', presenceLabel(people));
 }
 
 function renderSocial() {
@@ -682,7 +715,7 @@ function renderParty(view) {
   const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
   $('party-members').replaceChildren(...people.map((m) => personItem({ ...m, limited: limited.has(m.id) }, 'xl')));
   renderHome();
-  renderHud();
+  renderBar();
   const s = view.session;
   const result = me && s && s.result_summary;
   $('party-result').hidden = !result;
@@ -955,13 +988,16 @@ async function renderScene(view) {
   // Each person's answer is an icon and a word; the Host is marked by the word.
   const words = { player: ['check', 'Playing'], spectator: ['eye', 'Watching'] };
   const people = roster(view);
+  const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
   $('scene-count').textContent = `${panel.players} playing · ${panel.spectators} watching`;
   $('scene-roster').replaceChildren(...people.map((m) => {
     const [ic, text] = words[m.choice] || ['hourglass', 'Choosing'];
     return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null, 'data-host': m.host ? '' : null },
       avatarNode({ avatar: m.avatar || '' }),
       h('span', { class: 'who' }, h('span', { text: m.me ? 'You' : m.name }),
-        m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null),
+        m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null,
+        // ADR 0012 D4: how each member reaches the Party is visible to everyone, here too
+        limited.has(m.id) ? h('span', { class: 'avrana-tag mode', text: 'Limited' }) : null),
       h('span', { class: 'ans' }, icon(ic), h('span', { text: text })),
       m.away ? h('span', { class: 'avrana-tag quiet', text: 'Away' }) : null);
   }));
@@ -1037,7 +1073,7 @@ function onPartyView(view, previous = null) {
   endHold();                                  // the Party is not in a round (any more): nothing to wait for
   if (view.me && locationOf(view).at === 'setup') {
     show('scene', locationOf(view).session || locationOf(view).game || null);
-    renderHud();                              // who is here, over the briefing too
+    renderBar();
     renderScene(view);
     return;
   }
@@ -1200,7 +1236,7 @@ async function renderGames(refresh = true) {
     state.donorSilent = donor === SILENT;       // no answer at all, which is not "off"
     state.healths = new Map(installed.map((g, i) => [g.id, healths[i]]));   // (refreshBox's own answer is not one of them)
     state.polled = true;
-    renderHud();                        // the chat is offered only while its own runtime answers
+    renderBar();                        // the chat is offered only while its own runtime answers
   }
   if (state.reachable === false || !state.polled) return;      // nothing is "off" before the first answer
   const caps = statuses(state.report);
@@ -1412,6 +1448,8 @@ async function boot() {
   document.documentElement.dataset.party = state.partyMode ? 'on' : 'off';
   $('party').hidden = !state.partyMode;
   $('party-people').hidden = !state.partyMode;
+  $('party-off').hidden = state.partyMode;
+  $('party-off').textContent = state.partyMode ? '' : reachable ? 'There’s no Party to join here right now.' : 'Not connected to the party.';
   if (state.partyMode) party.start(partyView);
   if (!reachable) {
     setStatus('away', 'Not connected to the party');
@@ -1425,7 +1463,7 @@ async function boot() {
   renderLink();
   if (reachable && catalog) await renderGames();
   renderHome();
-  renderHud();
+  renderBar();
   syncChat();
   document.documentElement.dataset.ready = 'true';
   // The offline copy is never on the critical path.
@@ -1484,14 +1522,14 @@ function renderChat(snapshot) {
     if (fresh.length && said) $('chat-live').textContent = `${fresh.at(-1).name}: ${fresh.at(-1).text}`;
     chat.markSeen();
   } else state.chatSaid = snapshot.messages.length ? snapshot.messages.at(-1).seq : 0;
-  renderHud();
+  renderBar();
 }
 /** The room follows the Party view: this member, this Party. */
 function syncRoom(view) {
   if (state.partyMode && view && view.me && state.reachable !== false) chat.open(view.party, view.me.id);
   else if (chat.state().status !== 'closed') chat.close();
 }
-const renderProfile = wireProfile(profile, () => { renderGames(false); renderHome(); syncChat(); syncPresence(); });
+const renderProfile = wireProfile(profile, () => { renderGames(false); renderHome(); renderBar(); syncChat(); syncPresence(); });
 /** A saved profile is who this phone is at the party: join with it, or show the new name. */
 function syncPresence() {
   const view = party.view(), who = partyIdentity();
@@ -1592,7 +1630,8 @@ function syncChat() {
   if (nameless) $('chat-status').textContent = 'Choose your name to chat.';
   if (showing && !nameless) chat.markSeen();   // a change is drawn by renderChat, through onChange
 }
-$('hud').onclick = () => openSocial(null);
+$('util-search').onclick = () => openSearch();
+$('scene-presence').onclick = () => openSocial('people');
 $('party-chat').onclick = () => openSocial('chat');
 $('party-leave').onclick = () => openLeave();
 $('leave-confirm').onclick = () => confirmLeave();

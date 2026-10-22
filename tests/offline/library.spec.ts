@@ -465,10 +465,10 @@ test('back from a game’s page returns to the same cover at the same scroll, ho
   await expect(page.locator('#game-detail > *')).toHaveCount(0);
   // from a game's page, the bar goes anywhere
   await page.locator('#games [data-game="bluff"]').click();
-  await page.locator('#nav a[data-go="system"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-place', 'system');
+  await page.locator('#nav a[data-go="me"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'me');
   await expect(page.locator('#top-back')).toBeHidden();
-  await expect(page.locator('#top-title')).toHaveText('System');
+  await expect(page.locator('#top-title')).toHaveText('Me');
 });
 
 test('Home’s shelves: a lead title, the games, and what this phone played, all from the same list', async ({ page }) => {
@@ -602,14 +602,17 @@ test('with reduced motion nothing in the Library animates', async ({ page }) => 
   expect(moving).toEqual([]);
 });
 
-test('reading order: search, filters, view, the tabs, then the shelf; the skip link lands on the games', async ({ page }) => {
+test('reading order: filters and view (the top bar’s utility), then search, the tabs, then the shelf; the skip link lands on the games', async ({ page }) => {
   await open(page);
-  const order = await page.locator('#view-library').evaluate((root) =>
-    [...root.querySelectorAll('input, button, a[data-game]')].filter((el) => el.getClientRects().length)
+  // Concept K (AVR-707) moved Filters and View into the glass utility at the top right, which comes
+  // before the page in reading order, as it does on screen.
+  const order = await page.evaluate(() =>
+    [...document.querySelectorAll('#utility button, #view-library input, #view-library button, #view-library a[data-game]')]
+      .filter((el) => el.getClientRects().length)
       .map((el) => el.id || (el as HTMLElement).dataset.view || (el as HTMLElement).dataset.game).slice(0, 8));
-  expect(order).toEqual(['game-search', 'lib-filter', 'lib-view', 'all', 'favorites', 'recent', 'bluff', 'checkers']);
-  await page.locator('#game-search').focus();
-  for (const want of ['lib-filter', 'lib-view']) {
+  expect(order).toEqual(['lib-filter', 'lib-view', 'game-search', 'all', 'favorites', 'recent', 'bluff', 'checkers']);
+  await page.locator('#lib-filter').focus();
+  for (const want of ['lib-view', 'game-search']) {
     await page.keyboard.press('Tab');
     expect(await page.evaluate(() => document.activeElement?.id)).toBe(want);
   }

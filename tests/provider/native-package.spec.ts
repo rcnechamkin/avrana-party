@@ -62,7 +62,7 @@ async function phone(browser: Browser, name: string, n = 0, late = false) {
   });
   await page.goto(`${PARTY}/party/`);
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();

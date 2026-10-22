@@ -88,11 +88,10 @@ test.describe('three phones at one party', () => {
     expect(stranger.status()).toBe(403);                      // a page from elsewhere cannot act
   });
 
-  test('the frame: the Party control counts the people, the drawer and the Party page list them', async () => {
-    const hud = host.page.locator('#hud'), drawer = host.page.locator('#social');
+  test('the frame: the Party tab, the drawer and the Party page list the people', async () => {
+    const hud = host.page.locator('#party-chat'), drawer = host.page.locator('#social');
     for (const p of [host, bob]) await place(p.page, 'home');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people and chat');
-    await expect(host.page.locator('#hud-faces img')).toHaveCount(3);
+    await expect(host.page.locator('#nav-party')).toHaveAccessibleName('Party');    // nothing new in the chat
     await expect(host.page.locator('#party-lede')).toHaveText('Three of you are here.');
     await expect(host.page.locator('#party-names')).toHaveText('Ada (you), Bob and Cleo.');
     await expect(bob.page.locator('#party-names')).toHaveText('Bob (you), Ada and Cleo.');
@@ -102,6 +101,7 @@ test.describe('three phones at one party', () => {
       await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
       await expect(p.page.locator('#home-recent-sec')).toBeHidden();        // nothing played on these phones yet
     }
+    await place(host.page, 'party');                                        // the drawer opens from the Party page's Chat row
     await hud.click();
     await expect(drawer).toBeVisible();
     await host.page.getByRole('button', { name: 'People', exact: true }).click();
@@ -114,7 +114,7 @@ test.describe('three phones at one party', () => {
     expect(await host.page.evaluate(() => document.activeElement?.closest('dialog')?.id)).toBe('social');
     await host.page.mouse.click(195, 800);                                  // a tap outside it closes it
     await expect(drawer).toBeHidden();
-    await expect(host.page.locator('html')).toHaveAttribute('data-place', 'home');
+    await expect(host.page.locator('html')).toHaveAttribute('data-place', 'party');
     await hud.click();
     await host.page.keyboard.press('Escape');
     await expect(drawer).toBeHidden();
@@ -127,8 +127,8 @@ test.describe('three phones at one party', () => {
   });
 
   test('the Party moving wins over the frame: what is open closes, and a briefing keeps only the top bar', async () => {
-    await place(bob.page, 'system');
-    await bob.page.locator('#hud').click();
+    await place(bob.page, 'party');
+    await bob.page.locator('#party-chat').click();
     await expect(bob.page.locator('#social')).toBeVisible();
     await place(cleo.page, 'library');
     await openGame(cleo.page, 'expo');                                       // Cleo is reading about another game
@@ -137,19 +137,20 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#social')).toBeHidden();                  // nothing stands between Bob and his answer
     for (const p of [host, bob, cleo]) {
       const page = p.page;
-      // the top bar stays: what is going on, and who is here
+      // the top bar stays (what is going on), and the briefing says who is here
       await expect(page.locator('#top-title'), p.name).toHaveText('Getting ready');
       await expect(page.locator('#top-title'), p.name).toBeFocused();        // the move is announced where focus is
-      await expect(page.locator('#hud'), p.name).toBeVisible();
+      await expect(page.locator('#scene-presence'), p.name).toBeVisible();
+      await expect(page.locator('#util-search'), p.name).toBeHidden();       // no way to the Library from here
       await expect(page.locator('#top-back'), p.name).toBeHidden();
       await expect(page.locator('#limited-mark'), p.name).toBeHidden();      // Full Mode phones are never marked
       await expect(page.locator('#scene-title'), p.name).toHaveText('BLUFF');
       // and nothing else of the frame: no places, no Library, no chat, no "This phone"
-      for (const gone of ['#nav', '#content', '#games', '#view-library', '#view-game', '#view-system', '#chat', '#party-chat', '#skip'])
+      for (const gone of ['#nav', '#content', '#games', '#view-library', '#view-game', '#view-me', '#chat', '#party-chat', '#skip'])
         await expect(page.locator(gone), `${p.name} ${gone}`).toBeHidden();
       await expect(page.locator('#scene a[href]'), p.name).toHaveCount(0);   // no link leaves the briefing
       expect(await page.locator('#scene').getByRole('button').evaluateAll((els) => els.filter((el) => el.getClientRects().length).map((el) => el.id)), p.name)
-        .toEqual(p === host ? ['scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-rules', 'choose-play', 'choose-watch']);
+        .toEqual(p === host ? ['scene-presence', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-presence', 'scene-rules', 'choose-play', 'choose-watch']);
     }
     await bob.page.locator('#choose-watch').click();
     await expect(bob.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
@@ -167,14 +168,14 @@ test.describe('three phones at one party', () => {
     await expect(cleo.page.locator('#game-title')).toBeFocused();
   });
 
-  test('over a briefing the Party control opens the people, and closing it any way keeps the page, its scroll and the focus', async () => {
+  test('over a briefing the presence row opens the people, and closing it any way keeps the page, its scroll and the focus', async () => {
     await bob.page.setViewportSize({ width: 360, height: 560 });             // short: the briefing scrolls
     await startForEveryone(host.page, 'bluff');
     for (const p of [host, bob, cleo]) await expect(p.page.locator('#scene')).toBeVisible();
-    const page = bob.page, hud = page.locator('#hud'), drawer = page.locator('#social');
+    const page = bob.page, hud = page.locator('#scene-presence'), drawer = page.locator('#social');
     await page.locator('#choose-watch').click();
     await expect(page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people');   // people, and nothing else, here
+    await expect(hud).toHaveAccessibleName('3 here. Open people');   // the words it shows, then what it opens: people, and nothing else, here
     await briefScroll(page, 90);
     const was = await briefScroll(page);
     expect(was).toBeGreaterThan(0);
@@ -213,7 +214,8 @@ test.describe('three phones at one party', () => {
     await expect(drawer).toBeHidden();
     await expect(page.locator('#scene')).toBeHidden();
     await expect(page.locator('#nav')).toBeVisible();
-    await expect(hud).toHaveAccessibleName(/^Your Party: 3 people here\. Open people/);
+    await expect(hud).toBeHidden();                                              // the briefing's row went with the briefing
+    await expect(page.locator('#nav-party')).toBeVisible();                     // the people are on the Party tab
   });
 
   test('How to play: from a game’s page and from the briefing; a first-timer reads it before playing', async () => {
@@ -322,7 +324,7 @@ test.describe('three phones at one party', () => {
     // reading order: what, its rules, who, then the decision
     expect(await host.page.locator('#scene').evaluate((el) =>
       [...el.querySelectorAll('h2, h3, button')].filter((n) => n.getClientRects().length).map((n) => n.id)))
-      .toEqual(['scene-title', 'scene-rules', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);
+      .toEqual(['scene-title', 'scene-presence', 'scene-rules', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);
     // what the game is, its rules and the decision are on screen at once; only the line-up may scroll
     for (const id of ['scene-title', 'scene-rules']) await expect(host.page.locator('#' + id), id).toBeInViewport({ ratio: 1 });
     // nothing on it moves for someone who asked for no motion
@@ -339,17 +341,16 @@ test.describe('three phones at one party', () => {
       expect(await sideways(p.page), p.name).toBeLessThanOrEqual(0);
       expect(await p.page.locator('#scene').evaluate((el) => el.scrollWidth - el.clientWidth), p.name).toBeLessThanOrEqual(0);
       await expect(p.page.locator('#top-title'), p.name).toBeInViewport();
-      await expect(p.page.locator('#hud'), p.name).toBeInViewport();
-      const reach = p === host ? ['scene-title', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-status', 'scene-cancel']
-        : ['scene-title', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-status'];
+      const reach = p === host ? ['scene-title', 'scene-presence', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-status', 'scene-cancel']
+        : ['scene-title', 'scene-presence', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-status'];
       for (const id of reach) {
         await p.page.locator('#' + id).scrollIntoViewIfNeeded();
         await expect(p.page.locator('#' + id), `${p.name} ${id}`).toBeInViewport();
       }
       expect(await smallTargets(p.page, everything), p.name).toEqual([]);
       // the people, over it, at that size
-      await p.page.locator('#hud').scrollIntoViewIfNeeded();
-      await p.page.locator('#hud').click();
+      await p.page.locator('#scene-presence').scrollIntoViewIfNeeded();
+      await p.page.locator('#scene-presence').click();
       expect(await p.page.locator('#social').evaluate((el) => el.scrollWidth - el.clientWidth), p.name).toBeLessThanOrEqual(1);
       await p.page.locator('#social-people li').last().scrollIntoViewIfNeeded();
       await expect(p.page.locator('#social-people li').last(), p.name).toBeInViewport();
@@ -829,7 +830,7 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#status')).toBeHidden();                          // "Connected" is not said beside it
     await expect(bob.page.locator('#party-lede')).toHaveText('Three of you are here.');   // what was known stays
     await expect(bob.page.locator('#home-games')).toBeVisible();
-    for (const where of ['library', 'party', 'system'] as const) {          // said in every place
+    for (const where of ['library', 'party', 'me'] as const) {          // said in every place
       await place(bob.page, where);
       await expect(net, where).toBeVisible();
     }
@@ -914,14 +915,14 @@ test.describe('three phones at one party', () => {
       await expect(bob.page.locator('#trouble')).toBeHidden();              // a guest cannot act on it
       // "What changed" is System, where the Host reads what it means for play
       await note.getByRole('link', { name: 'What changed' }).click();
-      await expect(host.page.locator('html')).toHaveAttribute('data-place', 'system');
+      await expect(host.page.locator('html')).toHaveAttribute('data-place', 'me');
       const health = host.page.locator('#health [data-health="warn"]');
       await expect(health).toHaveCount(1);
       await expect(health.locator('b')).toHaveText('Arcade games are off right now');
       await expect(health).toContainText('The arcade part of the Party box isn’t answering. Gauntlet II can’t be played. Card and party games are not affected.');
       await expect(host.page.locator('#health [data-health="ok"]')).toHaveCount(0);
       // a guest's System says what their shelf already shows, and no more
-      await place(bob.page, 'system');
+      await place(bob.page, 'me');
       await expect(bob.page.locator('#health [data-health="warn"] b')).toHaveText('Gauntlet II is off for now');
       await expect(bob.page.locator('#health')).toContainText('Every other game plays as usual.');
       await expect(bob.page.locator('#health')).not.toContainText('isn’t answering');
@@ -941,14 +942,14 @@ test.describe('three phones at one party', () => {
       await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
       await expect(host.page.locator('#home-games')).toBeVisible();
       await expect(note).toBeHidden();
-      await place(host.page, 'system');
+      await place(host.page, 'me');
       await expect(health).toHaveCount(1);
       // all well again: one quiet line, and nothing on Home
       expect((await request.post('/__test__/arcade/up')).status()).toBe(204);
       for (const p of [host, bob]) {
         await p.page.reload();
         await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
-        await place(p.page, 'system');
+        await place(p.page, 'me');
         await expect(p.page.locator('#health [data-health]'), p.name).toHaveCount(1);
         await expect(p.page.locator('#health [data-health="ok"] b'), p.name).toHaveText(/Everything’s working|The Party box is working/);
       }
@@ -977,7 +978,7 @@ test.describe('three phones at one party', () => {
       await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
       await expect(host.page.locator('#home-games')).toBeVisible();
       await expect(host.page.locator('#trouble')).toBeHidden();             // no notice: the account gives it nothing to say
-      await place(host.page, 'system');
+      await place(host.page, 'me');
       await expect(host.page.locator('#health [data-health="warn"] b')).toHaveText('Gauntlet II is off for now');
       await expect(host.page.locator('#health [data-health="ok"]')).toHaveCount(0);
     } finally {

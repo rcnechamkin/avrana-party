@@ -15,7 +15,8 @@ test.beforeEach(async ({ request }) => {
 });
 
 async function openChat(p: Phone) {
-  await p.page.locator('#hud').click();
+  if ((await p.page.locator('html').getAttribute('data-place')) !== 'party') await place(p.page, 'party');
+  await p.page.locator('#party-chat').click();
   await expect(p.page.locator('#social')).toBeVisible();
   await p.page.locator('#tab-chat').click();
   await expect(p.page.locator('#tab-chat')).toHaveAttribute('aria-pressed', 'true');
@@ -73,21 +74,24 @@ test.describe('the Party chat on three phones', () => {
     await expect(cleo.page.locator('#chat-messages .avrana-chat-system').filter({ hasText: 'I am Ada' })).toHaveCount(0);
   });
 
-  test('unread: counted on the Party control while the drawer is closed, cleared once read', async () => {
+  test('unread: counted on the Party tab and the Chat row while the drawer is closed, cleared once read', async () => {
     await place(bob.page, 'home');
     await openChat(ada);
     await say(ada, 'one');
     await say(ada, 'two');
-    const hud = bob.page.locator('#hud');
-    await expect(bob.page.locator('#hud-unread')).toHaveText('2');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here, 2 new messages. Open people and chat');
+    const tab = bob.page.locator('#nav-party');
+    await expect(bob.page.locator('#nav-unread')).toHaveText('2');
+    await expect(tab).toHaveAccessibleName('Party, 2 new messages');
+    await place(bob.page, 'party');
+    await expect(bob.page.locator('#party-chat-unread')).toHaveText('2');
+    await expect(bob.page.locator('#party-chat')).toHaveAccessibleName('Party chat, 2 new messages');
     await openChat(bob);
-    await expect(bob.page.locator('#hud-unread')).toHaveText('');
+    await expect(bob.page.locator('#nav-unread')).toHaveText('');
     await expect(bob.page.locator('#tab-chat')).toHaveAccessibleName('Chat');
     await bob.page.keyboard.press('Escape');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people and chat');
+    await expect(tab).toHaveAccessibleName('Party');
     // a phone's own words are never unread to it
-    await expect(ada.page.locator('#hud-unread')).toHaveText('');
+    await expect(ada.page.locator('#nav-unread')).toHaveText('');
   });
 
   test('a reload keeps the room, without doubles, and what was read stays read', async () => {
@@ -97,7 +101,7 @@ test.describe('the Party chat on three phones', () => {
     await expect(lines(bob.page)).toHaveCount(1);
     await bob.page.reload();
     await expect(bob.page.locator('html')).toHaveAttribute('data-ready', 'true');
-    await expect(bob.page.locator('#hud-unread')).toHaveText('');           // read before the reload
+    await expect(bob.page.locator('#nav-unread')).toHaveText('');           // read before the reload
     await openChat(bob);
     await expect(lines(bob.page)).toHaveCount(1);
     await expect(lines(bob.page).locator('p')).toHaveText(['before the reload']);
@@ -135,8 +139,8 @@ test.describe('the Party chat on three phones', () => {
   });
 
   test('keyboard only: the drawer, the Chat side, a message, and back', async () => {
-    await place(ada.page, 'home');
-    await ada.page.locator('#hud').focus();
+    await place(ada.page, 'party');
+    await ada.page.locator('#party-chat').focus();
     await ada.page.keyboard.press('Enter');
     await expect(ada.page.locator('#social')).toBeVisible();
     await ada.page.locator('#tab-chat').focus();
@@ -147,7 +151,7 @@ test.describe('the Party chat on three phones', () => {
     await expect(lines(ada.page).locator('p')).toHaveText(['typed with keys']);
     await ada.page.keyboard.press('Escape');
     await expect(ada.page.locator('#social')).toBeHidden();
-    await expect(ada.page.locator('#hud')).toBeFocused();
+    await expect(ada.page.locator('#party-chat')).toBeFocused();
   });
 
   test('a message for a Party that has ended is refused and stored nowhere', async () => {

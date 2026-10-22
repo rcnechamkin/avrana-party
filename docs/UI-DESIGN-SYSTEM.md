@@ -111,8 +111,9 @@ repeat:
 
 | Class | What |
 |---|---|
-| `avrana-app` | **the frame** (`#main`): `avrana-top` (the place's title, the Limited Mode mark, the Party control), `avrana-main` (the one part that scrolls) and `avrana-nav` (Home, Party, Library, System); safe-area padding on the bars |
-| `avrana-hud` | the Party control: up to three faces and a count; opens the Party drawer. Collapses to one face in a narrow or enlarged-text bar (container query) |
+| `avrana-app` | **the frame** (`#main`, Concept K, AVR-707): `avrana-main` (the one part that scrolls) fills the screen and scrolls under the shell's floating controls: `avrana-top` (on Home the `avrana-homebtn` Spire-A Home button, elsewhere the place's title; on the right the `avrana-utility` capsule), and `avrana-nav` (Home, Party, Library, Me) floating 24 px above the bottom. `--avrana-end` keeps the last row 16 px above the bar at the end of a scroll; a dim fades what passes under the bar |
+| `avrana-homebtn`, `avrana-utility`, `avrana-nav` | the only three `avrana-glass` elements. The utility holds Search (to the Library's field), Filters and View on the Library, and the Limited mark. The bar's `avrana-lens` slides to `data-at` on a spring; Me shows this phone's avatar; the Party tab carries the chat's unread count |
+| `avrana-presence` | the compact presence row: up to five 32 px faces ringed in ink, then "4 here" / "4 here · Riley away". On the briefing it opens the people (only) over it |
 | `avrana-limmark` | the Limited Mode mark in the top bar: icon + the word; opens the "About Limited Mode" sheet |
 | `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet (Filters, View, How to play, About Limited Mode), which is a centred panel from 44rem. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
 | `avrana-lede`, `avrana-sub` | Home's sentence about who is here, and the quieter lines under it |
@@ -149,7 +150,7 @@ repeat:
 | `avrana-icon` | inline Lucide icon sized to its text |
 
 **The frame and its four places.** `/party/` is one document. Its places are views chosen by
-the address's fragment (`#home`, `#party`, `#library`, `#system`; anything else is Home), so
+the address's fragment (`#home`, `#party`, `#library`, `#me`; `#system`, the place's old name, lands on Me; anything else is Home), so
 moving between them loads nothing, the phone's Back works, and a reload stays put
 (`lib/frame.js`, pure and tested). Changing place moves focus to the title in the top bar and
 sets the document title. A game's own page is a fifth view (`#game/<id>`, below); it is not a
@@ -164,14 +165,14 @@ home), and the frame comes back in the same place, a game's page included.
   on this phone, else the first that suits the party), a shelf of the rest that suit it
   ("Great for four", or "Games" when there is no party to suit), and "Recently played" once
   something has been.
-- **Party**: you (the identity button and its form), everyone here as faces, chat's row.
+- **Party**: everyone here as faces, the Chat row (with the unread count), Leave Party.
 - **Library**: the games (the centre of gravity): search, two filters, four views, and the
   All / Favorites / Recent tabs (below).
-- **System**: how things are, in one block (below); this phone's checklist; the way to
-  diagnostics.
+- **Me** (was System; Concept K, AVR-707): you (the identity button and its form), how things
+  are, in one block (below); this phone's checklist; the way to diagnostics.
 
-The Party drawer (People, and Chat while today's chat exists) opens from the Party control on
-any of the four. Today's chat is served by the old games runtime that ADR 0014 retires: it is
+The Party drawer (Chat, and People) opens from the Party page's Chat row (Concept K retired the
+Party control at the top: what is new in the chat is a count on the Party tab). Today's chat is served by the old games runtime that ADR 0014 retires: it is
 offered only while that runtime answers, connects only while the drawer's Chat side is on
 screen, gives up and says so after six tries in a row (opening the side again tries again), and
 when the runtime is gone the control and the row are simply not there
@@ -253,7 +254,7 @@ because no title carries that data.
 **The briefing** (ADR 0011 decision 4 and its 2026-10-05 amendment; GAME-UX-CONTRACT rule 3.2;
 `#scene`, `renderScene`, `show()`). The lifecycle is unchanged: Party Core decides who is where,
 who may start, and why a start waits. Under the top bar ("Getting ready", the Limited mark on a
-Limited phone, the Party control): the game's wide art, its name, its premise, the "How to play"
+Limited phone): the game's wide art, its name, its premise, the presence row, the "How to play"
 row, then the line-up. A dock at the bottom holds the two choices, the Host's "Start game", one
 status line (Party Core's reason for the Host, "Waiting for {Host} to start" for a guest) and the
 Host's "Choose another game". There is no bar of places, no Library, no chat and no "This phone"
@@ -261,7 +262,7 @@ on it, and no link that leaves it. Who hosts is the word "Host" in the line-up a
 the status line; with no Host the line says "Nobody is hosting right now." The separate "You're
 the host / Hosted by Ana" line of the older scene is gone.
 
-- **Over it**, the Party control opens the drawer with the people only (no tabs, no chat, a line
+- **Over it**, the presence row opens the drawer with the people only (no tabs, no chat, a line
   "Getting ready for {game}."), and the Limited mark opens the explanation without its "Check for
   the full version" link. Both are native modal dialogs: focus goes in and stays in, the briefing
   behind is inert, and Escape, Close or a tap outside gives focus back to what opened it with the
