@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PAGES, chatOffered, hereLine, hostLine, partyTabLabel, namesLine, pageOf, pageTitle, startTab, gameOf, backWord, unreadMark } from '../../web/party/lib/frame.js';
+import { PAGES, chatOffered, hereLine, hostLine, partyTabLabel, presenceLabel, presenceLine, namesLine, pageOf, pageTitle, startTab, gameOf, backWord, unreadMark } from '../../web/party/lib/frame.js';
 
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
 
@@ -109,4 +109,14 @@ test('the way back from a game’s page is named after the place it returns to',
   assert.equal(backWord('party'), 'Party');
   assert.equal(backWord('me'), 'Me');
   for (const odd of ['game', '', undefined, 'nowhere']) assert.equal(backWord(odd), 'Library', String(odd));
+});
+
+test('the presence row says how many are here and who is away, in words, and its name says the same', () => {
+  const m = (name, away = false) => ({ name, away });
+  assert.equal(presenceLine([]), '0 here');
+  assert.equal(presenceLine([m('Ana')]), '1 here');
+  assert.equal(presenceLine([m('Ana'), m('Riley', true), m('Ben'), m('Cy')]), '4 here · Riley away');
+  assert.equal(presenceLine([m('A'), m('B', true), m('C', true), ...Array.from({ length: 9 }, (_, i) => m(`P${i}`))]), '12 here · 2 away');
+  assert.equal(presenceLabel([m('Ana'), m('Riley', true)]), '2 here · Riley away. Open people');
+  assert.equal(presenceLine(null), '0 here');
 });

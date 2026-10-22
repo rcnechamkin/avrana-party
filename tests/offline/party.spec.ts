@@ -182,6 +182,12 @@ test('the frame holds at 200% text on a small phone: nothing sideways, the bars 
     expect(title.lines, `${name}: the title breaks only between words`).toBeLessThanOrEqual(title.words);
     const bar = await page.locator('#nav').boundingBox();
     expect(bar!.y + bar!.height, name).toBeLessThanOrEqual(640);            // the bar is on screen
+    // each place's word in the bar is one whole line inside its tab (never broken or clipped)
+    expect(await page.locator('#nav a').evaluateAll((links) => links.filter((a) => {
+      const range = document.createRange(); range.selectNodeContents(a.lastChild!);
+      const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+      return lines !== 1 || a.scrollWidth > a.clientWidth + 1;
+    }).map((a) => a.textContent)), name).toEqual([]);
     expect(bar!.height / 640, name).toBeLessThan(0.3);                       // and leaves the page its room
   }
 });

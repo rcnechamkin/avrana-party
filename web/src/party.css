@@ -260,7 +260,7 @@
   .avrana-app {
     --avrana-head: calc(env(safe-area-inset-top) + 24px + max(44px, var(--text-page) * 1.2));
     --avrana-bar-gap: max(24px, calc(env(safe-area-inset-bottom) + 8px));
-    --avrana-bar-h: max(64px, calc(46px + var(--text-caption) * 1.2));
+    --avrana-bar-h: max(64px, calc(46px + min(var(--text-caption), 15px) * 1.2));
     --avrana-end: calc(var(--avrana-bar-gap) + var(--avrana-bar-h) + 16px);
     position: relative; height: 100vh; height: 100dvh; overflow: hidden; container: frame / size;
   }
@@ -272,6 +272,7 @@
     background: linear-gradient(to bottom, var(--color-ink) 62%, rgb(18 18 20 / 0));
   }
   .avrana-top > * { pointer-events: auto; }
+  .avrana-top > .avrana-top-title { pointer-events: none; }   /* a swipe that starts on it scrolls the page */
   .avrana-top-title {
     flex: 1; min-width: 0; margin: 0; font-size: var(--text-page); font-weight: 400; line-height: 1.2;
     letter-spacing: -0.01em; overflow-wrap: normal; hyphens: none;     /* a place's name breaks only between words */
@@ -353,7 +354,9 @@
     position: relative; z-index: 1; flex: 1 1 0; min-width: 0; min-height: 54px; padding: 4px 2px;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
     border-radius: 27px; color: var(--color-stone); text-decoration: none; text-align: center;
-    font-size: var(--text-caption); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere;
+    /* one line, whole words: larger text grows the label to 15 px at most, as a phone's own tab bar
+       does (the place is also said by its icon, the lens and aria-current) */
+    font-size: min(var(--text-caption), 15px); font-weight: 500; line-height: 1.2; white-space: nowrap;
     transition: color var(--motion-1) var(--ease-standard);
   }
   .avrana-nav a .avrana-icon { position: relative; width: 24px; height: 24px; vertical-align: 0; }

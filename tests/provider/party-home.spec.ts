@@ -67,7 +67,7 @@ async function joinParty(page: Page, name: string) {
 }
 
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
-const AT_HOME = /\/party\/(#(home|party|library|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places, or a game's page
+const AT_HOME = /\/party\/(#(home|party|library|me|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places (Me too, where a name is chosen), or a game's page
 const partyState = (page: Page) => page.evaluate(async () => (await fetch('/party/api/state', { cache: 'no-store' })).json());
 const store = (page: Page, key: string) => page.evaluate((k) => sessionStorage.getItem(k), key);
 // For expect.poll: the page under watch may be mid-navigation (the move being waited for), which
