@@ -25,7 +25,7 @@ import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat, systemText } from './lib/party-chat.js';
 import { loadCatalog, loadCovers } from './lib/catalog-load.js';
-import { pickCover } from './lib/cover-art.js';
+import { contextOf, heroIsWide, pickArt } from './lib/cover-art.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, justPlayed, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
@@ -66,7 +66,12 @@ const state = { exit: null, staying: false, leaving: false, catalog: null, repor
   failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
   // covers: the owner's cover for a game (id -> path), from covers/index.json; badArt: the picture
   // addresses (owner, package, first-party) that would not load on this phone since the page last started
-  covers: new Map(), badArt: new Set() };
+  covers: new Map(), badArt: new Set(),
+  // heroWide: whether each stage's box (Home's, the briefing's) is wide enough for a game's banner
+  // (lib/cover-art.js heroIsWide); set from the box's own size once it is on screen, guessed from the window until then
+  heroWide: { home: false, scene: false } };
+state.heroWide.home = heroIsWide(window.innerWidth / Math.min(468, Math.max(280, 0.55 * window.innerHeight)));
+state.heroWide.scene = heroIsWide(window.innerWidth / Math.min(280, Math.max(200, 0.33 * window.innerHeight)));
 
 async function getJSON(url, init) {
   const res = await fetch(url, init);
@@ -145,25 +150,49 @@ function favButton(game, cls = '') {
     } }, icon('heart'));
 }
 
-/** A cover, by the ladder of lib/cover-art.js: the cover the owner supplied for the title (AVR-306),
- * else the package's cover, else its icon (AVR-466), else the title's own art, else its kind icon on its
- * own colour. A list row (`small`) prefers the package's icon. `mark` is the player range for the corner
- * (lib/library.js seatsMark), or null. `shape`: 'wide' for the lead cover on Home, a game's page and the
- * briefing; square otherwise. */
-function tileCover(game, mark, shape = '', small = false) {
+/** A cover, by the ladder of lib/cover-art.js for where it is drawn: the cover the owner supplied for the
+ * title (AVR-306), else the package's own picture for the place (a wide hero: its banner; a tile or a rail:
+ * its cover; a list row, `small`: its icon), else the others, else the title's own art, else its kind icon on
+ * its own colour. `mark` is the player range for the corner (lib/library.js seatsMark), or null. `shape`:
+ * 'stage' for Home's (`place` 'home') and the briefing's ('scene') stage, wide or narrow by its measured box
+ * (`state.heroWide`), 'wide' for a game's page (always 16:9), 'tall' for a 3:4 rail cover; square otherwise. */
+function tileCover(game, mark, shape = '', small = false, place = 'home') {
   const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
-  const rung = pickCover(game, { own: state.covers.get(game.id) || null, art, small }, state.badArt);
-  const flat = rung.kind === 'own' || rung.kind.startsWith('package-');      // a picture whole in its box, not cropped to fill it
-  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (rung.src ? ' has-art' : '') + (flat ? ' own-art' : '') + (rung.kind === 'art' && rung.src.startsWith('art/kenney-') ? ' icon-art' : '') },
-    rung.src ? h('img', { src: rung.src, alt: '', loading: 'lazy', decoding: 'async', width: rung.w, height: rung.h,
+  const context = contextOf(shape, small);
+  const rung = pickArt(game, context, { own: state.covers.get(game.id) || null, art, wide: shape === 'wide' || (shape === 'stage' && state.heroWide[place]) }, state.badArt);
+  const bleed = rung.fit === 'bleed';                                         // a banner in a wide box: fills it
+  const flat = !bleed && (rung.kind === 'own' || rung.kind.startsWith('package-'));   // a picture whole in its box, not cropped to fill it
+  const hero = context === 'hero';
+  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (rung.src ? ' has-art' : '') + (flat ? ' own-art' : '') + (bleed ? ' banner-art' : '') + (rung.kind === 'art' && rung.src.startsWith('art/kenney-') ? ' icon-art' : ''), 'data-art': rung.kind },
+    // (a hero is the first thing on the page: asked for now; the rest of the shelf waits until it is near)
+    rung.src ? h('img', { src: rung.src, alt: '', loading: hero ? 'eager' : 'lazy', fetchpriority: shape === 'stage' ? 'high' : null, decoding: 'async', width: rung.w, height: rung.h,
       // A picture that will not load (the box out of reach, nginx not serving package art yet, a format
       // this phone cannot draw) gives way to the next rung, here and wherever it is drawn next.
-      onerror: () => { state.badArt.add(rung.src); el.replaceWith(tileCover(game, mark, shape, small)); },
+      onerror: () => { state.badArt.add(rung.src); el.replaceWith(tileCover(game, mark, shape, small, place)); },
     }) : icon(kindIcon(game)),
     mark ? h('span', { class: 'seats' + (mark.ok ? '' : ' no') }, icon(mark.ok ? 'users' : 'triangle-alert'), mark.text) : null);
   if (ACCENT.test(game.accent || '')) el.style.setProperty('--game-accent', game.accent);
   return el;
 }
+
+/** The stage's art follows the stage's box, not the phone: when the box crosses between wide and narrow
+ * (a turn of the phone, a larger text size, a window resized) the stage's cover is drawn again from the other
+ * end of the ladder. Only the stage is redrawn, and only when the answer changes (heroIsWide keeps a band
+ * around the line), so nothing loops: drawing the art never changes the box, which the art does not size. */
+function fitHero(box) {
+  const stage = box.matches('.avrana-stage') ? box : box.querySelector('.avrana-stage');
+  const rect = stage ? stage.getBoundingClientRect() : null;
+  if (!rect || !rect.width || !rect.height) return;
+  const place = stage.id === 'scene-stage' ? 'scene' : 'home';
+  const wide = heroIsWide(rect.width / rect.height, state.heroWide[place]);
+  if (wide === state.heroWide[place]) return;
+  state.heroWide[place] = wide;
+  const cover = stage.querySelector('.avrana-cover.stage');
+  const id = (stage.closest('[data-game]') || {}).dataset?.game;
+  const game = id && state.catalog?.games?.find((g) => g.id === id);
+  if (cover && game) cover.replaceWith(tileCover(game, null, 'stage', false, place));
+}
+const heroWatch = typeof ResizeObserver === 'function' ? new ResizeObserver((entries) => entries.forEach((entry) => fitHero(entry.target))) : null;
 
 const warnLine = (note, cls) => (note ? h('span', { class: cls }, icon(note.icon), note.text) : null);
 /** What a cover says to a screen reader: the title, who can play, where it is seen, and anything
@@ -1025,7 +1054,7 @@ async function renderScene(view) {
   $('scene').dataset.game = game.id;
   $('scene-title').textContent = game.name;
   // the compact stage: the game's art (or its name, set large), and who hosts it
-  sync($('scene-cover'), [tileCover(game, null, 'stage'), h('span', { class: 'noart', text: game.name })]);
+  sync($('scene-cover'), [tileCover(game, null, 'stage', false, 'scene'), h('span', { class: 'noart', text: game.name })]);
   $('scene-meta').textContent = [playersText(game.players),
     panel.host ? 'You host' : panel.hostName ? `${panel.hostName} hosts` : ''].filter(Boolean).join(' · ');
   $('scene-host').hidden = !panel.host;
@@ -2103,6 +2132,8 @@ $('view-choices').onclick = (event) => {
 $('views-close').onclick = () => $('lib-views').close();
 window.addEventListener('pagehide', () => { chat.close(); party.stop(); });
 
+heroWatch?.observe($('home-lead'));
+heroWatch?.observe($('scene-stage'));
 $('retry').addEventListener('click', () => { boot(); });
 $('catalog-retry').addEventListener('click', () => { boot(); });
 document.addEventListener('visibilitychange', () => {

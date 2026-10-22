@@ -21,12 +21,13 @@ The rules, each tested:
   catalog builder (avrana.contracts.catalog.build) accepts its row. A record that is refused, or a
   row the builder rejects, drops that package alone and is reported; the others stay.
 - Package artwork (AVR-466 phase C, experimental): for each listed package the staged manifest is re-read
-  (the install record is unchanged), its `artwork.cover` and `artwork.icon` are re-hashed against the record
-  and re-validated by avrana.avrgame.artwork, and the valid ones are copied, content-addressed, to
-  `<out dir>/art/<id>/<16 hex of sha256>.<ext>` (nginx serves them at /party/pkgart/, a separate and
-  separately approved deploy step); the row gains `images: {cover|icon: {url, w, h}}`. A damaged image is
-  dropped alone (the game stays listed, a warning is reported) and never undoes an install. Banner and
-  screenshots are validated at install and neither copied nor listed. Files no listed row names are pruned.
+  (the install record is unchanged), its `artwork.cover`, `artwork.icon` and `artwork.banner` are re-hashed
+  against the record and re-validated by avrana.avrgame.artwork, and the valid ones are copied,
+  content-addressed, to `<out dir>/art/<id>/<16 hex of sha256>.<ext>` (nginx serves them at /party/pkgart/,
+  a separate and separately approved deploy step); the row gains `images: {cover|icon|banner: {url, w, h}}`.
+  A damaged image is dropped alone (the game stays listed, a warning is reported) and never undoes an
+  install. Screenshots are validated at install and neither copied nor listed. Files no listed row names
+  (a removed package's, a superseded banner) are pruned.
 - No valid package, no overlay file: `refresh` removes it, so the appliance serves exactly the
   committed catalog.
 - Written atomically: a hidden temporary file in the same directory, flushed and fsynced, made 0644,
@@ -72,7 +73,8 @@ MAX_OVERLAY_BYTES = 5 * 1024 * 1024
 MAX_ROW_BYTES = 4096
 ART_DIR_NAME = 'art'                 # <out dir>/art/<id>/<digest>.<ext>
 ART_URL_PREFIX = '/party/pkgart'     # the public path nginx maps to that directory
-ART_ROLES = ('cover', 'icon')        # banner and screenshots are validated, not served (D11)
+ART_ROLES = ('cover', 'icon', 'banner')        # screenshots are validated, not served (D11)
+ART_BYTE_LIMITS = {'cover': artwork.COVER_LIMITS[0], 'icon': artwork.ICON_LIMITS[0], 'banner': artwork.BANNER_LIMITS[0]}
 ART_EXTENSIONS = {'webp': 'webp', 'png': 'png', 'jpeg': 'jpg'}
 MAX_NAME, MAX_SUMMARY, MAX_STRING = 60, 400, 200
 # The only keys of a package's row. Everything else the builder copies from the contract's free-form
@@ -197,7 +199,7 @@ def package_art(rec, games_root, disk_root):
             continue
         path = block[role]
         try:
-            data = load(path, artwork.COVER_LIMITS[0] if role == 'cover' else artwork.ICON_LIMITS[0])
+            data = load(path, ART_BYTE_LIMITS[role])
             wrong, _ = artwork.file_problems({role: path}, {path: len(data)}, lambda name: data)
             if wrong:
                 raise _Damaged('; '.join(wrong))

@@ -570,6 +570,9 @@
   .avrana-cover.wide.icon-art > img { object-fit: contain; padding: 0.75rem; }
   /* A cover the owner supplied (box art) is shown whole in a wide frame, never cut to a strip. */
   .avrana-cover.wide.own-art > img { object-fit: contain; object-position: 50% 50%; }
+  /* A package's banner (16:9) where the box is wide is drawn to fill it: in a game's page the frame is 16:9
+     too, so nothing is cut; in a wide stage the sides or the edges give a little, never more than ~27%. */
+  .avrana-cover.banner-art > img { object-fit: cover; object-position: 50% 50%; }
   .avrana-grid { display: grid; gap: 0.875rem 0.625rem; margin: 0; padding: 0; list-style: none; container: shelf / inline-size; }
   .avrana-grid > li { min-width: 0; }
   .avrana-grid.medium { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -620,7 +623,7 @@
   @media (min-width: 44rem) { .avrana-loading .avrana-grid li:nth-child(n + 4) { display: block; } }
   /* Home's stage (Concept K K0, AVR-708): the game that matters now, full bleed under the top row.
      Opaque, never glass. Its words sit on two fixed ink gradients, whatever the art: the top 150 px
-     (78% to nothing) under the top row, and the bottom 300 px (nothing, 82% at 55%, then ink) under
+     (78% to nothing) under the top row, and the bottom 300 px, or three quarters of a short stage (nothing, 82% at 55%, then ink) under
      the title, so their contrast is the ink's own. A title with no art is its name, set large. */
   html[data-place="home"][data-stage="on"]:not([data-screen="scene"]) .avrana-main { padding-top: 0; }
   /* (at the top of Home the stage draws its own top gradient; once it scrolls, the top row's is back) */
@@ -634,9 +637,13 @@
   .avrana-stage > .art { position: absolute; inset: 0; z-index: -1; cursor: pointer; }
   .avrana-stage > .art::before, .avrana-stage > .art::after { content: ""; position: absolute; left: 0; right: 0; pointer-events: none; }
   .avrana-stage > .art::before { top: 0; height: 150px; background: linear-gradient(to bottom, rgb(18 18 20 / 0.78), rgb(18 18 20 / 0)); }
-  .avrana-stage > .art::after { bottom: 0; height: 300px; background: linear-gradient(to bottom, rgb(18 18 20 / 0), rgb(18 18 20 / 0.82) 55%, var(--color-ink)); }
+  .avrana-stage > .art::after { bottom: 0; height: min(300px, 75%); background: linear-gradient(to bottom, rgb(18 18 20 / 0), rgb(18 18 20 / 0.82) 55%, var(--color-ink)); }
   .avrana-cover.stage { position: absolute; inset: 0; width: auto; aspect-ratio: auto; border: 0; border-radius: 0; }
   .avrana-cover.stage > img { object-fit: cover; object-position: 50% 30%; }
+  /* A banner on the stage is fitted to the stage's width and hung from its top: all of it shows across (never
+     cut at the sides), the art's own lower edge melts into the ink gradient under the title, and a box wider than
+     16:9 loses its lower part first (the copy covers it), never its sign. Its subject is above the copy, not behind it. */
+  .avrana-cover.stage.banner-art > img { inset: 0 0 auto 0; height: auto; aspect-ratio: 16 / 9; object-position: 50% 0; }
   .avrana-cover.stage.icon-art > img, .avrana-cover.stage.own-art > img { object-fit: contain; padding: calc(var(--avrana-head) + 1rem) 15% 9rem; }
   .avrana-cover.stage:not(.has-art) { background: var(--color-surface); place-items: start; }
   .avrana-cover.stage:not(.has-art) > .avrana-icon { display: none; }
