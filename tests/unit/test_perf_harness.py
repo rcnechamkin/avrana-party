@@ -79,6 +79,49 @@ class Statistics(unittest.TestCase):
             party_perf.main(['--window', '61', '--out', tmpdir(self)])
         with self.assertRaises(SystemExit):                      # not a Games checkout
             party_perf.main(['--games', tmpdir(self), '--out', tmpdir(self)])
+        with self.assertRaises(ValueError):
+            party_perf.main(['--rt-mix', 'sprinting', '--out', tmpdir(self)])
+
+
+class FrameLogTest(unittest.TestCase):
+    """AVR-674: what a realtime client derives from the state frames it receives."""
+
+    @staticmethod
+    def frame(tick, now_ms, vx=0.0, seat=0):
+        return json.dumps({'type': 'state', 'now': now_ms, 'phase': 'play',
+                           'game': {'tick': tick, 'my_seat': seat,
+                                    'units': [{'seat': 0, 'alive': True, 'vx': vx},
+                                              {'seat': 1, 'alive': True, 'vx': -vx}]}})
+
+    def test_ticks_repeats_gaps_and_ages(self):
+        log = party_perf.FrameLog()
+        log.state(self.frame(10, 1000), 0.000, 1002)
+        log.state(self.frame(10, 1010), 0.010, 1011)              # an echo of tick 10
+        log.state(self.frame(11, 1033), 0.034, 1035)
+        log.state(self.frame(12, 1066), 0.067, 1066)
+        self.assertEqual((log.states, log.ticks, log.repeats), (4, 3, 1))
+        self.assertEqual((log.first_tick, log.last_tick), (10, 12))
+        self.assertEqual([round(x) for x in log.intervals_ms], [34, 33])   # only between new ticks
+        self.assertEqual(log.ages_ms, [2, 1, 2, 0])
+
+    def test_a_probe_is_timed_until_this_players_own_unit_shows_it(self):
+        log = party_perf.FrameLog()
+        log.start_probe(-1, 1.000)
+        log.state(self.frame(1, 0, vx=50.0), 1.020, 0)            # still moving the old way
+        log.state(self.frame(2, 0, vx=-5.0, seat=1), 1.040, 0)    # seat 0 shows it, but this is seat 1's view
+        self.assertEqual(log.probe_ms, [])
+        log.state(self.frame(3, 0, vx=-12.0), 1.070, 0)
+        self.assertEqual([round(x) for x in log.probe_ms], [70])
+        self.assertIsNone(log.probe)
+
+    def test_unmatched_probes_are_counted_not_timed(self):
+        log = party_perf.FrameLog()
+        log.start_probe(1, 0.0)
+        log.start_probe(-1, 0.5)                                 # the first never showed
+        log.state(self.frame(1, 0, vx=10.0), 1.6, 0)             # past the timeout, still the old way
+        log.start_probe(1, 2.0)
+        log.end()                                                # the window closed first
+        self.assertEqual((log.unmatched, log.probe_ms), (3, []))
 
 
 class Report(unittest.TestCase):
@@ -197,7 +240,7 @@ class SmokeRun(unittest.TestCase):
 class ErrorPath(unittest.TestCase):
     def test_a_failing_run_stops_its_pollers_and_its_party_core(self):
         cfg = party_perf.config(argparse.Namespace(quick=True, repeats=1, window=0.5, actions=2, cycles=1,
-                                                   clients='2', rt_clients='2'))
+                                                   clients='2', rt_clients='2', rt_mix='moving'))
         stacks = RecordingStack()
 
         def boom(*a, **k):
