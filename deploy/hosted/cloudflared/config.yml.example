@@ -1,0 +1,34 @@
+# The hosted staging tunnel (docs/runbooks/hosted-staging.md, step 5). Lives INSIDE the VM as
+# /etc/cloudflared/avrana-party.yml. It is a separate tunnel with its own credential: never the Media
+# host's tunnels (cloudflared-avrana, cloudflared), and it routes nothing of theirs.
+# Placeholders: <TUNNEL-UUID>, <TEAM> (the Zero Trust team name) and <AUD-TAG> (the Access
+# application's Application Audience tag). None of them is a secret; the credential file is, and it is
+# created by `cloudflared tunnel create` inside the VM, root-only, never copied out or committed.
+tunnel: <TUNNEL-UUID>
+credentials-file: /etc/cloudflared/<TUNNEL-UUID>.json
+no-autoupdate: true
+
+ingress:
+  # Both hostnames go to the VM's loopback nginx, which picks the server by Host. cloudflared also
+  # checks the Access JWT before forwarding: a request that did not pass the Access application is
+  # refused here even if a hostname were ever routed without it.
+  - hostname: avrana.party
+    service: http://127.0.0.1:8080
+    originRequest:
+      access:
+        required: true
+        teamName: <TEAM>
+        audTag: [<AUD-TAG>]
+      connectTimeout: 10s
+      keepAliveTimeout: 90s
+  - hostname: games.avrana.party
+    service: http://127.0.0.1:8080
+    originRequest:
+      access:
+        required: true
+        teamName: <TEAM>
+        audTag: [<AUD-TAG>]
+      connectTimeout: 10s
+      keepAliveTimeout: 90s
+  # Anything else: 404, never a service.
+  - service: http_status:404

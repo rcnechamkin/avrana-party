@@ -1,0 +1,42 @@
+#!/usr/sbin/nft -f
+# The hosted staging VM's own firewall (docs/design/HOSTED-STAGING.md). Installed by provision.sh as
+# /etc/nftables.conf. It repeats, inside the VM, the host-side libvirt filter (avrana-staging-egress):
+# that filter is the boundary (root here cannot lift it); this one makes a mistake in either visible,
+# and verify-isolation.sh tests each layer on its own.
+flush ruleset
+
+define gateway = 192.168.122.1
+
+table inet avrana_staging {
+    set private4 {
+        type ipv4_addr; flags interval
+        elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12,
+                     192.168.0.0/16, 224.0.0.0/3 }
+    }
+
+    chain input {
+        type filter hook input priority filter; policy drop;
+        iif lo accept
+        ct state established,related accept
+        ct state invalid drop
+        udp sport 67 udp dport 68 accept
+        ip saddr $gateway tcp dport 22 ct state new accept
+    }
+
+    chain output {
+        type filter hook output priority filter; policy drop;
+        oif lo accept
+        ct state established,related accept
+        ct state invalid drop
+        udp sport 68 udp dport 67 accept
+        ip daddr $gateway udp dport 53 accept
+        ip daddr $gateway tcp dport 53 accept
+        meta nfproto ipv6 drop
+        ip daddr @private4 drop
+        ct state new accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+}

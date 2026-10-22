@@ -13,6 +13,7 @@ Use the committed npm lockfile (`npm ci`). UI generation runs on a development m
 | `web/party/catalog.json` | `contracts/` game/appliance/vocabulary/artwork and imported LAN catalog, `avrana/contracts/` | `python3 -m avrana.contracts.catalog` | same command with `--check` |
 | `contracts/catalogs/lan-games.json` | Games registry/exporter in the separate Games repo | In Games: `python ops/export_avrana_catalog.py --out ../avrana-party/contracts/catalogs/lan-games.json` | In Games: `python ops/export_avrana_catalog.py --check ../avrana-party/contracts/catalogs/lan-games.json` |
 | `assets/vendor/lan-games-art/*.svg` | Games `web/gameart.js`, `provider/catalog.json`, exporter | In Games: `node ops/export_game_art.mjs ../avrana-party/assets/vendor/lan-games-art` | same command with `--check` |
+| `deploy/hosted/avrana-party.hosted.nginx` | `avrana-party.nginx` (the appliance site), `avrana/ops/hosted_site.py` | `python3 -m avrana.ops.hosted_site` | same command with `--check` (and `tests/unit/test_hosted_site.py`) |
 
 Confirm the exporter CLI in the selected Games revision before refreshing an imported snapshot.
 One generated artifact is not in the repository: the appliance-local effective catalog

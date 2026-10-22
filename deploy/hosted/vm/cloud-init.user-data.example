@@ -1,0 +1,23 @@
+#cloud-config
+# First boot of the hosted staging VM (docs/runbooks/hosted-staging.md, step 2). Copy to user-data.yaml,
+# put the owner's SSH PUBLIC key below, and hand it to create-vm.sh. No secret belongs in this file:
+# the tunnel credential, the Access service token and the game keys are created inside the VM later.
+#
+# The operator account is `cody`, like the Pi, so ops/deploy.sh and the status endpoint find the
+# checkouts at their default paths (/home/cody/avrana-party, /home/cody/avrana-party-games).
+hostname: avrana-party-staging
+manage_etc_hosts: true
+users:
+  - name: cody
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 AAAA...REPLACE-WITH-THE-OWNER-PUBLIC-KEY owner@laptop"
+ssh_pwauth: false
+disable_root: true
+package_update: true
+package_upgrade: true
+packages: [nginx, python3, git, curl, nftables, ca-certificates, unattended-upgrades]
+timezone: UTC
