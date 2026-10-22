@@ -112,12 +112,23 @@ sudo bash ~/avrana-party/deploy/hosted/vm/verify-isolation.sh --host-layer-only 
 merely be refused: a refusal means a packet got there.
 
 - **Forbidden:** every listed Media port on 192.168.122.1 and 10.0.0.218, the LAN router, the
-  Pi, and the metadata address.
+  Pi, the metadata address, a Docker bridge, and public addresses on ports the VM has no use for
+  (SMTP, SSH). A probe that ends in anything other than a timeout or a connection is an error,
+  and an error fails the run.
 - **Required to connect:** DNS, Cloudflare's tunnel edge on 7844, Debian, and GitHub.
 
 The second run sets the VM's own firewall aside for its duration. It proves the boundary root
-inside the VM cannot lift. Keep both outputs as evidence. A failure stops everything: do not
-continue to step 4.
+inside the VM cannot lift. A silent drop by some other host firewall would look the same, so on
+the Media host also record that the filter is bound to the VM's interface:
+
+```sh
+virsh domiflist avrana-staging
+sudo virsh nwfilter-binding-list        # the VM's vnet interface with avrana-staging-egress
+```
+
+The probes are TCP. UDP is held to DHCP with libvirt, DNS to the gateway, time and the tunnel
+edge by the rules themselves. That is reviewed, not probed. Keep all outputs as evidence. A
+failure stops everything: do not continue to step 4.
 
 ## 4. Deploy explicit commits (owner, inside the VM)
 
@@ -211,7 +222,9 @@ None of this blocks the first wave.
 The Media host's tunnels and `~/.cloudflared` are never touched.
 
 **5b. DNS.** `cloudflared tunnel route dns avrana-party-staging avrana.party` and the same for
-`games.avrana.party`. These are proxied CNAMEs to the tunnel and nothing else.
+`games.avrana.party`. These are proxied CNAMEs to the tunnel and nothing else. Then delete
+`cert.pem` from the VM (`sudo rm /root/.cloudflared/cert.pem`). It carries account-wide tunnel
+and DNS authority, and the running tunnel needs only its own credential file.
 
 **5c. Access.** One self-hosted application, "Avrana Party staging", with both hostnames.
 

@@ -41,6 +41,10 @@ server {
     # refuses anything carrying X-Forwarded-For). Long polls wait up to 25 s.
     location /party/api/ {
         proxy_pass http://127.0.0.1:8191;
+        proxy_set_header Cf-Access-Jwt-Assertion "";
+        proxy_set_header Cf-Access-Authenticated-User-Email "";
+        proxy_set_header Cf-Access-Client-Id "";
+        proxy_set_header Cf-Access-Client-Secret "";
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -145,6 +149,10 @@ server {
         }
         proxy_hide_header Service-Worker-Allowed;
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
+        proxy_set_header Cf-Access-Jwt-Assertion "";
+        proxy_set_header Cf-Access-Authenticated-User-Email "";
+        proxy_set_header Cf-Access-Client-Id "";
+        proxy_set_header Cf-Access-Client-Secret "";
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -177,6 +185,13 @@ server {
     }
 
     # Hosted: no LAN Games runtime and no static root; anything not routed above is 404.
+    # ^~ wins over the native-game regex: a legacy game is refused, not a missing socket (502).
+    location ^~ /games/bluff/ {
+        return 404;
+    }
+    location ^~ /games/expo/ {
+        return 404;
+    }
     location / {
         return 404;
     }
@@ -231,6 +246,10 @@ server {
         }
         proxy_hide_header Service-Worker-Allowed;
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
+        proxy_set_header Cf-Access-Jwt-Assertion "";
+        proxy_set_header Cf-Access-Authenticated-User-Email "";
+        proxy_set_header Cf-Access-Client-Id "";
+        proxy_set_header Cf-Access-Client-Secret "";
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

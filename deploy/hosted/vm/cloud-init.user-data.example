@@ -11,7 +11,7 @@ users:
   - name: cody
     groups: [sudo]
     shell: /bin/bash
-    sudo: "ALL=(ALL) ALL"
+    sudo: "ALL=(ALL) NOPASSWD:ALL"   # the account has no password (lock_passwd); SSH key only
     lock_passwd: true
     ssh_authorized_keys:
       - "ssh-ed25519 AAAA...REPLACE-WITH-THE-OWNER-PUBLIC-KEY owner@laptop"

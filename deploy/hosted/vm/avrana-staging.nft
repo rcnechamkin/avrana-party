@@ -19,7 +19,7 @@ table inet avrana_staging {
         iif lo accept
         ct state established,related accept
         ct state invalid drop
-        udp sport 67 udp dport 68 accept
+        ip saddr $gateway udp sport 67 udp dport 68 accept
         ip saddr $gateway tcp dport 22 ct state new accept
     }
 
@@ -28,12 +28,13 @@ table inet avrana_staging {
         oif lo accept
         ct state established,related accept
         ct state invalid drop
-        udp sport 68 udp dport 67 accept
+        ip daddr { 255.255.255.255, $gateway } udp sport 68 udp dport 67 accept
         ip daddr $gateway udp dport 53 accept
         ip daddr $gateway tcp dport 53 accept
         meta nfproto ipv6 drop
         ip daddr @private4 drop
-        ct state new accept
+        ct state new tcp dport { 80, 443, 7844 } accept
+        ct state new udp dport { 123, 7844 } accept
     }
 
     chain forward {

@@ -46,9 +46,12 @@ def body(block, name):
 
 
 def hosted_form(text):
-    """What the renderer may change inside a location: the names and the scheme."""
-    return (text.replace('$scheme', 'https').replace(hs.APPLIANCE_GAME_HOST, hs.GAME_HOST)
+    """What the renderer may change inside a location: the names, the scheme, and the access headers it
+    clears after every proxy_pass."""
+    text = (text.replace('$scheme', 'https').replace(hs.APPLIANCE_GAME_HOST, hs.GAME_HOST)
             .replace(hs.APPLIANCE_PARTY_HOST, hs.PARTY_HOST))
+    return re.sub(r'^([ \t]*)(proxy_pass [^;]*;\n)', lambda m: m.group(1) + m.group(2) + ''.join(
+        f'{m.group(1)}proxy_set_header {h} "";\n' for h in hs.ACCESS_HEADERS), text, flags=re.M)
 
 
 class Committed(unittest.TestCase):
@@ -81,9 +84,12 @@ class Rules(unittest.TestCase):
 
     def test_every_other_party_location_is_the_appliances_own(self):
         dropped = {'/arcade/', *hs.LEGACY_LOCATIONS}
-        expected = [n for n in locations(self.pi_party) if n not in dropped] + ['/']
+        legacy = [f'^~ /games/{g}/' for g in hs.LEGACY_GAMES]
+        expected = [n for n in locations(self.pi_party) if n not in dropped] + legacy + ['/']
         self.assertEqual(locations(self.party), expected)
-        for name in expected[:-1]:
+        for name in legacy:
+            self.assertEqual(body(self.party, name).strip(), 'return 404;', name)
+        for name in expected[:-1 - len(legacy)]:
             if name == '= /party/api/origin.json':
                 continue
             self.assertEqual(body(self.party, name), hosted_form(body(self.pi_party, name)), name)
@@ -92,6 +98,12 @@ class Rules(unittest.TestCase):
         self.assertEqual(locations(self.games), locations(self.pi_games))
         for name in locations(self.pi_games):
             self.assertEqual(body(self.games, name), hosted_form(body(self.pi_games, name)), name)
+
+    def test_no_access_assertion_or_token_reaches_party_core_or_a_game(self):
+        passes = re.findall(r'^[ \t]*proxy_pass [^;]*;\n((?:[ \t]*proxy_set_header Cf-[^;]*;\n)*)', HOSTED, re.M)
+        self.assertEqual(len(passes), len(re.findall(r'proxy_pass ', HOSTED)))
+        for cleared in passes:
+            self.assertEqual(re.findall(r'proxy_set_header (\S+) "";', cleared), list(hs.ACCESS_HEADERS))
 
     def test_frames_name_the_hosted_game_origin(self):
         self.assertIn('frame-ancestors https://games.avrana.party"', body(self.party, '= /party/bridge.html'))

@@ -34,9 +34,10 @@ probe() {   # probe HOST PORT -> connected | refused | timeout
         # "No route"/"unreachable" may be a local nftables reject or an ICMP from far away; both mean a decision
         # was made by something that saw the packet. Count only a silent drop as isolation.
         echo refused
-    else echo timeout
+    else echo error   # anything not understood is not proof of isolation
     fi
 }
+command -v timeout >/dev/null || { echo 'verify-isolation: timeout(1) is missing; no probe can be trusted' >&2; exit 2; }
 forbid() { local r; r=$(probe "$1" "$2")
     if [[ $r == timeout ]]; then printf 'PASS  blocked   %-22s %s\n' "$1:$2" "$3"
     else printf 'FAIL  %-9s %-22s %s\n' "$r" "$1:$2" "$3"; fail=1; fi; }
@@ -47,7 +48,7 @@ need() { local r; r=$(probe "$1" "$2")
 if [[ $host_only -eq 1 ]]; then
     [[ $EUID -eq 0 ]] || { echo '--host-layer-only needs sudo (it sets the VM firewall aside)' >&2; exit 2; }
     saved=$(mktemp)
-    nft list ruleset > "$saved"
+    nft list ruleset > "$saved" && [[ -s $saved ]] || { echo 'could not save the VM firewall; not setting it aside' >&2; exit 2; }
     trap 'nft -f "$saved" && echo "VM firewall restored"; rm -f "$saved"' EXIT
     nft flush ruleset
     echo 'VM firewall set aside: measuring the host-side filter alone'
@@ -64,6 +65,9 @@ forbid "$PI" 22 'the Pi appliance'
 forbid "$PI" 443 'the Pi appliance'
 forbid 169.254.169.254 80 'link-local metadata'
 forbid 172.17.0.1 2375 'a Docker bridge'
+echo '== forbidden: public addresses on ports the VM has no use for'
+forbid 1.1.1.1 25 'SMTP to the internet'
+forbid 1.1.1.1 22 'SSH to the internet'
 
 echo '== required'
 if getent hosts region1.v2.argotunnel.com >/dev/null; then printf 'PASS  resolved  %-22s %s\n' 'DNS' 'through the libvirt gateway'

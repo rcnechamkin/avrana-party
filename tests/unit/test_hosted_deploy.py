@@ -52,14 +52,25 @@ class Network(unittest.TestCase):
             ip = ipaddress.ip_address(addr)
             self.assertTrue(any(ip in net for net in nwfilter_drops()), addr)
 
-    def test_the_only_gateway_exceptions_are_dns_out_and_ssh_in(self):
+    def test_the_only_gateway_exceptions_are_dns_out_ssh_in_and_dhcp(self):
         exceptions = []
         for rule in NWFILTER.iter('rule'):
             for match in rule:
                 if '192.168.122.1' in (match.get('dstipaddr'), match.get('srcipaddr')):
                     exceptions.append((rule.get('action'), rule.get('direction'), match.tag, match.get('dstportstart')))
-        self.assertEqual(sorted(exceptions), [('accept', 'in', 'tcp', '22'), ('accept', 'out', 'tcp', '53'),
-                                              ('accept', 'out', 'udp', '53')])
+        self.assertEqual(sorted(exceptions), [('accept', 'in', 'tcp', '22'), ('accept', 'in', 'udp', '68'),
+                                              ('accept', 'out', 'tcp', '53'), ('accept', 'out', 'udp', '53'),
+                                              ('accept', 'out', 'udp', '67')])
+        # DHCP is with libvirt only: every DHCP rule names the gateway or broadcast, never any address
+        for rule in NWFILTER.iter('rule'):
+            for match in rule:
+                if match.tag == 'udp' and {match.get('srcportstart'), match.get('dstportstart')} == {'67', '68'}:
+                    self.assertIn(match.get('dstipaddr') or match.get('srcipaddr'), ('192.168.122.1', '255.255.255.255'))
+        # new outbound connections only on the ports the VM needs
+        new = sorted((next(iter(r)).tag, next(iter(r)).get('dstportstart')) for r in NWFILTER.iter('rule')
+                     if r.get('action') == 'accept' and r.get('direction') == 'out' and next(iter(r)).get('state') == 'NEW'
+                     and not next(iter(r)).get('dstipaddr'))
+        self.assertEqual(new, [('tcp', '443'), ('tcp', '7844'), ('tcp', '80'), ('udp', '123'), ('udp', '7844')])
         # and the exceptions come before the private-range drops
         prio = {(r.get('action'), next(iter(r)).tag, next(iter(r)).get('dstipaddr')): int(r.get('priority')) for r in NWFILTER.iter('rule')}
         drop = min(p for (a, _, d), p in prio.items() if a == 'drop' and d and d != '0.0.0.0')

@@ -111,6 +111,12 @@ def _edge(block, listen, host, appliance_host):
     return block
 
 
+# Headers the access gateway adds or the harness sends (docs/design/HOSTED-STAGING.md §7): cleared at every proxy.
+ACCESS_HEADERS = ('Cf-Access-Jwt-Assertion', 'Cf-Access-Authenticated-User-Email', 'Cf-Access-Client-Id',
+                  'Cf-Access-Client-Secret')
+LEGACY_GAMES = ('bluff', 'expo')
+
+
 def render(source, party_host=PARTY_HOST, game_host=GAME_HOST, listen=LISTEN, legacy_lan_games=False):
     for name, value in (('party host', party_host), ('game host', game_host)):
         if not HOSTNAME.match(value):
@@ -144,13 +150,21 @@ def render(source, party_host=PARTY_HOST, game_host=GAME_HOST, listen=LISTEN, le
         if not party.endswith('}'):
             raise RenderError('the Party server does not end with its closing brace')
         party = (party[:-1].rstrip('\n') + '\n\n    # Hosted: no LAN Games runtime and no static root; anything not routed above is 404.\n'
-                 '    location / {\n        return 404;\n    }\n}')
+                 '    # ^~ wins over the native-game regex: a legacy game is refused, not a missing socket (502).\n'
+                 + ''.join(f'    location ^~ /games/{g}/ {{\n        return 404;\n    }}\n' for g in LEGACY_GAMES)
+                 + '    location / {\n        return 404;\n    }\n}')
 
     out = []
     for block in (party, games):
         block = block.replace('$scheme', 'https')
         block = block.replace(APPLIANCE_GAME_HOST, game_host).replace(APPLIANCE_PARTY_HOST, party_host)
         block = re.sub(r'\n{3,}', '\n\n', block)
+        # The access gateway's assertion and the harness's token stop at the edge: Party Core does not use
+        # them, and a game server must not get a replayable sign-in or a tester's email.
+        block = re.sub(r'^([ \t]*)(proxy_pass [^;]*;\n)',
+                       lambda m: m.group(1) + m.group(2) + ''.join(
+                           f'{m.group(1)}proxy_set_header {h} "";\n' for h in ACCESS_HEADERS),
+                       block, flags=re.M)
         if re.search(r'\bssl\b|listen\s+(?:\[::\]:)?(?:80|443)\b', block):
             raise RenderError('a rendered server still names TLS or a public port')
         out.append(block)
