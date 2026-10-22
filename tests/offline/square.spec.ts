@@ -103,7 +103,8 @@ for (const c of CONDITIONS) {
       const bad: string[] = [];
       const reachable = async (name: string, loc: ReturnType<Page['locator']>) => { bad.push(...await inReach(name, loc)); };
       await place(page, 'home');
-      await reachable('Home: lead game', page.locator('#home-lead [data-game]'));
+      // Concept K (AVR-708): the stage is art, taller than a square screen at 200%; its action is what must be in reach
+      await reachable('Home: the stage’s action', page.locator('#home-actions button').first());
       await place(page, 'library');
       await page.locator('#game-search').fill('');
       await reachable('Library: search', page.locator('#game-search'));

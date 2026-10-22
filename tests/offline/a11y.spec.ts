@@ -206,7 +206,8 @@ test('"Choose your name" is a step the phone’s Back undoes, from Home and from
   await page.goBack();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
   // from a game's page: Back returns to the game, whose own way back still leads where it says
-  await page.locator('#home-lead [data-game]').click();
+  await page.locator('#stage-preview').click();                                    // Concept K: the stage's facts, then its page
+  await page.locator('#home-preview .more').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'game');
   await expect(page.locator('#top-back')).toHaveAccessibleName('Home');
   await page.locator('#game-detail').getByRole('link', { name: /^(Play|Watch|Try anyway)$/ }).click();   // no name yet: asked for one first

@@ -54,13 +54,21 @@
 
     <!-- Home: who is here and who hosts. -->
     <section id="view-home" data-page="home">
+      <!-- The stage (Concept K K0, AVR-708): the game that matters now, full bleed under the top row.
+           "Featured" is a recommendation from the catalog's fit, never a game selected for the Party.
+           Its one primary action is the Host's own Start ("Select for Party"); Preview opens the
+           game's facts in place, under the stage or under the rail cover it was opened from. -->
+      <div id="home-top" hidden>
+        <div id="home-lead"></div>
+        <div id="home-actions" class="avrana-stage-actions" data-sync="list"></div>
+      </div>
+      <section id="home-preview" class="avrana-preview" aria-labelledby="preview-title" hidden></section>
       <!-- Party mode (ADR 0011, the console model): shown only when Party Core answers. Being here is
            automatic once this phone has a profile, until its person deliberately leaves (AVR-580):
            then only Reconnect brings it back. -->
-      <section id="party" class="mt-2" hidden aria-label="Who is here">
-        <p id="party-lede" class="avrana-lede"></p>
-        <p id="party-names" class="avrana-sub empty:hidden"></p>
-        <p id="party-host" class="avrana-sub empty:hidden"></p>
+      <section id="party" hidden aria-label="Your Party">
+        <!-- Who is here, in a row (faces, how many, who is away, in words); it opens the Party tab. -->
+        <button id="home-presence" type="button" class="avrana-presence home" hidden><span id="home-faces" class="faces"></span><span id="home-here" class="n"></span><span id="home-host" class="avrana-tag host" hidden>Host</span></button>
         <p id="party-result" class="avrana-sub" role="status" hidden></p>
         <!-- The Host stopped answering, or hosting passed on: Party Core's own rule, said where it applies. -->
         <p id="party-state" class="avrana-state" role="status" hidden></p>
@@ -105,13 +113,11 @@
 
       <button id="home-name" type="button" class="btn btn-primary btn-block mt-6" hidden><span data-icon="user-round-pen"></span>Choose your name</button>
 
-      <!-- What to play next: the last game played on this phone (or one that suits the people
-           here), the rest that suit them, and what was played recently. Nothing here starts a
-           game: every cover opens the game's page, where its own button is. -->
-      <section id="home-games" class="mt-5" hidden aria-label="Games">
-        <div id="home-lead"></div>
-        <div id="home-great-sec" class="avrana-sec"><h2 id="home-great-h">Games</h2><a class="avrana-textlink" href="#library">Library</a></div>
-        <ul id="home-great" class="avrana-rail" data-sync="list" aria-labelledby="home-great-h"></ul>
+      <!-- What else suits the people here, and what was played recently. A cover opens its facts in
+           place (it never selects); the facts lead to the game's page. -->
+      <section id="home-games" class="mt-6" hidden aria-label="Games">
+        <div id="home-great-sec" class="avrana-sec"><h2 id="home-great-h" class="avrana-shelf-title">Games</h2><a class="avrana-textlink" href="#library">All games</a></div>
+        <ul id="home-great" class="avrana-rail cards" data-sync="list" aria-labelledby="home-great-h"></ul>
         <div id="home-recent-sec" hidden>
           <div class="avrana-sec"><h2 id="home-recent-h">Recently played</h2></div>
           <ul id="home-recent" class="avrana-rail small" data-sync="list" aria-labelledby="home-recent-h"></ul>
@@ -126,6 +132,7 @@
       <p id="party-off" class="avrana-sub mt-2" hidden></p>
       <section id="party-people" class="mt-4" hidden aria-labelledby="party-h">
         <h2 id="party-h" class="avrana-section-title">People here <span id="party-count" class="font-sans text-body font-normal text-muted"></span></h2>
+        <p id="party-host" class="avrana-sub mb-3 empty:hidden"></p>
         <ul id="party-members" class="avrana-faces" aria-label="People at the party"></ul>
       </section>
       <ul class="avrana-list mt-6">

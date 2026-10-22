@@ -150,7 +150,7 @@ export function homeShelves({ all, people = 0, keyOf = (g) => g.id, recent = [] 
   const great = all.filter((g) => g !== lead && suits(g));
   return {
     lead, leadPlayed: Boolean(lead && recents[0] === lead),
-    title: people >= 2 ? `Great for ${countWord(people)}` : 'Games',
+    title: people >= 2 ? `Also fits your ${people}` : 'Games',
     great, played: recents.filter((g) => g !== lead),
   };
 }
@@ -169,14 +169,24 @@ export function fitLine(game, people = 0) {
   return { ok: false, icon: 'triangle-alert', text: `Up to ${max} play; ${rest}.` };
 }
 
-/** The line under Home's lead title. */
-export function leadLine(game, { people = 0, played = false } = {}) {
-  const parts = [];
-  if (played) parts.push('You played this last.');
-  if (people >= 2) {
-    parts.push(fits(game, people) ? `Room for all ${countWord(people)} of you.`
-      : people > game.players.max ? `Up to ${game.players.max} play; you’re ${people}.`
-        : `Needs ${game.players.min} or more.`);
-  }
-  return parts.join(' ');
+/** The fit of a game for the people here, in a few words for a line of facts ("Fits your 4",
+ * "Up to 4 play", "Needs 3+"), or null when there is no party to fit. */
+export function fitShort(game, people = 0) {
+  if (people < 2) return null;
+  if (fits(game, people)) return { ok: true, text: `Fits your ${people}` };
+  return { ok: false, text: people > game.players.max ? `Up to ${game.players.max} play` : `Needs ${game.players.min}+` };
+}
+
+/** Home's stage (Concept K, AVR-708): its eyebrow, its one line of facts ("3–8 players · Fits your 4
+ * · Phone only") and, when this phone played it last, that. `players` and `screen` are the words the
+ * covers already use (lib/ui.js). Featured is a recommendation made here, from the catalog's fit: it
+ * is never called, or drawn as, a game selected for the Party. */
+export function stageLine(game, { people = 0, played = false, players = '', screen = '' } = {}) {
+  const fit = fitShort(game, people);
+  return {
+    eyebrow: 'Featured',
+    meta: [players, fit && fit.text, screen].filter(Boolean).join(' · '),
+    fits: fit ? fit.ok : null,
+    note: played ? 'You played this last.' : '',
+  };
 }

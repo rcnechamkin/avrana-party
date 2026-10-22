@@ -377,8 +377,7 @@
   .avrana-nav[data-at="me"] { --at: 3; }
   .avrana-nav:not([data-at="home"], [data-at="party"], [data-at="library"], [data-at="me"]) > .avrana-lens { opacity: 0; }
 
-  /* Home's one statement, and the line under it. */
-  .avrana-lede { margin: 0; font-size: var(--text-headline); font-weight: 600; line-height: 1.12; letter-spacing: -0.02em; text-wrap: balance; }
+  /* A quieter line under a heading. */
   .avrana-sub { margin: 0.375rem 0 0; color: var(--color-muted); text-wrap: pretty; overflow-wrap: anywhere; }
   .avrana-textlink { color: var(--color-base-content); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-line-strong); display: inline-block; padding: 0.75rem 0; margin: -0.75rem 0; }
   button.avrana-textlink { min-width: 2.75rem; min-height: 2.75rem; text-align: end; cursor: pointer; }   /* a short word is still a thumb wide */
@@ -550,9 +549,9 @@
     transition: border-color var(--motion-quick) var(--ease-standard), transform var(--motion-quick) var(--ease-standard);
   }
   /* A cover you can open answers the pointer and the press: a stronger edge, then a small give. */
-  :is(.avrana-tile, .avrana-hero, .avrana-row > .open):hover .avrana-cover { border-color: var(--color-control); }
-  :is(.avrana-tile, .avrana-hero, .avrana-row > .open):active .avrana-cover { transform: scale(0.975); border-color: var(--color-control); }
-  :is(.avrana-tile, .avrana-hero, .avrana-row > .open):focus-visible { outline-offset: 3px; }
+  :is(.avrana-tile, .avrana-card, .avrana-row > .open):hover .avrana-cover { border-color: var(--color-control); }
+  :is(.avrana-tile, .avrana-card, .avrana-row > .open):active .avrana-cover { transform: scale(0.975); border-color: var(--color-control); }
+  :is(.avrana-tile, .avrana-card, .avrana-row > .open):focus-visible { outline-offset: 3px; }
   .avrana-cover.has-art { background: var(--color-base-300); }
   .avrana-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .avrana-cover > .avrana-icon { width: 38%; height: 38%; }
@@ -610,23 +609,100 @@
   .avrana-blank h3 { margin: 0; font-size: var(--text-section); font-weight: 600; overflow-wrap: anywhere; }
   .avrana-blank p { margin: 0; color: var(--color-muted); font-size: var(--text-supporting); }
   .avrana-blank .btn { margin-top: 0.625rem; }
-  /* Home: the lead cover, then shelves that scroll sideways inside themselves. */
-  .avrana-hero { display: block; width: 100%; text-align: left; color: inherit; text-decoration: none; cursor: pointer; border-radius: var(--radius-box); }
-  .avrana-hero .row { display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; margin-top: 0.5rem; }
-  /* Wide screens: the lead cover is a band, so the shelf under it is on screen without scrolling. */
-  @media (min-width: 44rem) { .avrana-hero .avrana-cover.wide { aspect-ratio: 5 / 2; } }
   /* While the list of games is on its way: the shape of a shelf, not a grey block. */
   .avrana-loading { display: grid; gap: 0.625rem; margin-top: 1.125rem; }
   .avrana-loading > .skeleton:first-child { width: 8rem; height: 1.25rem; }
   .avrana-loading .avrana-grid .skeleton { aspect-ratio: 1; border-radius: var(--radius-box); }
   .avrana-loading .avrana-grid li:nth-child(n + 4) { display: none; }
   @media (min-width: 44rem) { .avrana-loading .avrana-grid li:nth-child(n + 4) { display: block; } }
-  .avrana-hero .row > span:first-child { flex: 1; min-width: 0; }
-  .avrana-hero .t { display: block; font-size: var(--text-section); font-weight: 600; overflow-wrap: anywhere; }
-  .avrana-hero .m { display: block; color: var(--color-muted); font-size: var(--text-supporting); }
-  .avrana-hero .m.warn { color: var(--color-warning); }
-  .avrana-hero .m.warn .avrana-icon { width: 0.75rem; height: 0.75rem; margin-right: 0.1875rem; }
-  .avrana-hero .row > .avrana-icon { color: var(--color-muted); flex: none; }
+  /* Home's stage (Concept K K0, AVR-708): the game that matters now, full bleed under the top row.
+     Opaque, never glass. Its words sit on two fixed ink gradients, whatever the art: the top 150 px
+     (78% to nothing) under the top row, and the bottom 300 px (nothing, 82% at 55%, then ink) under
+     the title, so their contrast is the ink's own. A title with no art is its name, set large. */
+  html[data-place="home"][data-stage="on"]:not([data-screen="scene"]) .avrana-main { padding-top: 0; }
+  /* (at the top of Home the stage draws its own top gradient; once it scrolls, the top row's is back) */
+  html[data-place="home"][data-stage="on"]:not([data-screen="scene"], [data-scrolled]) .avrana-top { background: none; }
+  .avrana-stage {
+    position: relative; isolation: isolate; display: flex; flex-direction: column; justify-content: flex-end;
+    min-height: clamp(280px, 55svh, 468px);
+    margin-inline: calc(-1 * max(1rem, env(safe-area-inset-left))) calc(-1 * max(1rem, env(safe-area-inset-right)));
+    padding: var(--avrana-head) var(--spacing-gutter-hero) 0.25rem; background: var(--color-depth); overflow: hidden;
+  }
+  .avrana-stage > .art { position: absolute; inset: 0; z-index: -1; cursor: pointer; }
+  .avrana-stage > .art::before, .avrana-stage > .art::after { content: ""; position: absolute; left: 0; right: 0; pointer-events: none; }
+  .avrana-stage > .art::before { top: 0; height: 150px; background: linear-gradient(to bottom, rgb(18 18 20 / 0.78), rgb(18 18 20 / 0)); }
+  .avrana-stage > .art::after { bottom: 0; height: 300px; background: linear-gradient(to bottom, rgb(18 18 20 / 0), rgb(18 18 20 / 0.82) 55%, var(--color-ink)); }
+  .avrana-cover.stage { position: absolute; inset: 0; width: auto; aspect-ratio: auto; border: 0; border-radius: 0; }
+  .avrana-cover.stage > img { object-fit: cover; object-position: 50% 30%; }
+  .avrana-cover.stage.icon-art > img, .avrana-cover.stage.own-art > img { object-fit: contain; padding: calc(var(--avrana-head) + 1rem) 15% 9rem; }
+  .avrana-cover.stage:not(.has-art) { background: var(--color-surface); place-items: start; }
+  .avrana-cover.stage:not(.has-art) > .avrana-icon { display: none; }
+  .avrana-stage .noart {
+    position: absolute; top: calc(var(--avrana-head) + 0.5rem); left: var(--spacing-gutter-hero); right: var(--spacing-gutter-hero);
+    font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; color: var(--color-graphite); overflow-wrap: anywhere;
+  }
+  .avrana-stage .art:has(> .avrana-cover.has-art) > .noart { display: none; }
+  .avrana-stage .copy { display: grid; gap: 6px; }
+  .avrana-stage .avrana-meta.warn { color: var(--color-warning); }
+  .avrana-stage .avrana-meta.warn .avrana-icon { width: 0.875rem; height: 0.875rem; margin-right: 0.25rem; }
+  @media (min-width: 44rem) {
+    .avrana-stage { margin-inline: 0; margin-top: calc(var(--avrana-head) + 0.5rem); padding-top: 3rem; border-radius: var(--radius-preview); }
+  }
+  /* The stage's actions: one primary (the Host's Select) and Preview. Dimmed and out of reach
+     while a preview is open, so two primary actions are never live at once. */
+  .avrana-stage-actions { display: flex; gap: 0.625rem; margin-top: 1rem; transition: opacity var(--motion-1) var(--ease-standard); }
+  .avrana-stage-actions > .btn { min-height: 52px; border-radius: var(--radius-button); font-size: var(--text-button); font-weight: 500; }
+  .avrana-stage-actions > .btn-primary { flex: 1 1 auto; }
+  .avrana-stage-actions > #stage-preview { flex: 0 0 auto; padding-inline: 1.25rem; }
+  .avrana-stage-actions:not(:has(.btn-primary)) > #stage-preview { flex: 1 1 auto; }
+  .avrana-stage-actions[data-dim] { opacity: 0.3; }
+  /* Who is here, in a row under the stage; the Host sees that they are. */
+  .avrana-presence.home { width: 100%; margin-top: 0.75rem; }
+  .avrana-presence.home .n { flex: 1; }
+  .avrana-tag { display: inline-grid; place-items: center; min-height: 1.375rem; padding: 0 0.5rem; border-radius: 0.375rem; font-size: var(--text-eyebrow); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+  .avrana-tag.host { background: var(--color-purple); color: var(--color-ink); }
+  @media (max-height: 40.6rem) { .avrana-presence.home .avrana-tag.host { display: none; } }
+  /* Home's rail of covers: 2.2 to a row, portrait art, a title and a line under each. */
+  .avrana-rail.cards { gap: 0.75rem; }
+  .avrana-rail.cards > li { width: calc((100% - 1.5rem) / 2.2); }
+  .avrana-rail.cards.small > li { width: calc((100% - 2.25rem) / 3.2); }
+  .avrana-card { display: block; width: 100%; min-width: 0; min-height: 2.75rem; text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius-box); }
+  .avrana-card .t { display: block; margin-top: 0.5rem; font-size: var(--text-body); font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
+  .avrana-card .m { display: block; color: var(--color-stone); font-size: var(--text-secondary); line-height: 1.3; }
+  .avrana-card .m.warn { color: var(--color-warning); margin-top: 0.125rem; }
+  .avrana-card .m.warn .avrana-icon { width: 0.75rem; height: 0.75rem; margin-right: 0.1875rem; }
+  .avrana-card[aria-expanded="true"] .avrana-cover { border-color: var(--color-cream); }
+  .avrana-cover.tall { aspect-ratio: 3 / 4; border-radius: 12px; }
+  /* The inline preview: a game's facts, opened in place. Opaque. */
+  .avrana-preview {
+    display: grid; gap: 14px; margin-top: 1rem; padding: 16px; border-radius: var(--radius-preview);
+    background: var(--color-raised); border: 1px solid var(--color-line-strong);
+  }
+  .avrana-preview[hidden] { display: none; }
+  .avrana-preview .head { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+  .avrana-preview .thumb { display: block; width: 72px; }
+  .avrana-preview .thumb .avrana-cover { border-radius: 10px; }
+  .avrana-preview h2 { margin: 0; font-size: var(--text-shelf); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere; }
+  .avrana-preview h2:focus { outline: none; }
+  .avrana-preview h2:focus-visible { outline: 2px solid var(--color-base-content); outline-offset: 2px; }
+  .avrana-preview .close { margin: -6px -6px 0 0; border-radius: 50%; }
+  .avrana-preview .d { margin: 0; font-size: var(--text-body); line-height: 1.45; color: var(--color-cream); }
+  .avrana-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .avrana-chips > li { padding: 6px 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-chip); font-size: var(--text-secondary); color: var(--color-cream); }
+  .avrana-chips > li.warn { color: var(--color-warning); border-color: color-mix(in oklab, var(--color-warning) 45%, transparent); }
+  .avrana-device { display: flex; align-items: center; gap: 12px; margin: 0; font-size: var(--text-body); }
+  .avrana-device .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--color-surface); color: var(--color-ready); }
+  .avrana-device[data-fit="unavailable"] .well { color: var(--color-warning); }
+  .avrana-device[data-fit="watch"] .well { color: var(--color-stone); }
+  .avrana-device > span:last-child { display: grid; }
+  .avrana-device .why { color: var(--color-stone); font-size: var(--text-secondary); }
+  .avrana-preview .acts { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+  .avrana-preview .acts:empty { display: none; }
+  .avrana-preview .acts > .btn { flex: 1 1 auto; min-height: 48px; border-radius: 12px; font-size: var(--text-button); font-weight: 500; }
+  .avrana-preview .more { justify-self: start; }
+  /* The art's flight between a cover and the preview (tier 2; none under Reduce Motion). */
+  ::view-transition-group(avrana-art) { animation-duration: var(--motion-2); animation-timing-function: var(--ease-meaningful); }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--motion-1); }
   /* (the rail clips what leaves it, so it keeps a focus ring's width of room on every side) */
   .avrana-rail { display: flex; gap: 0.625rem; margin: -0.25rem; padding: 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 0.25rem; }
   .avrana-rail::-webkit-scrollbar { display: none; }

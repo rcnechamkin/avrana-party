@@ -116,7 +116,7 @@ repeat:
 | `avrana-presence` | the compact presence row: up to five 32 px faces ringed in ink, then "4 here" / "4 here · Riley away". On the briefing it opens the people (only) over it |
 | `avrana-limmark` | the Limited Mode mark in the top bar: icon + the word; opens the "About Limited Mode" sheet |
 | `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet (Filters, View, How to play, About Limited Mode), which is a centred panel from 44rem. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
-| `avrana-lede`, `avrana-sub` | Home's sentence about who is here, and the quieter lines under it |
+| `avrana-sub` | a quieter line under a heading (the Host line on the Party page) |
 | `avrana-list` | 52 px rows that lead somewhere (a place, a sheet), chevron on the right |
 | `avrana-faces`, `avrana-people` | people as faces with names (Party page) and as rows (drawer) |
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
@@ -138,8 +138,12 @@ repeat:
 | `avrana-tools` | the Library's top row: search, the Filters button (with a count of filters that are on) and the View button |
 | `avrana-shelf`, `avrana-sec` | the Library's shelves and a shelf's heading (its count, or Reset while a filter is on) |
 | `avrana-grid` (`large`, `medium`, `compact`), `avrana-rows` | the four Library views: three grids of covers, and a list of rows |
-| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A link to the game's own page; it never starts one. `wide` on a cover is the 16:9 shape of Home's lead, a game's page and the briefing |
-| `avrana-hero`, `avrana-rail` | Home's lead cover, and Home's shelves that scroll sideways inside themselves |
+| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A link to the game's own page; it never starts one. `wide` on a cover is the 16:9 shape of a game's page and the briefing; `tall` is the 3:4 cover of Home's rail and the preview's thumbnail; `stage` fills Home's stage |
+| `avrana-stage` | **Home's stage** (Concept K K0, AVR-708): the Featured title full bleed under the top row (468 px tall on a 844 px phone, never under 280), its eyebrow ("Featured", `stone`: a recommendation, never styled as "Selected for Party"), its name at display size, one line of facts ("3–8 players · Fits your 4 · Phone only"). Two fixed ink gradients (top 150 px 78% → 0; bottom 300 px 0 → 82% at 55% → ink) keep its words legible over any art. With no picture it is the title's name, 44 Light `graphite`, on `surface` |
+| `avrana-stage-actions` | the stage's one primary action (the Host's **Select for Party**, which is today's Host start) and **Preview**. A member who is not the Host has Preview only. Dimmed to 30% and inert while a preview is open |
+| `avrana-presence` (`home`) | who is here, in a row under the stage: up to five faces then "+n", "4 here · Riley away", and a purple HOST tag for the Host (dropped under 650 px tall). It opens the Party tab |
+| `avrana-rail` (`cards`), `avrana-card` | Home's rail: portrait covers 2.2 to a row; a cover is a button that opens its facts in place (`aria-expanded`), never a page and never a selection |
+| `avrana-preview` | a game's facts opened in place, under the stage or under the rail it was opened from: thumbnail, name, facts as chips, this phone's own check ("This phone can play"; an answer not known yet never blocks), the Host's Select, How to play, and "More about <game>" to its page. Focus goes to its title and back to what opened it; Esc, X, a swipe down or the same art again put it away. The art flies between the cover and the thumbnail (a same-document View Transition, tier 2; none under Reduce Motion) |
 | `avrana-fav` | the heart: keep or drop a favourite (`aria-pressed`, a name per game) |
 | `avrana-blank`, `avrana-hid` | the Library with nothing to show (why, and the way back), and the line that says how many titles a filter left out |
 | `avrana-seg`, `avrana-choices` | a sheet's choices: segments (one of a few, `aria-pressed`) and a list with a tick |
@@ -160,11 +164,13 @@ stays; on the way to a game the whole frame leaves the screen. Whatever was open
 rules) closes when the Party moves (to a briefing, to another round's briefing, to a game, or
 home), and the frame comes back in the same place, a game's page included.
 
-- **Home**: who is here, in a sentence; the connection line; the Limited Mode notice in full when
-  it applies, until it is folded away (below); a nameless phone's first step; then the games: a lead cover (the last title played
-  on this phone, else the first that suits the party), a shelf of the rest that suit it
-  ("Great for four", or "Games" when there is no party to suit), and "Recently played" once
-  something has been.
+- **Home** (Concept K K0, AVR-708): the stage (the last title played on this phone, else the
+  first that suits the party: Featured), its actions, who is here in a row; the connection line
+  when it is not fine; the Limited Mode notice in full when it applies, until it is folded away
+  (below); a nameless phone's first step; then the rail of the rest that suit the party ("Also
+  fits your 4", or "Games" when there is no party to suit) and "Recently played" once something
+  has been. Only K0 exists today: K1 (selected), K2 (game on) and K3 (just played) need Party
+  Core changes (AVR-701, AVR-703, AVR-71).
 - **Party**: everyone here as faces, the Chat row (with the unread count), Leave Party.
 - **Library**: the games (the centre of gravity): search, two filters, four views, and the
   All / Favorites / Recent tabs (below).
@@ -217,8 +223,9 @@ all"). Nothing to show always says why and offers the way back.
   whose phone has gone quiet but who has not left (the owner, 2026-10-06: redesign decision 21).
 - **Home never repeats a title**: the lead is not listed again under "Recently played", and a
   shelf with nothing on it has no heading.
-- **A cover is a link to the game's own page** (`#game/<id>`, PR 1.3). Nothing on a shelf starts
-  a game.
+- **A cover is a link to the game's own page** (`#game/<id>`, PR 1.3) in the Library; on Home it
+  opens the game's facts in place, which link to that page. Nothing on a shelf starts a game: only
+  the Host's own button does (Select for Party on Home, Start for everyone on a game's page).
 
 **A game's page** (AVR-286; `detailNodes`, `renderDetail`, `gameOf` in `lib/frame.js`). Browsing
 only: the Party stays where it is. The top bar holds the way back, named for the place the page

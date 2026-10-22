@@ -49,7 +49,7 @@ test.describe('Leave Party', () => {
 
     await leaveParty(bob.page);
     await reconnectShown(bob.page);
-    await expect(bob.page.locator('#party-lede')).toHaveText('You left the party.');
+    await expect(bob.page.locator('#reconnect')).toContainText('You left the party.');
     expect((await view(bob)).departed).toBe(true);
     await expect(host.page.locator('#party-count')).toHaveText('2 people');
     await expect(host.page.locator('#party-members')).not.toContainText('Bob');
