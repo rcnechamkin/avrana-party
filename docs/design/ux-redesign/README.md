@@ -110,7 +110,7 @@ No generated imagery. Everything drawn is one of:
 | EXPO, Worms, Spades, Checkers covers; the EXPO land; suit shapes | flat CSS shapes written for these prototypes; stand-ins for human-made art | project |
 | EXPO housing grain | procedural noise (an SVG turbulence filter in the stylesheet); a stand-in for a material tile | project |
 | Icons | Lucide (`lucide-static`, the set the shell already uses) | ISC |
-| Typeface | Geist, bundled in `prototypes/shared/fonts/` with `OFL.txt` | SIL OFL 1.1 |
+| Typeface | Plus Jakarta Sans, bundled in `prototypes/shared/fonts/` with `OFL.txt` | SIL OFL 1.1 |
 
 Spades and Checkers are not in the catalog; they are sample titles so the shelves have enough
 on them. Every length ("15 min") and kind ("Co-op") is sample content: no title has either today.
