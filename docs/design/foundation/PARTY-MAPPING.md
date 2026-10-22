@@ -22,7 +22,7 @@ implements each one. The owner-approved direction is the
 
 | Foundation role | Party token (`web/src/party.css`) | Value |
 |---|---|---|
-| `surface` | `--color-base-100` | `#0d0d0f` |
+| `surface` | `--color-base-100` (Concept K `ink`, AVR-706) | `#121214` |
 | `surface_low` | `--color-base-200` | `#161618` |
 | `surface_raised` | `--color-base-300`, `--color-neutral` | `#1e1e21` |
 | `on_surface` | `--color-base-content` | `#edeae4` |
@@ -53,7 +53,7 @@ Copies of the palette outside the stylesheet, to change together with it: `theme
 
 | Foundation | Party today |
 |---|---|
-| brand | `--font-brand`, weight 300, the words "Avrana Party" only; temporary by the brief |
+| brand | `--font-brand`, Plus Jakarta Sans weight 300, the words "Avrana Party" only (Concept K dropped the Helvetica treatment, 2026-10-21) |
 | headline 1.75rem | `.avrana-lede`, a game's `h1`, the briefing's `h2` |
 | title 1.375rem | `.avrana-top-title` |
 | section 1.0625rem | `.avrana-sec h2`, `.avrana-section-title`, sheet headings |

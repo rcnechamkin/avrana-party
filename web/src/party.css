@@ -1,4 +1,4 @@
-/* Avrana Party system UI: source stylesheet (UX/UI redesign tokens, 2026-10; the brand face is temporary).
+/* Avrana Party system UI: source stylesheet (Concept K · Avrana Console tokens, AVR-706, 2026-10-21).
  *
  *   web/src/party.css  --(npm run build:css, Tailwind CSS 4 + daisyUI 5, build time only)-->  web/party/styles.css
  *
@@ -35,16 +35,6 @@
   font-display: swap;
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
-/* The words "Avrana Party" only (temporary, UX/UI brief): a light Helvetica where the phone really
-   has one, Plus Jakarta Sans Light everywhere else. local() matches installed faces only, so Windows and
-   Android never fall back to Arial. */
-@font-face {
-  font-family: "Avrana Brand";
-  src: local("Helvetica Neue Light"), local("HelveticaNeue-Light"), local("Helvetica Light"), local("Helvetica-Light"),
-       url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2");
-  font-weight: 300;
-  font-display: swap;
-}
 
 /* Only the daisyUI parts the pages use; JS words such as "toggle", "list" or "status" would
    otherwise pull in unrelated components. Add a name here when a page starts using one. */
@@ -58,8 +48,8 @@
   name: "avrana";
   default: true;
   color-scheme: dark;
-  /* Surfaces: near-black neutrals, each level a step up. */
-  --color-base-100: #0d0d0f;
+  /* Surfaces: near-black neutrals, each level a step up (Concept K: ink, surface, raised). */
+  --color-base-100: #121214;
   --color-base-200: #161618;
   --color-base-300: #1e1e21;
   --color-base-content: #edeae4;
@@ -108,7 +98,8 @@
   --color-select: rgb(185 169 232 / 0.16);
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-brand: "Avrana Brand", "Plus Jakarta Sans", system-ui, sans-serif;
+  /* Concept K (owner, 2026-10-21): Plus Jakarta Sans everywhere, the brand words included (Light 300). */
+  --font-brand: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* Type roles (Design Foundation; docs/design/foundation/PARTY-MAPPING.md): name a size by what the
      text is, not by its value. Sizes only: a role sets no line height, so a rule's own line height holds. */
@@ -118,10 +109,60 @@
   --text-body: 0.9375rem;
   --text-supporting: 0.8125rem;
   --text-caption: 0.6875rem;
-  /* Motion: the one transition the shell uses (values unchanged until the owner sets them). */
+  /* Concept K type roles (avrana-console-style/02-tokens.md), in rem so they follow the phone's
+     text size. Big things are Light, small things Medium or SemiBold. */
+  --text-display: 3rem;             /* 48, Light: the hero title */
+  --text-display-fallback: 2.75rem; /* 44, Light: a title drawn in place of missing art */
+  --text-page: 1.75rem;             /* 28, Regular: Library, Party, Me */
+  --text-shelf: 1.25rem;            /* 20, Regular: a shelf's heading */
+  --text-button: 1.0625rem;         /* 17: a 52 px button's word */
+  --text-secondary: 0.875rem;       /* 14: "4 here" */
+  --text-eyebrow: 0.75rem;          /* 12, Medium, caps +16%: FEATURED */
+
+  /* Concept K colour names (Figma "Avrana brand v1.0"). The daisyUI names above stay the ones the
+     markup uses; these say the same colours in the design's own words, plus the few it adds. */
+  --color-depth: #0d0d0f;           /* behind sheets, letterboxing */
+  --color-ink: #121214;             /* the page; words on the cream button; scrims */
+  --color-surface: #161618;         /* opaque cards and panels */
+  --color-raised: #1e1e21;          /* secondary buttons, the preview card, banners, icon wells */
+  --color-graphite: #5e5b57;        /* a title drawn in place of art; decorative only (2.7:1) */
+  --color-ash: #8f8c89;             /* tertiary words */
+  --color-stone: #aeaba7;           /* secondary words, eyebrows, reasons, quiet bar labels */
+  --color-cream: #edeae4;           /* words; the one primary button */
+  --color-purple: #b9a9e8;          /* chosen, Party-owned, selected: never decoration */
+  --color-purple-deep: #5a439d;
+  --color-purple-selected: rgb(185 169 232 / 0.22);
+  --color-ready: #34d399;           /* eligible / ready marks, always beside a word */
+  --color-warn: #f59e0b;            /* reconnecting edge and icon, blocking conditions */
+  --color-danger: #ef4444;          /* confirming End or Leave only */
+
+  /* Concept K shape, named by what it rounds (Tailwind's own rounded-* sizes are untouched). */
+  --radius-preview: 1.25rem;        /* 20: the inline preview card */
+  --radius-panel: 1rem;             /* 16: panels, summaries, grouped lists, feedback */
+  --radius-button: 0.875rem;        /* 14: 52 px buttons, banners, the selected-game row */
+  --radius-control: 0.75rem;        /* 12: 44-48 px buttons, cover art */
+  --radius-chip: 0.5rem;            /* 8: fact chips, 40 px thumbnails */
+  --spacing-gutter: 1rem;           /* cards, panels, the bar */
+  --spacing-gutter-hero: 1.25rem;   /* the hero's words, stage actions, shelf headings, page titles */
+
+  /* Motion: three tiers (avrana-console-style/06-motion.md). Tier 1 is everyday (tabs, chips, a
+     press), tier 2 answers a touch in place (a preview opening, Start to pending), tier 3 marks a
+     moment (a selection, a launch). GAME-UX-CONTRACT rule 11.5 (proposed) caps the platform at
+     200 ms until AVR-704 amends it, so tier 3 is 200 ms here; its Concept K length is kept beside
+     it, unused, for when the owner decides. */
   --motion-quick: 150ms;
   --motion-surface: 220ms; /* coherent sheets; reduced-motion override remains authoritative */
   --ease-standard: ease;
+  --motion-1: 150ms;
+  --motion-2: 300ms;
+  --motion-3: 200ms;
+  --motion-3-proposal: 600ms;       /* AVR-704; not in use */
+  --ease-responsive: cubic-bezier(0.2, 0, 0, 1);
+  --ease-meaningful: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The bar's lens: a spring (mass 1, stiffness 420, damping 28) sampled as linear(), a slight
+     overshoot that settles, over --motion-spring. */
+  --ease-spring: linear(0, 0.076, 0.246, 0.445, 0.632, 0.786, 0.902, 0.979, 1.025, 1.047, 1.053, 1.049, 1.04, 1.029, 1.019, 1.011, 1.005, 1.001, 0.999, 0.997, 0.997, 0.997, 0.998, 0.998, 1);
+  --motion-spring: 480ms;
 }
 
 @layer base {
@@ -147,6 +188,7 @@
             --color-line-strong: rgb(255 255 255 / 0.5); --color-control: #a5a3a8; }
   }
   @media (prefers-reduced-motion: reduce) {
+    :root { --motion-2: 150ms; --motion-3: 150ms; --motion-spring: 150ms; --ease-spring: linear; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 }
@@ -154,6 +196,51 @@
 @layer components {
   /* An inline Lucide icon (lib/icons.js); it scales with the text around it. */
   .avrana-icon { width: 1.25em; height: 1.25em; flex: none; display: inline-block; vertical-align: -0.25em; }
+
+  /* ---- Concept K foundations (AVR-706) ---------------------------------------------------------
+     Liquid glass: only the shell's three floating controls wear it (the bottom bar, the top-right
+     utility, the top-left Home button; owner rule, 2026-10-21). Nothing else is glass. It clips to
+     its own shape (a square of blur around a round button was a real bug on iPhone): the radius,
+     overflow and isolation are on the element itself, and the rim is a masked edge, never
+     border-image (which drops the radius). The blur is never animated. */
+  .avrana-glass {
+    position: relative; isolation: isolate; overflow: hidden;
+    background: rgb(18 18 20 / 0.58);
+    -webkit-backdrop-filter: blur(28px) saturate(1.2); backdrop-filter: blur(28px) saturate(1.2);
+    box-shadow: 0 16px 40px rgb(0 0 0 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -8px 16px rgb(255 255 255 / 0.07);
+  }
+  .avrana-glass::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: linear-gradient(to bottom, rgb(255 255 255 / 0.4), rgb(255 255 255 / 0.06));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  /* A phone without backdrop blur, or one that asks for less transparency or more contrast: the
+     same shape, opaque, with a strong edge. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .avrana-glass { background: var(--color-raised); }
+    .avrana-glass::before { background: var(--color-line-strong); }
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .avrana-glass { background: var(--color-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .avrana-glass::before { background: var(--color-line-strong); }
+  }
+  /* The selected tab's lens (Figma "Glass lens (selected)"): one capsule, under the tabs. */
+  .avrana-lens {
+    background: rgb(255 255 255 / 0.14);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -4px 10px rgb(255 255 255 / 0.1);
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .avrana-lens { background: var(--color-purple-selected); box-shadow: inset 0 0 0 1px var(--color-purple); }
+  }
+
+  /* Type roles as classes, for the words the Concept K screens repeat. */
+  .avrana-display { margin: 0; font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.02em; color: var(--color-cream); overflow-wrap: anywhere; }
+  .avrana-page-title { margin: 0; font-size: var(--text-page); font-weight: 400; line-height: 1.2; letter-spacing: -0.01em; }
+  .avrana-shelf-title { margin: 0; font-size: var(--text-shelf); font-weight: 400; line-height: 1.25; letter-spacing: -0.01em; }
+  .avrana-eyebrow { margin: 0; font-size: var(--text-eyebrow); font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-stone); }
+  .avrana-eyebrow.selected { color: var(--color-purple); }
+  .avrana-meta { margin: 0; font-size: var(--text-body); line-height: 1.35; color: var(--color-stone); font-variant-numeric: tabular-nums; }
 
   /* A plain page (diagnostics): phone first, safe areas respected. */
   .avrana-screen {

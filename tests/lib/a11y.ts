@@ -91,9 +91,9 @@ export async function faintEdges(page: Page, selector = '.btn:not(.btn-primary, 
       if (!el.getClientRects().length || el.closest('[aria-disabled="true"]')) continue;
       const cs = getComputedStyle(el);
       if (parseFloat(cs.borderTopWidth) < 1 || cs.borderTopStyle === 'none') continue;
-      let host: Element | null = el.parentElement, ground = 'rgb(13, 13, 15)';
+      let host: Element | null = el.parentElement, ground = 'rgb(18, 18, 20)';
       for (; host; host = host.parentElement) { const bg = getComputedStyle(host).backgroundColor; if (!/, 0\)$|transparent/.test(bg)) { ground = bg; break; } }
-      const under = rgb(ground, '#0d0d0f'), edge = rgb(cs.borderTopColor, `rgb(${under.join(',')})`);
+      const under = rgb(ground, '#121214'), edge = rgb(cs.borderTopColor, `rgb(${under.join(',')})`);
       const [hi, lo] = [lum(edge), lum(under)].sort((a, b) => b - a), r = (hi + 0.05) / (lo + 0.05);
       if (r + 0.005 < 3) out.push(`${el.id || el.className.toString().slice(0, 30)}: edge ${r.toFixed(2)} of 3`);
     }

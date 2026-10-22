@@ -15,7 +15,7 @@ test('the committed copies agree with --color-base-100', () => {
 
 for (const file of GROUND_COPIES) {
   test(`a planted wrong colour in ${file} is caught`, () => {
-    const planted = (rel) => (rel === file ? real(rel).replaceAll('#0d0d0f', '#0d0d10') : real(rel));
+    const planted = (rel) => (rel === file ? real(rel).replaceAll('#121214', '#0d0d10') : real(rel));
     const found = groundColourDrift(planted);
     assert.ok(found.length >= 1 && found.every((m) => m.startsWith(`${file}:`)), found.join('\n'));
   });
@@ -28,6 +28,6 @@ test('a missing theme-color is caught', () => {
 });
 
 test('a changed ground colour with stale copies is caught everywhere', () => {
-  const planted = (rel) => (rel === 'web/src/party.css' ? real(rel).replace('--color-base-100: #0d0d0f', '--color-base-100: #101012') : real(rel));
+  const planted = (rel) => (rel === 'web/src/party.css' ? real(rel).replace('--color-base-100: #121214', '--color-base-100: #101012') : real(rel));
   assert.equal(groundColourDrift(planted).length, 5);
 });

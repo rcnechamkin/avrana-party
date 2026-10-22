@@ -9,8 +9,11 @@ slice 0 documents PR):
 the tokens, the type and the Party shell's frame below are the redesign's; nothing of it is
 deployed or checked on a real phone. The diagnostics page and the games still carry the older
 layout on the new tokens until their own slices.
-The brand face is **temporary** (the brief's Helvetica-style treatment); no final logo or art
-direction is decided here. When the real identity arrives, replace the theme block and the
+**2026-10-21: Concept K · Avrana Console** (owner: "I love the UI") is the direction now being
+built, slice by slice (AVR-705; style kit `avrana-console-style/`, Figma section `108:198`). Its
+foundations (AVR-706) are below: the ground is `ink #121214`, Plus Jakarta Sans is the only face
+(the brand words included), and liquid glass is a single utility for the shell's three floating
+controls. No final logo or art direction is decided here. When the real identity arrives, replace the theme block and the
 `avrana-*` layer; the markup and the build stay.
 
 ## Architecture
@@ -42,7 +45,7 @@ tools/build-art.mjs ──(npm run build:art: contracts/artwork.json + assets/ve
 
 | Token | Value | Use |
 |---|---|---|
-| `base-100` | `#0d0d0f` | the ground: near-black neutral, never pure black |
+| `base-100` | `#121214` | the ground (Concept K `ink`): near-black neutral, never pure black; `#0d0d0f` (`depth`) stays for what sits behind sheets |
 | `base-200` / `base-300` | `#161618` / `#1e1e21` | raised surface (tiles, notices) / fields, selected segments |
 | `base-content` | `#edeae4` | main text, warm off-white |
 | `muted` / `faint` (Tailwind tokens) | `#aeaba7` / `#8f8c89` | secondary text / quiet labels and counts |
@@ -58,9 +61,9 @@ tools/build-art.mjs ──(npm run build:art: contracts/artwork.json + assets/ve
 
 Type: **Plus Jakarta Sans** (SIL OFL 1.1), two variable files (Latin and Latin Extended) bundled at `web/party/fonts/` and served by the Pi
 like every other file (provenance: `assets/vendor/README.md`); the system face shows until it loads
-(`font-display: swap`) and if it never does. The words "Avrana Party" alone use the `brand` face:
-a light Helvetica where the phone really has one (`local()` only, so Android and Windows never
-fall back to Arial), Plus Jakarta Sans Light elsewhere. Sizes are rem, so they follow the phone's text size;
+(`font-display: swap`) and if it never does. The words "Avrana Party" are Plus Jakarta Sans Light
+(`--font-brand`); the temporary Helvetica treatment was dropped with Concept K (owner, 2026-10-21:
+Plus Jakarta Sans everywhere). Sizes are rem, so they follow the phone's text size;
 body is 0.9375 rem; supporting lines (a sender's name in chat, a value on a list row, counts) are
 0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor. These sizes are
 named type roles in `party.css`'s `@theme` (AVR-425; the Design Foundation's roles): `headline`
@@ -83,6 +86,22 @@ and a mark or an edge, with `aria-pressed` or `aria-current`. The bottom bar, `a
 **Motion** (proposed, AVR-429): `--motion-quick` 150 ms for a state change (colour, edge, a
 pressed cover), `--motion-surface` 220 ms for a sheet or the drawer arriving from its own edge,
 `--ease-standard` for both. Leaving is immediate. Under reduced motion nothing moves.
+
+### Concept K foundations (AVR-706)
+
+`@theme` also names Concept K's tokens, so code and Figma say the same word. The daisyUI names above
+remain what markup uses; these are aliases plus the few the design adds.
+
+| Group | Tokens |
+|---|---|
+| Colour | `depth #0d0d0f`, `ink #121214` (= `base-100`), `surface #161618`, `raised #1e1e21`, `graphite #5e5b57` (decorative fallback title only, 2.7:1), `ash #8f8c89`, `stone #aeaba7`, `cream #edeae4`, `purple #b9a9e8`, `purple-deep #5a439d`, `purple-selected` (purple at 22%), `ready #34d399`, `warn #f59e0b`, `danger #ef4444` |
+| Type roles | `display` 48 Light, `display-fallback` 44 Light, `page` 28 Regular, `shelf` 20 Regular, `button` 17, `secondary` 14, `eyebrow` 12 Medium caps +16%; classes `avrana-display`, `-page-title`, `-shelf-title`, `-eyebrow` (`.selected` is purple), `-meta` |
+| Shape | `radius-preview` 20, `-panel` 16, `-button` 14, `-control` 12, `-chip` 8; `spacing-gutter` 16, `-gutter-hero` 20 |
+| Motion | tier 1 `--motion-1` 150 ms; tier 2 `--motion-2` 300 ms with `--ease-responsive`; tier 3 `--motion-3` **200 ms** with `--ease-meaningful` (Concept K's 600 ms waits in `--motion-3-proposal` until AVR-704 amends GAME-UX-CONTRACT rule 11.5); the bar's lens uses `--ease-spring` (stiffness 420, damping 28, as `linear()`) over `--motion-spring` 480 ms. Reduced motion shortens tiers 2–3 and the spring to 150 ms, and the base rule still stops every transition. |
+| Glass | `.avrana-glass`: ink at 58% over a 28 px backdrop blur, a masked top-lit rim, the drop and inner shadows of Figma's "Liquid glass (dark)". It sets `overflow: hidden` and `isolation: isolate` itself so the blur clips to the element's radius. Without backdrop blur, with `prefers-reduced-transparency` or with `prefers-contrast: more` it is opaque `raised` with a `line-strong` edge. `.avrana-lens` is the selected tab's capsule. **Only three elements may wear glass**: the bottom bar, the top-right utility and the top-left Home button (owner, 2026-10-21). |
+
+Contrast on the new ground (WCAG 2): `cream` 15.6:1, `stone` 8.2:1, `ash` 5.6:1, `control` 3.6:1,
+`purple` 8.8:1, `warning` 10.2:1, `error` 7.7:1.
 
 ## Components
 
@@ -441,7 +460,7 @@ primary action, ≥ 44 px targets, text-first status, line icons for chrome, red
 
 ## Intentionally temporary
 
-The brand face (Helvetica-style, per the UX/UI brief), the app icon (`icon.svg`, unchanged), dark-only
+The app icon (`icon.svg`, unchanged), dark-only
 theming, the tile layout and the `avrana-*` names. No Party page or script hard-codes a colour; the
 copies of the palette outside `web/src/party.css` are `theme-color` in the three HTML heads (the page, diagnostics, the doorway) and
 `manifest.json` (updated with the tokens), and the games' pre-game layer and Back to Party bar,

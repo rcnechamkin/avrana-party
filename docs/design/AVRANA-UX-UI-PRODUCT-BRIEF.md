@@ -103,6 +103,13 @@ Do **not** use:
 
 The important idea is **material inspiration**, not retro cosplay.
 
+**Superseded in part by Concept K · Avrana Console (owner, 2026-10-20/21).** Liquid glass is used on
+exactly three **shell** controls: the floating bottom bar, the top-right utility and the top-left
+Spire-A Home button. Nothing else is glass: not cards, avatars, rosters, panels, buttons, previews,
+sheets or banners, which are opaque `ink` / `surface` / `raised`. The glass is dark (ink at 58% over
+a blur), so the "heavy glassmorphism" warning above still holds for everything else. Recipe and
+fallbacks: `docs/UI-DESIGN-SYSTEM.md` § Concept K foundations.
+
 ### 4.3 Future themes
 
 The default visual theme must not be structurally hardcoded into the information architecture.
@@ -126,11 +133,9 @@ Theme-sensitive decisions should therefore remain separable from:
 
 ### 5.1 Temporary Avrana brand treatment
 
-For now:
-
-- Use **Helvetica Light** or the closest practical system Helvetica-style treatment for the "Avrana Party" brand/display text.
-- This is temporary.
-- Do not treat it as the final Avrana brand font.
+**Superseded (owner, 2026-10-21, Concept K):** the brand words "Avrana Party" are set in **Plus
+Jakarta Sans Light**, like the rest of the interface; the temporary Helvetica treatment is gone.
+Plus Jakarta Sans is still not a final brand font decision.
 
 ### 5.2 Interface typography
 
