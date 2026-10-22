@@ -60,3 +60,15 @@ test('under Reduce Motion nothing enters: no animation, proposal or not', async 
     expect(e.content[0], search).toBe('none');
   }
 });
+
+test('the bar’s lens swells on its way to a new place, and comes to rest at its size', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => {
+    (window as any).swelled = 0;
+    document.querySelector('#nav > .avrana-lens')!.addEventListener('animationstart', (e) => { if ((e as AnimationEvent).animationName === 'avrana-swell') (window as any).swelled++; });
+  });
+  await page.locator('#nav a[data-go="library"]').click();
+  await expect.poll(() => page.evaluate(() => (window as any).swelled)).toBe(1);
+  await expect(page.locator('#nav')).not.toHaveAttribute('data-enter', '');
+  expect(await page.locator('#nav > .avrana-lens').evaluate((el) => getComputedStyle(el).scale)).toBe('none');
+});

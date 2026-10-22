@@ -510,6 +510,7 @@ function showPage(page, focus = false, game = null, back = null) {
   for (const link of $('nav').querySelectorAll('a')) {
     if (link.dataset.go === under) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   }
+  if ($('nav').dataset.at && $('nav').dataset.at !== under) enter($('nav'));   // the lens swells as it moves (tier 2)
   $('nav').dataset.at = under;                   // where the lens slides to (CSS)
   document.documentElement.dataset.place = page;
   renderTop();

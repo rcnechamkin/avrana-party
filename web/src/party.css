@@ -716,6 +716,10 @@
   #content[data-enter] { animation: avrana-fade var(--motion-3) var(--ease-meaningful); }
   #home-lead[data-enter] > .avrana-stage, #home-lead[data-enter] > .round-over { animation: avrana-fade var(--motion-3) var(--ease-meaningful); }
   :root[data-concept~="motion"] { --motion-3: var(--motion-3-proposal); }
+  /* Tier 2: the bar's lens swells a little on its way to the new place (scale, not transform, so
+     it composes with the slide) */
+  @keyframes avrana-swell { 40% { scale: 1.06 1.08; } }
+  #nav[data-enter] > .avrana-lens { animation: avrana-swell var(--motion-spring) var(--ease-meaningful); }
 
   /* Tier 1: a press answers at once (and never under Reduce Motion) */
   .btn, .avrana-card, .avrana-list > li > button, .avrana-list > li > a { transition: transform var(--motion-1) var(--ease-standard), background-color var(--motion-1) var(--ease-standard), color var(--motion-1) var(--ease-standard); }
