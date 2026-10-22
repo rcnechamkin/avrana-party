@@ -267,3 +267,9 @@ test('the fit sentence on the six real titles, for a party of four and of five',
     'ps1-worms': 'Up to 4 play; one of you watches.',
   });
 });
+
+test('stageLine for K3: Just played, and the Party’s size, never a score or a winner', () => {
+  const game = { players: { min: 2, max: 6 } };
+  assert.deepEqual(stageLine(game, { just: true, people: 4, played: true, players: '2–6 players' }), { eyebrow: 'Just played', meta: '4 in the Party', fits: null, note: '' });
+  assert.equal(stageLine(game, { just: true, people: 1 }).meta, '1 in the Party');
+});

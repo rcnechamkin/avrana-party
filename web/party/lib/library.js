@@ -181,7 +181,9 @@ export function fitShort(game, people = 0) {
  * · Phone only") and, when this phone played it last, that. `players` and `screen` are the words the
  * covers already use (lib/ui.js). Featured is a recommendation made here, from the catalog's fit: it
  * is never called, or drawn as, a game selected for the Party. */
-export function stageLine(game, { people = 0, played = false, players = '', screen = '' } = {}) {
+export function stageLine(game, { people = 0, played = false, players = '', screen = '', just = false } = {}) {
+  // K3: the round the Party just came home from, and how many are in the Party (nothing about how it went)
+  if (just) return { eyebrow: 'Just played', meta: people === 1 ? '1 in the Party' : `${people} in the Party`, fits: null, note: '' };
   const fit = fitShort(game, people);
   return {
     eyebrow: 'Featured',

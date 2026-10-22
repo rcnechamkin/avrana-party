@@ -748,22 +748,39 @@
 
   /* The briefing (ADR 0011): a round's setup, under the frame's top bar. What and who scroll; the
      decision stays at the bottom, within reach of a thumb. */
-  .avrana-brief { position: absolute; z-index: 1; inset: 0; padding-top: var(--avrana-head); min-height: 0; display: flex; flex-direction: column; }
+  .avrana-brief { position: absolute; z-index: 1; inset: 0; min-height: 0; display: flex; flex-direction: column; }
   .avrana-brief[hidden] { display: none; }
   .avrana-brief > .scroll {
-    flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 0.625rem;
-    padding: 0.25rem max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
+    flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-auto-rows: max-content; align-content: start; gap: 0.625rem;   /* (rows as tall as what is in them: the stage clips its art, so it would otherwise be squeezed) */
+    padding: 0 max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
   }
-  /* the art gives way on a short screen: the name, the rules and the line-up matter more */
-  .avrana-brief .avrana-cover.wide { aspect-ratio: auto; height: clamp(4.5rem, 18vh, 9.5rem); height: clamp(4.5rem, 18dvh, 9.5rem); }
-  .avrana-brief h2 { margin: 0.25rem 0 0; font-size: var(--text-headline); font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+  /* K1 (Concept K, AVR-709): a compact stage under the top row; the art gives way on a short
+     screen, where the decision and its reason matter more. Its eyebrow says it is selected. */
+  .avrana-stage.compact { min-height: clamp(200px, 33svh, 280px); }
+  @container frame (max-height: 40.6rem) { .avrana-stage.compact { min-height: 0; padding-top: calc(var(--avrana-head) + 0.5rem); } }
+  .avrana-brief h2.avrana-display { overflow-wrap: anywhere; line-height: 1.25; }   /* (its letters inside its box: the title is a label the layout checks) */
+  .avrana-eyebrow.selected { display: flex; align-items: center; gap: 8px; }
+  .avrana-eyebrow.selected::before { content: ""; flex: none; width: 3px; height: 1em; border-radius: 2px; background: var(--color-purple); }
+  /* Where the round stands: rows of a well and two lines, in one opaque panel. */
+  .avrana-panel { display: grid; padding: 4px 16px; border-radius: var(--radius-panel); background: var(--color-surface); border: 1px solid var(--color-line); }
+  .avrana-panel .prow { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 0; font-size: var(--text-body); }
+  .avrana-panel .prow + .prow { border-top: 1px solid var(--color-line); }
+  .avrana-panel .prow > span:last-child { display: grid; min-width: 0; overflow-wrap: anywhere; }
+  .avrana-panel .sub { color: var(--color-stone); font-size: var(--text-secondary); }
+  .avrana-panel .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--color-raised); color: var(--color-stone); }
+  .avrana-panel .well[data-fit="ready"] { color: var(--color-ready); }
+  .avrana-panel .well[data-fit="watch"] { color: var(--color-warning); }
+  /* K3 on Home: "Round over" under the stage, then the Host's two choices, one above the other */
+  .avrana-panel.round-over { margin-top: 1rem; }
+  .avrana-panel .thumb { flex: none; width: 40px; border-radius: 8px; overflow: hidden; }
+  .avrana-stage-actions[data-just] { flex-direction: column; }
   .avrana-brief .avrana-sec { margin-top: 0.25rem; }
   .avrana-brief .avrana-list { border-block: 1px solid var(--color-line); }
   .avrana-dock {
     flex: none; display: grid; gap: 0.5rem; container: dock / inline-size;
     padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-    background: var(--color-material); border-top: 1px solid var(--color-material-edge);
-    -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+    /* opaque: glass is the shell's three controls only (Concept K) */
+    background: var(--color-ink); border-top: 1px solid var(--color-line);
   }
   .avrana-dock p { margin: 0; }
   .avrana-dock .live, .avrana-dock .lost { display: grid; gap: 0.5rem; }
@@ -783,7 +800,7 @@
   @container frame (max-height: 32rem) {
     .avrana-brief { display: block; overflow-y: auto; }
     .avrana-brief > .scroll { overflow: visible; }
-    .avrana-dock { background: none; border-top: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .avrana-dock { background: none; border-top: 0; }
   }
 
   /* The compact presence row (Concept K component "Party / Compact Presence"): overlapping 32 px

@@ -153,7 +153,7 @@ test.describe('three phones at one party', () => {
         await expect(page.locator(gone), `${p.name} ${gone}`).toBeHidden();
       await expect(page.locator('#scene a[href]'), p.name).toHaveCount(0);   // no link leaves the briefing
       expect(await page.locator('#scene').getByRole('button').evaluateAll((els) => els.filter((el) => el.getClientRects().length).map((el) => el.id)), p.name)
-        .toEqual(p === host ? ['scene-presence', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-presence', 'scene-rules', 'choose-play', 'choose-watch']);
+        .toEqual(p === host ? ['scene-rules', 'scene-presence', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-rules', 'scene-presence', 'choose-play', 'choose-watch']);
     }
     await bob.page.locator('#choose-watch').click();
     await expect(bob.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
@@ -210,7 +210,7 @@ test.describe('three phones at one party', () => {
     // a person's answer, arriving while the drawer is open, does not close it
     await hud.click();
     await host.page.locator('#choose-watch').click();
-    await expect(page.locator('#scene-count')).toHaveText('0 playing · 2 watching');
+    await expect(page.locator('#scene-count')).toHaveText('Playing 0 · Watching 2 · Choosing 1');   // the third phone has not chosen
     await expect(drawer).toBeVisible();
     // the Party moving does: the Host chooses another game, and the drawer does not follow anyone home
     await host.page.locator('#scene-cancel').click();
@@ -327,7 +327,7 @@ test.describe('three phones at one party', () => {
     // reading order: what, its rules, who, then the decision
     expect(await host.page.locator('#scene').evaluate((el) =>
       [...el.querySelectorAll('h2, h3, button')].filter((n) => n.getClientRects().length).map((n) => n.id)))
-      .toEqual(['scene-title', 'scene-presence', 'scene-rules', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);
+      .toEqual(['scene-title', 'scene-rules', 'scene-presence', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);   // K1: the rules under the premise (AVR-709)
     // what the game is, its rules and the decision are on screen at once; only the line-up may scroll
     for (const id of ['scene-title', 'scene-rules']) await expect(host.page.locator('#' + id), id).toBeInViewport({ ratio: 1 });
     // nothing on it moves for someone who asked for no motion
@@ -487,13 +487,18 @@ test.describe('three phones at one party', () => {
     for (const p of [host, bob, cleo]) await expect(p.page, p.name).toHaveURL(/\/party\/$/);
     for (const p of [host, bob]) {
       await expect(p.page, p.name).toHaveURL(/\/party\/$/);
-      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toContainText('You played this last.');
+      // K3 (AVR-709): back from the round it played, Home says so; it leads either way
+      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toHaveAttribute('data-just', '');
+      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toContainText('Just played');
       await expect(p.page.locator('#home-recent-sec'), p.name).toBeHidden();   // it leads; it is not listed twice
       // per phone, in the list the games have always written (decision 9: nothing Party-wide)
       expect(await p.page.evaluate(() => localStorage.getItem('lg-recent')), p.name).toBe('["avrana:expo"]');
       // once: Bob came back to the page mid-round, and the round still counts as one game opened
       expect(await p.page.evaluate(() => localStorage.getItem('lg-play-total')), p.name).toBe('1');
     }
+    // once the Host puts K3 away, the same title leads as the one this phone played last
+    await host.page.locator('#just-other').click();
+    await expect(host.page.locator('#home-lead [data-game="expo"]')).toContainText('You played this last.');
     // a second round is a second game opened; held results are not a round
     await startForEveryone(host.page, 'expo');
     for (const p of [host, bob]) await expect(p.page).toHaveURL(/\/games\/expo\//);
@@ -606,7 +611,7 @@ test.describe('three phones at one party', () => {
     }
     await cleo.page.locator('#choose-watch').click();
     await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 1 watching');
+    await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 1');
     await expect(line(host, 'You').locator('.ans')).toHaveText('Playing');
     await expect(line(host, 'Bob').locator('.ans')).toHaveText('Playing');
     await expect(line(host, 'Cleo').locator('.ans')).toHaveText('Watching');
@@ -724,7 +729,7 @@ test.describe('three phones at one party', () => {
         await expect(p.page.locator('#choose-play'), p.name).toHaveAttribute('aria-pressed', 'true');
       }
       for (const p of [cleo, dee]) await p.page.locator('#choose-watch').click();
-      await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 2 watching');
+      await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 2');
       await host.page.locator('#scene-start').click();
       for (const p of [host, ...guests]) await expect(p.page, p.name).toHaveURL(/\/games\/bluff\//);
       await endForEveryone(host);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { HOME, readView, partyGame, tileMode, destination, roster, roundToRemember, setupPanel, roundKey, hostReturn } from '../../web/party/lib/party-mode.js';
+import { HOME, readView, partyGame, tileMode, destination, roster, roundToRemember, setupPanel, roundKey, hostReturn, justPlayed } from '../../web/party/lib/party-mode.js';
 import { createPartyClient } from '../../web/party/lib/party-client.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
@@ -343,4 +343,18 @@ test('lobby goes to api/lobby with the version, and is retried once only when st
   res = await client.lobby();
   assert.deepEqual([res.error, srv.calls.filter((c) => c.method === 'POST').length], ['not_host', 1]);
   client.stop(); srv.release();
+});
+
+test('justPlayed: the round this phone went to, once the Party is home from it, and only then', () => {
+  const kept = { party: 'party-1', session: 'session-1', game: 'bluff' };
+  assert.equal(justPlayed(view(), kept), 'bluff');                                       // home again
+  assert.equal(justPlayed(view({ me: ben }), kept), 'bluff');                            // a guest too
+  for (const where of ['setup', 'game', 'results'])                                      // not while the Party is elsewhere
+    assert.equal(justPlayed(view({ state: 'active', session: active(), location: at(where) }), kept), null, where);
+  assert.equal(justPlayed(view({ state: 'setup', session: active('session-2', 'bluff', 'setup') }), kept), null);   // a new round on its way
+  assert.equal(justPlayed(view({ party: 'party-2' }), kept), null);                      // another Party
+  assert.equal(justPlayed(view(), { ...kept, done: true }), null);                       // the Host chose another game
+  assert.equal(justPlayed(view({ me: null }), kept), null);                              // no profile, no Party Home of its own
+  for (const bad of [null, {}, { party: 'party-1' }, { party: 'party-1', game: 3 }]) assert.equal(justPlayed(view(), bad), null);
+  assert.equal(justPlayed(null, kept), null);
 });

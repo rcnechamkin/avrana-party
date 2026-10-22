@@ -95,9 +95,9 @@ for (const c of CONDITIONS) {
         await sheet(p, 'first-time rules after Play', 'Got it');
         await expect(p.page.locator('#choose-play')).toHaveAttribute('aria-pressed', 'true');
       }
-      await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 0 watching');
+      await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 0');
       await expect(host.page.locator('#scene-start')).toBeEnabled();
-      await audit(host, 'briefing, answers in', '#scene', [...choice, ['Start game', '#scene-start']], ['button#choose-play', 'button#choose-watch', 'button#scene-start']);
+      await audit(host, 'briefing, answers in', '#scene', [...choice, ['Start BLUFF', '#scene-start']], ['button#choose-play', 'button#choose-watch', 'button#scene-start']);
 
       // How to play, opened by hand over the briefing
       await bob.page.locator('#scene-rules').scrollIntoViewIfNeeded();

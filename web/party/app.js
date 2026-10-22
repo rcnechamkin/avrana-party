@@ -27,7 +27,7 @@ import { createPartyChat, systemText } from './lib/party-chat.js';
 import { loadCatalog, loadCovers } from './lib/catalog-load.js';
 import { pickCover } from './lib/cover-art.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
-import { HOME, destination, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
+import { HOME, destination, justPlayed, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
 import { createPartyClient } from './lib/party-client.js';
 import { createDeparture } from './lib/departure.js';
 import { leaveWords } from './lib/states.js';
@@ -986,14 +986,19 @@ async function renderScene(view) {
   if (!panel || !game) return;
   $('scene').dataset.game = game.id;
   $('scene-title').textContent = game.name;
-  sync($('scene-cover'), [tileCover(game, null, 'wide')]);
+  // the compact stage: the game's art (or its name, set large), and who hosts it
+  sync($('scene-cover'), [tileCover(game, null, 'stage'), h('span', { class: 'noart', text: game.name })]);
+  $('scene-meta').textContent = [playersText(game.players),
+    panel.host ? 'You host' : panel.hostName ? `${panel.hostName} hosts` : ''].filter(Boolean).join(' · ');
+  $('scene-host').hidden = !panel.host;
   const ob = await onboardingFor(game);
   $('scene-premise').textContent = (ob && ob.premise) || game.summary || '';
   // Each person's answer is an icon and a word; the Host is marked by the word.
   const words = { player: ['check', 'Playing'], spectator: ['eye', 'Watching'] };
   const people = roster(view);
   const limited = new Set(view.members.filter((m) => m.mode === LIMITED).map((m) => m.id));
-  $('scene-count').textContent = `${panel.players} playing · ${panel.spectators} watching`;
+  $('scene-count').textContent = countLine(panel);
+  $('scene-waiting').textContent = waitingLine(panel, view);
   $('scene-roster').replaceChildren(...people.map((m) => {
     const [ic, text] = words[m.choice] || ['hourglass', 'Choosing'];
     return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null, 'data-host': m.host ? '' : null },
@@ -1014,10 +1019,34 @@ async function renderScene(view) {
   $('choose-play').disabled = panel.starting || !limits.play || !device.play;
   $('choose-watch').disabled = panel.starting || !limits.watch;
   $('scene-seat').textContent = !limits.play ? limits.why || 'This phone can only watch this one.' : device.why;
+  // this phone's own check, and whether the game seats the people here (never another phone's)
+  const own = !limits.play ? ['eye', 'This phone can watch'] : device.play ? ['circle-check', 'This phone can play'] : ['hourglass', 'Checking this phone'];
+  if ($('scene-fit').textContent !== own[1]) { $('scene-fit').textContent = own[1]; $('scene-fit-mark').replaceChildren(icon(own[0])); }
+  $('scene-fit-mark').dataset.fit = !limits.play ? 'watch' : device.play ? 'ready' : 'checking';
+  const fit = fitLine(game, view.members.length);
+  $('scene-fit-sub').textContent = fit ? fit.text : '';
   $('scene-start').hidden = !panel.host;
+  $('scene-start').textContent = panel.starting ? `Starting ${game.name}…` : `Start ${game.name}`;
   $('scene-cancel').hidden = !panel.host || panel.starting;
   $('scene-start').disabled = !panel.canStart || state.partyBusy;
   $('scene-status').textContent = briefLine(panel, { away: awayHost(view), passed: state.passed });
+}
+
+/** Who has chosen what, in the briefing's words: "Playing 2 · Watching 1 · Choosing 1". */
+function countLine(panel) {
+  const parts = [`Playing ${panel.players}`, `Watching ${panel.spectators}`];
+  if (!panel.starting && panel.waiting.length) parts.push(`Choosing ${panel.waiting.length}`);
+  return parts.join(' · ');
+}
+
+/** Who is still choosing, by name ("you" for this phone), or that everyone has. */
+function waitingLine(panel, view) {
+  if (panel.starting) return '';
+  const ids = (view.session && view.session.setup && view.session.setup.waiting) || [];
+  if (!ids.length) return 'Everyone has chosen';
+  const byId = new Map(view.members.map((m) => [m.id, m.name]));
+  const names = ids.map((id) => (view.me && id === view.me.id ? 'you' : byId.get(id) || 'someone'));
+  return `Choosing: ${names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`}`;
 }
 
 /** Which screen has the phone: a place of the frame (main), the briefing (scene) or the way to a
@@ -1124,6 +1153,9 @@ function leaveForRound() {
       const g = partyGame(state.catalog, locationOf(view).game);
       const round = roundToRemember(view);     // a round this phone plays, while it is on
       if (g && round) recordRound(g, round);   // only once it is really going there
+      // K3 on the way back: only on a phone that plays this round (a watched round is not "played",
+      // the owner, 2026-10-06), and so only once it is really going there
+      if (g && round) put('sessionStorage', JUST_KEY, JSON.stringify({ party: view.party, session: locationOf(view).session, game: g.id }));
       if (goingWatch.arm(to)) {                       // not again for a target already on its way, or given up on
         goingStuck(false);                            // a new target: no way out left over from the last one
         state.left = roundKey(view);                  // this document is on its way there; the phone keeps
@@ -1190,6 +1222,7 @@ function goingStuck(on) {
  * back to the game, or everyone back to the Party. Party Core's own control: it needs nothing of
  * the game's page, and a reload of Party Home shows it again. `held` null takes it away. */
 const SENT_KEY = 'avrana-party-sent';
+const JUST_KEY = 'avrana-party-just';      // the round this tab was taken to: Home's "Just played" (K3)
 function goingHost(held) {
   $('going-host').hidden = !held;
   if (!held) {
@@ -1346,14 +1379,16 @@ function seeAll() {
  * ("Select for Party", the same start as a game's page); a cover opens its facts in place. */
 function renderHomeShelves(entries, shelves, people) {
   const of = (game) => entries.get(game.id);
-  const lead = shelves.lead ? of(shelves.lead) : null;
+  const just = justEntry(entries);
+  const lead = just || (shelves.lead ? of(shelves.lead) : null);
   $('home-games').hidden = !lead;
   $('home-top').hidden = !lead;
   document.documentElement.dataset.stage = lead ? 'on' : 'off';
   if (!lead) { state.preview = null; renderPreview(entries, people); return; }
   const { game } = lead;
-  const line = stageLine(game, { people, played: shelves.leadPlayed, players: playersText(game.players), screen: screenText(game).text });
-  sync($('home-lead'), [h('section', { class: 'avrana-stage', 'data-game': game.id, 'data-note': lead.note ? lead.note.kind : null,
+  const line = just ? stageLine(game, { just: true, people: party.view().members.length })
+    : stageLine(game, { people, played: shelves.leadPlayed, players: playersText(game.players), screen: screenText(game).text });
+  sync($('home-lead'), [h('section', { class: 'avrana-stage', 'data-game': game.id, 'data-note': lead.note ? lead.note.kind : null, 'data-just': just ? '' : null,
     'aria-labelledby': 'stage-title' },
   stageArt(game),
   h('div', { class: 'copy' },
@@ -1361,18 +1396,61 @@ function renderHomeShelves(entries, shelves, people) {
     h('h2', { id: 'stage-title', class: 'avrana-display', text: game.name }),
     h('p', { class: 'avrana-meta', 'data-fits': line.fits === null ? null : String(line.fits), text: line.meta }),
     line.note ? h('p', { class: 'avrana-meta', text: line.note }) : null,
-    warnLine(lead.note, 'avrana-meta warn')))]);
-  sync($('home-actions'), stageActions(game));
+    warnLine(lead.note, 'avrana-meta warn'))), just ? roundOver(game) : null].filter(Boolean));
+  $('home-actions').toggleAttribute('data-just', Boolean(just));
+  sync($('home-actions'), just ? justActions(game) : stageActions(game));
   $('home-great-h').textContent = shelves.title;
-  $('home-great-sec').hidden = !shelves.great.length;        // never a heading over nothing
-  sync($('home-great'), shelves.great.map((g) => card(of(g), people, 'great')));
+  const great = shelves.great.filter((g) => g.id !== game.id);   // (the game on the stage is not on the rail too)
+  $('home-great-sec').hidden = !great.length;                // never a heading over nothing
+  sync($('home-great'), great.map((g) => card(of(g), people, 'great')));
   $('home-recent-sec').hidden = !shelves.played.length;
   sync($('home-recent'), shelves.played.map((g) => card(of(g), people, 'recent', false)));
   // a preview whose cover is no longer where it was opened (the lead changed, the game left the
   // rail) is put away: the stage is never left dimmed under nothing, or under another game's facts
-  const at = state.preview && (state.preview.from === 'stage' ? [game] : state.preview.from === 'great' ? shelves.great : shelves.played);
+  const at = state.preview && (state.preview.from === 'stage' ? [game] : state.preview.from === 'great' ? great : shelves.played);
   if (at && !at.some((g) => g.id === state.preview.id)) state.preview = null;
   renderPreview(entries, people);
+}
+
+/** K3 (AVR-709): the round the Party just came home from, when this tab went to it. */
+function justEntry(entries) {
+  if (!state.partyMode) return null;
+  const g = partyGame(state.catalog, justPlayed(party.view(), justKept()));
+  return (g && entries.get(g.id)) || null;
+}
+
+/** "Round over": the round is done, and who picks what is next. Nothing about how it went. */
+function roundOver(game) {
+  const view = party.view();
+  const host = view.members.find((m) => m.host);
+  const next = view.me && view.me.host ? 'Play again, or choose another game.' : host ? `${host.name} chooses what’s next.` : '';
+  return h('div', { class: 'avrana-panel round-over' },
+    h('p', { class: 'prow' }, h('span', { class: 'thumb', 'aria-hidden': 'true' }, tileCover(game, null, 'tall')),
+      h('span', {}, h('span', { text: 'Round over' }), next ? h('span', { class: 'sub', text: next }) : null)));
+}
+
+/** K3's actions: the Host's Play again (a new setup for the same game, Party Core's start) and
+ * Choose another game (this phone's Home goes back to Featured). Nobody else has either. */
+function justActions(game) {
+  const view = party.view();
+  const mode = tileMode(game, view);
+  if (!view.me || !view.me.host) return [];
+  const again = mode && mode.kind === 'start'
+    ? h('button', { type: 'button', class: 'btn btn-primary', 'data-start': mode.game, 'aria-disabled': String(Boolean(state.partyBusy)),
+      onclick: (event) => hostStart(event.currentTarget.dataset.start) }, 'Play again')
+    : mode && mode.kind === 'starting' ? h('button', { type: 'button', class: 'btn', disabled: true, text: 'Starting…' }) : null;
+  return [again, h('button', { type: 'button', id: 'just-other', class: 'btn btn-outline', onclick: () => chooseAnother() }, 'Choose another game')].filter(Boolean);
+}
+
+function justKept() {
+  try { return JSON.parse(kept('sessionStorage', JUST_KEY)); } catch { return null; }
+}
+
+function chooseAnother() {
+  const rec = justKept();
+  if (rec) put('sessionStorage', JUST_KEY, JSON.stringify({ ...rec, done: true }));
+  renderGames(false);
+  $('home-actions').querySelector('button')?.focus({ preventScroll: true });
 }
 
 /** The stage's art, full bleed. A title with no art of its own is its name, set large: never an
