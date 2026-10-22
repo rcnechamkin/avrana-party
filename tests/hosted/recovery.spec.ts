@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BASE, GAME_LIST, OWNER_ASSIST, api, close, homeFor, hostOf, launch, phone, state, type Phone } from './hosted';
+import { BASE, GAME_LIST, OWNER_ASSIST, api, resetIfLocal, close, homeFor, hostOf, launch, phone, state, type Phone } from './hosted';
 
 // Failure and recovery on a deployed Party (H3), through the network as a tester's phone has it: a refresh,
 // a lost connection, a Host who goes away (Party Core's own timing: away after 45 s, hosting passes 30 s
@@ -11,6 +11,7 @@ test.beforeEach(({}, info) => {
   test.skip(!GAME, 'HOSTED_GAMES names the game the recovery cases run on');
   test.skip(info.project.name !== 'android-size', 'recovery cases run once');
 });
+test.beforeEach(() => resetIfLocal());
 test.setTimeout(420_000);
 
 /** Two (or more) phones at Party Home, one of them the Host (an earlier run's Host may first have to pass it on). */
@@ -67,6 +68,9 @@ test('browser back from a game page does not strand the phone: the Party brings 
     await launch(host, others, GAME);
     const p = others[0];
     await p.page.goBack().catch(() => undefined);
+    // A phone that arrived straight on the game page has nothing behind it: back leaves the site, and the
+    // tester opens the Party again, which must bring them back to the round.
+    if (!p.page.url().startsWith('http')) await p.page.goto(`${BASE}/party/`);
     await atGame(p);
   } finally { await homeFor(...phones).catch(() => undefined); await close(...phones); }
 });

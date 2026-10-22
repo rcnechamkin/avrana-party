@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BASE, GAMES, GAME_LIST, api, close, homeFor, hostOf, launch, phone, playToTheEnd, state, type Phone } from './hosted';
+import { BASE, GAMES, GAME_LIST, api, close, homeFor, hostOf, launch, phone, playToTheEnd, resetIfLocal, state, type Phone } from './hosted';
 
 // The remote journey (initiative brief, H3 steps 1-14), once per game in HOSTED_GAMES, through real pages
 // on a deployed Party: testers join independently, the Host picks the game, the players choose Play (one
@@ -8,6 +8,8 @@ import { BASE, GAMES, GAME_LIST, api, close, homeFor, hostOf, launch, phone, pla
 // round. Game-neutral: the table is as large as the game's catalog row asks (at least two players), and
 // HOSTED_GAMES_REPO/<id>/party-driver.mjs is the only thing that knows the game's rules.
 const NAMES = ['Ada', 'Ben', 'Cleo', 'Dev', 'Eli', 'Fen', 'Gil', 'Hal'];
+
+test.beforeEach(() => resetIfLocal());
 
 for (const id of GAME_LIST) {
   test(`${id}: join, launch, play to the end, return to the Party, and start again`, async ({ browser }, info) => {
@@ -57,8 +59,10 @@ for (const id of GAME_LIST) {
       });
 
       await test.step('14 the Host starts another round of the same game', async () => {
+        // The same size of table: one phone still watches, so a game with a small maximum (Checkers) can start.
         const host = await hostOf(phones);
-        await launch(host, phones.filter((p) => p !== host), id);
+        const others = phones.filter((p) => p !== host);
+        await launch(host, others, id, [others[others.length - 1]]);
         await homeFor(...phones);
       });
 

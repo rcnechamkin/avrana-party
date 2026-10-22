@@ -95,6 +95,15 @@ async function api(p: Phone, method: 'GET' | 'POST', path: string, body?: Record
   return method === 'GET' ? p.context.request.get(url, { headers }) : p.context.request.post(url, { headers, data: body });
 }
 
+/** Local two-origin harness only: a fresh Party before a case, so one failed case cannot strand the next.
+ * A deployed site has no reset route; there a case waits out Party Core's own timing instead (homeFor). */
+export async function resetIfLocal() {
+  if (!LOOPBACK) return;
+  const u = new URL(BASE);
+  const res = await fetch(`${u.protocol}//127.0.0.1:${u.port}/__test__/party/reset`, { method: 'POST', headers: { Host: u.host } });
+  expect(res.status, 'the local dev server resets the Party').toBe(204);
+}
+
 /** What is deployed, as the status endpoint says: recorded once per run so every result names the commits it tested. */
 export { api };
 export async function recordDeployment(p: Phone, info: TestInfo) {

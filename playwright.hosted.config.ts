@@ -13,8 +13,9 @@ import { defineConfig, devices } from '@playwright/test';
 //   HOSTED_RESOLVE_LOOPBACK=1   map *.avrana.test to 127.0.0.1 (a local two-origin harness, e.g. the provider server)
 //   HOSTED_OWNER_ASSIST=1       also run the cases that need the owner at the VM (killing a game process)
 //
-// `npm run test:hosted`. Results: test-results/hosted/ (traces, screenshots) and hosted-run.json (the deployed
-// commits the run saw at /party/api/status, written by tests/hosted/hosted.ts).
+// `npm run test:hosted`. Results: test-results/hosted/ (screenshots; no traces, which would hold the access
+// token) and hosted-run.json (the deployed commits the run saw at /party/api/status, written by
+// tests/hosted/hosted.ts).
 const base = process.env.HOSTED_BASE_URL;
 if (!base) throw new Error('Set HOSTED_BASE_URL to the deployment under test, e.g. https://avrana.party');
 const args = process.env.HOSTED_RESOLVE_LOOPBACK === '1' ? ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] : [];
@@ -33,7 +34,8 @@ export default defineConfig({
   outputDir: 'test-results/hosted',
   use: {
     baseURL: base,
-    trace: 'retain-on-failure',
+    // No traces: a trace records request headers verbatim, and the access service token is one of them.
+    trace: 'off',
     screenshot: 'only-on-failure',
     serviceWorkers: 'allow',
     navigationTimeout: 30_000,
