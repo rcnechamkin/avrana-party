@@ -414,6 +414,10 @@ echo "$*" >> "$SHIM_LOG"
 if [[ $1 == is-active && -n ${FAIL_UNIT:-} && " $* " == *" $FAIL_UNIT "* ]]; then exit 3; fi
 # `list-units --state=failed`: one line per unit named in $FAILED_GAME_UNITS (space-separated).
 if [[ $1 == list-units ]]; then
+    # `--state=active` (the hosted profile's running native games): one line per unit in $ACTIVE_GAME_UNITS.
+    if [[ " $* " == *" --state=active "* ]]; then
+        for u in ${ACTIVE_GAME_UNITS:-}; do echo "$u loaded active running Avrana native game"; done; exit 0
+    fi
     for u in ${FAILED_GAME_UNITS:-}; do echo "$u loaded failed failed Avrana native game"; done; exit 0
 fi
 if [[ $1 == start || $1 == restart ]] && [[ -n ${FAIL_START:-} && " $* " == *" $FAIL_START "* ]]; then exit 1; fi
@@ -434,6 +438,7 @@ exit 0
 SMOKE_STUB = """#!/usr/bin/env bash
 # Each line of $SMOKE_QUEUE: `pass`, `fail` (every check fails) or `fail:name,name` (those checks fail). It prints the
 # JSON of `python3 -m avrana.ops.smoke --json`. An empty queue fails.
+echo "$*" >> "${SMOKE_ARGS_LOG:-/dev/null}"
 line=$(head -n1 "$SMOKE_QUEUE"); sed -i 1d "$SMOKE_QUEUE"
 python3 - "${line:-fail}" <<'EOF'
 import json, sys
@@ -602,6 +607,88 @@ class Harness(unittest.TestCase):
             proc.send_signal(signum)
         out = proc.communicate(timeout=120)[0]
         return proc.returncode, out
+
+
+HOSTED_SITE = """# deploy test: the hosted site file (deploy/hosted/avrana-party.hosted.nginx)
+server { listen 127.0.0.1:8080; server_name avrana.party; }
+"""
+
+
+class HostedProfile(Harness):
+    """docs/design/HOSTED-STAGING.md: the same deployment on a host whose /etc/avrana-party/deploy-profile says
+    "hosted". Party Core and the running native games are what restart, the hosted site file is installed, and
+    smoke is the hosted set. The appliance profile is what every other test in this file runs."""
+
+    def setUp(self):
+        super().setUp()
+        root = Path(self.temp.name)
+        site = self.origin / 'deploy' / 'hosted' / 'avrana-party.hosted.nginx'
+        site.parent.mkdir(parents=True, exist_ok=True)
+        site.write_text(HOSTED_SITE)
+        self.run_git(self.origin, 'add', 'deploy/hosted/avrana-party.hosted.nginx')
+        self.run_git(self.origin, 'commit', '-q', '-m', 'hosted site')
+        self.target_party = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        self.profile = root / 'deploy-profile'
+        self.profile.write_text('hosted\n')
+        self.config = root / 'party-core.json'
+        self.config.write_text(json.dumps({'hosts': ['avrana.party'], 'origins': ['https://avrana.party']}))
+        self.smoke_args = root / 'smoke-args.log'
+        self.env.update(AVRANA_DEPLOY_PROFILE_FILE=str(self.profile), AVRANA_PARTY_CORE_CONFIG=str(self.config),
+                        SMOKE_ARGS_LOG=str(self.smoke_args), ACTIVE_GAME_UNITS='avrana-game@bestguess.service avrana-game@checkers.service')
+
+    def test_restarts_party_core_and_the_running_native_games_never_the_appliance_units(self):
+        from avrana.ops import manifest
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        doc = manifest.read(self.manifest_path)
+        self.assertEqual(sorted(doc['restarted']),
+                         ['avrana-game@bestguess.service', 'avrana-game@checkers.service', 'avrana-party-core'])
+        calls = self.calls()
+        for unit in ('avranaparty-arcade', 'avranaparty-games'):
+            self.assertFalse(any(unit in c for c in calls), calls)
+        # providers first, then the party: the games start before Party Core
+        starts = self.starts()
+        self.assertLess(starts.index('start avrana-game@bestguess.service'), starts.index('start avrana-party-core'))
+        self.assertTrue(doc['deploy_options']['hosted_profile'])
+
+    def test_installs_the_hosted_site_file_not_the_appliance_one(self):
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.site.read_text(), HOSTED_SITE)
+
+    def test_smoke_is_the_hosted_set_with_the_party_core_config(self):
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        args = self.smoke_args.read_text().split()
+        self.assertEqual(args[:2], ['--json', '--hosted'])
+        self.assertEqual(args[2:], ['--config', str(self.config)])
+
+    def test_a_party_commit_without_the_hosted_site_file_is_refused_before_anything_changes(self):
+        r = self.deploy(self.before_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('deploy/hosted/avrana-party.hosted.nginx', r.stdout + r.stderr)
+        self.assertEqual(self.site.read_bytes(), self.site_before)
+        self.assertEqual(self.starts(), [])
+
+    def test_an_unknown_profile_is_refused(self):
+        self.profile.write_text('cloud\n')
+        r = self.deploy(self.target_party, self.target_games, '--skip-smoke')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('profiles are pi and hosted', r.stderr)
+        self.assertEqual(self.calls(queries=True), [])
+
+    def test_the_profile_file_override_is_test_only(self):
+        loop = next(line for line in SCRIPT.read_text().splitlines() if line.startswith('for v in AVRANA_DEPLOY_SMOKE'))
+        self.assertIn('AVRANA_DEPLOY_PROFILE_FILE', loop)     # a production run never reads another profile file
+
+    def test_the_party_host_comes_from_the_config(self):
+        self.smoke('pass')
+        r = self.deploy(self.target_party, self.target_games, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('party.avrana.net', r.stdout)
 
 
 class RealRun(Harness):

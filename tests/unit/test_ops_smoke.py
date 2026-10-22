@@ -251,5 +251,94 @@ class LocalSubset(unittest.TestCase):
         self.assertIn('FAIL', bad.stdout)
 
 
+class HostedHttp:
+    """(host, path) -> (status, headers, body) for the hosted edge on one port."""
+
+    def __init__(self, table):
+        self.table = table
+        self.calls = []
+
+    def get(self, scheme, address, port, path, host=None, verify=True):
+        self.calls.append((scheme, address, port, path, host))
+        answer = self.table.get((host, path))
+        if answer is None:
+            return 404, {}, b'not found'
+        return answer
+
+
+HOSTED_CONF = {'hosts': ['avrana.party'], 'origins': ['https://avrana.party'],
+               'game_origins': {'https://games.avrana.party': ['bestguess']},
+               'status': {'units': ['avrana-party-core', 'nginx'], 'optional_units': []}}
+
+
+def hosted_table():
+    status_doc = {'schema': status.SCHEMA, 'summary': {'state': 'ok', 'reasons': []},
+                  'contract': {'party_games': smoke.party_games.versions()['party_games']}, 'party': {'checkout_sha': 'a' * 40}}
+    return {
+        ('avrana.party', '/party/'): (200, {'Content-Security-Policy': "default-src 'self'"}, b'<!doctype html><html>'),
+        ('avrana.party', '/party/api/state'): ok_json({'party': {}, 'me': None}),
+        ('avrana.party', '/party/api/status'): ok_json(status_doc),
+        ('avrana.party', '/party/api/origin.json'): ok_json({'schema': 'avrana.origin/v0', 'network': 'hosted',
+                                                             'serverAddr': 'hosted', 'scheme': 'https'}),
+    }
+
+
+class Hosted(unittest.TestCase):
+    """The hosted set (docs/design/HOSTED-STAGING.md): the same Party through a plain-HTTP edge."""
+
+    def run_hosted(self, table):
+        http = HostedHttp(table)
+        with mock.patch.object(smoke.platform, 'system', return_value='Linux'), \
+                mock.patch.object(status, 'unit_state', return_value='active'):
+            return {r.name: r for r in smoke.run_hosted(HOSTED_CONF, http=http)}, http
+
+    def test_a_healthy_hosted_edge_passes_and_runs_no_appliance_check(self):
+        by, http = self.run_hosted(hosted_table())
+        self.assertTrue(all(r.status == smoke.PASS for r in by.values()), {n: (r.status, r.detail) for n, r in by.items()})
+        for appliance in ('captive_probe', 'dns', 'certificate', 'games_provider', 'arcade', 'encoder'):
+            self.assertNotIn(appliance, by)
+        self.assertIn('unit:avrana-party-core', by)
+        # every request goes to the loopback edge over plain HTTP, with the public Host
+        self.assertEqual({(c[0], c[1], c[2]) for c in http.calls}, {('http', '127.0.0.1', 8080)})
+        self.assertIn(('http', '127.0.0.1', 8080, '/party/', 'games.avrana.party'), http.calls)
+
+    def test_a_private_address_in_origin_json_fails(self):
+        table = hosted_table()
+        table[('avrana.party', '/party/api/origin.json')] = ok_json(
+            {'schema': 'avrana.origin/v0', 'network': 'hosted', 'serverAddr': '192.168.122.40'})
+        by, _ = self.run_hosted(table)
+        self.assertEqual(by['origin_json'].status, smoke.FAIL)
+
+    def test_origin_json_without_the_hosted_marker_fails(self):
+        table = hosted_table()
+        table[('avrana.party', '/party/api/origin.json')] = ok_json({'schema': 'avrana.origin/v0', 'serverAddr': 'hosted'})
+        self.assertEqual(self.run_hosted(table)[0]['origin_json'].status, smoke.FAIL)
+
+    def test_the_game_origin_serving_the_party_fails(self):
+        table = hosted_table()
+        table[('games.avrana.party', '/party/')] = table[('avrana.party', '/party/')]
+        self.assertEqual(self.run_hosted(table)[0]['game_origin_refuses_party'].status, smoke.FAIL)
+
+    def test_internal_reachable_through_the_edge_fails(self):
+        table = hosted_table()
+        table[('avrana.party', '/internal/ended')] = (405, {}, b'')
+        self.assertEqual(self.run_hosted(table)[0]['internal_not_proxied'].status, smoke.FAIL)
+
+    def test_an_unknown_host_served_fails(self):
+        table = hosted_table()
+        table[('not-a-party.invalid', '/party/')] = table[('avrana.party', '/party/')]
+        self.assertEqual(self.run_hosted(table)[0]['unknown_host_refused'].status, smoke.FAIL)
+
+    def test_targets_come_from_the_config(self):
+        self.assertEqual(smoke.hosted_targets(HOSTED_CONF), ('avrana.party', 'games.avrana.party'))
+        self.assertEqual(smoke.hosted_targets({'hosts': ['avrana.party']}), ('avrana.party', None))
+        with self.assertRaises(ValueError):
+            smoke.hosted_targets({})
+
+    def test_hosted_needs_a_config(self):
+        with self.assertRaises(SystemExit):
+            smoke.main(['--hosted'])
+
+
 if __name__ == '__main__':
     unittest.main()

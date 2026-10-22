@@ -16,7 +16,13 @@ const RETRY_MS = [1000, 2000, 5000];
 // blip, a Party Core restart): a game page that missed it would otherwise never follow the party,
 // and Party Core ends a round whose every page went silent (AVR-475). About a minute in all.
 export const FIRST_RETRY_MS = [1000, 2000, 5000, 10000, 20000, 30000];
-export const transient = (res) => !res.ok && (res.status === 0 || res.status >= 500);
+export const transient = (res) => !res.ok && !res.signin && (res.status === 0 || res.status >= 500);
+// Party Core never redirects an API request. A redirect means something in front of the Party asks the
+// person to sign in again (a hosted site's access gateway whose session ran out); retrying cannot fix
+// that, only a page load can. Asked with redirect: 'manual', a browser answers it as an opaque
+// redirect instead of following it into a cross-origin page that would fail as "offline".
+export const NO_FOLLOW = 'manual';
+export const signinRedirect = (res) => Boolean(res) && (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400));
 
 export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), base = 'api/', onView, onLink = () => {},
   schedule = setTimeout, cancel = clearTimeout, departure = null } = {}) {
@@ -25,9 +31,13 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
 
   async function request(path, body) {
     try {
-      const res = await fetch(base + path, body === undefined ? { cache: 'no-store', credentials: 'same-origin' } : {
-        method: 'POST', cache: 'no-store', credentials: 'same-origin',
+      const res = await fetch(base + path, body === undefined ? { cache: 'no-store', credentials: 'same-origin', redirect: NO_FOLLOW } : {
+        method: 'POST', cache: 'no-store', credentials: 'same-origin', redirect: NO_FOLLOW,
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (signinRedirect(res)) {
+        onLink({ ok: false, answered: true, signin: true });
+        return { ok: false, status: res.status, body: null, signin: true, error: 'signin', message: '' };
+      }
       let data = null;
       try { data = await res.json(); } catch { /* not JSON */ }
       return { ok: res.ok, status: res.status, body: data,
@@ -61,13 +71,14 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
       const current = { ctl, poked: false };
       poll = current;
       const timer = schedule(() => ctl && ctl.abort(), (WAIT_S + 10) * 1000);
-      let v = null, answered = false;
+      let v = null, answered = false, signin = false;
       try {
         // After a try that failed, the next one does not wait for a change: the first answer
         // is what says the box is back, and it must not sit on the box for WAIT_S to say so.
         const res = await fetch(`${base}state?since=${view ? view.version : 0}&wait=${failures ? 0 : WAIT_S}`,
-          { cache: 'no-store', credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+          { cache: 'no-store', credentials: 'same-origin', redirect: NO_FOLLOW, signal: ctl ? ctl.signal : undefined });
         answered = true;
+        signin = signinRedirect(res);
         v = res.ok ? settle(readView(await res.json().catch(() => null))) : null;
       } catch { /* aborted, offline, or the Pi is restarting */ }
       cancel(timer);
@@ -77,7 +88,7 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
         onLink({ ok: true, answered: true });
         if (e === epoch) accept(v);
       } else if (!current.poked) {
-        onLink({ ok: false, answered });
+        onLink(signin ? { ok: false, answered, signin } : { ok: false, answered });
         await sleep(RETRY_MS[Math.min(failures++, RETRY_MS.length - 1)]);
       }
     }

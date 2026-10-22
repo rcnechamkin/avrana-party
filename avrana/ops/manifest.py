@@ -56,7 +56,7 @@ ATTEMPT_OUTCOMES = ('ok', 'smoke-failed-kept', 'rolled-back', 'rollback-failed',
                     'post-commit-failed')
 NGINX_SITE_STATES = ('installed', 'unchanged', 'skipped', 'not_managed')
 OPTION_NAMES = ('skip_smoke', 'skip_contract_check', 'auto_rollback', 'no_auto_rollback', 'force_busy', 'allow_dirty',
-                'allow_branch', 'skip_nginx_site')
+                'allow_branch', 'skip_nginx_site', 'hosted_profile')
 ROLLBACK_KINDS = ('manual', 'auto', 'recover')
 
 
