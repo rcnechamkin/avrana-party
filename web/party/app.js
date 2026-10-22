@@ -1094,7 +1094,9 @@ function leaveForRound() {
       const g = partyGame(state.catalog, locationOf(view).game);
       const round = roundToRemember(view);     // a round this phone plays, while it is on
       if (g && round) recordRound(g, round);   // only once it is really going there
-      if (g) put('sessionStorage', JUST_KEY, JSON.stringify({ party: view.party, session: locationOf(view).session, game: g.id }));
+      // K3 on the way back: only on a phone that plays this round (a watched round is not "played",
+      // the owner, 2026-10-06), and so only once it is really going there
+      if (g && round) put('sessionStorage', JUST_KEY, JSON.stringify({ party: view.party, session: locationOf(view).session, game: g.id }));
       if (goingWatch.arm(to)) {                       // not again for a target already on its way, or given up on
         goingStuck(false);                            // a new target: no way out left over from the last one
         state.left = roundKey(view);                  // this document is on its way there; the phone keeps
