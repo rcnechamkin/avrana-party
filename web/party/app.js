@@ -510,7 +510,8 @@ function renderTop() {
 function openSearch() {
   closeSheets();
   if (state.page !== 'library') { history.pushState(null, '', '#library'); showPage('library'); }
-  $('game-search').focus();
+  // (no search field while the Pi is out of reach: focus then goes to the page's name, never nowhere)
+  if ($('game-search').getClientRects().length) $('game-search').focus(); else $('top-title').focus();
 }
 
 /** A cover was tapped: its page opens as a new history entry that carries where it was opened
@@ -605,7 +606,7 @@ function renderPresence(row, faces, words) {
     return face;
   }), ...(people.length > shown.length ? [h('span', { class: 'more', text: `+${people.length - shown.length}` })] : []));
   words.textContent = presenceLine(people);
-  row.setAttribute('aria-label', presenceLabel(people.length));
+  row.setAttribute('aria-label', presenceLabel(people));
 }
 
 function renderSocial() {

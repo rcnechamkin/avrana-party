@@ -18,7 +18,7 @@ const expect = baseExpect.configure({ timeout: 20_000 });
 const PHONE = devices['iPhone 13'];               // 390 x 844
 type Phone = { context: BrowserContext; page: Page };
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
-const AT_HOME = /\/party\/(#(home|party|library|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places, or a game's page
+const AT_HOME = /\/party\/(#(home|party|library|me|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places (Me too, where a name is chosen), or a game's page
 
 function record() {
   const Native = window.WebSocket;

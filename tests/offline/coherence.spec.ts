@@ -26,6 +26,11 @@ test('what is chosen is tinted the same way in the tabs, a segment and a list; t
     .evaluate((el, p) => getComputedStyle(el, p || undefined).backgroundColor, pseudo);
   // Concept K (AVR-707): the bar's place is the glass lens, one capsule under the tabs (shell.spec.ts)
   await expect(page.locator('#nav > .avrana-lens')).toHaveCount(1);
+  // ...which is drawn (a fill or an edge that shows), and comes to rest under the place that is current
+  await expect.poll(() => page.locator('#nav > .avrana-lens').evaluate((el) => {
+    const s = getComputedStyle(el), on = document.querySelector('#nav a[aria-current="page"]')!.getBoundingClientRect(), b = el.getBoundingClientRect();
+    return { drawn: s.backgroundColor !== 'rgba(0, 0, 0, 0)' || s.backgroundImage !== 'none' || s.boxShadow !== 'none', under: Math.abs((b.left + b.right) / 2 - (on.left + on.right) / 2) < 2 };
+  })).toEqual({ drawn: true, under: true });
   expect(await ground('#game-views [aria-pressed="true"]')).toBe(select);
   await page.locator('#lib-filter').click();
   expect(await ground('#filter-players [aria-pressed="true"]')).toBe(select);

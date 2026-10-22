@@ -175,7 +175,7 @@ test.describe('three phones at one party', () => {
     const page = bob.page, hud = page.locator('#scene-presence'), drawer = page.locator('#social');
     await page.locator('#choose-watch').click();
     await expect(page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people');   // people, and nothing else, here
+    await expect(hud).toHaveAccessibleName('3 here. Open people');   // the words it shows, then what it opens: people, and nothing else, here
     await briefScroll(page, 90);
     const was = await briefScroll(page);
     expect(was).toBeGreaterThan(0);
