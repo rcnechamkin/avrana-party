@@ -112,6 +112,11 @@ test.describe('Home K3 after a round', () => {
     await expect(host.page.locator('#home-lead .round-over .sub')).toHaveText('Play again, or choose another game.');
     await expect(bob.page.locator('#home-actions button')).toHaveCount(0);
     await expect(bob.page.locator('#home-lead .round-over .sub')).toHaveText('Ada chooses what’s next.');
+    // EXPO seats two: Cleo watched, and a watched round is not "played" on her phone (the owner, 2026-10-06)
+    expect((await view(cleo)).me.id).toBeTruthy();
+    await expect(cleo.page.locator('#home-lead [data-game]')).toBeVisible();
+    await expect(cleo.page.locator('#home-lead [data-just]')).toHaveCount(0);
+    await expect(cleo.page.locator('#home-lead .round-over')).toHaveCount(0);
     // the game on the stage is not on the rail as well
     await expect(host.page.locator('#home-great [data-game="expo"]')).toHaveCount(0);
 
