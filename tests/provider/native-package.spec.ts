@@ -41,6 +41,7 @@ async function phone(browser: Browser, name: string, n = 0, late = false) {
   page.on('request', r => {
     if (r.frame() === page.mainFrame() && page.url().startsWith(GAMES) && r.url().includes('/party/api/')) direct.push(r.url());
   });
+  await page.addInitScript(watchNavigation, PARTY);
   await page.addInitScript(() => {
     const original = window.fetch;
     (window as any).__pkg = { redeemed: [], tokens: [], layer: [] };
@@ -67,6 +68,29 @@ async function phone(browser: Browser, name: string, n = 0, late = false) {
   if (!late) await expect(page.locator('#party-members')).toContainText(`${name} (you)`);
   return { page, context, direct, errors };
 }
+// Party 1.0 rule 4 (AVR-681), on every game-origin page: a move of the page the Party did not ask for (its bridge's
+// `navigate` to Party Home), window.open and a beforeunload listener are recorded in __nav (and the move cancelled,
+// so the page stays readable). The kit's `comply --boot` and `match --lifecycle` use the same watch (Games
+// avrana_gamekit/navguard.py); this one runs against the real Party. Chromium's Navigation API: not Safari.
+function watchNavigation(party: string) {
+  if (window.top !== window || location.origin === party) return;
+  const N: any = (window as any).__nav = { violations: [] as string[], asked: 0 };
+  window.addEventListener('message', (e) => { if (e.origin === party && e.data?.type === 'navigate') N.asked = Date.now(); }, true);
+  (window as any).navigation?.addEventListener('navigate', (e: any) => {
+    if (e.hashChange || e.destination.sameDocument || e.navigationType === 'reload') return;
+    const url = String(e.destination.url);
+    if (url.startsWith(party + '/party/') && N.asked && Date.now() - N.asked < 10_000) return;
+    N.violations.push(`${e.navigationType} ${url}`);
+    if (e.cancelable) e.preventDefault();
+  });
+  window.open = ((u?: string) => { N.violations.push(`window.open ${u ?? ''}`); return null; }) as any;
+  const add = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (this: any, type: string, ...rest: any[]) {
+    if (this === window && String(type).toLowerCase() === 'beforeunload') { N.violations.push('beforeunload'); return; }
+    return (add as any).call(this, type, ...rest);
+  };
+}
+const navViolations = (page: Page) => page.evaluate(() => (window as any).__nav?.violations ?? []);
 const redeemed = (page: Page) => page.evaluate(() => (window as any).__pkg?.redeemed ?? []);
 const token = (page: Page) => page.evaluate(() => (window as any).__pkg?.tokens.at(-1));
 async function close(...phones: any[]) { for (const p of phones) if (p) await p.context.close(); }
@@ -117,6 +141,7 @@ test('a package: seats through the bridge, isolated game origin, reload keeps th
       expect(await p.context.cookies(GAMES)).toEqual([]);
       await expect(p.page.locator('iframe[title="Avrana Party"]')).toHaveAttribute('src', `${PARTY}/party/bridge.html`);
       expect(p.direct).toEqual([]);
+      expect(await navViolations(p.page)).toEqual([]);              // the page moved and held nothing itself (AVR-681)
     }
     const oldToken = await token(ana.page);
     await ana.page.reload();
@@ -229,13 +254,13 @@ async function partyApi(p: any) {
   await page.goto(`${PARTY}/party/api/state`);
   return {
     page,
-    async post(path: string) {
-      return page.evaluate(async (path: string) => {
+    async post(path: string, extra: Record<string, unknown> = {}) {
+      return page.evaluate(async ([path, extra]: [string, Record<string, unknown>]) => {
         const state = await (await fetch('/party/api/state', { cache: 'no-store' })).json();
         const res = await fetch('/party/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ if_version: state.version }) });
+          body: JSON.stringify({ ...extra, if_version: state.version }) });
         return { status: res.status, body: await res.json().catch(() => null) };
-      }, path);
+      }, [path, extra] as [string, Record<string, unknown>]);
     },
   };
 }
@@ -266,4 +291,55 @@ test('a package follows the Party: a late joiner watches, only the Host ends, an
     await expect(ben.page).toHaveURL(`${PARTY}/party/`, { timeout: 60_000 });
     for (const p of [ana, ben, dana]) { expect(p.direct).toEqual([]); expect(p.errors).toEqual([]); }
   } finally { await close(ana, ben, dana); }
+});
+
+// The rest of the lifecycle for any package (AVR-681), through the real Party: the Host switches to another game and
+// back, a stale tab opened on the package's address while the Party is elsewhere is taken where the Party is, a page
+// frozen and resumed still follows, the second round gives fresh tickets and the first round's are refused, and no
+// page moves or holds itself. EMULATION: the freeze is Chromium's page lifecycle (Page.setWebLifecycleState), not
+// iOS suspending Safari. Limited Mode is the Party's own pages (offline lane, limited.spec.ts), not run here.
+test('a package through a switch away and back, a stale tab, a frozen page and a fresh round', async ({ browser, request }) => {
+  const { id } = await packageRow(request);
+  const { ana, ben } = await table(browser, request, id);
+  let stale: Page | null = null;
+  const gameUrl = `${GAMES}/games/${id}/`;
+  const atPackage = (p: any) => p.page.url().startsWith(gameUrl);
+  try {
+    const firstToken = await token(ben.page);
+    // Ben's page is frozen for 3 s and resumed: it is still in the round, seated.
+    const cdp = await ben.context.newCDPSession(ben.page);
+    await cdp.send('Page.setWebLifecycleState', { state: 'frozen' });
+    await ben.page.waitForTimeout(3_000);
+    await cdp.send('Page.setWebLifecycleState', { state: 'active' });
+    await expect(ben.page).toHaveURL(gameUrl);
+    // The Host switches to BLUFF (Party Core ends the package's round first): every page leaves the package.
+    const anaApi = await partyApi(ana);
+    const away = await anaApi.post('session/switch', { game: 'bluff' });
+    expect(away.status, JSON.stringify(away.body)).toBe(200);
+    for (const p of [ana, ben]) await expect.poll(() => atPackage(p), { timeout: 30_000 }).toBe(false);
+    await expect.poll(async () => new URL(ana.page.url()).pathname === new URL(ben.page.url()).pathname).toBe(true);  // one place
+    const elsewhere = new URL(ana.page.url()).pathname;
+    // A stale tab on the package's address, opened while the Party is elsewhere, is taken where the Party is.
+    stale = await ben.context.newPage();
+    await stale.goto(gameUrl);
+    await expect.poll(() => new URL(stale!.url()).pathname, { timeout: 30_000 }).toBe(elsewhere);
+    // The first round's authority is gone.
+    expect((await request.post(`${LOOPBACK}/games/${id}/api/poll`, {
+      headers: { Host: new URL(GAMES).host }, data: { token: firstToken, since: -1 },
+    })).status()).toBe(403);
+    // And back: the Host switches to the package again; every page follows in and is seated with a fresh ticket.
+    const back = await anaApi.post('session/switch', { game: id });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    await anaApi.page.close();
+    for (const p of [ana, ben]) {
+      await expect(p.page).toHaveURL(gameUrl, { timeout: 30_000 });
+      await expect.poll(async () => (await redeemed(p.page)).filter((r: any) => r.ok).length).toBeGreaterThan(0);
+    }
+    expect(await token(ben.page)).not.toBe(firstToken);                 // a new session: a new seat token
+    for (const p of [ana, ben]) {
+      expect(await navViolations(p.page)).toEqual([]);
+      expect(p.direct).toEqual([]);
+      expect(p.errors).toEqual([]);
+    }
+  } finally { await stale?.close(); await close(ana, ben); }
 });
