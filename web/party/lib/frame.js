@@ -80,9 +80,10 @@ export function presenceLine(people) {
   return `${list.length} here${gone}`;
 }
 
-/** The presence row's name for a screen reader: what it says, and what it opens. */
-export function presenceLabel(count) {
-  return `Your Party: ${count === 1 ? '1 person' : `${count} people`} here. Open people`;
+/** The presence row's name for a screen reader and for voice control: the words it shows (who is
+ * away included), then what it opens. */
+export function presenceLabel(people, { host = false } = {}) {
+  return `${presenceLine(people)}${host ? ' · You host' : ''}. Open people`;
 }
 
 /** The Party tab's name for a screen reader: its word, and what is new in the Party's chat (the

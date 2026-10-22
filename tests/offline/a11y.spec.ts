@@ -25,7 +25,7 @@ async function clear(page: Page) {
 /** Every screen of the shell without a Party, and how a person gets to it. */
 const SCREENS: Array<[string, (page: Page) => Promise<unknown>]> = [
   ['Home', (p) => place(p, 'home')],
-  ['Party', (p) => place(p, 'me')],
+  ['Party', (p) => place(p, 'party')],
   ['Me, the profile open', async (p) => { await place(p, 'me'); if (!(await p.locator('#profile-name').isVisible())) await p.locator('#player-chip').click(); await expect(p.locator('#profile-name')).toBeVisible(); }],
   ['Library', async (p) => { await place(p, 'library'); await p.locator('#game-search').fill(''); await expect(p.locator('#games [data-game]').first()).toBeVisible(); }],
   ['Library, as a list', async (p) => { await place(p, 'library'); await p.locator('#lib-view').click(); await p.locator('#view-choices [data-v="list"]').click(); await expect(p.locator('#games .avrana-row').first()).toBeVisible(); }],

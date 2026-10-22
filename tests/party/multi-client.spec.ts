@@ -94,7 +94,7 @@ test.describe('three phones at one party', () => {
     await expect(host.page.locator('#nav-party')).toHaveAccessibleName('Party');    // nothing new in the chat
     // Home says who is here in a row (Concept K, AVR-708); their names are on the Party tab
     await expect(host.page.locator('#home-here')).toHaveText('3 here');
-    await expect(host.page.locator('#home-presence')).toHaveAccessibleName('Your Party: 3 people here. Open people');
+    await expect(host.page.locator('#home-presence')).toHaveAccessibleName('3 here · You host. Open people');
     await expect(host.page.locator('#home-host')).toBeVisible();                     // the Host sees that they are
     await expect(bob.page.locator('#home-host')).toBeHidden();
     await expect(bob.page.locator('#party-members')).toContainText('Bob (you)');
@@ -178,7 +178,7 @@ test.describe('three phones at one party', () => {
     const page = bob.page, hud = page.locator('#scene-presence'), drawer = page.locator('#social');
     await page.locator('#choose-watch').click();
     await expect(page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people');   // people, and nothing else, here
+    await expect(hud).toHaveAccessibleName('3 here. Open people');   // the words it shows, then what it opens: people, and nothing else, here
     await briefScroll(page, 90);
     const was = await briefScroll(page);
     expect(was).toBeGreaterThan(0);

@@ -44,7 +44,7 @@ test.describe('Home K0 with three phones', () => {
   test('the presence row: faces, how many, the Host tag for the Host, and it opens the Party tab', async () => {
     await place(host.page, 'home');
     const row = host.page.locator('#home-presence');
-    await expect(row).toHaveAccessibleName('Your Party: 3 people here. Open people');
+    await expect(row).toHaveAccessibleName('3 here · You host. Open people');   // the words it shows, the Host tag said, what it opens
     await expect(host.page.locator('#home-faces > *')).toHaveCount(3);
     await expect(host.page.locator('#home-host')).toHaveText(/host/i);
     await row.click();
