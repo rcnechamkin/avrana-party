@@ -192,6 +192,7 @@
     {"path": "docs/runbooks/wifi-qualification.md", "class": "runbook", "status": "mixed", "authority": "procedure", "notes": "AVR-296. Harness and gate are implemented and were run against one tablet and the Pi; the Pi health timer (AVR-297) and AP-control helper (AVR-298) are prepared but not installed, and every threshold is provisional."},
     {"path": "docs/runbooks/rebuild.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "Clean-target rebuild (AVR-32). Not run on any device; owner-only.", "status_marker": "Status: **PROPOSED procedure, NOT RUN** (2026-10-05). Written from source and from the facts"},
     {"path": "docs/runbooks/logs-and-retention.md", "class": "runbook", "status": "current", "authority": "procedure"},
+    {"path": "docs/runbooks/preflight.md", "class": "runbook", "status": "proposed", "authority": "procedure", "notes": "AVR-696. Implemented and unit-tested; run against the dev server only. Not run on the Pi."},
     {"path": "docs/runbooks/network.md", "class": "runbook", "status": "current", "authority": "procedure"},
     {"path": "docs/runbooks/service-recovery.md", "class": "runbook", "status": "current", "authority": "procedure", "notes": "AVR-33 operator recovery; Party Core restart verified 2026-09-29 (PR #29), other appliance recovery runs not run."},
     {"path": "docs/runbooks/party-core-deploy.md", "class": "runbook", "status": "current", "authority": "procedure"},
