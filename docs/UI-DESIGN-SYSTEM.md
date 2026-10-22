@@ -416,9 +416,11 @@ location is deployed; until then each answers 404 and the tile draws what it dre
   is 1:1 (recommended 512 px, at most 256 KiB) and fills a tile as the owner's cover does; the **icon** is 1:1
   (recommended 256 px, at most 64 KiB) and is used in list rows and, with no cover, centred on the tile in the
   existing `icon-art` style; the **banner** is 16:9 (recommended 1280 x 720, at most 384 KiB) and is used only
-  where a box is wide: a game's page, and Home's stage (and the briefing's) when its measured width over height
-  reaches 1.3 (it keeps the banner down to 1.2, so a stage that gains a line of text does not flip). On a
-  phone held upright the stage is taller than it is wide, so it draws the square cover whole, as before; a
+  where a box is wide: a game's page, and Home's stage or the briefing's compact stage when its measured width
+  over height reaches 1.3 (it keeps the banner down to 1.2, so a stage that gains a line of text does not flip).
+  On a phone held upright Home's stage is taller than it is wide, so it draws the square cover whole, as before
+  (the briefing's compact stage is about 1.4 there, so it draws the banner); a banner with no cover is shown whole
+  in a narrow stage. A
   tile, a rail and a row never use the banner. In a wide stage the banner is fitted to the stage's width and
   hung from its top (`banner-art`), never stretched or cut at the sides, its lower edge melting into the ink
   gradient under the live title, which stays text and is not hidden. All three are decoration (`alt=""`, the

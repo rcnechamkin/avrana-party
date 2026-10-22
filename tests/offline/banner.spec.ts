@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import path from 'node:path';
-import { openGame, place, sideways } from '../lib/frame';
+import { openGame, place, sideways, startForEveryone } from '../lib/frame';
 
 /**
  * A package's banner in the shell (AVR-466). The catalog row's appliance-set `images` may name a cover, an icon
@@ -151,7 +151,7 @@ test('a banner that will not load gives way to the cover, then the icon, and is 
   await expect(card.locator('.avrana-cover.wide')).toHaveAttribute('data-art', 'package-cover');
   await place(page, 'home');
   await expect(stage(page)).toHaveAttribute('data-art', 'package-cover');
-  expect(asked.filter((p) => p.includes('aaaaaaaa')).length, 'asked once, then remembered').toBe(1);
+  expect(asked.filter((p) => p.includes('aaaaaaaa')).length, 'remembered once it failed (a first, eager draw may overlap one request)').toBeLessThanOrEqual(2);
   expect(await broken(page)).toEqual([]);
 
   // every picture refused: the kind icon and the visible name, and no broken image
@@ -208,4 +208,36 @@ test('200% text and reduced motion: the stage keeps one valid picture, nothing o
   // the live title is still text on the stage, in front of the picture, whatever the picture says
   await expect(page.locator('#stage-title')).toBeVisible();
   await expect(page.locator('#home-lead .avrana-stage')).toHaveAttribute('aria-labelledby', 'stage-title');
+});
+
+test('the briefing’s compact stage follows its own box too: the banner on a phone held upright, where it is 4:3 or wider', async ({ page, context }) => {
+  // a real Party Core behind the dev server (the second one): the Host selects a game and the briefing opens
+  const FULL = `http://127.0.0.1:${Number(process.env.AVRANA_DEV_PORT || 8181) + 1}`;
+  expect((await page.request.post(`${FULL}/__test__/party/reset`)).status()).toBe(204);
+  await context.addInitScript(() => { try { localStorage.setItem('wc-name', 'Lena'); } catch { /* no storage */ } });
+  await page.route('**/party/catalog.json', async (route) => {
+    const body = await (await route.fetch()).json();
+    const row = body.games.find((g: { id: string }) => g.id === 'bluff');
+    row.images = images('bluff', ['cover', 'icon', 'banner']);
+    await route.fulfill({ json: body });
+  });
+  await page.route('**/party/pkgart/**', (route) => route.fulfill({ path: PICTURE, contentType: 'image/png' }));
+  await page.setViewportSize(PORTRAIT);
+  await page.goto(`${FULL}/party/`);
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+  await startForEveryone(page, 'bluff');
+  await expect(page.locator('#scene')).toBeVisible();
+  const cover = page.locator('#scene-cover .avrana-cover.stage');
+  const box = await page.locator('#scene-stage').boundingBox();
+  expect(box!.width / box!.height, 'the compact stage on an upright phone is wider than 4:3').toBeGreaterThan(1.3);
+  await expect(cover).toHaveAttribute('data-art', 'package-banner');
+  // a turn of the phone redraws it from its own box (the briefing's stage is the one observed, not Home's)
+  await page.setViewportSize(WIDE);
+  await expect(cover).toHaveAttribute('data-art', 'package-banner');
+  await page.setViewportSize(PORTRAIT);
+  await expect(cover).toHaveAttribute('data-art', 'package-banner');
+  expect(await broken(page)).toEqual([]);
+  expect(await sideways(page)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: test.info().outputPath('briefing.png') });
+  await test.info().attach('briefing-stage', { body: `stage ${Math.round(box!.width)} x ${Math.round(box!.height)} (${(box!.width / box!.height).toFixed(2)}): ${await cover.getAttribute('data-art')}` });
 });
