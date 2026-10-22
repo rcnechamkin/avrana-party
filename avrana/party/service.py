@@ -13,6 +13,8 @@ Routes:
     POST /party/api/rename      {name}
     POST /party/api/leave       {}                  (idempotent; the device stays out until reconnect)
     POST /party/api/reconnect   {name, avatar?}     (the only way back after leave; join is refused)
+    POST /party/api/leave/request {}                (a guest, in a round: pages go to Party Home to confirm)
+    POST /party/api/leave/stay  {}                  (closes that request; idempotent)
     POST /party/api/host        {to, if_version}
     POST /party/api/host/spectate  {if_version}          host: stop hosting and watch, during setup
                                                          or at results (AVR-132)
@@ -481,7 +483,8 @@ def _refused(h, e):
     status = {'not_member': 403, 'not_host': 403, 'stale': 409, 'busy': 409,
               'no_game': 409, 'stale_session': 409, 'unknown_game': 404,
               'setup': 409, 'round_on': 409, 'no_setup': 409, 'unresolved': 409, 'no_successor': 409,
-              'player_count': 409, 'not_results': 409, 'left_party': 409}.get(e.code, 400)
+              'player_count': 409, 'not_results': 409, 'left_party': 409,
+              'host_uses_party_home': 403, 'not_in_round': 409}.get(e.code, 400)
     return _send(h, status, {'error': e.code, 'message': str(e)})
 
 
@@ -644,6 +647,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('rename', device, body.get('name'), body.get('avatar'))
             elif path == '/party/api/leave':
                 svc.call('leave', device)
+            elif path == '/party/api/leave/request':     # a guest asks from a game origin; confirmed on Party Home
+                svc.call('request_exit', device)
+            elif path == '/party/api/leave/stay':        # closes that request; the pages follow the party again
+                svc.call('stay', device)
             elif path == '/party/api/host':
                 svc.call('transfer_host', device, body.get('to'), body.get('if_version'))
             elif path == '/party/api/host/spectate':

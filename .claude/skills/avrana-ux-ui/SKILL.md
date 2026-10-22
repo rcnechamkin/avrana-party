@@ -44,7 +44,7 @@ ADR or contract conflict, stop and ask the owner.
 - Compact and low-scroll; not one long page of big rounded cards.
 - A restrained monochromatic shell. Atomic Purple is a subtle smoky, translucent accent and
   material reference, never a purple interface, and never literal retro styling.
-- Type: Helvetica Light for the "Avrana Party" brand text (temporary); Geist for general UI.
+- Type: Helvetica Light for the "Avrana Party" brand text (temporary); Plus Jakarta Sans for general UI.
 - Bottom navigation: Home / Party / Library / System.
 - Social, chat and presence are a separate global layer, not a module or an embedded card.
 - Healthy technical infrastructure stays mostly invisible; degraded notices state player impact.

@@ -1,0 +1,58 @@
+{
+  "schema": "avrana.release-prereq/v0",
+  "checked_at": "2026-10-21T22:45:00Z",
+  "clock_overridden": true,
+  "result": "CLEARED_FOR_OWNER",
+  "manifest": {
+    "path": "C:/Users/cnech/AppData/Local/Temp/claude/C--Users-cnech-Projects/23d85d68-1f5f-4798-ae40-1616e215d9a5/scratchpad/rcdemo/out/release-candidate.json",
+    "party": "8de7ef20835a1d98ec55cb772c216cbd348084fa",
+    "games": "1dc48d22fc189cc6e92fce23109d639230c471df",
+    "verdict": "CANDIDATE_OK",
+    "reverified": true
+  },
+  "preflight": {
+    "path": "tests/fixtures/release_candidate/preflight-ready.json",
+    "generated_at": "2026-10-21T22:30:00Z",
+    "age_minutes": 15.0,
+    "mode": "appliance",
+    "verdict": "READY",
+    "overall": "WARN",
+    "blocking_checks": [],
+    "waived": []
+  },
+  "rollback_target": {
+    "party_sha": "c59f1c819de169b55d0bdadde34ae5cec57fc74a",
+    "games_sha": "a4489729e1d0522a302b0475a7631ed90c219812",
+    "smoke_at": "2026-10-06T18:00:00Z",
+    "recorded_at": "2026-10-06T18:00:01Z",
+    "source": "--status"
+  },
+  "blocked_by": [],
+  "warnings": [
+    "CLOCK OVERRIDDEN: evaluated as of 2026-10-21T22:45:00Z (--now), not the real time; this result is a demonstration and is not valid for a real installation",
+    "preflight check certificate_names: example: the installed certificate covers party.avrana.net only; games.avrana.net is not covered (fine unless native games use the game origin)"
+  ],
+  "notes": [
+    "deployed pair: Party c59f1c819de1, Games a4489729e1d0; the deploy changes: Party, Games"
+  ],
+  "physically_unverified": [
+    "Wi-Fi association and throughput of four phones",
+    "iPhone Safari and Android Chrome behavior",
+    "cold boot with the upstream unplugged"
+  ],
+  "owner_commands": {
+    "read_only_first": "sudo bash /home/cody/avrana-party/ops/deploy.sh --status",
+    "dry_run": "sudo bash /home/cody/avrana-party/ops/deploy.sh --party 8de7ef20835a1d98ec55cb772c216cbd348084fa --games 1dc48d22fc189cc6e92fce23109d639230c471df --dry-run",
+    "real_run": "sudo bash /home/cody/avrana-party/ops/deploy.sh --party 8de7ef20835a1d98ec55cb772c216cbd348084fa --games 1dc48d22fc189cc6e92fce23109d639230c471df",
+    "real_run_with_cert_name_gate": "sudo bash /home/cody/avrana-party/ops/deploy.sh --party 8de7ef20835a1d98ec55cb772c216cbd348084fa --games 1dc48d22fc189cc6e92fce23109d639230c471df --require-cert-names",
+    "rollback_rehearsal": "sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback --dry-run",
+    "rollback": "sudo bash /home/cody/avrana-party/ops/deploy.sh --rollback",
+    "notes": [
+      "The owner runs these on the Pi, in this order. This tool printed them and ran none of them.",
+      "Take ops/deploy.sh from the target commit: git -C /home/cody/avrana-party show 8de7ef20835a1d98ec55cb772c216cbd348084fa:ops/deploy.sh (docs/runbooks/deploy.md, \"First run\").",
+      "Add --require-cert-names to the real run only when this night uses native games on the game origin (field-test gate step 0.3 yes) and the certificate-name checks passed; otherwise run without it, and the deploy only warns (docs/runbooks/field-test-gate.md step 2).",
+      "Read the dry run first: it needs sudo to check certificate names, never refuses on them, and changes nothing.",
+      "After the real run: --status must show the new last known good; a run that dies or exits 2, 3 or 4 follows docs/runbooks/deploy.md \"Which command next\"."
+    ]
+  }
+}

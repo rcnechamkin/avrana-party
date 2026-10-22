@@ -2,17 +2,17 @@
    A design artifact for owner review, not product source. Values are proposals. */
 
 @font-face {
-  font-family: "Geist";
-  src: url("fonts/Geist-Variable.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Plus Jakarta Sans";
+  src: url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2");
+  font-weight: 200 800;
   font-display: swap;
 }
 
-/* The temporary brand line: a light Helvetica where the phone really has one, Geist Light everywhere
+/* The temporary brand line: a light Helvetica where the phone really has one, Plus Jakarta Sans Light everywhere
    else. local() only matches an installed face, so Windows and Android never fall back to Arial. */
 @font-face {
   font-family: "Avrana Brand";
-  src: local("Helvetica Neue Light"), local("HelveticaNeue-Light"), local("Helvetica Light"), local("Helvetica-Light"), url("fonts/Geist-Variable.woff2") format("woff2");
+  src: local("Helvetica Neue Light"), local("HelveticaNeue-Light"), local("Helvetica Light"), local("Helvetica-Light"), url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2");
   font-weight: 300;
   font-display: swap;
 }
@@ -53,8 +53,8 @@
   --gutter: 16px;
 
   /* type */
-  --ui: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --brand: "Avrana Brand", "Geist", sans-serif;
+  --ui: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --brand: "Avrana Brand", "Plus Jakarta Sans", sans-serif;
   --t-xs: 0.75rem;
   --t-sm: 0.8125rem;
   --t-md: 0.9375rem;
