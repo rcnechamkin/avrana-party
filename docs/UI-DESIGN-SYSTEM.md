@@ -464,6 +464,48 @@ originals exist only on the development machine. Verified by logging every reque
 sessions (Party page at four viewports including the offline state; every LAN game's pre-game
 screens; a full BLUFF game): zero non-local requests.
 
+## Concept K in Party: its words, and what is built vs proposed
+
+Folded from the style kit's Party-specific parts (`avrana-console-style/07-content-and-copy.md`,
+`11-party-integration-notes.md`, AVR-712). The kit stays the design reference; this section is
+what the Party shell holds itself to.
+
+**Words.** The voice is a good console: calm, exact, brief. It labels and reports.
+- Say what the button does, verb and object: *Start BLUFF · Play again · Choose another game ·
+  Edit profile · Make host · Leave Party*.
+- Say the state as a fact: *Selected for Party · Featured · Just played · Round over · Here ·
+  Away · Choosing: you and Cleo · Checking this phone*.
+- Counts as numbers: "4 here", "Playing 2 · Watching 1 · Choosing 1", "3 in the Party".
+- Name people: "Ana hosts", "Ada chooses what's next."; "you" for this phone's person.
+- A blocked thing carries its reason beside it, in Party Core's own sentence (a disabled Start).
+- The contract's words stay: **Play this round** / **Watch this round**; Watch is never a fallback.
+- A middle dot separates facts on one line; an en dash marks a range; sentence case except
+  eyebrows and tags; an ellipsis only while something is under way ("Starting BLUFF…").
+- Never invented: no score, winner, round length or countdown; no other phone's check; Featured
+  is never styled as Selected; an unknown check never blocks; away is a dimmed face **and** the
+  word "Away".
+
+**Actual vs Proposal.** Concept K's frames show some things Party Core does not do. They are
+built only when the platform has them; until then they are left out, or put behind a default-off
+`?concept=` flag that says "Proposal" on screen.
+
+| Concept K shows | In Party today | Waits for |
+|---|---|---|
+| Featured stage, Preview, rail (K0) | **Actual** (AVR-708): a recommendation from the catalog's fit | — |
+| Select for Party on Home | **Actual**: today's Host start, which moves everyone to the briefing (or the game) | — |
+| K1 "Selected for Party" | **Actual** as the briefing (AVR-709): this phone's own check, who has chosen | AVR-701 for K1 on Home |
+| Voluntary Ready ("Ready 3/4") | not shown | **AVR-700** |
+| Select, then launch, for every game | not built: a game without a briefing starts at once | **AVR-701** |
+| Guests browsing during setup; the bar on the briefing | not built: the bar stays off it (ADR 0011 d4) | **AVR-702** |
+| Home during a round (K2, Back to game) | not built: a phone on Party Home is sent to the round | **AVR-703** |
+| Tier-3 motion at 600 ms | 200 ms; 600 ms only with `?concept=motion` (owner, 2026-10-21) | **AVR-704** |
+| K3 "Just played", Round over, Play again | **Actual** (AVR-709), from what this phone saw | — |
+| "Played by …", won / lost in Party | not shown | **AVR-71** (results in the party view) |
+| "Selected game" on the Party tab | not shown | AVR-701 |
+| Make host | **Actual** (AVR-710): Party Core's `transfer_host` | — |
+| Library as one two-up grid with pill tabs | not built: the fit groups and the tab tint stay | an owner decision |
+| "Asks Play or Watch" in the preview | not shown: Party Core does not tell the shell | AVR-70 (catalogue metadata) |
+
 ## Platform UX and game identity
 
 The behavioural boundary (briefing, rules access, host controls, unavailable actions, system
