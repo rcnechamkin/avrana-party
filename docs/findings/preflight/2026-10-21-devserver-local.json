@@ -1,0 +1,231 @@
+{
+  "schema": "avrana.preflight/v0",
+  "generated_at": "2026-10-21T22:34:13Z",
+  "seconds": 0.3,
+  "mode": "local",
+  "host": "laptop (dev server)",
+  "tool": {
+    "party_sha": "552441cc00325bac2edc547983483a70094b3bcd"
+  },
+  "verdict": "UNKNOWN",
+  "overall": "UNKNOWN",
+  "horizon_days": 0,
+  "revisions": {
+    "party": {
+      "deployed_sha": null,
+      "checkout_sha": "4713f5c5e90f455dcaafb87b874977932c3f4874",
+      "dirty": false,
+      "ref": "claude/avr-697-field-diagnostics"
+    },
+    "games": {
+      "deployed_sha": null,
+      "checkout_sha": null,
+      "dirty": null,
+      "ref": null
+    },
+    "web_release": {
+      "build": "dev",
+      "commit": null
+    },
+    "last_known_good": null,
+    "contract": {
+      "party_games": "avrana.party-games/v0",
+      "party_session": "avrana.party-session/v0",
+      "lan_launch": "avrana.lan-launch/v1",
+      "games_advertises": "avrana.lan-launch/v1"
+    }
+  },
+  "names": {
+    "party": [],
+    "game_origins": []
+  },
+  "counts": {
+    "PASS": 4,
+    "WARN": 1,
+    "FAIL": 0,
+    "UNKNOWN": 14
+  },
+  "blocking": [
+    "revision.manifest",
+    "revision.party",
+    "revision.games",
+    "revision.web_release",
+    "revision.nginx_site",
+    "service.avrana-party-core",
+    "service.avranaparty-games",
+    "service.nginx",
+    "tls.appliance",
+    "network.appliance",
+    "pi.appliance",
+    "packages.appliance",
+    "runtime.appliance",
+    "wifi.gate"
+  ],
+  "waived": [],
+  "checks": [
+    {
+      "id": "revision.manifest",
+      "category": "revision",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "no deployment manifest: the deployed revisions cannot be named (ops/deploy.sh writes it)"
+    },
+    {
+      "id": "revision.party",
+      "category": "revision",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "party: no deployed revision recorded; checkout at 4713f5c5e90f455dcaafb87b874977932c3f4874",
+      "detail": {
+        "deployed_sha": null,
+        "checkout_sha": "4713f5c5e90f455dcaafb87b874977932c3f4874",
+        "dirty": false,
+        "untracked": 0,
+        "deployed_dirty": null,
+        "ref": "claude/avr-697-field-diagnostics",
+        "mismatch": false
+      }
+    },
+    {
+      "id": "revision.games",
+      "category": "revision",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "games: no deployed revision recorded; checkout at unknown",
+      "detail": {
+        "deployed_sha": null,
+        "checkout_sha": null,
+        "dirty": null,
+        "untracked": null,
+        "deployed_dirty": null,
+        "ref": null,
+        "mismatch": false
+      }
+    },
+    {
+      "id": "revision.web_release",
+      "category": "revision",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "installed web build has no readable version.json"
+    },
+    {
+      "id": "revision.nginx_site",
+      "category": "revision",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "nginx site file could not be compared"
+    },
+    {
+      "id": "revision.last_known_good",
+      "category": "revision",
+      "status": "WARN",
+      "blocking": false,
+      "reason": "no last-known-good record: `ops/deploy.sh --rollback` has no target"
+    },
+    {
+      "id": "service.avrana-party-core",
+      "category": "services",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "avrana-party-core is not in the status document"
+    },
+    {
+      "id": "service.avranaparty-games",
+      "category": "services",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "avranaparty-games is not in the status document"
+    },
+    {
+      "id": "service.nginx",
+      "category": "services",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "nginx is not in the status document"
+    },
+    {
+      "id": "serving.captive_probe",
+      "category": "serving",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "Apple probe answered \"Success\" on :80"
+    },
+    {
+      "id": "serving.party_home",
+      "category": "serving",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "/party/ 200 with CSP over http"
+    },
+    {
+      "id": "serving.party_core",
+      "category": "serving",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "Party Core answers /party/api/state"
+    },
+    {
+      "id": "serving.status",
+      "category": "serving",
+      "status": "PASS",
+      "blocking": true,
+      "reason": "summary unknown; party 4713f5c5e90f; no deployment manifest, nginx site file unavailable to compare, certificate expiry unavailable"
+    },
+    {
+      "id": "tls.appliance",
+      "category": "tls",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "--local: tls checks only run on the appliance"
+    },
+    {
+      "id": "network.appliance",
+      "category": "network",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "--local: network checks only run on the appliance"
+    },
+    {
+      "id": "pi.appliance",
+      "category": "pi",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "--local: pi checks only run on the appliance"
+    },
+    {
+      "id": "packages.appliance",
+      "category": "packages",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "--local: packages checks only run on the appliance"
+    },
+    {
+      "id": "runtime.appliance",
+      "category": "runtime",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "--local: runtime checks only run on the appliance"
+    },
+    {
+      "id": "wifi.gate",
+      "category": "network",
+      "status": "UNKNOWN",
+      "blocking": true,
+      "reason": "no Wi-Fi qualification result: run `python tools/wifi-lab/wifilab.py gate` from the laptop (docs/runbooks/wifi-qualification.md) and pass it with --wifi-gate"
+    }
+  ],
+  "notes": [],
+  "physically_unverified": [
+    "Wi-Fi qualification: the wifi-lab gate did not PASS for this run",
+    "a phone joins the Party Wi-Fi and gets an address (iPhone and Android, network forgotten first)",
+    "the phone OS treats the network as offline-but-usable (captive sheet, \"no internet\" prompts, mobile data fallback)",
+    "iPhone Safari and Android Chrome trust the served certificate and open https://party.avrana.net",
+    "the join card QR code scans and lands on Party Home",
+    "Wi-Fi capacity with the real number of phones (the wifi-lab gate measures one Android client)",
+    "phones staying connected through screen lock, app switching and battery saver",
+    "sound, vibration, rotation and on-screen keyboards on the real devices",
+    "a TV or second screen, if the night uses one"
+  ],
+  "level": "server-observable checks only; not a phone or human acceptance result"
+}

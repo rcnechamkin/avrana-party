@@ -45,7 +45,7 @@ const PHONE_CHECKS = ['secure_context', 'webrtc', 'video.h264', 'wake_lock', 'we
 const ESSENTIAL = ['secure_context', 'webrtc', 'video.h264'];
 const HEALTH_EVERY_MS = 15000;
 
-const state = { catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
+const state = { exit: null, staying: false, leaving: false, catalog: null, report: null, shell: null, reachable: null, healthTimer: null, donor: null, healths: new Map(), view: 'all',
   gamesKey: null, partyMode: false, partyBusy: false, joining: false, failShown: null, acked: false, rulesThen: null,
   mode: 'full', page: 'home', tab: 'people', chatStatus: 'closed', chatSaid: 0,
   polled: false, libView: 'medium', filters: { players: 0, screen: 'any' },
@@ -388,27 +388,73 @@ async function reconnect() {
 }
 
 /** Leave Party (AVR-580): say what it does, to the Host most of all, then ask. It changes only this
- * person's membership; it is not Home, End or Quit & Spectate. */
-function openLeave() {
+ * person's membership; it is not Home, End or Quit & Spectate. `fromGame`: the same question for a
+ * guest who asked from a game page (exitOpen); Stay then closes that request. Focus goes to Stay,
+ * the choice that changes nothing, only when the sheet opens. */
+function openLeave({ fromGame = false } = {}) {
   const view = party.view(), impact = view && view.me && view.me.leave;
   if (!impact) return;
   const words = leaveWords(impact);
+  $('leave-from-game').hidden = !fromGame;
   $('leave-text').textContent = words.text;
   $('leave-host').textContent = words.host;
+  $('leave-cancel').textContent = fromGame ? 'Stay in Party' : 'Stay';
+  if ($('leave').open) return;
   $('leave-note').textContent = '';
   $('leave-confirm').disabled = false;
-  if (!$('leave').open) $('leave').showModal();
+  $('leave').showModal();
   $('leave-cancel').focus();
+}
+
+/** A guest's exit request (AVR-580 guest exit, Party PR #184): a game page of another origin asked
+ * Party Core, and the bridge's existing `navigate` brought this phone here, a top-level Party page no
+ * game can draw over. Party Home asks Leave or Stay and holds the page while it asks. The question
+ * belongs to its request: it stays on screen for as long as that request is open, even once Party
+ * Core stops moving pages for it, so nobody is taken away mid-decision. Stay (here or in another
+ * tab), Leave or Reconnect closes the request, and then the page follows the party again. Returns
+ * true while it holds the page. */
+function exitOpen(view) {
+  const ex = view.me ? view.me.exit : null;
+  if (state.staying) return true;                               // Stay is on its way: hold, ask nothing
+  if (state.exit && (!ex || ex.id !== state.exit)) {            // closed elsewhere: follow the party
+    state.exit = null;
+    if ($('leave').open) $('leave').close();
+    return false;
+  }
+  if (!state.exit && !(ex && ex.live)) return false;            // nothing asked, or asked too long ago
+  show('main');                                                 // before the request is held: a move closes sheets
+  state.exit = ex.id;
+  renderParty(view);
+  openLeave({ fromGame: true });
+  return true;
+}
+
+/** Stay in the Party: close the request; the view that answers takes the page where the party is. */
+async function stayInParty() {
+  if (state.leaving) return;            // Leave is on its way: it answers the question
+  state.staying = true;
+  const res = await party.stay();
+  state.staying = false;
+  if (!res.ok && state.exit) {          // not closed: still in the Party, still asked
+    openLeave({ fromGame: true });
+    $('leave-note').textContent = 'Couldn’t reach the Party. Check the Wi-Fi and try again.';
+    return;
+  }
+  const view = party.view();
+  if (view) onPartyView(view, view);
 }
 
 async function confirmLeave() {
   $('leave-confirm').disabled = true;
+  state.leaving = true;                   // the sheet cannot be dismissed (or mean Stay) while Leave is on its way
   const res = await party.leave();
+  state.leaving = false;
   if (!res.ok) {          // not confirmed: Party Core may or may not have removed this phone, so do not claim it
     $('leave-note').textContent = 'Couldn’t confirm that you left. Check the Wi-Fi and try again.';
     $('leave-confirm').disabled = false;
     return;
   }
+  state.exit = null;                      // answered: closing the sheet is not a Stay
   $('leave').close();
   if (state.page !== 'home') { history.pushState(null, '', location.pathname + location.search); showPage('home'); }
   renderParty(party.view());
@@ -973,6 +1019,7 @@ function onPartyView(view, previous = null) {
   const gamesKey = view.games.join(',');
   if (state.gamesKey !== null && gamesKey !== state.gamesKey) gameOrigins.refresh(); else gameOrigins.retry();
   state.gamesKey = gamesKey;
+  if (exitOpen(view)) return;                 // a guest's exit request: asked here, never in the game
   // Until Party Core's answer is known the address is the same-origin path; the phone does not
   // leave on that guess (leaveForRound waits), and once it is known, refusing it keeps Party Home.
   const url = state.declined === moveKey(view) ? null      // this phone went back to Party Home from this move
@@ -1550,6 +1597,10 @@ $('party-chat').onclick = () => openSocial('chat');
 $('party-leave').onclick = () => openLeave();
 $('leave-confirm').onclick = () => confirmLeave();
 $('leave-cancel').onclick = () => $('leave').close();
+// Closing the sheet any way (Stay, its close button, Escape) while a guest's exit request is open is Stay.
+// Closing the sheet any other way (Back, which closes sheets) is Stay too: it changes nothing.
+$('leave').addEventListener('close', () => { if (state.exit && !state.staying && !state.leaving) stayInParty(); });
+$('leave').addEventListener('cancel', (e) => { if (state.leaving) e.preventDefault(); });
 $('leave-close').onclick = () => $('leave').close();
 $('reconnect-btn').onclick = () => reconnect();
 $('social-tabs').onclick = (event) => {

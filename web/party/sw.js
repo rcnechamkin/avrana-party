@@ -26,8 +26,8 @@ const SHELL = [
   'lib/capabilities.js', 'lib/evaluate.js', 'lib/keep-awake.js', 'lib/shell.js', 'lib/ui.js',
   'lib/profile.js', 'lib/profile-ui.js', 'lib/party-chat.js', 'lib/catalog-view.js', 'lib/catalog-load.js', 'lib/cover-art.js', 'lib/icons.js', 'lib/avatars.js',
   'lib/party-mode.js', 'lib/party-client.js', 'lib/departure.js', 'lib/party-follow.js', 'lib/limited.js', 'lib/game-origins.js', 'lib/going-watchdog.js', 'lib/viewport.js', 'lib/device-check.js', 'lib/device-probe-worker.js',
-  // The module of the frame, and the one bundled font with its licence (Geist, SIL OFL 1.1).
-  'lib/frame.js', 'lib/library.js', 'lib/states.js', 'fonts/Geist-Variable.woff2', 'fonts/OFL.txt',
+  // The module of the frame, and the bundled fonts with their licence (Plus Jakarta Sans, SIL OFL 1.1).
+  'lib/frame.js', 'lib/library.js', 'lib/states.js', 'fonts/PlusJakartaSans-Latin-Variable.woff2', 'fonts/PlusJakartaSans-LatinExt-Variable.woff2', 'fonts/OFL.txt',
   // The bridge frame for game pages on another origin, and the reference shim (ADR 0013).
   'bridge.html', 'lib/bridge.js', 'lib/bridge-frame.js', 'bridge/shim.js',
   // The Party layer over a game page (AVR-292): its frame, its rules and the page mount.

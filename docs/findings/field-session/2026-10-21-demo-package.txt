@@ -1,0 +1,24 @@
+Field-session demonstration, 2026-10-21 (AVR-697). Laptop (Windows), dev server, NOT the Pi.
+
+Scenario (simulated failure): start a session against `python -m avrana.web.devserver --party --test-controls`
+on 127.0.0.1:8290, mark a baseline, kill the dev server's process (a stand-in for a Party Core outage),
+snapshot, mark the failure, start the dev server again, snapshot, mark the recovery, stop, export, validate.
+
+    python -m avrana.ops.fieldsession --root <dir> --status-url http://127.0.0.1:8290/party/api/status \
+        --status-host 127.0.0.1:8290 start --label "demo simulated outage"
+    ... mark "baseline: ..." --outcome pass --step D-1
+    ... snapshot                        -> snapshot 002: status unreachable (ConnectionRefusedError)
+    ... mark "simulated outage: ..." --outcome fail --step D-2
+    ... snapshot                        -> snapshot 003: unknown (dev server: no manifest, no certificate)
+    ... mark "Party Core answering again" --outcome observed --step D-3
+    ... stop; export --out <dir>; validate <package>
+
+Package: avrana-field-20261021T224206Z-demo-simulated-outage.tar.gz (not committed: it is a binary)
+    sha256 91313b3b1b4820903ad281b3d64b35f5b560de99b71d080348835f133aa62e0a (redaction rules v2)
+    10 members, 14426 bytes uncompressed; privacy validation clean (twice: on export and by `validate`)
+    members: events.jsonl journal.jsonl manifest.json session.json snapshots/001-004.json throttle.jsonl timeline.md
+
+Not shown by this run: journal excerpts (journalctl does not exist on Windows; the session records
+"journal unavailable (not Linux)"), Pi health and power records (no state files here). Those paths are
+covered by the unit tests with recorded journal entries, including tests/fixtures/field-session/poisoned-journal.json.
+The timeline is 2026-10-21-demo-timeline.md next to this file.

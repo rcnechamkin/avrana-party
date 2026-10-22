@@ -1,0 +1,28 @@
+Avrana preflight: NOT_READY (FAIL)   2026-10-21T18:00:00Z   appliance on avrana (SIMULATED: unit-test fake probes)
+  party  deployed aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  games  deployed bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  checks 18 pass, 2 warn, 4 fail, 2 unknown (0.0 s)
+
+Blocking: service.avranaparty-games, serving.games_provider, tls.party.avrana.net, wifi.gate, pi.clock, storage./
+
+FAIL    storage./: /: 1.5 GiB free (5%) (below the minimum)
+FAIL    service.avranaparty-games: avranaparty-games is failed
+FAIL    serving.games_provider: 127.0.0.1:8096 unreachable (ConnectionRefusedError)
+FAIL    tls.party.avrana.net: party.avrana.net: certificate expires 2026-11-02T18:00:00Z, inside the 14-day horizon; renew before leaving (docs/runbooks/party-https.md; renewal needs the Internet)
+UNKNOWN wifi.gate: the latest gate (PASS) is 40 h old (limit 24 h): run it again
+UNKNOWN pi.clock: 2026-10-21T18:00:00Z is not NTP synchronized: run from the laptop (tools/preflight.py compares the clocks), or check `date` and --waive pi.clock
+WARN    pi.journal (advisory): journal is volatile: a reboot loses the evidence (AVR-29, docs/runbooks/logs-and-retention.md)
+WARN    revision.last_known_good (advisory): no last-known-good record: `ops/deploy.sh --rollback` has no target
+PASS    18: revision.party, revision.games, revision.web_release, revision.nginx_site, service.avrana-party-core, service.nginx, service.avrana-party-certificate.timer, serving.captive_probe, serving.party_home, dns.party.avrana.net, network.topology, pi.health, pi.reboot_required, storage./var/lib, packages.installed, runtime.node, runtime.python, runtime.tools
+NOTE    SIMULATED with the unit tests' fake probes; not a run on the Pi
+
+Needs a real phone (never shown by this preflight):
+  - Wi-Fi qualification: the wifi-lab gate did not PASS for this run
+  - a phone joins the Party Wi-Fi and gets an address (iPhone and Android, network forgotten first)
+  - the phone OS treats the network as offline-but-usable (captive sheet, "no internet" prompts, mobile data fallback)
+  - iPhone Safari and Android Chrome trust the served certificate and open https://party.avrana.net
+  - the join card QR code scans and lands on Party Home
+  - Wi-Fi capacity with the real number of phones (the wifi-lab gate measures one Android client)
+  - phones staying connected through screen lock, app switching and battery saver
+  - sound, vibration, rotation and on-screen keyboards on the real devices
+  - a TV or second screen, if the night uses one

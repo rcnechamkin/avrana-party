@@ -14,7 +14,7 @@ Every component has one `usage` (how it is used now) and one `redistribution` po
 
 | `usage` | Meaning | Typical example |
 |---|---|---|
-| `embedded` | its bytes are inside a committed output served to the appliance or phones | Geist font, compiled Tailwind and daisyUI CSS, Lucide icons, avatars |
+| `embedded` | its bytes are inside a committed output served to the appliance or phones | Plus Jakarta Sans font, compiled Tailwind and daisyUI CSS, Lucide icons, avatars |
 | `separate-process` | run as its own process; no linking or embedding | RetroArch |
 | `owner-installed` | the owner installs it on their appliance; Avrana does not ship it | libretro cores, ROMs, nginx, Node runtime, Beszel |
 | `build-time-only` | used to produce outputs; none of its code is in them | Playwright, `@dicebear/core` |

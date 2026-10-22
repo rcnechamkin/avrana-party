@@ -12,7 +12,7 @@ import { locationOf, partyGame, roster } from './party-mode.js';
 import { unreadMark } from './frame.js';
 import { leaveWords } from './states.js';
 import { originAllows } from './bridge.js';
-import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine,
+import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine, exitOffered,
   gesture, keptSpots, nudge, orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark } from './layer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -250,6 +250,7 @@ function render() {
   $('layer-people-list').replaceChildren(...roster(view).map(personItem));
   renderHost(view);
   renderLeave(view);
+  renderExit(view);
 }
 
 function renderHost(view) {
@@ -302,6 +303,31 @@ $('layer-leave-yes').addEventListener('click', async () => {
   if (res.ok) { state.leaving = false; return; }       // the view that followed hides this frame
   $('layer-leave-error').textContent = res.error === 'offline' || res.status >= 500
     ? 'Couldn’t confirm that you left. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
+});
+
+/** "Leave Party…" for a guest over a game page of another origin (AVR-580 guest exit). It asks Party
+ * Core and nothing more: the bridge's existing `navigate` then takes this phone to Party Home, which
+ * asks Leave or Stay where the game cannot draw. No confirmation here, since a lure could cover it. */
+function renderExit(view) {
+  $('layer-exit').hidden = !exitOffered(view, { crossOrigin: state.crossOrigin === true }) || Boolean(state.confirm);
+}
+$('layer-exit-ask').addEventListener('click', async () => {
+  if (state.busy) return;
+  state.busy = true;
+  $('layer-exit-ask').disabled = true;
+  $('layer-exit-error').textContent = '';
+  const res = await client.requestExit();
+  state.busy = false;
+  $('layer-exit-ask').disabled = false;
+  $('layer-exit-ask').focus({ preventScroll: true });
+  if (res.ok) {                                          // the page follows; if it does not, say so again later
+    const note = $('layer-exit-note'), was = note.textContent;
+    note.textContent = 'Taking you to Party Home…';
+    setTimeout(() => { note.textContent = was; }, 60_000);
+    return;
+  }
+  $('layer-exit-error').textContent = res.error === 'offline' || res.status >= 500
+    ? 'Couldn’t reach the Party. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
 });
 
 function askConfirm(action) {
