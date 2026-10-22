@@ -387,8 +387,11 @@ depicts it → a generic icon.**
 
 **Implemented, experimental, not deployed (AVR-466 phase C; owner decisions 2026-10-14).** Packages are to be able to bundle
 their own artwork, which adds two steps to this order: **owner cover → the package's cover → the
-package's icon → the title's own art → curated art → a generic icon.** The shell draws the ladder (`web/party/lib/cover-art.js`; a list row prefers the icon to the cover; a picture that fails to
-load falls to the next rung), but a phone is served the images only once the separately gated nginx `/party/pkgart/`
+package's icon → the title's own art → curated art → a generic icon.** That is the ladder for a tile. The shell draws
+the ladder of the place (`web/party/lib/cover-art.js`): a list row prefers the icon to the cover; a wide hero (Home's
+stage when its box is wide, a game's page) puts the package's **banner** first, after the owner's cover; a narrow hero
+(a phone held upright) keeps the cover first; a picture that fails to load falls to the next rung. A phone is served the
+images only once the separately gated nginx `/party/pkgart/`
 location is deployed; until then each answers 404 and the tile draws what it drew before. The contract is in
 [`.avrgame` package, bundled artwork](design/AVRGAME-PACKAGE.md#bundled-artwork-avr-466-experimental).
 
@@ -407,19 +410,30 @@ location is deployed; until then each answers 404 and the tile draws what it dre
   Covers are not in the offline copy. How they reach the Pi:
   [deploy runbook](runbooks/deploy.md#game-covers-the-owners-never-committed).
 
-- **A package's cover and icon (PLANNED, AVR-466; not implemented):** WebP, PNG or JPEG, never SVG,
-  declared in the package's manifest and validated when it is packed and installed (a declared image
-  that is invalid refuses the package). The cover is **1:1** (recommended 512 px, at most 256 KiB)
-  and fills the tile as the owner's cover does; the icon is 1:1 (recommended 256 px, at most 64 KiB)
-  and is used in list rows and, with no cover, centred on the tile in the existing `icon-art` style.
-  The limits are starting values, to be measured on the Pi. Both are decoration (`alt=""`, the name
-  stays text), lazy, with width and height set, and give way through the same `onerror` fallback.
-  **The owner's cover always wins over a publisher's.** They are served from the Party origin at
-  `/party/pkgart/` by a new nginx location (deploying it needs separate owner approval) with no CSP
-  change, and are not in the offline copy or the service worker's precache: a phone out of range
-  shows the placeholder. The placeholder stays the kind icon and the visible title; no generated
-  imagery. A package's banner and screenshots are validated but not shown until a game-page design
-  pass; screenshots will need `alt` text.
+- **A package's cover, icon and banner (AVR-466; implemented in code, experimental, not deployed):** WebP, PNG
+  or JPEG, never SVG, declared in the package's manifest and validated when it is packed and installed (a
+  declared image that is invalid refuses the package; one damaged afterwards is dropped alone). The **cover**
+  is 1:1 (recommended 512 px, at most 256 KiB) and fills a tile as the owner's cover does; the **icon** is 1:1
+  (recommended 256 px, at most 64 KiB) and is used in list rows and, with no cover, centred on the tile in the
+  existing `icon-art` style; the **banner** is 16:9 (recommended 1280 x 720, at most 384 KiB) and is used only
+  where a box is wide: a game's page, and Home's stage or the briefing's compact stage when its measured width
+  over height reaches 1.3 (it keeps the banner down to 1.2, so a stage that gains a line of text does not flip).
+  On a phone held upright Home's stage is taller than it is wide, so it draws the square cover whole, as before
+  (the briefing's compact stage is about 1.4 there, so it draws the banner); a banner with no cover takes the stage's
+  width below the top row. A
+  tile, a rail and a row never use the banner. In a wide stage the banner is fitted to the stage's width and
+  hung from its top (`banner-art`), never stretched or cut at the sides, its lower edge melting into the ink
+  gradient under the live title, which stays text and is not hidden. All three are decoration (`alt=""`, the
+  name stays text) with width and height set (the stage's picture is asked for at once, the shelf's lazily), and
+  each gives way through the same `onerror` fallback to the next rung of its place's ladder, ending at the
+  kind icon and the visible title. **The owner's cover always wins over a publisher's**, in a wide stage and a
+  game's page too; it shadows a banner only for the games the owner gave a cover. The limits are starting
+  values, to be measured on the Pi. They are served from the Party origin at `/party/pkgart/` by a new nginx
+  location (a separate DRAFT PR, #143; deploying it needs separate owner approval) with no CSP change, and
+  are not in the offline copy or the service worker's precache: a phone out of range shows the placeholder.
+  The placeholder stays the kind icon and the visible title; no generated imagery. A package's screenshots are
+  validated but not shown until a game-page design pass; screenshots will need `alt` text. Ladders, thresholds
+  and fallbacks, exactly: [AVRGAME-PACKAGE, Shell](design/AVRGAME-PACKAGE.md#shell).
 
 - **Own art:** each LAN title's GameArt scene (`avrana-party-games` `web/gameart.js`), exported by its
   `ops/export_game_art.mjs` as square, self-contained SVGs (presentation attributes only, frozen) into
