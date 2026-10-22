@@ -461,6 +461,7 @@ function renderLimited() {
 /** Show one of the shell's places. The party's own location is not this function's business:
  * show() hides the whole frame while the party is anywhere but home. */
 function showPage(page, focus = false, game = null, back = null) {
+  if (page !== 'home' && !(page === 'game' && back && back.within === 'home-preview')) { state.preview = null; delete state.previewNext; }
   state.page = page;
   state.game = page === 'game' ? game : null;
   state.back = page === 'game' ? back : null;
@@ -591,14 +592,18 @@ function renderBar() {
   const key = `${me.avatar || ''}|${me.pfp || ''}|${Boolean(me.name)}`;
   if ($('nav-me').dataset.face !== key) { $('nav-me').dataset.face = key; $('nav-me').replaceChildren(face); }
   renderPresence($('scene-presence'), $('scene-faces'), $('scene-here'));
+  // Home's row is drawn here too, so it never waits on the catalog (no lead, no shelves: still who is here)
+  renderPresence($('home-presence'), $('home-faces'), $('home-here'), true);
   if ($('social').open) renderSocial();
 }
 
 /** A compact presence row: up to five faces (away ones dimmed, and said in words beside them),
  * then "+n", and how many are here. Hidden while there is no Party view. */
-function renderPresence(row, faces, words) {
+function renderPresence(row, faces, words, home = false) {
   const view = state.partyMode ? party.view() : null;
   const people = view ? roster(view) : [];
+  const host = Boolean(view && view.me && view.me.host);
+  if (home) $('home-host').hidden = !host;
   row.hidden = !people.length;
   if (!people.length) return;
   const shown = people.length > 5 ? people.slice(0, 4) : people;
@@ -608,7 +613,7 @@ function renderPresence(row, faces, words) {
     return face;
   }), ...(people.length > shown.length ? [h('span', { class: 'more', text: `+${people.length - shown.length}` })] : []));
   words.textContent = presenceLine(people);
-  row.setAttribute('aria-label', presenceLabel(people));
+  row.setAttribute('aria-label', presenceLabel(people, { host: home && host }));
 }
 
 function renderSocial() {
@@ -975,6 +980,7 @@ function show(which, round = null) {
   // nothing stands between a person and where the Party now is. (While the screen stays, the
   // drawer and the sheet stay open over it: a briefing keeps its place under them.)
   if (moved) { closeSheets(); state.passed = null; }     // "hosting passed" was about the place that was
+  if (moved && which !== 'main') { state.preview = null; delete state.previewNext; }   // (and so was Home's preview)
   state.screen = which;
   $('main').hidden = which === 'going';
   $('content').hidden = which !== 'main';
@@ -1268,9 +1274,10 @@ function renderHomeShelves(entries, shelves, people) {
   sync($('home-great'), shelves.great.map((g) => card(of(g), people, 'great')));
   $('home-recent-sec').hidden = !shelves.played.length;
   sync($('home-recent'), shelves.played.map((g) => card(of(g), people, 'recent', false)));
-  renderPresence($('home-presence'), $('home-faces'), $('home-here'));
-  const view = state.partyMode ? party.view() : null;
-  $('home-host').hidden = !(view && view.me && view.me.host);
+  // a preview whose cover is no longer where it was opened (the lead changed, the game left the
+  // rail) is put away: the stage is never left dimmed under nothing, or under another game's facts
+  const at = state.preview && (state.preview.from === 'stage' ? [game] : state.preview.from === 'great' ? shelves.great : shelves.played);
+  if (at && !at.some((g) => g.id === state.preview.id)) state.preview = null;
   renderPreview(entries, people);
 }
 
@@ -1318,11 +1325,13 @@ function card(entry, people, rail, seats = true) {
   warnLine(note, 'm warn')));
 }
 
+// (only "ready" is a check mark: a limited or unverified answer says so, and never stands in the way)
 const DEVICE = {
   ready: ['circle-check', 'This phone can play'],
-  limited: ['circle-check', 'This phone can play'],
+  limited: ['circle-help', 'This phone may have limits'],
   watch: ['eye', 'This phone can watch'],
   unavailable: ['circle-slash', 'Not on this phone'],
+  unknown: ['hourglass', 'Checking this phone'],
 };
 
 /** A game's facts, in place (Concept K's inline preview): what it is, whether it suits the people
@@ -1337,7 +1346,7 @@ function previewNodes(entry, people) {
   const fit = view && view.me ? fitShort(game, people) : null;
   const screen = screenText(game), how = howText(game);
   const installed = Boolean(game.installed && game.entry);
-  const [mark, words] = DEVICE[result.outcome] || DEVICE.limited;
+  const [mark, words] = DEVICE[result.outcome] || DEVICE.unknown;
   const why = installed ? explain(result, state.catalog.labels || {}) : '';
   return [
     h('div', { class: 'head' },
@@ -1394,10 +1403,11 @@ function opener(open) {
 
 /** Open a game's facts in place, or put them away when the same art is tapped again. */
 function togglePreview(id, from) {
-  const was = state.preview;
+  const was = state.previewNext !== undefined ? state.previewNext : state.preview;   // (a flight may not have landed yet)
   if (was && was.id === id && was.from === from) { closePreview(true); return; }
+  state.previewNext = { id, from };
   const art = from === 'stage' ? $('home-lead').querySelector('.avrana-cover') : opener({ id, from })?.querySelector('.avrana-cover');
-  flight(art, () => { state.preview = { id, from }; renderGames(false); }, () => $('home-preview').querySelector('.thumb .avrana-cover'))
+  flight(art, () => { state.preview = { id, from }; delete state.previewNext; renderGames(false); }, () => $('home-preview').querySelector('.thumb .avrana-cover'))
     .then(() => {
       $('preview-title')?.focus({ preventScroll: true });
       $('home-preview').scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
@@ -1407,8 +1417,9 @@ function togglePreview(id, from) {
 /** Put the preview away; focus goes back to what opened it. */
 function closePreview(focus) {
   const was = state.preview;
-  if (!was) return;
-  flight($('home-preview').querySelector('.thumb .avrana-cover'), () => { state.preview = null; renderGames(false); },
+  if (!was) { delete state.previewNext; return; }
+  state.previewNext = null;
+  flight($('home-preview').querySelector('.thumb .avrana-cover'), () => { state.preview = null; delete state.previewNext; renderGames(false); },
     () => (was.from === 'stage' ? null : opener(was)?.querySelector('.avrana-cover')))
     .then(() => { if (focus) opener(was)?.focus({ preventScroll: true }); });
 }
@@ -1425,18 +1436,25 @@ function flight(from, update, to) {
   from.style.setProperty('view-transition-name', 'avrana-art');
   let landed = null;
   const t = document.startViewTransition(() => {
-    from.style.removeProperty('view-transition-name');
+    unname(from);
     update();
     landed = to();
     if (landed) landed.style.setProperty('view-transition-name', 'avrana-art');
   });
   state.flight = t;
-  t.finished.finally(() => {
-    landed?.style.removeProperty('view-transition-name');
-    from.style.removeProperty('view-transition-name');
+  t.flying = [from];
+  t.finished.catch(() => {}).finally(() => {
+    const newer = state.flight && state.flight !== t ? state.flight.flying : [];
+    for (const el of [landed, from]) if (el && !newer.includes(el)) unname(el);
     if (state.flight === t) state.flight = null;
   });
   return t.updateCallbackDone.catch(() => {});
+}
+
+/** Take the flight's name off an element, leaving no empty style attribute behind. */
+function unname(el) {
+  el.style.removeProperty('view-transition-name');
+  if (el.getAttribute('style') === '') el.removeAttribute('style');
 }
 
 /** The game's page, when it is the one on screen. A title that is not on the shelf (an old link, a
@@ -1726,7 +1744,7 @@ $('content').addEventListener('scroll', () => {
 $('home-presence').onclick = () => { closeSheets(); history.pushState(null, '', '#party'); showPage('party', true); };
 // The preview goes away with Escape (when nothing is open over it) and with a swipe down on it.
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !state.preview || document.querySelector('dialog[open]')) return;
+  if (event.key !== 'Escape' || !state.preview || state.screen !== 'main' || state.page !== 'home' || document.querySelector('dialog[open]')) return;
   event.preventDefault();
   closePreview(true);
 });
@@ -1734,13 +1752,16 @@ document.addEventListener('keydown', (event) => {
   // (a drag that scrolled the page is a scroll, not a swipe)
   let from = null, scroll = 0;
   $('home-preview').addEventListener('touchstart', (event) => {
-    from = event.touches.length === 1 ? event.touches[0].clientY : null;
+    from = event.touches.length === 1 ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null;
     scroll = $('content').scrollTop;
   }, { passive: true });
   $('home-preview').addEventListener('touchend', (event) => {
-    if (from !== null && $('content').scrollTop === scroll && event.changedTouches[0].clientY - from > 72) closePreview(true);
+    const end = event.changedTouches[0];
+    const dx = from ? Math.abs(end.clientX - from.x) : 0, dy = from ? end.clientY - from.y : 0;
+    if (from && !event.touches.length && $('content').scrollTop === scroll && dy > 72 && dy > dx * 2) closePreview(true);
     from = null;
   });
+  $('home-preview').addEventListener('touchcancel', () => { from = null; });
 }
 // A tap while art is flying lands it at once (the page under a View Transition takes no taps).
 document.addEventListener('pointerdown', () => state.flight?.skipTransition(), true);

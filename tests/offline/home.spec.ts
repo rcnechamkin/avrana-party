@@ -125,3 +125,30 @@ test('the presence row is the Party’s: with no Party there is none', async ({ 
   await place(page, 'party');
   await expect(page.locator('#party-off')).toBeVisible();
 });
+
+test('the preview belongs to Home: Escape elsewhere is the page’s own, and Home comes back undimmed', async ({ page }) => {
+  await open(page);
+  await page.locator('#stage-preview').click();
+  await expect(page.locator('#preview-title')).toBeFocused();
+  await place(page, 'library');
+  const search = page.locator('#game-search');
+  await search.fill('blu');
+  await search.press('Escape');
+  await expect(search).toHaveValue('');                                       // the search field's own Escape
+  await place(page, 'home');
+  await expect(page.locator('#home-preview')).toBeHidden();
+  expect(await page.locator('#home-actions').evaluate((el) => (el as HTMLElement).inert)).toBe(false);
+  await expect(page.locator('#stage-preview')).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('a flight leaves no trace on the covers: no name and no empty style (the next draw keeps them, and focus)', async ({ page }) => {
+  await open(page);
+  await page.locator('#stage-preview').click();
+  await expect(page.locator('#preview-title')).toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll('#view-home [style=""]').length)).toBe(0);
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('#content *')]
+    .filter((el) => (el as HTMLElement).style.viewTransitionName).length)).toBe(0);
+  await page.locator('#home-preview .close').click();
+  await expect(page.locator('#stage-preview')).toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll('#view-home [style=""]').length)).toBe(0);
+});
