@@ -153,7 +153,7 @@ test.describe('three phones at one party', () => {
         await expect(page.locator(gone), `${p.name} ${gone}`).toBeHidden();
       await expect(page.locator('#scene a[href]'), p.name).toHaveCount(0);   // no link leaves the briefing
       expect(await page.locator('#scene').getByRole('button').evaluateAll((els) => els.filter((el) => el.getClientRects().length).map((el) => el.id)), p.name)
-        .toEqual(p === host ? ['scene-presence', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-presence', 'scene-rules', 'choose-play', 'choose-watch']);
+        .toEqual(p === host ? ['scene-rules', 'scene-presence', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-rules', 'scene-presence', 'choose-play', 'choose-watch']);
     }
     await bob.page.locator('#choose-watch').click();
     await expect(bob.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
@@ -327,7 +327,7 @@ test.describe('three phones at one party', () => {
     // reading order: what, its rules, who, then the decision
     expect(await host.page.locator('#scene').evaluate((el) =>
       [...el.querySelectorAll('h2, h3, button')].filter((n) => n.getClientRects().length).map((n) => n.id)))
-      .toEqual(['scene-title', 'scene-presence', 'scene-rules', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);
+      .toEqual(['scene-title', 'scene-rules', 'scene-presence', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);   // K1: the rules under the premise (AVR-709)
     // what the game is, its rules and the decision are on screen at once; only the line-up may scroll
     for (const id of ['scene-title', 'scene-rules']) await expect(host.page.locator('#' + id), id).toBeInViewport({ ratio: 1 });
     // nothing on it moves for someone who asked for no motion
