@@ -644,6 +644,12 @@
      cut at the sides), the art's own lower edge melts into the ink gradient under the title, and a box wider than
      16:9 loses its lower part first (the copy covers it), never its sign. Its subject is above the copy, not behind it. */
   .avrana-cover.stage.banner-art > img { inset: 0 0 auto 0; height: auto; aspect-ratio: 16 / 9; object-position: 50% 0; }
+  /* (a banner with no cover, on a narrow stage: the same, hung below the top row instead of under it) */
+  .avrana-cover.stage.banner-art.banner-low > img { top: var(--avrana-head); mask-image: linear-gradient(to bottom, #000 72%, transparent); }
+  /* A stage wider than 16:9 (a short landscape phone) is shorter than the banner at its width: it fills the stage,
+     its middle kept, a little more of its top than its bottom cut, so the sign is not left under the title. */
+  .avrana-stage > .art { container-type: size; }
+  @container (min-aspect-ratio: 16 / 9) { .avrana-cover.stage.banner-art > img { inset: 0; height: 100%; aspect-ratio: auto; object-position: 50% 35%; } }
   .avrana-cover.stage.icon-art > img, .avrana-cover.stage.own-art > img { object-fit: contain; padding: calc(var(--avrana-head) + 1rem) 15% 9rem; }
   .avrana-cover.stage:not(.has-art) { background: var(--color-surface); place-items: start; }
   .avrana-cover.stage:not(.has-art) > .avrana-icon { display: none; }

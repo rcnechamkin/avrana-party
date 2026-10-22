@@ -160,10 +160,10 @@ function tileCover(game, mark, shape = '', small = false, place = 'home') {
   const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
   const context = contextOf(shape, small);
   const rung = pickArt(game, context, { own: state.covers.get(game.id) || null, art, wide: shape === 'wide' || (shape === 'stage' && state.heroWide[place]) }, state.badArt);
-  const bleed = rung.fit === 'bleed';                                         // a banner in a wide box: fills it
-  const flat = !bleed && (rung.kind === 'own' || rung.kind.startsWith('package-'));   // a picture whole in its box, not cropped to fill it
+  const banner = Boolean(rung.fit);                                           // a banner: the width of the stage, never cropped at the sides ('whole': no cover, a narrow stage)
+  const flat = !banner && (rung.kind === 'own' || rung.kind.startsWith('package-'));   // a picture whole in its box, not cropped to fill it
   const hero = context === 'hero';
-  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (rung.src ? ' has-art' : '') + (flat ? ' own-art' : '') + (bleed ? ' banner-art' : '') + (rung.kind === 'art' && rung.src.startsWith('art/kenney-') ? ' icon-art' : ''), 'data-art': rung.kind },
+  const el = h('span', { class: 'avrana-cover' + (shape ? ' ' + shape : '') + (rung.src ? ' has-art' : '') + (flat ? ' own-art' : '') + (banner ? ' banner-art' : '') + (rung.fit === 'whole' ? ' banner-low' : '') + (rung.kind === 'art' && rung.src.startsWith('art/kenney-') ? ' icon-art' : ''), 'data-art': rung.kind },
     // (a hero is the first thing on the page: asked for now; the rest of the shelf waits until it is near)
     rung.src ? h('img', { src: rung.src, alt: '', loading: hero ? 'eager' : 'lazy', fetchpriority: shape === 'stage' ? 'high' : null, decoding: 'async', width: rung.w, height: rung.h,
       // A picture that will not load (the box out of reach, nginx not serving package art yet, a format

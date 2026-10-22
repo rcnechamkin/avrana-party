@@ -82,13 +82,15 @@ test('Home’s stage draws the cover while its box is narrow and the banner when
   expect(await broken(page)).toEqual([]);
 });
 
-test('the narrow stage keeps the banner for a game that has only a banner, drawn whole; a tile and a row never use it', async ({ page }) => {
+test('a game that has only a banner draws it at the stage’s width on a narrow stage; a tile and a row never use it', async ({ page }) => {
   await withPackages(page, { 'pkg-ban': ['banner'] });
   await open(page, PORTRAIT);
   await expect(stage(page)).toHaveAttribute('data-art', 'package-banner');
-  await expect(stage(page)).toHaveClass(/own-art/);
-  await expect(stage(page)).not.toHaveClass(/banner-art/);
-  expect(await stage(page).locator('img').evaluate((el) => getComputedStyle(el).objectFit)).toBe('contain');   // whole, not cropped
+  await expect(stage(page)).toHaveClass(/banner-art/);                                    // the stage's width, hung below the top row: never a cropped or floating thumbnail
+  await expect(stage(page)).toHaveClass(/banner-low/);
+  const low = await stage(page).locator('img').boundingBox(), narrow = await page.locator('#home-lead .avrana-stage').boundingBox();
+  expect(Math.abs(low!.width - narrow!.width)).toBeLessThan(1.5);
+  expect(Math.abs(low!.width / low!.height - 16 / 9)).toBeLessThan(0.02);
   await place(page, 'library');
   const tile = page.locator('#games [data-game="pkg-ban"] .avrana-cover').first();
   await expect(tile.locator('img')).toHaveCount(0);                                       // its kind icon: a 16:9 picture is not cut to a square
