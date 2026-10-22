@@ -100,8 +100,14 @@ async function api(p: Phone, method: 'GET' | 'POST', path: string, body?: Record
 export async function resetIfLocal() {
   if (!LOOPBACK) return;
   const u = new URL(BASE);
-  const res = await fetch(`${u.protocol}//127.0.0.1:${u.port}/__test__/party/reset`, { method: 'POST', headers: { Host: u.host } });
-  expect(res.status, 'the local dev server resets the Party').toBe(204);
+  // the dev server's test control, or the provider harness's (tests/provider/party_harness.py)
+  const codes = [];
+  for (const path of ['/__test__/party/reset', '/__harness__/party/reset']) {
+    const res = await fetch(`${u.protocol}//127.0.0.1:${u.port}${path}`, { method: 'POST', headers: { Host: u.host } });
+    codes.push(res.status);
+    if (res.ok) return;
+  }
+  expect(codes, 'the local harness resets the Party').toContain(204);
 }
 
 /** What is deployed, as the status endpoint says: recorded once per run so every result names the commits it tested. */

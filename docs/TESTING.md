@@ -361,7 +361,7 @@ npm run test:hosted
 | `HOSTED_GAMES` | Games to journey through, in order; the first one is used by the recovery cases. |
 | `HOSTED_GAMES_REPO` | Games checkout holding each game's `party-driver.mjs`. |
 | `HOSTED_OWNER_ASSIST=1` | The owner is at the VM for the killed-game-process case. |
-| `HOSTED_RESOLVE_LOOPBACK=1` | Local two-origin dev server only (`*.avrana.test` to 127.0.0.1). |
+| `HOSTED_RESOLVE_LOOPBACK=1` | A local rehearsal (`*.avrana.test` to 127.0.0.1). Use the provider harness with real BLUFF on a game origin (`tests/provider/server.py --party-session --game-origin`). The dev server's stub game pages cannot follow the Party from a game origin, so lifecycle cases fail there for the stub's reasons. |
 
 Results: `test-results/hosted/results.json` and `test-results/hosted-run.json`, which records the deployed Party and Games SHAs and the web build.
 A case that cannot run (no token, no owner assist) is reported as skipped, never as passed.

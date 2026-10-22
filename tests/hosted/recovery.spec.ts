@@ -79,9 +79,15 @@ test('the Host goes away mid-game: hosting passes to someone who is here, who br
   const { phones, host, others } = await table(browser, ['Abe', 'Bo']);
   try {
     await launch(host, others, GAME);
+    const gone = Date.now();
     await host.context.close();               // the Host's phone is gone, no goodbye
-    const heir = await hostOf(others, 240_000);
+    // Party Core's contract (ADR 0006, as amended): the liveness window (45 s) and host grace (30 s)
+    // from the Host's last request, then the next timer tick; never earlier, and not much later.
+    const heir = await hostOf(others, 120_000);
+    const after = (Date.now() - gone) / 1000;
+    test.info().annotations.push({ type: 'succession', description: `${after.toFixed(0)} s after the Host's phone went` });
     expect(others).toContain(heir);
+    expect(after, 'hosting did not pass before the grace ran out').toBeGreaterThanOrEqual(55);
     await homeFor(...others);
   } finally { await close(...others); }
 });
