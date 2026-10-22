@@ -458,13 +458,19 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
   expect((await partyState(ana.page)).location.at).toBe('home');
   // what each phone remembers: the two who played have BLUFF as their last game; the two who
   // watched have nothing "recently played" (the owner, 2026-10-06)
+  // K3 (AVR-709): back from the round they played, their Home says so; once the Host puts it away,
+  // the same title leads as the one played last
   for (const p of [ana, ben]) {
     await place(p.page, 'home');
-    await expect(p.page.locator('#home-lead [data-game="bluff"]')).toContainText('You played this last.');
+    await expect(p.page.locator('#home-lead [data-game="bluff"]')).toHaveAttribute('data-just', '');
+    await expect(p.page.locator('#home-lead [data-game="bluff"]')).toContainText('Just played');
   }
+  await ana.page.locator('#just-other').click();
+  await expect(ana.page.locator('#home-lead [data-game="bluff"]')).toContainText('You played this last.');
   for (const p of [cy, dee]) {
     await place(p.page, 'home');
     await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
+    await expect(p.page.locator('#home-lead [data-just]')).toHaveCount(0);         // a watched round is not "played"
     await expect(p.page.locator('#home-lead')).not.toContainText('You played this last.');
     expect(await p.page.evaluate(() => localStorage.getItem('lg-recent'))).toBeNull();
   }
