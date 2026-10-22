@@ -770,6 +770,10 @@
   .avrana-panel .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--color-raised); color: var(--color-stone); }
   .avrana-panel .well[data-fit="ready"] { color: var(--color-ready); }
   .avrana-panel .well[data-fit="watch"] { color: var(--color-warning); }
+  /* K3 on Home: "Round over" under the stage, then the Host's two choices, one above the other */
+  .avrana-panel.round-over { margin-top: 1rem; }
+  .avrana-panel .thumb { flex: none; width: 40px; border-radius: 8px; overflow: hidden; }
+  .avrana-stage-actions[data-just] { flex-direction: column; }
   .avrana-brief .avrana-sec { margin-top: 0.25rem; }
   .avrana-brief .avrana-list { border-block: 1px solid var(--color-line); }
   .avrana-dock {

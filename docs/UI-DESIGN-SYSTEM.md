@@ -122,7 +122,9 @@ repeat:
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
 | `avrana-screen` | page container with safe-area padding, for diagnostics |
 | `avrana-scene` | one full screen with one thing on it: the way to a game, and the doorway |
-| `avrana-brief`, `avrana-dock` | the briefing (a round's setup) under the frame's top bar: what and who scroll, the decision stays at the bottom. Under 32rem of height (512 px, or 1024 px at 200% text) the dock un-pins and the whole briefing scrolls |
+| `avrana-brief`, `avrana-dock` | the briefing (a round's setup, Concept K's K1) under the frame's top bar: what and who scroll, the decision stays at the bottom in an opaque dock (glass is the shell's three controls only). Under 32rem of height (512 px, or 1024 px at 200% text) the dock un-pins and the whole briefing scrolls |
+| `avrana-stage` (`compact`), `avrana-eyebrow` (`selected`) | the briefing's stage: the game's art under the top row (200–280 px; under 650 px tall it gives its room to the words), "Selected for Party" in purple with a 3 px bar (the game is chosen: Home's "Featured" never looks like this), the name, "2–6 players · Ada hosts" |
+| `avrana-panel` | rows in one opaque panel, each a 32 px well and two lines: on the briefing, this phone's own check ("This phone can play" / "can watch" / "Checking this phone", never another phone's) with the fit, then "Playing 2 · Watching 1 · Choosing 1" and who is still choosing by name. On Home's K3, "Round over" |
 | `avrana-lineup` | the briefing's people: a face, the name, the word "Host", and the answer as an icon and a word (Playing, Watching, Choosing) |
 | `avrana-choice` | Play this round / Watch this round: two equal buttons; the chosen one has a tick, a fill and a stronger edge (`aria-pressed`), and its words do not change |
 | `avrana-back` | the way back in the top bar of a game's page: a chevron and the name of the place it returns to |
@@ -169,8 +171,13 @@ home), and the frame comes back in the same place, a game's page included.
   when it is not fine; the Limited Mode notice in full when it applies, until it is folded away
   (below); a nameless phone's first step; then the rail of the rest that suit the party ("Also
   fits your 4", or "Games" when there is no party to suit) and "Recently played" once something
-  has been. Only K0 exists today: K1 (selected), K2 (game on) and K3 (just played) need Party
-  Core changes (AVR-701, AVR-703, AVR-71).
+  has been. K0 and K3 exist today. **K3 "Just played"** (AVR-709) is the round this tab was
+  taken to, once Party Core says the Party is home again (`justPlayed`, lib/party-mode.js): the
+  game on the stage, "3 in the Party", a "Round over" panel and who chooses next; the Host has
+  **Play again** (today's Host start of the same game) and **Choose another game** (this phone's
+  Home goes back to Featured). Nothing about how the round went: "Played by", scores and winners
+  need results (AVR-71). K1 on Home (select-then-launch) needs AVR-701 and K2 (Home during a
+  round) needs AVR-703; until then K1 is the briefing (below).
 - **Party**: everyone here as faces, the Chat row (with the unread count), Leave Party.
 - **Library**: the games (the centre of gravity): search, two filters, four views, and the
   All / Favorites / Recent tabs (below).
@@ -261,8 +268,10 @@ because no title carries that data.
 **The briefing** (ADR 0011 decision 4 and its 2026-10-05 amendment; GAME-UX-CONTRACT rule 3.2;
 `#scene`, `renderScene`, `show()`). The lifecycle is unchanged: Party Core decides who is where,
 who may start, and why a start waits. Under the top bar ("Getting ready", the Limited mark on a
-Limited phone): the game's wide art, its name, its premise, the presence row, the "How to play"
-row, then the line-up. A dock at the bottom holds the two choices, the Host's "Start game", one
+Limited phone): the compact stage ("Selected for Party", the name, players and who hosts), its
+premise, the presence row (with the HOST tag for the Host), the panel (this phone's check and the
+fit; who has chosen what), the "How to play" row, then the line-up. A dock at the bottom holds the
+two choices, the Host's "Start {game}" (Party Core's blocker sentence under it while it is off), one
 status line (Party Core's reason for the Host, "Waiting for {Host} to start" for a guest) and the
 Host's "Choose another game". There is no bar of places, no Library, no chat and no "This phone"
 on it, and no link that leaves it. Who hosts is the word "Host" in the line-up and, for a guest,

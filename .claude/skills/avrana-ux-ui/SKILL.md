@@ -53,6 +53,8 @@ ADR or contract conflict, stop and ask the owner.
 - Home is a cinematic stage: the title that matters now, "Featured" when it is a recommendation
   (never styled like "Selected for Party"), one cream primary action (the Host's Select for Party),
   Preview. A cover opens its facts in place; tapping art never selects (Concept K, AVR-708).
+- The briefing is K1: "Selected for Party" (purple, with its bar), this phone's own check, who has
+  chosen; Home's K3 says "Just played" and "Round over", never a score or winner (AVR-709).
 - Healthy technical infrastructure stays mostly invisible; degraded notices state player impact.
 - The Host is a representative holding the remote: no crown, king or admin framing.
 - The Library is artwork-first and console-style, with several views (grids and list).
