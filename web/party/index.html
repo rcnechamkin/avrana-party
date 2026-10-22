@@ -238,6 +238,11 @@
         </div>
       </div>
       <p id="scene-premise" class="avrana-premise empty:hidden"></p>
+      <!-- the rules sit with what the game is, right under its premise, so they are on screen
+           however many people there are and however tall the K1 panel grows -->
+      <ul class="avrana-list">
+        <li><button id="scene-rules" type="button" aria-haspopup="dialog"><span data-icon="book-open"></span><span>How to play</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
+      </ul>
       <!-- Who is here (Concept K's presence row): it opens the people, and only them, over the
            briefing, which stays where it is (GAME-UX-CONTRACT rule 3.2, owner 2026-10-05). -->
       <button id="scene-presence" type="button" class="avrana-presence home" aria-haspopup="dialog"><span id="scene-faces" class="faces"></span><span id="scene-here" class="n"></span><span id="scene-host" class="avrana-tag host" hidden>Host</span></button>
@@ -247,10 +252,6 @@
         <p class="prow"><span id="scene-fit-mark" class="well"></span><span><span id="scene-fit"></span><span id="scene-fit-sub" class="sub empty:hidden"></span></span></p>
         <p class="prow"><span class="well"><span data-icon="users"></span></span><span><span id="scene-count"></span><span id="scene-waiting" class="sub empty:hidden"></span></span></p>
       </div>
-      <!-- the rules sit with what the game is, so they are on screen however many people there are -->
-      <ul class="avrana-list">
-        <li><button id="scene-rules" type="button" aria-haspopup="dialog"><span data-icon="book-open"></span><span>How to play</span><span class="val"><span data-icon="chevron-right"></span></span></button></li>
-      </ul>
       <section aria-labelledby="scene-people-h">
         <div class="avrana-sec"><h3 id="scene-people-h">This round</h3></div>
         <ul id="scene-roster" class="avrana-lineup" aria-label="Who plays and who watches"></ul>

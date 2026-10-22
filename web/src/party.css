@@ -751,14 +751,14 @@
   .avrana-brief { position: absolute; z-index: 1; inset: 0; min-height: 0; display: flex; flex-direction: column; }
   .avrana-brief[hidden] { display: none; }
   .avrana-brief > .scroll {
-    flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 0.625rem;
+    flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-auto-rows: max-content; align-content: start; gap: 0.625rem;   /* (rows as tall as what is in them: the stage clips its art, so it would otherwise be squeezed) */
     padding: 0 max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
   }
   /* K1 (Concept K, AVR-709): a compact stage under the top row; the art gives way on a short
      screen, where the decision and its reason matter more. Its eyebrow says it is selected. */
   .avrana-stage.compact { min-height: clamp(200px, 33svh, 280px); }
   @container frame (max-height: 40.6rem) { .avrana-stage.compact { min-height: 0; padding-top: calc(var(--avrana-head) + 0.5rem); } }
-  .avrana-brief h2.avrana-display { overflow-wrap: anywhere; }
+  .avrana-brief h2.avrana-display { overflow-wrap: anywhere; line-height: 1.25; }   /* (its letters inside its box: the title is a label the layout checks) */
   .avrana-eyebrow.selected { display: flex; align-items: center; gap: 8px; }
   .avrana-eyebrow.selected::before { content: ""; flex: none; width: 3px; height: 1em; border-radius: 2px; background: var(--color-purple); }
   /* Where the round stands: rows of a well and two lines, in one opaque panel. */
