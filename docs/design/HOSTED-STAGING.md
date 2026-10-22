@@ -8,9 +8,32 @@ Core, Party Home, SDK contracts, game packages and runtimes as the Pi. Only the 
 differs. The Pi stays the product. It also stays the only place that proves Wi-Fi, the captive
 portal, local DNS, offline play and real-phone hardware behavior.
 
-This page is the H1 audit and the proposal for owner approval. ADR 0018 (proposed) records the
-decision. Evidence is `file:line` on `main` at Party `aa3d7d4` and Games `9fee527`, plus a
+This page is the H1 audit and the proposal for owner approval. Section 0 becomes ADR 0018 once
+accepted. Evidence is `file:line` on `main` at Party `aa3d7d4` and Games `9fee527`, plus a
 read-only look at the Media host on 2026-10-22.
+
+## 0. Proposed decision (becomes ADR 0018 on approval)
+
+1. **One application.** The same Party Core, Party Home, SDK contracts, game packages,
+   `ops/deploy.sh` and systemd units run in both targets. Differences are limited to:
+   - deployment configuration (`party-core.json`, a deploy profile);
+   - a hosted nginx site rendered from `avrana-party.nginx`;
+   - environment-neutral client handling of an authentication redirect.
+
+   Nothing in Core, the SDK or game logic knows which target it runs on.
+2. **Isolation.** Staging runs in its own KVM virtual machine on the Media host (Debian 13, like
+   the Pi), with its own outbound-only Cloudflare Tunnel. It touches no Media container, nginx
+   site, tunnel or data.
+3. **Two origins.** `avrana.party` is the Party origin and `games.avrana.party` the game origin,
+   as ADR 0013 requires and as native games enforce.
+4. **Authentication.** Staging authentication is Cloudflare Access (email allow-list, one-time
+   PIN), enforced at the edge and again by `cloudflared` (Access JWT required). It stays separate
+   from Party identity: Party Core never reads Access headers.
+5. **What is not hosted.** The captive portal, AP, local DNS, Limited Mode, the doorway, the
+   arcade and the devserver's test controls.
+6. **The appliance stays authoritative.** It is still the only evidence for Wi-Fi, captive
+   portal, offline and real-phone hardware behavior. Hosted results never stand in for appliance
+   results, and appliance suites are not weakened.
 
 ## 1. Findings in one paragraph
 
