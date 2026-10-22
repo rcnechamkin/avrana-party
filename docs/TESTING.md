@@ -338,3 +338,40 @@ No Pi, WLAN, TV, ROM or emulator is used.
 
 CI independently checks each repo; private cross-repo checkout credentials are not
 introduced. Linux CI supplies nginx/rsync/bash gates unavailable on this Windows host.
+
+## Hosted staging acceptance (avrana.party, H3)
+
+`playwright.hosted.config.ts` runs `tests/hosted/` against a deployed hosted Party over the network,
+the way a remote tester's phone reaches it. It never starts a server and never touches the Pi. Design:
+docs/design/HOSTED-STAGING.md; deployment: docs/runbooks/hosted-staging.md.
+
+```
+HOSTED_BASE_URL=https://avrana.party HOSTED_EXPECT_ACCESS=1 \
+HOSTED_ACCESS_CLIENT_ID=... HOSTED_ACCESS_CLIENT_SECRET=... \
+HOSTED_GAMES=checkers,bestguess,tanks HOSTED_GAMES_REPO=../avrana-party-games \
+npm run test:hosted
+```
+
+| Variable | Meaning |
+|---|---|
+| `HOSTED_BASE_URL` | Party origin (required). |
+| `HOSTED_GAME_ORIGIN` | Game origin; default `https://games.<party host>`. |
+| `HOSTED_ACCESS_CLIENT_ID` / `_SECRET` | Cloudflare Access service token (from the owner, never committed). |
+| `HOSTED_EXPECT_ACCESS=1` | Assert strangers get the gateway, and the session-expiry case. |
+| `HOSTED_GAMES` | Games to journey through, in order; the first one is used by the recovery cases. |
+| `HOSTED_GAMES_REPO` | Games checkout holding each game's `party-driver.mjs`. |
+| `HOSTED_OWNER_ASSIST=1` | The owner is at the VM for the killed-game-process case. |
+| `HOSTED_RESOLVE_LOOPBACK=1` | Local two-origin dev server only (`*.avrana.test` to 127.0.0.1). |
+
+Results: `test-results/hosted/results.json` and `test-results/hosted-run.json`, which records the deployed Party and Games SHAs and the web build.
+A case that cannot run (no token, no owner assist) is reported as skipped, never as passed.
+
+| Suite | Pi (appliance) | Hosted staging |
+|---|---|---|
+| unit, modules, offline and Party browser suites | yes (CI and local) | unchanged, same code |
+| `ops/deploy.sh` profile tests (`HostedProfile`) | pi profile unchanged | hosted profile (Linux) |
+| `avrana.ops.smoke` | default | `--hosted --config` |
+| Access gateway, two origins, device cookie (`edge.spec.ts`) | n/a | yes |
+| Remote journey per game (`journey.spec.ts`) | n/a (Pi has live suites) | checkers, bestguess (3 players), tanks (experimental, WebGL) |
+| Refresh, offline, late spectator, back, succession, five launches (`recovery.spec.ts`) | live suites | yes |
+| Killed game process | manual | owner-assisted |
