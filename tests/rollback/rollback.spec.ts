@@ -146,7 +146,8 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   // shelves; an older one, which has neither, is only asked for its games and a briefing.
   const framed = (await page.locator('#nav a[data-go="library"]').count()) > 0;
   if (framed) {
-    await expect(page.locator('#party-lede')).toBeVisible();
+    // who is here: said in a sentence before Concept K, in a presence row since (AVR-708)
+    await expect(page.locator('#party-lede, #home-presence').first()).toBeVisible();
     await page.locator('#nav a[data-go="party"]').click();
     await expect(page.locator('#party-members')).toContainText('Rae (you)');
     await page.locator('#nav a[data-go="library"]').click();

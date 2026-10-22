@@ -361,12 +361,14 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
   const [ana, ben, cy, dee] = phones, guests = [ben, cy, dee];
   const shot = (p: Phone, name: string) => p.page.screenshot({ path: info.outputPath(`journey-${name}-390x844.png`) });
 
-  // Home: who is here and who hosts; covers lead to a game's page and start nothing
+  // Home: who is here and who hosts; covers open their facts and start nothing. Only the Host has
+  // the stage's Select for Party (Concept K, AVR-708: the same start as a game's page).
   for (const p of phones) {
     await place(p.page, 'home');
-    await expect(p.page.locator('#party-lede')).toHaveText('Four of you are here.');
+    await expect(p.page.locator('#home-here')).toHaveText('4 here');
     await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
     await expect(p.page.locator('#view-home').getByRole('button', { name: /start/i })).toHaveCount(0);
+    await expect(p.page.locator('#home-actions').getByRole('button', { name: 'Select for Party' })).toHaveCount(p === ana ? 1 : 0);
     expect(await sideways(p.page)).toBeLessThanOrEqual(0);
   }
   await expect(ana.page.locator('#party-host')).toContainText('You’re the host');
@@ -450,7 +452,7 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
     await expect(p.page).toHaveURL(AT_HOME);
     await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
     await expect(p.page.locator('#nav')).toBeVisible();
-    await expect(p.page.locator('#party-lede')).toHaveText('Four of you are here.');
+    await expect(p.page.locator('#home-here')).toHaveText('4 here');
     expect(await sideways(p.page)).toBeLessThanOrEqual(0);
   }
   expect((await partyState(ana.page)).location.at).toBe('home');

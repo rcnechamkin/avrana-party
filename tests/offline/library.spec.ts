@@ -471,13 +471,16 @@ test('back from a game’s page returns to the same cover at the same scroll, ho
   await expect(page.locator('#top-title')).toHaveText('Me');
 });
 
-test('Home’s shelves: a lead title, the games, and what this phone played, all from the same list', async ({ page }) => {
+test('Home’s stage and rail: a Featured title, the games, and what this phone played, all from the same list', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('wc-name', 'Robin'));         // a phone that has a name can play
   await open(page, 'home');
   const lead = page.locator('#home-lead [data-game]');
   await expect(page.locator('#home-games')).toBeVisible();
   await expect(lead).toHaveAttribute('data-game', 'bluff');                         // the first one that can be played
-  await expect(lead).toHaveAccessibleName('BLUFF 2–6 players');
+  await expect(lead).toHaveAccessibleName('BLUFF');                                 // the stage is named by its title (Concept K, AVR-708)
+  await expect(lead.locator('.avrana-eyebrow')).toHaveText('Featured');             // a recommendation, never "Selected"
+  await expect(lead.locator('.avrana-meta').first()).toHaveText('2–6 players · Phone only');   // no party: no fit to say
+  await expect(page.locator('#home-actions button')).toHaveText(['Preview']);       // no Party: nobody to select for
   await expect(page.locator('#home-great-h')).toHaveText('Games');                  // no party: nothing to be "great for"
   expect(await page.locator('#home-great [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game)))
     .toEqual(['checkers', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);           // the lead is not repeated
@@ -485,8 +488,14 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await expect(page.locator('#home-recent-sec')).toBeHidden();                      // nothing played here yet
   expect(await smallTargets(page, `#view-home :is(${CONTROLS})`)).toEqual([]);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
-  // a cover on Home opens the same game the Library does, and focus comes back to it
-  await lead.click();
+  // the stage opens its facts in place (it never starts anything); they lead to the same page the
+  // Library opens, and focus comes back to where it left
+  await page.locator('#stage-preview').click();
+  await expect(page.locator('#home-preview')).toBeVisible();
+  await expect(page.locator('#preview-title')).toBeFocused();
+  await expect(page.locator('#stage-preview')).toHaveAttribute('aria-expanded', 'true');
+  const more = page.locator('#home-preview').getByRole('link', { name: 'More about BLUFF' });
+  await more.click();
   await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
   await expect(page.locator('#top-back')).toHaveAccessibleName('Home');             // back to where it was opened from
   await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
@@ -497,8 +506,11 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
   await page.locator('#top-back').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
-  await expect(lead).toBeFocused();
-  await page.locator('#home-games').getByRole('link', { name: 'Library' }).click();
+  await expect(more).toBeFocused();
+  await page.keyboard.press('Escape');                                              // the facts go away; focus goes back to Preview
+  await expect(page.locator('#home-preview')).toBeHidden();
+  await expect(page.locator('#stage-preview')).toBeFocused();
+  await page.locator('#home-games').getByRole('link', { name: 'All games' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
   // playing one is remembered on this phone, and Home then leads with it
   await (await openGame(page, 'arcade-gauntlet2')).getByRole('link', { name: 'Play' }).click();
@@ -518,7 +530,7 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
     .toEqual(['arcade-gauntlet2']);                                                 // what was played before that
   // a keyboard's focus ring on a rail's first cover is whole: the rail leaves it room
   const room = await page.locator('#home-great').evaluate((rail) => {
-    const a = rail.getBoundingClientRect(), b = rail.querySelector('a')!.getBoundingClientRect();
+    const a = rail.getBoundingClientRect(), b = rail.querySelector('[data-game]')!.getBoundingClientRect();
     return [b.left - a.left, b.top - a.top];
   });
   for (const px of room) expect(px).toBeGreaterThanOrEqual(4);

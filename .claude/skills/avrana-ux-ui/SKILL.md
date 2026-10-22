@@ -50,6 +50,9 @@ ADR or contract conflict, stop and ask the owner.
 - Glass on exactly three shell controls: the bar, the top-right utility (Search, Filter & view,
   the Limited mark; never chat or people), the top-left Spire-A Home button. Nothing else.
 - Presence is a compact row (faces + "4 here"); the roster and chat live on the Party tab.
+- Home is a cinematic stage: the title that matters now, "Featured" when it is a recommendation
+  (never styled like "Selected for Party"), one cream primary action (the Host's Select for Party),
+  Preview. A cover opens its facts in place; tapping art never selects (Concept K, AVR-708).
 - Healthy technical infrastructure stays mostly invisible; degraded notices state player impact.
 - The Host is a representative holding the remote: no crown, king or admin framing.
 - The Library is artwork-first and console-style, with several views (grids and list).

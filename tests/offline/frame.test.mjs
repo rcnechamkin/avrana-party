@@ -118,5 +118,6 @@ test('the presence row says how many are here and who is away, in words, and its
   assert.equal(presenceLine([m('Ana'), m('Riley', true), m('Ben'), m('Cy')]), '4 here · Riley away');
   assert.equal(presenceLine([m('A'), m('B', true), m('C', true), ...Array.from({ length: 9 }, (_, i) => m(`P${i}`))]), '12 here · 2 away');
   assert.equal(presenceLabel([m('Ana'), m('Riley', true)]), '2 here · Riley away. Open people');
+  assert.equal(presenceLabel([m('Ana'), m('Ben')], { host: true }), '2 here · You host. Open people');   // Home's HOST tag, said
   assert.equal(presenceLine(null), '0 here');
 });
