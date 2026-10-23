@@ -34,7 +34,7 @@ Wi-Fi, the captive portal, local DNS, offline play or phone hardware: those rema
 On the Media host, as the operator:
 
 ```sh
-bash ~/avrana-party/deploy/hosted/vm/host-preflight.sh --disk-gb 12 --ram-mb 2048 --vcpus 2
+bash ~/avrana-party/deploy/hosted/vm/host-preflight.sh --images /mnt/avrana_media/vm/avrana-party-staging --disk-gb 32 --ram-mb 2048 --vcpus 2
 ```
 
 The preflight checks:
@@ -46,12 +46,9 @@ The preflight checks:
 - **Virtualization:** `/dev/kvm`, `virt-install`, and the `default` network active.
 - **Names:** no existing domain or filter with these names.
 
-On 2026-10-22 the root volume had 28 GB free, below 39. The disk therefore needs either:
-
-- `--disk-gb 8`, and snapshots taken only after pruning; or
-- the owner choosing another storage pool.
-
-This is the first decision at step 2. Do not lower the 15 GB Media reserve.
+On 2026-10-22 the root volume had 28 GB free, below 39. The owner chose the media drive
+(2026-10-23): the VM's disk lives in `/mnt/avrana_media/vm/avrana-party-staging`, passed as
+`--images` to both scripts (4.3 TB free). Do not lower the 15 GB Media reserve.
 
 Resource ceilings once created:
 
@@ -72,13 +69,16 @@ The memory ceiling is measured in step 6. If Tanks (Node) needs more, raise it t
    `sha512sum -c --ignore-missing SHA512SUMS`.
 2. Copy `deploy/hosted/vm/cloud-init.user-data.example` to `user-data.yaml`. Put your SSH
    **public** key in it.
-3. If `virt-install` is missing, install it: `sudo apt install virtinst cloud-image-utils`.
-   This is a host package install, so it needs approval like the rest of this step.
-4. Dry run, then create:
+3. If `virt-install` is missing, install it: `sudo apt install virtinst`. This is a host package
+   install, so it needs approval like the rest of this step. `cloud-image-utils` is optional:
+   without `cloud-localds`, the script uses virt-install's own `--cloud-init`.
+4. Dry run, then create. `cody` is in the `libvirt` group, so no sudo is needed when the disk
+   directory belongs to `cody`:
 
 ```sh
-sudo bash deploy/hosted/vm/create-vm.sh --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml --dry-run
-sudo bash deploy/hosted/vm/create-vm.sh --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml
+D=/mnt/avrana_media/vm/avrana-party-staging; mkdir -p "$D"
+bash deploy/hosted/vm/create-vm.sh --images "$D" --disk-gb 32 --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml --dry-run
+bash deploy/hosted/vm/create-vm.sh --images "$D" --disk-gb 32 --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml
 virsh -c qemu:///system domifaddr avrana-party-staging        # the VM's 192.168.122.x address
 ```
 
@@ -90,7 +90,7 @@ What this changes on the host:
 
 It adds no port forward, bridge, host firewall rule, or nginx, Docker or tunnel change.
 
-To undo: `sudo bash deploy/hosted/vm/create-vm.sh --destroy`.
+To undo: `bash deploy/hosted/vm/create-vm.sh --images "$D" --destroy`.
 
 ## 3. Provision inside the VM (owner)
 
