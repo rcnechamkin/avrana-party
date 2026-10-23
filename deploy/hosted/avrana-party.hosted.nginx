@@ -11,9 +11,12 @@ map $cookie_avrana_gate $avrana_gate_cookie {
     default 0;
     include /etc/avrana-party/gate*.map;
 }
-map "$server_port:$avrana_gate_cookie:$uri" $avrana_gate_closed {
+# Open without the cookie: the form, and on the game origin each game's API and rules card. Game clients
+# fetch those with credentials 'omit', so no cookie can ride along; a game's API answers only a Party seat.
+map "$server_port:$avrana_gate_cookie:$host$uri" $avrana_gate_closed {
     default 0;
-    "~^8081:0:/__gate/" 0;
+    "~^8081:0:[^/]*/__gate/" 0;
+    "~^8081:0:games\.avrana\.party/games/[a-z0-9][a-z0-9_-]*/(api/|onboarding\.json$)" 0;
     "~^8081:0:" 1;
 }
 limit_req_zone $server_port zone=avrana_gate:1m rate=30r/m;
