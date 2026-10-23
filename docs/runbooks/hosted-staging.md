@@ -92,6 +92,13 @@ It adds no port forward, bridge, host firewall rule, or nginx, Docker or tunnel 
 
 To undo: `bash deploy/hosted/vm/create-vm.sh --images "$D" --destroy`.
 
+**VT-x.** On 2026-10-23 the M700's firmware had VT-x off ("VMX disabled by BIOS", no `/dev/kvm`),
+so the VM was created with `--no-kvm` (software emulation: slower, same devices and filter). To
+switch, enable Intel Virtualization Technology in the firmware (F1 at boot, Advanced → CPU Setup),
+then on the host: `virsh -c qemu:///system shutdown avrana-party-staging`, change
+`<domain type='qemu'>` to `type='kvm'` with `virsh -c qemu:///system edit avrana-party-staging`,
+and start it again.
+
 ## 3. Provision inside the VM (owner)
 
 1. SSH in: `ssh -J avrana cody@192.168.122.x`.
