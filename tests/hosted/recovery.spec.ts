@@ -80,36 +80,38 @@ test('browser back from a game page does not strand the phone: the Party brings 
 // plus host grace (30 s), to the player whose page is live, never to a seat whose phone is gone. The
 // old Host keeps the seat and gets nothing back on return. The new Host ends the round and everyone
 // is home. No in-game role or turn moves with the role: the game owns those.
-test('the Host goes away mid-game: Party authority passes to a live player, the seats stay, and the new Host ends the round', async ({ browser }) => {
+test('the Host goes away mid-game: Party authority passes to a live member, every seat and role stays, and the new Host ends the round', async ({ browser }) => {
   const { phones, host, others } = await table(browser, ['Abe', 'Bo', 'Cy']);
   const [stale, live] = others[0].name.startsWith('Bo') ? others : [others[1], others[0]];
   try {
     await launch(host, others, GAME);
+    // A two-seat game (Checkers) seats the Host and Bo and makes Cy a watcher; a bigger one seats all three.
+    // Either way the heir is the live member, and succession moves Party authority only: no seat, no role.
     const before = await state(live);
+    const hostRole = (await state(host)).session?.my_role;
     const seats = Object.fromEntries(before.members.map((m: any) => [m.name, m.presence]));
     const gone = Date.now();
     await host.context.setOffline(true);      // the Host's phone is gone, no goodbye
-    await stale.context.close();              // and so is Bo's, who joined before Cy and holds a seat
+    await stale.context.close();              // and so is Bo's, who joined before Cy
 
     const heir = await hostOf([live], 120_000);
     const after = (Date.now() - gone) / 1000;
     test.info().annotations.push({ type: 'succession', description: `${after.toFixed(0)} s after the Host's phone went` });
-    expect(heir, 'the live player, not the stale seat').toBe(live);
+    expect(heir, 'the live member, not the stale one who joined first').toBe(live);
     expect(after, 'not before the grace ran out').toBeGreaterThanOrEqual(55);
     const now = await state(live);
     expect(now.session?.state, 'the round goes on').toBe('active');
-    expect(now.session?.my_role).toBe('player');
+    expect(now.session?.my_role, 'the new Host keeps the role they had').toBe(before.session?.my_role);
     const presence = Object.fromEntries(now.members.map((m: any) => [m.name, m.presence]));
     expect(presence[host.name], 'the old Host keeps their seat').toBe('playing');
-    expect(presence[stale.name], 'so does Bo').toBe('playing');
-    expect(Object.keys(presence).sort()).toEqual(Object.keys(seats).sort());
+    expect(presence, 'nobody moved: the same people, each where they were').toEqual(seats);
 
     // The old Host's phone comes back: on the game page, seated, and not the Host.
     await host.context.setOffline(false);
     await host.page.reload();
     await expect(host.page).toHaveURL(new RegExp(`/games/${GAME}/`), { timeout: 60_000 });
     const back = await state(host);
-    expect([back.me.host, back.session?.my_role]).toEqual([false, 'player']);
+    expect([back.me.host, back.session?.my_role]).toEqual([false, hostRole]);
 
     // The new Host ends the round (what the game page's End control asks Party Core for).
     const res = await post(live, 'session/end', { if_version: now.version });
