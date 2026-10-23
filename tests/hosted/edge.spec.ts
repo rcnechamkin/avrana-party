@@ -41,7 +41,8 @@ test('a stranger gets the password page, never the Party or a game, on both host
   const stranger = await playwrightRequest.newContext();
   try {
     for (const url of [`${BASE}/party/`, `${BASE}/party/api/state`, `${BASE}/party/api/status`, `${BASE}/party/bridge.html`,
-      `${GAMES}/games/bestguess/`, `${GAMES}/games/checkers/api/poll`, `${BASE}/internal/ended`, `${BASE}/__gatex`]) {
+      `${GAMES}/games/bestguess/`, `${GAMES}/games/checkers/app.mjs`, `${BASE}/games/checkers/api/party`, `${BASE}/internal/ended`,
+      `${BASE}/__gatex`]) {
       const res = await stranger.get(url, { maxRedirects: 0 });
       expect(res.status(), url).toBe(302);
       expect(res.headers()['location'], url).toBe(`${BASE}/__gate/`);
@@ -49,6 +50,11 @@ test('a stranger gets the password page, never the Party or a game, on both host
       expect(body, url).not.toContain('avrana.origin/v0');
       expect(body, url).not.toContain('"party"');
     }
+    // A game's API and rules card stay open on the game origin (its clients fetch them with no credentials), and
+    // they hold nothing a seat has not earned: the Party origin to talk to, the rules, and a refusal.
+    expect(await (await stranger.get(`${GAMES}/games/checkers/api/party`)).json()).toEqual({ partyOrigin: BASE });
+    expect((await stranger.get(`${GAMES}/games/checkers/onboarding.json`)).status()).toBe(200);
+    expect((await stranger.post(`${GAMES}/games/checkers/api/poll`, { data: {} })).status()).toBeGreaterThanOrEqual(400);
     // A made-up gate cookie is no key, and a wrong password gets the form again with no cookie.
     const forged = await stranger.get(`${BASE}/party/api/state`, { maxRedirects: 0, headers: { Cookie: `${GATE_COOKIE}=${'0'.repeat(32)}` } });
     expect(forged.status()).toBe(302);
@@ -100,10 +106,15 @@ test('Party Core keeps its own authority: a foreign Origin is refused, and proxy
     const before = (await (await req.get(`${BASE}/party/api/state`)).json()).me;
     const spoofed = await req.get(`${BASE}/party/api/state`, { headers: {
       'X-Forwarded-For': '10.42.0.23', 'X-Real-IP': '10.42.0.23', Forwarded: 'for=10.42.0.23',
-      'Cf-Connecting-Ip': '10.42.0.23', 'Cf-Access-Authenticated-User-Email': 'dan@example.com',
+      'Cf-Access-Authenticated-User-Email': 'dan@example.com',
       'X-Forwarded-Host': 'party.avrana.net', 'X-Avrana-Member': (await (await dan.context.request.get(`${BASE}/party/api/state`)).json()).me.id } });
     expect(spoofed.ok()).toBeTruthy();
     expect((await spoofed.json()).me).toEqual(before);
+    // Cloudflare's edge refuses a client-sent Cf-Connecting-Ip outright (403, its own page); if it ever passes one
+    // through, the Party must still answer as Ada.
+    const cfip = await req.get(`${BASE}/party/api/state`, { headers: { 'Cf-Connecting-Ip': '10.42.0.23' } });
+    if (cfip.ok()) expect((await cfip.json()).me).toEqual(before);
+    else expect(cfip.status()).toBe(403);
     // and the gateway's sign-in alone is no Party identity: a signed-in browser with no device cookie is nobody yet
     const fresh = await browser.newContext({ serviceWorkers: 'block' });
     await signIn(fresh);
