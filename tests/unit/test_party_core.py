@@ -263,9 +263,10 @@ class Host(unittest.TestCase):
         self.assertNotIn(c.id, s.participants)
         pc.touch('device-c')                                  # Cy is back on Party Home, not in the game
         pc.transfer_host('device-a', c.id, pc.party.version)
-        clock.advance(core.LIVE_WINDOW + core.HOST_GRACE + 1)  # then Cy's phone goes quiet
+        # then Cy's phone goes quiet; Ana's and Ben's game pages follow the party (bridge heartbeats)
+        play(pc, clock, core.LIVE_WINDOW + core.HOST_GRACE + 1, 'device-a', 'device-b')
         pc.tick()
-        self.assertEqual(pc.party.host_id, a.id)             # Ana is playing: present, eligible
+        self.assertEqual(pc.party.host_id, a.id)             # Ana is playing and live: eligible
         self.assertEqual(s.state, core.ACTIVE)
 
     def test_transfer_needs_fresh_version_and_a_present_target(self):
@@ -286,6 +287,104 @@ class Host(unittest.TestCase):
         pc.touch('device-b')
         pc.transfer_host('device-a', b.id, pc.party.version)
         self.assertEqual(pc.party.host_id, b.id)
+
+
+class HostSilentInGame(unittest.TestCase):
+    """ADR 0006 as amended (owner, 2026-10-22): Party Host authority follows the Host's own presence,
+    in a game or not; the game seat and every in-game role stay where they are."""
+    GRACE = core.LIVE_WINDOW + core.HOST_GRACE
+
+    def table(self, *names):
+        self.pc, self.clock = make()
+        self.m = {n: self.pc.join(f'device-{n}', n) for n in names}
+        self.s = self.pc.launch(f'device-{names[0]}', 'bluff', self.pc.party.version)
+        self.pc.launch_accepted(self.s.id)
+        self.roles = {mid: p.role for mid, p in self.s.participants.items()}
+        return self.s
+
+    def host(self):
+        h = self.pc.party.host_id
+        return self.pc.party.members[h].name if h else None
+
+    def silent(self, seconds, *live):
+        play(self.pc, self.clock, seconds, *(f'device-{n}' for n in live))
+        self.pc.tick()
+
+    def test_a_connected_host_keeps_the_role_however_long_the_round(self):
+        self.table('Ana', 'Ben')
+        self.silent(20 * self.GRACE, 'Ana', 'Ben')
+        self.assertEqual(self.host(), 'Ana')
+
+    def test_a_disconnected_host_is_succeeded_at_grace_not_before(self):
+        self.table('Ana', 'Ben')
+        self.silent(self.GRACE - 1, 'Ben')
+        self.assertEqual(self.host(), 'Ana')
+        self.silent(2, 'Ben')
+        self.assertEqual(self.host(), 'Ben')
+
+    def test_a_host_who_reconnects_before_grace_keeps_the_role_and_the_grace_starts_over(self):
+        self.table('Ana', 'Ben')
+        self.silent(self.GRACE - 5, 'Ben')
+        self.pc.touch('device-Ana')                          # back in time
+        self.silent(self.GRACE - 5, 'Ben')                   # quiet again, but not for a full grace
+        self.assertEqual(self.host(), 'Ana')
+
+    def test_a_host_who_returns_after_succession_plays_on_without_the_role(self):
+        s = self.table('Ana', 'Ben')
+        self.silent(self.GRACE + 1, 'Ben')
+        self.pc.touch('device-Ana')
+        self.silent(10 * self.GRACE, 'Ana', 'Ben')
+        self.assertEqual(self.host(), 'Ben')
+        self.assertEqual(self.pc.presence(self.m['Ana']), 'playing')
+        self.assertEqual(self.pc.view('device-Ana')['session']['my_role'], 'player')
+        with self.assertRaises(Refused):
+            self.pc.begin_end('device-Ana', self.pc.party.version)
+        self.assertEqual(s.state, core.ACTIVE)
+
+    def test_a_seated_player_whose_phone_is_gone_is_never_chosen(self):
+        """Cleo joined before Ben and holds a seat, but her phone went with Ana's: the role goes to
+        Ben, whose page is here, not to a seat."""
+        self.table('Ana', 'Cleo', 'Ben')
+        self.silent(self.GRACE + 1, 'Ben')
+        self.assertEqual(self.host(), 'Ben')
+
+    def test_with_nobody_here_the_role_is_vacant_until_someone_is_and_the_round_waits(self):
+        s = self.table('Ana', 'Ben')
+        self.silent(self.GRACE + 1)                          # every phone is gone
+        self.assertIsNone(self.pc.party.host_id)
+        self.assertEqual(s.state, core.ACTIVE)               # nothing ended for it (TABLE_ABANDON may, later)
+        self.pc.touch('device-Ben')
+        self.assertEqual(self.host(), 'Ben')
+
+    def test_the_new_host_ends_a_stalled_game_and_everyone_goes_home(self):
+        s = self.table('Ana', 'Ben')
+        self.silent(self.GRACE + 1, 'Ben')
+        self.pc.begin_end('device-Ben', self.pc.party.version)
+        self.assertEqual(self.pc.location()['at'], 'home')   # at once, while the game stops
+        self.pc.end_confirmed(s.id, True)
+        v = self.pc.view('device-Ben')
+        self.assertEqual((s.state, s.outcome, v['location']['at']), (core.ENDED, 'ended_by_host', 'home'))
+        self.assertIn(self.m['Ana'].id, self.pc.party.members)   # Ana is still a member
+
+    def test_a_stalled_game_that_never_confirms_the_end_still_lets_the_party_go(self):
+        s = self.table('Ana', 'Ben')
+        self.silent(self.GRACE + 1, 'Ben')
+        self.pc.begin_end('device-Ben', self.pc.party.version)
+        self.silent(core.END_TIMEOUT + 1, 'Ben')             # the game's server never answers
+        self.assertEqual((s.state, self.pc.location()['at']), (core.ENDED, 'home'))
+        again = self.pc.launch('device-Ben', 'bluff', self.pc.party.version)
+        self.assertIsNot(again, s)                           # and the new Host can start the next one
+
+    def test_succession_touches_no_in_game_role(self):
+        """Party authority only: no seat, role or turn moves with it (the game owns those)."""
+        s = self.table('Ana', 'Ben', 'Cleo')
+        roster = s.roster(self.pc.party.members)
+        self.silent(self.GRACE + 1, 'Ben', 'Cleo')
+        self.assertEqual(self.host(), 'Ben')
+        self.assertEqual({mid: p.role for mid, p in s.participants.items()}, self.roles)
+        self.assertEqual(s.roster(self.pc.party.members), roster)
+        self.assertEqual(s.state, core.ACTIVE)
+
 
 
 class Session(unittest.TestCase):

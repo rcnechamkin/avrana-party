@@ -127,9 +127,10 @@ or Public/Demo admission is claimed implemented here.
 ### Host role
 
 Grace and succession are implemented; voluntary transfer below remains the broader design.
-Current Core selects the earliest-joined eligible member who is here or playing. A Host who is
-playing is succeeded the same way once their own page has been silent past LIVE_WINDOW +
-HOST_GRACE (ADR 0006 amendment, 2026-10-22); their seat and the round are untouched. A Host's
+Current Core selects the earliest-joined member whose page reached the party within LIVE_WINDOW
+(a player's game page counts; a seat alone does not). A Host who is playing is succeeded the
+same way once their own page has been silent past LIVE_WINDOW + HOST_GRACE (ADR 0006
+amendment, 2026-10-22); their seat, in-game role and the round are untouched. A Host's
 Leave (AVR-580) uses the same rule at once, with confirmation; with no eligible successor the role
 is vacant and nothing is ended (owner decision 2026-10-18, `PartyCore._no_successor`).
 
@@ -200,7 +201,7 @@ request-based liveness and game-owned grace, rather than a socket-count-based pr
 |---|---|---|
 | HOST_GRACE | 30 s | implemented in Party Core after the 45 s liveness window |
 | PRESENCE_GRACE, SEAT_GRACE | 60 s (a game may set longer) | PS1 holds a slot 30 s; BLUFF waits 30 s (prompts) / 60 s (own turn) before autopilot |
-| Succession | earliest-joined eligible member here or playing (deterministic) | implemented in Party Core |
+| Succession | earliest-joined member whose page is live, in a game or not; a seat alone is not eligible (deterministic; ADR 0006 amendment) | implemented in Party Core |
 | LAUNCH_TIMEOUT | 60 s | — |
 | TABLE_ABANDON | 5 min | implemented in Party Core (AVR-475): counted from LIVE_WINDOW after the last player's last request; BLUFF precedent |
 | Away-seat auto-release | only for games that declare open seats, after 5 min; otherwise the host removes | — |

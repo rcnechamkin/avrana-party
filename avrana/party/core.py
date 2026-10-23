@@ -312,12 +312,14 @@ class PartyCore:
         return self.presence(member, now) in ('here', 'playing')
 
     def _successor(self, now, exclude):
-        """The earliest-joined member who is present. Playing counts as present: a player in the
-        active game can take over (AVR-127), so a host leaving mid-game never leaves it vacant.
-        A Full Mode member is preferred over a Limited Mode one (ADR 0012 D4): the role is safer
-        on a connection other guests cannot read. With nobody in Full Mode, Limited serves."""
+        """The earliest-joined member whose page reaches the party now. A player in the active
+        game can take over (AVR-127): their game page follows the party, so they are live. A seat
+        alone is not enough (ADR 0006 amendment): a seated player whose phone has gone would hold
+        the role as uselessly as the Host it replaces. A Full Mode member is preferred over a
+        Limited Mode one (ADR 0012 D4): the role is safer on a connection other guests cannot
+        read. With nobody in Full Mode, Limited serves."""
         here = [m for m in self.party.members.values()
-                if not m.left and m.id != exclude and self._here(m, now)]
+                if not m.left and m.id != exclude and now - self._seen(m) < LIVE_WINDOW]
         return next((m for m in here if m.mode == FULL), here[0] if here else None)
 
     def _set_host(self, member_id):
