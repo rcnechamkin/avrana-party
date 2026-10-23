@@ -384,4 +384,4 @@ profiles), `nginx -t` on the rendered hosted site, bash/shellcheck/xmllint/`nft 
 the Party and provider browser suites (native Checkers is Linux-only), and the hosted harness rehearsed
 against the provider harness with real BLUFF and with native Checkers. Each check prints PASS, FAIL or
 NOT RUN with its counts; NOT RUN is never a pass, and LATER marks what only the deployed site can show.
-Run it as a non-root user (the real deployment cases skip under root). Logs: test-results/linux-verify/.
+Run it as a non-root user (the real deployment cases skip under root). Logs: `.linux-verify/` (or `AVRANA_VERIFY_LOGS`), not under `test-results/`, which every Playwright run empties.

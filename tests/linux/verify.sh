@@ -17,7 +17,8 @@ while [[ $# -gt 0 ]]; do case $1 in
   --games) GAMES=$2; shift 2 ;; --allow-not-run) ALLOW=1; shift ;; --skip-browsers) BROWSERS=0; shift ;;
   *) echo "unknown option $1" >&2; exit 2 ;; esac; done
 GAMES=$(cd "$GAMES" 2>/dev/null && pwd) || { echo "no Games checkout at $GAMES" >&2; exit 2; }
-LOG=test-results/linux-verify; mkdir -p "$LOG"
+# Not under test-results/: every Playwright run empties that folder, and these logs with it.
+LOG=${AVRANA_VERIFY_LOGS:-.linux-verify}; mkdir -p "$LOG"
 fail=0 notrun=0
 row() { printf '%-8s %-44s %s\n' "$1" "$2" "$3"; [[ $1 == FAIL ]] && fail=1; [[ $1 == 'NOT RUN' ]] && notrun=1; true; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -66,8 +67,20 @@ row LATER 'nwfilter applied by libvirt' 'needs the Media host (owner-approved st
 # 3. Games
 ( cd "$GAMES" && python3 -m venv .venv >/dev/null && .venv/bin/pip -q install -r requirements-dev.txt ) >"$LOG/games-venv.txt" 2>&1 \
   || row FAIL 'Games venv' "see $LOG/games-venv.txt"
-( cd "$GAMES" && .venv/bin/python -m pytest -q ) >"$LOG/games-pytest.txt" 2>&1 \
-  && row PASS 'Games pytest' "$(tail -1 "$LOG/games-pytest.txt")" || row FAIL 'Games pytest' "$(tail -1 "$LOG/games-pytest.txt")"
+# The same two invocations as Games CI (.github/workflows/test.yml): its suite, then the cross-repository
+# job, here against this Party checkout (AVRANA_REQUIRE_PARTY: a missing Party fails instead of skipping)
+( cd "$GAMES" && .venv/bin/python -m pytest -q --deselect tests/test_party_session_cross_repo.py \
+    --ignore tests/test_hello_party_cross_repo.py --ignore tests/test_hello_party_package.py \
+    --deselect tests/test_avrana_contract.py::test_cross_repository_contract_check ) >"$LOG/games-pytest.txt" 2>&1 \
+  && row PASS 'Games pytest (as Games CI)' "$(tail -1 "$LOG/games-pytest.txt")" \
+  || row FAIL 'Games pytest (as Games CI)' "$(tail -1 "$LOG/games-pytest.txt") (see $LOG/games-pytest.txt)"
+"$GAMES/.venv/bin/python" tools/contract_check.py --party . --games "$GAMES" >"$LOG/contract.txt" 2>&1 \
+  && row PASS 'Party <-> Games contract declarations' '' || row FAIL 'Party <-> Games contract declarations' "see $LOG/contract.txt"
+( party=$PWD; cd "$GAMES" && AVRANA_PARTY_REPO="$party" AVRANA_REQUIRE_PARTY=1 .venv/bin/python -m pytest -q -rs \
+    tests/test_party_session_cross_repo.py tests/test_hello_party_cross_repo.py tests/test_hello_party_package.py \
+    tests/test_avrana_contract.py ) >"$LOG/games-cross.txt" 2>&1 \
+  && row PASS 'Games cross-repo (real Party service)' "$(tail -1 "$LOG/games-cross.txt")" \
+  || row FAIL 'Games cross-repo (real Party service)' "$(tail -1 "$LOG/games-cross.txt") (see $LOG/games-cross.txt)"
 ( cd "$GAMES" && node --test tests/party_drivers_test.mjs ) >"$LOG/drivers.txt" 2>&1 \
   && row PASS 'Games party drivers' "$(grep -E '^# (pass|fail)' "$LOG/drivers.txt" | tr '\n' ' ')" \
   || row FAIL 'Games party drivers' "see $LOG/drivers.txt"
@@ -75,7 +88,12 @@ row LATER 'nwfilter applied by libvirt' 'needs the Media host (owner-approved st
 # 4. Browsers: Party suites, the cross-repository provider suites (native Checkers is Linux-only), and
 #    the hosted harness rehearsed against the provider harness (real BLUFF; native Checkers)
 if [[ $BROWSERS -eq 1 ]]; then
-  { npm ci --no-audit --no-fund && npx playwright install --with-deps chromium; } >"$LOG/npm.txt" 2>&1 || row FAIL 'npm ci + Chromium' "see $LOG/npm.txt"
+  # Chromium's system libraries are a prerequisite (npx playwright install-deps chromium, as root, once);
+  # a machine that brings its own browsers says so with PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+  npm ci --no-audit --no-fund >"$LOG/npm.txt" 2>&1 || row FAIL 'npm ci' "see $LOG/npm.txt"
+  if [[ -z ${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-} ]]; then
+    npx playwright install chromium >>"$LOG/npm.txt" 2>&1 || row FAIL 'Playwright Chromium' "see $LOG/npm.txt"
+  fi
   node --test tests/offline/*.test.mjs >"$LOG/modules.txt" 2>&1 \
     && row PASS 'offline modules' "$(grep -E '^# (pass|fail)' "$LOG/modules.txt" | tr '\n' ' ')" || row FAIL 'offline modules' "see $LOG/modules.txt"
   pw() { # name, log, env..., -- args...
