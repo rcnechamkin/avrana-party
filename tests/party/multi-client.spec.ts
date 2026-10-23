@@ -821,11 +821,17 @@ test.describe('three phones at one party', () => {
     await startForEveryone(host.page, 'expo');
     for (const p of [host, bob, cleo]) await expect(p.page).toHaveURL(/\/games\/expo\//);
     await goQuiet(host);
-    await later(request, 300);
+    // In steps, as a real party's clock moves: the other phones ask in between, so they are live when
+    // grace runs out. One jump past everyone's live window would leave nobody live, the role vacant,
+    // and the first phone to ask the Host (a race between Bob and Cleo).
+    await later(request, 50);
+    for (const p of [bob, cleo]) await view(p);
+    await later(request, 30);                                               // Ada quiet 80 s: past LIVE_WINDOW + HOST_GRACE
     const now = await view(bob);
     const ada = now.members.find((m: { name: string }) => m.name === 'Ada');
     const ben = now.members.find((m: { name: string }) => m.name === 'Bob');
-    expect([ada.host, ada.presence, ben.host, now.location.at]).toEqual([false, 'playing', true, 'game']);
+    const cleoNow = now.members.find((m: { name: string }) => m.name === 'Cleo');
+    expect([ada.host, ada.presence, ben.host, cleoNow.host, now.location.at]).toEqual([false, 'playing', true, false, 'game']);
     await expect(bob.page).toHaveURL(/\/games\/expo\//);
   });
 
