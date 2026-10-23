@@ -72,6 +72,7 @@ ps1/runtime/
 # Playwright
 node_modules/
 /test-results/
+/.linux-verify/
 /playwright-report/
 /blob-report/
 /playwright/.cache/

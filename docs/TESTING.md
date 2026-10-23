@@ -338,3 +338,50 @@ No Pi, WLAN, TV, ROM or emulator is used.
 
 CI independently checks each repo; private cross-repo checkout credentials are not
 introduced. Linux CI supplies nginx/rsync/bash gates unavailable on this Windows host.
+
+## Hosted staging acceptance (avrana.party, H3)
+
+`playwright.hosted.config.ts` runs `tests/hosted/` against a deployed hosted Party over the network,
+the way a remote tester's phone reaches it. It never starts a server and never touches the Pi. Design:
+docs/design/HOSTED-STAGING.md; deployment: docs/runbooks/hosted-staging.md.
+
+```
+HOSTED_BASE_URL=https://avrana.party HOSTED_EXPECT_ACCESS=1 \
+HOSTED_ACCESS_CLIENT_ID=... HOSTED_ACCESS_CLIENT_SECRET=... \
+HOSTED_GAMES=checkers,bestguess,tanks HOSTED_GAMES_REPO=../avrana-party-games \
+npm run test:hosted
+```
+
+| Variable | Meaning |
+|---|---|
+| `HOSTED_BASE_URL` | Party origin (required). |
+| `HOSTED_GAME_ORIGIN` | Game origin; default `https://games.<party host>`. |
+| `HOSTED_ACCESS_CLIENT_ID` / `_SECRET` | Cloudflare Access service token (from the owner, never committed). |
+| `HOSTED_EXPECT_ACCESS=1` | Assert strangers get the gateway, and the session-expiry case. |
+| `HOSTED_GAMES` | Games to journey through, in order; the first one is used by the recovery cases. |
+| `HOSTED_GAMES_REPO` | Games checkout holding each game's `party-driver.mjs`. |
+| `HOSTED_OWNER_ASSIST=1` | The owner is at the VM for the killed-game-process case. |
+| `HOSTED_RESOLVE_LOOPBACK=1` | A local rehearsal (`*.avrana.test` to 127.0.0.1). Use the provider harness with real BLUFF on a game origin (`tests/provider/server.py --party-session --game-origin`). The dev server's stub game pages cannot follow the Party from a game origin, so lifecycle cases fail there for the stub's reasons. |
+
+Results: `test-results/hosted/results.json` and `test-results/hosted-run.json`, which records the deployed Party and Games SHAs and the web build.
+A case that cannot run (no token, no owner assist) is reported as skipped, never as passed.
+
+| Suite | Pi (appliance) | Hosted staging |
+|---|---|---|
+| unit, modules, offline and Party browser suites | yes (CI and local) | unchanged, same code |
+| `ops/deploy.sh` profile tests (`HostedProfile`) | pi profile unchanged | hosted profile (Linux) |
+| `avrana.ops.smoke` | default | `--hosted --config` |
+| Access gateway, two origins, device cookie (`edge.spec.ts`) | n/a | yes |
+| Remote journey per game (`journey.spec.ts`) | n/a (Pi has live suites) | checkers, bestguess (3 players), tanks (experimental, WebGL) |
+| Refresh, offline, late spectator, back, succession, five launches (`recovery.spec.ts`) | live suites | yes |
+| Killed game process | manual | owner-assisted |
+
+### Linux-only checks in one run
+
+`bash tests/linux/verify.sh --games ../avrana-party-games` runs, on any disposable Linux machine (never
+the Pi or the Media host), what a Windows checkout cannot: the deploy-script tests (Pi and hosted
+profiles), `nginx -t` on the rendered hosted site, bash/shellcheck/xmllint/`nft -c`, the Games suites,
+the Party and provider browser suites (native Checkers is Linux-only), and the hosted harness rehearsed
+against the provider harness with real BLUFF and with native Checkers. Each check prints PASS, FAIL or
+NOT RUN with its counts; NOT RUN is never a pass, and LATER marks what only the deployed site can show.
+Run it as a non-root user (the real deployment cases skip under root). Logs: `.linux-verify/` (or `AVRANA_VERIFY_LOGS`), not under `test-results/`, which every Playwright run empties.
