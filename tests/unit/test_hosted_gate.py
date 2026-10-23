@@ -33,7 +33,7 @@ class Password(unittest.TestCase):
         self.assertNotEqual(a['scrypt']['salt'], b['scrypt']['salt'])
         self.assertNotEqual(a['scrypt']['hash'], b['scrypt']['hash'])
         self.assertNotEqual(a['token'], b['token'])
-        self.assertRegex(a['token'], r'^[0-9a-f]{64}$')
+        self.assertRegex(a['token'], r'^[0-9a-f]{32}$')
         self.assertNotIn('same password', json.dumps(a))
 
     def test_a_short_password_is_refused(self):
@@ -56,7 +56,8 @@ class SetAndStatus(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as tmp:
             config, gmap = Path(tmp) / 'gate.json', Path(tmp) / 'gate.map'
-            r = gate.set_password(config, gmap, password='a staging password', run=lambda cmd, **kw: calls.append(cmd))
+            ok = type('Done', (), {'returncode': 0, 'stderr': ''})()
+            r = gate.set_password(config, gmap, password='a staging password', run=lambda cmd, **kw: calls.append(cmd) or ok)
             saved = json.loads(config.read_text(encoding='utf-8'))
             self.assertEqual(saved, r)
             self.assertTrue(gate.check_password('a staging password', saved))
@@ -69,6 +70,20 @@ class SetAndStatus(unittest.TestCase):
             self.assertEqual(gate.status(config, gmap), 1)
             self.assertEqual(gate.status(Path(tmp) / 'absent.json', gmap), 1)
         self.assertEqual(calls, [['nginx', '-t'], ['systemctl', 'reload', 'nginx'], ['systemctl', 'restart', 'avrana-gate']])
+
+    def test_when_nginx_refuses_the_map_the_old_files_come_back(self):
+        refused = type('Done', (), {'returncode': 1, 'stderr': 'emerg: map_hash'})()
+        with tempfile.TemporaryDirectory() as tmp:
+            config, gmap = Path(tmp) / 'gate.json', Path(tmp) / 'gate.map'
+            with self.assertRaises(SystemExit):
+                gate.set_password(config, gmap, password='first password', run=lambda cmd, **kw: refused)
+            self.assertFalse(config.exists() or gmap.exists())
+            ok = type('Done', (), {'returncode': 0, 'stderr': ''})()
+            first = gate.set_password(config, gmap, password='first password', run=lambda cmd, **kw: ok)
+            with self.assertRaises(SystemExit):
+                gate.set_password(config, gmap, password='second password', run=lambda cmd, **kw: refused)
+            self.assertEqual(json.loads(config.read_text(encoding='utf-8')), first)
+            self.assertEqual(gmap.read_text(encoding='utf-8'), gate.map_text(first['token']))
 
     def test_a_refused_password_changes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:

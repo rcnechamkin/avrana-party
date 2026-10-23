@@ -62,7 +62,7 @@ def new_record(password, domain=PARTY_HOST):
     if len(password) < MIN_LENGTH:
         raise ValueError(f'the password needs at least {MIN_LENGTH} characters')
     return {'schema': 'avrana.gate/v0', 'domain': domain, 'scrypt': hash_password(password),
-            'token': secrets.token_hex(32)}
+            'token': secrets.token_hex(16)}      # 128 bits; 32 characters fit nginx's default map_hash_bucket_size
 
 
 def map_text(token):
@@ -215,10 +215,15 @@ def set_password(config=CONFIG, gate_map=MAP, domain=PARTY_HOST, password=None, 
         record = new_record(password, domain)
     except ValueError as e:
         raise SystemExit(f'gate: {e}; nothing changed')
+    before = {p: Path(p).read_text(encoding='utf-8') if Path(p).exists() else None for p in (config, gate_map)}
     write_private(config, json.dumps(record, indent=2) + '\n')
     write_private(gate_map, map_text(record['token']))
     if reload:
-        run(['nginx', '-t'], check=True, capture_output=True)
+        test = run(['nginx', '-t'], capture_output=True, text=True)
+        if test.returncode != 0:            # put the files back, so nginx can still reload what it had
+            for p, text in before.items():
+                write_private(p, text) if text is not None else Path(p).unlink(missing_ok=True)
+            raise SystemExit(f'gate: nginx refused the new map, nothing changed:\n{test.stderr}')
         run(['systemctl', 'reload', 'nginx'], check=True)
         run(['systemctl', 'restart', 'avrana-gate'], check=True)
     print('gate: password set; every phone has to unlock again')

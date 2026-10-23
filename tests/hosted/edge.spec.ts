@@ -50,7 +50,7 @@ test('a stranger gets the password page, never the Party or a game, on both host
       expect(body, url).not.toContain('"party"');
     }
     // A made-up gate cookie is no key, and a wrong password gets the form again with no cookie.
-    const forged = await stranger.get(`${BASE}/party/api/state`, { maxRedirects: 0, headers: { Cookie: `${GATE_COOKIE}=${'0'.repeat(64)}` } });
+    const forged = await stranger.get(`${BASE}/party/api/state`, { maxRedirects: 0, headers: { Cookie: `${GATE_COOKIE}=${'0'.repeat(32)}` } });
     expect(forged.status()).toBe(302);
     const form = await stranger.get(`${BASE}/__gate/`);
     expect(form.status()).toBe(200);
