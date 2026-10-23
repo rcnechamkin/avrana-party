@@ -815,14 +815,17 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#scene')).toBeVisible();                 // the briefing is still the place
   });
 
-  test('during a round the Host’s role does not move, however long their phone is quiet', async ({ request }) => {
+  test('during a round a Host whose phone is quiet past grace passes hosting on, keeps the seat, and the round goes on', async ({ request }) => {
+    // ADR 0006 as amended 2026-10-22: before, the role never moved mid-round, so a game waiting for
+    // the quiet Host held the party with nobody able to end it.
     await startForEveryone(host.page, 'expo');
     for (const p of [host, bob, cleo]) await expect(p.page).toHaveURL(/\/games\/expo\//);
     await goQuiet(host);
     await later(request, 300);
     const now = await view(bob);
     const ada = now.members.find((m: { name: string }) => m.name === 'Ada');
-    expect([ada.host, ada.presence, now.location.at]).toEqual([true, 'playing', 'game']);
+    const ben = now.members.find((m: { name: string }) => m.name === 'Bob');
+    expect([ada.host, ada.presence, ben.host, now.location.at]).toEqual([false, 'playing', true, 'game']);
     await expect(bob.page).toHaveURL(/\/games\/expo\//);
   });
 

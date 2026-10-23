@@ -127,7 +127,9 @@ or Public/Demo admission is claimed implemented here.
 ### Host role
 
 Grace and succession are implemented; voluntary transfer below remains the broader design.
-Current Core selects the earliest-joined eligible member who is here or playing. A Host's
+Current Core selects the earliest-joined eligible member who is here or playing. A Host who is
+playing is succeeded the same way once their own page has been silent past LIVE_WINDOW +
+HOST_GRACE (ADR 0006 amendment, 2026-10-22); their seat and the round are untouched. A Host's
 Leave (AVR-580) uses the same rule at once, with confirmation; with no eligible successor the role
 is vacant and nothing is ended (owner decision 2026-10-18, `PartyCore._no_successor`).
 

@@ -13,7 +13,10 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   The experiment tied presence to Party Home's event stream, so walking into a game looked like
   leaving the party.
 * **Playing is not leaving.** A member who holds a place in the active game session shows as
-  `playing`, and the host role never moves away from a host who is in the game. The game owns
+  `playing`, and a host who is in the game keeps the role while their game page reaches the
+  party; a host whose page has been silent past LIVE_WINDOW + HOST_GRACE is succeeded, in a game
+  or not, keeping their seat (a game that waits for them would otherwise hold the party with
+  nobody able to end it). The game owns
   in-game disconnects (grace, autopilot, pause); the party does not duplicate those timers. One
   bound is the party's (AVR-475, PARTY-LIFECYCLE TABLE_ABANDON): when every player's page has been
   silent past LIVE_WINDOW and then TABLE_ABANDON, the round ends as `abandoned` and the party goes
@@ -339,8 +342,9 @@ class PartyCore:
                 party.released_at.pop(member_id, None)    # so an away host is succeeded below
             self.abandoned.append(s)
         host = party.members.get(party.host_id)
-        if host is not None and not self._playing(host) \
-                and now - self._seen(host) >= LIVE_WINDOW + HOST_GRACE:
+        # A Host in the game keeps the role while their page reaches the party (every game page
+        # follows it); a page silent past grace is a phone that has gone, in a game or not.
+        if host is not None and now - self._seen(host) >= LIVE_WINDOW + HOST_GRACE:
             nxt = self._successor(now, exclude=host.id)
             self._set_host(nxt.id if nxt else None)           # None = vacant until someone is here
             self._commit()

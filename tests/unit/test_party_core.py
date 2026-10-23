@@ -129,7 +129,9 @@ class Presence(unittest.TestCase):
         """The experiment's defect: Party Home's stream closed when a phone opened the game, so
         the party saw it disappear. Here a player in the active session stays 'playing' however
         long the game runs without a Party Home request: the game page's own follow (the bridge)
-        is enough. Only a table whose every page went silent is abandoned (AVR-475, below)."""
+        is enough. Only a table whose every page went silent is abandoned (AVR-475, below). The
+        host role is the exception (ADR 0006 amendment): Ana's own page is silent, so it passes to
+        Ben, and Ana keeps her seat and her membership."""
         pc, clock = make()
         a = pc.join('device-a', 'Ana')
         b = pc.join('device-b', 'Ben')
@@ -139,7 +141,7 @@ class Presence(unittest.TestCase):
         pc.tick()
         self.assertEqual(pc.presence(a), 'playing')
         self.assertEqual(pc.presence(b), 'playing')
-        self.assertEqual(pc.party.host_id, a.id)
+        self.assertEqual(pc.party.host_id, b.id)
         self.assertIn(a.id, pc.party.members)
         self.assertFalse(pc.party.ended)
 
@@ -191,14 +193,38 @@ class Host(unittest.TestCase):
         pc.touch('device-b')
         self.assertEqual(pc.party.host_id, b.id)
 
-    def test_host_in_the_game_keeps_the_role(self):
+    def test_host_in_the_game_keeps_the_role_while_their_page_is_open(self):
         pc, clock = make()
         a = pc.join('device-a', 'Ana')
         pc.join('device-b', 'Ben')
         s = pc.launch('device-a', 'bluff', pc.party.version)
         pc.launch_accepted(s.id)
-        play(pc, clock, 10 * (core.LIVE_WINDOW + core.HOST_GRACE), 'device-b')   # Ana's page is silent
+        play(pc, clock, 10 * (core.LIVE_WINDOW + core.HOST_GRACE), 'device-a', 'device-b')
         self.assertEqual(pc.party.host_id, a.id)
+
+    def test_a_silent_host_in_the_game_hands_over_after_grace_and_the_round_goes_on(self):
+        """The Host's phone dies mid-round while the others play on. A game that waits for its
+        absent player (Checkers' mover, Best Guess's Guesser) never ends by itself, and the open
+        pages keep the table from TABLE_ABANDON, so only a new Host can end it or take everyone
+        home. Hosting passes on the same timers as outside a game; the seat and the round stay."""
+        pc, clock = make()
+        a = pc.join('device-a', 'Ana')
+        b = pc.join('device-b', 'Ben')
+        s = pc.launch('device-a', 'bluff', pc.party.version)
+        pc.launch_accepted(s.id)
+        roster = s.roster(pc.party.members)
+        play(pc, clock, core.LIVE_WINDOW + core.HOST_GRACE - 5, 'device-b')    # Ana's page is silent
+        pc.tick()
+        self.assertEqual(pc.party.host_id, a.id)             # within grace: still Ana
+        play(pc, clock, 10, 'device-b')
+        pc.tick()
+        self.assertEqual(pc.party.host_id, b.id)             # past grace: a player who is here
+        self.assertEqual((s.state, s.roster(pc.party.members)), (core.ACTIVE, roster))
+        self.assertEqual(pc.presence(a), 'playing')          # Ana keeps her seat
+        pc.begin_end('device-b', pc.party.version)          # and Ben can end the round
+        self.assertEqual(s.state, core.ENDING)
+        pc.touch('device-a')                                 # Ana's phone comes back
+        self.assertEqual(pc.party.host_id, b.id)             # a returning Host does not take it back
 
     def test_host_leaving_hands_over_at_once(self):
         pc, _ = make()
