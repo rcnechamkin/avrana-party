@@ -127,16 +127,16 @@ class Names(unittest.TestCase):
         self.assertIn('cloudflared-avrana-party', cfg['units'])
         self.assertTrue(all(s.endswith('deploy/hosted/avrana-party.hosted.nginx') for s in cfg['nginx_site_sources']))
 
-    def test_tunnel_routes_exactly_the_two_hosts_to_the_edge_with_access_required(self):
+    def test_tunnel_routes_exactly_the_two_hosts_to_the_gate_port(self):
         hosts = re.findall(r'^\s*- hostname: (\S+)', TUNNEL, re.M)
         self.assertEqual(hosts, [hosted_site.PARTY_HOST, hosted_site.GAME_HOST])
-        self.assertEqual(set(re.findall(r'service: (\S+)', TUNNEL)), {f'http://{hosted_site.LISTEN}', 'http_status:404'})
-        self.assertEqual(TUNNEL.count('required: true'), 2)
+        self.assertEqual(set(re.findall(r'service: (\S+)', TUNNEL)), {f'http://{hosted_site.GATE_LISTEN}', 'http_status:404'})
+        self.assertNotIn('access:', TUNNEL)        # the password gate replaced Cloudflare Access (2026-10-23)
         self.assertTrue(TUNNEL.rstrip().endswith('- service: http_status:404'))
         self.assertNotRegex(TUNNEL, r'eyJ|AccountTag|TunnelSecret')        # no credential in the example
 
     def test_site_listens_where_the_tunnel_sends(self):
-        self.assertEqual(set(re.findall(r'listen ([^ ;]+)', SITE)), {hosted_site.LISTEN})
+        self.assertEqual(set(re.findall(r'listen ([^ ;]+)', SITE)), {hosted_site.LISTEN, hosted_site.GATE_LISTEN})
 
     def test_hosted_appliance_grants_first_wave_only(self):
         doc = appliance.load(REPO / 'contracts' / 'appliances' / 'avrana-hosted.json', vocabulary.load())

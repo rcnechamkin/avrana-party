@@ -55,7 +55,8 @@ fi
 echo "+ /etc/avrana-party/deploy-profile = hosted"
 
 run install -m 0644 "$checkout/deploy/party-core/avrana-party-core.service" "$checkout/deploy/party-core/avrana-party-core.socket" \
-    "$checkout/deploy/games/avrana-game@.service" "$checkout/deploy/games/avrana-game@.socket" /etc/systemd/system/
+    "$checkout/deploy/games/avrana-game@.service" "$checkout/deploy/games/avrana-game@.socket" \
+    "$checkout/deploy/hosted/avrana-gate.service" /etc/systemd/system/
 run install -d -m 0755 /etc/systemd/journald.conf.d
 run install -m 0644 "$checkout/deploy/journald/avrana-journald.conf" /etc/systemd/journald.conf.d/avrana.conf
 run install -m 0644 "$checkout/deploy/hosted/vm/avrana-staging.nft" /etc/nftables.conf
@@ -65,6 +66,8 @@ run systemctl restart systemd-journald
 run systemctl enable --now nftables
 run systemctl enable --now avrana-party-core.socket
 run systemctl enable avrana-party-core.service
+# The password gate starts once a password is set (sudo python3 -m avrana.ops.hosted_gate set).
+run systemctl enable avrana-gate.service
 # The site this checkout renders, so nginx passes `nginx -t` before the first deploy (which compares it
 # with the deployed commit's copy and installs that one).
 [[ -e /etc/nginx/sites-available/avrana-party ]] \

@@ -1,8 +1,8 @@
 # Runbook: hosted staging at avrana.party
 
-Status: **PROPOSED procedure, NOT RUN** (2026-10-22). The design and decisions are in
-[HOSTED-STAGING](../design/HOSTED-STAGING.md) (owner-approved H1, 2026-10-22). Nothing here has
-run on the Media host or on Cloudflare.
+Status: steps 1 to 5b **RUN** on 2026-10-23 with the owner's approval. The design and decisions are
+in [HOSTED-STAGING](../design/HOSTED-STAGING.md) (owner-approved H1, 2026-10-22). On 2026-10-23 the
+owner chose a single shared password (the password gate, step 5c) over Cloudflare Access.
 
 Every numbered step that changes the Media host, Cloudflare or a public name is an **owner action
 with its own explicit approval**. Approval of one step does not carry over to the next. Agents
@@ -13,7 +13,7 @@ Hosted staging runs the same Party as the Pi:
 
 - Party Core, the shell, `ops/deploy.sh`, the units and the nginx rules.
 - These run in one Debian 13 VM on the Media host (`avrana`, 10.0.0.218).
-- The VM is reached only through its own outbound Cloudflare Tunnel, behind Cloudflare Access.
+- The VM is reached only through its own outbound Cloudflare Tunnel, behind the staging password.
 
 It proves platform and gameplay behavior between people on different networks. It never proves
 Wi-Fi, the captive portal, local DNS, offline play or phone hardware: those remain Pi evidence.
@@ -26,7 +26,7 @@ Wi-Fi, the captive portal, local DNS, offline play or phone hardware: those rema
 | 2 | Media host: one libvirt network filter, one VM, its disk | **owner: create the VM** |
 | 3 | inside the VM only: packages, users, units, firewall | covered by step 2 |
 | 4 | inside the VM only: first deployment at explicit SHAs | **owner: deploy Party X + Games Y** |
-| 5 | Cloudflare: a tunnel, two DNS records, one Access application | **owner: Cloudflare changes**, separately for each of DNS, tunnel and Access |
+| 5 | Cloudflare: a tunnel and two DNS records; in the VM, the staging password | **owner: Cloudflare changes**, separately for the tunnel and DNS; the owner chooses the password |
 | 6 | nothing (acceptance) | none |
 
 ## 1. Host preflight (read-only)
@@ -34,7 +34,7 @@ Wi-Fi, the captive portal, local DNS, offline play or phone hardware: those rema
 On the Media host, as the operator:
 
 ```sh
-bash ~/avrana-party/deploy/hosted/vm/host-preflight.sh --disk-gb 12 --ram-mb 2048 --vcpus 2
+bash ~/avrana-party/deploy/hosted/vm/host-preflight.sh --images /mnt/avrana_media/vm/avrana-party-staging --disk-gb 32 --ram-mb 2048 --vcpus 2
 ```
 
 The preflight checks:
@@ -46,12 +46,9 @@ The preflight checks:
 - **Virtualization:** `/dev/kvm`, `virt-install`, and the `default` network active.
 - **Names:** no existing domain or filter with these names.
 
-On 2026-10-22 the root volume had 28 GB free, below 39. The disk therefore needs either:
-
-- `--disk-gb 8`, and snapshots taken only after pruning; or
-- the owner choosing another storage pool.
-
-This is the first decision at step 2. Do not lower the 15 GB Media reserve.
+On 2026-10-22 the root volume had 28 GB free, below 39. The owner chose the media drive
+(2026-10-23): the VM's disk lives in `/mnt/avrana_media/vm/avrana-party-staging`, passed as
+`--images` to both scripts (4.3 TB free). Do not lower the 15 GB Media reserve.
 
 Resource ceilings once created:
 
@@ -72,13 +69,16 @@ The memory ceiling is measured in step 6. If Tanks (Node) needs more, raise it t
    `sha512sum -c --ignore-missing SHA512SUMS`.
 2. Copy `deploy/hosted/vm/cloud-init.user-data.example` to `user-data.yaml`. Put your SSH
    **public** key in it.
-3. If `virt-install` is missing, install it: `sudo apt install virtinst cloud-image-utils`.
-   This is a host package install, so it needs approval like the rest of this step.
-4. Dry run, then create:
+3. If `virt-install` is missing, install it: `sudo apt install virtinst`. This is a host package
+   install, so it needs approval like the rest of this step. `cloud-image-utils` is optional:
+   without `cloud-localds`, the script uses virt-install's own `--cloud-init`.
+4. Dry run, then create. `cody` is in the `libvirt` group, so no sudo is needed when the disk
+   directory belongs to `cody`:
 
 ```sh
-sudo bash deploy/hosted/vm/create-vm.sh --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml --dry-run
-sudo bash deploy/hosted/vm/create-vm.sh --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml
+D=/mnt/avrana_media/vm/avrana-party-staging; mkdir -p "$D"
+bash deploy/hosted/vm/create-vm.sh --images "$D" --disk-gb 32 --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml --dry-run
+bash deploy/hosted/vm/create-vm.sh --images "$D" --disk-gb 32 --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml
 virsh -c qemu:///system domifaddr avrana-party-staging        # the VM's 192.168.122.x address
 ```
 
@@ -90,7 +90,14 @@ What this changes on the host:
 
 It adds no port forward, bridge, host firewall rule, or nginx, Docker or tunnel change.
 
-To undo: `sudo bash deploy/hosted/vm/create-vm.sh --destroy`.
+To undo: `bash deploy/hosted/vm/create-vm.sh --images "$D" --destroy`.
+
+**VT-x.** On 2026-10-23 the M700's firmware had VT-x off ("VMX disabled by BIOS", no `/dev/kvm`),
+so the VM was created with `--no-kvm` (software emulation: slower, same devices and filter). To
+switch, enable Intel Virtualization Technology in the firmware (F1 at boot, Advanced → CPU Setup),
+then on the host: `virsh -c qemu:///system shutdown avrana-party-staging`, change
+`<domain type='qemu'>` to `type='kvm'` with `virsh -c qemu:///system edit avrana-party-staging`,
+and start it again.
 
 ## 3. Provision inside the VM (owner)
 
@@ -98,6 +105,10 @@ To undo: `sudo bash deploy/hosted/vm/create-vm.sh --destroy`.
 2. Make the two checkouts at `/home/cody/avrana-party` and `/home/cody/avrana-party-games`.
    - Recommended: one read-only GitHub deploy key per repository, created by the owner inside
      the VM. The keys never leave it.
+   - The VM's filter allows no outbound port 22, so SSH to GitHub goes over 443
+     (`HostName ssh.github.com`, `Port 443` in `~/.ssh/config`, one host alias per key). Check
+     the host key against GitHub's published fingerprint
+     (`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`).
    - Alternative: `git bundle` files copied from the laptop.
 3. Run:
 
@@ -122,9 +133,12 @@ inside the VM cannot lift. A silent drop by some other host firewall would look 
 the Media host also record that the filter is bound to the VM's interface:
 
 ```sh
-virsh domiflist avrana-staging
-sudo virsh nwfilter-binding-list        # the VM's vnet interface with avrana-staging-egress
+virsh -c qemu:///system domiflist avrana-party-staging
+virsh -c qemu:///system nwfilter-binding-list   # the VM's vnet interface with avrana-staging-egress
 ```
+
+Loading the VM firewall can hang the SSH session that ran `provision.sh`. The script still
+completes; reconnect, and run it again to see its output (it is idempotent).
 
 The probes are TCP. UDP is held to DHCP with libvirt, DNS to the gateway, time and the tunnel
 edge by the rules themselves. That is reviewed, not probed. Keep all outputs as evidence. A
@@ -139,6 +153,19 @@ The deployment is the appliance's own `ops/deploy.sh`. `/etc/avrana-party/deploy
 - installs `deploy/hosted/avrana-party.hosted.nginx`;
 - smokes with `avrana.ops.smoke --hosted`;
 - records `hosted_profile` in the manifest.
+
+**First deployment on fresh clones.** `deploy.sh` compares the checkouts' HEAD with the requested
+commits, so clones already at those commits plan "restart nothing; web release no" and build no
+release. Before the first deployment, detach both one commit back
+(`git -C ~/avrana-party checkout --detach HEAD~1`, the same for the Games clone).
+
+**Smoke before step 5.** The hosted smoke requires `cloudflared-avrana-party`, which step 5
+installs. Until then the first deployment ends `smoke-failed` with those two rows only (the unit
+and `status`), and its revision is kept. Once the tunnel runs, run the smoke again (the command at
+the end of the games block below).
+
+**Packages need `/opt/avrana-games`:** `sudo install -d -m 0755 -o root -g root /opt/avrana-games`
+before the first `install-game` ([install-game](install-game.md), before step 3).
 
 See [deploy](deploy.md#deployment-profile-the-appliance-or-hosted-staging).
 
@@ -164,7 +191,7 @@ python3 -m avrana.ops.smoke --hosted --config /etc/avrana-party/party-core.json
 ```
 
 `game_origins` in `/etc/avrana-party/party-core.json` already lists `checkers`, `bestguess`
-and `tanks` for `https://games.avrana.party`. A game added later needs its id there, then
+and `colyseus-tanks` (the Tanks package id) for `https://games.avrana.party`. A game added later needs its id there, then
 `sudo systemctl restart avrana-party-core`. A restart ends the in-memory Party.
 
 **Rollback:** `sudo bash ~/avrana-party/ops/deploy.sh --rollback` returns to the last known
@@ -213,11 +240,11 @@ None of this blocks the first wave.
    root-only in the VM.
 3. `sudo cloudflared tunnel create avrana-party-staging`.
 4. Copy `deploy/hosted/cloudflared/config.yml.example` to `/etc/cloudflared/avrana-party.yml`
-   and fill in the UUID.
+   (`root:cloudflared 0640`) and fill in the UUID. It points both hostnames at the gate port, 8081.
 5. `sudo useradd --system --no-create-home --shell /usr/sbin/nologin cloudflared`, then make the
    credential `root:cloudflared 0640`.
 6. Install `cloudflared-avrana-party.service`.
-7. Do not start it until 5c exists.
+7. Do not start it until 5c is done (a password is set).
 
 The Media host's tunnels and `~/.cloudflared` are never touched.
 
@@ -226,18 +253,24 @@ The Media host's tunnels and `~/.cloudflared` are never touched.
 `cert.pem` from the VM (`sudo rm /root/.cloudflared/cert.pem`). It carries account-wide tunnel
 and DNS authority, and the running tunnel needs only its own credential file.
 
-**5c. Access.** One self-hosted application, "Avrana Party staging", with both hostnames.
+**5c. Password gate.** The owner chose one shared password over Cloudflare Access (2026-10-23):
+testers type it once per phone, and it lasts 30 days. Anyone who has the password gets in.
 
-| Setting | Value |
-|---|---|
-| Session duration | 24 hours |
-| Login methods | One-time PIN only |
-| Policy 1 "testers" (Allow) | Emails: the owner's address only, until the owner names others |
-| Policy 2 "harness" (Service Auth) | One service token, "avrana-staging-harness". It belongs to this application only; its client ID and secret live in the owner's password manager and in a tester's environment for a run |
-| Cookie settings | defaults (HttpOnly, SameSite Lax); Binding Cookie off |
+- **How it works.** The tunnel reaches nginx on 127.0.0.1:8081. There every request needs the
+  `avrana_gate` cookie, or it is sent to `https://avrana.party/__gate/`, a password form answered by
+  `avrana-gate.service` (`avrana/ops/hosted_gate.py`). The right password sets the cookie for
+  `avrana.party` and its subdomains, so `games.avrana.party` has it too. 127.0.0.1:8080 stays
+  ungated for the smoke and deploy checks; nothing outside the VM reaches it.
+- **Set or change the password** (inside the VM; it is asked twice and never echoed):
 
-Put the application's audience tag in the tunnel config (`audTag`), then
-`sudo systemctl enable --now cloudflared-avrana-party`.
+```sh
+cd /opt/avrana-party/current && sudo python3 -m avrana.ops.hosted_gate set
+sudo python3 -m avrana.ops.hosted_gate status
+```
+
+  A new password signs every phone out. No password set means the site is shut to everyone.
+- **Then start the tunnel:** `sudo systemctl enable --now cloudflared-avrana-party`.
+- **Never** point the tunnel at 8080, and never commit or paste the password.
 
 **Cache rule** for both hostnames: bypass the cache for `/party/*` and `/games/*`. The shell's
 build-stamped service worker handles updates, and the edge must not hold an old `sw.js`.
@@ -245,12 +278,12 @@ build-stamped service worker handles updates, and the edge must not hold an old 
 ## 6. Acceptance (agent or owner, no approval needed)
 
 ```sh
-# no session: both hostnames send the Access login, nothing from the origin
+# no gate cookie: both hostnames send the password page (302 to https://avrana.party/__gate/), nothing from the origin
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://avrana.party/party/
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://games.avrana.party/games/bestguess/
-curl -s -o /dev/null -w '%{http_code}\n' https://avrana.party/party/api/state
-# the harness (the token from the environment, never a file in a repository)
-CF_ACCESS_CLIENT_ID=... CF_ACCESS_CLIENT_SECRET=... HOSTED_BASE_URL=https://avrana.party npm run test:hosted
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://avrana.party/party/api/state
+# the harness (the password from the environment, never a file in a repository)
+HOSTED_GATE_PASSWORD=... HOSTED_BASE_URL=https://avrana.party npm run test:hosted
 ```
 
 The H3 suite (`playwright.hosted.config.ts`, [TESTING](../TESTING.md)) covers the remote journey and the
@@ -287,8 +320,10 @@ Agents never get the VM's SSH key, the tunnel credential, Cloudflare API tokens 
     written, the file is kept current by every later deploy.
   - If a refresh fails, the overlay is removed and nginx falls back to the full release
     catalog. The deploy log says so as a `WARNING: catalog:` line.
-- **Game pages and an expired Access session.** Party Home detects the sign-in redirect and
+- **Game pages and an expired gate cookie.** Party Home detects the redirect to the password page and
   offers "Sign in again". The bridge frame and a game's own reconnects on `games.avrana.party`
-  do not. What a player sees there is measured in H3, not assumed.
+  do not. What a player sees there is measured in H3, not assumed. The cookie lasts 30 days.
+- **The Access-only edge cases** in `tests/hosted/edge.spec.ts` (`HOSTED_EXPECT_ACCESS=1`) do not run
+  behind the password gate; the gate's own case runs with `HOSTED_GATE_PASSWORD`.
 - **The status endpoint** reports `not_applicable` for the certificate, the games provider and
   the arcade (`null` in `party-core.json`).
