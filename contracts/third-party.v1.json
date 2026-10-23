@@ -9,13 +9,13 @@
   },
   "components": [
     {
-      "id": "geist-font",
-      "name": "Geist (variable)",
-      "version": "1.7.2",
+      "id": "plus-jakarta-sans-font",
+      "name": "Plus Jakarta Sans (variable)",
+      "version": "5.3.0",
       "license": "OFL-1.1",
       "license_verification": "file-read",
       "license_source": "web/party/fonts/OFL.txt",
-      "source": "https://www.npmjs.com/package/geist",
+      "source": "https://www.npmjs.com/package/@fontsource-variable/plus-jakarta-sans",
       "usage": "embedded",
       "shipped_in": [
         "appliance-web",
@@ -23,7 +23,7 @@
       ],
       "redistribution": "redistribute-with-notice",
       "commercial_blocker": false,
-      "note": "Served as is from web/party/fonts/. OFL.txt ships beside the font; the font may not be sold on its own and a modified font must not reuse the reserved name. Provenance and SHA-256 in assets/vendor/README.md.",
+      "note": "Served as is from web/party/fonts/ (Latin and Latin Extended files). OFL.txt ships beside the fonts; the font may not be sold on its own and a modified font must not reuse the reserved name. Provenance and SHA-256 in assets/vendor/README.md.",
       "paths": [
         "web/party/fonts"
       ]

@@ -103,6 +103,13 @@ Do **not** use:
 
 The important idea is **material inspiration**, not retro cosplay.
 
+**Superseded in part by Concept K · Avrana Console (owner, 2026-10-20/21).** Liquid glass is used on
+exactly three **shell** controls: the floating bottom bar, the top-right utility and the top-left
+Spire-A Home button. Nothing else is glass: not cards, avatars, rosters, panels, buttons, previews,
+sheets or banners, which are opaque `ink` / `surface` / `raised`. The glass is dark (ink at 58% over
+a blur), so the "heavy glassmorphism" warning above still holds for everything else. Recipe and
+fallbacks: `docs/UI-DESIGN-SYSTEM.md` § Concept K foundations.
+
 ### 4.3 Future themes
 
 The default visual theme must not be structurally hardcoded into the information architecture.
@@ -126,19 +133,17 @@ Theme-sensitive decisions should therefore remain separable from:
 
 ### 5.1 Temporary Avrana brand treatment
 
-For now:
-
-- Use **Helvetica Light** or the closest practical system Helvetica-style treatment for the "Avrana Party" brand/display text.
-- This is temporary.
-- Do not treat it as the final Avrana brand font.
+**Superseded (owner, 2026-10-21, Concept K):** the brand words "Avrana Party" are set in **Plus
+Jakarta Sans Light**, like the rest of the interface; the temporary Helvetica treatment is gone.
+Plus Jakarta Sans is still not a final brand font decision.
 
 ### 5.2 Interface typography
 
-Use **Geist** for general interface text where practical.
+Use **Plus Jakarta Sans** for general interface text where practical.
 
 The system UI should prioritize legibility over personality.
 
-Geist should cover:
+Plus Jakarta Sans should cover:
 
 - navigation
 - buttons
@@ -193,7 +198,11 @@ The primary bottom navigation should contain:
 1. **Home / Play**
 2. **Party**
 3. **Library**
-4. **System / Settings**
+4. **Me** (was System / Settings)
+
+**Superseded in part by Concept K (owner, 2026-10-20/21).** The fourth tab is **Me**, drawn with
+the viewer's own avatar; System and settings live inside Me. The bar is one floating glass capsule
+with a lens that slides to the place on screen. `#system` still lands on Me.
 
 These are major product modules.
 
@@ -214,6 +223,11 @@ A useful structural model is:
 - **Top:** people, social, notifications
 - **Middle:** current content
 - **Bottom:** primary Avrana modules
+
+**Superseded in part by Concept K (owner, 2026-10-20/21).** The top right is a utility only
+(Search, Filter & view, the Limited Mode mark). Presence is a compact row on Home (tap → the
+Party tab) and on the briefing (it opens the people over it); the detailed roster and the chat are
+on the Party tab, whose icon carries the chat's unread count.
 
 Do not interpret this as a requirement to visually copy another console app.
 

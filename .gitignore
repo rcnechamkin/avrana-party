@@ -72,6 +72,7 @@ ps1/runtime/
 # Playwright
 node_modules/
 /test-results/
+/.linux-verify/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
@@ -111,3 +112,7 @@ Thumbs.db
 *.egg-info/
 .coverage
 htmlcov/
+
+# Printed join cards (tools/join-card) carry the Wi-Fi password. The generator refuses to write one
+# inside any Git working tree; this is a second line for a card copied in by hand.
+*join-card*.html

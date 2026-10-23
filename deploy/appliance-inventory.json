@@ -114,7 +114,7 @@
   ],
   "files": [
     {"path": "/etc/systemd/journald.conf.d/avrana.conf", "source": "party:deploy/journald/avrana-journald.conf", "owner": "root", "group": "root", "mode": "0644", "area": "health",
-     "activate": [["systemctl", "restart", "systemd-journald"]]},
+     "activate": [["systemctl", "restart", "systemd-journald"], ["journalctl", "--flush"]]},
     {"path": "/etc/modules-load.d/avrana-uinput.conf", "source": "party:arcade/avrana-uinput.conf", "owner": "root", "group": "root", "mode": "0644", "area": "arcade",
      "activate": [["modprobe", "uinput"]]},
     {"path": "/etc/udev/rules.d/70-avrana-uinput.rules", "source": "party:arcade/70-avrana-uinput.rules", "owner": "root", "group": "root", "mode": "0644", "area": "arcade",
@@ -212,7 +212,8 @@
     {"what": "installed .avrgame packages (AVR-39, EXPERIMENTAL, none installed): their install records in /etc/avrana-party/packages.d (root, one file per package) and the effective game catalog /var/lib/avrana-party/catalog/catalog.json (root, directory 0755, file 0644; served by nginx at /party/catalog.json when it exists, derived from the web release and the records, absent when no package is installed)", "by": "ops/install-game (docs/runbooks/install-game.md); ops/catalog-overlay refresh, ops/install-party-web.sh and ops/deploy.sh regenerate or remove the catalog; a rebuilt appliance has no packages until they are installed again"},
     {"what": "the optional Node.js runtime of .avrgame packages (AVR-68, EXPERIMENTAL, not installed): /opt/avrana-runtimes/node-<version> (root; bin/node, LICENSE, avrana-runtime.json), needed only by a package whose runtime is node", "by": "ops/install-node-runtime install <official tarball> (docs/runbooks/install-game.md): offline, the tarball is checked against the SHA-256 pinned in avrana/avrgame/node_pin.py; a rebuilt appliance has no runtime until it is installed again"},
     {"what": "the restricted AP-control helper /usr/local/sbin/avrana-ap-control, /etc/sudoers.d/avrana-ap-control and /var/lib/avrana-party/ap-saved.json (AVR-298, not installed yet)", "by": "ops/ap-control/install-ap-control.sh, run by the owner as root (optional; only the Wi-Fi lab uses it)"},
-    {"what": "the access point profile and every other NetworkManager connection", "by": "the owner, with nmcli"}
+    {"what": "the access point profile and every other NetworkManager connection", "by": "the owner, with nmcli"},
+    {"what": "the hosted staging VM (avrana.party): its tunnel unit cloudflared-avrana-party.service, its password gate unit avrana-gate.service, the hosted nginx site and the in-VM firewall under deploy/hosted/. Never installed on the Pi", "by": "deploy/hosted/vm/provision.sh inside the VM (the firewall, the nginx site and the gate unit) and the owner at docs/runbooks/hosted-staging.md step 6 (the tunnel unit); every step owner-gated"}
   ],
   "hardware_checks": [
     {"area": "ap", "check": "A phone that has forgotten the network joins \"Avrana Party\" with the passphrase and gets an address in 10.42.0.10-254; an iPhone shows no captive popup."},

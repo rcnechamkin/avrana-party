@@ -1,5 +1,5 @@
 import { test, expect, type FrameLocator, type Page } from '@playwright/test';
-import { keyboard, visibleHeight, withKeyboardModel } from '../lib/keyboard';
+import { keyboard, visibleHeight, visibleTop, withKeyboardModel } from '../lib/keyboard';
 import { phone, post, version, view, type Phone } from '../lib/phones';
 
 /**
@@ -102,6 +102,61 @@ test.describe('the Party layer on a game page', () => {
     await expect(bob.page).toHaveURL(atGame);
     expect(await bob.page.evaluate(() => (window as unknown as { gameState: number }).gameState)).toBe(42);
     expect(await bob.page.evaluate(() => (window as unknown as { layerEvents: boolean[] }).layerEvents)).toEqual([true, false]);
+  });
+
+  test('Leave Party from the drawer (AVR-580): confirmed, the follower leaves, nobody else moves, and the page goes to Reconnect?', async () => {
+    await startRound(host, [bob]);
+    const before = await view(host);
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-leave-ask').click();
+    await expect(layer.locator('#layer-leave-text')).toContainText('Everyone else stays where they are, and the round goes on');
+    await expect(layer.locator('#layer-leave-host')).toBeHidden();
+    await layer.locator('#layer-leave-no').click();                       // Stay: nothing happened
+    expect((await view(bob)).me).not.toBeNull();
+    await layer.locator('#layer-leave-ask').click();
+    await layer.locator('#layer-leave-yes').click();
+    await expect(bob.page).toHaveURL(/\/party\/$/);
+    await expect(bob.page.locator('#reconnect')).toBeVisible();
+    const after = await view(host);
+    for (const key of ['nav', 'location', 'host', 'state']) expect(after[key]).toEqual(before[key]);
+    await expect(host.page).toHaveURL(atGame);
+  });
+
+  test('an open Leave question does not outlive the drawer (AVR-580)', async () => {
+    await startRound(host, [bob]);
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-leave-ask').click();
+    await expect(layer.locator('#layer-leave-confirm')).toBeVisible();
+    await bob.page.keyboard.press('Escape');
+    await expect(layer.locator('#layer-sheet')).toBeHidden();
+    await openLayer(bob.page);
+    await expect(layer.locator('#layer-leave-confirm')).toBeHidden();
+    await expect(layer.locator('#layer-leave-ask')).toBeVisible();
+    expect((await view(bob)).me).not.toBeNull();
+  });
+
+  test('the Host leaves from the drawer: the confirmation names who hosts next, the round goes on', async () => {
+    await startRound(host, [bob]);
+    const layer = await openLayer(host.page);
+    await layer.locator('#layer-leave-ask').click();
+    await expect(layer.locator('#layer-leave-host')).toContainText('You are the Host. Bob becomes the Host right away.');
+    await layer.locator('#layer-leave-yes').click();
+    await expect(host.page).toHaveURL(/\/party\/$/);
+    const v = await view(bob);
+    expect([v.me.host, v.state, v.location.at]).toEqual([true, 'active', 'game']);
+    await expect(bob.page).toHaveURL(atGame);
+  });
+
+  test('Leave from the drawer with no network says it is unconfirmed and leaves the phone in the Party', async () => {
+    await startRound(host, [bob]);
+    const layer = await openLayer(bob.page);
+    await layer.locator('#layer-leave-ask').click();
+    await bob.context.route('**/party/api/leave', (route) => route.abort());
+    await layer.locator('#layer-leave-yes').click();
+    await expect(layer.locator('#layer-leave-error')).toContainText('Couldn’t confirm that you left');
+    expect((await view(host)).members.map((m: { name: string }) => m.name)).toContain('Bob');
+    await expect(bob.page).toHaveURL(atGame);
+    await bob.context.unroute('**/party/api/leave');
   });
 
   test('chat from the game: a line from another phone is unread on the button, read in the drawer', async () => {
@@ -408,7 +463,8 @@ test('mounted by a page itself (the vendored file): a phone that is no longer a 
     await openLayer(bob.page);
     await expect(bob.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'open');
     await bob.page.evaluate(() => localStorage.removeItem('wc-name'));   // so nothing joins again
-    expect((await post(bob, 'leave', {})).status()).toBe(200);
+    // the box starts over (not a Leave: a phone that left on purpose goes to Party Home, AVR-580)
+    expect((await bob.page.request.post('/__test__/party/reset')).status()).toBe(204);
     await expect(bob.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'hidden');
     await expect(bob.page.locator(FRAME)).toHaveCSS('visibility', 'hidden');
     const box = (await bob.page.locator('h1').boundingBox())!;
@@ -509,4 +565,58 @@ test('layer.html may be framed by the Party itself and the game origin, nothing 
   expect(csp).toMatch(/frame-ancestors 'self' \S+/);
   expect(csp).not.toContain("frame-ancestors 'none'");
   expect((await request.get('/party/')).headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+});
+
+/**
+ * AVR-583: the same panned keyboard and a turn of the phone with the keyboard up, in the Party-origin
+ * layer over a game. The open frame is placed in the game page's layout coordinates, so it must follow
+ * visualViewport.offsetTop; the draft, the open drawer, the game's state and the URL must survive, and a
+ * collapsed button must remain only its own box afterwards. SIMULATED (tests/lib/keyboard.ts).
+ */
+test('layer: keyboard panned and the phone turned keep the drawer inside the visible region, the draft and the game', async ({ browser }) => {
+  const dee = await phone(browser, 'Dee', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const eve = await phone(browser, 'Eve');
+  try {
+    await withLayer(dee);
+    await withKeyboardModel(dee.context);
+    await startRound(dee, [eve]);
+    await dee.page.evaluate(() => { (window as unknown as { gameState: number }).gameState = 42; });
+    const layer = layerOf(dee.page);
+    await placed(dee.page);
+    await layer.locator('#layer-button').tap();
+    await layer.locator('#layer-tab-chat').tap();
+    await expect(layer.locator('#chat-send')).toBeEnabled();
+    const text = layer.locator('#chat-text');
+    await text.fill('half a thought');
+    await text.focus();
+
+    const inRegion = async (label: string) => {
+      const top = await visibleTop(dee.page), height = await visibleHeight(dee.page);
+      await expect(dee.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'open');
+      await expect.poll(async () => {
+        // a frame locator's boxes are already in the page's coordinates
+        const sheet = (await layer.locator('#layer-sheet').boundingBox())!, form = (await layer.locator('#chat-form').boundingBox())!;
+        return [sheet.y >= top - 0.5, form.y + form.height <= top + height + 0.5];
+      }, { message: `${label}: sheet top and composer bottom inside the visible region (${top}..${top + height})` }).toEqual([true, true]);
+      await expect(text).toBeFocused();
+      await expect(text).toHaveValue('half a thought');
+    };
+
+    await keyboard(dee.page, 336, 120);
+    await inRegion('portrait, keyboard up and panned');
+    await dee.page.setViewportSize({ width: 844, height: 390 });
+    await keyboard(dee.page, 170, 60);
+    await inRegion('landscape, keyboard up and panned');
+    await dee.page.setViewportSize({ width: 390, height: 844 });
+    await keyboard(dee.page, 0, 0);
+    await inRegion('portrait, keyboard closed');
+
+    expect(await dee.page.evaluate(() => (window as unknown as { gameState: number }).gameState)).toBe(42);
+    await expect(dee.page).toHaveURL(atGame);
+    await layer.locator('#layer-sheet').press('Escape');   // closing returns the frame to the button alone
+    await expect(dee.page.locator(FRAME)).toHaveAttribute('data-avrana-party-layer', 'button');
+    const box = await frameBox(dee.page);
+    expect(box.width).toBeLessThanOrEqual(48 + 0.5);
+    expect(box.height).toBeLessThanOrEqual(48 + 0.5);
+  } finally { await dee.context.close(); await eve.context.close(); }
 });

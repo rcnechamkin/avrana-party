@@ -19,6 +19,7 @@
     "test:offline-browser": "playwright test -c playwright.offline.config.ts",
     "test:party-browser": "playwright test -c playwright.party.config.ts",
     "test:rollback": "playwright test -c playwright.rollback.config.ts",
+    "test:hosted": "playwright test -c playwright.hosted.config.ts",
     "check:contract": "python3 tools/contract_check.py",
     "smoke:local": "python3 -m avrana.ops.smoke --local http://127.0.0.1:8180",
     "test:offline": "npm run test:unit && npm run test:modules && npm run test:offline-browser && npm run test:party-browser",
@@ -32,6 +33,7 @@
     "build:avatars": "node tools/build-avatars.mjs",
     "build:art": "node tools/build-art.mjs",
     "check:repo": "node tools/repo-check.mjs",
+    "join-card": "node tools/join-card/join-card.mjs",
     "setup:design-skills": "node tools/install-design-skills.mjs"
   },
   "repository": {
@@ -50,6 +52,7 @@
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^26.6.2",
     "daisyui": "^5.7.46",
+    "jsqr": "^1.4.0",
     "lucide-static": "^1.48.0",
     "tailwindcss": "^4.3.3"
   },

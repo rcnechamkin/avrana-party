@@ -9,8 +9,11 @@ slice 0 documents PR):
 the tokens, the type and the Party shell's frame below are the redesign's; nothing of it is
 deployed or checked on a real phone. The diagnostics page and the games still carry the older
 layout on the new tokens until their own slices.
-The brand face is **temporary** (the brief's Helvetica-style treatment); no final logo or art
-direction is decided here. When the real identity arrives, replace the theme block and the
+**2026-10-21: Concept K · Avrana Console** (owner: "I love the UI") is the direction now being
+built, slice by slice (AVR-705; style kit `avrana-console-style/`, Figma section `108:198`). Its
+foundations (AVR-706) are below: the ground is `ink #121214`, Plus Jakarta Sans is the only face
+(the brand words included), and liquid glass is a single utility for the shell's three floating
+controls. No final logo or art direction is decided here. When the real identity arrives, replace the theme block and the
 `avrana-*` layer; the markup and the build stay.
 
 ## Architecture
@@ -42,7 +45,7 @@ tools/build-art.mjs ──(npm run build:art: contracts/artwork.json + assets/ve
 
 | Token | Value | Use |
 |---|---|---|
-| `base-100` | `#0d0d0f` | the ground: near-black neutral, never pure black |
+| `base-100` | `#121214` | the ground (Concept K `ink`): near-black neutral, never pure black; `#0d0d0f` (`depth`) stays for what sits behind sheets |
 | `base-200` / `base-300` | `#161618` / `#1e1e21` | raised surface (tiles, notices) / fields, selected segments |
 | `base-content` | `#edeae4` | main text, warm off-white |
 | `muted` / `faint` (Tailwind tokens) | `#aeaba7` / `#8f8c89` | secondary text / quiet labels and counts |
@@ -56,11 +59,11 @@ tools/build-art.mjs ──(npm run build:art: contracts/artwork.json + assets/ve
 | control size | `--size-field: .3rem` → 48 px buttons and inputs | touch targets ≥ 44 px (tested, bars included) |
 | depth, noise | 0 | flat: no gradients or glow |
 
-Type: **Geist** (SIL OFL 1.1), one variable file bundled at `web/party/fonts/` and served by the Pi
+Type: **Plus Jakarta Sans** (SIL OFL 1.1), two variable files (Latin and Latin Extended) bundled at `web/party/fonts/` and served by the Pi
 like every other file (provenance: `assets/vendor/README.md`); the system face shows until it loads
-(`font-display: swap`) and if it never does. The words "Avrana Party" alone use the `brand` face:
-a light Helvetica where the phone really has one (`local()` only, so Android and Windows never
-fall back to Arial), Geist Light elsewhere. Sizes are rem, so they follow the phone's text size;
+(`font-display: swap`) and if it never does. The words "Avrana Party" are Plus Jakarta Sans Light
+(`--font-brand`); the temporary Helvetica treatment was dropped with Concept K (owner, 2026-10-21:
+Plus Jakarta Sans everywhere). Sizes are rem, so they follow the phone's text size;
 body is 0.9375 rem; supporting lines (a sender's name in chat, a value on a list row, counts) are
 0.8125 rem; the bottom bar's labels and the word tags are 0.6875 rem, the floor. These sizes are
 named type roles in `party.css`'s `@theme` (AVR-425; the Design Foundation's roles): `headline`
@@ -84,6 +87,22 @@ and a mark or an edge, with `aria-pressed` or `aria-current`. The bottom bar, `a
 pressed cover), `--motion-surface` 220 ms for a sheet or the drawer arriving from its own edge,
 `--ease-standard` for both. Leaving is immediate. Under reduced motion nothing moves.
 
+### Concept K foundations (AVR-706)
+
+`@theme` also names Concept K's tokens, so code and Figma say the same word. The daisyUI names above
+remain what markup uses; these are aliases plus the few the design adds.
+
+| Group | Tokens |
+|---|---|
+| Colour | `depth #0d0d0f`, `ink #121214` (= `base-100`), `surface #161618`, `raised #1e1e21`, `graphite #5e5b57` (decorative fallback title only, 2.7:1), `ash #8f8c89`, `stone #aeaba7`, `cream #edeae4`, `purple #b9a9e8`, `purple-deep #5a439d`, `purple-selected` (purple at 22%), `ready #34d399`, `warn #f59e0b`, `danger #ef4444` |
+| Type roles | `display` 48 Light, `display-fallback` 44 Light, `page` 28 Regular, `shelf` 20 Regular, `button` 17, `secondary` 14, `eyebrow` 12 Medium caps +16%; classes `avrana-display`, `-page-title`, `-shelf-title`, `-eyebrow` (`.selected` is purple), `-meta` |
+| Shape | `radius-preview` 20, `-panel` 16, `-button` 14, `-control` 12, `-chip` 8; `spacing-gutter` 16, `-gutter-hero` 20 |
+| Motion | tier 1 `--motion-1` 150 ms; tier 2 `--motion-2` 300 ms with `--ease-responsive`; tier 3 `--motion-3` **200 ms** with `--ease-meaningful` (Concept K's 600 ms waits in `--motion-3-proposal` until AVR-704 amends GAME-UX-CONTRACT rule 11.5; the owner, 2026-10-21: it runs only with `?concept=motion`, which says "Proposal" on screen). Tier 3 is a scene change (AVR-711): the briefing rises in (`#scene[data-enter]`), the frame fades back when the Party leaves it, and Home's stage fades to and from "Just played" (`enter()` marks one container; the mark goes when its animation ends). Tier 1: a press scales a button or cover to 98%; the bar's lens uses `--ease-spring` (stiffness 420, damping 28, as `linear()`) over `--motion-spring` 480 ms. Reduced motion shortens tiers 2–3 and the spring to 150 ms, and the base rule still stops every transition. |
+| Glass | `.avrana-glass`: ink at 58% over a 28 px backdrop blur, a masked top-lit rim, the drop and inner shadows of Figma's "Liquid glass (dark)". It sets `overflow: hidden` and `isolation: isolate` itself so the blur clips to the element's radius. Without backdrop blur, with `prefers-reduced-transparency` or with `prefers-contrast: more` it is opaque `raised` with a `line-strong` edge. `.avrana-lens` is the selected tab's capsule. **Only three elements may wear glass**: the bottom bar, the top-right utility and the top-left Home button (owner, 2026-10-21). |
+
+Contrast on the new ground (WCAG 2): `cream` 15.6:1, `stone` 8.2:1, `ash` 5.6:1, `control` 3.6:1,
+`purple` 8.8:1, `warning` 10.2:1, `error` 7.7:1.
+
 ## Components
 
 daisyUI where it is semantic (`btn`, `input`, `select`, `file-input`, `range`, `loading`,
@@ -92,17 +111,24 @@ repeat:
 
 | Class | What |
 |---|---|
-| `avrana-app` | **the frame** (`#main`): `avrana-top` (the place's title, the Limited Mode mark, the Party control), `avrana-main` (the one part that scrolls) and `avrana-nav` (Home, Party, Library, System); safe-area padding on the bars |
-| `avrana-hud` | the Party control: up to three faces and a count; opens the Party drawer. Collapses to one face in a narrow or enlarged-text bar (container query) |
+| `avrana-app` | **the frame** (`#main`, Concept K, AVR-707): `avrana-main` (the one part that scrolls) fills the screen and scrolls under the shell's floating controls: `avrana-top` (on Home the `avrana-homebtn` Spire-A Home button, elsewhere the place's title; on the right the `avrana-utility` capsule), and `avrana-nav` (Home, Party, Library, Me) floating 24 px above the bottom. `--avrana-end` keeps the last row 16 px above the bar at the end of a scroll; a dim fades what passes under the bar |
+| `avrana-homebtn`, `avrana-utility`, `avrana-nav` | the only three `avrana-glass` elements. The utility holds Search (to the Library's field), Filters and View on the Library, and the Limited mark. The bar's `avrana-lens` slides to `data-at` on a spring; Me shows this phone's avatar; the Party tab carries the chat's unread count |
+| `avrana-presence` | the compact presence row: up to five 32 px faces ringed in ink, then "4 here" / "4 here · Riley away". On the briefing it opens the people (only) over it |
 | `avrana-limmark` | the Limited Mode mark in the top bar: icon + the word; opens the "About Limited Mode" sheet |
 | `avrana-drawer`, `avrana-sheet` | native `<dialog>`s on the material: the Party drawer (People / Chat, `avrana-tabs`) and a bottom sheet (Filters, View, How to play, About Limited Mode), which is a centred panel from 44rem. Opened with `showModal()`, so focus is held inside, Escape closes, and focus returns to the opener |
-| `avrana-lede`, `avrana-sub` | Home's sentence about who is here, and the quieter lines under it |
+| `avrana-sub` | a quieter line under a heading (the Host line on the Party page) |
 | `avrana-list` | 52 px rows that lead somewhere (a place, a sheet), chevron on the right |
-| `avrana-faces`, `avrana-people` | people as faces with names (Party page) and as rows (drawer) |
+| `avrana-group-h`, `avrana-group` | Concept K's grouped lists (AVR-710): a small-caps heading ("In this Party · 3 people", "This phone · All set", "Help") over rows in one opaque `surface` panel with hairlines between |
+| `avrana-roster` | the Party page's people, one row each: face (dimmed when away), name, what is true of them in words under it ("Here", "Away", "Here · Limited"), the purple HOST tag on the Host's row, and for the Host a **Make host** button on the row of anyone else who is here (Party Core's `transfer_host`; it refuses anyone else and says why). Focus goes to the heading after a hand-over |
+| `avrana-people` | people as rows in the drawer |
+| `avrana-me-head` | Me's head: the person large (80 px face, the name light at page size) and Edit profile; the whole of it opens the profile |
+| `avrana-quiet` | a quiet text action at the end of a page (Leave Party) |
 | `avrana-tag` (`mode`, `quiet`) | a word beside a name: Host, Limited, Away. Words, never colour or an icon alone |
 | `avrana-screen` | page container with safe-area padding, for diagnostics |
 | `avrana-scene` | one full screen with one thing on it: the way to a game, and the doorway |
-| `avrana-brief`, `avrana-dock` | the briefing (a round's setup) under the frame's top bar: what and who scroll, the decision stays at the bottom. Under 32rem of height (512 px, or 1024 px at 200% text) the dock un-pins and the whole briefing scrolls |
+| `avrana-brief`, `avrana-dock` | the briefing (a round's setup, Concept K's K1) under the frame's top bar: what and who scroll, the decision stays at the bottom in an opaque dock (glass is the shell's three controls only). Under 32rem of height (512 px, or 1024 px at 200% text) the dock un-pins and the whole briefing scrolls |
+| `avrana-stage` (`compact`), `avrana-eyebrow` (`selected`) | the briefing's stage: the game's art under the top row (200–280 px; under 650 px tall it gives its room to the words), "Selected for Party" in purple with a 3 px bar (the game is chosen: Home's "Featured" never looks like this), the name, "2–6 players · Ada hosts" |
+| `avrana-panel` | rows in one opaque panel, each a 32 px well and two lines: on the briefing, this phone's own check ("This phone can play" / "can watch" / "Checking this phone", never another phone's) with the fit, then "Playing 2 · Watching 1 · Choosing 1" and who is still choosing by name. On Home's K3, "Round over" |
 | `avrana-lineup` | the briefing's people: a face, the name, the word "Host", and the answer as an icon and a word (Playing, Watching, Choosing) |
 | `avrana-choice` | Play this round / Watch this round: two equal buttons; the chosen one has a tick, a fill and a stronger edge (`aria-pressed`), and its words do not change |
 | `avrana-back` | the way back in the top bar of a game's page: a chevron and the name of the place it returns to |
@@ -118,8 +144,12 @@ repeat:
 | `avrana-tools` | the Library's top row: search, the Filters button (with a count of filters that are on) and the View button |
 | `avrana-shelf`, `avrana-sec` | the Library's shelves and a shelf's heading (its count, or Reset while a filter is on) |
 | `avrana-grid` (`large`, `medium`, `compact`), `avrana-rows` | the four Library views: three grids of covers, and a list of rows |
-| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A link to the game's own page; it never starts one. `wide` on a cover is the 16:9 shape of Home's lead, a game's page and the briefing |
-| `avrana-hero`, `avrana-rail` | Home's lead cover, and Home's shelves that scroll sideways inside themselves |
+| `avrana-tile`, `avrana-row`, `avrana-cover` | a title on a shelf: its cover (own art, else its kind icon on its own colour), name, where it is seen, and a warning line when something stands in the way. A link to the game's own page; it never starts one. `wide` on a cover is the 16:9 shape of a game's page and the briefing; `tall` is the 3:4 cover of Home's rail and the preview's thumbnail; `stage` fills Home's stage |
+| `avrana-stage` | **Home's stage** (Concept K K0, AVR-708): the Featured title full bleed under the top row (468 px tall on a 844 px phone, never under 280), its eyebrow ("Featured", `stone`: a recommendation, never styled as "Selected for Party"), its name at display size, one line of facts ("3–8 players · Fits your 4 · Phone only"). Two fixed ink gradients (top 150 px 78% → 0; bottom 300 px 0 → 82% at 55% → ink) keep its words legible over any art. With no picture it is the title's name, 44 Light `graphite`, on `surface` |
+| `avrana-stage-actions` | the stage's one primary action (the Host's **Select for Party**, which is today's Host start) and **Preview**. A member who is not the Host has Preview only. Dimmed to 30% and inert while a preview is open |
+| `avrana-presence` (`home`) | who is here, in a row under the stage: up to five faces then "+n", "4 here · Riley away", and a purple HOST tag for the Host (dropped under 650 px tall). It opens the Party tab |
+| `avrana-rail` (`cards`), `avrana-card` | Home's rail: portrait covers 2.2 to a row; a cover is a button that opens its facts in place (`aria-expanded`), never a page and never a selection |
+| `avrana-preview` | a game's facts opened in place, under the stage or under the rail it was opened from: thumbnail, name, facts as chips, this phone's own check ("This phone can play"; an answer not known yet never blocks), the Host's Select, How to play, and "More about <game>" to its page. Focus goes to its title and back to what opened it; Esc, X, a swipe down or the same art again put it away. The art flies between the cover and the thumbnail (a same-document View Transition, tier 2; none under Reduce Motion) |
 | `avrana-fav` | the heart: keep or drop a favourite (`aria-pressed`, a name per game) |
 | `avrana-blank`, `avrana-hid` | the Library with nothing to show (why, and the way back), and the line that says how many titles a filter left out |
 | `avrana-seg`, `avrana-choices` | a sheet's choices: segments (one of a few, `aria-pressed`) and a list with a tick |
@@ -130,7 +160,7 @@ repeat:
 | `avrana-icon` | inline Lucide icon sized to its text |
 
 **The frame and its four places.** `/party/` is one document. Its places are views chosen by
-the address's fragment (`#home`, `#party`, `#library`, `#system`; anything else is Home), so
+the address's fragment (`#home`, `#party`, `#library`, `#me`; `#system`, the place's old name, lands on Me; anything else is Home), so
 moving between them loads nothing, the phone's Back works, and a reload stays put
 (`lib/frame.js`, pure and tested). Changing place moves focus to the title in the top bar and
 sets the document title. A game's own page is a fifth view (`#game/<id>`, below); it is not a
@@ -140,19 +170,30 @@ stays; on the way to a game the whole frame leaves the screen. Whatever was open
 rules) closes when the Party moves (to a briefing, to another round's briefing, to a game, or
 home), and the frame comes back in the same place, a game's page included.
 
-- **Home**: who is here, in a sentence; the connection line; the Limited Mode notice in full when
-  it applies, until it is folded away (below); a nameless phone's first step; then the games: a lead cover (the last title played
-  on this phone, else the first that suits the party), a shelf of the rest that suit it
-  ("Great for four", or "Games" when there is no party to suit), and "Recently played" once
-  something has been.
-- **Party**: you (the identity button and its form), everyone here as faces, chat's row.
+- **Home** (Concept K K0, AVR-708): the stage (the last title played on this phone, else the
+  first that suits the party: Featured), its actions, who is here in a row; the connection line
+  when it is not fine; the Limited Mode notice in full when it applies, until it is folded away
+  (below); a nameless phone's first step; then the rail of the rest that suit the party ("Also
+  fits your 4", or "Games" when there is no party to suit) and "Recently played" once something
+  has been. K0 and K3 exist today. **K3 "Just played"** (AVR-709) is the round this tab was
+  taken to, once Party Core says the Party is home again (`justPlayed`, lib/party-mode.js): the
+  game on the stage, "3 in the Party", a "Round over" panel and who chooses next; the Host has
+  **Play again** (today's Host start of the same game) and **Choose another game** (this phone's
+  Home goes back to Featured). Nothing about how the round went: "Played by", scores and winners
+  need results (AVR-71). K1 on Home (select-then-launch) needs AVR-701 and K2 (Home during a
+  round) needs AVR-703; until then K1 is the briefing (below).
+- **Party** (Concept K, AVR-710): "In this Party" (everyone here, one row each, and the Host's
+  hand-over), "This Party" (the Chat row with the unread count), and Leave Party, quietly, last.
+  The Figma frame's "Selected game" row is select-then-launch (AVR-701) and is not built.
 - **Library**: the games (the centre of gravity): search, two filters, four views, and the
   All / Favorites / Recent tabs (below).
-- **System**: how things are, in one block (below); this phone's checklist; the way to
-  diagnostics.
+- **Me** (was System; Concept K, AVR-707, AVR-710): you, large, with Edit profile (and its
+  form); how things are, in one block (below); "This phone": its checklist in a group, then
+  Limited Mode (Off, or On and opening its explanation) and Motion ("Follows Reduce Motion on
+  this phone": there is no setting of its own); "Help": Technical details.
 
-The Party drawer (People, and Chat while today's chat exists) opens from the Party control on
-any of the four. Today's chat is served by the old games runtime that ADR 0014 retires: it is
+The Party drawer (Chat, and People) opens from the Party page's Chat row (Concept K retired the
+Party control at the top: what is new in the chat is a count on the Party tab). Today's chat is served by the old games runtime that ADR 0014 retires: it is
 offered only while that runtime answers, connects only while the drawer's Chat side is on
 screen, gives up and says so after six tries in a row (opening the side again tries again), and
 when the runtime is gone the control and the row are simply not there
@@ -197,8 +238,9 @@ all"). Nothing to show always says why and offers the way back.
   whose phone has gone quiet but who has not left (the owner, 2026-10-06: redesign decision 21).
 - **Home never repeats a title**: the lead is not listed again under "Recently played", and a
   shelf with nothing on it has no heading.
-- **A cover is a link to the game's own page** (`#game/<id>`, PR 1.3). Nothing on a shelf starts
-  a game.
+- **A cover is a link to the game's own page** (`#game/<id>`, PR 1.3) in the Library; on Home it
+  opens the game's facts in place, which link to that page. Nothing on a shelf starts a game: only
+  the Host's own button does (Select for Party on Home, Start for everyone on a game's page).
 
 **A game's page** (AVR-286; `detailNodes`, `renderDetail`, `gameOf` in `lib/frame.js`). Browsing
 only: the Party stays where it is. The top bar holds the way back, named for the place the page
@@ -234,15 +276,17 @@ because no title carries that data.
 **The briefing** (ADR 0011 decision 4 and its 2026-10-05 amendment; GAME-UX-CONTRACT rule 3.2;
 `#scene`, `renderScene`, `show()`). The lifecycle is unchanged: Party Core decides who is where,
 who may start, and why a start waits. Under the top bar ("Getting ready", the Limited mark on a
-Limited phone, the Party control): the game's wide art, its name, its premise, the "How to play"
-row, then the line-up. A dock at the bottom holds the two choices, the Host's "Start game", one
+Limited phone): the compact stage ("Selected for Party", the name, players and who hosts), its
+premise, the presence row (with the HOST tag for the Host), the panel (this phone's check and the
+fit; who has chosen what), the "How to play" row, then the line-up. A dock at the bottom holds the
+two choices, the Host's "Start {game}" (Party Core's blocker sentence under it while it is off), one
 status line (Party Core's reason for the Host, "Waiting for {Host} to start" for a guest) and the
 Host's "Choose another game". There is no bar of places, no Library, no chat and no "This phone"
 on it, and no link that leaves it. Who hosts is the word "Host" in the line-up and, for a guest,
 the status line; with no Host the line says "Nobody is hosting right now." The separate "You're
 the host / Hosted by Ana" line of the older scene is gone.
 
-- **Over it**, the Party control opens the drawer with the people only (no tabs, no chat, a line
+- **Over it**, the presence row opens the drawer with the people only (no tabs, no chat, a line
   "Getting ready for {game}."), and the Limited mark opens the explanation without its "Check for
   the full version" link. Both are native modal dialogs: focus goes in and stays in, the briefing
   behind is inert, and Escape, Close or a tap outside gives focus back to what opened it with the
@@ -343,8 +387,11 @@ depicts it → a generic icon.**
 
 **Implemented, experimental, not deployed (AVR-466 phase C; owner decisions 2026-10-14).** Packages are to be able to bundle
 their own artwork, which adds two steps to this order: **owner cover → the package's cover → the
-package's icon → the title's own art → curated art → a generic icon.** The shell draws the ladder (`web/party/lib/cover-art.js`; a list row prefers the icon to the cover; a picture that fails to
-load falls to the next rung), but a phone is served the images only once the separately gated nginx `/party/pkgart/`
+package's icon → the title's own art → curated art → a generic icon.** That is the ladder for a tile. The shell draws
+the ladder of the place (`web/party/lib/cover-art.js`): a list row prefers the icon to the cover; a wide hero (Home's
+stage when its box is wide, a game's page) puts the package's **banner** first, after the owner's cover; a narrow hero
+(a phone held upright) keeps the cover first; a picture that fails to load falls to the next rung. A phone is served the
+images only once the separately gated nginx `/party/pkgart/`
 location is deployed; until then each answers 404 and the tile draws what it drew before. The contract is in
 [`.avrgame` package, bundled artwork](design/AVRGAME-PACKAGE.md#bundled-artwork-avr-466-experimental).
 
@@ -363,19 +410,30 @@ location is deployed; until then each answers 404 and the tile draws what it dre
   Covers are not in the offline copy. How they reach the Pi:
   [deploy runbook](runbooks/deploy.md#game-covers-the-owners-never-committed).
 
-- **A package's cover and icon (PLANNED, AVR-466; not implemented):** WebP, PNG or JPEG, never SVG,
-  declared in the package's manifest and validated when it is packed and installed (a declared image
-  that is invalid refuses the package). The cover is **1:1** (recommended 512 px, at most 256 KiB)
-  and fills the tile as the owner's cover does; the icon is 1:1 (recommended 256 px, at most 64 KiB)
-  and is used in list rows and, with no cover, centred on the tile in the existing `icon-art` style.
-  The limits are starting values, to be measured on the Pi. Both are decoration (`alt=""`, the name
-  stays text), lazy, with width and height set, and give way through the same `onerror` fallback.
-  **The owner's cover always wins over a publisher's.** They are served from the Party origin at
-  `/party/pkgart/` by a new nginx location (deploying it needs separate owner approval) with no CSP
-  change, and are not in the offline copy or the service worker's precache: a phone out of range
-  shows the placeholder. The placeholder stays the kind icon and the visible title; no generated
-  imagery. A package's banner and screenshots are validated but not shown until a game-page design
-  pass; screenshots will need `alt` text.
+- **A package's cover, icon and banner (AVR-466; implemented in code, experimental, not deployed):** WebP, PNG
+  or JPEG, never SVG, declared in the package's manifest and validated when it is packed and installed (a
+  declared image that is invalid refuses the package; one damaged afterwards is dropped alone). The **cover**
+  is 1:1 (recommended 512 px, at most 256 KiB) and fills a tile as the owner's cover does; the **icon** is 1:1
+  (recommended 256 px, at most 64 KiB) and is used in list rows and, with no cover, centred on the tile in the
+  existing `icon-art` style; the **banner** is 16:9 (recommended 1280 x 720, at most 384 KiB) and is used only
+  where a box is wide: a game's page, and Home's stage or the briefing's compact stage when its measured width
+  over height reaches 1.3 (it keeps the banner down to 1.2, so a stage that gains a line of text does not flip).
+  On a phone held upright Home's stage is taller than it is wide, so it draws the square cover whole, as before
+  (the briefing's compact stage is about 1.4 there, so it draws the banner); a banner with no cover takes the stage's
+  width below the top row. A
+  tile, a rail and a row never use the banner. In a wide stage the banner is fitted to the stage's width and
+  hung from its top (`banner-art`), never stretched or cut at the sides, its lower edge melting into the ink
+  gradient under the live title, which stays text and is not hidden. All three are decoration (`alt=""`, the
+  name stays text) with width and height set (the stage's picture is asked for at once, the shelf's lazily), and
+  each gives way through the same `onerror` fallback to the next rung of its place's ladder, ending at the
+  kind icon and the visible title. **The owner's cover always wins over a publisher's**, in a wide stage and a
+  game's page too; it shadows a banner only for the games the owner gave a cover. The limits are starting
+  values, to be measured on the Pi. They are served from the Party origin at `/party/pkgart/` by a new nginx
+  location (a separate DRAFT PR, #143; deploying it needs separate owner approval) with no CSP change, and
+  are not in the offline copy or the service worker's precache: a phone out of range shows the placeholder.
+  The placeholder stays the kind icon and the visible title; no generated imagery. A package's screenshots are
+  validated but not shown until a game-page design pass; screenshots will need `alt` text. Ladders, thresholds
+  and fallbacks, exactly: [AVRGAME-PACKAGE, Shell](design/AVRGAME-PACKAGE.md#shell).
 
 - **Own art:** each LAN title's GameArt scene (`avrana-party-games` `web/gameart.js`), exported by its
   `ops/export_game_art.mjs` as square, self-contained SVGs (presentation attributes only, frozen) into
@@ -420,6 +478,48 @@ originals exist only on the development machine. Verified by logging every reque
 sessions (Party page at four viewports including the offline state; every LAN game's pre-game
 screens; a full BLUFF game): zero non-local requests.
 
+## Concept K in Party: its words, and what is built vs proposed
+
+Folded from the style kit's Party-specific parts (`avrana-console-style/07-content-and-copy.md`,
+`11-party-integration-notes.md`, AVR-712). The kit stays the design reference; this section is
+what the Party shell holds itself to.
+
+**Words.** The voice is a good console: calm, exact, brief. It labels and reports.
+- Say what the button does, verb and object: *Start BLUFF · Play again · Choose another game ·
+  Edit profile · Make host · Leave Party*.
+- Say the state as a fact: *Selected for Party · Featured · Just played · Round over · Here ·
+  Away · Choosing: you and Cleo · Checking this phone*.
+- Counts as numbers: "4 here", "Playing 2 · Watching 1 · Choosing 1", "3 in the Party".
+- Name people: "Ana hosts", "Ada chooses what's next."; "you" for this phone's person.
+- A blocked thing carries its reason beside it, in Party Core's own sentence (a disabled Start).
+- The contract's words stay: **Play this round** / **Watch this round**; Watch is never a fallback.
+- A middle dot separates facts on one line; an en dash marks a range; sentence case except
+  eyebrows and tags; an ellipsis only while something is under way ("Starting BLUFF…").
+- Never invented: no score, winner, round length or countdown; no other phone's check; Featured
+  is never styled as Selected; an unknown check never blocks; away is a dimmed face **and** the
+  word "Away".
+
+**Actual vs Proposal.** Concept K's frames show some things Party Core does not do. They are
+built only when the platform has them; until then they are left out, or put behind a default-off
+`?concept=` flag that says "Proposal" on screen.
+
+| Concept K shows | In Party today | Waits for |
+|---|---|---|
+| Featured stage, Preview, rail (K0) | **Actual** (AVR-708): a recommendation from the catalog's fit | — |
+| Select for Party on Home | **Actual**: today's Host start, which moves everyone to the briefing (or the game) | — |
+| K1 "Selected for Party" | **Actual** as the briefing (AVR-709): this phone's own check, who has chosen | AVR-701 for K1 on Home |
+| Voluntary Ready ("Ready 3/4") | not shown | **AVR-700** |
+| Select, then launch, for every game | not built: a game without a briefing starts at once | **AVR-701** |
+| Guests browsing during setup; the bar on the briefing | not built: the bar stays off it (ADR 0011 d4) | **AVR-702** |
+| Home during a round (K2, Back to game) | not built: a phone on Party Home is sent to the round | **AVR-703** |
+| Tier-3 motion at 600 ms | 200 ms; 600 ms only with `?concept=motion` (owner, 2026-10-21) | **AVR-704** |
+| K3 "Just played", Round over, Play again | **Actual** (AVR-709), from what this phone saw | — |
+| "Played by …", won / lost in Party | not shown | **AVR-71** (results in the party view) |
+| "Selected game" on the Party tab | not shown | AVR-701 |
+| Make host | **Actual** (AVR-710): Party Core's `transfer_host` | — |
+| Library as one two-up grid with pill tabs | not built: the fit groups and the tab tint stay | an owner decision |
+| "Asks Play or Watch" in the preview | not shown: Party Core does not tell the shell | AVR-70 (catalogue metadata) |
+
 ## Platform UX and game identity
 
 The behavioural boundary (briefing, rules access, host controls, unavailable actions, system
@@ -441,7 +541,7 @@ primary action, ≥ 44 px targets, text-first status, line icons for chrome, red
 
 ## Intentionally temporary
 
-The brand face (Helvetica-style, per the UX/UI brief), the app icon (`icon.svg`, unchanged), dark-only
+The app icon (`icon.svg`, unchanged), dark-only
 theming, the tile layout and the `avrana-*` names. No Party page or script hard-codes a colour; the
 copies of the palette outside `web/src/party.css` are `theme-color` in the three HTML heads (the page, diagnostics, the doorway) and
 `manifest.json` (updated with the tokens), and the games' pre-game layer and Back to Party bar,

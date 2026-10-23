@@ -53,6 +53,16 @@ export function moveKey(view) {
   return `${view && view.party}:${view && view.nav ? view.nav.seq : ''}:${loc.at}:${loc.game}:${loc.session}`;
 }
 
+/** Home's "Just played" (Concept K's K3, AVR-709): the game of the round this phone was taken to,
+ * once the Party is home again from it. Only what this phone saw (`kept`: {party, session, game},
+ * written as it left for the round) and where Party Core says the Party is: no score, no winner, no
+ * one's name. Another Party, a round on its way or under way, or the Host's "Choose another game"
+ * (`kept.done`) ends it. */
+export function justPlayed(view, kept) {
+  if (!view || !view.me || !kept || typeof kept.game !== 'string' || kept.done || kept.party !== view.party) return null;
+  return locationOf(view).at === HOME && !liveSession(view) ? kept.game : null;
+}
+
 /** The round the Party is in or holds the results of, as one phone remembers it: null at home. */
 export function roundKey(view) {
   const loc = locationOf(view);
@@ -99,6 +109,8 @@ export function roundToRemember(view) {
  * a game is its same-origin entry path. */
 export function destination(view, here, catalog, address = null) {
   if (!view || !view.me || !view.location) return null;
+  // A guest asked to leave from a game page (AVR-580 guest exit): Party Home, to confirm or stay.
+  if (view.me.exit && view.me.exit.live) return here === HOME ? null : '/party/';
   const loc = locationOf(view);
   if (loc.at === HOME || loc.at === 'setup') {
     if (here === HOME) return null;
@@ -113,11 +125,12 @@ export function destination(view, here, catalog, address = null) {
 
 /** How a catalog tile behaves while the party is home, or null when it is not a party game (then
  * the tile is exactly today's). Kinds: profile (no profile yet: choose a name first), start (the
- * host), wait (a member, not the host), starting (the host's direct start is on its way). */
+ * host), wait (a member, not the host), starting (the host's direct start is on its way),
+ * reconnect (this phone left the Party on purpose: AVR-580). */
 export function tileMode(game, view) {
   const id = coreId(game, view);
   if (!id || !game.installed || !launchTarget(game)) return null;   // not here: today's tile says so
-  if (!view.me) return { kind: 'profile' };
+  if (!view.me) return view.departed ? { kind: 'reconnect' } : { kind: 'profile' };
   if (liveSession(view)) return { kind: 'starting' };
   return { kind: view.me.host ? 'start' : 'wait', game: id };
 }

@@ -13,6 +13,11 @@ Whether rsyslog writes persistent copies under `/var/log` (`ForwardToSyslog=yes`
 deliberate reboot proof (marker line, reboot, read it back) is **NOT RUN**: it is test A-19 in
 [offline-acceptance](offline-acceptance.md) and is expected to fail until the setting below is decided.
 
+**Change in source 2026-10-19 (AVR-29), NOT installed on the Pi:** `deploy/journald/avrana-journald.conf` now
+sets `Storage=persistent` with the same size bounds, and `deploy/journald/install-persistent-journal.sh` installs,
+verifies and rolls it back ("Persistent journal" below). Until the owner installs it and the reboot proof passes,
+the appliance's journal is still volatile.
+
 Every file the appliance keeps writing has a known bound. Measured on the Pi on 2026-09-29, read-only:
 - 117 GB card, 8% used;
 - journal 24.3 MB (labelled "persistent" at the time: see the correction above; it was volatile);
@@ -28,7 +33,7 @@ parties, or on a smaller card.
 
 | Source | Writer | Bound | Status |
 |---|---|---|---|
-| systemd journal (all Avrana services: `avranaparty-games`, `avranaparty-arcade`, `avrana-party-core`, the telemetry timer) | journald | `deploy/journald/avrana-journald.conf`: 256 MB on disk, 1 GB always kept free, 64 MB in RAM, one file per week | size bounds LIVE since 2026-09-29 (effective config verified); **volatile**: lost at reboot (observed 2026-10-12) |
+| systemd journal (all Avrana services: `avranaparty-games`, `avranaparty-arcade`, `avrana-party-core`, the telemetry timer) | journald | `deploy/journald/avrana-journald.conf`: 256 MB on disk, 1 GB always kept free, 64 MB in RAM, one file per week | size bounds LIVE since 2026-09-29 (effective config verified); **volatile**: lost at reboot (observed 2026-10-12). `Storage=persistent` in source (AVR-29), not installed |
 | `/var/log/nginx/*.log` | nginx | Debian's `/etc/logrotate.d/nginx`: daily, 14 generations, compressed | LIVE, unchanged (read 2026-09-29) |
 | `/var/log/avrana/pi-throttle.jsonl` | `pi-throttle-check.timer`, one line a minute (~0.4 MB/day) | `telemetry/avrana-telemetry.logrotate`: weekly or past 10 MB, 8 compressed generations (about two months, well under 20 MB) | LIVE since 2026-09-29 (`logrotate -d` parses it as intended) |
 | `/var/log/avrana/baseline.jsonl` and other hand-made captures | the owner, by hand | none on purpose: they're measurement evidence | Never rotated or expired automatically |
@@ -50,22 +55,89 @@ capped by count or size, or grows only when someone deliberately makes new evide
 # telemetry rotation (idempotent: reinstalls files and re-enables the timer)
 sudo bash /home/cody/avrana-party/telemetry/install-pi-throttle-check.sh
 sudo logrotate -d /etc/logrotate.d/avrana-telemetry          # dry run: shows the plan, changes nothing
-
-# journal caps
-sudo install -D -m 0644 /home/cody/avrana-party/deploy/journald/avrana-journald.conf /etc/systemd/journald.conf.d/avrana.conf
-sudo systemctl restart systemd-journald
-journalctl --disk-usage
 ```
 
-Both steps need the production checkout to contain this change first (a fast-forward, as usual).
+The journal (caps and persistence) is installed by its own script: "Persistent journal" below. Both need the
+production checkout to contain the change first (a fast-forward, as usual).
 
-**Making the journal survive a reboot is an owner decision (AVR-29), not done and not part of the steps above.**
-The proposed change is one line, `Storage=persistent`, under `[Journal]` in `deploy/journald/avrana-journald.conf`
-(`tests/unit/test_log_bounds.py` currently asserts that `Storage` is absent and would change with it). The
-Raspberry Pi OS drop-in `40-rpi-volatile-storage.conf` sorts before `avrana.conf`, and a later drop-in wins for
-a key it sets, so the installed `avrana.conf` should override it: an inference to confirm with
-`systemd-analyze cat-config systemd/journald.conf` and `journalctl --disk-usage` after the owner installs it. It
-trades SD-card writes (bounded by `SystemMaxUse=256M`) for diagnostics that survive a power loss. Then run A-19.
+## Persistent journal (AVR-29)
+
+Status: **in source, NOT installed; reboot persistence NOT RUN on the Pi** (2026-10-19). Owner-run, with sudo,
+not during a party. The script never deletes a log and never touches the Raspberry Pi OS files.
+
+**What changes.** One key, `Storage=persistent`, in `/etc/systemd/journald.conf.d/avrana.conf`; the bounds stay
+`SystemMaxUse=256M`, `SystemKeepFree=1G`, `RuntimeMaxUse=64M`, `MaxFileSec=1week`. Raspberry Pi OS ships
+`/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf` (`Storage=volatile`). journald reads the drop-ins
+of `/usr/lib`, `/run` and `/etc` as one list sorted by file name, and a later file wins for a key it sets;
+`avrana.conf` sorts after `40-rpi-…` (letters after digits), so it wins. The script does not trust that
+reasoning: it reads the effective value from `systemd-analyze cat-config systemd/journald.conf`, systemd's own
+ordering, and fails if any later drop-in sets `Storage` again.
+
+**Bounded growth.** On disk the journal never exceeds 256 MB and never leaves less than 1 GB free; journald
+deletes its oldest files to stay inside both. Each file covers at most a week. Before journald reaches `/var`
+early in boot it keeps at most 64 MB in RAM.
+
+**The SD-card writes.** Persistence moves the journal from RAM to the card. The size bound caps the space, not
+the writes, so the cost is the log volume plus journald's overhead. On 2026-10-12 one boot of about 53 hours,
+mostly idle, held 11.4 MB: roughly 5 MB a day, more during parties. The bytes the card actually writes are
+higher than that: journald rewrites its own indexes and file headers, the card rewrites whole pages, and
+journald syncs at most every 5 minutes (immediately for critical messages). That is an estimate, not a
+measurement; even several times that volume is small next to a card's write endurance. To measure it, read the seventh field of `/sys/block/mmcblk0/stat` (512-byte sectors
+written) a day apart, with and without the change. A power cut can lose the last few minutes of ordinary
+messages; critical ones are synced at once. With `ForwardToSyslog=yes`, an installed and running rsyslog would
+write a second copy under `/var/log`; preflight says whether rsyslog is active.
+
+```bash
+cd /home/cody/avrana-party                         # the production checkout, fast-forwarded to this change
+bash deploy/journald/install-persistent-journal.sh preflight       # read only: drop-in order, effective Storage, disk
+sudo bash deploy/journald/install-persistent-journal.sh install    # backup, install, restart journald, flush, verify
+bash deploy/journald/install-persistent-journal.sh verify          # read only; run any time
+```
+
+- **preflight** lists the drop-ins in the order systemd applies them, the effective `Storage` and `SystemMaxUse`,
+  whether the installed file matches this release, free space, journal size and whether rsyslog is active.
+  Expected today: `effective Storage: volatile`.
+- **install** keeps a backup in `/var/backups/avrana-party/journald-<time>/` (the old `avrana.conf`, or a note
+  that there was none), replaces the file atomically, restarts journald and runs `journalctl --flush` so this
+  boot's journal moves to `/var/log/journal` now. Then it verifies. If verification fails it puts the previous
+  file back and restarts journald again (exit 1). A second run with nothing to change does not restart journald.
+- **verify** passes only if the effective `Storage` is `persistent`, the bounds are the effective values, the
+  installed file matches this release, `/var/log/journal/<machine-id>/system.journal` exists and this boot's
+  runtime journal under `/run/log/journal` is gone (journald removes it when it switches to the card). If the
+  file is installed but journald never switched (for example a rebuild without `--activate`), `install`
+  restarts journald and flushes, changing no file.
+- **Rollback:** `sudo bash deploy/journald/install-persistent-journal.sh rollback` undoes the last install: it
+  restores the file that install replaced, restarts journald and prints the effective `Storage`. Run it again
+  to step one install further back (each backup it used is renamed `*.restored`), or name one:
+  `rollback /var/backups/avrana-party/journald-<time>`. After undoing the first install the journal is volatile
+  again.
+  The files already under `/var/log/journal` stay (bounded, still readable). Removing them is a separate,
+  deliberate step: `sudo journalctl --vacuum-size=1M`, then delete `/var/log/journal/<machine-id>` by hand.
+
+### Prove it survives a reboot (owner, NOT RUN)
+
+This is A-19 in [offline-acceptance](offline-acceptance.md). Only this, on the Pi, proves AVR-29; the
+repository tests prove the script and the precedence on a simulated host, never a reboot.
+
+```bash
+# as root, or as a user in the adm or systemd-journal group (journalctl -b -1 needs it to read system logs)
+# before: after install and a passing verify
+journalctl --list-boots | tail -n 2
+logger -t avrana-journal "AVR-29 marker before reboot $(date -u +%FT%TZ)"
+journalctl -t avrana-journal -n 1 --no-pager        # the marker is in the journal
+sudo reboot
+# after it is back
+journalctl --list-boots | tail -n 3                 # the previous boot is listed (index -1)
+journalctl -b -1 -t avrana-journal --no-pager       # the marker, from the previous boot
+journalctl -b -1 -u avrana-party-core -n 5 --no-pager
+journalctl --disk-usage                              # within 256M
+bash deploy/journald/install-persistent-journal.sh verify
+```
+
+PASS: the previous boot is listed, the marker and the previous boot's service lines are there, the disk usage is
+within the bound and verify passes. FAIL: any of them missing; record exactly what was seen, then decide whether
+to roll back. Record the result on AVR-29 and in A-19 with the date and the Party commit.
+
 The arcade's stats-log rotation goes live when the arcade next restarts on the new code.
 
 ## Disk pressure: what happens if the card does fill
@@ -94,10 +166,14 @@ The arcade's stats-log rotation goes live when the arcade next restarts on the n
 - `tests/unit/test_log_bounds.py`:
   - the telemetry rule covers exactly the sampler's output file;
   - the installer installs the rule;
-  - the journald caps are explicit and leave `Storage=` alone;
+  - the journald caps are explicit, with `Storage=persistent` (AVR-29);
   - this inventory names every source.
   - The real `logrotate` runs in Linux CI: past 10 MB the file rotates, and the sampler's `>>`
     appends to the fresh file; a small file is left alone.
+- `tests/unit/test_persistent_journal.py` (AVR-29): the drop-in, its name sorting after the Raspberry Pi OS
+  drop-in, and the installer on a simulated host (preflight, install, idempotent second run, a failed
+  verification restored, an installed-but-inactive journald activated, a stale journal rejected, rollback
+  one install at a time, a later drop-in caught). Linux CI requires the real `systemd-analyze`.
 - `tests/unit/test_arcade_stream.py` `ClientStatsLog`: the stats log rotates, the newest record
   is kept, and there are never more than two files.
 - games `tests/test_chat.py`: chat media is capped by bytes, the newest files are kept, and the

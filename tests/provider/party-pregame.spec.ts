@@ -18,7 +18,7 @@ const expect = baseExpect.configure({ timeout: 20_000 });
 const PHONE = devices['iPhone 13'];               // 390 x 844
 type Phone = { context: BrowserContext; page: Page };
 const IN_BLUFF = /\/games\/bluff\/\?avrana=1$/;
-const AT_HOME = /\/party\/(#(home|party|library|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places, or a game's page
+const AT_HOME = /\/party\/(#(home|party|library|me|system|game\/[a-z0-9-]+))?$/;   // the shell: one of its places (Me too, where a name is chosen), or a game's page
 
 function record() {
   const Native = window.WebSocket;
@@ -46,7 +46,7 @@ async function phone(browser: Browser, briefed = true): Promise<Phone> {
 async function arrive(page: Page, name: string) {
   await page.goto('/party/');
   await expect(page.locator('html')).toHaveAttribute('data-party', 'on');
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill(name);
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -153,7 +153,7 @@ test('the host picks BLUFF: a briefing on every phone, host-only Start, then eve
   expect(await api(ben.page, 'session/start', { if_version: v.version })).toMatchObject({ status: 403, body: { error: 'not_host' } });
 
   // the people, over the real briefing: only them, and the briefing is given back as it was
-  await ben.page.locator('#hud').click();
+  await ben.page.locator('#scene-presence').click();
   await expect(ben.page.locator('#social')).toBeVisible();
   await expect(ben.page.locator('#social-where')).toHaveText('Getting ready for BLUFF.');
   await expect(ben.page.locator('#social-people li')).toHaveCount(3);
@@ -161,7 +161,7 @@ test('the host picks BLUFF: a briefing on every phone, host-only Start, then eve
   await ben.page.screenshot({ path: info.outputPath('setup-people-390x844.png') });
   await ben.page.keyboard.press('Escape');
   await expect(ben.page.locator('#social')).toBeHidden();
-  await expect(ben.page.locator('#hud')).toBeFocused();
+  await expect(ben.page.locator('#scene-presence')).toBeFocused();
   await expect(ben.page.locator('#scene')).toBeVisible();
   expect(await welcomeOf(ben.page)).toBeUndefined();                  // and still no table
 
@@ -207,7 +207,7 @@ test('the host picks BLUFF: a briefing on every phone, host-only Start, then eve
   for (const p of phones) {
     await expect(p.page.locator('#avrana-navigation')).toBeHidden();
     await expect(p.page.locator(':is(a, button):visible', { hasText: 'Back to Party' })).toHaveCount(0);
-    await expect(p.page.locator('body :visible', { hasText: /playing ·|watching ·|Setting up/ })).toHaveCount(0);
+    await expect(p.page.locator('body :visible', { hasText: /Playing \d|Watching \d|Choosing|Setting up/ })).toHaveCount(0);
   }
   await expect(ana.page.locator('#party-end')).toBeVisible();            // the host's End, in the table
   await expect(ben.page.locator('#party-end')).toBeHidden();
@@ -265,7 +265,7 @@ test('a reopened or late phone lands where the party is: the setup scene, then t
   const cy = await phone(browser);
   await cy.page.goto('/party/');
   await cy.page.locator('#home-name').click();                         // Home asks a nameless phone for its name
-  await expect(cy.page.locator('html')).toHaveAttribute('data-place', 'party');
+  await expect(cy.page.locator('html')).toHaveAttribute('data-place', 'me');
   await cy.page.locator('#profile-name').fill('Cy');
   await cy.page.getByRole('button', { name: 'Save profile' }).click();  // the profile is presence
   await expect(cy.page.locator('#scene')).toBeVisible();              // and the party is here
@@ -361,12 +361,14 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
   const [ana, ben, cy, dee] = phones, guests = [ben, cy, dee];
   const shot = (p: Phone, name: string) => p.page.screenshot({ path: info.outputPath(`journey-${name}-390x844.png`) });
 
-  // Home: who is here and who hosts; covers lead to a game's page and start nothing
+  // Home: who is here and who hosts; covers open their facts and start nothing. Only the Host has
+  // the stage's Select for Party (Concept K, AVR-708: the same start as a game's page).
   for (const p of phones) {
     await place(p.page, 'home');
-    await expect(p.page.locator('#party-lede')).toHaveText('Four of you are here.');
+    await expect(p.page.locator('#home-here')).toHaveText('4 here');
     await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
     await expect(p.page.locator('#view-home').getByRole('button', { name: /start/i })).toHaveCount(0);
+    await expect(p.page.locator('#home-actions').getByRole('button', { name: 'Select for Party' })).toHaveCount(p === ana ? 1 : 0);
     expect(await sideways(p.page)).toBeLessThanOrEqual(0);
   }
   await expect(ana.page.locator('#party-host')).toContainText('You’re the host');
@@ -406,7 +408,7 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
   for (const p of guests) await expect(p.page.locator('#scene-start')).toBeHidden();
   for (const p of [ana, ben]) await p.page.locator('#choose-play').click();
   for (const p of [cy, dee]) await p.page.locator('#choose-watch').click();
-  await expect(ana.page.locator('#scene-count')).toHaveText('2 playing · 2 watching');
+  await expect(ana.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 2');
   await expect(ana.page.locator('#scene-start')).toBeEnabled();
   await shot(ana, '4-briefing-host'); await shot(dee, '4-briefing-guest');
   await ana.page.locator('#scene-start').click();
@@ -450,19 +452,25 @@ test('the acceptance journey on four phones: Home, Library, BLUFF’s page, the 
     await expect(p.page).toHaveURL(AT_HOME);
     await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
     await expect(p.page.locator('#nav')).toBeVisible();
-    await expect(p.page.locator('#party-lede')).toHaveText('Four of you are here.');
+    await expect(p.page.locator('#home-here')).toHaveText('4 here');
     expect(await sideways(p.page)).toBeLessThanOrEqual(0);
   }
   expect((await partyState(ana.page)).location.at).toBe('home');
   // what each phone remembers: the two who played have BLUFF as their last game; the two who
   // watched have nothing "recently played" (the owner, 2026-10-06)
+  // K3 (AVR-709): back from the round they played, their Home says so; once the Host puts it away,
+  // the same title leads as the one played last
   for (const p of [ana, ben]) {
     await place(p.page, 'home');
-    await expect(p.page.locator('#home-lead [data-game="bluff"]')).toContainText('You played this last.');
+    await expect(p.page.locator('#home-lead [data-game="bluff"]')).toHaveAttribute('data-just', '');
+    await expect(p.page.locator('#home-lead [data-game="bluff"]')).toContainText('Just played');
   }
+  await ana.page.locator('#just-other').click();
+  await expect(ana.page.locator('#home-lead [data-game="bluff"]')).toContainText('You played this last.');
   for (const p of [cy, dee]) {
     await place(p.page, 'home');
     await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
+    await expect(p.page.locator('#home-lead [data-just]')).toHaveCount(0);         // a watched round is not "played"
     await expect(p.page.locator('#home-lead')).not.toContainText('You played this last.');
     expect(await p.page.evaluate(() => localStorage.getItem('lg-recent'))).toBeNull();
   }

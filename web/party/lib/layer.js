@@ -138,6 +138,17 @@ export function actions(view, { crossOrigin = false } = {}) {
   return out;
 }
 
+/** Whether the drawer offers a guest "Leave Party…" over a game page of another origin (AVR-580 guest
+ * exit). It only asks Party Core; the confirmation is on Party Home, a top-level Party page the game
+ * cannot cover, so a lure over this frame can cost a person a trip to Party Home and nothing more.
+ * Never the Host's (their Leave names who hosts next, on Party Home), and only during a round or its
+ * results; elsewhere the person is on Party Home already. */
+export function exitOffered(view, { crossOrigin = false } = {}) {
+  const me = view && view.me;
+  if (!crossOrigin || !me || me.host) return false;
+  return ['game', 'results'].includes(locationOf(view).at);
+}
+
 export const ACTION_WORDS = {
   end: { label: 'End the round for everyone', confirm: 'This ends the round for everyone. Everyone goes back to Party Home.', yes: 'End the round' },
   lobby: { label: 'Bring everyone back to Party Home', confirm: 'Everyone goes back to Party Home. A round that is on ends.', yes: 'Bring everyone back' },

@@ -70,8 +70,12 @@ RETURN = ('content-type', 'cache-control', 'set-cookie', 'x-content-type-options
 GAME_STUB = (b'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
              b'<title>%s (stub game)</title><h1 data-game="%s">%s stub</h1>'
              b'<nav id="nav"><a href="/party/">Back to Party</a></nav>'
-             # The real in-game follower (what /shared/avrana-integration.js runs in Games): the
-             # Party moves this page like any game page. `here` is the Party Core game id.
+             # The real same-origin in-game follower (what /shared/avrana-integration.js runs in
+             # Games on the Party's origin): the Party moves this page like any game page. `here`
+             # is the Party Core game id. On the game origin (--game-origin) it cannot reach Party
+             # Core (421), so it neither follows nor keeps its phone present: real games follow
+             # through the bridge there. Lifecycle tests on a game origin use the provider harness
+             # (tests/provider/server.py --party-session --game-origin), which runs real BLUFF.
              b'<script type="module">import { startPartyFollow } from "/party/lib/party-follow.js";'
              b'const slug = location.pathname.split("/")[2];'
              # A test opts this stub into the Party layer (AVR-292) with localStorage avrana-test-layer.

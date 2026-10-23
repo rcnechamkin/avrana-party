@@ -153,6 +153,10 @@ class Inventory(unittest.TestCase):
         elsewhere.update({'deploy/games/avrana-game@.service': native, 'deploy/games/avrana-game@.socket': native,
                           'deploy/party-core/avrana-party-core.socket': native})
         self.assertTrue(any('provision-game' in n['by'] for n in INV['not_managed']))
+        hosted = 'the hosted staging VM installs its own, never the Pi (inventory not_managed)'
+        elsewhere['deploy/hosted/cloudflared/cloudflared-avrana-party.service'] = hosted
+        elsewhere['deploy/hosted/avrana-gate.service'] = hosted
+        self.assertTrue(any('hosted staging VM' in n['what'] for n in INV['not_managed']))
         found = set()
         for pattern in ('**/*.service', '**/*.timer', '**/*.socket', 'deploy/**/*.conf', 'arcade/*.rules',
                         'arcade/avrana-uinput.conf', '*.nginx', 'avrana-captive.conf'):
@@ -331,8 +335,8 @@ class Inventory(unittest.TestCase):
             self.assertIn('is not one of the commands this tool runs', broken(lambda i: i['files'][0].update(activate=[argv])))
         self.assertIn('unknown owner step', broken(lambda i: i['files'][0].update(owner_activate=['sudo rm -rf /'])))
         shipped = [argv for section in ('files', 'links', 'absent') for e in INV[section] for argv in e.get('activate', [])]
-        self.assertEqual({tuple(a) for a in shipped}, {tuple(a) for a in rebuild.ACTIVATIONS})    # the seven, no spare
-        self.assertEqual(len(rebuild.ACTIVATIONS), 7)
+        self.assertEqual({tuple(a) for a in shipped}, {tuple(a) for a in rebuild.ACTIVATIONS})    # the eight, no spare
+        self.assertEqual(len(rebuild.ACTIVATIONS), 8)
         for secret_path in SECRET_PATHS:
             self.assertTrue(rebuild.is_secret(secret_path), secret_path)
         # ...and the host refuses by itself, with no inventory loaded at all.

@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PLAYER_CHOICES, SCREEN_CHOICES, SCREEN_NAMES, TABS, VIEWS, VIEW_NAMES, arrange, consequence, countWord, filterLabel, filterWords, fits, homeShelves, leadLine, seatsMark, seatsPhrase, viewOf, fitLine } from '../../web/party/lib/library.js';
+import { PLAYER_CHOICES, SCREEN_CHOICES, SCREEN_NAMES, TABS, VIEWS, VIEW_NAMES, arrange, consequence, countWord, filterLabel, filterWords, fits, homeShelves, stageLine, fitShort, seatsMark, seatsPhrase, viewOf, fitLine } from '../../web/party/lib/library.js';
 import { screenText } from '../../web/party/lib/ui.js';
 import { visibleGames } from '../../web/party/lib/catalog-view.js';
 
@@ -188,7 +188,7 @@ test('Home leads with the last title played here, else the first that suits the 
   const fresh = homeShelves({ all, people: 4, keyOf: key });
   assert.equal(fresh.lead.id, 'bluff');
   assert.equal(fresh.leadPlayed, false);
-  assert.equal(fresh.title, 'Great for four');
+  assert.equal(fresh.title, 'Also fits your 4');                                         // Concept K's rail (AVR-708)
   assert.deepEqual(ids(fresh.great), ['expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);   // the lead is not repeated
   assert.deepEqual(fresh.played, []);
   const back = homeShelves({ all, people: 5, keyOf: key, recent: ['avrana:arcade-gauntlet2', 'gone:title', 'avrana:expo'] });
@@ -207,17 +207,21 @@ test('Home leads with the last title played here, else the first that suits the 
   assert.deepEqual([six.lead.id, six.great.length], ['bluff', 0]);
   const nine = homeShelves({ all, people: 9, keyOf: key });                                 // nothing suits nine: still a way in
   assert.deepEqual([nine.lead.id, nine.great.length], ['bluff', 0]);
-  assert.deepEqual(homeShelves({ all: [], people: 4 }), { lead: null, leadPlayed: false, title: 'Great for four', great: [], played: [] });
+  assert.deepEqual(homeShelves({ all: [], people: 4 }), { lead: null, leadPlayed: false, title: 'Also fits your 4', great: [], played: [] });
 });
 
-test('the line under Home’s lead title says what is true of it for this party', () => {
-  assert.equal(leadLine(game('bluff'), { people: 4, played: true }), 'You played this last. Room for all four of you.');
-  assert.equal(leadLine(game('bluff'), { people: 4 }), 'Room for all four of you.');
-  assert.equal(leadLine(game('arcade-gauntlet2'), { people: 3 }), 'Room for all three of you.');
-  assert.equal(leadLine(game('arcade-gauntlet2'), { people: 5 }), 'Up to 4 play; you’re 5.');
-  assert.equal(leadLine({ players: { min: 3, max: 8 } }, { people: 2 }), 'Needs 3 or more.');
-  assert.equal(leadLine(game('bluff'), { people: 1, played: true }), 'You played this last.');
-  assert.equal(leadLine(game('bluff'), { people: 0 }), '');
+test('the line under Home’s stage says what is true of it for this party, and calls it Featured', () => {
+  const words = { players: '3–8 players', screen: 'Phone only' };
+  assert.deepEqual(stageLine(game('bluff'), { people: 4, ...words }),
+    { eyebrow: 'Featured', meta: '3–8 players · Fits your 4 · Phone only', fits: true, note: '' });
+  assert.equal(stageLine(game('bluff'), { people: 4, played: true, ...words }).note, 'You played this last.');
+  assert.equal(stageLine(game('arcade-gauntlet2'), { people: 5, players: '1–4 players' }).meta, '1–4 players · Up to 4 play');
+  assert.equal(stageLine(game('arcade-gauntlet2'), { people: 5 }).fits, false);
+  assert.equal(stageLine({ players: { min: 3, max: 8 } }, { people: 2 }).meta, 'Needs 3+');
+  assert.deepEqual(stageLine(game('bluff'), { people: 1, played: true, players: '3–8 players' }),
+    { eyebrow: 'Featured', meta: '3–8 players', fits: null, note: 'You played this last.' });   // no party: no fit to say
+  assert.equal(fitShort(game('bluff'), 0), null);
+  assert.deepEqual(fitShort(game('bluff'), 3), { ok: true, text: 'Fits your 3' });
 });
 
 test('a game’s page says whether it suits the people here, and what happens to the rest', () => {
@@ -262,4 +266,10 @@ test('the fit sentence on the six real titles, for a party of four and of five',
     'ps1-bomberman': 'Up to 4 play; one of you watches.',
     'ps1-worms': 'Up to 4 play; one of you watches.',
   });
+});
+
+test('stageLine for K3: Just played, and the Party’s size, never a score or a winner', () => {
+  const game = { players: { min: 2, max: 6 } };
+  assert.deepEqual(stageLine(game, { just: true, people: 4, played: true, players: '2–6 players' }), { eyebrow: 'Just played', meta: '4 in the Party', fits: null, note: '' });
+  assert.equal(stageLine(game, { just: true, people: 1 }).meta, '1 in the Party');
 });

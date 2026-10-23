@@ -1,0 +1,44 @@
+{
+  "hosts": [
+    "avrana.party"
+  ],
+  "origins": [
+    "https://avrana.party"
+  ],
+  "game_origins": {
+    "https://games.avrana.party": [
+      "checkers",
+      "bestguess",
+      "colyseus-tanks"
+    ]
+  },
+  "secure_cookie": true,
+  "devices": "/var/lib/avrana-party-core/devices.json",
+  "registry": "/etc/avrana-party/games.d",
+  "packages": "/etc/avrana-party/packages.d",
+  "session_recovery": {
+    "close_lost_game": false
+  },
+  "games": {},
+  "status": {
+    "manifest": "/var/lib/avrana-party/deployment.json",
+    "party_checkout": "/home/cody/avrana-party",
+    "games_checkout": "/home/cody/avrana-party-games",
+    "web_root": "/var/www/avrana-party/web",
+    "nginx_site": "/etc/nginx/sites-available/avrana-party",
+    "nginx_site_sources": [
+      "/opt/avrana-party/current/deploy/hosted/avrana-party.hosted.nginx",
+      "/home/cody/avrana-party/deploy/hosted/avrana-party.hosted.nginx"
+    ],
+    "certificate": null,
+    "games_url": null,
+    "arcade_url": null,
+    "units": [
+      "avrana-party-core",
+      "nginx",
+      "cloudflared-avrana-party",
+      "nftables"
+    ],
+    "optional_units": []
+  }
+}

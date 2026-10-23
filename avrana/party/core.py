@@ -13,7 +13,10 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   The experiment tied presence to Party Home's event stream, so walking into a game looked like
   leaving the party.
 * **Playing is not leaving.** A member who holds a place in the active game session shows as
-  `playing`, and the host role never moves away from a host who is in the game. The game owns
+  `playing`, and a host who is in the game keeps the role while their game page reaches the
+  party; a host whose page has been silent past LIVE_WINDOW + HOST_GRACE is succeeded, in a game
+  or not, keeping their seat (a game that waits for them would otherwise hold the party with
+  nobody able to end it). The game owns
   in-game disconnects (grace, autopilot, pause); the party does not duplicate those timers. One
   bound is the party's (AVR-475, PARTY-LIFECYCLE TABLE_ABANDON): when every player's page has been
   silent past LIVE_WINDOW and then TABLE_ABANDON, the round ends as `abandoned` and the party goes
@@ -36,7 +39,8 @@ experiment/party-sim, 52 tests + fuzz). What changed for production, and why:
   whole party is right now, `home`, `setup` (a round being set up), `game` (a round on) or
   `results` (a round that ended by the game's own rules, held until the host moves on). Every
   member's phone renders that location; only the host moves it (start, round start, end, Party
-  Home, play again). Presence is automatic: a phone with a profile joins on its own.
+  Home, play again). Presence is automatic: a phone with a profile joins on its own, until
+  its person deliberately leaves (AVR-580): then only an explicit reconnect brings it back.
 * **Switching is end, then launch.** The host's switch ends the game that is on (the service
   waits for that game's server to reset) before the next session exists, so two party games never
   run at once. If the old game does not confirm its end, the switch stops there: nothing new starts
@@ -71,6 +75,7 @@ HOST_GRACE = 30.0          # s an away host keeps the role before succession (PA
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
+EXIT_INTENT = 60.0         # s a guest's exit request moves their pages to Party Home (AVR-580 guest exit)
 TABLE_ABANDON = 5 * 60.0   # s after the last player turned away before an active round is abandoned (AVR-475)
 GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
 GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
@@ -130,7 +135,7 @@ def clean_avatar(raw):
 
 class Member:
     __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left', 'mode',
-                 'watch_next')
+                 'watch_next', 'exit_id', 'exit_until')
 
     def __init__(self, device_id, name, now, avatar=None, mode=FULL):
         self.id = new_id('member')
@@ -142,6 +147,8 @@ class Member:
         self.last_seen = now
         self.left = False
         self.watch_next = False         # Quit & Spectate at results: a spectator in the next round
+        self.exit_id = None             # a guest's open exit request (request_exit), until Stay or Leave
+        self.exit_until = 0.0           # until when that request moves this device's pages to Party Home
 
 
 class Participant:
@@ -305,12 +312,14 @@ class PartyCore:
         return self.presence(member, now) in ('here', 'playing')
 
     def _successor(self, now, exclude):
-        """The earliest-joined member who is present. Playing counts as present: a player in the
-        active game can take over (AVR-127), so a host leaving mid-game never leaves it vacant.
-        A Full Mode member is preferred over a Limited Mode one (ADR 0012 D4): the role is safer
-        on a connection other guests cannot read. With nobody in Full Mode, Limited serves."""
+        """The earliest-joined member whose page reaches the party now. A player in the active
+        game can take over (AVR-127): their game page follows the party, so they are live. A seat
+        alone is not enough (ADR 0006 amendment): a seated player whose phone has gone would hold
+        the role as uselessly as the Host it replaces. A Full Mode member is preferred over a
+        Limited Mode one (ADR 0012 D4): the role is safer on a connection other guests cannot
+        read. With nobody in Full Mode, Limited serves."""
         here = [m for m in self.party.members.values()
-                if not m.left and m.id != exclude and self._here(m, now)]
+                if not m.left and m.id != exclude and now - self._seen(m) < LIVE_WINDOW]
         return next((m for m in here if m.mode == FULL), here[0] if here else None)
 
     def _set_host(self, member_id):
@@ -335,8 +344,9 @@ class PartyCore:
                 party.released_at.pop(member_id, None)    # so an away host is succeeded below
             self.abandoned.append(s)
         host = party.members.get(party.host_id)
-        if host is not None and not self._playing(host) \
-                and now - self._seen(host) >= LIVE_WINDOW + HOST_GRACE:
+        # A Host in the game keeps the role while their page reaches the party (every game page
+        # follows it); a page silent past grace is a phone that has gone, in a game or not.
+        if host is not None and now - self._seen(host) >= LIVE_WINDOW + HOST_GRACE:
             nxt = self._successor(now, exclude=host.id)
             self._set_host(nxt.id if nxt else None)           # None = vacant until someone is here
             self._commit()
@@ -391,24 +401,35 @@ class PartyCore:
             self._shown = {}
 
     # ---- membership ----------------------------------------------------------------------------
-    def join(self, device_id, name, avatar=None, mode=FULL):
+    def join(self, device_id, name, avatar=None, mode=FULL, explicit=False):
         """Become present. Phones call this on their own as soon as they have a profile (ADR
-        0011: no Join ceremony); it is idempotent for a device that is already in, and a device
-        that left comes back as the same member. `mode` is the service's word for how this
-        device reaches the party; it is set when the member is created and kept."""
+        0011: no Join ceremony); it is idempotent for a device that is already in. `mode` is the
+        service's word for how this device reaches the party; it is set when the member is
+        created and kept.
+
+        A device that deliberately left (AVR-580, `leave`) is left-by-choice: an automatic join,
+        from any tab, page or wake, is refused (`left_party`) until the person opts back in with
+        `reconnect` (`explicit=True`). The opt-out is held here, not in the browser, so another
+        tab or a stale page cannot undo it."""
         if mode not in MODES:
             raise ValueError(f'unknown mode {mode!r}')
         self._timed()
         clean = clean_name(name)
         now = self.clock()
         m = self._member_of(device_id)
+        if m is not None and m.left and not explicit:
+            raise Refused('left_party', 'You left the party. Reconnect to come back.')
         if m is None:
             m = Member(device_id, self._unique(clean, None), now, clean_avatar(avatar), mode)
             self.party.members[m.id] = m
         else:
             if m.left:
                 m.left = False
+                m.exit_id = None
                 m.name = self._unique(clean, m)
+                live = self._live_session()
+                if live is not None and live.state == SETUP:
+                    live.choices.pop(m.id, None)     # back from Leave: choose Play or Watch again
             if avatar is not None:
                 m.avatar = clean_avatar(avatar)
             m.last_seen = now
@@ -444,16 +465,88 @@ class PartyCore:
         self._commit()
         return m
 
+    def reconnect(self, device_id, name, avatar=None, mode=FULL):
+        """The person's own opt back in after Leave (AVR-580): the only way out of left-by-choice.
+        It restores membership only. A returning former Host does not get the role back unless
+        nobody holds it (vacant); the party's location is whatever it is now."""
+        return self.join(device_id, name, avatar, mode, explicit=True)
+
     def leave(self, device_id):
-        """Explicit Leave. The member's place in a live session stays (the game decides what an
-        absent seat does); if they were host, the next member who is here takes over at once."""
+        """Explicit Leave: intentional departure from the membership (AVR-580), nothing else. It
+        never moves the party: no End, no Home, no navigation, and a live session is untouched
+        (the member's place in it stays; the game decides what an absent seat does). Idempotent: a
+        second Leave, from another tab or a retry, changes nothing. A Host who leaves hands the
+        role to the next member who is here at once and keeps no authority."""
         self._timed()
-        m = self._require_member(device_id)
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.left:
+            return
         m.left = True
+        m.exit_id = None
         if m.id == self.party.host_id:
             nxt = self._successor(self.clock(), exclude=m.id)
-            self._set_host(nxt.id if nxt else None)
+            self._set_host(nxt.id if nxt else self._no_successor(m))
         self._commit()
+
+    def request_exit(self, device_id):
+        """A guest's request to leave from a game page of another origin (AVR-580 guest exit). It only
+        asks: membership, seats, roles and the party's location are untouched. For EXIT_INTENT
+        seconds this device's pages go to Party Home (destination(), the bridge's existing
+        `navigate`), where the person confirms Leave or chooses Stay on a top-level Party page the
+        game cannot draw over. The open request (`exit_id`) lasts until Stay, Leave or Reconnect, so
+        a confirmation on screen is never taken away by the expiry; the expiry only stops moving
+        pages. A repeat keeps the same request and renews its time. Refused for the Host, whose Leave
+        names the successor on Party Home, and outside a round (Leave is on Party Home then)."""
+        self._timed()
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.left:
+            raise Refused('left_party', 'You left the party. Reconnect to come back.')
+        if m.id == self.party.host_id:
+            raise Refused('host_uses_party_home', 'As the Host, leave from Party Home, where it says who hosts next.')
+        if self.location()['at'] not in ('game', 'results'):
+            raise Refused('not_in_round', 'Leave from Party Home.')
+        now = self.clock()
+        live = m.exit_id is not None and now < m.exit_until
+        if m.exit_id is None:
+            m.exit_id = new_id('exit')
+        m.exit_until = now + EXIT_INTENT
+        if not live:
+            self._commit()                  # wakes this device's pages; a renewal moves nothing new
+
+    def stay(self, device_id):
+        """Stay in the Party: close this device's exit request, so its pages follow the party again.
+        Idempotent: nothing open changes nothing."""
+        self._timed()
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.exit_id is None:
+            return
+        m.exit_id = None
+        self._commit()
+
+    def _no_successor(self, leaver):
+        """OWNER DECISION (AVR-580, decided 2026-10-18: keep vacant): what a Host's Leave does when nobody else is here to
+        take over. Nothing destructive happens (the owner chose this): the role is vacant, the
+        round (if any) goes on untouched, and the next member to arrive or be seen claims it
+        (touch/join). A round is not ended, and the Leave is not refused. Returns the new host id."""
+        return None
+
+    def leave_impact(self, device_id):
+        """What this member's Leave would do, for the confirmation: {'host', 'successor', 'round'}.
+        `successor` is the display name who would host, or None; `round` is whether a game is
+        being set up or is on. Pure: it changes nothing."""
+        m = self._member_of(device_id)
+        if m is None or m.left:
+            return None
+        is_host = m.id == self.party.host_id
+        nxt = self._successor(self.clock(), exclude=m.id) if is_host else None
+        return {'host': is_host, 'successor': nxt.name if nxt else None,
+                'round': self._live_session() is not None}
 
     def transfer_host(self, device_id, to_member_id, if_version):
         self._timed()
@@ -927,7 +1020,8 @@ class PartyCore:
         self._timed()
         party, now = self.party, self.clock()
         me = self._member_of(device_id) if device_id else None
-        if me is not None and me.left:
+        departed = me is not None and me.left
+        if departed:
             me = None
         members = [{'id': m.id, 'name': m.name, 'avatar': m.avatar, 'mode': m.mode,
                     'presence': self.presence(m, now), 'host': m.id == party.host_id}
@@ -965,8 +1059,12 @@ class PartyCore:
                 'state': s.state if s is not None and s.state != ENDED else 'lobby',
                 'members': members, 'host': party.host_id,
                 'me': ({'id': me.id, 'name': me.name, 'host': me.id == party.host_id,
-                        'mode': me.mode, 'watch_next': me.watch_next}
+                        'mode': me.mode, 'watch_next': me.watch_next,
+                        'leave': self.leave_impact(device_id),
+                        # this device's own exit request, never shown to others; `live`: it moves pages
+                        'exit': ({'id': me.exit_id, 'live': now < me.exit_until} if me.exit_id else None)}
                        if me else None),
+                'departed': departed,     # this device left on purpose: no automatic join (AVR-580)
                 'session': session,
                 'nav': dict(party.nav),
                 'location': self.location(),

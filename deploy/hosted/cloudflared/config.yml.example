@@ -1,0 +1,25 @@
+# The hosted staging tunnel (docs/runbooks/hosted-staging.md, step 5). Lives INSIDE the VM as
+# /etc/cloudflared/avrana-party.yml. It is a separate tunnel with its own credential: never the Media
+# host's tunnels (cloudflared-avrana, cloudflared), and it routes nothing of theirs.
+# Placeholder: <TUNNEL-UUID>. It is not a secret; the credential file is, and it is created by
+# `cloudflared tunnel create` inside the VM, root-only, never copied out or committed.
+tunnel: <TUNNEL-UUID>
+credentials-file: /etc/cloudflared/<TUNNEL-UUID>.json
+no-autoupdate: true
+
+ingress:
+  # Both hostnames go to the VM's loopback nginx on its GATE port, which picks the server by Host and asks for
+  # the staging password (avrana/ops/hosted_gate.py) before anything else. The owner chose the password gate
+  # over Cloudflare Access on 2026-10-23. Never point the tunnel at 8080: that port is the VM-local, ungated one.
+  - hostname: avrana.party
+    service: http://127.0.0.1:8081
+    originRequest:
+      connectTimeout: 10s
+      keepAliveTimeout: 90s
+  - hostname: games.avrana.party
+    service: http://127.0.0.1:8081
+    originRequest:
+      connectTimeout: 10s
+      keepAliveTimeout: 90s
+  # Anything else: 404, never a service.
+  - service: http_status:404

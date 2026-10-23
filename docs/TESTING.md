@@ -47,6 +47,8 @@ All Tier 1–2: no Pi, no phones. Linux CI is authoritative; rows note what Wind
 | Installed `.avrgame` package in real browsers (EXPERIMENTAL; AVR-338) | `sudo env "PATH=$PATH" AVRANA_PACKAGE_BROWSER_PROOF=1 AVRANA_BROWSER_WEBKIT=1 AVRANA_GAMES_REPO=<avrana-party-games checkout> bash experiments/native-game/package-browser-proof.sh` (after `npm ci` and `npx playwright install --with-deps chromium webkit`); specs in `tests/package/`, config `tests/package/playwright.package.config.ts` | `Service trust proof`, job `package-browser` (the Party-side triggers above, `tests/package/**`, `avrana-party.nginx`, `web/party/**`, and manual dispatch; Games at the paired branch). Uploads traces, screenshots and retry evidence. One loud, single retry of the Host's "Party Home" tap exists for one symptom seen once on WebKit (a possible bridge race); the script prints `OBSERVE home-retry fired N time(s)` (not a failure) with the evidence | on a disposable runner as root: the Hello Party package built unprivileged and installed by the real `install-game`, Party Core and the socket-activated `avrana-game@hello` (DynamicUser, staged tree), the **committed `avrana-party.nginx`** byte for byte on ports 80/443 with the real names `party.avrana.net` and `games.avrana.net`, the built web shell, and real Playwright Chromium (Pixel 7 size) as the gating phone and WebKit (iPhone 13 size) as an **observational** second phone with the Party's `Secure` cookie: join (first phone is Host), the package in Party Home's Library, the Host's launch and both phones' move to the game origin and page, a late watcher, per-seat private words (never in another phone's DOM, HTTP bodies or WebSocket frames), a reload mid-game (the reconnect claim) and an offline blip that the page survived by talking to its game again by itself, the signed result accepted by Party Core and everyone back at Party Home; then the real `install-game remove`: gone from the Library, not launchable, the route is nginx 502, not a page. **Substituted:** a throwaway self-signed certificate (browsers ignore the error), one `/etc/hosts` line, the service worker blocked (as in the other Playwright suites: its offline caching is not what this suite tests, and a stale worker would hide an install or a removal). **Discovery is real (AVR-337):** the script lays out the built web shell and the committed catalog at `/var/www/avrana-party/web/current/`, and the real `install-game install` writes the effective catalog that the committed nginx `= /party/catalog.json` location serves; the script checks the served bytes before the install (the committed catalog, no overlay file), after it (exactly the overlay file, the game last, first-party rows identical, `ops/catalog-overlay check` OK) and after the remove (overlay gone, committed bytes again). **WebKit's result is observational pending AVR-339 (the Party shell's "going" screen has no watchdog): it runs every time and its artifacts are kept, but a WebKit-only failure does not fail the job. It failed in about 1 run in 5, once because the navigation to the game origin hung for 21 s and died with "WebKit encountered an internal error" (the same fetches then fail as "access control checks"); the trigger is undetermined.** On a WebKit failure the script restarts Party Core to drop the stuck session, which skips the "never restarted" claim for that run (printed as n/a). The harness's web root differs from an appliance: `current` is a real directory written by `web.build`, not a release symlink made by `ops/install-party-web.sh` (that script and its overlay refresh are not exercised); nginx runs from a wrapper config that includes the committed site; the certificate is self-signed. Hello Party uses HTTP only, so the WebSocket leak channel is not exercised, and the watcher has no positive control. **Never the Pi.** Tier 2: a real browser engine on a CI runner; not a phone, not Wi-Fi, not the Pi. Still owner-operated Tier 3: iPhone Safari and Android Chrome hardware (cookies in a framed bridge under real ITP and third-party rules, the system back button, locking and waking a phone, the captive-portal sheet, the real Wi-Fi) |
 | Agent tooling | `-p test_claude_gate.py`, `-p test_avr_context.py` | offline lane | convenience only; nothing is enforced by a hook |
 | Multi-client Party browser tests | `npm run test:party-browser` (Windows: `AVRANA_PYTHON=python`) | offline lane | three browser contexts as phones against `devserver --party` (a real Party Core, stub game pages): host and followers, start/end for everyone, switching, reload keeps identity and seat, stale and unauthorized actions, Play/Watch setup, host departure; plus the diagnostics build report. Chromium at phone size is not a phone: iPhone Safari and Android stay Tier 3 |
+| Guest journey (AVR-698) | `tests/party/guest-journey.spec.ts` and `guest-journey-origins.spec.ts` in `npm run test:party-browser`; finding `docs/findings/2026-10-21-guest-journey.md` | offline lane | a new guest to the next round with separate phones: join, Play/Watch, launch, a late guest, reload, suspend, offline and back, Host leaves and succession, the new Host ends, Reconnect, another round, no member counted twice; BLUFF, EXPO, Gauntlet II and a game origin. Chromium emulating a Pixel 7: not iPhone Safari, a physical Android phone, Wi-Fi or the Pi |
+| Leave Party and Reconnect (AVR-580) | `python -m pytest tests/unit/test_party_leave.py`; `node --test tests/offline/party-leave.test.mjs`; `tests/party/leave-party.spec.ts` in `npm run test:party-browser` | offline lane | fake-clock Core rules (left-by-choice refuses automatic join, idempotent authenticated Leave, host succession and no-successor non-destructive, non-host Leave moves nobody, away-grace and AVR-475 distinct, Quit & Spectate unchanged), multi-client HTTP (tabs share a cookie jar), the phone side (departure marker, game page and bridge never rejoin), and browser refresh / second tab / Host leave / network loss / Pi restart. Chromium only: real phones, Safari and a Pi reboot stay Tier 3 |
 | Shell accessibility (UX/UI redesign PR 1.4) | part of `npm run test:offline-browser` (`tests/offline/a11y.spec.ts`) and `npm run test:party-browser` (`tests/party/a11y.spec.ts`) | offline lane | contrast, edges, names and reading order on every shell page, Library sheet and empty state and every Party state, each also drawn with more contrast and less motion asked for; headings, targets and sideways scroll on every Party screen; a Tab walk with a ring at every stop over the four places, a game's page and every Party state (not the Library's sheets and empty states). The helpers (`tests/lib/a11y.ts`) are first run against planted faults. Chromium: no screen reader, no Safari, no phone setting (AVR-295) |
 | Rollback rehearsal (UX/UI redesign PR 1.4) | `npm run test:rollback` (Windows: `AVRANA_PYTHON=python`; `AVRANA_ROLLBACK_FROM=<git ref>` names the release to go back to, default `origin/main`) | none: run by hand before a release | needs that ref in the local repository, which CI's shallow checkout does not have. Two real builds, a `current` link flipped under a running dev server; proves nothing about the install script, nginx, the Pi or a real phone's cache |
 | Owner-supplied game covers (AVR-306) | `-p test_web_covers.py`, `-p test_web_build.py`; `tests/offline/covers.spec.ts` in `npm run test:offline-browser`; `tests/party/covers.spec.ts` in `npm run test:party-browser` | offline lane | what may pass from the covers folder into a release (names, real picture types, size, never a link), the installer taking covers only from the named folder, and the shell showing a cover, falling back when one does not load, trying it again once the Party box answers after a break, and unchanged with none; that Git holds no cover. The installer tests need bash and symlinks (Linux CI). No real box art is in the repository: the fixtures are two flat squares |
@@ -121,6 +123,25 @@ not prove TLS, production cookies, systemd identities/credentials/hardening, ngi
 real Safari/Android phones. Checkers-specific real-systemd provisioning and phase-2 boundary
 proof is the `checkers` job of `Service trust proof` above (disposable runner, not the Pi); the stand-in proof is not Checkers evidence.
 
+### A `.avrgame` package against the real Party (AVR-676, EXPERIMENTAL)
+
+`AVRANA_NATIVE_PACKAGE=/path/game.avrgame npx playwright test -c playwright.provider.config.ts tests/provider/native-package.spec.ts`
+(Linux; `AVRANA_GAMES_REPO` as above, for the shell's harness). `server.py --native-package` validates and
+unpacks the package with the Party's own `avrana.avrgame`, writes its install record with the operator's
+`--grant`s (`AVRANA_NATIVE_GRANTS`, default `party_roster`, checked by install-game's own rule), serves the
+effective catalog `catalog_overlay` builds from that record (and any package artwork), and runs the package's
+`server.args` from the staged tree as a socket-activated child of real Party Core, on the game origin. The spec
+is generic: as many players as the game's `players.max` (at least two) and then a watcher, seated through the
+real bridge; a package with a Party pregame goes through the Party's Play/Watch setup first. Nothing of the
+Party is on the game origin (no cookie, no direct Party API call), a reload keeps the seat, and the Host's End
+returns everyone with the game's authority gone. `AVRANA_NATIVE_DRIVER=/path/driver.mjs` (the game developer's own module,
+`export async function step(page)` returning `done`, `acted` or `waiting`) also plays a whole game through the
+page and checks the Party recorded a completed round. A package whose page opts in to the Party layer
+(`<html data-avrana-party-layer="avrana.party-layer/v1">`, Games kit) also gets the layer test: the Party's frame
+mounts, opens and closes, a guest has no Host controls, a reload remounts it, and the game origin holds no
+Party cookie, storage or API call; it is skipped for a page that does not opt in. Python packages only. Same limits as the Checkers
+scenario: no systemd, nginx, TLS, Pi or real phones; staging without root is not install acceptance.
+
 Result projection privacy is pinned by `test_party_result.py` (observer/departed refusal,
 allowlisted detached summaries, missing/refused/abandoned result exclusion and next-session
 replacement) and `party-bridge.test.mjs` (no summary crosses the bridge). Executed results belong
@@ -142,6 +163,10 @@ python3 tools/contract_check.py
 npx playwright install --with-deps chromium
 npx playwright test -c playwright.offline.config.ts
 ```
+
+Pull requests reach this lane, `Cross-repo contract` and `Service trust proof` through the
+`CI verdict` workflow (`.github/workflows/ci-verdict.yml`), whose final check, `CI verdict`, always
+reports; see [the proposal](design/CI-VERDICT.md). The lanes keep their `push` and manual triggers.
 
 `npm run check:repo` enforces the [governance manifest](manifest.json), local documentation links,
 archive/authority boundaries and existing UI/catalog freshness checks. See
@@ -238,6 +263,27 @@ Real iPhone Safari and Android Chrome behaviour (captive probes offline, `party.
 WebRTC on iOS), real Wi-Fi with several phones (the AP's client ceiling), H.264 on the Pi's encoder,
 input-to-photon latency, and power under load. The runbooks in `docs/runbooks/` are the manual tests.
 
+### Party chat above the keyboard: phone acceptance (AVR-583; for AVR-295 / AVR-579)
+
+Chromium simulates the keyboard (`tests/lib/keyboard.ts`: `visualViewport` height and `offsetTop`, a resize
+on rotation). It does not scroll, pan or animate like a phone. Unchecked until a person does these on the
+device; record phone, OS, browser (or installed PWA), Party commit and result for each.
+
+Devices: iPhone Safari, the installed PWA (Add to Home Screen), Android Chrome. Try Full Mode and Limited
+Mode, in Party Home and, with BLUFF and EXPO running, in the in-game Party layer (floating button, then Chat).
+
+1. Open Chat, tap the message field. The keys rise; the whole drawer (header, Chat/People, field, Send) is on
+   screen and the history scrolls by itself. Nothing needs a pinch or a page scroll to reach Send.
+2. Type half a message, dismiss the keyboard (Done or tap outside the field), tap the field again. The draft is still there.
+3. With the keyboard up, turn the phone both ways and back. The drawer stays open, the draft stays, the field keeps
+   focus or one tap restores it, and Send is still above the keys. In a game: the game did not reload or pause.
+4. Send one message with the keyboard up, then close the drawer. Close is reachable with the keyboard up.
+5. Set larger text (iOS Display & Brightness, Android Font size) and repeat 1 and 3 on the smallest phone.
+6. Safe areas: on a notched phone in landscape the field and Send are clear of the notch and home indicator.
+7. Collapsed button: with the drawer closed and the keyboard gone, a tap one finger-width from the button reaches the game.
+8. Reduced motion on: the drawer opens without sliding and nothing jumps when the keys come up.
+9. Host and non-host phones: the same, and a non-host sees no Host controls in the layer.
+
 ## LAN Games provider cross-repository tests
 
 Private source: rcnechamkin/avrana-party-games. Use two explicit local checkouts,
@@ -292,3 +338,50 @@ No Pi, WLAN, TV, ROM or emulator is used.
 
 CI independently checks each repo; private cross-repo checkout credentials are not
 introduced. Linux CI supplies nginx/rsync/bash gates unavailable on this Windows host.
+
+## Hosted staging acceptance (avrana.party, H3)
+
+`playwright.hosted.config.ts` runs `tests/hosted/` against a deployed hosted Party over the network,
+the way a remote tester's phone reaches it. It never starts a server and never touches the Pi. Design:
+docs/design/HOSTED-STAGING.md; deployment: docs/runbooks/hosted-staging.md.
+
+```
+HOSTED_BASE_URL=https://avrana.party HOSTED_EXPECT_ACCESS=1 \
+HOSTED_ACCESS_CLIENT_ID=... HOSTED_ACCESS_CLIENT_SECRET=... \
+HOSTED_GAMES=checkers,bestguess,colyseus-tanks HOSTED_GAMES_REPO=../avrana-party-games \
+npm run test:hosted
+```
+
+| Variable | Meaning |
+|---|---|
+| `HOSTED_BASE_URL` | Party origin (required). |
+| `HOSTED_GAME_ORIGIN` | Game origin; default `https://games.<party host>`. |
+| `HOSTED_ACCESS_CLIENT_ID` / `_SECRET` | Cloudflare Access service token (from the owner, never committed). |
+| `HOSTED_EXPECT_ACCESS=1` | Assert strangers get the gateway, and the session-expiry case. |
+| `HOSTED_GAMES` | Games to journey through, in order; the first one is used by the recovery cases. |
+| `HOSTED_GAMES_REPO` | Games checkout holding each game's `party-driver.mjs`. |
+| `HOSTED_OWNER_ASSIST=1` | The owner is at the VM for the killed-game-process case. |
+| `HOSTED_RESOLVE_LOOPBACK=1` | A local rehearsal (`*.avrana.test` to 127.0.0.1). Use the provider harness with real BLUFF on a game origin (`tests/provider/server.py --party-session --game-origin`). The dev server's stub game pages cannot follow the Party from a game origin, so lifecycle cases fail there for the stub's reasons. |
+
+Results: `test-results/hosted/results.json` and `test-results/hosted-run.json`, which records the deployed Party and Games SHAs and the web build.
+A case that cannot run (no token, no owner assist) is reported as skipped, never as passed.
+
+| Suite | Pi (appliance) | Hosted staging |
+|---|---|---|
+| unit, modules, offline and Party browser suites | yes (CI and local) | unchanged, same code |
+| `ops/deploy.sh` profile tests (`HostedProfile`) | pi profile unchanged | hosted profile (Linux) |
+| `avrana.ops.smoke` | default | `--hosted --config` |
+| Access gateway, two origins, device cookie (`edge.spec.ts`) | n/a | yes |
+| Remote journey per game (`journey.spec.ts`) | n/a (Pi has live suites) | checkers, bestguess (3 players), tanks (experimental, WebGL) |
+| Refresh, offline, late spectator, back, succession, five launches (`recovery.spec.ts`) | live suites | yes |
+| Killed game process | manual | owner-assisted |
+
+### Linux-only checks in one run
+
+`bash tests/linux/verify.sh --games ../avrana-party-games` runs, on any disposable Linux machine (never
+the Pi or the Media host), what a Windows checkout cannot: the deploy-script tests (Pi and hosted
+profiles), `nginx -t` on the rendered hosted site, bash/shellcheck/xmllint/`nft -c`, the Games suites,
+the Party and provider browser suites (native Checkers is Linux-only), and the hosted harness rehearsed
+against the provider harness with real BLUFF and with native Checkers. Each check prints PASS, FAIL or
+NOT RUN with its counts; NOT RUN is never a pass, and LATER marks what only the deployed site can show.
+Run it as a non-root user (the real deployment cases skip under root). Logs: `.linux-verify/` (or `AVRANA_VERIFY_LOGS`), not under `test-results/`, which every Playwright run empties.

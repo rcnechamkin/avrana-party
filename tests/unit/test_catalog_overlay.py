@@ -43,7 +43,7 @@ class OverlayBase(Base):
 
     def kw(self):
         return {'games_root': '/opt/avrana-games', 'owner': None, 'repo_contracts': REPO,
-                'disk_root': self.layout.games_root}
+                'disk_root': self.layout.games_root, 'profile_file': self.root / 'etc' / 'no-deploy-profile'}
 
     def refresh(self, base=None):
         return co.refresh(self.out_dir, base or self.base, self.layout.records_dir, **self.kw())
@@ -201,6 +201,83 @@ class WithPackage(OverlayBase):
         self.assertEqual(os.listdir(self.out_dir), [])
         self.refresh()
         self.assertEqual(self.overlay.read_bytes(), before)
+
+
+class HostedProfile(OverlayBase):
+    """docs/runbooks/hosted-staging.md: on hosted staging the first-party rows are the games the hosted
+    appliance contract installs, and the overlay is written even with no package. The Pi is unchanged."""
+
+    def setUp(self):
+        super().setUp()
+        self.profile = self.root / 'etc' / 'deploy-profile'
+        self.profile.parent.mkdir(parents=True, exist_ok=True)
+
+    def kw(self, profile='hosted'):
+        if profile is None:
+            return super().kw()
+        self.profile.write_text(profile + '\n', encoding='utf-8')
+        return {**super().kw(), 'profile_file': self.profile}
+
+    def refresh(self, base=None, profile='hosted'):
+        return co.refresh(self.out_dir, base or self.base, self.layout.records_dir, **self.kw(profile))
+
+    def test_the_hosted_contract_names_only_games_hosted_serves(self):
+        hosted = co.appliance_mod.grants(co.appliance_mod.load(co.HOSTED_APPLIANCE))
+        config = json.loads((REPO_ROOT / 'deploy' / 'hosted' / 'party-core.hosted.json').read_text(encoding='utf-8'))
+        origins = {g for games in config['game_origins'].values() for g in games}
+        self.assertEqual(set(hosted), {'checkers'})
+        self.assertLessEqual(set(hosted), origins)
+
+    def test_with_no_package_hosted_serves_only_its_first_party_games(self):
+        base = json.loads(COMMITTED.read_text(encoding='utf-8'))
+        self.assertEqual(self.refresh(), ([], []))
+        doc = self.doc()
+        self.assertEqual(doc['games'], [g for g in base['games'] if g['id'] == 'checkers'])     # the row untouched
+        for key in ('schema', 'appliance', 'providers', 'runtime', 'collections', 'labels'):
+            self.assertEqual(doc[key], base[key], key)
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+        for gone in ('bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'):
+            self.assertNotIn(gone, [g['id'] for g in doc['games']])
+
+    def test_package_rows_stay_after_the_hosted_first_party_rows(self):
+        self.install()
+        self.assertEqual(self.refresh(), (['hello'], []))
+        self.assertEqual([g['id'] for g in self.doc()['games']], ['checkers', 'hello'])
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+
+    def test_a_package_still_cannot_pass_for_a_first_party_game_hosted_does_not_list(self):
+        self.install()
+        path = Path(self.layout.records_dir) / 'hello.json'
+        doc = json.loads(path.read_text(encoding='utf-8'))
+        doc['contract']['name'] = 'BLUFF'
+        path.write_text(json.dumps(doc), encoding='utf-8')
+        text, listed, problems = co.effective(self.base, self.layout.records_dir, **self.kw())
+        self.assertEqual(listed, [])
+        self.assertEqual([g['id'] for g in json.loads(text)['games']], ['checkers'])
+        self.assertIn('first-party', problems[0])
+
+    def test_the_pi_profile_and_no_profile_file_are_byte_for_byte_the_old_behaviour(self):
+        self.assertEqual(self.refresh(profile='pi'), ([], []))
+        self.assertFalse(self.overlay.exists())
+        self.assertEqual(self.refresh(profile=None), ([], []))
+        self.assertFalse(self.overlay.exists())
+        self.install()
+        pi = co.effective(self.base, self.layout.records_dir, **self.kw('pi'))
+        self.assertEqual(co.effective(self.base, self.layout.records_dir, **self.kw(None)), pi)
+        self.assertEqual(json.loads(pi[0])['games'][:-1], json.loads(COMMITTED.read_text(encoding='utf-8'))['games'])
+
+    def test_switching_back_from_hosted_to_pi_removes_the_hosted_overlay(self):
+        self.refresh()
+        self.assertTrue(self.overlay.exists())
+        self.refresh(profile='pi')
+        self.assertFalse(self.overlay.exists())
+
+    def test_an_unknown_profile_is_refused_and_leaves_no_overlay(self):
+        self.refresh()
+        with self.assertRaises(co.OverlayError) as ctx:
+            self.refresh(profile='cloud')
+        self.assertIn('pi and hosted', str(ctx.exception))
+        self.assertFalse(self.overlay.exists())
 
 
 class PackageControlledFields(OverlayBase):
@@ -668,14 +745,14 @@ class NodePackage(OverlayBase):
 
 
 class PackageArtwork(OverlayBase):
-    """AVR-466 phase C (experimental): bundled cover and icon reach the catalog row as `images` and are
+    """AVR-466 phase C (experimental): bundled cover, icon and banner reach the catalog row as `images` and are
     copied, content-addressed, under <catalog dir>/art. nginx serving them is a separate, gated deploy."""
     D = 'game_pkg/artwork/'
     URL = re.compile(r'^/party/pkgart/hello/([0-9a-f]{16})\.(webp|png|jpg)$')
 
-    def art_package(self, cover=None, icon=None, extra=None, block=None):
+    def art_package(self, cover=None, icon=None, extra=None, block=None, banner=None):
         images, spec = {}, {}
-        for role, data in (('cover', cover), ('icon', icon)):
+        for role, data in (('cover', cover), ('icon', icon), ('banner', banner)):
             if data is not None:
                 images[self.D + role + '.webp'] = data
                 spec[role] = self.D + role + '.webp'
@@ -821,15 +898,100 @@ class PackageArtwork(OverlayBase):
         self.assertNotEqual(second, first)
         self.assertEqual(self.art_files(), ['hello/' + second.rsplit('/', 1)[1]])
 
-    def test_banner_and_screenshots_are_validated_but_neither_copied_nor_listed(self):
+    def test_a_banner_is_copied_content_addressed_and_named_in_the_row_beside_cover_and_icon(self):
+        cover, icon, banner = webp(300, 300), webp(128, 128), webp(1280, 720)
+        self.install(self.art_package(cover, icon, banner=banner))
+        self.assertEqual(self.refresh(), (['hello'], []))
+        images = self.row()['images']
+        self.assertEqual(list(images), ['cover', 'icon', 'banner'])
+        self.assertEqual((images['banner']['w'], images['banner']['h']), (1280, 720))
+        m = self.URL.match(images['banner']['url'])
+        self.assertTrue(m, images['banner'])
+        self.assertEqual(m.group(1), hashlib.sha256(banner).hexdigest()[:16])
+        self.assertEqual((self.out_dir / 'art' / 'hello' / f'{m.group(1)}.webp').read_bytes(), banner)
+        self.assertEqual(len(self.art_files()), 3)
+        self.assertEqual(self.check(), [])
+        self.assertLessEqual(len(json.dumps(self.row()).encode('utf-8')), co.MAX_ROW_BYTES)
+        first = self.overlay.read_bytes()
+        self.refresh()                                              # deterministic
+        self.assertEqual(self.overlay.read_bytes(), first)
+
+    def test_each_artwork_combination_lists_exactly_the_roles_it_declares(self):
+        cover, icon, banner = webp(300, 300), webp(128, 128), webp(1280, 720)
+        for roles in (('cover', 'icon'), ('cover',), ('banner',), (), ('cover', 'icon', 'banner')):
+            self.install(self.art_package(cover if 'cover' in roles else None, icon if 'icon' in roles else None,
+                                          banner=banner if 'banner' in roles else None))
+            self.refresh()
+            self.assertEqual(sorted(self.row().get('images', {})), sorted(roles), roles)
+            self.assertEqual(len(self.art_files()), len(roles), roles)
+            self.assertEqual(self.check(), [], roles)
+            self.remove()
+            self.refresh()
+            self.assertFalse((self.out_dir / 'art').exists())
+
+    def test_screenshots_are_validated_but_neither_copied_nor_listed(self):
         extra = {'banner.webp': webp(1280, 720), 's1.webp': webp(400, 700)}
         block = {'cover': self.D + 'cover.webp', 'banner': self.D + 'banner.webp',
                  'screenshots': [{'path': self.D + 's1.webp', 'alt': 'Arena'}]}
         self.install(self.art_package(webp(300, 300), extra=extra, block=block))
         self.refresh()
+        self.assertEqual(list(self.row()['images']), ['cover', 'banner'])
+        self.assertEqual(len(self.art_files()), 2)
+        self.assertNotIn(b'screenshots', self.overlay.read_bytes())
+        self.assertNotIn(b's1.webp', self.overlay.read_bytes())
+
+    def test_an_updated_banner_gets_a_new_url_and_the_old_file_is_pruned(self):
+        self.install(self.art_package(webp(300, 300), banner=webp(1280, 720)))
+        self.refresh()
+        first = self.row()['images']['banner']['url']
+        self.remove()
+        self.install(self.art_package(webp(300, 300), banner=webp(1280, 720)))      # the same bytes again: the same URL
+        self.refresh()
+        self.assertEqual(self.row()['images']['banner']['url'], first)
+        self.remove()
+        self.install(self.art_package(webp(300, 300), banner=webp(1920, 1080)))     # new bytes: new digest
+        self.refresh()
+        second = self.row()['images']['banner']['url']
+        self.assertNotEqual(second, first)
+        self.assertNotIn('hello/' + first.rsplit('/', 1)[1], self.art_files())
+        self.assertIn('hello/' + second.rsplit('/', 1)[1], self.art_files())
+        self.assertEqual(len(self.art_files()), 2)
+        self.remove()                                                  # a package that drops its banner leaves none behind
+        self.install(self.art_package(webp(300, 300)))
+        self.refresh()
         self.assertEqual(list(self.row()['images']), ['cover'])
         self.assertEqual(len(self.art_files()), 1)
-        self.assertNotIn(b'banner', self.overlay.read_bytes())
+
+    def test_a_damaged_banner_drops_that_banner_only_and_check_warns(self):
+        self.install(self.art_package(webp(300, 300), webp(128, 128), banner=webp(1280, 720)))
+        self.damage(self.D + 'banner.webp', webp(1280, 720) + b'x')   # the hash no longer matches
+        listed, problems = self.refresh()
+        self.assertEqual(listed, ['hello'])
+        self.assertEqual(list(self.row()['images']), ['cover', 'icon'])
+        self.assertTrue(any('hello: artwork banner not shown' in p for p in problems), problems)
+        self.assertEqual(len(self.art_files()), 2)
+        notes = []
+        self.assertEqual(self.check(notes), [])
+        self.assertTrue(any('banner not shown' in n for n in notes))
+        os.unlink(self.tree() / Path(*(self.D + 'banner.webp').split('/')))   # a removed file is the same
+        self.refresh()
+        self.assertEqual(list(self.row()['images']), ['cover', 'icon'])
+
+    def test_a_banner_swapped_in_after_install_is_never_served(self):
+        # a 4:3 picture in place of the 16:9 one: the install record's hash refuses it before any shape rule is asked
+        self.install(self.art_package(webp(300, 300), banner=webp(1280, 720)))
+        self.damage(self.D + 'banner.webp', webp(1024, 768))
+        self.refresh()
+        self.assertEqual(list(self.row()['images']), ['cover'])
+
+    def test_remove_deletes_the_banner_with_the_rest_of_the_art(self):
+        self.install(self.art_package(webp(300, 300), webp(128, 128), banner=webp(1280, 720)))
+        self.refresh()
+        self.assertEqual(len(self.art_files()), 3)
+        self.remove()
+        self.assertEqual(self.refresh(), ([], []))
+        self.assertEqual(self.art_files(), [])
+        self.assertFalse((self.out_dir / 'art').exists())
 
     def test_check_finds_a_missing_changed_or_stray_file_and_refresh_repairs_it(self):
         self.install(self.art_package(webp(300, 300)))

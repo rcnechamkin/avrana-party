@@ -44,9 +44,28 @@ ADR or contract conflict, stop and ask the owner.
 - Compact and low-scroll; not one long page of big rounded cards.
 - A restrained monochromatic shell. Atomic Purple is a subtle smoky, translucent accent and
   material reference, never a purple interface, and never literal retro styling.
-- Type: Helvetica Light for the "Avrana Party" brand text (temporary); Geist for general UI.
-- Bottom navigation: Home / Party / Library / System.
-- Social, chat and presence are a separate global layer, not a module or an embedded card.
+- Type: Plus Jakarta Sans everywhere, the "Avrana Party" brand words included (Light 300). Concept K, owner decision 2026-10-21.
+- Bottom navigation: one floating glass bar, Home / Party / Library / Me (Me drawn with the viewer's
+  avatar; System's settings live in Me). Concept K, owner 2026-10-21.
+- Glass on exactly three shell controls: the bar, the top-right utility (Search, Filter & view,
+  the Limited mark; never chat or people), the top-left Spire-A Home button. Nothing else.
+- Presence is a compact row (faces + "4 here"); the roster and chat live on the Party tab.
+- Home is a cinematic stage: the title that matters now, "Featured" when it is a recommendation
+  (never styled like "Selected for Party"), one cream primary action (the Host's Select for Party),
+  Preview. A cover opens its facts in place; tapping art never selects (Concept K, AVR-708).
+- The briefing is K1: "Selected for Party" (purple, with its bar), this phone's own check, who has
+  chosen; Home's K3 says "Just played" and "Round over", never a score or winner (AVR-709).
+- Party and Me are grouped lists: small-caps headings over opaque panels; status in words on
+  every row (Here / Away / Limited); only the Host sees Make host (AVR-710).
+- Tier-3 motion is 200 ms; AVR-704's 600 ms only behind `?concept=motion` (labelled Proposal on
+  screen). Never enable a proposal by default; nothing moves under Reduce Motion (AVR-711).
+- Never fabricate state: no score, winner, round length or countdown; no other phone's check; an
+  unknown check never blocks; away is a dimmed face and the word "Away". Build only what Party
+  Core does today; a Concept K proposal (AVR-700..704, AVR-71) stays out, or behind a default-off
+  `?concept=` flag that says "Proposal" on screen. The table is in docs/UI-DESIGN-SYSTEM.md
+  ("Concept K in Party").
+- Words: verb and object on buttons ("Start BLUFF"), states as facts ("Round over"), counts as
+  numbers ("4 here"), people by name; "Play this round" / "Watch this round" are fixed.
 - Healthy technical infrastructure stays mostly invisible; degraded notices state player impact.
 - The Host is a representative holding the remote: no crown, king or admin framing.
 - The Library is artwork-first and console-style, with several views (grids and list).
@@ -58,7 +77,8 @@ ADR or contract conflict, stop and ask the owner.
   objectives, private hand and controls).
 - No AI-generated imagery, final or placeholder.
 - The first UX phase is design only: audit, information architecture, phone-sized concepts.
-  Stop for owner approval before any large implementation.
+  Stop for owner approval before any large implementation. (Concept K was approved for
+  implementation on 2026-10-21, AVR-705; any new direction starts again at design.)
 
 ## Which skill, when
 

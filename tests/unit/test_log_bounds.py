@@ -52,8 +52,8 @@ class Retention(unittest.TestCase):
         conf.optionxform = str
         conf.read_string(JOURNALD.read_text(encoding='utf-8'))
         journal = dict(conf['Journal'])
-        self.assertEqual(set(journal), {'SystemMaxUse', 'SystemKeepFree', 'RuntimeMaxUse', 'MaxFileSec'})
-        self.assertNotIn('Storage', journal)               # persistence is AVR-29's decision
+        self.assertEqual(set(journal), {'Storage', 'SystemMaxUse', 'SystemKeepFree', 'RuntimeMaxUse', 'MaxFileSec'})
+        self.assertEqual(journal['Storage'], 'persistent')  # AVR-29; tests/unit/test_persistent_journal.py
         self.assertRegex(journal['SystemMaxUse'], r'^\d+M$')
 
     def test_runbook_lists_every_bounded_source(self):

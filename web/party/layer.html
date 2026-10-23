@@ -43,6 +43,23 @@
           <p id="layer-confirm-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
         </div>
       </div>
+      <!-- Leave Party (AVR-580): the same Core endpoint and words as Party Home's sheet; membership only. -->
+      <div id="layer-leave" class="avrana-layer-host" hidden>
+        <button id="layer-leave-ask" type="button" class="btn btn-outline w-full justify-start">Leave Party</button>
+        <div id="layer-leave-confirm" class="avrana-layer-confirm" hidden>
+          <p id="layer-leave-text" class="m-0" tabindex="-1"></p>
+          <p id="layer-leave-host" class="m-0 empty:hidden"></p>
+          <div class="flex gap-2"><button id="layer-leave-yes" type="button" class="btn btn-primary">Leave Party</button><button id="layer-leave-no" type="button" class="btn btn-ghost">Stay</button></div>
+          <p id="layer-leave-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
+        </div>
+      </div>
+      <!-- A guest over a game page of another origin (AVR-580 guest exit): this only asks. The page could
+           cover this frame, so the confirmation is on Party Home, which no game page can draw over. -->
+      <div id="layer-exit" class="avrana-layer-host" hidden>
+        <button id="layer-exit-ask" type="button" class="btn btn-outline w-full justify-start" aria-describedby="layer-exit-note">Leave Party…</button>
+        <p id="layer-exit-note" class="m-0 text-supporting text-muted" aria-live="polite">You will confirm on Party Home. Nothing changes until you do.</p>
+        <p id="layer-exit-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
+      </div>
       <div class="avrana-layer-moves" role="group" aria-labelledby="layer-moves-h">
         <h3 id="layer-moves-h" class="m-0 w-full text-supporting font-medium text-muted">Party button position</h3>
         <button id="layer-nudge-up" type="button" class="btn btn-ghost btn-sm" data-nudge="up">Move up</button>

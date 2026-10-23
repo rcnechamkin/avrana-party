@@ -1,0 +1,19 @@
+[
+  {"__REALTIME_TIMESTAMP": "1792540800000000", "MESSAGE": "-----BEGIN PRIVATE KEY----- MIIEvQIBADANBgkqhkiG9w0BAQEFAASC -----END PRIVATE KEY----- loaded", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540801000000", "MESSAGE": "game bluff key 4f9c2d1e8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0 rotated", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540802000000", "MESSAGE": "resume token kq3Vx9PzL2mN8rT5wY1bC4dF7gH0jK6sA2eQ9uI3oP8", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540803000000", "MESSAGE": "Cookie: __Host-avrana_device=kq3Vx9PzL2mN8rT5wY1bC4dF7gH0jK6sA2eQ9uI3oP8; theme=dark", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540804000000", "MESSAGE": "Set-Cookie: avrana_limited=Zx8Cv7Bn6Mm5Ll4Kk3Jj2Hh1Gg0Ff9Dd8Ss7Aa6; Path=/party/", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540805000000", "MESSAGE": "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540806000000", "MESSAGE": "wifi password=hunter2isnotgood configured", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540807000000", "MESSAGE": "member-0123456789abcdef0123456789abcdef joined as seat 3", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540808000000", "MESSAGE": "device-fedcba9876543210fedcba9876543210 reconnected", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540809000000", "MESSAGE": "GET /party/api/join 200 from 10.42.0.57:51234", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540810000000", "MESSAGE": "upstream resolver 192.168.1.1 timed out", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540811000000", "MESSAGE": "peer fe80::1c2a:3bff:fe4d:5e6f%wlan0", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540812000000", "MESSAGE": "brcmfmac: station a4:83:e7:12:34:56 associated", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540813000000", "MESSAGE": "notification to cody.example@example.com failed", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540814000000", "MESSAGE": "player \"Benjamin\" took seat 2", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540815000000", "MESSAGE": "chat from seat 2: meet me at the bar later", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"},
+  {"__REALTIME_TIMESTAMP": "1792540816000000", "MESSAGE": "registry reloaded: 3 games (added bluff, removed nothing)", "PRIORITY": "6", "_SYSTEMD_UNIT": "avrana-party-core.service", "_HOSTNAME": "avrana"}
+]

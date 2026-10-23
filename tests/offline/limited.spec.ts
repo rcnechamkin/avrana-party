@@ -77,7 +77,7 @@ test('away from Home the mode stays marked: the mark opens the same words over t
   await named(context, 'Lena');
   await home(page, LIMITED);
   const mark = page.locator('#limited-mark'), sheet = page.locator('#about-limited');
-  for (const name of ['party', 'library', 'system'] as const) {
+  for (const name of ['party', 'library', 'me'] as const) {
     await place(page, name);
     await expect(mark, name).toBeVisible();
     await expect(mark).toHaveAccessibleName('Limited Mode on this phone. What this means');
@@ -107,7 +107,7 @@ test('away from Home the mode stays marked: the mark opens the same words over t
   await expect(mark).toBeHidden();
 });
 
-test('the notice on Home folds into the mark: said once in full, then always marked, and kept in System', async ({ page, context }) => {
+test('the notice on Home folds into the mark: said once in full, then always marked, and kept in Me', async ({ page, context }) => {
   await named(context, 'Lena');
   await home(page, LIMITED);
   const banner = page.locator('#limited'), mark = page.locator('#limited-mark'), sheet = page.locator('#about-limited');
@@ -143,7 +143,7 @@ test('the notice on Home folds into the mark: said once in full, then always mar
   await page.keyboard.press('Escape');
   await expect(mark).toBeFocused();
   // System keeps the facts in full for as long as the phone is in Limited Mode, folded or not
-  await place(page, 'system');
+  await place(page, 'me');
   const record = page.locator('#health [data-health="warn"]');
   await expect(record.locator('b')).toHaveText('This phone is in Limited Mode');
   for (const fact of ['not private', 'screen may dim', 'not saved on this phone', 'renews its certificate'])
@@ -206,8 +206,9 @@ test('one party in two modes: each phone sees who is in Limited Mode, and only t
     // and the Limited phone sees the Full Mode member arrive
     await expect(person(page, 'Fay')).toBeVisible();
     await expect(person(page, 'Fay').locator('.mode')).toHaveCount(0);
-    // the drawer says the same of everyone, in words
-    await fay.page.locator('#hud').click();
+    // the drawer (from the Party page's Chat row) says the same of everyone, in words
+    await place(fay.page, 'party');
+    await fay.page.locator('#party-chat').click();
     await fay.page.getByRole('button', { name: 'People', exact: true }).click();
     await expect(fay.page.locator('#social-people li', { hasText: 'Lena' }).locator('.mode')).toHaveText('Limited');
     await expect(fay.page.locator('#social-people li', { hasText: 'Fay (you)' }).locator('.mode')).toHaveCount(0);
@@ -270,8 +271,10 @@ test('on a briefing the mark opens the explanation over it, with no way off the 
       expect(await scroll(), how).toBe(was);                                  // the briefing never moved
       await expect(page.locator('#choose-watch'), how).toHaveAttribute('aria-pressed', 'true');
     }
-    // the people, over the same briefing, say who is in Limited Mode in words
-    await fay.page.locator('#hud').click();
+    // the line-up and the people over the same briefing say who is in Limited Mode in words
+    await expect(fay.page.locator('#scene-roster li', { hasText: 'Lena' }).locator('.mode')).toHaveText('Limited');
+    await expect(fay.page.locator('#scene-roster li', { hasText: 'You' }).locator('.mode')).toHaveCount(0);
+    await fay.page.locator('#scene-presence').click();
     await expect(fay.page.locator('#social-people li', { hasText: 'Lena' }).locator('.mode')).toHaveText('Limited');
     await expect(fay.page.locator('#social-tabs')).toBeHidden();
     // the sheet is open when the Party moves: it closes, and at home it has its way out again
@@ -280,7 +283,7 @@ test('on a briefing the mark opens the explanation over it, with no way off the 
     await page.keyboard.press('Escape');
     await fay.page.keyboard.press('Escape');
     await mark.click();
-    await fay.page.locator('#hud').click();
+    await fay.page.locator('#scene-presence').click();
     // (the Host's own call, from her page: Playwright's client cannot resolve the Limited name)
     expect(await page.evaluate(async () => {
       const version = (await (await fetch('/party/api/state')).json()).version;
@@ -403,15 +406,18 @@ test('a Limited phone that opens a game page or the Arcade, or comes back from o
     await home(gus.page, LIMITED);
     await expect(page.locator('#party-members li')).toHaveCount(2);
     const following = (p: Page) => p.waitForFunction(() => Boolean((window as any).AvranaParty?.active));
+    // A page that follows the Party leaves at once, so the browser may call the visit itself
+    // "interrupted" (a race in the visit, not in the page); where the phone ends up is the check.
+    const visit = (p: Page, url: string) => p.goto(url).catch(() => undefined);
     // On load, at Party Home: a game page and the Arcade both lead to Party Home.
-    await gus.page.goto(`${LIMITED}/games/expo/?avrana=1`);
+    await visit(gus.page, `${LIMITED}/games/expo/?avrana=1`);
     await expect(gus.page).toHaveURL(`${LIMITED}/party/`);
-    await gus.page.goto(`${LIMITED}/arcade/`);
+    await visit(gus.page, `${LIMITED}/arcade/`);
     await expect(gus.page).toHaveURL(`${LIMITED}/party/`);
     // On load, with the Party in a game: any other page leads to it.
     expect(await hostMove(page, 'session/launch', 'expo')).toBe(200);
     await expect(page).toHaveURL(/\/games\/expo\/\?avrana=1$/);
-    await gus.page.goto(`${LIMITED}/arcade/`);
+    await visit(gus.page, `${LIMITED}/arcade/`);
     await expect(gus.page).toHaveURL(`${LIMITED}/games/expo/?avrana=1`);
     // A move made while this phone is offline is followed once the network is back.
     await following(gus.page);

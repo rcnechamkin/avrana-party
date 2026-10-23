@@ -63,7 +63,7 @@ test.describe('three phones at one party', () => {
     await everyone('Home');
     for (const p of [host, bob, cleo]) await place(p.page, 'party');
     await everyone('Party');
-    for (const p of [bob, cleo]) { await p.page.locator('#hud').click(); await expect(p.page.locator('#social')).toBeVisible(); }
+    for (const p of [bob, cleo]) { await p.page.locator('#party-chat').click(); await expect(p.page.locator('#social')).toBeVisible(); }
     await everyone('the drawer', [bob, cleo]);
     for (const p of [bob, cleo]) await p.page.keyboard.press('Escape');
     for (const p of [host, bob, cleo]) { await place(p.page, 'library'); await openGame(p.page, 'bluff'); }
@@ -73,7 +73,7 @@ test.describe('three phones at one party', () => {
     await everyone('the briefing, nobody has answered');
     await bob.page.locator('#choose-play').click();
     await cleo.page.locator('#choose-watch').click();
-    await expect(host.page.locator('#scene-count')).toHaveText('1 playing · 1 watching');
+    await expect(host.page.locator('#scene-count')).toHaveText('Playing 1 · Watching 1 · Choosing 1');   // K1's words: the Host has not chosen yet
     await everyone('the briefing, answers in');
     for (const p of [bob, cleo]) { await p.page.locator('#scene-rules').click(); await expect(p.page.locator('#rules')).toBeVisible(); await expect(p.page.locator('#rules-ok')).toBeInViewport({ ratio: 1 }); }
     await everyone('How to play', [bob, cleo]);
@@ -130,7 +130,7 @@ test.describe('three phones at one party', () => {
     const hosting = (await host.page.locator('#party-host').innerText()).includes('You’re the host') ? host : bob, guest = hosting === host ? bob : host;
     await expect(hosting.page.locator('#trouble')).toBeVisible();
     await audit(hosting, 'Home, the Host’s notice', ['button#trouble-x']);
-    for (const p of [hosting, guest]) { await place(p.page, 'system'); await expect(p.page.locator('#health [data-health="warn"]')).toBeVisible(); }
+    for (const p of [hosting, guest]) { await place(p.page, 'me'); await expect(p.page.locator('#health [data-health="warn"]')).toBeVisible(); }
     await everyone('System, something is off', [hosting, guest]);
     expect((await request.post('/__test__/arcade/up')).status()).toBe(204);
     for (const p of [hosting, guest]) { await p.page.reload(); await expect(p.page.locator('#health [data-health="ok"]')).toBeVisible(); }

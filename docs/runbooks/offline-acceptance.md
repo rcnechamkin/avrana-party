@@ -521,6 +521,8 @@ deployments. Do the destructive-feeling tests last within a session (power inter
 
 - **Serves:** AVR-29. **Revision:** DEPLOYED. **Expected result today: FAIL**, because the journal is volatile
   ([baseline](../findings/2026-10-12-deployed-baseline.md)). The test is the deliberate proof that was missing.
+  Once the owner has installed the persistent journal ([logs-and-retention](logs-and-retention.md), "Persistent
+  journal", AVR-29) the expected result is PASS, and that runbook's "Prove it survives a reboot" is the same proof.
 - **Steps:** before A-01: `ssh party 'logger -t avrana-accept "marker before reboot $(date -u +%FT%TZ)"; journalctl --list-boots | tail -2; ls -A /var/log/journal | head -3; journalctl --disk-usage'`.
   After A-01 or A-17: `ssh 10.42.0.1 'journalctl --list-boots | tail -3; journalctl -b -1 -t avrana-accept; journalctl -b -1 -k | tail -3; sudo tail -n 3 /var/log/avrana/pi-throttle.jsonl'`.
 - **Expect today:** `--list-boots` shows one boot, `-b -1` finds nothing: the marker and the previous boot's

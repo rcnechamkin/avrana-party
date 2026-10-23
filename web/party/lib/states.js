@@ -11,7 +11,8 @@ export const LOST_AFTER_MS = 10000;
 /** How this phone reaches Party Core: 'ok', 'reconnecting' (it stopped answering a moment ago)
  * or 'lost' (it has not answered for LOST_AFTER_MS). `failingSince`: when the first try in a row
  * failed (ms), or null while it answers. */
-export function linkState(failingSince, now) {
+export function linkState(failingSince, now, signin = false) {
+  if (signin) return 'signin';
   if (failingSince === null || failingSince === undefined) return 'ok';
   return now - failingSince >= LOST_AFTER_MS ? 'lost' : 'reconnecting';
 }
@@ -20,8 +21,13 @@ export function linkState(failingSince, now) {
  *   answered: something on the box answered, only not the Party (it is restarting);
  *   host:     this phone was the Host when it last heard (its role passes on by Party Core's rule);
  *   brief:    said on a briefing, where a person has an answer in.
- * Returns { title, text, retry } or null. `title` is only for the lost state. */
+ *   'signin': something in front of the Party asked this page to sign in again (a hosted site's
+ *             access gateway); only loading the page again does that, so the action reloads.
+ * Returns { title, text, retry, reload } or null. `title` is only for the lost and signin states. */
 export function linkWords({ link, answered = false, host = false, brief = false } = {}) {
+  if (link === 'signin') {
+    return { title: 'Sign in again', text: 'Your sign-in to this site has run out. The Party keeps your place.', retry: true, reload: true };
+  }
   if (link === 'reconnecting') {
     return { title: '', text: brief ? 'Reconnecting. Your answer stays as it is for now.' : 'Reconnecting. What you see may be out of date.', retry: false };
   }
@@ -81,6 +87,23 @@ export function briefLine(panel, { away = null, passed = null } = {}) {
   if (panel.host) return (lead + (panel.blocker || '')).trim();
   if (away) return `${away.name}, the Host, is away, so the game can’t start yet. Hosting passes to someone here if ${away.name} isn’t back soon.`;
   return lead + (panel.hostName ? `Waiting for ${panel.hostName} to start` : 'Nobody is hosting right now.');
+}
+
+/** What Leave Party does, in words, for the confirmation (AVR-580). `impact` is Party Core's own
+ * answer (view.me.leave), so what is promised is what Core will do. Never silent about the Host's
+ * consequence; nothing here ends a round or moves anyone. */
+export function leaveWords(impact) {
+  const text = impact.host
+    ? 'You will leave the Party. Your name and settings stay on this phone, and you can reconnect later.'
+    : 'You will leave the Party. Everyone else stays where they are' + (impact.round ? ', and the round goes on.' : '.')
+      + ' Your name and settings stay on this phone, and you can reconnect later.';
+  if (!impact.host) return { text, host: '' };
+  const round = impact.round ? ' The round goes on.' : '';
+  const host = impact.successor
+    ? `You are the Host. ${impact.successor} becomes the Host right away. You won’t be the Host when you come back.${round}`
+    : `You are the Host and nobody else is here to take over. The Party will have no Host until someone arrives`
+      + (impact.round ? ', and the round goes on with nobody able to end it.' : '.');
+  return { text, host };
 }
 
 const listed = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);

@@ -28,6 +28,7 @@
 import { FIRST_RETRY_MS, createPartyClient } from './party-client.js';
 import { destination, locationOf } from './party-mode.js';
 import { profileIdentity } from './party-follow.js';
+import { createDeparture } from './departure.js';
 
 export const PROTOCOL = 'avrana.party-bridge/v1';
 export const REQUESTS = ['hello', 'ticket', 'end', 'home', 'playAgain'];
@@ -100,15 +101,15 @@ export function startBridge({ win = globalThis, fetch = globalThis.fetch.bind(gl
     post({ type: 'view', view: publicView(v) });
     // With no catalog the answer is only ever "stay" or Party Home: where a game opens is
     // Party Home's business, and a game page is never handed a URL.
-    const elsewhere = Boolean(destination(v, bound.game, null));
+    const elsewhere = Boolean(v.departed) || Boolean(destination(v, bound.game, null));   // left on purpose: Party Home asks (AVR-580)
     if (elsewhere && !lastNavigate) post({ type: 'navigate', to: 'party' });
     lastNavigate = elsewhere;
   }
 
   async function follow() {
-    client = createPartyClient({ fetch, base: '/party/api/', onView });
+    client = createPartyClient({ fetch, base: '/party/api/', onView, departure: createDeparture(storage) });
     let first = await client.probeRetrying(retryMs);   // a blip at load must not leave the page unfollowed (AVR-475)
-    if (first && !first.me) {                 // presence is automatic once there is a profile
+    if (first && !first.me && !first.departed) {   // presence is automatic once there is a profile (not after Leave)
       const who = profileIdentity(storage);
       if (who) {
         const res = await client.join(who.name, who.avatar);

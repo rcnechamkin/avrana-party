@@ -17,6 +17,8 @@ task or in this document authorizes it. Merged is not deployed; deployed is not 
    `cross-repo` (Games).
 2. Write down the two full SHAs: Party `main` and Games `main` (or the exact Games commit the
    Party change was tested against).
+   `tools/release_candidate.py` records them with their contract check, makes the offline bundles and
+   rehearses this script's dry runs: [release-candidate](release-candidate.md).
 3. If the Games commit is not yet on the Pi (its clone comes from a bundle, see
    [games-fork-deploy](games-fork-deploy.md) §1), stage it first.
 4. No party in progress: the script refuses while a game session is live.
@@ -421,3 +423,20 @@ re-executions use hidden `--internal-*` arguments, not environment variables. `-
 `--internal-rollback-kind` refuse to be typed by hand; `--internal-detached` only means "do not detach again" and is
 harmless when typed. A real run needs root (the
 services, the web root and the site file); a run without it refuses before touching anything.
+
+## Deployment profile: the appliance or hosted staging
+
+The host says which deployment it is, in `/etc/avrana-party/deploy-profile`. Every invocation reads
+it: deploy, `--rollback`, `--recover`, `--finish` and the nested auto-rollback. A Pi has no such
+file, which means `pi`: everything on this page, unchanged. The file contains `hosted` only in the
+hosted staging VM ([HOSTED-STAGING](../design/HOSTED-STAGING.md)). There, the same script:
+
+- restarts Party Core, plus the running native games (`avrana-game@*.service`) when Games changed;
+- installs `deploy/hosted/avrana-party.hosted.nginx` of the Party commit. A Party commit without
+  that file is refused before anything changes;
+- runs smoke as `python3 -m avrana.ops.smoke --hosted --config /etc/avrana-party/party-core.json`;
+- takes the Party host from that config's first `hosts` entry;
+- records `deploy_options.hosted_profile: true` in the manifest.
+
+Any other value is refused. `AVRANA_PARTY_CORE_CONFIG` overrides the config path.
+`AVRANA_DEPLOY_PROFILE_FILE` is test-only, like the settings listed above.

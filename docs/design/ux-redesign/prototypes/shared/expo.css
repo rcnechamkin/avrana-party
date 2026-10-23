@@ -5,7 +5,7 @@
    what human-made art they hold the place for.
    The game's own palette and shapes; only behaviour is shared with the Avrana shell. */
 
-@font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Plus Jakarta Sans"; src: url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
 
 :root {
   color-scheme: dark;
@@ -25,7 +25,7 @@
   --blue: #2a63c9; --green: #1d7a50; --pink: #bf3b84; --yellow: #e2ad1b; --sub: #0b0c0e;
   --card-w: 62px; --card-h: 78px; --trick-w: 68px; --trick-h: 92px;
   --pad: 12px;
-  --ui: "Geist", system-ui, sans-serif;
+  --ui: "Plus Jakarta Sans", system-ui, sans-serif;
   --read: var(--ui);        /* counts and clocks: the same face, tabular figures */
   --control: #6b7780;       /* the edge of a key: 3:1 on the panel */
 }

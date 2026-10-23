@@ -1,0 +1,36 @@
+{
+  "schema": "avrana.appliance/v0",
+  "id": "avrana-hosted",
+  "name": "Avrana Party hosted staging (Linux VM behind an access gateway)",
+  "providers": [
+    {
+      "id": "lan-games",
+      "kind": "runtime",
+      "offers": [
+        "runtime.lan_games"
+      ],
+      "status": "experiment",
+      "adapter": null,
+      "implementation": "LAN Games server for BLUFF/EXPO, second wave only (docs/design/HOSTED-STAGING.md): not installed in the first hosted deploy; when it is, AVRANA_STANDALONE_ADMISSION=0"
+    }
+  ],
+  "installed": [
+    {
+      "game": "checkers",
+      "entry": "/games/checkers/",
+      "tier": "builtin",
+      "permissions_granted": [
+        "party_roster"
+      ],
+      "runtime": {
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "checkers"
+        ],
+        "working_directory": "/opt/avrana-party-games/current"
+      }
+    }
+  ],
+  "collections": []
+}

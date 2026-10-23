@@ -117,10 +117,18 @@ viewport and can cover, hide or full-screen over any frame.
   calling `mountPartyLayer({ partyOrigin, game })`. The page decides when to mount (a member in this
   game's round, as `party-follow.js` does for same-origin pages) and calls `stop()` otherwise. The
   frame still loads from the Party origin with the phone's own credential; the page holds none
-  (`tests/offline/bridge.spec.ts`, Tier 2). **Not built:** the Games side (the SDK export and
-  `comply` do not yet vendor the file) and any installed `.avrgame` that mounts it; the real
-  cookie behaviour of a framed Party page under Safari's tracking prevention is Tier 3
-  ([device validation](../../runbooks/party-layer-device-validation.md), 7.7).
+  (`tests/offline/bridge.spec.ts`, Tier 2). **Games side (Sprint 03, paired Games PR):** BLUFF and
+  EXPO vendor the file as `web/avrana-party-layer.js` with a `layer` block in
+  `provider/avrana-contract.json`, serve it at `/shared/avrana-party-layer.js`, and mount it from
+  `avrana-integration.js` on the game origin under the same rule as `party-follow.js` (a member,
+  the round or its results in this game); `ops/vendor_party.py --party <checkout> [--check]`
+  re-vendors every Party file and its digest in one step. Exercised over the real pages in
+  `tests/provider/game-origin-layer.spec.ts` (Tier 2, Chromium, two host names, HTTP). **Not
+  built:** the SDK export and `comply` (no kit game is approved for the layer) and any installed
+  `.avrgame` that mounts it. **Not deployed:** nginx serves BLUFF and EXPO only on the Party origin
+  ([game-origin](../../runbooks/game-origin.md), "Known limits"); moving them to the game origin is
+  an owner decision of its own. The real cookie behaviour of a framed Party page under Safari's
+  tracking prevention is Tier 3 ([device validation](../../runbooks/party-layer-device-validation.md), 7.7).
 - **A top-layer dialog hides the button.** A page's `<dialog>.showModal()` puts it in the top layer
   and makes the Party frame inert. A game that mounts the layer opens its own dialogs without the
   top layer and keeps the table inert, the focus trapped and Escape working itself (BLUFF:

@@ -88,20 +88,23 @@ test.describe('three phones at one party', () => {
     expect(stranger.status()).toBe(403);                      // a page from elsewhere cannot act
   });
 
-  test('the frame: the Party control counts the people, the drawer and the Party page list them', async () => {
-    const hud = host.page.locator('#hud'), drawer = host.page.locator('#social');
+  test('the frame: the Party tab, the drawer and the Party page list the people', async () => {
+    const hud = host.page.locator('#party-chat'), drawer = host.page.locator('#social');
     for (const p of [host, bob]) await place(p.page, 'home');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people and chat');
-    await expect(host.page.locator('#hud-faces img')).toHaveCount(3);
-    await expect(host.page.locator('#party-lede')).toHaveText('Three of you are here.');
-    await expect(host.page.locator('#party-names')).toHaveText('Ada (you), Bob and Cleo.');
-    await expect(bob.page.locator('#party-names')).toHaveText('Bob (you), Ada and Cleo.');
+    await expect(host.page.locator('#nav-party')).toHaveAccessibleName('Party');    // nothing new in the chat
+    // Home says who is here in a row (Concept K, AVR-708); their names are on the Party tab
+    await expect(host.page.locator('#home-here')).toHaveText('3 here');
+    await expect(host.page.locator('#home-presence')).toHaveAccessibleName('3 here · You host. Open people');
+    await expect(host.page.locator('#home-host')).toBeVisible();                     // the Host sees that they are
+    await expect(bob.page.locator('#home-host')).toBeHidden();
+    await expect(bob.page.locator('#party-members')).toContainText('Bob (you)');
     // Home's shelves are the same for the Host and a guest: what suits three, never a different list
     for (const p of [host, bob]) {
-      await expect(p.page.locator('#home-great-h')).toHaveText('Great for three');
+      await expect(p.page.locator('#home-great-h')).toHaveText('Also fits your 3');
       await expect(p.page.locator('#home-lead [data-game]')).toBeVisible();
       await expect(p.page.locator('#home-recent-sec')).toBeHidden();        // nothing played on these phones yet
     }
+    await place(host.page, 'party');                                        // the drawer opens from the Party page's Chat row
     await hud.click();
     await expect(drawer).toBeVisible();
     await host.page.getByRole('button', { name: 'People', exact: true }).click();
@@ -114,7 +117,7 @@ test.describe('three phones at one party', () => {
     expect(await host.page.evaluate(() => document.activeElement?.closest('dialog')?.id)).toBe('social');
     await host.page.mouse.click(195, 800);                                  // a tap outside it closes it
     await expect(drawer).toBeHidden();
-    await expect(host.page.locator('html')).toHaveAttribute('data-place', 'home');
+    await expect(host.page.locator('html')).toHaveAttribute('data-place', 'party');
     await hud.click();
     await host.page.keyboard.press('Escape');
     await expect(drawer).toBeHidden();
@@ -127,8 +130,8 @@ test.describe('three phones at one party', () => {
   });
 
   test('the Party moving wins over the frame: what is open closes, and a briefing keeps only the top bar', async () => {
-    await place(bob.page, 'system');
-    await bob.page.locator('#hud').click();
+    await place(bob.page, 'party');
+    await bob.page.locator('#party-chat').click();
     await expect(bob.page.locator('#social')).toBeVisible();
     await place(cleo.page, 'library');
     await openGame(cleo.page, 'expo');                                       // Cleo is reading about another game
@@ -137,19 +140,20 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#social')).toBeHidden();                  // nothing stands between Bob and his answer
     for (const p of [host, bob, cleo]) {
       const page = p.page;
-      // the top bar stays: what is going on, and who is here
+      // the top bar stays (what is going on), and the briefing says who is here
       await expect(page.locator('#top-title'), p.name).toHaveText('Getting ready');
       await expect(page.locator('#top-title'), p.name).toBeFocused();        // the move is announced where focus is
-      await expect(page.locator('#hud'), p.name).toBeVisible();
+      await expect(page.locator('#scene-presence'), p.name).toBeVisible();
+      await expect(page.locator('#util-search'), p.name).toBeHidden();       // no way to the Library from here
       await expect(page.locator('#top-back'), p.name).toBeHidden();
       await expect(page.locator('#limited-mark'), p.name).toBeHidden();      // Full Mode phones are never marked
       await expect(page.locator('#scene-title'), p.name).toHaveText('BLUFF');
       // and nothing else of the frame: no places, no Library, no chat, no "This phone"
-      for (const gone of ['#nav', '#content', '#games', '#view-library', '#view-game', '#view-system', '#chat', '#party-chat', '#skip'])
+      for (const gone of ['#nav', '#content', '#games', '#view-library', '#view-game', '#view-me', '#chat', '#party-chat', '#skip'])
         await expect(page.locator(gone), `${p.name} ${gone}`).toBeHidden();
       await expect(page.locator('#scene a[href]'), p.name).toHaveCount(0);   // no link leaves the briefing
       expect(await page.locator('#scene').getByRole('button').evaluateAll((els) => els.filter((el) => el.getClientRects().length).map((el) => el.id)), p.name)
-        .toEqual(p === host ? ['scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-rules', 'choose-play', 'choose-watch']);
+        .toEqual(p === host ? ['scene-rules', 'scene-presence', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel'] : ['scene-rules', 'scene-presence', 'choose-play', 'choose-watch']);
     }
     await bob.page.locator('#choose-watch').click();
     await expect(bob.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
@@ -167,14 +171,14 @@ test.describe('three phones at one party', () => {
     await expect(cleo.page.locator('#game-title')).toBeFocused();
   });
 
-  test('over a briefing the Party control opens the people, and closing it any way keeps the page, its scroll and the focus', async () => {
+  test('over a briefing the presence row opens the people, and closing it any way keeps the page, its scroll and the focus', async () => {
     await bob.page.setViewportSize({ width: 360, height: 560 });             // short: the briefing scrolls
     await startForEveryone(host.page, 'bluff');
     for (const p of [host, bob, cleo]) await expect(p.page.locator('#scene')).toBeVisible();
-    const page = bob.page, hud = page.locator('#hud'), drawer = page.locator('#social');
+    const page = bob.page, hud = page.locator('#scene-presence'), drawer = page.locator('#social');
     await page.locator('#choose-watch').click();
     await expect(page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(hud).toHaveAccessibleName('Your Party: 3 people here. Open people');   // people, and nothing else, here
+    await expect(hud).toHaveAccessibleName('3 here. Open people');   // the words it shows, then what it opens: people, and nothing else, here
     await briefScroll(page, 90);
     const was = await briefScroll(page);
     expect(was).toBeGreaterThan(0);
@@ -206,14 +210,15 @@ test.describe('three phones at one party', () => {
     // a person's answer, arriving while the drawer is open, does not close it
     await hud.click();
     await host.page.locator('#choose-watch').click();
-    await expect(page.locator('#scene-count')).toHaveText('0 playing · 2 watching');
+    await expect(page.locator('#scene-count')).toHaveText('Playing 0 · Watching 2 · Choosing 1');   // the third phone has not chosen
     await expect(drawer).toBeVisible();
     // the Party moving does: the Host chooses another game, and the drawer does not follow anyone home
     await host.page.locator('#scene-cancel').click();
     await expect(drawer).toBeHidden();
     await expect(page.locator('#scene')).toBeHidden();
     await expect(page.locator('#nav')).toBeVisible();
-    await expect(hud).toHaveAccessibleName(/^Your Party: 3 people here\. Open people/);
+    await expect(hud).toBeHidden();                                              // the briefing's row went with the briefing
+    await expect(page.locator('#nav-party')).toBeVisible();                     // the people are on the Party tab
   });
 
   test('How to play: from a game’s page and from the briefing; a first-timer reads it before playing', async () => {
@@ -322,7 +327,7 @@ test.describe('three phones at one party', () => {
     // reading order: what, its rules, who, then the decision
     expect(await host.page.locator('#scene').evaluate((el) =>
       [...el.querySelectorAll('h2, h3, button')].filter((n) => n.getClientRects().length).map((n) => n.id)))
-      .toEqual(['scene-title', 'scene-rules', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);
+      .toEqual(['scene-title', 'scene-rules', 'scene-presence', 'scene-people-h', 'choose-play', 'choose-watch', 'scene-start', 'scene-cancel']);   // K1: the rules under the premise (AVR-709)
     // what the game is, its rules and the decision are on screen at once; only the line-up may scroll
     for (const id of ['scene-title', 'scene-rules']) await expect(host.page.locator('#' + id), id).toBeInViewport({ ratio: 1 });
     // nothing on it moves for someone who asked for no motion
@@ -339,17 +344,16 @@ test.describe('three phones at one party', () => {
       expect(await sideways(p.page), p.name).toBeLessThanOrEqual(0);
       expect(await p.page.locator('#scene').evaluate((el) => el.scrollWidth - el.clientWidth), p.name).toBeLessThanOrEqual(0);
       await expect(p.page.locator('#top-title'), p.name).toBeInViewport();
-      await expect(p.page.locator('#hud'), p.name).toBeInViewport();
-      const reach = p === host ? ['scene-title', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-status', 'scene-cancel']
-        : ['scene-title', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-status'];
+      const reach = p === host ? ['scene-title', 'scene-presence', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-start', 'scene-status', 'scene-cancel']
+        : ['scene-title', 'scene-presence', 'scene-roster', 'scene-rules', 'choose-play', 'choose-watch', 'scene-status'];
       for (const id of reach) {
         await p.page.locator('#' + id).scrollIntoViewIfNeeded();
         await expect(p.page.locator('#' + id), `${p.name} ${id}`).toBeInViewport();
       }
       expect(await smallTargets(p.page, everything), p.name).toEqual([]);
       // the people, over it, at that size
-      await p.page.locator('#hud').scrollIntoViewIfNeeded();
-      await p.page.locator('#hud').click();
+      await p.page.locator('#scene-presence').scrollIntoViewIfNeeded();
+      await p.page.locator('#scene-presence').click();
       expect(await p.page.locator('#social').evaluate((el) => el.scrollWidth - el.clientWidth), p.name).toBeLessThanOrEqual(1);
       await p.page.locator('#social-people li').last().scrollIntoViewIfNeeded();
       await expect(p.page.locator('#social-people li').last(), p.name).toBeInViewport();
@@ -393,7 +397,7 @@ test.describe('three phones at one party', () => {
     await expect(page.locator('#games .avrana-row', { hasText: 'Gauntlet II' })).toContainText('1–4');
     // Home says the same thing
     await place(page, 'home');
-    await expect(page.locator('#home-lead [data-game="bluff"]')).toContainText('Room for all three of you.');
+    await expect(page.locator('#home-lead [data-game="bluff"]')).toContainText('Fits your 3');
     await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(1);
     // someone goes home: the shelf follows the party without being asked
     // (her page is closed first: an open Party page puts its phone straight back in the party)
@@ -401,7 +405,7 @@ test.describe('three phones at one party', () => {
     await cleo.page.close();
     const left = await cleo.context.request.post('/party/api/leave', { data: {}, headers: { 'Content-Type': 'application/json', Origin: origin } });
     expect(left.status()).toBe(200);
-    await expect(page.locator('#home-great-h')).toHaveText('Great for two');
+    await expect(page.locator('#home-great-h')).toHaveText('Also fits your 2');
     await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(1);
     await place(page, 'library');
     await expect(page.locator('#games h3')).toHaveText(['Great for two']);
@@ -452,7 +456,7 @@ test.describe('three phones at one party', () => {
       await expect(page.locator('#games .avrana-row', { hasText: 'Gauntlet II' })).toContainText('Max 4, you’re 5');
       // Home says the same thing: only what seats five is on its shelf
       await place(page, 'home');
-      await expect(page.locator('#home-lead [data-game="bluff"]')).toContainText('Room for all five of you.');
+      await expect(page.locator('#home-lead [data-game="bluff"]')).toContainText('Fits your 5');
       await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(0);
       // one goes home: the shelf follows the party, and Gauntlet II is on it again
       // (his page is closed first: an open Party page puts its phone straight back in the party)
@@ -460,7 +464,7 @@ test.describe('three phones at one party', () => {
       await eli.page.close();
       const left = await eli.context.request.post('/party/api/leave', { data: {}, headers: { 'Content-Type': 'application/json', Origin: origin } });
       expect(left.status()).toBe(200);
-      await expect(page.locator('#home-great-h')).toHaveText('Great for four');
+      await expect(page.locator('#home-great-h')).toHaveText('Also fits your 4');
       await expect(page.locator('#home-great [data-game="arcade-gauntlet2"]')).toHaveCount(1);
       await place(page, 'library');
       await expect(page.locator('#games h3')).toHaveText(['All games']);
@@ -483,13 +487,18 @@ test.describe('three phones at one party', () => {
     for (const p of [host, bob, cleo]) await expect(p.page, p.name).toHaveURL(/\/party\/$/);
     for (const p of [host, bob]) {
       await expect(p.page, p.name).toHaveURL(/\/party\/$/);
-      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toContainText('You played this last.');
+      // K3 (AVR-709): back from the round it played, Home says so; it leads either way
+      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toHaveAttribute('data-just', '');
+      await expect(p.page.locator('#home-lead [data-game="expo"]'), p.name).toContainText('Just played');
       await expect(p.page.locator('#home-recent-sec'), p.name).toBeHidden();   // it leads; it is not listed twice
       // per phone, in the list the games have always written (decision 9: nothing Party-wide)
       expect(await p.page.evaluate(() => localStorage.getItem('lg-recent')), p.name).toBe('["avrana:expo"]');
       // once: Bob came back to the page mid-round, and the round still counts as one game opened
       expect(await p.page.evaluate(() => localStorage.getItem('lg-play-total')), p.name).toBe('1');
     }
+    // once the Host puts K3 away, the same title leads as the one this phone played last
+    await host.page.locator('#just-other').click();
+    await expect(host.page.locator('#home-lead [data-game="expo"]')).toContainText('You played this last.');
     // a second round is a second game opened; held results are not a round
     await startForEveryone(host.page, 'expo');
     for (const p of [host, bob]) await expect(p.page).toHaveURL(/\/games\/expo\//);
@@ -602,7 +611,7 @@ test.describe('three phones at one party', () => {
     }
     await cleo.page.locator('#choose-watch').click();
     await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-    await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 1 watching');
+    await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 1');
     await expect(line(host, 'You').locator('.ans')).toHaveText('Playing');
     await expect(line(host, 'Bob').locator('.ans')).toHaveText('Playing');
     await expect(line(host, 'Cleo').locator('.ans')).toHaveText('Watching');
@@ -720,7 +729,7 @@ test.describe('three phones at one party', () => {
         await expect(p.page.locator('#choose-play'), p.name).toHaveAttribute('aria-pressed', 'true');
       }
       for (const p of [cleo, dee]) await p.page.locator('#choose-watch').click();
-      await expect(host.page.locator('#scene-count')).toHaveText('2 playing · 2 watching');
+      await expect(host.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 2');
       await host.page.locator('#scene-start').click();
       for (const p of [host, ...guests]) await expect(p.page, p.name).toHaveURL(/\/games\/bluff\//);
       await endForEveryone(host);
@@ -806,14 +815,23 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#scene')).toBeVisible();                 // the briefing is still the place
   });
 
-  test('during a round the Host’s role does not move, however long their phone is quiet', async ({ request }) => {
+  test('during a round a Host whose phone is quiet past grace passes hosting on, keeps the seat, and the round goes on', async ({ request }) => {
+    // ADR 0006 as amended 2026-10-22: before, the role never moved mid-round, so a game waiting for
+    // the quiet Host held the party with nobody able to end it.
     await startForEveryone(host.page, 'expo');
     for (const p of [host, bob, cleo]) await expect(p.page).toHaveURL(/\/games\/expo\//);
     await goQuiet(host);
-    await later(request, 300);
+    // In steps, as a real party's clock moves: the other phones ask in between, so they are live when
+    // grace runs out. One jump past everyone's live window would leave nobody live, the role vacant,
+    // and the first phone to ask the Host (a race between Bob and Cleo).
+    await later(request, 50);
+    for (const p of [bob, cleo]) await view(p);
+    await later(request, 30);                                               // Ada quiet 80 s: past LIVE_WINDOW + HOST_GRACE
     const now = await view(bob);
     const ada = now.members.find((m: { name: string }) => m.name === 'Ada');
-    expect([ada.host, ada.presence, now.location.at]).toEqual([true, 'playing', 'game']);
+    const ben = now.members.find((m: { name: string }) => m.name === 'Bob');
+    const cleoNow = now.members.find((m: { name: string }) => m.name === 'Cleo');
+    expect([ada.host, ada.presence, ben.host, cleoNow.host, now.location.at]).toEqual([false, 'playing', true, false, 'game']);
     await expect(bob.page).toHaveURL(/\/games\/expo\//);
   });
 
@@ -827,9 +845,9 @@ test.describe('three phones at one party', () => {
     await expect(net.getByRole('button', { name: 'Try again' })).toBeHidden();       // it is trying by itself
     await expect(bob.page.locator('html')).toHaveAttribute('data-link', 'reconnecting');
     await expect(bob.page.locator('#status')).toBeHidden();                          // "Connected" is not said beside it
-    await expect(bob.page.locator('#party-lede')).toHaveText('Three of you are here.');   // what was known stays
+    await expect(bob.page.locator('#home-here')).toHaveText('3 here');                     // what was known stays
     await expect(bob.page.locator('#home-games')).toBeVisible();
-    for (const where of ['library', 'party', 'system'] as const) {          // said in every place
+    for (const where of ['library', 'party', 'me'] as const) {          // said in every place
       await place(bob.page, where);
       await expect(net, where).toBeVisible();
     }
@@ -914,14 +932,14 @@ test.describe('three phones at one party', () => {
       await expect(bob.page.locator('#trouble')).toBeHidden();              // a guest cannot act on it
       // "What changed" is System, where the Host reads what it means for play
       await note.getByRole('link', { name: 'What changed' }).click();
-      await expect(host.page.locator('html')).toHaveAttribute('data-place', 'system');
+      await expect(host.page.locator('html')).toHaveAttribute('data-place', 'me');
       const health = host.page.locator('#health [data-health="warn"]');
       await expect(health).toHaveCount(1);
       await expect(health.locator('b')).toHaveText('Arcade games are off right now');
       await expect(health).toContainText('The arcade part of the Party box isn’t answering. Gauntlet II can’t be played. Card and party games are not affected.');
       await expect(host.page.locator('#health [data-health="ok"]')).toHaveCount(0);
       // a guest's System says what their shelf already shows, and no more
-      await place(bob.page, 'system');
+      await place(bob.page, 'me');
       await expect(bob.page.locator('#health [data-health="warn"] b')).toHaveText('Gauntlet II is off for now');
       await expect(bob.page.locator('#health')).toContainText('Every other game plays as usual.');
       await expect(bob.page.locator('#health')).not.toContainText('isn’t answering');
@@ -941,14 +959,14 @@ test.describe('three phones at one party', () => {
       await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
       await expect(host.page.locator('#home-games')).toBeVisible();
       await expect(note).toBeHidden();
-      await place(host.page, 'system');
+      await place(host.page, 'me');
       await expect(health).toHaveCount(1);
       // all well again: one quiet line, and nothing on Home
       expect((await request.post('/__test__/arcade/up')).status()).toBe(204);
       for (const p of [host, bob]) {
         await p.page.reload();
         await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
-        await place(p.page, 'system');
+        await place(p.page, 'me');
         await expect(p.page.locator('#health [data-health]'), p.name).toHaveCount(1);
         await expect(p.page.locator('#health [data-health="ok"] b'), p.name).toHaveText(/Everything’s working|The Party box is working/);
       }
@@ -977,7 +995,7 @@ test.describe('three phones at one party', () => {
       await expect(host.page.locator('html')).toHaveAttribute('data-ready', 'true');
       await expect(host.page.locator('#home-games')).toBeVisible();
       await expect(host.page.locator('#trouble')).toBeHidden();             // no notice: the account gives it nothing to say
-      await place(host.page, 'system');
+      await place(host.page, 'me');
       await expect(host.page.locator('#health [data-health="warn"] b')).toHaveText('Gauntlet II is off for now');
       await expect(host.page.locator('#health [data-health="ok"]')).toHaveCount(0);
     } finally {
@@ -993,7 +1011,7 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#host-now')).toBeVisible();
     await expect(cleo.page.locator('#party-state')).toContainText('Bob is hosting now');
     expect((await request.post('/__test__/party/reset')).status()).toBe(204);   // the box starts over; the phones stay where they are
-    for (const p of [bob, cleo]) await expect(p.page.locator('#party-lede'), p.name).toHaveText('Two of you are here.', { timeout: 15_000 });
+    for (const p of [bob, cleo]) await expect(p.page.locator('#home-here'), p.name).toHaveText('2 here', { timeout: 15_000 });
     for (const p of [bob, cleo]) {
       await expect(p.page.locator('#host-now'), p.name).toBeHidden();
       await expect(p.page.locator('#party-state'), p.name).not.toContainText('hosting now');
