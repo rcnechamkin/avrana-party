@@ -667,7 +667,11 @@ class HostedProfile(Harness):
         self.assertEqual(args[2:], ['--config', str(self.config)])
 
     def test_a_party_commit_without_the_hosted_site_file_is_refused_before_anything_changes(self):
-        r = self.deploy(self.before_party, self.target_games, '--skip-smoke')
+        # The repository carries the hosted site file, so the commit without it is made here
+        self.run_git(self.origin, 'rm', '-q', 'deploy/hosted/avrana-party.hosted.nginx')
+        self.run_git(self.origin, 'commit', '-q', '-m', 'no hosted site')
+        without = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        r = self.deploy(without, self.target_games, '--skip-smoke')
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('deploy/hosted/avrana-party.hosted.nginx', r.stdout + r.stderr)
         self.assertEqual(self.site.read_bytes(), self.site_before)
@@ -681,7 +685,12 @@ class HostedProfile(Harness):
         self.assertEqual(self.calls(queries=True), [])
 
     def test_the_profile_file_override_is_test_only(self):
-        loop = next(line for line in SCRIPT.read_text().splitlines() if line.startswith('for v in AVRANA_DEPLOY_SMOKE'))
+        lines = SCRIPT.read_text().splitlines()
+        n = next(i for i, line in enumerate(lines) if line.startswith('for v in AVRANA_DEPLOY_SMOKE'))
+        loop = lines[n]
+        while loop.endswith('\\'):                            # the list continues on the next line
+            n += 1
+            loop = loop[:-1] + lines[n]
         self.assertIn('AVRANA_DEPLOY_PROFILE_FILE', loop)     # a production run never reads another profile file
 
     def test_the_party_host_comes_from_the_config(self):
