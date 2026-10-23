@@ -187,21 +187,31 @@ class Gate(unittest.TestCase):
     def test_the_gate_opens_only_for_the_token_and_never_shuts_the_form_or_the_local_port(self):
         head = HOSTED.split('server {', 1)[0]
         self.assertIn('map $cookie_avrana_gate $avrana_gate_cookie {\n    default 0;\n    include /etc/avrana-party/gate*.map;\n}', head)
-        rules = re.search(r'map "\$server_port:\$avrana_gate_cookie:\$uri" \$avrana_gate_closed \{(.*?)\}', head, re.S).group(1)
+        rules = re.search(r'map "\$server_port:\$avrana_gate_cookie:\$host\$uri" \$avrana_gate_closed \{(.*?)\}', head, re.S).group(1)
         closed = []
         for line in rules.strip().splitlines():
             key, value = line.strip().rstrip(';').rsplit(' ', 1)
             closed.append((key.strip('"'), value))
-        self.assertEqual(closed, [('default', '0'), ('~^8081:0:/__gate/', '0'), ('~^8081:0:', '1')])
+        self.assertEqual(closed, [('default', '0'), ('~^8081:0:[^/]*/__gate/', '0'),
+                                  (r'~^8081:0:games\.avrana\.party/games/[a-z0-9][a-z0-9_-]*/(api/|onboarding\.json$)', '0'),
+                                  ('~^8081:0:', '1')])
 
-        def is_closed(port, cookie_ok, uri):
-            key = f'{port}:{cookie_ok}:{uri}'
+        def is_closed(port, cookie_ok, uri, host='avrana.party'):
+            key = f'{port}:{cookie_ok}:{host}{uri}'
             for pattern, value in closed[1:]:
                 if re.search(pattern[1:], key):
                     return value == '1'
             return False
         self.assertTrue(is_closed(8081, 0, '/party/'))
-        self.assertTrue(is_closed(8081, 0, '/games/checkers/'))
+        self.assertTrue(is_closed(8081, 0, '/games/checkers/', 'games.avrana.party'))
+        self.assertTrue(is_closed(8081, 0, '/games/checkers/app.mjs', 'games.avrana.party'))
+        self.assertTrue(is_closed(8081, 0, '/games/checkers/onboarding.json.map', 'games.avrana.party'))
+        self.assertTrue(is_closed(8081, 0, '/games/checkers/api/party', 'avrana.party'))
+        self.assertTrue(is_closed(8081, 0, '/party/api/state', 'games.avrana.party'))
+        # game clients fetch these with credentials 'omit': the game's own seat check answers them
+        self.assertFalse(is_closed(8081, 0, '/games/checkers/api/party', 'games.avrana.party'))
+        self.assertFalse(is_closed(8081, 0, '/games/colyseus-tanks/api/redeem', 'games.avrana.party'))
+        self.assertFalse(is_closed(8081, 0, '/games/coup/onboarding.json', 'games.avrana.party'))
         self.assertTrue(is_closed(8081, 0, '/__gatex'))
         self.assertFalse(is_closed(8081, 0, '/__gate/'))
         self.assertFalse(is_closed(8081, 1, '/party/'))
