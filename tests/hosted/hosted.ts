@@ -22,6 +22,10 @@ export const OWNER_ASSIST = process.env.HOSTED_OWNER_ASSIST === '1';
 export const GAME_LIST = (process.env.HOSTED_GAMES || '').split(',').map((s) => s.trim()).filter(Boolean);
 const GAMES_REPO = process.env.HOSTED_GAMES_REPO ? resolve(process.env.HOSTED_GAMES_REPO) : null;
 export const ACCESS_COOKIE = 'CF_Authorization';
+// The password gate (avrana/ops/hosted_gate.py), which replaced Cloudflare Access on 2026-10-23. The password comes
+// from the tester's environment for the run, never a file in a repository.
+export const GATE_PASSWORD = process.env.HOSTED_GATE_PASSWORD || null;
+export const GATE_COOKIE = 'avrana_gate';
 
 export type Phone = { name: string; context: BrowserContext; page: Page; errors: string[] };
 
@@ -55,6 +59,14 @@ export async function phone(browser: Browser, base: string, { signedIn = true, j
  * token the gateway answers the first request with that cookie; if it does not, the token's headers ride on
  * every request instead (signIn says which, in the report). Without a token, nothing (a local harness). */
 export async function signIn(context: BrowserContext) {
+  if (GATE_PASSWORD) {
+    // The form a tester fills in once: its cookie is set for the Party host, so the game origin has it too.
+    const res = await context.request.post(`${BASE}/__gate/`, { form: { password: GATE_PASSWORD }, maxRedirects: 0 });
+    expect(res.status(), 'the staging password unlocks the site (HOSTED_GATE_PASSWORD)').toBe(303);
+    const cookies = await context.cookies([BASE, GAMES]);
+    expect(cookies.filter((c) => c.name === GATE_COOKIE).length, 'the gate cookie reaches both hostnames').toBeGreaterThan(0);
+    return 'gate';
+  }
   if (!ACCESS) return 'none';
   for (const origin of [BASE, GAMES]) {
     await context.request.get(`${origin}/party/api/origin.json`, { headers: ACCESS, maxRedirects: 0 }).catch(() => null);

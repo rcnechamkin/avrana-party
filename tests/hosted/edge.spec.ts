@@ -1,5 +1,5 @@
 import { test, expect, request as playwrightRequest } from '@playwright/test';
-import { ACCESS, ACCESS_COOKIE, BASE, EXPECT_ACCESS, GAMES, close, phone, recordDeployment, signIn } from './hosted';
+import { ACCESS, ACCESS_COOKIE, BASE, EXPECT_ACCESS, GAMES, GATE_COOKIE, GATE_PASSWORD, close, phone, recordDeployment, signIn } from './hosted';
 
 // The hosted edge (docs/design/HOSTED-STAGING.md §5 and §7): who may reach the Party and the game origin, what
 // each origin serves and refuses, and that the access gateway's identity never becomes Party identity. One
@@ -33,6 +33,31 @@ test('a stranger gets the access gateway, never the Party or a game, on both hos
     const forged = await stranger.get(`${BASE}/party/api/state`, { maxRedirects: 0, headers: {
       'Cf-Access-Jwt-Assertion': 'eyJhbGciOiJub25lIn0.eyJlbWFpbCI6Im93bmVyQGV4YW1wbGUuY29tIn0.', Cookie: `${ACCESS_COOKIE}=forged` } });
     expect([302, 401, 403]).toContain(forged.status());
+  } finally { await stranger.dispose(); }
+});
+
+test('a stranger gets the password page, never the Party or a game, on both hostnames', async () => {
+  test.skip(!GATE_PASSWORD, 'HOSTED_GATE_PASSWORD: the deployment is behind the password gate');
+  const stranger = await playwrightRequest.newContext();
+  try {
+    for (const url of [`${BASE}/party/`, `${BASE}/party/api/state`, `${BASE}/party/api/status`, `${BASE}/party/bridge.html`,
+      `${GAMES}/games/bestguess/`, `${GAMES}/games/checkers/api/poll`, `${BASE}/internal/ended`, `${BASE}/__gatex`]) {
+      const res = await stranger.get(url, { maxRedirects: 0 });
+      expect(res.status(), url).toBe(302);
+      expect(res.headers()['location'], url).toBe(`${BASE}/__gate/`);
+      const body = await res.text();
+      expect(body, url).not.toContain('avrana.origin/v0');
+      expect(body, url).not.toContain('"party"');
+    }
+    // A made-up gate cookie is no key, and a wrong password gets the form again with no cookie.
+    const forged = await stranger.get(`${BASE}/party/api/state`, { maxRedirects: 0, headers: { Cookie: `${GATE_COOKIE}=${'0'.repeat(64)}` } });
+    expect(forged.status()).toBe(302);
+    const form = await stranger.get(`${BASE}/__gate/`);
+    expect(form.status()).toBe(200);
+    expect(await form.text()).toContain('type="password"');
+    const wrong = await stranger.post(`${BASE}/__gate/`, { form: { password: `${GATE_PASSWORD}x` }, maxRedirects: 0 });
+    expect(wrong.status()).toBe(401);
+    expect(wrong.headers()['set-cookie']).toBeUndefined();
   } finally { await stranger.dispose(); }
 });
 

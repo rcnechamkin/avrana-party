@@ -155,6 +155,7 @@ class Inventory(unittest.TestCase):
         self.assertTrue(any('provision-game' in n['by'] for n in INV['not_managed']))
         hosted = 'the hosted staging VM installs its own, never the Pi (inventory not_managed)'
         elsewhere['deploy/hosted/cloudflared/cloudflared-avrana-party.service'] = hosted
+        elsewhere['deploy/hosted/avrana-gate.service'] = hosted
         self.assertTrue(any('hosted staging VM' in n['what'] for n in INV['not_managed']))
         found = set()
         for pattern in ('**/*.service', '**/*.timer', '**/*.socket', 'deploy/**/*.conf', 'arcade/*.rules',
