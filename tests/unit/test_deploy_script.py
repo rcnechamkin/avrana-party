@@ -12,6 +12,12 @@ import unittest
 
 from avrana import REPO_ROOT
 
+try:   # whoever runs the tests owns their throwaway checkouts; as root, deploy.sh runs git as this user (sudo -u)
+    import pwd
+    RUNNER = pwd.getpwuid(os.getuid()).pw_name
+except (ImportError, KeyError):
+    RUNNER = os.environ.get('USER', 'nobody')
+
 SCRIPT = REPO_ROOT / 'ops/deploy.sh'
 BASH = shutil.which('bash')
 
@@ -46,7 +52,7 @@ class DeployScript(unittest.TestCase):
         self.party, self.party_sha, self.git = git_repo(self.temp.name, 'party', with_origin=True)
         self.games, self.games_sha, _ = git_repo(self.temp.name, 'games')
         self.env = dict(os.environ, AVRANA_PARTY_CHECKOUT=str(self.party), AVRANA_GAMES_CHECKOUT=str(self.games),
-                        AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_CHECKOUT_USER=os.environ.get('USER', 'nobody'),
+                        AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_CHECKOUT_USER=RUNNER,
                         AVRANA_BACKUP_ROOT=str(Path(self.temp.name) / 'backups'),
                         AVRANA_NGINX_SITE=str(Path(self.temp.name) / 'site'), AVRANA_DEPLOY_DETACH='0')
 
@@ -519,7 +525,8 @@ class Harness(unittest.TestCase):
         self.env = dict(self.genv, AVRANA_PARTY_CHECKOUT=str(self.party), AVRANA_GAMES_CHECKOUT=str(self.games),
                         AVRANA_PARTY_CORE_URL='http://127.0.0.1:1', AVRANA_WEB_ROOT=str(self.web),
                         AVRANA_DEPLOYMENT_MANIFEST=str(self.manifest_path), AVRANA_BACKUP_ROOT=str(root / 'backups'),
-                        AVRANA_DEPLOY_UNPRIVILEGED='1', AVRANA_SYSTEMCTL=str(shim), SHIM_LOG=str(self.log),
+                        AVRANA_DEPLOY_UNPRIVILEGED='1', AVRANA_CHECKOUT_USER=RUNNER, AVRANA_SYSTEMCTL=str(shim),
+                        SHIM_LOG=str(self.log),
                         AVRANA_PARTY_RELEASES=str(root / 'opt-party'), AVRANA_GAMES_RELEASES=str(root / 'opt-games'),
                         AVRANA_NGINX_SITE=str(self.site), AVRANA_NGINX=str(nginx), NGINX_LOG=str(self.nginx_log),
                         AVRANA_NGINX_ENABLED=str(root / 'nginx' / 'enabled'), AVRANA_DEPLOY_DETACH='0',
