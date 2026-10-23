@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BASE, GAME_LIST, OWNER_ASSIST, api, resetIfLocal, close, homeFor, hostOf, launch, phone, state, type Phone } from './hosted';
+import { BASE, GAME_LIST, OWNER_ASSIST, api, resetIfLocal, close, homeFor, hostOf, launch, phone, post, state, type Phone } from './hosted';
 
 // Failure and recovery on a deployed Party (H3), through the network as a tester's phone has it: a refresh,
 // a lost connection, a Host who goes away (Party Core's own timing: away after 45 s, hosting passes 30 s
@@ -75,21 +75,50 @@ test('browser back from a game page does not strand the phone: the Party brings 
   } finally { await homeFor(...phones).catch(() => undefined); await close(...phones); }
 });
 
-test('the Host goes away mid-game: hosting passes to someone who is here, who brings everyone home', async ({ browser }) => {
-  const { phones, host, others } = await table(browser, ['Abe', 'Bo']);
+// ADR 0006 as amended (owner, 2026-10-22). The Host is a seated player in an active round and their
+// phone goes; so does another seated player's. Party authority passes, at the liveness window (45 s)
+// plus host grace (30 s), to the player whose page is live, never to a seat whose phone is gone. The
+// old Host keeps the seat and gets nothing back on return. The new Host ends the round and everyone
+// is home. No in-game role or turn moves with the role: the game owns those.
+test('the Host goes away mid-game: Party authority passes to a live player, the seats stay, and the new Host ends the round', async ({ browser }) => {
+  const { phones, host, others } = await table(browser, ['Abe', 'Bo', 'Cy']);
+  const [stale, live] = others[0].name.startsWith('Bo') ? others : [others[1], others[0]];
   try {
     await launch(host, others, GAME);
+    const before = await state(live);
+    const seats = Object.fromEntries(before.members.map((m: any) => [m.name, m.presence]));
     const gone = Date.now();
-    await host.context.close();               // the Host's phone is gone, no goodbye
-    // Party Core's contract (ADR 0006, as amended): the liveness window (45 s) and host grace (30 s)
-    // from the Host's last request, then the next timer tick; never earlier, and not much later.
-    const heir = await hostOf(others, 120_000);
+    await host.context.setOffline(true);      // the Host's phone is gone, no goodbye
+    await stale.context.close();              // and so is Bo's, who joined before Cy and holds a seat
+
+    const heir = await hostOf([live], 120_000);
     const after = (Date.now() - gone) / 1000;
     test.info().annotations.push({ type: 'succession', description: `${after.toFixed(0)} s after the Host's phone went` });
-    expect(others).toContain(heir);
-    expect(after, 'hosting did not pass before the grace ran out').toBeGreaterThanOrEqual(55);
-    await homeFor(...others);
-  } finally { await close(...others); }
+    expect(heir, 'the live player, not the stale seat').toBe(live);
+    expect(after, 'not before the grace ran out').toBeGreaterThanOrEqual(55);
+    const now = await state(live);
+    expect(now.session?.state, 'the round goes on').toBe('active');
+    expect(now.session?.my_role).toBe('player');
+    const presence = Object.fromEntries(now.members.map((m: any) => [m.name, m.presence]));
+    expect(presence[host.name], 'the old Host keeps their seat').toBe('playing');
+    expect(presence[stale.name], 'so does Bo').toBe('playing');
+    expect(Object.keys(presence).sort()).toEqual(Object.keys(seats).sort());
+
+    // The old Host's phone comes back: on the game page, seated, and not the Host.
+    await host.context.setOffline(false);
+    await host.page.reload();
+    await expect(host.page).toHaveURL(new RegExp(`/games/${GAME}/`), { timeout: 60_000 });
+    const back = await state(host);
+    expect([back.me.host, back.session?.my_role]).toEqual([false, 'player']);
+
+    // The new Host ends the round (what the game page's End control asks Party Core for).
+    const res = await post(live, 'session/end', { if_version: now.version });
+    expect(res.status(), 'the new Host may end it').toBe(200);
+    await expect.poll(async () => (await state(live))?.location?.at, { timeout: 30_000 }).toBe('home');
+    expect((await state(live)).session?.outcome).toBe('ended_by_host');
+    for (const p of [host, live]) await expect(p.page, p.name).toHaveURL(`${BASE}/party/`, { timeout: 60_000 });
+    expect((await state(host)).me.host).toBe(false);
+  } finally { await close(host, live); }
 });
 
 test('five launches and returns in a row leave the Party usable', async ({ browser }) => {

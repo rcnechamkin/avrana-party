@@ -375,3 +375,13 @@ A case that cannot run (no token, no owner assist) is reported as skipped, never
 | Remote journey per game (`journey.spec.ts`) | n/a (Pi has live suites) | checkers, bestguess (3 players), tanks (experimental, WebGL) |
 | Refresh, offline, late spectator, back, succession, five launches (`recovery.spec.ts`) | live suites | yes |
 | Killed game process | manual | owner-assisted |
+
+### Linux-only checks in one run
+
+`bash tests/linux/verify.sh --games ../avrana-party-games` runs, on any disposable Linux machine (never
+the Pi or the Media host), what a Windows checkout cannot: the deploy-script tests (Pi and hosted
+profiles), `nginx -t` on the rendered hosted site, bash/shellcheck/xmllint/`nft -c`, the Games suites,
+the Party and provider browser suites (native Checkers is Linux-only), and the hosted harness rehearsed
+against the provider harness with real BLUFF and with native Checkers. Each check prints PASS, FAIL or
+NOT RUN with its counts; NOT RUN is never a pass, and LATER marks what only the deployed site can show.
+Run it as a non-root user (the real deployment cases skip under root). Logs: test-results/linux-verify/.
