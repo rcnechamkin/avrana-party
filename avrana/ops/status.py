@@ -301,6 +301,10 @@ def _public_web(release):
     return None if release is None else {'build': release.get('build'), 'commit': release.get('commit')}
 
 
+NOT_APPLICABLE_CERTIFICATE = {'not_after': None, 'days_left': None, 'status': 'not_applicable'}
+NOT_APPLICABLE = {'ok': None, 'not_applicable': True, 'integration': None, 'compatible': None}
+
+
 def _certificate(not_after, now):
     if not_after is None:
         return {'not_after': None, 'days_left': None, 'status': 'unavailable'}
@@ -413,21 +417,30 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     if attempt and attempt.get('outcome') != 'ok':
         notes.append(f'the last deployment attempt (party {str(attempt.get("party_sha"))[:12]}) ended {attempt.get("outcome")}; '
                      f'the running pair is the one in "deployment" (see docs/runbooks/deploy.md)')
-    certificate = _certificate(probes.certificate_not_after(cfg['certificate']), now)
+    # null in the config: this deployment has no such part (hosted staging: TLS ends at the edge, no
+    # games provider on 8096, no arcade; docs/design/HOSTED-STAGING.md). Reported as not_applicable,
+    # never a reason, never ok-by-default on an appliance (whose config keeps the paths).
+    certificate = (NOT_APPLICABLE_CERTIFICATE if cfg['certificate'] is None
+                   else _certificate(probes.certificate_not_after(cfg['certificate']), now))
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
     elif certificate['status'] == 'unavailable':
         # Not a fault of the certificate, but an expiry nobody can see is a cliff nobody sees
         # coming: never `ok` (AVR-31). `unknown`, like a unit that cannot be observed.
         reasons.append('certificate expiry unavailable')
-    games_doc = probes.get_json(cfg['games_url'].rstrip('/') + '/api/games')
-    provider = _games(games_doc, contract)
-    if not provider['ok']:
+    provider = (dict(NOT_APPLICABLE) if cfg['games_url'] is None
+                else _games(probes.get_json(cfg['games_url'].rstrip('/') + '/api/games'), contract))
+    if provider.get('not_applicable'):
+        pass
+    elif not provider['ok']:
         reasons.append('games provider unreachable')
     elif provider['compatible'] is False:
         reasons.append('games provider advertises a different launch integration')
-    arcade = _arcade(probes.get_json(cfg['arcade_url'].rstrip('/') + '/stats'))
-    if not arcade['ok']:
+    arcade = (dict(NOT_APPLICABLE) if cfg['arcade_url'] is None
+              else _arcade(probes.get_json(cfg['arcade_url'].rstrip('/') + '/stats')))
+    if arcade.get('not_applicable'):
+        pass
+    elif not arcade['ok']:
         reasons.append('arcade unreachable')
     elif arcade.get('error'):
         reasons.append('arcade reports an error')

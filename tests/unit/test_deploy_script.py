@@ -674,7 +674,11 @@ class HostedProfile(Harness):
         self.assertEqual(args[2:], ['--config', str(self.config)])
 
     def test_a_party_commit_without_the_hosted_site_file_is_refused_before_anything_changes(self):
-        r = self.deploy(self.before_party, self.target_games, '--skip-smoke')
+        # The repository carries the hosted site file, so the commit without it is made here
+        self.run_git(self.origin, 'rm', '-q', 'deploy/hosted/avrana-party.hosted.nginx')
+        self.run_git(self.origin, 'commit', '-q', '-m', 'no hosted site')
+        without = self.run_git(self.origin, 'rev-parse', 'HEAD')
+        r = self.deploy(without, self.target_games, '--skip-smoke')
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('deploy/hosted/avrana-party.hosted.nginx', r.stdout + r.stderr)
         self.assertEqual(self.site.read_bytes(), self.site_before)

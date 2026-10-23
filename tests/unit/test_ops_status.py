@@ -92,6 +92,28 @@ class Document(unittest.TestCase):
         self.assertEqual(doc['services'], {'avrana-party-core': 'active', 'nginx': 'active'})
         self.assertEqual(doc['deployment']['party']['sha'], SHA_A)
 
+    def test_hosted_parts_set_to_null_are_not_applicable_never_reasons_and_never_probed(self):
+        """docs/design/HOSTED-STAGING.md: no certificate (TLS ends at the edge), no games provider, no arcade."""
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}, cert_days=None)
+        asked = []
+        probes.get_json = lambda url: asked.append(url)
+        doc = self.build(probes, certificate=None, games_url=None, arcade_url=None)
+        self.assertEqual(doc['summary'], {'state': 'ok', 'reasons': [], 'notes': []})
+        self.assertEqual(doc['certificate']['status'], 'not_applicable')
+        self.assertTrue(doc['games_provider']['not_applicable'])
+        self.assertTrue(doc['arcade']['not_applicable'])
+        self.assertIsNone(doc['contract']['games_advertises'])
+        self.assertEqual(asked, [])
+
+    def test_the_appliance_defaults_still_probe_and_fault_every_part(self):
+        manifest.write(self.manifest, sample())
+        probes = FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}, cert_days=None)
+        probes.get_json = lambda url: None
+        doc = self.build(probes)
+        for reason in ('certificate expiry unavailable', 'games provider unreachable', 'arcade unreachable'):
+            self.assertIn(reason, doc['summary']['reasons'])
+
     def test_no_manifest_is_unknown_not_ok(self):
         doc = self.build(FakeProbes({'/p': checkout(SHA_A), '/g': checkout(SHA_B)}))
         self.assertIsNone(doc['deployment'])

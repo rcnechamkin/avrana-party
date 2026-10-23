@@ -153,6 +153,9 @@ class Inventory(unittest.TestCase):
         elsewhere.update({'deploy/games/avrana-game@.service': native, 'deploy/games/avrana-game@.socket': native,
                           'deploy/party-core/avrana-party-core.socket': native})
         self.assertTrue(any('provision-game' in n['by'] for n in INV['not_managed']))
+        hosted = 'the hosted staging VM installs its own, never the Pi (inventory not_managed)'
+        elsewhere['deploy/hosted/cloudflared/cloudflared-avrana-party.service'] = hosted
+        self.assertTrue(any('hosted staging VM' in n['what'] for n in INV['not_managed']))
         found = set()
         for pattern in ('**/*.service', '**/*.timer', '**/*.socket', 'deploy/**/*.conf', 'arcade/*.rules',
                         'arcade/avrana-uinput.conf', '*.nginx', 'avrana-captive.conf'):

@@ -1,0 +1,30 @@
+# The hosted staging tunnel connector, INSIDE the VM (docs/runbooks/hosted-staging.md, step 5).
+# Outbound only: it dials Cloudflare's edge and forwards to nginx on 127.0.0.1:8080. It listens on
+# nothing reachable (its metrics port is loopback). Its own system user; the credential is root:cloudflared 0640.
+#
+#   sudo install -m 0644 deploy/hosted/cloudflared/cloudflared-avrana-party.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now cloudflared-avrana-party
+[Unit]
+Description=Cloudflare Tunnel for avrana.party hosted staging
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+User=cloudflared
+Group=cloudflared
+ExecStart=/usr/bin/cloudflared --no-autoupdate --metrics 127.0.0.1:20241 tunnel --config /etc/cloudflared/avrana-party.yml run
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/etc/cloudflared
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
