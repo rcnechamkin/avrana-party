@@ -102,21 +102,24 @@ if [[ $BROWSERS -eq 1 ]]; then
     local counts; counts=$(grep -E '^\s+[0-9]+ (passed|failed|skipped|flaky)' "$log" | tr -s ' \n' ' ')
     [[ $rc -eq 0 ]] && row PASS "$name" "$counts" || row FAIL "$name" "$counts (see $log)"
   }
+  export NO_PROXY="${NO_PROXY:+$NO_PROXY,}.avrana.test" no_proxy="${no_proxy:+$no_proxy,}.avrana.test"   # a proxied container would send the test hostnames out
   pw 'Party browser suite' party.txt AVRANA_PYTHON=python3 npx playwright test -c playwright.party.config.ts --reporter=line
   pw 'provider cross-repo (incl. native Checkers)' provider.txt AVRANA_GAMES_REPO="$GAMES" \
      AVRANA_PROVIDER_PYTHON="$GAMES/.venv/bin/python" npx playwright test -c playwright.provider.config.ts --reporter=line
-  rehearse() { # name, port, games, server args..., then runs the hosted specs against it
-    local name=$1 port=$2 games=$3; shift 3
+  rehearse() { # name, port, games, specs, server args...: the hosted specs against the provider harness
+    local name=$1 port=$2 games=$3 specs=$4; shift 4
     "$GAMES/.venv/bin/python" tests/provider/server.py --games "$GAMES" --port "$port" --party-session --game-origin "$@" \
       >"$LOG/harness-$port.txt" 2>&1 & local pid=$!
     for _ in $(seq 1 40); do curl -sf -o /dev/null -H "Host: party.avrana.test:$port" "http://127.0.0.1:$port/party/" && break; sleep 1; done
     pw "$name" "hosted-$port.txt" HOSTED_BASE_URL="http://party.avrana.test:$port" HOSTED_GAME_ORIGIN="http://games.avrana.test:$port" \
        HOSTED_RESOLVE_LOOPBACK=1 HOSTED_GAMES="$games" HOSTED_GAMES_REPO="$GAMES" \
-       npx playwright test -c playwright.hosted.config.ts recovery.spec.ts journey.spec.ts --project android-size --reporter=line
+       npx playwright test -c playwright.hosted.config.ts $specs --project android-size --reporter=line
     kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
   }
-  rehearse 'hosted rehearsal: real BLUFF, game origin' 8291 bluff
-  rehearse 'hosted rehearsal: native Checkers' 8292 checkers --native-game checkers
+  # BLUFF (second wave, no party driver, launched directly by the harness) runs the recovery cases only;
+  # the journey plays a first-wave game to its end through its Games driver: native Checkers
+  rehearse 'hosted rehearsal: real BLUFF, game origin (recovery)' 8291 bluff 'recovery.spec.ts'
+  rehearse 'hosted rehearsal: native Checkers' 8292 checkers 'recovery.spec.ts journey.spec.ts' --native-game checkers
   row LATER 'hosted edge (Access, two real hostnames)' 'needs the deployed site and a service token'
 else row 'NOT RUN' 'browser suites' '--skip-browsers'; fi
 
