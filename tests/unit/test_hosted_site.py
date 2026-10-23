@@ -86,7 +86,7 @@ class Rules(unittest.TestCase):
         dropped = {'/arcade/', *hs.LEGACY_LOCATIONS}
         legacy = [f'^~ /games/{g}/' for g in hs.LEGACY_GAMES]
         expected = [n for n in locations(self.pi_party) if n not in dropped] + legacy + ['/']
-        self.assertEqual(locations(self.party), expected)
+        self.assertEqual(locations(self.party), expected + ['^~ /__gate/'])   # the password gate's form, last
         for name in legacy:
             self.assertEqual(body(self.party, name).strip(), 'return 404;', name)
         for name in expected[:-1 - len(legacy)]:
@@ -160,7 +160,8 @@ class Rendering(unittest.TestCase):
 
     def test_refusals(self):
         for kwargs in ({'party_host': 'Avrana.Party'}, {'game_host': 'games'}, {'party_host': 'x.party', 'game_host': 'x.party'},
-                       {'listen': '0.0.0.0:8080'}, {'listen': '8080'}, {'listen': '10.0.0.5:80'}):
+                       {'listen': '0.0.0.0:8080'}, {'listen': '8080'}, {'listen': '10.0.0.5:80'},
+                       {'gate_listen': '127.0.0.1:8080'}, {'gate_listen': '0.0.0.0:8081'}, {'game_host': 'games.other.org'}):
             with self.subTest(kwargs=kwargs), self.assertRaises(hs.RenderError):
                 hs.render(SITE, **kwargs)
         for broken in (SITE.replace('server_name games.avrana.net;', 'server_name games.example;'),
@@ -169,6 +170,49 @@ class Rendering(unittest.TestCase):
                        SITE.replace('"schema":"avrana.origin/v0"', '"schema":"x"')):
             with self.assertRaises(hs.RenderError):
                 hs.render(broken)
+
+
+class Gate(unittest.TestCase):
+    """The password gate (avrana/ops/hosted_gate.py): the tunnel's port is gated, the VM-local one is not."""
+    def setUp(self):
+        self.default, self.party, self.games = blocks(HOSTED)
+
+    def test_every_server_listens_on_both_ports_and_the_two_named_servers_are_gated(self):
+        for block in (self.default, self.party, self.games):
+            self.assertEqual([l.split()[0] for l in re.findall(r'^\s*listen\s+([^;]+);', block, re.M)],
+                             [hs.LISTEN, hs.GATE_LISTEN])
+        for block in (self.party, self.games):
+            self.assertIn('    if ($avrana_gate_closed) {\n        return 302 https://avrana.party/__gate/;\n    }\n', block)
+
+    def test_the_gate_opens_only_for_the_token_and_never_shuts_the_form_or_the_local_port(self):
+        head = HOSTED.split('server {', 1)[0]
+        self.assertIn('map $cookie_avrana_gate $avrana_gate_cookie {\n    default 0;\n    include /etc/avrana-party/gate*.map;\n}', head)
+        rules = re.search(r'map "\$server_port:\$avrana_gate_cookie:\$uri" \$avrana_gate_closed \{(.*?)\}', head, re.S).group(1)
+        closed = []
+        for line in rules.strip().splitlines():
+            key, value = line.strip().rstrip(';').rsplit(' ', 1)
+            closed.append((key.strip('"'), value))
+        self.assertEqual(closed, [('default', '0'), ('~^8081:0:/__gate/', '0'), ('~^8081:0:', '1')])
+
+        def is_closed(port, cookie_ok, uri):
+            key = f'{port}:{cookie_ok}:{uri}'
+            for pattern, value in closed[1:]:
+                if re.search(pattern[1:], key):
+                    return value == '1'
+            return False
+        self.assertTrue(is_closed(8081, 0, '/party/'))
+        self.assertTrue(is_closed(8081, 0, '/games/checkers/'))
+        self.assertTrue(is_closed(8081, 0, '/__gatex'))
+        self.assertFalse(is_closed(8081, 0, '/__gate/'))
+        self.assertFalse(is_closed(8081, 1, '/party/'))
+        self.assertFalse(is_closed(8080, 0, '/party/'))
+
+    def test_the_form_is_rate_limited_and_only_on_the_party_host(self):
+        self.assertIn('limit_req_zone $server_port zone=avrana_gate:1m rate=30r/m;', HOSTED)
+        gate = body(self.party, '^~ /__gate/')
+        self.assertIn('limit_req zone=avrana_gate burst=10 nodelay;', gate)
+        self.assertIn('proxy_pass http://unix:/run/avrana-gate/gate.sock;', gate)
+        self.assertNotIn('__gate', self.games.replace('return 302 https://avrana.party/__gate/;', ''))
 
 
 NGINX = shutil.which('nginx') or ('/usr/sbin/nginx' if os.path.exists('/usr/sbin/nginx') else None)

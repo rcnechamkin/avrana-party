@@ -309,6 +309,10 @@ weakened. Hosted results never count as appliance evidence.
   sessions and one narrowly scoped service token for the harness. At first only the owner's address
   is allowed. Nothing in Cloudflare changes until the owner approves the address and the
   Access configuration.
+  **Superseded 2026-10-23 by the owner:** one shared password instead of Access (the password gate:
+  `avrana/ops/hosted_gate.py`, runbook step 5c). Trade-off accepted: anyone with the password gets in,
+  and there is no per-person sign-in or revocation short of changing the password. Party identity is
+  unchanged: the gate cookie is not a member, and Party Core still names people by its device cookie.
 - **D4. Approved, staged:** the first wave is Best Guess, Checkers and Tanks (experimental). BLUFF and
   EXPO come in a second wave with standalone admission off; legacy games never block the first. The
   arcade is never hosted.
