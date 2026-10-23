@@ -43,7 +43,7 @@ class OverlayBase(Base):
 
     def kw(self):
         return {'games_root': '/opt/avrana-games', 'owner': None, 'repo_contracts': REPO,
-                'disk_root': self.layout.games_root}
+                'disk_root': self.layout.games_root, 'profile_file': self.root / 'etc' / 'no-deploy-profile'}
 
     def refresh(self, base=None):
         return co.refresh(self.out_dir, base or self.base, self.layout.records_dir, **self.kw())
@@ -201,6 +201,83 @@ class WithPackage(OverlayBase):
         self.assertEqual(os.listdir(self.out_dir), [])
         self.refresh()
         self.assertEqual(self.overlay.read_bytes(), before)
+
+
+class HostedProfile(OverlayBase):
+    """docs/runbooks/hosted-staging.md: on hosted staging the first-party rows are the games the hosted
+    appliance contract installs, and the overlay is written even with no package. The Pi is unchanged."""
+
+    def setUp(self):
+        super().setUp()
+        self.profile = self.root / 'etc' / 'deploy-profile'
+        self.profile.parent.mkdir(parents=True, exist_ok=True)
+
+    def kw(self, profile='hosted'):
+        if profile is None:
+            return super().kw()
+        self.profile.write_text(profile + '\n', encoding='utf-8')
+        return {**super().kw(), 'profile_file': self.profile}
+
+    def refresh(self, base=None, profile='hosted'):
+        return co.refresh(self.out_dir, base or self.base, self.layout.records_dir, **self.kw(profile))
+
+    def test_the_hosted_contract_names_only_games_hosted_serves(self):
+        hosted = co.appliance_mod.grants(co.appliance_mod.load(co.HOSTED_APPLIANCE))
+        config = json.loads((REPO_ROOT / 'deploy' / 'hosted' / 'party-core.hosted.json').read_text(encoding='utf-8'))
+        origins = {g for games in config['game_origins'].values() for g in games}
+        self.assertEqual(set(hosted), {'checkers'})
+        self.assertLessEqual(set(hosted), origins)
+
+    def test_with_no_package_hosted_serves_only_its_first_party_games(self):
+        base = json.loads(COMMITTED.read_text(encoding='utf-8'))
+        self.assertEqual(self.refresh(), ([], []))
+        doc = self.doc()
+        self.assertEqual(doc['games'], [g for g in base['games'] if g['id'] == 'checkers'])     # the row untouched
+        for key in ('schema', 'appliance', 'providers', 'runtime', 'collections', 'labels'):
+            self.assertEqual(doc[key], base[key], key)
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+        for gone in ('bluff', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms'):
+            self.assertNotIn(gone, [g['id'] for g in doc['games']])
+
+    def test_package_rows_stay_after_the_hosted_first_party_rows(self):
+        self.install()
+        self.assertEqual(self.refresh(), (['hello'], []))
+        self.assertEqual([g['id'] for g in self.doc()['games']], ['checkers', 'hello'])
+        self.assertEqual(co.check(self.out_dir, self.base, self.layout.records_dir, **self.kw()), [])
+
+    def test_a_package_still_cannot_pass_for_a_first_party_game_hosted_does_not_list(self):
+        self.install()
+        path = Path(self.layout.records_dir) / 'hello.json'
+        doc = json.loads(path.read_text(encoding='utf-8'))
+        doc['contract']['name'] = 'BLUFF'
+        path.write_text(json.dumps(doc), encoding='utf-8')
+        text, listed, problems = co.effective(self.base, self.layout.records_dir, **self.kw())
+        self.assertEqual(listed, [])
+        self.assertEqual([g['id'] for g in json.loads(text)['games']], ['checkers'])
+        self.assertIn('first-party', problems[0])
+
+    def test_the_pi_profile_and_no_profile_file_are_byte_for_byte_the_old_behaviour(self):
+        self.assertEqual(self.refresh(profile='pi'), ([], []))
+        self.assertFalse(self.overlay.exists())
+        self.assertEqual(self.refresh(profile=None), ([], []))
+        self.assertFalse(self.overlay.exists())
+        self.install()
+        pi = co.effective(self.base, self.layout.records_dir, **self.kw('pi'))
+        self.assertEqual(co.effective(self.base, self.layout.records_dir, **self.kw(None)), pi)
+        self.assertEqual(json.loads(pi[0])['games'][:-1], json.loads(COMMITTED.read_text(encoding='utf-8'))['games'])
+
+    def test_switching_back_from_hosted_to_pi_removes_the_hosted_overlay(self):
+        self.refresh()
+        self.assertTrue(self.overlay.exists())
+        self.refresh(profile='pi')
+        self.assertFalse(self.overlay.exists())
+
+    def test_an_unknown_profile_is_refused_and_leaves_no_overlay(self):
+        self.refresh()
+        with self.assertRaises(co.OverlayError) as ctx:
+            self.refresh(profile='cloud')
+        self.assertIn('pi and hosted', str(ctx.exception))
+        self.assertFalse(self.overlay.exists())
 
 
 class PackageControlledFields(OverlayBase):

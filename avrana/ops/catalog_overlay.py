@@ -39,6 +39,13 @@ The rules, each tested:
   check and before it returns; the deploy's own refresh (`refresh --wait N` waits up to N seconds for a running
   install-game) replaces it within that wait, and until then phones are served that overlay, or the release
   catalog when it was removed.
+- Hosted staging (docs/runbooks/hosted-staging.md): when `/etc/avrana-party/deploy-profile` says `hosted`
+  (the file ops/deploy.sh reads), the first-party rows are only the games the hosted appliance contract
+  installs (`installed` of contracts/appliances/avrana-hosted.json, from the same code release), in release
+  order and otherwise untouched; package rows are appended as above. The overlay is then written even when
+  no package is listed, so hosted never serves the Pi's full release catalog through it. A package name is
+  still refused when it passes for ANY first-party game of the release, listed here or not. With the file
+  absent or saying `pi` nothing in this module changes; any other value is refused (OverlayError).
 - The overlay is derived from the release catalog, so a new release or a rollback of the web shell
   makes it stale. `ops/install-party-web.sh` runs `refresh` after it switches `current`, `ops/deploy.sh`
   (`settle_catalog`) refreshes or removes it after every move of the web release it makes, including its
@@ -67,6 +74,8 @@ from avrana.contracts import catalog, strictjson, vocabulary
 DEFAULT_DIR = '/var/lib/avrana-party/catalog'
 FILE_NAME = 'catalog.json'
 DEFAULT_BASE = '/var/www/avrana-party/web/current/catalog.json'
+PROFILE_FILE = '/etc/avrana-party/deploy-profile'      # ops/deploy.sh's: absent or "pi", or "hosted"
+HOSTED_APPLIANCE = CONTRACTS_DIR / 'appliances' / 'avrana-hosted.json'
 MAX_BASE_BYTES = 4 * 1024 * 1024
 MAX_BASE_MOVES = 3          # a refresh repeats at most this often when the release catalog moves under it
 MAX_OVERLAY_BYTES = 5 * 1024 * 1024
@@ -304,13 +313,29 @@ def _base(path):
     return doc
 
 
+def deploy_profile(path=PROFILE_FILE):
+    """'pi' or 'hosted', read the way ops/deploy.sh reads it: absent means pi, whitespace is ignored."""
+    try:
+        text = Path(path).read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return 'pi'
+    except OSError as exc:
+        raise OverlayError(f'the deploy profile {path} cannot be read ({type(exc).__name__})') from exc
+    profile = ''.join(text.split())
+    if profile not in ('pi', 'hosted'):
+        raise OverlayError(f"{path} says {profile!r}; the profiles are pi and hosted")
+    return profile
+
+
 def _effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, owner=installed._DEFAULT,
                appliance_path=catalog.DEFAULT_APPLIANCE, games_dir=None, strict_modes=None, repo_contracts=None,
-               disk_root=None, art_dir=None, write_art=False):
+               disk_root=None, art_dir=None, write_art=False, profile_file=PROFILE_FILE,
+               hosted_appliance=HOSTED_APPLIANCE):
     """(text, listed, problems, art). `art` maps '<id>/<name>' to the bytes of every image the rows name.
     With `write_art` (refresh) each image is copied under `art_dir` first, and one that cannot be copied is
     dropped from its row (a problem, not a failure)."""
     doc = _base(base_path)
+    hosted = deploy_profile(profile_file) == 'hosted'
     vocab = vocabulary.load()
     repo = repo_contracts if repo_contracts is not None else catalog.load_contracts(games_dir or CONTRACTS_DIR / 'games', vocab)
     found = installed.load(str(records_dir), repo, vocab, games_root=games_root, owner=owner, strict_modes=strict_modes)
@@ -318,6 +343,9 @@ def _effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, 
     appliance = appliance_mod.load(appliance_path, vocab)
     taken = {row.get('id') for row in doc['games'] if isinstance(row, dict)}
     names = {_fold(x) for row in doc['games'] if isinstance(row, dict) for x in (row.get('id'), row.get('name')) if x}
+    if hosted:
+        served = set(appliance_mod.grants(appliance_mod.load(hosted_appliance, vocab)))
+        doc['games'] = [row for row in doc['games'] if isinstance(row, dict) and row.get('id') in served]
     rows, labels, art = [], {}, {}
     for pid in sorted(found.records):
         if pid in taken or pid in repo:
@@ -346,7 +374,7 @@ def _effective(base_path, records_dir, games_root=installed.DEFAULT_GAMES_ROOT, 
         names.add(_fold(row['name']))
         rows.append(row)
         labels.update({k: v for k, v in one['labels'].items() if k not in doc['labels']})
-    if not rows:
+    if not rows and not hosted:
         return None, [], problems, {}
     doc['games'] = [*doc['games'], *rows]
     doc['labels'] = {**doc['labels'], **{k: labels[k] for k in sorted(labels)}}
@@ -491,6 +519,7 @@ def _apply(layout, base_path, out_dir, owner, **kw):
     listed, problems = refresh(out_dir, base_path, layout.records_dir, games_root=layout.root_text(), owner=owner,
                                disk_root=layout.games_root, **kw)
     lines = [f'catalog: the effective catalog lists {", ".join(listed)}' if listed
+             else 'catalog: no package is listed; the hosted first-party games are served' if (Path(out_dir) / FILE_NAME).exists()
              else 'catalog: no package is listed; the release catalog is served as it is']
     return listed, problems, lines + [f'catalog: {p}' for p in problems]
 
@@ -573,7 +602,8 @@ def main(argv=None, out=None, err=None):
         from avrana.ops import install_game      # the same lock as install and remove (taken here, never inside them)
         with install_game.locked(a.lock_file, wait=a.wait):
             listed, problems = refresh(a.out_dir, a.base, a.records_dir, **kw)
-        print('catalog-overlay: lists ' + (', '.join(listed) if listed else 'no package (overlay removed)'), file=out)
+        print('catalog-overlay: lists ' + (', '.join(listed) if listed else 'no package (hosted first-party games only)'
+                                           if (Path(a.out_dir) / FILE_NAME).exists() else 'no package (overlay removed)'), file=out)
         for p in problems:
             print(f'catalog-overlay: {p}', file=err)
         return 0

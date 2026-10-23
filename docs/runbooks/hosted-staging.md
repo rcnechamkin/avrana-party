@@ -302,12 +302,24 @@ Agents never get the VM's SSH key, the tunnel credential, Cloudflare API tokens 
 
 ## Known gaps (not blockers for the first wave)
 
-- **The catalog is the appliance's.** Party Home lists the committed catalog (built for
-  `avrana-pi4`) plus installed packages. Gauntlet II, BLUFF and EXPO therefore show as tiles that
-  Party Core does not offer here. A per-deployment catalog
-  (`avrana.contracts.catalog --appliance contracts/appliances/avrana-hosted.json` as the
-  release's base) is a follow-up. It is not done in this change, to keep the release build
-  identical for both targets.
+- **The catalog is filtered at refresh, not at build.** The release build stays identical for
+  both targets (the committed catalog is built for `avrana-pi4`). On this host
+  `/etc/avrana-party/deploy-profile` says `hosted`, so `avrana.ops.catalog_overlay` keeps only
+  the first-party rows that `contracts/appliances/avrana-hosted.json` installs (today:
+  `checkers`) and appends the installed package rows (`bestguess`, `colyseus-tanks`). It writes
+  `/var/lib/avrana-party/catalog/catalog.json` even with no package, and nginx serves that file
+  first. BLUFF, EXPO and the arcade rows are therefore not listed. To host another first-party
+  game, add it to `installed` in the hosted contract (and its origin to `game_origins`). With the
+  profile file absent or `pi`, the overlay behaves exactly as before.
+  - After a deploy, check: `curl -s https://avrana.party/party/catalog.json | jq -r '.games[].id'`
+    should print `checkers`, `bestguess` and `colyseus-tanks` only. On the VM,
+    `sudo ops/catalog-overlay refresh` regenerates the file.
+  - Residual: `ops/deploy.sh` and `ops/install-party-web.sh` skip the refresh when no package
+    is installed and no overlay exists yet. A hosted VM with no package at all would therefore
+    serve the full release catalog until `sudo ops/catalog-overlay refresh` is run once. Once
+    written, the file is kept current by every later deploy.
+  - If a refresh fails, the overlay is removed and nginx falls back to the full release
+    catalog. The deploy log says so as a `WARNING: catalog:` line.
 - **Game pages and an expired gate cookie.** Party Home detects the redirect to the password page and
   offers "Sign in again". The bridge frame and a game's own reconnects on `games.avrana.party`
   do not. What a player sees there is measured in H3, not assumed. The cookie lasts 30 days.
