@@ -681,7 +681,12 @@ class HostedProfile(Harness):
         self.assertEqual(self.calls(queries=True), [])
 
     def test_the_profile_file_override_is_test_only(self):
-        loop = next(line for line in SCRIPT.read_text().splitlines() if line.startswith('for v in AVRANA_DEPLOY_SMOKE'))
+        lines = SCRIPT.read_text().splitlines()
+        n = next(i for i, line in enumerate(lines) if line.startswith('for v in AVRANA_DEPLOY_SMOKE'))
+        loop = lines[n]
+        while loop.endswith('\\'):                            # the list continues on the next line
+            n += 1
+            loop = loop[:-1] + lines[n]
         self.assertIn('AVRANA_DEPLOY_PROFILE_FILE', loop)     # a production run never reads another profile file
 
     def test_the_party_host_comes_from_the_config(self):
