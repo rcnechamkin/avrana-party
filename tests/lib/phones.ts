@@ -45,7 +45,7 @@ export async function arrive(browser: Browser, who: string, { profile = true, la
  * the Party is setting one up) or just a member ('joined', the name may carry a number if it was taken). */
 export async function chooseName(p: Phone, then: 'home' | 'scene' | 'joined' = 'home') {
   await expect(p.page.locator('html')).toHaveAttribute('data-ready', 'true');
-  await expect(p.page.locator('#party-lede')).toHaveText('Choose your name to join the party.');
+  await expect(p.page.locator('#home-name'), `${p.name} is asked for a name on Home`).toBeVisible();   // Home's first step for a nameless phone (Concept K)
   expect((await view(p)).me, `${p.name} is not in the Party before choosing a name`).toBeNull();
   await p.page.locator('#home-name').click();
   await expect(p.page.locator('#profile-name')).toBeFocused();

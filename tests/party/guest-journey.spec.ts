@@ -110,7 +110,7 @@ test.describe('the guest journey: BLUFF (Play/Watch setup, spectator-only late j
       await chooseName(cleo);
       for (const p of [ada, bob, cleo]) {
         await expect(p.page.locator('#party-count'), p.name).toHaveText('3 people');
-        await expect(p.page.locator('#party-lede'), p.name).toHaveText('Three of you are here.');
+        await expect(p.page.locator('#home-here'), p.name).toHaveText('3 here');
       }
       await expect(ada.page.locator('#party-host')).toContainText('You’re the host');
       Object.assign(ids, await expectPeople(ada, ['Ada', 'Bob', 'Cleo'], {}));
@@ -143,7 +143,7 @@ test.describe('the guest journey: BLUFF (Play/Watch setup, spectator-only late j
       }
       await cleo.page.locator('#choose-watch').click();
       await expect(cleo.page.locator('#choose-watch')).toHaveAttribute('aria-pressed', 'true');
-      await expect(ada.page.locator('#scene-count')).toHaveText('2 playing · 1 watching');
+      await expect(ada.page.locator('#scene-count')).toHaveText('Playing 2 · Watching 1');
       await expect(ada.page.locator('#scene-start')).toBeEnabled();
       await cleo.page.reload();
       await expect(cleo.page.locator('#scene')).toBeVisible();
@@ -247,7 +247,7 @@ test.describe('the guest journey: BLUFF (Play/Watch setup, spectator-only late j
     await test.step('11 everyone is where the Party is: Party Home; the one who left is asked to Reconnect, and comes back once', async () => {
       for (const p of [bob, cleo, dee]) {
         await expect(p.page, p.name).toHaveURL(atHome);
-        await expect(p.page.locator('#party-lede'), p.name).toHaveText('Three of you are here.');
+        await expect(p.page.locator('#home-here'), p.name).toHaveText('3 here');
         await expect(p.page.locator('#party-host'), p.name).toContainText(p === bob ? 'You’re the host' : 'Bob is the host');
       }
       expect((await view(bob)).location.at).toBe('home');
@@ -275,7 +275,7 @@ test.describe('the guest journey: BLUFF (Play/Watch setup, spectator-only late j
         await expect(p.page.locator('#choose-play'), p.name).toHaveAttribute('aria-pressed', 'true');
       }
       await cleo.page.locator('#choose-watch').click();
-      await expect(bob.page.locator('#scene-count')).toHaveText('3 playing · 1 watching');
+      await expect(bob.page.locator('#scene-count')).toHaveText('Playing 3 · Watching 1');
       await bob.page.locator('#scene-start').click();
       for (const p of [ada, bob, cleo, dee]) await expect(p.page, p.name).toHaveURL(atRound('bluff'));
       // Dee watched last round and plays this one: the setup boundary is where roles change
@@ -341,7 +341,7 @@ test.describe('the guest journey: direct-launch games (EXPO seats two, Gauntlet 
       expect(cleo.page.url(), 'the phone that cannot hear is still where it was').toMatch(atRound('expo'));
       await cleo.context.setOffline(false);
       await expect(cleo.page).toHaveURL(atHome, { timeout: 15_000 });
-      await expect(cleo.page.locator('#party-lede')).toHaveText('Four of you are here.');
+      await expect(cleo.page.locator('#home-here')).toHaveText('4 here');
       await expectPeople(bob, ['Ada', 'Bob', 'Cleo', 'Dee'], ids);
     });
 
@@ -481,7 +481,7 @@ test.describe('the guest journey: setup and the Party box', () => {
     await expect(bob.page.locator('#going-text')).toHaveText('Waiting for the connection to take you to EXPO…');
     expect((await post(ada, 'session/end', { if_version: await version(ada) })).status()).toBe(200);
     await held.online();
-    await expect(bob.page.getByRole('region', { name: 'Who is here' })).toBeVisible({ timeout: 15_000 });   // Party Home
+    await expect(bob.page.locator('#home-presence')).toBeVisible({ timeout: 15_000 });   // Party Home's presence row (Concept K)
     await expect(bob.page.locator('#going-text')).toBeHidden();
     await bob.page.waitForTimeout(9_000);          // past the going watchdog's 8 s: no stale retry either
     expect(bob.page.url()).toMatch(atHome);
@@ -545,7 +545,7 @@ test.describe('the guest journey: setup and the Party box', () => {
     for (const p of [ada, bob, cleo]) await expect(p.page, p.name).toHaveURL(atRound('expo'));
     expect((await request.post('/__test__/party/reset')).status()).toBe(204);   // the Pi restarts; its Party is memory-only
     for (const p of [ada, bob, cleo]) await expect(p.page, p.name).toHaveURL(atHome, { timeout: 20_000 });
-    for (const p of [ada, bob, cleo]) await expect(p.page.locator('#party-lede'), p.name).toHaveText('Three of you are here.', { timeout: 15_000 });
+    for (const p of [ada, bob, cleo]) await expect(p.page.locator('#home-here'), p.name).toHaveText('3 here', { timeout: 15_000 });
     const list = await members(ada);
     expect(list.map((m) => m.name).sort()).toEqual(['Ada', 'Bob', 'Cleo']);
     expect(list.filter((m) => m.host), 'exactly one Host').toHaveLength(1);
