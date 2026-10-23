@@ -39,7 +39,7 @@ run() { echo "+ $*"; [[ $dry -eq 1 ]] || "$@"; }
 V() { virsh -c qemu:///system "$@"; }
 
 if [[ $destroy -eq 1 ]]; then
-    V dominfo "$name" >/dev/null 2>&1 && { V destroy "$name" 2>/dev/null || true; run virsh -c qemu:///system undefine "$name" --remove-all-storage --snapshots-metadata; }
+    V dominfo "$name" >/dev/null 2>&1 && { V destroy "$name" 2>/dev/null || true; run virsh -c qemu:///system undefine "$name" --remove-all-storage --snapshots-metadata --nvram; }
     V nwfilter-list | grep -q avrana-staging-egress && run virsh -c qemu:///system nwfilter-undefine avrana-staging-egress
     rm -f "$images/$name-seed.iso"
     echo "removed $name and its filter; the Media host is as before"
@@ -69,7 +69,9 @@ fi
 # --cpu host-model, no host devices, no shared folders, no graphics; serial console only.
 # --no-kvm (no VT-x): software emulation, same devices and filter. Once VT-x is on, change the domain's
 # type to kvm (virsh edit) and restart it; the disk is unchanged.
-run virt-install --connect qemu:///system --name "$name" --osinfo debian13 "${virt[@]}" \
+# UEFI: Debian 13's cloud image resets in a loop right after GRUB under SeaBIOS (seen on the M700,
+# QEMU 8.2, q35 and i440fx alike); under OVMF it boots.
+run virt-install --connect qemu:///system --name "$name" --osinfo debian13 "${virt[@]}" --boot uefi \
     --vcpus "$vcpus" --memory "$ram_mb" --memballoon none \
     --disk "path=$images/$name.qcow2,format=qcow2,bus=virtio" \
     "${seed[@]}" \

@@ -105,6 +105,10 @@ and start it again.
 2. Make the two checkouts at `/home/cody/avrana-party` and `/home/cody/avrana-party-games`.
    - Recommended: one read-only GitHub deploy key per repository, created by the owner inside
      the VM. The keys never leave it.
+   - The VM's filter allows no outbound port 22, so SSH to GitHub goes over 443
+     (`HostName ssh.github.com`, `Port 443` in `~/.ssh/config`, one host alias per key). Check
+     the host key against GitHub's published fingerprint
+     (`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`).
    - Alternative: `git bundle` files copied from the laptop.
 3. Run:
 
@@ -129,9 +133,12 @@ inside the VM cannot lift. A silent drop by some other host firewall would look 
 the Media host also record that the filter is bound to the VM's interface:
 
 ```sh
-virsh domiflist avrana-staging
-sudo virsh nwfilter-binding-list        # the VM's vnet interface with avrana-staging-egress
+virsh -c qemu:///system domiflist avrana-party-staging
+virsh -c qemu:///system nwfilter-binding-list   # the VM's vnet interface with avrana-staging-egress
 ```
+
+Loading the VM firewall can hang the SSH session that ran `provision.sh`. The script still
+completes; reconnect, and run it again to see its output (it is idempotent).
 
 The probes are TCP. UDP is held to DHCP with libvirt, DNS to the gateway, time and the tunnel
 edge by the rules themselves. That is reviewed, not probed. Keep all outputs as evidence. A
@@ -146,6 +153,19 @@ The deployment is the appliance's own `ops/deploy.sh`. `/etc/avrana-party/deploy
 - installs `deploy/hosted/avrana-party.hosted.nginx`;
 - smokes with `avrana.ops.smoke --hosted`;
 - records `hosted_profile` in the manifest.
+
+**First deployment on fresh clones.** `deploy.sh` compares the checkouts' HEAD with the requested
+commits, so clones already at those commits plan "restart nothing; web release no" and build no
+release. Before the first deployment, detach both one commit back
+(`git -C ~/avrana-party checkout --detach HEAD~1`, the same for the Games clone).
+
+**Smoke before step 5.** The hosted smoke requires `cloudflared-avrana-party`, which step 5
+installs. Until then the first deployment ends `smoke-failed` with those two rows only (the unit
+and `status`), and its revision is kept. Once the tunnel runs, run the smoke again (the command at
+the end of the games block below).
+
+**Packages need `/opt/avrana-games`:** `sudo install -d -m 0755 -o root -g root /opt/avrana-games`
+before the first `install-game` ([install-game](install-game.md), before step 3).
 
 See [deploy](deploy.md#deployment-profile-the-appliance-or-hosted-staging).
 
@@ -171,7 +191,7 @@ python3 -m avrana.ops.smoke --hosted --config /etc/avrana-party/party-core.json
 ```
 
 `game_origins` in `/etc/avrana-party/party-core.json` already lists `checkers`, `bestguess`
-and `tanks` for `https://games.avrana.party`. A game added later needs its id there, then
+and `colyseus-tanks` (the Tanks package id) for `https://games.avrana.party`. A game added later needs its id there, then
 `sudo systemctl restart avrana-party-core`. A restart ends the in-memory Party.
 
 **Rollback:** `sudo bash ~/avrana-party/ops/deploy.sh --rollback` returns to the last known
