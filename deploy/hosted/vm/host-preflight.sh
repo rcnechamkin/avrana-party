@@ -3,11 +3,13 @@
 # (docs/runbooks/hosted-staging.md, step 1). Changes nothing: no package, network, VM, file or unit.
 # Run as the operator (no sudo needed); prints one line per check and READY/NOT_READY.
 #
-#   bash deploy/hosted/vm/host-preflight.sh [--disk-gb 12] [--ram-mb 2048] [--vcpus 2]
+#   bash deploy/hosted/vm/host-preflight.sh [--images DIR] [--disk-gb 12] [--ram-mb 2048] [--vcpus 2]
 set -uo pipefail
-disk_gb=12 ram_mb=2048 vcpus=2
+disk_gb=12 ram_mb=2048 vcpus=2 pool=/var/lib/libvirt/images no_kvm=0
 while (($#)); do
     case $1 in
+        --images) pool=${2%/}; shift 2 ;;
+        --no-kvm) no_kvm=1; shift ;;
         --disk-gb) disk_gb=$2; shift 2 ;;
         --ram-mb) ram_mb=$2; shift 2 ;;
         --vcpus) vcpus=$2; shift 2 ;;
@@ -17,8 +19,7 @@ done
 fail=0
 say() { printf '%-5s %-26s %s\n' "$1" "$2" "$3"; [[ $1 == FAIL ]] && fail=1; return 0; }
 
-pool=/var/lib/libvirt/images
-free_gb=$(df -BG --output=avail "$(test -d $pool && echo $pool || echo /)" | tail -1 | tr -dc 0-9)
+free_gb=$(df -BG --output=avail "$(test -d "$pool" && echo "$pool" || echo /)" | tail -1 | tr -dc 0-9)
 used_pct=$(df --output=pcent / | tail -1 | tr -dc 0-9)
 # The VM's disk is thin (qcow2) but may fill to disk_gb; one snapshot can add up to as much again
 # in the worst case. Keep 15 GB free for Media on top of that.
@@ -34,7 +35,9 @@ cores=$(nproc)
 if (( vcpus < cores )); then say PASS cpu "${cores} cores; VM gets ${vcpus} vCPUs (and a CPU quota, see create-vm.sh)"
 else say FAIL cpu "${cores} cores; ${vcpus} vCPUs would be every core"; fi
 
-if [[ -r /dev/kvm ]] || [[ -e /dev/kvm ]]; then say PASS kvm "/dev/kvm present"; else say FAIL kvm "/dev/kvm missing: no hardware virtualization"; fi
+if [[ -r /dev/kvm ]] || [[ -e /dev/kvm ]]; then say PASS kvm "/dev/kvm present"
+elif (( no_kvm )); then say WARN kvm "/dev/kvm missing: the VM runs emulated (--no-kvm), slower; enable VT-x in firmware to switch"
+else say FAIL kvm "/dev/kvm missing: no hardware virtualization (enable VT-x in firmware, or --no-kvm to run emulated)"; fi
 if command -v virsh >/dev/null && command -v virt-install >/dev/null; then say PASS libvirt-tools "virsh and virt-install installed"
 elif command -v virsh >/dev/null; then say FAIL libvirt-tools "virsh present, virt-install missing (package virtinst: an owner-approved install)"
 else say FAIL libvirt-tools "virsh missing"; fi

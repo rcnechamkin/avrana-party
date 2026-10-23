@@ -9,7 +9,7 @@
     "https://games.avrana.party": [
       "checkers",
       "bestguess",
-      "tanks"
+      "colyseus-tanks"
     ]
   },
   "secure_cookie": true,

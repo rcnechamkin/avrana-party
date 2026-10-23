@@ -8,7 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
 //   HOSTED_ACCESS_CLIENT_ID / HOSTED_ACCESS_CLIENT_SECRET   a Cloudflare Access service token, from the
 //       environment only (never a file in a repository); without it the run is an unauthenticated visitor
 //   HOSTED_EXPECT_ACCESS=1      the deployment must be behind Access (edge.spec.ts checks it refuses strangers)
-//   HOSTED_GAMES=bestguess,checkers,tanks    games to play end to end, each with HOSTED_GAMES_REPO/<id>/party-driver.mjs
+//   HOSTED_GAMES=bestguess,checkers,colyseus-tanks    games to play end to end, each with HOSTED_GAMES_REPO/<id>/party-driver.mjs
 //   HOSTED_GAMES_REPO=../avrana-party-games  the Games checkout whose drivers play the games
 //   HOSTED_RESOLVE_LOOPBACK=1   map *.avrana.test to 127.0.0.1 (a local two-origin harness, e.g. the provider server)
 //   HOSTED_OWNER_ASSIST=1       also run the cases that need the owner at the VM (killing a game process)

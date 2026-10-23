@@ -34,7 +34,7 @@ Wi-Fi, the captive portal, local DNS, offline play or phone hardware: those rema
 On the Media host, as the operator:
 
 ```sh
-bash ~/avrana-party/deploy/hosted/vm/host-preflight.sh --disk-gb 12 --ram-mb 2048 --vcpus 2
+bash ~/avrana-party/deploy/hosted/vm/host-preflight.sh --images /mnt/avrana_media/vm/avrana-party-staging --disk-gb 32 --ram-mb 2048 --vcpus 2
 ```
 
 The preflight checks:
@@ -46,12 +46,9 @@ The preflight checks:
 - **Virtualization:** `/dev/kvm`, `virt-install`, and the `default` network active.
 - **Names:** no existing domain or filter with these names.
 
-On 2026-10-22 the root volume had 28 GB free, below 39. The disk therefore needs either:
-
-- `--disk-gb 8`, and snapshots taken only after pruning; or
-- the owner choosing another storage pool.
-
-This is the first decision at step 2. Do not lower the 15 GB Media reserve.
+On 2026-10-22 the root volume had 28 GB free, below 39. The owner chose the media drive
+(2026-10-23): the VM's disk lives in `/mnt/avrana_media/vm/avrana-party-staging`, passed as
+`--images` to both scripts (4.3 TB free). Do not lower the 15 GB Media reserve.
 
 Resource ceilings once created:
 
@@ -72,13 +69,16 @@ The memory ceiling is measured in step 6. If Tanks (Node) needs more, raise it t
    `sha512sum -c --ignore-missing SHA512SUMS`.
 2. Copy `deploy/hosted/vm/cloud-init.user-data.example` to `user-data.yaml`. Put your SSH
    **public** key in it.
-3. If `virt-install` is missing, install it: `sudo apt install virtinst cloud-image-utils`.
-   This is a host package install, so it needs approval like the rest of this step.
-4. Dry run, then create:
+3. If `virt-install` is missing, install it: `sudo apt install virtinst`. This is a host package
+   install, so it needs approval like the rest of this step. `cloud-image-utils` is optional:
+   without `cloud-localds`, the script uses virt-install's own `--cloud-init`.
+4. Dry run, then create. `cody` is in the `libvirt` group, so no sudo is needed when the disk
+   directory belongs to `cody`:
 
 ```sh
-sudo bash deploy/hosted/vm/create-vm.sh --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml --dry-run
-sudo bash deploy/hosted/vm/create-vm.sh --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml
+D=/mnt/avrana_media/vm/avrana-party-staging; mkdir -p "$D"
+bash deploy/hosted/vm/create-vm.sh --images "$D" --disk-gb 32 --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml --dry-run
+bash deploy/hosted/vm/create-vm.sh --images "$D" --disk-gb 32 --image debian-13-genericcloud-amd64.qcow2 --user-data user-data.yaml
 virsh -c qemu:///system domifaddr avrana-party-staging        # the VM's 192.168.122.x address
 ```
 
@@ -90,7 +90,14 @@ What this changes on the host:
 
 It adds no port forward, bridge, host firewall rule, or nginx, Docker or tunnel change.
 
-To undo: `sudo bash deploy/hosted/vm/create-vm.sh --destroy`.
+To undo: `bash deploy/hosted/vm/create-vm.sh --images "$D" --destroy`.
+
+**VT-x.** On 2026-10-23 the M700's firmware had VT-x off ("VMX disabled by BIOS", no `/dev/kvm`),
+so the VM was created with `--no-kvm` (software emulation: slower, same devices and filter). To
+switch, enable Intel Virtualization Technology in the firmware (F1 at boot, Advanced → CPU Setup),
+then on the host: `virsh -c qemu:///system shutdown avrana-party-staging`, change
+`<domain type='qemu'>` to `type='kvm'` with `virsh -c qemu:///system edit avrana-party-staging`,
+and start it again.
 
 ## 3. Provision inside the VM (owner)
 
@@ -98,6 +105,10 @@ To undo: `sudo bash deploy/hosted/vm/create-vm.sh --destroy`.
 2. Make the two checkouts at `/home/cody/avrana-party` and `/home/cody/avrana-party-games`.
    - Recommended: one read-only GitHub deploy key per repository, created by the owner inside
      the VM. The keys never leave it.
+   - The VM's filter allows no outbound port 22, so SSH to GitHub goes over 443
+     (`HostName ssh.github.com`, `Port 443` in `~/.ssh/config`, one host alias per key). Check
+     the host key against GitHub's published fingerprint
+     (`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`).
    - Alternative: `git bundle` files copied from the laptop.
 3. Run:
 
@@ -122,9 +133,12 @@ inside the VM cannot lift. A silent drop by some other host firewall would look 
 the Media host also record that the filter is bound to the VM's interface:
 
 ```sh
-virsh domiflist avrana-staging
-sudo virsh nwfilter-binding-list        # the VM's vnet interface with avrana-staging-egress
+virsh -c qemu:///system domiflist avrana-party-staging
+virsh -c qemu:///system nwfilter-binding-list   # the VM's vnet interface with avrana-staging-egress
 ```
+
+Loading the VM firewall can hang the SSH session that ran `provision.sh`. The script still
+completes; reconnect, and run it again to see its output (it is idempotent).
 
 The probes are TCP. UDP is held to DHCP with libvirt, DNS to the gateway, time and the tunnel
 edge by the rules themselves. That is reviewed, not probed. Keep all outputs as evidence. A
@@ -139,6 +153,19 @@ The deployment is the appliance's own `ops/deploy.sh`. `/etc/avrana-party/deploy
 - installs `deploy/hosted/avrana-party.hosted.nginx`;
 - smokes with `avrana.ops.smoke --hosted`;
 - records `hosted_profile` in the manifest.
+
+**First deployment on fresh clones.** `deploy.sh` compares the checkouts' HEAD with the requested
+commits, so clones already at those commits plan "restart nothing; web release no" and build no
+release. Before the first deployment, detach both one commit back
+(`git -C ~/avrana-party checkout --detach HEAD~1`, the same for the Games clone).
+
+**Smoke before step 5.** The hosted smoke requires `cloudflared-avrana-party`, which step 5
+installs. Until then the first deployment ends `smoke-failed` with those two rows only (the unit
+and `status`), and its revision is kept. Once the tunnel runs, run the smoke again (the command at
+the end of the games block below).
+
+**Packages need `/opt/avrana-games`:** `sudo install -d -m 0755 -o root -g root /opt/avrana-games`
+before the first `install-game` ([install-game](install-game.md), before step 3).
 
 See [deploy](deploy.md#deployment-profile-the-appliance-or-hosted-staging).
 
@@ -164,7 +191,7 @@ python3 -m avrana.ops.smoke --hosted --config /etc/avrana-party/party-core.json
 ```
 
 `game_origins` in `/etc/avrana-party/party-core.json` already lists `checkers`, `bestguess`
-and `tanks` for `https://games.avrana.party`. A game added later needs its id there, then
+and `colyseus-tanks` (the Tanks package id) for `https://games.avrana.party`. A game added later needs its id there, then
 `sudo systemctl restart avrana-party-core`. A restart ends the in-memory Party.
 
 **Rollback:** `sudo bash ~/avrana-party/ops/deploy.sh --rollback` returns to the last known

@@ -348,7 +348,7 @@ docs/design/HOSTED-STAGING.md; deployment: docs/runbooks/hosted-staging.md.
 ```
 HOSTED_BASE_URL=https://avrana.party HOSTED_EXPECT_ACCESS=1 \
 HOSTED_ACCESS_CLIENT_ID=... HOSTED_ACCESS_CLIENT_SECRET=... \
-HOSTED_GAMES=checkers,bestguess,tanks HOSTED_GAMES_REPO=../avrana-party-games \
+HOSTED_GAMES=checkers,bestguess,colyseus-tanks HOSTED_GAMES_REPO=../avrana-party-games \
 npm run test:hosted
 ```
 
