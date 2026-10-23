@@ -63,7 +63,7 @@ const state = { exit: null, staying: false, leaving: false, catalog: null, repor
   // failingSince: when Party Core stopped answering (ms), or null; answered: something on the box
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
   // box: the status document, asked for by the Host only; entries: the shelf as last drawn
-  failingSince: null, answered: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
+  failingSince: null, answered: false, signin: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
   // covers: the owner's cover for a game (id -> path), from covers/index.json; badArt: the picture
   // addresses (owner, package, first-party) that would not load on this phone since the page last started
   covers: new Map(), badArt: new Set(),
@@ -836,8 +836,12 @@ function refocusFrom(el) {
 /** Every try at Party Core that ends (lib/party-client.js). The first one in a row that fails
  * starts "Reconnecting"; LOST_AFTER_MS later, still failing, the phone says it lost the box. The
  * client keeps trying throughout, so the first answer puts everything back by itself. */
-function onLink({ ok, answered }) {
+function onLink({ ok, answered, signin = false }) {
   state.trying = false;
+  if (signin || state.signin) {              // nothing to wait for: the page has to load again
+    if (!state.signin) { state.signin = true; renderLink(); }
+    return;
+  }
   if (ok) state.answers += 1;
   if (ok) {
     if (state.failingSince === null) return;
@@ -858,10 +862,10 @@ function onLink({ ok, answered }) {
 }
 
 function renderLink() {
-  const link = state.partyMode ? linkState(state.failingSince, Date.now()) : 'ok';
+  const link = state.partyMode ? linkState(state.failingSince, Date.now(), state.signin) : 'ok';
   const view = party.view();
   const who = { link, answered: state.answered, host: Boolean(view && view.me && view.me.host) };
-  const words = linkWords(who), lost = link === 'lost';
+  const words = linkWords(who), lost = link === 'lost' || link === 'signin';
   const changed = document.documentElement.dataset.link !== link;
   document.documentElement.dataset.link = link;
   // (Home's "Connected" line would contradict it)
@@ -892,6 +896,7 @@ function renderLink() {
 
 /** "Try again": ask Party Core now, not when the next try was due. */
 function tryAgain() {
+  if (state.signin) { location.reload(); return; }
   state.trying = true;
   renderLink();
   party.poke();

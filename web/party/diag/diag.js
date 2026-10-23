@@ -70,6 +70,7 @@ function renderProviders() {
 function network(origin) {
   if (!origin || origin.error) return `unknown (${origin ? origin.error : 'no answer'})`;
   if (origin.serverAddr === '10.42.0.1') return 'Party Wi-Fi (10.42.0.1)';
+  if (origin.network === 'hosted') return 'hosted staging, over the internet (not the Party Wi-Fi)';
   return `reached the Pi at ${origin.serverAddr} (not the Party Wi-Fi address)`;
 }
 

@@ -11,7 +11,8 @@ export const LOST_AFTER_MS = 10000;
 /** How this phone reaches Party Core: 'ok', 'reconnecting' (it stopped answering a moment ago)
  * or 'lost' (it has not answered for LOST_AFTER_MS). `failingSince`: when the first try in a row
  * failed (ms), or null while it answers. */
-export function linkState(failingSince, now) {
+export function linkState(failingSince, now, signin = false) {
+  if (signin) return 'signin';
   if (failingSince === null || failingSince === undefined) return 'ok';
   return now - failingSince >= LOST_AFTER_MS ? 'lost' : 'reconnecting';
 }
@@ -20,8 +21,13 @@ export function linkState(failingSince, now) {
  *   answered: something on the box answered, only not the Party (it is restarting);
  *   host:     this phone was the Host when it last heard (its role passes on by Party Core's rule);
  *   brief:    said on a briefing, where a person has an answer in.
- * Returns { title, text, retry } or null. `title` is only for the lost state. */
+ *   'signin': something in front of the Party asked this page to sign in again (a hosted site's
+ *             access gateway); only loading the page again does that, so the action reloads.
+ * Returns { title, text, retry, reload } or null. `title` is only for the lost and signin states. */
 export function linkWords({ link, answered = false, host = false, brief = false } = {}) {
+  if (link === 'signin') {
+    return { title: 'Sign in again', text: 'Your sign-in to this site has run out. The Party keeps your place.', retry: true, reload: true };
+  }
   if (link === 'reconnecting') {
     return { title: '', text: brief ? 'Reconnecting. Your answer stays as it is for now.' : 'Reconnecting. What you see may be out of date.', retry: false };
   }
