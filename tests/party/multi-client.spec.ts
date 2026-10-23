@@ -815,14 +815,23 @@ test.describe('three phones at one party', () => {
     await expect(bob.page.locator('#scene')).toBeVisible();                 // the briefing is still the place
   });
 
-  test('during a round the Host’s role does not move, however long their phone is quiet', async ({ request }) => {
+  test('during a round a Host whose phone is quiet past grace passes hosting on, keeps the seat, and the round goes on', async ({ request }) => {
+    // ADR 0006 as amended 2026-10-22: before, the role never moved mid-round, so a game waiting for
+    // the quiet Host held the party with nobody able to end it.
     await startForEveryone(host.page, 'expo');
     for (const p of [host, bob, cleo]) await expect(p.page).toHaveURL(/\/games\/expo\//);
     await goQuiet(host);
-    await later(request, 300);
+    // In steps, as a real party's clock moves: the other phones ask in between, so they are live when
+    // grace runs out. One jump past everyone's live window would leave nobody live, the role vacant,
+    // and the first phone to ask the Host (a race between Bob and Cleo).
+    await later(request, 50);
+    for (const p of [bob, cleo]) await view(p);
+    await later(request, 30);                                               // Ada quiet 80 s: past LIVE_WINDOW + HOST_GRACE
     const now = await view(bob);
     const ada = now.members.find((m: { name: string }) => m.name === 'Ada');
-    expect([ada.host, ada.presence, now.location.at]).toEqual([true, 'playing', 'game']);
+    const ben = now.members.find((m: { name: string }) => m.name === 'Bob');
+    const cleoNow = now.members.find((m: { name: string }) => m.name === 'Cleo');
+    expect([ada.host, ada.presence, ben.host, cleoNow.host, now.location.at]).toEqual([false, 'playing', true, false, 'game']);
     await expect(bob.page).toHaveURL(/\/games\/expo\//);
   });
 
