@@ -11,9 +11,10 @@ Party, an older major names the migration. Feature names (V4) are checked by `mi
 """
 import re
 
-WIRE = re.compile(r'^avrana\.([a-z][a-z0-9-]*)/v(0|[1-9][0-9]{0,3})$')
-DECLARATION = re.compile(r'^avrana\.([a-z][a-z0-9-]*)/(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$')
-FEATURE = re.compile(r'^[a-z][a-z0-9_]{0,39}$')
+WIRE = re.compile(r'^avrana\.([a-z][a-z0-9-]*)/v(0|[1-9][0-9]{0,3})\Z')
+DECLARATION = re.compile(r'^avrana\.([a-z][a-z0-9-]*)/(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\Z')
+FEATURE = re.compile(r'^[a-z][a-z0-9_]{0,39}\Z')
+WINDOW = re.compile(r'^([0-9]{1,4})(?:\.([0-9]{1,4}))?\Z')
 
 
 class BadVersion(ValueError):
@@ -32,10 +33,10 @@ def parse(text):
 
 
 def _pair(text):
-    major, _, minor = str(text).partition('.')
-    if not major.isdigit() or (minor and not minor.isdigit()):
+    m = WINDOW.match(str(text))
+    if not m:
         raise BadVersion(f'not a window version: {text!r}')
-    return int(major), int(minor) if minor else None
+    return int(m.group(1)), int(m.group(2)) if m.group(2) is not None else None
 
 
 def check(version, window):

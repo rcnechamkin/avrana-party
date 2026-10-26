@@ -19,7 +19,7 @@ class Parse(unittest.TestCase):
 
     def test_junk_is_refused(self):
         for bad in ('avrana.game/1', 'avrana.game/v01', 'avrana.Game/v1', 'avrana.game/1.02', 'avrgame/1.2',
-                    'avrana.game/v1 ', '', None, 7, 'avrana.game/v99999'):
+                    'avrana.game/v1 ', 'avrana.game/v1\n', 'avrana.game/1.2\n', '', None, 7, 'avrana.game/v99999'):
             with self.assertRaises(v.BadVersion, msg=repr(bad)):
                 v.parse(bad)
 
@@ -47,6 +47,11 @@ class Window(unittest.TestCase):
         self.assertFalse(v.check('avrana.avrgame/v1', DECL)[0])
         self.assertFalse(v.check('avrana.party-session/1.0', WIRE)[0])
 
+    def test_a_bad_window_is_refused(self):
+        for bad in ('²', '1.', '1.x', '1\n', '-1', ''):
+            with self.assertRaises(v.BadVersion, msg=repr(bad)):
+                v.check('avrana.party-session/v0', {'current': bad, 'min_supported': '0'})
+
 
 class Features(unittest.TestCase):
     def test_missing_features(self):
@@ -54,6 +59,7 @@ class Features(unittest.TestCase):
         self.assertEqual(v.missing_features(['options', 'party_layer'], ['party_layer']), ['options'])
         self.assertEqual(v.missing_features(['Bad Name'], ['Bad Name']), ['Bad Name'])
         self.assertEqual(v.missing_features(None, ['x']), [])
+        self.assertEqual(v.missing_features(['artwork\n'], ['artwork\n']), ['artwork\n'])
 
 
 if __name__ == '__main__':
