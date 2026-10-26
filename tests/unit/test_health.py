@@ -56,6 +56,12 @@ class TimeRules(unittest.TestCase):
         self.assertIsNone(doc['ready'])
         self.assertIn('40 minutes old', doc['reasons'][0])
 
+    def test_a_report_dated_in_the_future_is_not_fresh(self):
+        doc = health.build_health(report(chk('services', 'PASS'), age_min=-60), now=NOW)
+        self.assertEqual(doc['state'], 'unknown')
+        self.assertIn('in the future', doc['reasons'][0])
+        self.assertEqual(health.build_health(report(chk('services', 'PASS'), age_min=-1), now=NOW)['state'], 'healthy')
+
     def test_untrusted_clock_makes_certificates_unknown(self):
         doc = health.build_health(report(chk('services', 'PASS'), chk('tls.party', 'PASS', category='tls'),
                                          clock='UNKNOWN', age_min=500), now=NOW)

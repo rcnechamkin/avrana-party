@@ -12,9 +12,10 @@ re-implements no check, opens no connection, changes nothing and adds no endpoin
 Each check becomes one item: PASS is healthy, WARN or a non-blocking FAIL is degraded, a blocking FAIL is
 action_required, UNKNOWN is unknown. The overall state is the worst item, in the order action_required,
 degraded, unknown, healthy, so an unobserved fact never rolls up as healthy (as in AVR-31 and the
-preflight). Two time rules: a preflight older than --max-age-min is not health, so every item is unknown;
-and when the Pi's own clock is not trusted (`pi.clock` not PASS), the certificate items and the age of
-the report cannot be judged either, so they are unknown with that reason (AVR-79).
+preflight). Two time rules: a preflight older than --max-age-min, or dated more than 5 minutes ahead, is
+not health, so every item is unknown; and when the Pi's own clock is not trusted (`pi.clock` not PASS),
+the certificate items and the age of the report cannot be judged either, so they are unknown with that
+reason (AVR-79).
 """
 import argparse
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ PREFLIGHT_SCHEMA = 'avrana.preflight/v0'
 HEALTHY, DEGRADED, ACTION, UNKNOWN = 'healthy', 'degraded', 'action_required', 'unknown'
 SEVERITY = {HEALTHY: 0, UNKNOWN: 1, DEGRADED: 2, ACTION: 3}
 MAX_AGE_MIN = 15
+FUTURE_SLACK_S = 300              # a report dated further ahead than this is not fresh: it is not trusted
 UNTRUSTED_CLOCK = 'the date on this box is not trusted, so this cannot be judged'
 # Checks whose answer depends on today's date.
 TIME_DEPENDENT = ('tls.',)
@@ -72,6 +74,9 @@ def build_health(report, now=None, max_age_min=MAX_AGE_MIN):
     elif generated is None:
         stale = True
         reasons.append('the preflight report has no readable time')
+    elif (generated - now).total_seconds() > FUTURE_SLACK_S:
+        stale = True
+        reasons.append('the preflight report is dated in the future; run it again')
     elif (now - generated).total_seconds() > max_age_min * 60:
         stale = True
         reasons.append(f'the last check is {int((now - generated).total_seconds() // 60)} minutes old '
