@@ -1,6 +1,7 @@
 # Party continuity across sleep, restart, reboot and power loss (AVR-21)
 
 - **Status:** proposal, 2026-10-26. Nothing is implemented and no persistence is added. **Owner decisions required** (section 7).
+- **There is no owner page yet.** "The owner page" here means the owner surface proposed for AVR-44 and AVR-74; no owner route or Admin PIN session exists in code today. Until one does, the owner reads these facts over SSH.
 - **Reads with:**
   - `avrana/party/core.py` (module doc: "the party is memory-only; OPEN") and `identity.py` (`DeviceStore`);
   - [PARTY-LIFECYCLE.md](../PARTY-LIFECYCLE.md) (the failure table);
