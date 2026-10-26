@@ -21,7 +21,7 @@ def derive(status, deploy=None, identify_until=None, now=0.0, up_since=0.0, reco
     """(state, reason) from an avrana.status/v0 document (or None when it could not be read), the deploy
     state ({'running': bool, 'unrecovered': bool} from `deploy.sh --status`), an owner identify request
     (until a monotonic time), the daemon's monotonic `now` and when it started."""
-    deploy = deploy or {}
+    deploy = deploy if isinstance(deploy, dict) else {}
     if identify_until is not None and now < identify_until:
         return 'identify', 'the owner asked which box this is'
     if recovery_image:
@@ -30,16 +30,17 @@ def derive(status, deploy=None, identify_until=None, now=0.0, up_since=0.0, reco
         return 'recovery', 'a deploy run died and was not recovered'
     if deploy.get('running'):
         return 'updating', 'an update is running'
-    core = (status or {}).get('party_core') or {}
-    if not isinstance(status, dict) or not core.get('ok'):
+    core = status.get('party_core') if isinstance(status, dict) else None
+    if not isinstance(core, dict) or not core.get('ok'):
         if now - up_since < BOOT_GRACE_S:
             return 'booting', 'Party Core is not answering yet'
         return 'attention', 'Party Core is not answering'
-    summary = status.get('summary') or {}
+    summary = status.get('summary')
+    summary = summary if isinstance(summary, dict) else {}
     state = summary.get('state')
     if state != 'ok':
-        reasons = summary.get('reasons') or []
-        if state == 'degraded' and reasons:
+        reasons = summary.get('reasons')
+        if state == 'degraded' and isinstance(reasons, list) and reasons:
             return 'attention', str(reasons[0])
         return 'attention', 'not everything could be checked' if state == 'unknown' else f'status is {state!r}'
     members = core.get('members')

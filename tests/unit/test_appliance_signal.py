@@ -66,6 +66,12 @@ class NeverFalselyReady(unittest.TestCase):
 
 
 class IdentifyAndQuiet(unittest.TestCase):
+    def test_a_garbled_status_document_is_attention_not_a_crash(self):
+        for garbled in ([], 'ok', 7, {'party_core': 'up'}, {'party_core': {'ok': True}, 'summary': 'ok'},
+                        {'party_core': {'ok': True}, 'summary': {'state': 'degraded', 'reasons': 'x'}}):
+            self.assertEqual(run(status=garbled)[0], 'attention', repr(garbled))
+        self.assertEqual(run(deploy=['running'])[0], 'ready')
+
     def test_identify_expires(self):
         self.assertEqual(run(identify_until=530.0, now=500.0)[0], 'identify')
         self.assertEqual(run(identify_until=530.0, now=530.0)[0], 'ready')
