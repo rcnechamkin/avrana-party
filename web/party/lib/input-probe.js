@@ -81,8 +81,10 @@ export function describePad(pad) {
 export function keyName(key) {
   if (typeof key !== 'string' || key === '') return 'Unidentified';
   if (key === ' ') return 'Space';
-  if ([...key].length === 1) return 'character';
-  return key;
+  // Named keys are ASCII words ('ArrowUp', 'F1', 'MediaPlayPause'). Anything else is something typed, even
+  // when it is several code points: 'e' plus a combining accent, an emoji with a skin tone, a flag.
+  if (/^[A-Z][A-Za-z0-9]{1,31}$/.test(key)) return key;
+  return 'character';
 }
 
 /**

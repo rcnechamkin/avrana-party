@@ -135,6 +135,10 @@ test('key names: printable keys collapse, named keys stay, Space is named', () =
   assert.equal(keyName('é'), 'character');
   assert.equal(keyName(' '), 'Space');
   assert.equal(keyName('ArrowLeft'), 'ArrowLeft');
+  assert.equal(keyName('F1'), 'F1');
+  for (const typed of ['é', '\u{1F44D}\u{1F3FD}', '\u{1F1EB}\u{1F1F7}', 'ab', 'A', 'hunter2']) {
+    assert.equal(keyName(typed), 'character', JSON.stringify(typed));
+  }
   assert.equal(keyName(''), 'Unidentified');
   assert.equal(keyName(undefined), 'Unidentified');
 });
