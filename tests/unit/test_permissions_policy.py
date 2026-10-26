@@ -56,7 +56,7 @@ class NginxMap(unittest.TestCase):
         self.assertEqual(text.index('mic'), min(text.index('mic'), text.index('tanks')))   # sorted
 
     def test_a_strange_game_id_is_refused_not_written(self):
-        for bad in ('x"; add_header A b; "', 'Tanks', '../x', 'a b', ''):
+        for bad in ('x"; add_header A b; "', 'Tanks', '../x', 'a b', '', 'tanks\n'):
             with self.assertRaises(ValueError, msg=bad):
                 pp.nginx_map({bad: ['camera']})
 

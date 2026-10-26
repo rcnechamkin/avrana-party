@@ -21,7 +21,7 @@ OPENS = {
 NEVER = ('bluetooth', 'display-capture', 'geolocation', 'payment', 'publickey-credentials-get', 'serial', 'usb')
 SELF_ALWAYS = ('fullscreen',)
 FEATURES = tuple(sorted({f for fs in OPENS.values() for f in fs} | set(NEVER)))
-GAME_ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')
+GAME_ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}\Z')
 
 
 def header(granted):
