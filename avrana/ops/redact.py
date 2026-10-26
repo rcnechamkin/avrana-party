@@ -24,7 +24,7 @@ import json
 import re
 import unicodedata
 
-RULES_VERSION = 'avrana.redaction/v2'
+RULES_VERSION = 'avrana.redaction/v3'
 REDACTED = '[redacted]'
 ALLOWED_ADDRESSES = {'127.0.0.1', '10.42.0.1', '0.0.0.0', '10.42.0.0', '255.255.255.0'}
 # Keys whose value is a commit (40 hex, or a 12-character short form) wherever they appear.
@@ -49,9 +49,18 @@ _RULES = [
     ('membership_cookie', re.compile(r'(?:__Host-)?avrana_(?:device|limited)\s*=\s*[^;\s,"\']*')),
     ('secret_assignment', re.compile(r'(?i)\b([a-z_-]*(?:token|secret|password|passwd|passphrase|psk|pwd|pin|key|'
                                      r'ticket|nonce|signature|sid))(\s*[:=]\s*)("[^"]*"|\'[^\']*\'|[^\s,;&]+)')),
+    # A PIN said in words, with no ':' or '=' ("Admin PIN 482915", "the passcode is 7391"): the word stays.
+    ('pin', re.compile(r'(?i)(\b(?:pin|passcode)\b(?:\s+(?:is|code|number|no\.?))?[\s:#]*)\d{4,8}(?!\d)')),
     ('identifier', re.compile(r'\b(?:member|device|guest|seat)-[0-9a-f]{8,}\b')),
     ('email', re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')),
+    # Written out to dodge scrapers: "name (at) example (dot) com", "name [at] example.com".
+    ('email', re.compile(r'(?i)[A-Za-z0-9._%+-]+\s*[\[(]\s*at\s*[\])]\s*[A-Za-z0-9-]+'
+                         r'(?:\s*(?:[\[(]\s*dot\s*[\])]|\.)\s*[A-Za-z0-9-]+)+')),
     ('mac', re.compile(r'(?<![0-9A-Fa-f:-])[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}(?![0-9A-Fa-f:-])')),
+    ('mac', re.compile(r'(?<![0-9A-Fa-f.])[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}(?![0-9A-Fa-f.])')),   # Cisco style
+    # Twelve hex digits with no separators are a MAC only after a word that says so; elsewhere they may be a
+    # short commit, which a log line keeps.
+    ('mac_bare', re.compile(r'(?i)(\b(?:mac|bssid|sta|station|hwaddr|ether|lladdr)\b[\s:=]*)[0-9a-f]{12}(?![0-9a-f])')),
     # IPv4 before IPv6: in an IPv4-mapped address (`::ffff:10.42.0.57`, as dual-stack servers log a phone) the
     # IPv6 rule would take `::ffff:10` alone and leave `.42.0.57` behind. Not only at word boundaries:
     # `sta_10.42.0.57` is an address too.
@@ -88,6 +97,10 @@ def _replace(rule, match):
         return match.group(0)
     if rule == 'secret_assignment':
         return f'{match.group(1)}{match.group(2)}{REDACTED}'
+    if rule == 'pin':
+        return f'{match.group(1)}{REDACTED}'
+    if rule == 'mac_bare':
+        return f'{match.group(1)}[mac]'
     return f'[{rule}]'
 
 

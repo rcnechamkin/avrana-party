@@ -49,7 +49,13 @@ PLANTED = {
     'mapped_ipv4': 'client ::ffff:10.42.0.57:51234 GET /party/',          # a dual-stack server's access log
     'mapped_ipv4_bracketed': 'peer=[::ffff:10.42.0.57]:443',
     'mac': 'station a4:83:e7:12:34:56 associated',
+    'mac_bare': 'wlan0: STA a483e7123456 roamed',                          # a driver that prints no separators
+    'mac_dotted': 'neighbor a483.e712.3456 learned on wlan0',
     'email': 'owner mail cody.example@example.com',
+    'email_spelled': 'contact cody.example (at) example (dot) com',
+    'email_bracketed': 'contact cody.example [at] example.com',
+    'pin_words': 'Admin PIN 482915 accepted',
+    'passcode_words': 'the passcode is 7391',
     'player_name': 'player "Benjamin" took seat 2',
     'chat': 'chat from seat 2: meet me at the bar later',
 }
@@ -104,8 +110,15 @@ class Redaction(unittest.TestCase):
                     continue                                  # the whole chat line is dropped
                 self.assertEqual(redact.violations_in_text(clean, log=True), [], f'{kind} survived: {clean!r}')
                 for secret in (GAME_KEY, DEVICE_TOKEN, 'hunter2isnotgood', 'Benjamin', '10.42.0.57', '.0.57',
-                               'a4:83:e7:12:34:56'):
+                               'a4:83:e7:12:34:56', 'a483e7123456', 'a483.e712.3456', 'cody.example', '482915', '7391'):
                     self.assertNotIn(secret, clean)
+
+    def test_a_short_commit_a_version_or_a_count_is_not_a_mac_or_a_pin(self):
+        for text in (f'deployed {PARTY[:12]} at 18:00', 'python 3.11.2', 'pinned 12345 packages', 'PIN set by the owner',
+                     'Admin PIN [redacted] accepted'):
+            with self.subTest(text):
+                self.assertEqual(redact.scrub_text(text), text)
+                self.assertEqual(redact.violations_in_text(text, log=True), [])
 
     def test_useful_operational_text_survives(self):
         text = ('2026-10-21T18:00:00Z avranaparty-games.service restarted at 18:00:05 on 10.42.0.1 via 127.0.0.1:8096; '
