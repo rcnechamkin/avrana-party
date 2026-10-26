@@ -103,6 +103,12 @@ class Hostile(unittest.TestCase):
         self.refused(tar_of([('files/a.json', b'x', 'file')]), 'no manifest')
         self.refused(tar_of([('manifest.json', b'{nope', 'file')]), 'not JSON')
 
+    def test_a_second_manifest_is_refused_not_obeyed(self):
+        body = b'x'
+        self.refused(tar_of([('manifest.json', manifest([entry('a.json', body)]), 'file'),
+                             ('manifest.json', manifest([]), 'file'), ('files/a.json', body, 'file')]),
+                     'manifest.json appears twice')
+
 
 if __name__ == '__main__':
     unittest.main()

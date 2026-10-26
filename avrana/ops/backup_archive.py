@@ -10,7 +10,7 @@ ever stored: release files are rebuilt (`R`), device secrets are never copied (`
 behind (`E`), and the owner's Wi-Fi passphrase (`O-secret`) needs the encrypted form, which is not built.
 
 `read` treats the file as hostile and refuses, with nothing returned, on: a member that is not a regular
-file (links, devices, directories), a name with `..`, a leading `/` or odd characters, a member not in the
+file (links, devices, directories), a second manifest, a name with `..`, a leading `/` or odd characters, a member not in the
 manifest or an entry with no member, a wrong size or hash, an unknown or forbidden class, an entry or a
 whole archive over its bound, and a schema it does not know (a backup from a future version).
 """
@@ -91,6 +91,8 @@ def read(data):
         if m.size > max(MAX_ENTRY, 4 * 1024 * 1024):
             raise Refused(f'{m.name!r}: too large')
         if m.name == MANIFEST:
+            if manifest is not None:
+                raise Refused('manifest.json appears twice')
             raw = tar.extractfile(m).read()
             try:
                 manifest = json.loads(raw)
