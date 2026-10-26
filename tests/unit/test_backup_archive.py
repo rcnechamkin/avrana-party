@@ -57,6 +57,8 @@ class RoundTrip(unittest.TestCase):
             ba.build([('O', '/etc/avrana-party/tls/key.pem', b'k')], VERSIONS)
         with self.assertRaises(ba.Refused):
             ba.build([('O', 'a.json', b'1'), ('O', 'a.json', b'2')], VERSIONS)
+        with self.assertRaises(ba.Refused):
+            ba.build([('O', 'a.json\n', b'1')], VERSIONS)
 
 
 class Hostile(unittest.TestCase):

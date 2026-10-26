@@ -23,7 +23,7 @@ import tarfile
 SCHEMA = 'avrana.backup/v1'
 STORED = ('O',)
 KNOWN = ('R', 'O', 'O-secret', 'S', 'E')
-NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}(/[a-z0-9][a-z0-9._-]{0,63}){0,4}$')
+NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}(/[a-z0-9][a-z0-9._-]{0,63}){0,4}\Z')
 MAX_ENTRY = 8 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
 MAX_ENTRIES = 512
