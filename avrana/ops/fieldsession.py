@@ -302,8 +302,9 @@ def _preflight_summary(doc):
         return {'error': f'not an {PREFLIGHT_SCHEMA} document'}
     return {'generated_at': doc.get('generated_at'), 'verdict': doc.get('verdict'), 'overall': doc.get('overall'),
             'blocking': doc.get('blocking'), 'counts': doc.get('counts'),
-            'checks': [{k: c.get(k) for k in ('id', 'status', 'blocking', 'reason')} for c in doc.get('checks', [])
-                       if c.get('status') != 'PASS']}
+            'checks': [{k: c.get(k) for k in ('id', 'status', 'blocking', 'reason')}
+                       for c in (doc.get('checks') if isinstance(doc.get('checks'), list) else [])
+                       if isinstance(c, dict) and c.get('status') != 'PASS']}
 
 
 def start(store, label, probes, now=None, max_bytes=DEFAULT_MAX_BYTES, max_hours=DEFAULT_MAX_HOURS):
@@ -422,16 +423,20 @@ def bundle(store, probes, out_dir, hours=BUNDLE_HOURS, now=None, forbid_terms=()
     if store.active_id():
         raise Refused(f'session {store.active_id()} is recording; stop it and export it instead')
     session = start(store, f'support {float(hours):g}h', probes, now=now)
-    if attach_preflight is not None:
-        snapshot(store, probes, now=now, attach_preflight=attach_preflight)
-    d = store.dir(session['id'])
-    session = _read_session(d)
-    # The window reaches back before the start: stop() takes the journal and power lines from started_at.
-    session['kind'] = 'support'
-    session['window'] = {'since': _iso(now - timedelta(hours=float(hours))), 'until': _iso(now), 'hours': float(hours)}
-    session['started_at'] = session['window']['since']
-    _write_json(d / 'session.json', session)
-    stop(store, probes, now=now)
+    try:
+        if attach_preflight is not None:
+            snapshot(store, probes, now=now, attach_preflight=attach_preflight)
+        d = store.dir(session['id'])
+        session = _read_session(d)
+        # The window reaches back before the start: stop() takes the journal and power lines from started_at.
+        session['kind'] = 'support'
+        session['window'] = {'since': _iso(now - timedelta(hours=float(hours))), 'until': _iso(now), 'hours': float(hours)}
+        session['started_at'] = session['window']['since']
+        _write_json(d / 'session.json', session)
+    finally:
+        # Never leave a bundle's session recording: it would block every later bundle and `start`.
+        if store.active_id() == session['id']:
+            stop(store, probes, now=now)
     return export(store, out_dir, session['id'], forbid_terms)
 
 

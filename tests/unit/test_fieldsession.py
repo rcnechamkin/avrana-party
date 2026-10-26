@@ -530,6 +530,16 @@ class SupportBundle(unittest.TestCase):
         self.assertIn('stop it and export it instead', str(ctx.exception))
         self.assertFalse(self.out.exists())
 
+    def test_a_garbled_preflight_never_leaves_a_session_recording(self):
+        for n, doc in enumerate(({'schema': fs.PREFLIGHT_SCHEMA, 'checks': 'x'},
+                                 {'schema': fs.PREFLIGHT_SCHEMA, 'checks': ['x', None]}, 'not a dict')):
+            fs.bundle(self.store, self.probes, self.out, hours=1, now=T0 + timedelta(minutes=n), attach_preflight=doc)
+            self.assertIsNone(self.store.active_id())
+        with mock.patch.object(fs, 'take_snapshot', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                fs.bundle(self.store, self.probes, self.out, hours=1, now=T0 + timedelta(minutes=9), attach_preflight={})
+        self.assertIsNone(self.store.active_id())
+
     def test_a_forbidden_term_refuses_the_bundle(self):
         self.probes.entries = [entry(T0 - timedelta(minutes=1), 'seat two went quiet: Zelda')]
         with self.assertRaises(fs.Refused):
