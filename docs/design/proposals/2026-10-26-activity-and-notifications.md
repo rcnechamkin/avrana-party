@@ -6,6 +6,7 @@
   - `avrana/party/core.py` (`_commit` derives system lines);
   - `avrana/ops/status.py` (`avrana.status/v0`);
   - the physical-signals proposal (AVR-87, draft #240), the permissions proposal (AVR-62, draft #239) and the continuity proposal (AVR-21, draft #236).
+- **There is no owner page yet.** "The owner page" below means the owner surface proposed for AVR-44 and AVR-74; no owner route or Admin PIN session exists in code today. Until one does, the owner reads these facts over SSH.
 
 ## 1. What exists today
 
@@ -13,7 +14,7 @@
 |---|---|---|
 | **System lines in the Party room** | `messages.Room.system(event, member)`. A **closed list** of seven events (`joined`, `returned`, `left`, `host`, `renamed`, `round_started`, `round_ended`), derived inside `_commit` from what the commit changed, so they can be neither missing nor doubled. No free text, ever. At most one line per 2 s, with the rest counted as `more`. Kept in their own ring of 20. In memory only. | Everyone in the Party sees every line. There is no priority, action or expiry. It lives inside chat. |
 | **View fields** | `location`, `me.host`, `me.leave` (the Leave impact), presence, the session | state, not events: a phone sees what is true now, not what happened |
-| **`avrana.status/v0`** | the appliance's health (summary, services, certificate, recovery) | not shown to guests; the owner reads it on the owner page or by `curl` |
+| **`avrana.status/v0`** | the appliance's health (summary, services, certificate, recovery) | a public read-only document, but no screen shows it; the owner reads it by `curl` or over SSH |
 | **Game → Party** | bridge v1: `result`, `end`, `navigate` to `party`, `ticket` | a game cannot raise any event, and cannot post to chat (AVR-62) |
 
 The room's system lines already embody the most important rule: **platform words come only from Core, from a closed list**. This proposal widens that into an event model without loosening it.
