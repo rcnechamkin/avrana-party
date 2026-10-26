@@ -6,6 +6,7 @@
   - `avrana/ops/preflight.py` and Party Ready (AVR-86, draft #232);
   - the Party continuity proposal (AVR-21, draft #236);
   - the signed-updates proposal (AVR-82, draft #238).
+- **There is no owner page yet.** "The owner page" below means the owner surface proposed for AVR-44 and AVR-74; no owner route or Admin PIN session exists in code today. Until one does, the owner reads these facts over SSH.
 
 ## 1. Principle: one state, derived from facts the box already has
 
@@ -53,7 +54,7 @@ The deploy tool knows when an update is running, and the preflight knows what is
 
 ## 4. Identify
 
-- The owner page, or the owner app later, sends an identify request: a new route; the name `POST /party/api/owner/identify` is only illustrative. It sits behind owner authentication (the web Admin PIN today, owner keys later: AVR-44). The box shows **identify** for 30 s.
+- The owner page, or the owner app later, sends an identify request: a new route; the name `POST /party/api/owner/identify` is only illustrative. It sits behind owner authentication, which does not exist yet: the Admin PIN session that PARTY-PLATFORM.md requires, then owner keys (AVR-44). Until then, identify is a command run over SSH. The box shows **identify** for 30 s.
 - The response contains nothing a guest could use.
 - Guests cannot trigger it: a party of guests making every box flash is a nuisance, and it gives away nothing a guest needs.
 - With several boxes on a table, the owner page lists each by its name, and Identify lights only the chosen one.
