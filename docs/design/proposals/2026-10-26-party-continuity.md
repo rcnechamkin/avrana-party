@@ -128,7 +128,7 @@ A manifest field a game may declare. The Party reads it only once option C exist
   - It adds no personal data at rest.
   - A friend's party survives what usually happens (phones sleeping). A rare restart becomes understandable instead of confusing.
 - **M3 (retail): decide B** after the AVR-33 restart drills on the Pi show how often Core actually restarts in a party.
-  - If restarts mostly come from deploys, the fix is to not deploy during a party (the deploy tool can refuse while a party has members), not persistence.
+  - If restarts mostly come from deploys, the fix is to not deploy during a party, not persistence. `ops/deploy.sh` already refuses while a game session is live ([deploy](../../runbooks/deploy.md), "Before" step 4). It does not refuse while members are gathered at Party Home between rounds.
 - **Defer C** until a game needs it and the session protocol is frozen (AVR-72). Record the `recovery` vocabulary now so games do not invent their own.
 
 ## 7. Owner decisions
@@ -139,7 +139,7 @@ A manifest field a game may declare. The Party reads it only once option C exist
 | D2 | After a restart, wait for the previous host? | no (first back is host); wait 60 s | **wait 60 s** (one device id on disk) |
 | D3 | If B later: resume window | 5 / 15 / 60 min | **15 min**, and only with a trusted clock |
 | D4 | If B later: who confirms a resume | owner page only; owner page or previous host's phone; automatic | **owner page or previous host** |
-| D5 | Should the deploy tool refuse while a party has members? | yes, with `--force`; no | **yes, with `--force`** |
+| D5 | `deploy.sh` already refuses during a live game session. Should it also refuse while members are here between rounds? | yes, with `--force`; no | **yes, with `--force`** |
 | D6 | Adopt the `recovery` vocabulary now, without enforcing it? | yes; later | **yes** |
 
 ## 8. What would be tested, if built
