@@ -46,7 +46,7 @@ So the proposal is small:
 |---|---|---|---|---|
 | status `summary` and reasons | `ok` | `degraded`, a reason that does not stop a party (a restart after failures, an nginx drift, a dirty checkout) | `degraded`, a reason that stops a party (Party Core failed, a unit hit its start limit, a certificate expired, a failed game unit in the live session) | `unknown` |
 | a preflight check | PASS | WARN, or a non-blocking FAIL | a blocking FAIL | UNKNOWN |
-| `pi-health.json` | `ok` | a warning (under-voltage seen, a Wi-Fi driver error) | the firmware mailbox wedged (the 2026-10-06 failure) | stale or missing |
+| `pi-health.json` | `HEALTHY` | `DEGRADED` (for example a Wi-Fi driver error) | `FIRMWARE_MAILBOX_SUSPECT` (the 2026-10-06 failure) or `POWER_THROTTLE_DETECTED` | `UNKNOWN`, or the file is stale or missing |
 
 - **The overall state is the worst item.** `unknown` never rolls up as `healthy`, which is the same rule as AVR-31 and the preflight.
 - **`words` are Party Ready's** (draft #232): one plain sentence, with no unit names.
