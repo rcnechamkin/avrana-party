@@ -14,6 +14,7 @@ import { CATALOG, COOKIE, GAME, GAME_PORT, PARTY, json, readJson, serveStatic, s
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const ROOTS = { vanilla: here('../web/party-x/vanilla/'), svelte: here('../svelte/dist/'), shared: here('../web/party-x/shared/') };
 const REAL = here('../../../web/party/');
+const CRLF = String.fromCharCode(13, 10);
 const GAME_WEB = here('../web/game/'), VENDOR = here('../../../web/party/bridge/');
 
 export function createPartyServer(game) {

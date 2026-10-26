@@ -13,25 +13,25 @@
   },
   "topLevel_backgroundTab": {
     "rafPerSec": 61,
-    "ticksPerSec": 17,
+    "ticksPerSec": 18,
     "missed": 0,
     "visibility": "visible"
   },
   "topLevel_frozen3s": {
-    "rafDuring3sPlus1_5s": 273,
+    "rafDuring3sPlus1_5s": 274,
     "ticksMissedAfterResume": 0,
     "reconnects": 0,
     "events": []
   },
   "embed_occlude": {
-    "rafPerSec": 54,
+    "rafPerSec": 53,
     "ticksPerSec": 18,
     "missed": 0,
     "visibility": "visible"
   },
   "embed_display": {
     "rafPerSec": 0,
-    "ticksPerSec": 17,
+    "ticksPerSec": 16,
     "missed": 0,
     "visibility": "visible"
   },
@@ -43,7 +43,7 @@
   },
   "embed_offscreen": {
     "rafPerSec": 0,
-    "ticksPerSec": 16,
+    "ticksPerSec": 17,
     "missed": 0,
     "visibility": "visible"
   },
@@ -62,7 +62,7 @@
   "R_backToGame": {
     "pageshowPersisted": false,
     "wsOpens": 1,
-    "readyMs": 270
+    "readyMs": 340
   },
   "occlusionDetect": {
     "uncovered": false,

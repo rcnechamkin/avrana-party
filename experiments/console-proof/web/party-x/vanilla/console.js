@@ -84,11 +84,15 @@ $('tabs').addEventListener('click', (e) => {
 });
 
 // ---- the Party -----------------------------------------------------------------------------------------
+// Re-render only when the data changed: a poll that rebuilt the list replaced the button under a
+// finger, and WebKit lost the tap (found by this proof; Svelte's keyed DOM does not have the problem).
+let drawn = '';
+const dataKey = () => JSON.stringify([state.view && { ...state.view, now: 0 }, state.suggestions, state.tab, state.open]);
 async function refresh() {
   const [view, sugg] = await Promise.all([api('/api/view'), api('/api/suggestions')]);
   if (view) { state.view = view; state.offset = view.now - Date.now(); }
   if (sugg) state.suggestions = sugg.suggestions;
-  render();
+  if (dataKey() !== drawn) render();
 }
 async function act(path, body) {
   if (state.busy) return;
@@ -108,7 +112,10 @@ function keepFocus(fn) {
   if (again && !again.disabled) again.focus({ preventScroll: true });
 }
 
-function render() { keepFocus(draw); }
+function render() { drawn = dataKey(); keepFocus(draw); }
+function drawAttention() {          // the countdown ticks every second; only this list is redrawn for it
+  $('attention').replaceChildren(...state.view.attention.map((a) => h('li', { 'data-kind': a.kind, text: attentionText(a, Date.now() + state.offset, state.catalog) })));
+}
 function draw() {
   const member = Boolean(state.view && state.view.me);
   $('layer-button').hidden = !(inLayer && state.vp && !state.open && member);
@@ -117,7 +124,7 @@ function draw() {
   if (!member || !state.open) return;
   const view = state.view, me = view.me;
   $('where').textContent = whereLine(view, state.catalog);
-  $('attention').replaceChildren(...view.attention.map((a) => h('li', { 'data-kind': a.kind, text: attentionText(a, Date.now() + state.offset, state.catalog) })));
+  drawAttention();
   for (const b of $('tabs').children) b.setAttribute('aria-pressed', String(state.tab === b.dataset.tab));
   for (const t of TABS) $(`panel-${t.id}`).hidden = state.tab !== t.id;
   if (state.tab === 'home') {
@@ -152,7 +159,7 @@ async function start() {
   render();
   if (inLayer) post({ type: 'ready' });
   if (!inLayer) { $('back-to-game').focus({ preventScroll: true }); performance.mark('console-ready'); document.body.dataset.ready = '1'; }
-  setInterval(() => { if (document.visibilityState === 'visible') (state.open ? refresh() : api('/api/view').then((v) => { if (v) { state.view = v; render(); } })); }, 2000);
-  setInterval(() => { if (state.open && state.view && state.view.attention.some((a) => a.deadline)) render(); }, 1000);
+  setInterval(() => { if (document.visibilityState === 'visible') (state.open ? refresh() : api('/api/view').then((v) => { if (v) { state.view = v; if (dataKey() !== drawn) render(); } })); }, 2000);
+  setInterval(() => { if (state.open && state.view && state.view.attention.some((a) => a.deadline)) drawAttention(); }, 1000);
 }
 start();

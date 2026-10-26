@@ -149,11 +149,11 @@ test('turn timer while browsing: the server times the turn out exactly as for a 
   expect(mid.turnNo).toBeGreaterThan(start.turnNo);
   expect(mid.log.join(' ')).toContain('timed out');
   await backToGame(p1.page, strategy);
-  await expect.poll(async () => (await probe(p1.page)).turnNo).toBe((await stats(p1.page)).state.turn.turnNo);
+  await expect.poll(async () => (await probe(p1.page)).turnNo === (await stats(p1.page)).state.turn.turnNo, { message: 'the client shows the server turn' }).toBe(true);
   // The client shows the server's deadline (not a timer of its own), on the server's clock.
-  await expect.poll(async () => (await probe(p1.page)).deadline, { message: 'the client holds the server deadline' }).toBe((await stats(p1.page)).state.turn.deadline);
-  const drift = await p1.page.evaluate(() => { const p = (window as any).__probe; return Math.abs(p.shownLeft - Math.round((p.deadline - (Date.now() + p.serverOffset)) / 1000)); });
-  expect(drift, 'the countdown follows the server deadline').toBeLessThanOrEqual(1);
+  await expect.poll(async () => (await probe(p1.page)).deadline === (await stats(p1.page)).state.turn.deadline, { message: 'the client holds the server deadline' }).toBe(true);
+  await expect.poll(() => p1.page.evaluate(() => { const p = (window as any).__probe; return Math.abs(p.shownLeft - Math.round((p.deadline - (Date.now() + p.serverOffset)) / 1000)); }),
+    { message: 'the countdown follows the server deadline', timeout: 2000 }).toBeLessThanOrEqual(1);
   // The locked-phone control: P2's page closed outright; its turn times out all the same.
   await p2.page.close();
   const t0 = (await stats(p1.page)).state.turn.turnNo;
