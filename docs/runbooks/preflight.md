@@ -88,7 +88,8 @@ free on `/`, WARN under 2 GiB or 10 %.
 
 `python3 -m avrana.ops.preflight --horizon-days 7 --party-ready` prints the answer for an owner instead of the
 report. `python3 -m avrana.ops.party_ready preflight-<stamp>.json` does the same for a saved preflight, for
-example one written by `tools/preflight.py --out`. `--json` gives `avrana.party-ready/v0`.
+example one written by `tools/preflight.py --out`. A saved preflight more than 24 hours old, dated in the
+future or without a time is "Not confirmed", never READY. `--json` gives `avrana.party-ready/v0`.
 
 - It groups the checks into six areas: games, phones trusting the box (for the trip horizon), the Party Wi-Fi,
   free space, the box's health and its software.

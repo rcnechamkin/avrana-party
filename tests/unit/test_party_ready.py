@@ -1,4 +1,5 @@
 """Party Ready (avrana.ops.party_ready, AVR-86): the preflight document said for an owner. No Pi, no network."""
+from datetime import datetime, timezone
 import io
 import json
 from pathlib import Path
@@ -141,13 +142,26 @@ class SummaryTests(unittest.TestCase):
         for bad in (None, [], {}, {'schema': 'avrana.status/v0', 'checks': []}, {'schema': preflight.SCHEMA}):
             with self.assertRaises(ValueError):
                 party_ready.summarize(bad)
+        with self.assertRaises(ValueError):
+            party_ready.summarize(dict(doc(healthy()), checks=['tls.x']))
+
+    def test_a_saved_report_must_be_recent(self):
+        at = lambda iso: datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
+        self.assertIs(party_ready.summarize(doc(healthy()), now=at('2026-10-26T12:00:00'))['ready'], True)
+        old = party_ready.summarize(doc(healthy()), now=at('2026-10-28T10:00:00'))
+        self.assertIsNone(old['ready'])
+        self.assertIn('48 hours old', old['headline'])
+        self.assertIsNone(party_ready.summarize(doc(healthy()), now=at('2026-10-26T08:00:00'))['ready'])
+        self.assertIsNone(party_ready.summarize(dict(doc(healthy()), generated_at=None), now=at('2026-10-26T12:00:00'))['ready'])
+        self.assertIs(party_ready.summarize(doc(healthy()))['ready'], True)          # fresh from the preflight
 
 
 class CommandTests(unittest.TestCase):
     def run_main(self, argv, stdin=''):
         out = io.StringIO()
         with mock.patch('sys.stdout', out), mock.patch('sys.stdin', io.StringIO(stdin)), \
-                mock.patch('sys.stderr', io.StringIO()):
+                mock.patch('sys.stderr', io.StringIO()), \
+                mock.patch.object(party_ready, '_now', lambda: datetime(2026, 10, 26, 11, 0, tzinfo=timezone.utc)):
             code = party_ready.main(argv)
         return code, out.getvalue()
 

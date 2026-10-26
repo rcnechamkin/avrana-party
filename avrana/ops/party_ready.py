@@ -9,9 +9,11 @@ into the few things an owner cares about (games, phones trusting the box, Wi-Fi,
 its software), each with one plain sentence and what to do. It runs nothing, opens no connection and
 needs no Internet. The preflight's own rules decide: a blocking FAIL is something to fix, a blocking
 UNKNOWN is something nobody could check, and READY needs neither. The raw check ids stay in `details`
-for whoever helps the owner, and the preflight's list of what only a real phone can show is kept.
+for whoever helps the owner, and the preflight's list of what only a real phone can show is kept. A saved
+preflight read from a file must be recent (MAX_AGE_H) to be READY.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import sys
 
@@ -54,6 +56,19 @@ AREAS = (
 )
 
 ORDER = {'FAIL': 0, 'UNKNOWN': 1, 'WARN': 2, 'PASS': 3}
+MAX_AGE_H = 24                    # a saved preflight older than this (or dated ahead) confirms nothing
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+def _age_hours(generated_at, now):
+    try:
+        then = datetime.fromisoformat(str(generated_at).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return (now - then).total_seconds() / 3600 if then.tzinfo else None
 
 
 def area_of(check_id):
@@ -67,14 +82,17 @@ def _horizon(days):
     return f' for the next {days} days' if days else ''
 
 
-def summarize(doc):
-    """The Party Ready document for one avrana.preflight/v0 document. Raises ValueError for anything else."""
+def summarize(doc, now=None, max_age_h=MAX_AGE_H):
+    """The Party Ready document for one avrana.preflight/v0 document. Raises ValueError for anything else.
+    With `now` (a saved report), one older than `max_age_h`, dated ahead or undated is never READY."""
     if not isinstance(doc, dict) or doc.get('schema') != PREFLIGHT_SCHEMA or not isinstance(doc.get('checks'), list):
         raise ValueError(f'not an {PREFLIGHT_SCHEMA} document')
     waived = set(doc.get('waived') or ())
     horizon = doc.get('horizon_days') or 0
     grouped = {name: [] for name, *_ in AREAS}
     for c in doc['checks']:
+        if not isinstance(c, dict):
+            raise ValueError('a preflight check is not an object')
         grouped[area_of(str(c.get('id', '')))].append(c)
 
     areas, fix, unchecked = [], [], []
@@ -105,9 +123,20 @@ def summarize(doc):
         (fix if state == 'fix' else unchecked if state == 'unchecked' else []).append(entry)
 
     verdict = doc.get('verdict')
+    stale = None
+    if now is not None:
+        age = _age_hours(doc.get('generated_at'), now)
+        if age is None:
+            stale = 'the saved check has no readable time'
+        elif age > max_age_h:
+            stale = f'the saved check is {int(age)} hours old; run it again'
+        elif age < -0.1:
+            stale = 'the saved check is dated in the future; run it again'
     if fix:
         headline = f'{len(fix)} thing{"s" if len(fix) != 1 else ""} to fix before leaving home'
         ready = False
+    elif stale:
+        headline, ready = f'Not confirmed: {stale}', None
     elif unchecked or verdict != 'READY':
         n = len(unchecked)
         headline = f'Not confirmed: {n} thing{"s" if n != 1 else ""} could not be checked' if n else 'Not confirmed'
@@ -160,7 +189,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         text = sys.stdin.read() if args.preflight == '-' else open(args.preflight, encoding='utf-8').read()
-        result = summarize(json.loads(text))
+        result = summarize(json.loads(text), now=_now())
     except (OSError, ValueError) as e:
         print(f'party-ready: {e}', file=sys.stderr)
         return 2
