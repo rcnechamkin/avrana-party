@@ -168,7 +168,8 @@ class Document(unittest.TestCase):
         manifest.write(self.manifest, sample())
         both = {'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}
         doc = self.build(FakeProbes(both, cert_days=None))
-        self.assertEqual(doc['certificate'], {'not_after': None, 'days_left': None, 'status': 'unavailable'})
+        self.assertEqual(doc['certificate'], {'not_after': None, 'days_left': None, 'status': 'unavailable',
+                                              'renewal': 'active'})
         self.assertEqual(doc['summary']['state'], 'unknown')
         self.assertEqual(doc['summary']['reasons'], ['certificate expiry unavailable'])
         # a readable certificate is still ok, an expiring or expired one still degrades
@@ -346,6 +347,20 @@ class Document(unittest.TestCase):
         self.assertEqual(doc['party']['untracked'], 2)
         self.assertIn('party checkout has 2 untracked file(s)', doc['summary']['notes'])
 
+    def test_a_failed_renewal_degrades_and_says_where_to_look(self):
+        """AVR-31: the timer stays active after its oneshot fails, so the job's own state is read.
+        Between runs it is inactive, and an appliance renewing by hand has none: neither is a fault."""
+        manifest.write(self.manifest, sample())
+        both = {'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}
+        doc = self.build(FakeProbes(both, units={'avrana-party-certificate.service': 'failed'}))
+        self.assertEqual(doc['certificate']['renewal'], 'failed')
+        self.assertEqual(doc['summary']['state'], 'degraded')
+        self.assertIn('journalctl -u avrana-party-certificate.service', doc['summary']['reasons'][0])
+        for state in ('inactive', 'not-installed', 'activating'):
+            with self.subTest(state=state):
+                doc = self.build(FakeProbes(both, units={'avrana-party-certificate.service': state}))
+                self.assertEqual(doc['summary']['state'], 'ok')
+
     def test_cache_serves_the_same_document_briefly(self):
         clock = [0.0]
         calls = []
@@ -356,10 +371,10 @@ class Document(unittest.TestCase):
         first = cache.get()
         self.assertFalse(first['cached'])
         self.assertTrue(cache.get()['cached'])
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 3)                     # two units and the renewal job (AVR-31)
         clock[0] = 6
         self.assertFalse(cache.get()['cached'])
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 6)
 
     def test_config_block_overrides_only_known_keys(self):
         cfg = status.load_config({'status': {'manifest': '/x/m.json', 'bogus': 1}})

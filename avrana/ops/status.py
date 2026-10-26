@@ -83,6 +83,11 @@ DEFAULT_CONFIG = {
     # is manual and the certificate's own expiry check is what guards it. Not installed is reported
     # and is not a fault; installed and not running is a fault like any other unit.
     'optional_units': ['avrana-party-certificate.timer'],
+    # The renewal job the timer starts (AVR-31). A oneshot: `inactive` between runs is its normal
+    # state and `not-installed` is the manual-renewal appliance above, so only `failed` is a fault.
+    # The timer stays `active` after a failed run, so without this a renewal that keeps failing is
+    # visible only as the expiry closing in, 21 days out.
+    'renewal_unit': 'avrana-party-certificate.service',
 }
 
 
@@ -422,6 +427,12 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     # never a reason, never ok-by-default on an appliance (whose config keeps the paths).
     certificate = (NOT_APPLICABLE_CERTIFICATE if cfg['certificate'] is None
                    else _certificate(probes.certificate_not_after(cfg['certificate']), now))
+    if cfg['certificate'] is not None and cfg.get('renewal_unit'):
+        renewal = probes.unit_state(cfg['renewal_unit'])
+        certificate = dict(certificate, renewal=renewal)
+        if renewal == 'failed':
+            reasons.append(f'certificate renewal failed: journalctl -u {cfg["renewal_unit"]} '
+                           f'(docs/runbooks/party-https.md)')
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
     elif certificate['status'] == 'unavailable':
