@@ -124,7 +124,8 @@ def summarize(doc):
         'horizon_days': horizon,
         'areas': areas,
         'waived': sorted(waived),
-        'phones_still_to_try': list(doc.get('physically_unverified') or ()),
+        # The preflight prepends its own Wi-Fi gate result to this list; the Wi-Fi area already says it.
+        'phones_still_to_try': [u for u in doc.get('physically_unverified') or () if not str(u).startswith('Wi-Fi qualification:')],
         'offline_note': 'Phones keep no copy that counts: a phone that has never joined, or has cleared its '
                         'browser, still gets every game from the box. Nothing here needed the Internet.',
     }

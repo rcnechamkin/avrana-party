@@ -129,6 +129,14 @@ class SummaryTests(unittest.TestCase):
         self.assertIn('service.avrana-party-core', text)          # still there for support
         self.assertIn('Only a real phone can show these:', text)
 
+    def test_the_wifi_gate_line_is_not_repeated_as_a_phone_test(self):
+        checks = healthy()
+        checks[5] = check('wifi.gate', 'network', UNKNOWN, 'no wifi-lab gate result')
+        r = party_ready.summarize(doc(checks, unverified=('Wi-Fi qualification: the wifi-lab gate did not PASS for this run',
+                                                          'phones staying connected through screen lock')))
+        self.assertEqual(r['phones_still_to_try'], ['phones staying connected through screen lock'])
+        self.assertEqual(area(r, 'wifi')['state'], 'unchecked')
+
     def test_anything_but_a_preflight_document_is_refused(self):
         for bad in (None, [], {}, {'schema': 'avrana.status/v0', 'checks': []}, {'schema': preflight.SCHEMA}):
             with self.assertRaises(ValueError):
