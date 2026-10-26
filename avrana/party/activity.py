@@ -53,7 +53,7 @@ def _fields(fields):
 def _audience(audience):
     if audience in ('party', 'host', 'owner'):
         return audience
-    if isinstance(audience, str) and audience.startswith('member:') and len(audience) > 7:
+    if isinstance(audience, str) and audience.startswith('member:') and audience[7:] not in ('', 'None'):
         return audience
     raise Refused(f'unknown audience {audience!r}')
 
@@ -84,6 +84,8 @@ class Feed:
     def publish_game(self, game_id, templates, template_id, member_id):
         """A game's notice to one member, from a template it declared. Returns the item, or None when
         it was dropped by the rate limit (a game cannot flood a phone)."""
+        if not isinstance(member_id, str) or not member_id:
+            raise Refused(f'{game_id}: a notice needs a member id, not {member_id!r}')
         declared = [t.get('id') for t in (templates or [])[:GAME_TEMPLATES_MAX] if isinstance(t, dict)]
         if template_id not in declared:
             raise Refused(f'{game_id} did not declare the notice {template_id!r}')
@@ -118,7 +120,8 @@ class Feed:
             return bool(viewer.get('host'))
         if audience == 'owner':
             return bool(viewer.get('owner'))
-        return audience == f'member:{viewer.get("member")}'
+        member = viewer.get('member')
+        return isinstance(member, str) and bool(member) and audience == f'member:{member}'
 
     def after(self, party_id, cursor, viewer):
         """This viewer's items above `cursor`, in order, expired ones left out. A cursor from another

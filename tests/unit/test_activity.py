@@ -64,6 +64,14 @@ class Feed(unittest.TestCase):
         self.assertEqual(ids(TV), ['joined'])                                     # a shared screen: Party-wide only
         self.assertEqual(ids({'member': 'member-cleo'}), ['joined'])
 
+    def test_a_viewer_without_a_member_id_never_gets_a_member_item(self):
+        for bad in ('member:', 'member:None'):
+            with self.assertRaises(activity.Refused, msg=bad):
+                self.feed.publish('party', 'role_needed', audience=bad, priority='notice')
+        item = {'audience': 'member:None'}
+        self.assertFalse(activity.Feed.sees(item, {'owner': True}))
+        self.assertFalse(activity.Feed.sees(item, {'member': None}))
+
     def test_cursor_and_another_partys_cursor(self):
         self.feed.publish('party', 'joined')
         second = self.feed.publish('party', 'left')
@@ -99,6 +107,9 @@ class GameNotices(unittest.TestCase):
         self.assertEqual(len(self.feed.after('party-1', 0, BOB)), 1)
         self.assertEqual(self.feed.after('party-1', 0, ADA), [])
         self.assertEqual(self.feed.after('party-1', 0, TV), [])
+        for bad in (None, '', 7):
+            with self.assertRaises(activity.Refused, msg=repr(bad)):
+                self.feed.publish_game('bestguess', TEMPLATES, 'your_turn', bad)
 
     def test_undeclared_notices_and_platform_sources_are_refused(self):
         with self.assertRaises(activity.Refused):
