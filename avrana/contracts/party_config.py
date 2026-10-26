@@ -138,6 +138,7 @@ def check_game_origins(conf):
 
 
 RECOVERY_DEFAULTS = {'close_lost_game': False}      # session_recovery switches (AVR-33): name -> default
+DIAGNOSTICS_DEFAULTS = {'heartbeats': False}        # diagnostics switches (AVR-302): name -> default
 
 
 def check_session_recovery(conf):
@@ -162,6 +163,25 @@ def check_session_recovery(conf):
     return switches, problems, warnings
 
 
+def check_diagnostics(conf):
+    """(switches, problems, warnings) for the config's `diagnostics` block (AVR-302): the same rules
+    as session_recovery (a known switch is a boolean; an unknown one is a warning and is ignored)."""
+    block = conf.get('diagnostics', {})
+    switches = dict(DIAGNOSTICS_DEFAULTS)
+    if not isinstance(block, dict):
+        return switches, ['diagnostics: an object of booleans named ' + ', '.join(DIAGNOSTICS_DEFAULTS)], []
+    problems, warnings = [], []
+    for key in sorted(block, key=str):
+        if key not in DIAGNOSTICS_DEFAULTS:
+            warnings.append(f'diagnostics: unknown key {key!r} ignored (this Party knows '
+                            + ', '.join(DIAGNOSTICS_DEFAULTS) + ')')
+        elif type(block[key]) is not bool:
+            problems.append(f'diagnostics.{key}: true or false, not {block[key]!r}')
+        else:
+            switches[key] = block[key]
+    return switches, problems, warnings
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -179,6 +199,9 @@ def main(argv=None):
             print(f'{path}: {problem}', file=sys.stderr)
         return 1
     _, recovery_problems, warnings = check_session_recovery(conf)
+    _, diagnostics_problems, diagnostics_warnings = check_diagnostics(conf)
+    recovery_problems += diagnostics_problems
+    warnings += diagnostics_warnings
     for warning in warnings:
         print(f'{path}: warning: {warning}', file=sys.stderr)
     problems = check_game_origins(conf) + recovery_problems
