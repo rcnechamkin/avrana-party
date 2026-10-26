@@ -2,6 +2,7 @@
 
     python3 -m avrana.ops.timefloor status            # the time state, read only, as the operator
     sudo python3 -m avrana.ops.timefloor record       # raise the floor to now if NTP is synchronised
+    sudo python3 -m avrana.ops.timefloor reset --yes  # a floor in the future: set it to now (NTP synchronised)
 
 PROTOTYPE for docs/design/proposals/2026-10-26-offline-clock-policy.md (owner decision D2 is open). Nothing
 installs a timer, a boot step or a status field: this is the pure logic and a manual command.
@@ -138,14 +139,41 @@ def record(path=FLOOR_PATH, now=None, synced=None, agreed_twice=False):
     return old, new
 
 
+def reset(path=FLOOR_PATH, now=None, synced=None):
+    """The owner's way back from a floor in the future (a damaged file, or a wrong NTP server trusted
+    earlier): set the floor to now, even backwards, but only while NTP is synchronised, so the new floor
+    is a clock this unit trusts. Returns (old, new), or raises RuntimeError when not synchronised."""
+    now = now or datetime.now(timezone.utc)
+    synced = ntp_synchronised() if synced is None else synced
+    if not synced:
+        raise RuntimeError('NTP is not synchronised: there is no trusted time to reset the floor to')
+    old = read_floor(path)
+    write_floor(path, now)
+    return old, now
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--floor', default=FLOOR_PATH, help=f'the floor file (default {FLOOR_PATH})')
     sub = ap.add_subparsers(dest='command', required=True)
     sub.add_parser('status', help='print the time state as JSON (read only)')
     sub.add_parser('record', help='raise the floor to now if NTP is synchronised (root)')
+    r = sub.add_parser('reset', help='set the floor to now, even backwards, if NTP is synchronised (root)')
+    r.add_argument('--yes', action='store_true', help='confirm: the old floor is replaced')
     a = ap.parse_args(argv)
     now = datetime.now(timezone.utc)
+    if a.command == 'reset':
+        if not a.yes:
+            print(f'timefloor: reset replaces the floor ({_iso(read_floor(a.floor)) if read_floor(a.floor) else "none"}) '
+                  'with now; run again with --yes', file=sys.stderr)
+            return 2
+        try:
+            old, new = reset(a.floor, now)
+        except (RuntimeError, OSError) as e:
+            print(f'timefloor: {e}', file=sys.stderr)
+            return 1
+        print(f'floor reset {_iso(old) if old else "none"} -> {_iso(new)}')
+        return 0
     if a.command == 'record':
         try:
             old, new = record(a.floor, now)

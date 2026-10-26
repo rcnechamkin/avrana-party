@@ -43,6 +43,22 @@ class Floor(unittest.TestCase):
         self.assertEqual(tf.record(self.path, now=NOW - DAY, synced=True), (NOW, NOW))   # a backward clock: kept
         self.assertEqual(tf.read_floor(self.path), NOW)
 
+    def test_reset_is_the_only_way_back_and_needs_a_synchronised_clock(self):
+        future = NOW + 400 * DAY                                            # a damaged file, or a wrong NTP
+        tf.write_floor(self.path, future)
+        self.assertEqual(tf.time_state(NOW, tf.read_floor(self.path), True)['state'], tf.UNKNOWN)
+        self.assertEqual(tf.record(self.path, now=NOW, synced=True), (future, future))   # record cannot lower it
+        with self.assertRaises(RuntimeError):
+            tf.reset(self.path, now=NOW, synced=False)
+        self.assertEqual(tf.read_floor(self.path), future)
+        self.assertEqual(tf.reset(self.path, now=NOW, synced=True), (future, NOW))
+        self.assertEqual(tf.time_state(NOW, tf.read_floor(self.path), True)['state'], tf.SYNCED)
+
+    def test_reset_from_the_command_line_wants_yes(self):
+        tf.write_floor(self.path, NOW + 400 * DAY)
+        self.assertEqual(tf.main(['--floor', str(self.path), 'reset']), 2)
+        self.assertEqual(tf.read_floor(self.path), NOW + 400 * DAY)
+
 
 class State(unittest.TestCase):
     def test_the_three_states(self):
