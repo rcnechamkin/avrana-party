@@ -1403,3 +1403,52 @@ class QuitAndSpectate(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeclaredLifecycleBounds(unittest.TestCase):
+    """AVR-260: a game's contract may state how long it needs to start and to stop. Party Core
+    uses the value inside its own limits, the limit outside them, and today's constants when the
+    contract says nothing."""
+
+    def session(self, **declared):
+        pc, clock = make([dict(BLUFF, **declared)])
+        pc.join('device-a', 'Ana')
+        pc.join('device-b', 'Ben')
+        return pc, clock, pc.launch('device-a', 'bluff', pc.party.version)
+
+    def test_no_declaration_behaves_exactly_as_before(self):
+        _, _, s = self.session()
+        self.assertEqual((s.launch_timeout, s.end_timeout), (core.LAUNCH_TIMEOUT, core.END_TIMEOUT))
+
+    def test_a_declared_launch_bound_is_waited_for_and_no_longer(self):
+        pc, clock, s = self.session(launch_timeout_s=120)
+        clock.advance(core.LAUNCH_TIMEOUT + 1)
+        pc.tick()
+        self.assertEqual(s.state, core.LAUNCHING)              # the global 60 s no longer applies
+        clock.advance(120 - core.LAUNCH_TIMEOUT)
+        pc.tick()
+        self.assertEqual(s.outcome, 'launch_failed')
+
+    def test_a_declared_end_bound_is_waited_for(self):
+        pc, clock, s = self.session(end_timeout_s=30)
+        pc.launch_accepted(s.id)
+        pc.begin_end('device-a', pc.party.version)
+        clock.advance(core.END_TIMEOUT + 1)
+        pc.tick()
+        self.assertEqual(s.state, core.ENDING)
+        clock.advance(30 - core.END_TIMEOUT)
+        pc.tick()
+        self.assertEqual((s.state, s.game_confirmed_end), (core.ENDED, False))
+
+    def test_out_of_range_declarations_are_clamped_to_party_cores_limits(self):
+        for declared, expected in (({'launch_timeout_s': 1}, (core.LAUNCH_BOUNDS[0], core.END_TIMEOUT)),
+                                   ({'launch_timeout_s': 3600}, (core.LAUNCH_BOUNDS[1], core.END_TIMEOUT)),
+                                   ({'end_timeout_s': 0.5}, (core.LAUNCH_TIMEOUT, core.END_BOUNDS[0])),
+                                   ({'end_timeout_s': 999}, (core.LAUNCH_TIMEOUT, core.END_BOUNDS[1]))):
+            with self.subTest(declared=declared):
+                _, _, s = self.session(**declared)
+                self.assertEqual((s.launch_timeout, s.end_timeout), expected)
+
+    def test_the_end_limit_keeps_the_links_margin(self):
+        from avrana.party import sessions
+        self.assertGreater(core.END_BOUNDS[0], sessions.END_LINK_MARGIN)

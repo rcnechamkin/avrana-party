@@ -11,6 +11,8 @@ them. Now there is one source per field:
     min_players, max_players   contract `players.min` / `players.max`
     late_join                  contract `late_join`
     pregame                    contract `extensions["net.avrana.party"].pregame` (default false)
+    launch_timeout_s,          contract `extensions["net.avrana.party"]` (AVR-260; optional, seconds;
+    end_timeout_s              Party Core clamps them, core.LAUNCH_BOUNDS / END_BOUNDS)
 
 The Party Core config keeps only what the appliance owns: where the game server is (`url`), its
 key file and the link `timeout`. A config that still repeats a derived field is accepted only when
@@ -28,7 +30,8 @@ import sys
 from avrana import CONTRACTS_DIR
 
 EXTENSION = 'net.avrana.party'
-EXTENSION_KEYS = {'pregame'}
+EXTENSION_KEYS = {'pregame', 'launch_timeout_s', 'end_timeout_s'}
+BOUND_KEYS = ('launch_timeout_s', 'end_timeout_s')
 DERIVED = ('min_players', 'max_players', 'late_join', 'pregame')
 APPLIANCE_KEYS = {'url', 'socket', 'key_file', 'timeout'}     # where the game is; never facts about it
 
@@ -51,6 +54,10 @@ def party_extension(contract):
                 for key in sorted(set(ext) - EXTENSION_KEYS)]
     if 'pregame' in ext and type(ext['pregame']) is not bool:
         problems.append(f'{cid}: extensions[{EXTENSION!r}].pregame: true or false')
+    for key in BOUND_KEYS:
+        value = ext.get(key)
+        if key in ext and (type(value) not in (int, float) or not 0 < value <= 3600):
+            problems.append(f'{cid}: extensions[{EXTENSION!r}].{key}: a number of seconds above 0 (at most 3600)')
     if problems:
         raise ConfigError(problems)
     return ext
@@ -58,9 +65,11 @@ def party_extension(contract):
 
 def metadata(contract):
     """What Party Core needs to know about one game, from its (normalised) contract."""
+    ext = party_extension(contract)
     return {'min_players': contract['players']['min'], 'max_players': contract['players']['max'],
             'late_join': contract['late_join'],
-            'pregame': bool(party_extension(contract).get('pregame', False))}
+            'pregame': bool(ext.get('pregame', False)),
+            **{key: ext[key] for key in BOUND_KEYS if key in ext}}
 
 
 def load_contracts(directory=None, packages=None):

@@ -358,6 +358,14 @@ def validate(doc, vocab=None):
     for key in extensions:
         if not EXTENSION_KEY.match(key):
             problems.append(f'extensions: {key!r} is not a reverse-DNS name like "net.avrana.example"')
+    if 'net.avrana.party' in extensions:
+        # The Party's own extension (pregame, lifecycle bounds) fails validation here too, so a bad
+        # value is caught wherever contracts are checked, in both repositories (AVR-260).
+        from avrana.contracts import party_config
+        try:
+            party_config.party_extension({'id': cid, 'extensions': extensions})
+        except party_config.ConfigError as e:
+            problems += [p.split(': ', 1)[1] if p.startswith(f'{cid}: ') else p for p in e.problems]
 
     if problems:
         raise ContractError(problems)
