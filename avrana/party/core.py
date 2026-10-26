@@ -79,6 +79,12 @@ EXIT_INTENT = 60.0         # s a guest's exit request moves their pages to Party
 TABLE_ABANDON = 5 * 60.0   # s after the last player turned away before an active round is abandoned (AVR-475)
 GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
 GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
+# PROTOTYPE (AVR-673 phase 1, avrana.party.state_probe): a game that declared the state probe and
+# answers "I do not hold this session" this many times over at least NOT_HOLDS_SPAN s, or gives no
+# usable answer STATE_SILENT_FAILS times over at least STATE_SILENT_SPAN s, is flagged as not
+# answering. A flag only: nothing closes the round. Any answer that holds clears it.
+STATE_NOT_HOLDS_FAILS, STATE_NOT_HOLDS_SPAN = 2, 3.0
+STATE_SILENT_FAILS, STATE_SILENT_SPAN = 3, 15.0
 NAME_MAX = 16
 RESERVED_NAMES = ('system', 'admin', 'host', 'avrana', 'moderator')
 AVATAR = re.compile(r'^gaze-\d\d$')     # a bundled DiceBear Gaze avatar id (web/party/avatars/)
@@ -179,6 +185,9 @@ class GameSession:
         self.game_confirmed_end = None  # True/False once an end-for-everyone was attempted
         self.replaced = None            # the session a host switch ended for this one (AVR-128)
         self.pregame = bool(game.get('pregame'))   # opened in setup (AVR-129)
+        self.state_probe = bool(game.get('state_probe'))   # the game answers the AVR-673 probe
+        self.game_answering = None if not self.state_probe else True
+        self.state_misses = {}          # 'not_holds' | 'silent' -> times of misses since the last success
         self.min_players = game.get('min_players', 1)
         self.max_players = game['max_players']
         self.choices = {}               # member_id -> 'player' | 'spectator' (setup only)
@@ -876,6 +885,31 @@ class PartyCore:
             record['data_schema'], record['data'] = checked['data_schema'], checked['data']
         s.result = record
 
+    def state_answer(self, session_id, outcome, at=None):
+        """PROTOTYPE (AVR-673 phase 1): count one state-probe outcome (state_probe.HOLDS, NOT_HOLDS,
+        SILENT or IGNORED) for the active session. Returns True when the flag changed. Never closes
+        a round: a game flagged as not answering stays ACTIVE, and the Host's End is the recovery."""
+        self._timed()
+        s = self.party.session
+        if s is None or s.id != session_id or s.state != ACTIVE or not s.state_probe or outcome == 'ignored':
+            return False
+        now = self.clock() if at is None else at
+        before = s.game_answering
+        if outcome == 'holds':
+            s.state_misses = {}
+            s.game_answering = True
+        else:
+            fails, span = ((STATE_NOT_HOLDS_FAILS, STATE_NOT_HOLDS_SPAN) if outcome == 'not_holds'
+                           else (STATE_SILENT_FAILS, STATE_SILENT_SPAN))
+            times = s.state_misses.setdefault(outcome, [])
+            times.append(now)
+            if len(times) >= fails and times[-1] - times[0] >= span:
+                s.game_answering = False
+        if s.game_answering != before:
+            self._commit()
+            return True
+        return False
+
     def game_unreachable(self, session_id, at=None, window=GAME_LOST_SPAN):
         """A check found the active session's game server not answering. One miss means nothing (a
         restart, a busy Pi). GAME_LOST_FAILS misses inside a sliding window of GAME_LOST_SPAN
@@ -1036,6 +1070,8 @@ class PartyCore:
                        'my_role': mine.role if mine else None}
             if self.close_lost_game:         # an additive key, present only with the switch on (AVR-33)
                 session['reason'] = s.reason
+            if s.state_probe:                # additive, only for a game that declared the probe (AVR-673)
+                session['game_answering'] = s.game_answering
             # Party Home's minimal platform result (AVR-238). The authenticated record and
             # game-owned data stay private; the closed bridge projection does not forward this.
             if me and not me.left and s.result is not None:

@@ -28,7 +28,7 @@ import sys
 from avrana import CONTRACTS_DIR
 
 EXTENSION = 'net.avrana.party'
-EXTENSION_KEYS = {'pregame'}
+EXTENSION_KEYS = {'pregame', 'state'}      # state: answers the AVR-673 probe (PROTOTYPE)
 DERIVED = ('min_players', 'max_players', 'late_join', 'pregame')
 APPLIANCE_KEYS = {'url', 'socket', 'key_file', 'timeout'}     # where the game is; never facts about it
 
@@ -51,6 +51,8 @@ def party_extension(contract):
                 for key in sorted(set(ext) - EXTENSION_KEYS)]
     if 'pregame' in ext and type(ext['pregame']) is not bool:
         problems.append(f'{cid}: extensions[{EXTENSION!r}].pregame: true or false')
+    if 'state' in ext and type(ext['state']) is not bool:
+        problems.append(f'{cid}: extensions[{EXTENSION!r}].state: true or false')
     if problems:
         raise ConfigError(problems)
     return ext
@@ -60,7 +62,8 @@ def metadata(contract):
     """What Party Core needs to know about one game, from its (normalised) contract."""
     return {'min_players': contract['players']['min'], 'max_players': contract['players']['max'],
             'late_join': contract['late_join'],
-            'pregame': bool(party_extension(contract).get('pregame', False))}
+            'pregame': bool(party_extension(contract).get('pregame', False)),
+            **({'state_probe': True} if party_extension(contract).get('state') else {})}
 
 
 def load_contracts(directory=None, packages=None):
