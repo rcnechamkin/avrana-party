@@ -121,7 +121,7 @@ the ADR 0011 one-activity amendment, held results, and Host-only End.
 | #248 browse during setup (AVR-702), `a193503` | draft, docs | needs change | The client-only browse and pinned selection row fit D5/D7. Its "a browsing member who has not chosen still blocks Start" contradicts D4 and goes. |
 | #225 Home during a round (AVR-703), `d0637f8`, `proposals.home_in_round` default off | draft, code | needs change; candidate restore prototype | It moves only this device (good) and has Back to game without End on Home (good). But `visit_home`/`back_to_game` call `_commit()`, so they bump the Party `version` for everyone (the Host's `if_version` goes stale, the #208 pattern; violates D2), and keep personal viewport in authoritative Core state. It conflicts with ADR 0011 d3/d5 by design. Cross-origin, Linux and phones not run. |
 | #249 motion tiers (AVR-704), `d4c8ed2` | draft, docs | reusable, independent | GAME-UX Rule 11.5 only |
-| #241 activity and notifications (AVR-84), `b8d55e7` | draft, docs | reusable | The typed, closed, server-filtered events are the "typed attention/notices" of D5/D9. Game notices via bridge v2 match D6. |
+| #241 activity and notifications (AVR-84), `b8d55e7` | draft, docs | reusable | The typed, closed, server-filtered events are the "typed attention/notices" of D5/D9. Game notices must go game server → Party Core under R (draft ADR D5 rule 5), not through bridge v2 as #241 proposes. |
 | #252 activity feed prototype, `920b3c8` | draft, code, uncalled | reusable | pure `Feed`; wire in at stage S6 |
 | #236 continuity (AVR-21), `bbfcee5` | draft, docs | dependency, not this ADR | Belongs to ADR 0019. D8 restart recovery waits on it. |
 | #220 lifecycle bounds (AVR-260), `551584a` | draft, code | reusable, orthogonal | launch and end timeouts only |
@@ -137,7 +137,7 @@ the ADR 0011 one-activity amendment, held results, and Host-only End.
 
 ## 4. Mounted versus restore
 
-See the draft ADR §4 for the criteria. Main has neither as a browsing feature: every reload or reconnect already uses
+See the draft ADR §4 for the criteria and §4.1 for the AVR-762 evidence ([#258](https://github.com/rcnechamkin/avrana-party/pull/258): R recommended; mounted-for-browsing was coverable; embedding the game had engine-dependent rAF and needed a CSP change). Main has neither as a browsing feature: every reload or reconnect already uses
 restore (a fresh ticket, the same participant), and #225 is a restore prototype.
 
 ## 5. Security regression list (a new console or bridge can break these)
@@ -204,11 +204,11 @@ Each is pass or fail with recorded revisions. Unrun hardware is reported as NOT 
 | S0 | none | none | none | owner accepts ADR 0018 (§6 amendments applied) |
 | S1 universal setup | `_open_session` → `setup` for every game; select-kind setup from #247 | the K1 briefing for every game | none (launch roster unchanged); update the drivers that assume one-tap launch | `universal_setup` off; paired Games driver PR |
 | S2 default intent and fill | `setup_status` no longer blocks on unanswered; claims, Host reassign, fill, overflow by `spectators`; late admission honours `spectators` | Watch / Not playing as opt-out; claim and reassign UI | honour "not playing" (no ticket) for `spectators: "none"` | `seat_intent` off; contract and vector update |
-| S3 browse during setup | none | #248 adapted (no blocking); D7 indicator | none | client flag |
-| S4 Home during a round (restore) | per-device browse marker that does **not** bump `version` (or none: a client-only viewport) | Back to Game, indicator, `destination()` no longer forces browsing guests | none if the bridge `navigate` semantics are unchanged; else bridge v2 | `home_in_round` off (from #225, reworked) |
-| S5 typed notices | #252 feed wired; party, member and host events | notices UI | game notices: bridge v2 and AVR-62 permission | `activity` off; paired PRs |
+| S3 browse during setup | none | #248 adapted (no blocking); the briefing becomes a dismissible sheet (`app.js:1183` `show('scene')`); D7 indicator | none | client flag |
+| S4 Home during a round (restore, R) | none (client-held override; no version bump; #225's Core verbs unnecessary) | override persisted in sessionStorage at the `app.js:1168-1170` call sites, `destination()` unchanged; Back to Game = `goToRound`/`addressOf`; ticket from a slimmed `bridge.html` (drop the `party-follow.js` import, `bridge.js:30`); trusted verbs top-level only | none for shim games if the layer → bridge Party-internal signal plus v1 `navigate {to:'party'}` works on iOS, else a versioned layer word (paired PR); games resend full seat state on `hello` | `home_in_round` off. Tests: real-Core Host End, switch, succession and stale `if_version` during a browse. Phone criteria: iOS audio re-unlock, wake-lock re-request (`keep-awake.js`), bfcache restore reconnects with a fresh ticket, Safari background socket drop. |
+| S5 typed notices | #252 feed wired; party, member and host events; a new internal game → Core route for typed game events (kind, game, participant, server-clock deadline), authenticated like `ended` | notices UI in the Party view | send typed events server to server (paired protocol change); never through the bridge | `activity` off; paired PRs |
 | S6 suggestions | nominations and approvals, memory-only | suggestions UI | none | `suggestions` off; restart recovery only after ADR 0019 |
-| S7 mounted viewport (only if AVR-762 chooses it) | none | Party-origin console framing the game origin | `frame-ancestors`, frame-safe clients | owner-approved live CSP change; per-game flag, restore fallback |
+| S7 mounted viewport: **not planned** (AVR-762 #258) | none | only today's layer for the indicator, the way to the Party, people and chat (no trusted verbs); no Party page framing the game | none | out of scope unless the owner overrides #258 |
 | S8 default on | none | flip the flags after Tier 3 phone proof | none | owner gate per flag |
 
 Every stage keeps the previous behaviour with its flag off, and changes no deployed Pi state without the owner.

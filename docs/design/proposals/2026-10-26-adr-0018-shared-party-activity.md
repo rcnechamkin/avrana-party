@@ -51,6 +51,10 @@ Browsing never moves, pauses, cancels or advances the shared activity, and never
 personal viewport change MUST NOT advance the Party `version` that host actions compare (`if_version`). Otherwise one
 guest's browsing makes the Host's next tap stale, the race behind #208/#218.
 
+The same goes for D4's member intent toggles (Play, Watch, Ready). Host lifecycle verbs should compare a lifecycle
+version that member intent does not advance, and Core recomputes the fill at apply time. Claims and Host reassignment
+still race under receipt order and stay versioned against each other. The exact split is a design item for stage S2.
+
 **D3. Universal setup.** Every selected game enters a Party-owned setup before the Host's Start, including games
 started directly today (no pregame). There is one lifecycle: **Select → Party Setup → Host Start → automatic entry**.
 After Start there is no second lobby, join code or identity pick (ADR 0010 decision 5 / GAME-UX Rule 4.6 kept).
@@ -98,6 +102,40 @@ Party origin. It is not a full-screen trap: members may browse during it (D5).
   server is authoritative for everything a phone missed while away.
 - **What the Party owns** in this mode: the typed attention and notices ("your turn", "round over", "the Host started")
   and the floating trusted controls. How the game viewport is kept while browsing is the open decision in §4.
+- **If R is chosen (§4.1),** these rules apply:
+  1. **Browsing is client-held.** A phone-held browse override (e.g. `sessionStorage`, keyed by the Party move,
+     `moveKey`) is applied at the call sites on Party Home (`app.js` `onPartyView`, around `app.js:1168-1170`). Same-origin
+     game pages, Limited Mode included, apply it too wherever they would otherwise re-route a browsing phone.
+     `destination()` itself stays the pure follower rule: it drives the bridge's `navigate` and every follower redirect
+     (`party-mode.js:110-124`, `bridge.js:104-106`, `party-follow.js:206-223`). No per-device viewport is stored in Core
+     state that bumps `version`, so #225's `visit_home`/`back_to_game` Core verbs are unnecessary.
+  2. **Leaving the game uses only existing words, never a URL.** The preferred path, which needs no Games change for shim
+     games:
+     - the drawer in the layer frame signals the bridge frame through a Party-origin-internal channel (both are
+       Party-origin frames in the same page);
+     - the bridge pushes its existing v1 `navigate {to:'party'}`;
+     - the shim goes to its configured `partyOrigin + '/party/'` (`shim.js:36,89-90`).
+
+     That channel must be shown to work on iOS Safari (storage and channel partitioning), and must be unreachable from
+     the game page. Fallbacks are a versioned layer word, or a Core per-device marker that leaves `version` alone. Games
+     with no layer (today Tanks, Checkers) have no way to Party Home but the browser's Back. That is an open gap: either
+     the layer opt-in widens, or a guest on such a game cannot browse.
+  3. **Back to Game** is a plain navigation to the game entry that the Party's own `location` names (today's
+     `goToRound`/`addressOf`, `app.js:1199-1213`). It is offered
+     only while `location.at` is `game` or `results` for the same session. After End, a switch or a new session it
+     disappears or names the new round.
+  4. **The returning page** gets a fresh single-use ticket from the small `bridge.html`, never from the console or
+     layer frame, which keeps it off the larger page on the critical path. Make `bridge.js` smaller: it imports
+     `party-follow.js` only for `profileIdentity` (`bridge.js:30`). The game resends the full seat state on
+     `hello`, with the private state only to its own seat, and only the policy-allowed view to anyone else.
+  5. **Typed notices** `your_turn`, `host_started` and `round_over` carry deadlines on the server clock. The game
+     supplies no text. Under R no game page is loaded while a member browses, so a game's notice travels **game server
+     → Party Core**, server to server (beside the session protocol's `ended`). It is a typed event (kind, game, the
+     member's participant, server-clock deadline) that Party Core maps to the member and delivers in the Party view.
+     It never goes through the bridge.
+  6. **Phone obligations on return:** audio re-unlock, a renewed wake-lock request (`keep-awake.js`), a bfcache
+     restore treated as a reconnect with a fresh ticket, and Safari's dropped background socket recovered by the same
+     path.
 
 **D6. Origin and bridge boundaries unchanged.**
 
@@ -110,8 +148,20 @@ Party origin. It is not a full-screen trap: members may browse during it (D5).
   - the bound session;
   - the member's role at the moment of the verb (re-checked by Party Core);
   - the exact recipient origin (never `"*"` for anything that carries data).
-- **Versioned changes.** A new verb (Back to Game, notices, suggestions) is a versioned bridge change (`avrana.party-bridge/v2`
+- **Versioned changes.** R itself needs no new bridge verb: it uses v1 `navigate` and v1 `ticket`, plus the game's
+  obligation to resend the full seat state on `hello`. Any new verb is a versioned bridge change (`avrana.party-bridge/v2`
   or an additive, negotiated v1 extension), with contract vectors in both repositories.
+- **Trusted verbs stay top-level (recommended).** Host verbs, Leave confirmation and suggestion approvals are only ever
+  confirmed on top-level Party pages. A mounted frame over a game page is coverable (#258 test 10; IntersectionObserver
+  v2 cannot detect a cover), so it carries only the indicator, the way to the Party, people and chat.
+
+  This narrows the owner's accepted D3 "coverable for first-party games", which today lets the Host confirm End and Party
+  Home inside the frame over a game origin (`layer.js:126-139`). The narrowing is an owner decision, listed in §6.
+- **Tickets stay as they are today:**
+  - bound to the session and an opaque per-session participant;
+  - refused for another game or during setup;
+  - `{game, origin}` checked against the registered game origins;
+  - dead at End, switch or lobby.
 - **Required negative tests** before any rollout: cross-role secrecy, click interception and covering of trusted
   controls, and accessibility (focus and announcements across the frame boundary). The reconciliation §5 lists them.
 
@@ -194,6 +244,44 @@ evidence, and the owner approves.**
    documented, and no correctness depends on frame execution (D5).
 5. **Reversible.** Mounted ships behind a flag, with restore as the automatic fallback per game and per phone.
 
+### 4.1 Evidence from AVR-762 and the recommended option (still the owner's decision)
+
+The proof is [draft PR #258](https://github.com/rcnechamkin/avrana-party/pull/258) (`e240e35`,
+`experiments/console-proof/REPORT.md`). It ran fixture servers on loopback, with Chromium, and with WebKit on Windows.
+No phone, Pi or real game was involved; those remain an owner hardware gate and are NOT RUN.
+
+**What it found:**
+
+- **Restore (R) met criteria 1, 3, 6 and 10 on fixtures.** Back to Game returned the same participant and role with a
+  fresh ticket, and the old ticket was refused as `replayed`. The server timer had the same outcome as for a locked
+  phone. There was no private frame for a spectator, before or after browsing. The R round trip took 230–650 ms on
+  loopback.
+- **Mounted for browsing failed the cover test.** A transparent game element over the drawer took the Back to Game tap.
+  It also keeps the console resident in the game's page.
+- **A Party page embedding the game** needed a new game-origin `frame-ancestors`, could not usefully sandbox the game
+  frame, and showed engine-dependent rAF: a hidden iframe got 0 fps on Chromium and 61 fps on WebKit.
+
+**Recommended (not decided):**
+
+- Use **R for browsing**.
+- Keep today's mounted Party layer **only for surfaces with no trusted verbs** (people, chat, notices).
+- Put Host actions, Leave confirmation and suggestion approvals only on top-level Party pages.
+
+The console technology question is separate (vanilla JS with `@ts-check` and a keyed-list helper is recommended) and
+does not affect this ADR.
+
+**Cross-reviews (#258 by A, #257 by B) found three things:**
+
+- **Leaving the game.** The layer protocol has no `navigate`, and the bridge's `navigate` follows Core's view. B showed
+  a path with no Games change: a Party-internal signal from the layer frame to the bridge frame, then v1 `navigate`
+  (D5 rule 2). It is unproven on iOS. The fallbacks are a versioned layer word or a Core marker that does not bump
+  `version`.
+- **Game notices under R** must go game server → Party Core (D5 rule 5), not through bridge v2.
+- **The fixture's ticket shortcuts must not be copied.** Its tickets have no session binding, use member ids, carry no
+  origin check, and can be minted for any game.
+
+Both are carried into D5/D6 and §6.
+
 ## 5. Consequences (if accepted)
 
 **Party Core (Python):**
@@ -255,9 +343,15 @@ been changed.
 - Keep decisions 2, 6 and 7 and every amendment's Leave, guest-exit and succession rules.
 - Remove the 2026-10-18 sentence "A guest on such a page has no way to Party Home during the round": D5 gives one.
 
-**ADR 0013:** no change to the decision. Add a note: Back to Game, notices and suggestions arrive as a versioned bridge
-change. If AVR-762 chooses mounted, a Party-origin page framing the game origin needs its own owner-approved CSP and
-sandbox amendment to the D2 seam ("the only seam").
+**ADR 0013:** no change to the decision. Add a note: R uses only bridge v1 (`navigate`, `ticket`); game notices go
+server to server (game → Party Core), never through the bridge.
+
+- **If the Party-internal leave signal fails on iOS,** `avrana.party-layer/v1` gains one fixed-word `navigate` instead.
+  That is a versioned layer change: the shared `contracts/party-games.v0.json` and Games `provider/avrana-contract.json`
+  both pin the layer digest, so it needs a paired PR.
+- **Narrowing D3:** the 2026-10-16 layer amendment and `layer.js` `actions()` lose End and Party Home over a game origin.
+  The Host confirms them on top-level Party pages. A Party-origin page framing the game origin (the rejected M-embed in #258) would need its own owner-approved CSP
+and sandbox amendment to the D2 seam ("the only seam").
 
 **ADR 0014:** no change. Its decision 10 (Developer Mode separate) and the LAN Games retirement stand; D1 restates the
 one-activity rule.
@@ -303,7 +397,7 @@ assignment") and the PARTY-LIFECYCLE "Still open" list.
 - **ADR 0019 (AVR-21/AVR-763): durable continuity.** D8's "recoverable across restart" and any restore of the selected game
   or setup after a Core restart depend on it. Until it exists, the Party is memory-only (`core.py` docstring;
   [#236](https://github.com/rcnechamkin/avrana-party/pull/236) option A).
-- **AVR-762:** mounted versus restore (§4); whether the console stays vanilla JS or moves to Svelte. That choice is
+- **AVR-762:** mounted versus restore (§4; evidence in §4.1 and #258, R recommended, owner to decide); whether the console stays vanilla JS or moves to Svelte. That choice is
   orthogonal to this ADR.
 - **Not decided here:**
   - the exact wording of Watch and Not playing;
