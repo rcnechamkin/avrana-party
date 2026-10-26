@@ -6,6 +6,7 @@
     python3 -m avrana.ops.preflight --horizon-days 10     # the certificate must outlast a trip
     python3 -m avrana.ops.preflight --local http://127.0.0.1:8180   # dev server; Pi-only checks are UNKNOWN
     python tools/preflight.py --ssh party                 # from the laptop: the same, plus its wifi-lab result
+    python3 -m avrana.ops.preflight --horizon-days 7 --party-ready   # the plain answer for an owner (AVR-86)
 
 One command over the tooling that already exists; it re-implements none of it:
 
@@ -939,6 +940,8 @@ def newest_gate(results_dir):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--json', action='store_true', help='print the JSON document instead of the report')
+    ap.add_argument('--party-ready', action='store_true',
+                    help='print the plain Party Ready answer for an owner (avrana.ops.party_ready) instead of the report')
     ap.add_argument('--out', help='also write preflight-<stamp>.json and .md into this directory')
     ap.add_argument('--wifi-gate', metavar='PATH', help='a wifi-lab gate.json, its results directory, or - for stdin')
     ap.add_argument('--wifi-max-age-h', type=float, default=WIFI_GATE_MAX_AGE_H, help='older gate results are UNKNOWN')
@@ -971,6 +974,11 @@ def main(argv=None):
         stamp = doc['generated_at'].replace(':', '').replace('-', '')
         (out / f'preflight-{stamp}.json').write_text(json.dumps(doc, indent=2, default=str) + '\n', encoding='utf-8')
         (out / f'preflight-{stamp}.md').write_text(render_markdown(doc), encoding='utf-8')
+    if args.party_ready:
+        from avrana.ops import party_ready
+        ready = party_ready.summarize(json.loads(json.dumps(doc, default=str)))
+        sys.stdout.write(json.dumps(ready, indent=2) + '\n' if args.json else party_ready.render_text(ready))
+        return party_ready.EXIT[ready['ready']]
     sys.stdout.write(json.dumps(doc, indent=2, default=str) + '\n' if args.json else render_text(doc))
     return EXIT[doc['verdict']]
 
