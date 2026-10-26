@@ -69,7 +69,7 @@ It only lacks a mode for "something went wrong and nobody pressed `start`". So:
 python3 -m avrana.ops.fieldsession bundle --out ~/ [--hours 6] [--forbid-terms names.txt]
 ```
 
-- **The same writer and validator, a different window.** It records one snapshot (status, Pi health, a fresh preflight and the health document) and takes the journal and throttle excerpts for the last `--hours` (default 6, at most 24). It writes `avrana-support-<stamp>.tar.gz` with `kind: "support"` in `manifest.json`.
+- **The same writer and validator, a different window.** It records one snapshot (status, Pi health, and a preflight if attached) and takes the journal and throttle excerpts for the last `--hours` (default 6, at most 24). It writes `avrana-field-<id>-support-<N>h.tar.gz`, whose `session.json` says `"kind": "support"` and records the window. (Prototype: draft PR on `claude/avr-74-support-bundle`.)
 - **The same exclusions, by construction:**
   - no keys, tokens, cookies, `devices.json`, member or device ids, addresses, chat or names;
   - NetworkManager and dnsmasq are not collected;

@@ -473,5 +473,75 @@ class PoisonedFixture(unittest.TestCase):
             self.assertNotIn(needle, text)
 
 
+
+class SupportBundle(unittest.TestCase):
+    """`bundle` (AVR-74): a field package of the last hours without a session, through the same rules."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / 'sessions'
+        self.out = Path(self.tmp.name) / 'out'
+        self.store = fs.Store(self.root)
+        self.probes = FakeProbes()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_the_window_reaches_back_and_the_package_validates(self):
+        self.probes.entries = [entry(T0 - timedelta(hours=7), 'too old to be in the window', priority=3),
+                               entry(T0 - timedelta(hours=5), 'unit restarted after a failure', priority=3),
+                               entry(T0 - timedelta(minutes=5), 'game provider answered slowly', priority=4)]
+        out, digest, count, size = fs.bundle(self.store, self.probes, self.out, hours=6, now=T0)
+        self.assertTrue(out.name.startswith('avrana-field-') and out.name.endswith('-support-6h.tar.gz'), out.name)
+        members, problems = fs.validate(out)
+        self.assertEqual(problems, [])
+        session = json.loads(members['session.json'])
+        self.assertEqual(session['kind'], 'support')
+        self.assertEqual(session['window'], {'since': '2026-10-21T13:00:00Z', 'until': '2026-10-21T19:00:00Z', 'hours': 6.0})
+        journal = members['journal.jsonl'].decode()
+        self.assertIn('unit restarted after a failure', journal)
+        self.assertIn('answered slowly', journal)
+        self.assertNotIn('too old', journal)
+        self.assertIsNone(self.store.active_id())               # nothing is left recording
+
+    def test_private_data_in_the_journal_never_reaches_the_bundle(self):
+        self.probes.entries = [entry(T0 - timedelta(minutes=10), text) for text in PLANTED.values()]
+        out, *_ = fs.bundle(self.store, self.probes, self.out, hours=1, now=T0)
+        members, problems = fs.validate(out)
+        self.assertEqual(problems, [])
+        blob = b''.join(members.values()).decode('utf-8', 'replace')
+        for secret in (GAME_KEY, DEVICE_TOKEN, '10.42.0.57', 'a4:83:e7:12:34:56', 'Benjamin', 'meet me at the bar'):
+            self.assertNotIn(secret, blob)
+
+    def test_the_same_window_gives_the_same_bytes(self):
+        self.probes.entries = [entry(T0 - timedelta(hours=1), 'one line', priority=4)]
+        _, first, *_ = fs.bundle(self.store, self.probes, self.out / 'a', hours=2, now=T0)
+        shutil_root = Path(self.tmp.name) / 'sessions2'
+        _, second, *_ = fs.bundle(fs.Store(shutil_root), self.probes, self.out / 'b', hours=2, now=T0)
+        self.assertEqual(first, second)
+
+    def test_refusals(self):
+        for hours in (0, -1, 24.5, 100):
+            with self.assertRaises(fs.Refused, msg=hours):
+                fs.bundle(self.store, self.probes, self.out, hours=hours, now=T0)
+        fs.start(self.store, 'a real night', self.probes, now=T0 - timedelta(minutes=30))
+        with self.assertRaises(fs.Refused) as ctx:
+            fs.bundle(self.store, self.probes, self.out, hours=1, now=T0)
+        self.assertIn('stop it and export it instead', str(ctx.exception))
+        self.assertFalse(self.out.exists())
+
+    def test_a_forbidden_term_refuses_the_bundle(self):
+        self.probes.entries = [entry(T0 - timedelta(minutes=1), 'seat two went quiet: Zelda')]
+        with self.assertRaises(fs.Refused):
+            fs.bundle(self.store, self.probes, self.out, hours=1, now=T0, forbid_terms=['Zelda'])
+        self.assertFalse(self.out.exists() and any(self.out.iterdir()))
+
+    def test_cli(self):
+        out = io.StringIO()
+        with mock.patch.object(fs, 'Probes', lambda *a, **k: self.probes), mock.patch('sys.stdout', out):
+            code = fs.main(['--root', str(self.root), 'bundle', '--out', str(self.out), '--hours', '3'])
+        self.assertEqual(code, 0)
+        self.assertIn('the last 3 h; privacy validation clean', out.getvalue())
+
 if __name__ == '__main__':
     unittest.main()
