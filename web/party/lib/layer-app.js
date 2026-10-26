@@ -12,6 +12,7 @@ import { locationOf, partyGame, roster } from './party-mode.js';
 import { unreadMark } from './frame.js';
 import { leaveWords } from './states.js';
 import { originAllows } from './bridge.js';
+import { PREF_KEY, createLearner, createWatcher, fabHidden, lastInput, livePads, padLine, parsePref } from './controller.js';
 import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine, exitOffered,
   gesture, keptSpots, nudge, orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark } from './layer.js';
 
@@ -26,6 +27,9 @@ const state = { vp: null, mode: 'button', spots: {}, parentOrigin: null, origins
   confirm: null, link: 'ok', catalog: null, said: 0, busy: false };
 const spot = () => spotFor(state.spots, state.vp);
 const closedMode = () => (spot().parked ? 'tab' : 'button');
+// The controller shortcut (AVR-581, lib/controller.js). phase: 'idle' | 'learning' | 'verifying' | 'refused'.
+const pad = { pref: parsePref(kept('localStorage', PREF_KEY)), phase: 'idle', candidate: null, connected: false,
+  hidden: false, learner: null, watcher: null, inputAt: 0, inputTs: 0 };
 
 // ---- talking to the page that mounted us ---------------------------------------------------------
 /** Only the page that mounted this frame, once its origin is known to be allowed: the Party's own
@@ -70,6 +74,7 @@ window.addEventListener('message', async (ev) => {
 /** Tell the page where the frame goes: the whole screen when open, else the button or tab. */
 function show() {
   if (state.mode === 'open') post({ type: 'place', mode: 'open', side: 'right', y: 0 });
+  else if (pad.hidden) post({ type: 'hide' });       // hidden by the person's own choice (AVR-581)
   else post(requestFor(spot(), state.vp));
   render();
 }
@@ -251,6 +256,7 @@ function render() {
   renderHost(view);
   renderLeave(view);
   renderExit(view);
+  renderPad();
 }
 
 function renderHost(view) {
@@ -415,6 +421,66 @@ $('chat-form').addEventListener('submit', async (e) => {
 });
 $('chat-text').addEventListener('input', () => { $('chat-feedback').textContent = ''; });
 
+// ---- the controller shortcut (AVR-581) -----------------------------------------------------------------
+// Read here, in the Party's frame, by polling: the game page posts nothing about input, so it cannot fake
+// a press. The shortcut only opens the drawer; End and the rest still ask for their own confirmation.
+function readPads() {
+  try { return livePads(navigator.getGamepads ? navigator.getGamepads() : []); } catch { return []; }   // policy, or none
+}
+function savePad(next) {
+  pad.pref = parsePref(next);
+  keep('localStorage', PREF_KEY, pad.pref);
+  pad.watcher = pad.pref.verified ? createWatcher(pad.pref.shortcut) : null;
+}
+function padTick() {
+  const pads = readPads(), now = performance.now();
+  pad.connected = pads.length > 0;
+  const ts = lastInput(pads);
+  if (ts !== pad.inputTs) { pad.inputTs = ts; pad.inputAt = now; }
+  if (pad.phase === 'learning' || pad.phase === 'refused') {
+    const got = pad.learner.step(pads, now);
+    if (got && got.refused) { pad.phase = 'refused'; render(); }
+    else if (got) { pad.candidate = got; pad.phase = 'verifying'; pad.watcher = createWatcher(got); render(); }
+  } else if (pad.phase === 'verifying') {
+    if (pad.watcher.step(pads, now)) {
+      savePad({ v: 1, shortcut: pad.candidate, verified: true, hide: false });
+      pad.phase = 'idle'; pad.candidate = null;
+      render();
+    }
+  } else if (pad.watcher && pad.watcher.step(pads, now) && state.view && state.view.me) {
+    if (state.mode === 'open') closeLayer(); else openLayer();
+  }
+  const hidden = fabHidden(pad.pref, pads, { idleMs: now - pad.inputAt });
+  if (hidden !== pad.hidden) { pad.hidden = hidden; if (state.shown && state.mode !== 'open') show(); }
+  renderPad();
+}
+function renderPad() {
+  const line = padLine({ pref: pad.pref, connected: pad.connected, phase: pad.phase, candidate: pad.candidate });
+  $('layer-pad').hidden = !line && !pad.pref.shortcut;
+  if ($('layer-pad-status').textContent !== line) $('layer-pad-status').textContent = line;
+  $('layer-pad-learn').hidden = pad.phase !== 'idle' || !pad.connected;
+  $('layer-pad-learn').textContent = pad.pref.shortcut ? 'Change the shortcut' : 'Set up a shortcut';
+  $('layer-pad-forget').hidden = !pad.pref.shortcut && pad.phase === 'idle';
+  $('layer-pad-forget').textContent = pad.phase === 'idle' ? 'Forget the shortcut' : 'Cancel';
+  $('layer-pad-hide-row').hidden = !pad.pref.verified || pad.phase !== 'idle';
+  $('layer-pad-hide').checked = pad.pref.hide;
+}
+$('layer-pad-learn').addEventListener('click', () => {
+  pad.phase = 'learning'; pad.candidate = null; pad.learner = createLearner(); pad.watcher = null;
+  render();
+});
+$('layer-pad-forget').addEventListener('click', () => {
+  savePad(pad.phase === 'idle' ? null : pad.pref);   // Cancel keeps what worked before
+  pad.phase = 'idle'; pad.candidate = null;
+  render();
+});
+$('layer-pad-hide').addEventListener('change', (e) => {
+  savePad({ ...pad.pref, hide: e.target.checked });   // parsePref refuses it without a verified shortcut
+  said(pad.pref.hide ? 'The Party button hides while this controller is connected. Disconnect it and the button comes back.'
+    : 'The Party button stays on screen.');
+});
+if (pad.pref.verified) pad.watcher = createWatcher(pad.pref.shortcut);
+
 // ---- start -------------------------------------------------------------------------------------------
 async function start() {
   if (parent === window || !game || !/^[a-z][a-z0-9_-]{0,39}$/.test(game)) return;   // only as a mounted layer
@@ -426,6 +492,10 @@ async function start() {
   const first = await client.probeRetrying();
   if (first) client.start(first);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { client.poke(); chat.poke(); } });
+  // Polled, not event-driven: some browsers send gamepadconnected only after a press, and a disconnect
+  // must bring the button back on the next tick.
+  setInterval(padTick, 50);
+  window.addEventListener('gamepaddisconnected', padTick);
   window.addEventListener('online', () => { client.poke(); chat.poke(); });
 }
 start();
