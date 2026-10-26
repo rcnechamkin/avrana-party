@@ -19,7 +19,9 @@ export function shellOf(loc) {
   const strategy = q.get('s') === 'R' ? 'R' : 'M';
   const layer = loc.pathname.endsWith('/layer');
   const game = LIVE_GAMES.includes(q.get('game')) ? q.get('game') : null;
-  return { shell: layer ? 'layer' : 'page', fw, strategy, game };
+  // Limited Mode stand-in: the game is served same-origin under /g/ (no game origin, no bridge isolation).
+  const limited = q.get('limited') === '1';
+  return { shell: layer ? 'layer' : 'page', fw, strategy, game, limited, pageOrigin: limited ? loc.origin : GAME_ORIGIN };
 }
 
 /** The page's ticket request, checked, or null. */
@@ -29,10 +31,11 @@ export function parseTicketRequest(data) {
 }
 
 /** Back to Game: the game page the Party's own location names. Never a URL from a message or the query. */
-export function gameUrl(view, fw, strategy) {
+export function gameUrl(view, fw, strategy, limited = false, partyOrigin = '') {
   const game = view && view.location && view.location.game;
   if (!LIVE_GAMES.includes(game)) return null;
-  return `${GAME_ORIGIN}/${game}.html?fw=${fw === 'svelte' ? 'svelte' : 'vanilla'}&s=${strategy === 'R' ? 'R' : 'M'}`;
+  const base = limited ? `${partyOrigin}/g` : GAME_ORIGIN;
+  return `${base}/${game}.html?fw=${fw === 'svelte' ? 'svelte' : 'vanilla'}&s=${strategy === 'R' ? 'R' : 'M'}${limited ? '&limited=1' : ''}`;
 }
 
 export function names(list) {

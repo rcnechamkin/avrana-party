@@ -4,7 +4,7 @@
   // the experiment's shared rules); the DOM is Svelte's.
   import { onMount, tick } from 'svelte';
   import { parseFromPage } from '/party/lib/layer.js';
-  import { FIXTURE_NOTE, GAME_ORIGIN, LAYER_PROTOCOL, TABS, api, attentionText, gameUrl, parseTicketRequest, shellOf, whereLine } from '/party/x/shared/rules.js';
+  import { FIXTURE_NOTE, LAYER_PROTOCOL, TABS, api, attentionText, gameUrl, parseTicketRequest, shellOf, whereLine } from '/party/x/shared/rules.js';
   import type { Game, Suggestion, TabId, View, Viewport } from './lib/types';
   import { icon } from './lib/icon';
   import Suggestions from './Suggestions.svelte';
@@ -34,14 +34,14 @@
   const where = $derived(whereLine(view, catalog));
 
   // ---- the page that mounted this frame (layer shell only) ----
-  const post = (msg: Record<string, unknown>) => parent.postMessage({ avrana: LAYER_PROTOCOL, ...msg }, GAME_ORIGIN);
+  const post = (msg: Record<string, unknown>) => parent.postMessage({ avrana: LAYER_PROTOCOL, ...msg }, shell.pageOrigin);
   function place() {
     if (!vp) return;
     if (open) post({ type: 'place', mode: 'open', side: 'right', y: 0 });
     else post({ type: 'place', mode: 'button', side: 'right', y: Math.round(vp.h / 3) });
   }
   async function onMessage(ev: MessageEvent) {
-    if (ev.source !== parent || ev.origin !== GAME_ORIGIN) return;   // only the registered game origin
+    if (ev.source !== parent || ev.origin !== shell.pageOrigin) return;   // only the registered game origin (or own, in Limited Mode)
     const next = parseFromPage(ev.data) as Viewport | null;
     if (next) { const first = !vp; vp = next; if (first) place(); return; }
     const req = parseTicketRequest(ev.data);
@@ -70,7 +70,7 @@
   }
   function backToGame() {
     if (inLayer) { closeConsole(); return; }
-    const url = gameUrl(view, shell.fw, shell.strategy);
+    const url = gameUrl(view, shell.fw, shell.strategy, shell.limited, location.origin);
     if (url) location.assign(url);
   }
   function onKeydown(e: KeyboardEvent) {

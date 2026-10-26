@@ -69,7 +69,7 @@ export function createGameServer() {
   wss.on('connection', (ws, req) => {
     if ((req.headers.cookie || '').includes(COOKIE + '=')) stats.cookieLeaks += 1;
     const game = new URL(req.url, GAME).pathname === '/ws/turn' ? 'turn' : 'rt';
-    if (req.headers.origin !== GAME) { ws.close(1008, 'origin'); return; }
+    if (req.headers.origin !== GAME && req.headers.origin !== PARTY) { ws.close(1008, 'origin'); return; }   // PARTY: Limited Mode, same origin
     ws.game = game; stats.connections += 1; sockets.add(ws);
     ws.on('close', () => sockets.delete(ws));
     ws.on('message', (raw) => {

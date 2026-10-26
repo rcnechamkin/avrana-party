@@ -7,7 +7,7 @@ import { avatarNode } from '/party/lib/profile-ui.js';
 import { roster } from '/party/lib/party-mode.js';
 import { seatsPhrase } from '/party/lib/library.js';
 import { parseFromPage } from '/party/lib/layer.js';
-import { FIXTURE_NOTE, GAME_ORIGIN, LAYER_PROTOCOL, TABS, api, attentionText, gameUrl, parseTicketRequest, shellOf, whereLine } from '/party/x/shared/rules.js';
+import { FIXTURE_NOTE, LAYER_PROTOCOL, TABS, api, attentionText, gameUrl, parseTicketRequest, shellOf, whereLine } from '/party/x/shared/rules.js';
 import { renderSuggestions } from './suggestions.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,10 +16,10 @@ const inLayer = shell.shell === 'layer' && parent !== window;
 const state = { view: null, catalog: [], suggestions: [], tab: 'home', open: !inLayer, vp: null, offset: 0, busy: false };
 
 // ---- the page that mounted this frame (layer shell only) ---------------------------------------------
-const post = (msg) => parent.postMessage({ avrana: LAYER_PROTOCOL, ...msg }, GAME_ORIGIN);
+const post = (msg) => parent.postMessage({ avrana: LAYER_PROTOCOL, ...msg }, shell.pageOrigin);
 if (inLayer) {
   window.addEventListener('message', async (ev) => {
-    if (ev.source !== parent || ev.origin !== GAME_ORIGIN) return;          // only the registered game origin
+    if (ev.source !== parent || ev.origin !== shell.pageOrigin) return;     // only the registered game origin (or own, in Limited Mode)
     const vp = parseFromPage(ev.data);
     if (vp) { const first = !state.vp; state.vp = vp; if (first) place(); render(); return; }
     const req = parseTicketRequest(ev.data);
@@ -53,7 +53,7 @@ function closeConsole() {
 }
 function backToGame() {
   if (inLayer) { closeConsole(); return; }
-  const url = gameUrl(state.view, shell.fw, shell.strategy);
+  const url = gameUrl(state.view, shell.fw, shell.strategy, shell.limited, location.origin);
   if (url) location.assign(url);
 }
 function enter() {                     // the sheet's entrance; prefers-reduced-motion turns the transition off in CSS

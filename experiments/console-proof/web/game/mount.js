@@ -5,7 +5,7 @@
 //                  ticket {id, ticket, role} | ticket-error {id, error}
 //   page -> frame  ticket-request {id}           the game asks the Party frame for its seat ticket
 // `navigate` has a fixed target (the Party's console page), never a URL from a message.
-import { BUTTON, LAYER_PROTOCOL, layerBox, parseLayerMessage } from '/vendor/layer-mount.js';
+import { BUTTON, LAYER_PROTOCOL, layerBox, parseLayerMessage } from './vendor/layer-mount.js';
 
 const keysAre = (o, ...names) => Object.keys(o).sort().join(',') === names.sort().join(',');
 const FW = ['vanilla', 'svelte'], STRATEGIES = ['M', 'R'];
@@ -19,12 +19,13 @@ function parseExtra(data) {
 }
 
 /** Mount the Party layer frame. Returns {ticket(), frame, isOpen()}. */
-export function mountConsole({ partyOrigin, game, fw, strategy, onOpen = () => {} }) {
+export function mountConsole({ partyOrigin, game, fw, strategy, limited = false, onOpen = () => {} }) {
   if (!FW.includes(fw) || !STRATEGIES.includes(strategy)) throw new Error('bad experiment switch');
   const frame = document.createElement('iframe');
   frame.title = 'Your Party';
   frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');   // no top navigation, as in production
-  frame.src = `${partyOrigin}/party/x/${fw}/layer?game=${game}&s=${strategy}`;
+  const lim = limited ? '&limited=1' : '';
+  frame.src = `${partyOrigin}/party/x/${fw}/layer?game=${game}&s=${strategy}${lim}`;
   frame.dataset.avranaPartyLayer = 'button';
   Object.assign(frame.style, { position: 'fixed', border: '0', background: 'transparent', colorScheme: 'dark', zIndex: '2147483647',
     left: '0', top: '0', width: BUTTON + 'px', height: BUTTON + 'px', visibility: 'hidden' });
@@ -52,7 +53,7 @@ export function mountConsole({ partyOrigin, game, fw, strategy, onOpen = () => {
     if (!extra) return;
     if (extra.type === 'navigate') {
       performance.mark('leave-game');
-      location.assign(`${partyOrigin}/party/x/${fw}/?s=R`);
+      location.assign(`${partyOrigin}/party/x/${fw}/?s=R${lim}`);
       return;
     }
     const w = waiting.get(extra.id);

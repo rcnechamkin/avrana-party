@@ -1,0 +1,65 @@
+{
+  "baseline": {
+    "rafPerSec": 20,
+    "ticksPerSec": 17,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "M_layerOpen_occluded": {
+    "rafPerSec": 13,
+    "ticksPerSec": 17,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "topLevel_backgroundTab": {
+    "rafPerSec": 19,
+    "ticksPerSec": 18,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "embed_occlude": {
+    "rafPerSec": 13,
+    "ticksPerSec": 17,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "embed_display": {
+    "rafPerSec": 59,
+    "ticksPerSec": 16,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "embed_visibility": {
+    "rafPerSec": 60,
+    "ticksPerSec": 17,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "embed_offscreen": {
+    "rafPerSec": 0,
+    "ticksPerSec": 16,
+    "missed": 0,
+    "visibility": "visible"
+  },
+  "webgl": {
+    "loseContextExtension": true,
+    "lost": 1,
+    "restored": 1
+  },
+  "R_historyBack": {
+    "pageshowPersisted": false,
+    "leaveEvents": [
+      "pagehide(persisted=false):visible"
+    ],
+    "wsOpens": 1
+  },
+  "R_backToGame": {
+    "pageshowPersisted": false,
+    "wsOpens": 1,
+    "readyMs": 426
+  },
+  "occlusionDetect": {
+    "uncovered": "unsupported",
+    "covered": "unsupported"
+  }
+}

@@ -6,13 +6,15 @@
 //          /party/x/shared/*   CSS both consoles share  /party/*           the real web/party (read-only)
 //          /party/x/<fw>/layer is the console page served with the layer frame's frame-ancestors.
 import http from 'node:http';
+import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { CATALOG, COOKIE, GAME, PARTY, json, readJson, serveStatic, signTicket } from './shared.mjs';
+import { CATALOG, COOKIE, GAME, GAME_PORT, PARTY, json, readJson, serveStatic, signTicket } from './shared.mjs';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const ROOTS = { vanilla: here('../web/party-x/vanilla/'), svelte: here('../svelte/dist/'), shared: here('../web/party-x/shared/') };
 const REAL = here('../../../web/party/');
+const GAME_WEB = here('../web/game/'), VENDOR = here('../../../web/party/bridge/');
 
 export function createPartyServer(game) {
   let state;
@@ -87,7 +89,7 @@ export function createPartyServer(game) {
       }
       if (path === '/test/expire-next') { const m = byName(body.name); if (m) state.expireNext.add(m.id); return json(res, 200, { ok: Boolean(m) }); }
       if (path === '/test/drop') { game.drop(); return json(res, 200, { ok: true }); }
-      if (path === '/test/stats') return json(res, 200, { game: game.stats, state: game.state(), seats: state.seats });
+      if (path === '/test/stats' || path === '/test/stats/') return json(res, 200, { game: game.stats, state: game.state(), seats: state.seats, version: state.version, location: state.location });
       if (path === '/test/ticket-for') {   // a ticket for another member, for the "never another's seat" test
         const m = byName(body.name); return json(res, 200, { ticket: signTicket({ pid: m.id, name: m.name, game: body.game, role: 'player', exp: Date.now() + 60_000 }) });
       }
@@ -138,6 +140,10 @@ export function createPartyServer(game) {
     const url = new URL(req.url, PARTY);
     try {
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/test/')) return await api(req, res, url);
+      if (url.pathname.startsWith('/g/')) {         // Limited Mode stand-in: the game's files on the Party origin
+        const rest = url.pathname.slice(3), limitedCsp = { ...csp("'none'"), 'content-security-policy': csp("'none'")['content-security-policy'].replace(`frame-src ${GAME}`, "frame-src 'self'") };
+        if (rest.startsWith('vendor/') ? await serveStatic(res, VENDOR, rest.slice(7), limitedCsp) : await serveStatic(res, GAME_WEB, rest, limitedCsp)) return;
+      }
       const m = /^\/party\/x\/(vanilla|svelte|shared)\/(.*)$/.exec(url.pathname);
       if (m) {
         const [, which, rest] = m;
@@ -146,6 +152,16 @@ export function createPartyServer(game) {
       } else if (url.pathname.startsWith('/party/') && await serveStatic(res, REAL, url.pathname.slice('/party/'.length), csp("'none'"))) return;
       json(res, 404, { error: 'not_found' });
     } catch (err) { json(res, 500, { error: String(err && err.message) }); }
+  });
+  // Limited Mode: /g/ws/* goes to the game server with the Cookie header removed (nginx does the same, AVR-314).
+  server.on('upgrade', (req, sock, head) => {
+    if (!req.url.startsWith('/g/ws/')) { sock.destroy(); return; }
+    const up = net.connect(GAME_PORT, '127.0.0.1', () => {
+      const lines = [`GET ${req.url.slice(2)} HTTP/1.1`];
+      for (let i = 0; i < req.rawHeaders.length; i += 2) if (req.rawHeaders[i].toLowerCase() !== 'cookie') lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+      up.write(lines.join(CRLF) + CRLF + CRLF); up.write(head); up.pipe(sock); sock.pipe(up);
+    });
+    up.on('error', () => sock.destroy()); sock.on('error', () => up.destroy());
   });
   return { server, reset };
 }
