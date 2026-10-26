@@ -1,6 +1,7 @@
 # Signed appliance updates and release provenance (AVR-82)
 
 - **Status:** proposal, 2026-10-26. Nothing is implemented. **Owner decisions required** (section 8).
+- **There is no owner page yet.** "The owner page" here means the owner surface proposed for AVR-44 and AVR-74; no owner route or Admin PIN session exists in code today. Until one does, the owner reads these facts over SSH.
 - **Reads with:**
   - [deploy](../../runbooks/deploy.md) (`ops/deploy.sh`);
   - [release-candidate](../../runbooks/release-candidate.md) (`tools/release_candidate.py`, `avrana.release-candidate/v0`);
