@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Duel (fixture)</title>
+<link rel="stylesheet" href="game.css">
+<script type="module" src="turn.js"></script>
+</head>
+<body data-game="turn">
+<main id="stage" tabindex="0" aria-label="Duel">
+  <h1>Duel <small>(turn-based fixture)</small></h1>
+  <p id="status" role="status">Connecting…</p>
+  <p>Turn <span id="turn-no">–</span>: <strong id="whose">–</strong> · <span id="left" aria-live="off">–</span> s left</p>
+  <ul id="hand" aria-label="Your hand"></ul>
+  <ol id="log"></ol>
+</main>
+</body>
+</html>

@@ -1,0 +1,7 @@
+body { margin: 0; font: 16px/1.4 system-ui, sans-serif; background: #0b0b10; color: #eee; }
+main { padding: 12px; }
+h1 { font-size: 20px; margin: 0 0 4px; } small { color: #aaa; font-weight: 400; }
+canvas#stage { display: block; width: 100%; max-width: 390px; background: #121218; }
+canvas#gl { position: absolute; right: 8px; bottom: 8px; width: 16px; height: 16px; }
+.pad button, #hand button { min-height: 44px; min-width: 64px; margin: 4px; }
+:focus-visible { outline: 3px solid #ffd84a; outline-offset: 2px; }

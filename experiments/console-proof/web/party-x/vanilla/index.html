@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="avrana">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="same-origin">
+<title>Your Party</title>
+<!-- AVR-762 experiment: the console built the way web/party is built (static markup, ES modules
+     from web/party/lib, no framework, no bundler). Served as /party/x/vanilla/ (a page) and as
+     /party/x/vanilla/layer (the layer frame over a game). -->
+<link rel="stylesheet" href="/party/styles.css">
+<link rel="stylesheet" href="/party/x/shared/console.css">
+<script type="module" src="console.js"></script>
+</head>
+<body>
+<button id="layer-button" type="button" class="avrana-layer-button" aria-haspopup="dialog" aria-label="Your Party" hidden>
+  <span class="ring" aria-hidden="true"><span data-icon="users"></span></span><span id="layer-unread" class="unread" aria-hidden="true"></span>
+</button>
+<div id="console" class="avrana-layer-open" hidden>
+  <div id="backdrop" class="avrana-layer-backdrop"></div>
+  <section id="sheet" class="avrana-drawer avrana-layer-sheet cp-sheet" role="dialog" aria-modal="true" aria-labelledby="console-h">
+    <div class="head"><h2 id="console-h" class="m-0">Your Party</h2><button id="close" type="button" class="btn btn-ghost btn-square" aria-label="Close"><span data-icon="x"></span></button></div>
+    <p id="where" class="where" role="status" aria-live="polite"></p>
+    <div class="cp-panel cp-tight"><button id="back-to-game" type="button" class="btn btn-primary cp-back">Back to Game</button></div>
+    <div class="cp-panel cp-tight"><ul id="attention" class="cp-attention" aria-label="For you"></ul></div>
+    <div id="tabs" class="avrana-tabs" role="group" aria-label="Show"></div>
+    <div id="panel-home" class="body cp-panel">
+      <h3 class="m-0">Next game suggestions</h3>
+      <p class="cp-note" id="fixture-note"></p>
+      <ol id="sugg" class="cp-sugg" aria-label="Suggestions, most approved first"></ol>
+    </div>
+    <div id="panel-party" class="body cp-panel" hidden><ul id="people" class="avrana-people" aria-label="People at the party"></ul></div>
+    <div id="panel-library" class="body cp-panel" hidden><ul id="library" class="cp-lib" aria-label="Games"></ul></div>
+    <div id="panel-me" class="body cp-panel" hidden><div id="me" class="cp-me"></div><p id="me-role" class="m-0"></p></div>
+  </section>
+</div>
+</body>
+</html>

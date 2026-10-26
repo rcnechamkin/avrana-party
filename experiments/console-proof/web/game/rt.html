@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dot Rally (fixture)</title>
+<link rel="stylesheet" href="game.css">
+<script type="module" src="rt.js"></script>
+</head>
+<body data-game="rt">
+<main>
+  <h1>Dot Rally <small>(realtime fixture)</small></h1>
+  <p id="status" role="status">Connecting…</p>
+  <canvas id="stage" width="390" height="420" tabindex="0" aria-label="Arena. Arrow keys move your dot."></canvas>
+  <canvas id="gl" width="64" height="64" aria-hidden="true"></canvas>
+  <div class="pad"><button data-d="-1,0">Left</button><button data-d="0,-1">Up</button><button data-d="0,1">Down</button><button data-d="1,0">Right</button></div>
+</main>
+</body>
+</html>

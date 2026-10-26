@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="avrana">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your Party (embedded game variant)</title>
+<!-- AVR-762 measurement variant: a Party-origin page that frames the game (game origin) and draws
+     the console over it. ?hide=occlude (default) | display | visibility | offscreen says what happens
+     to the game frame while the console is open. Used by the strategy probes only. -->
+<link rel="stylesheet" href="/party/styles.css">
+<link rel="stylesheet" href="/party/x/shared/console.css">
+<link rel="stylesheet" href="embed.css">
+<script type="module" src="embed.js"></script>
+</head>
+<body class="cp-embed">
+<iframe id="game" title="Game"></iframe>
+<button id="open" type="button" class="avrana-layer-button cp-embed-open" aria-label="Your Party"><span class="ring" aria-hidden="true"><span data-icon="users"></span></span></button>
+<section id="console" class="cp-embed-console avrana-drawer" role="dialog" aria-modal="true" aria-label="Your Party" hidden>
+  <h2 class="m-0">Your Party</h2>
+  <button id="back-to-game" type="button" class="btn btn-primary cp-back">Back to Game</button>
+</section>
+</body>
+</html>
