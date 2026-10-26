@@ -46,6 +46,8 @@ PLANTED = {
     'home_ipv4': 'upstream 192.168.1.23',
     'ipv6': 'peer fe80::1c2a:3bff:fe4d:5e6f%wlan0',
     'ipv6_full': 'peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+    'mapped_ipv4': 'client ::ffff:10.42.0.57:51234 GET /party/',          # a dual-stack server's access log
+    'mapped_ipv4_bracketed': 'peer=[::ffff:10.42.0.57]:443',
     'mac': 'station a4:83:e7:12:34:56 associated',
     'email': 'owner mail cody.example@example.com',
     'player_name': 'player "Benjamin" took seat 2',
@@ -101,7 +103,8 @@ class Redaction(unittest.TestCase):
                 if clean is None:
                     continue                                  # the whole chat line is dropped
                 self.assertEqual(redact.violations_in_text(clean, log=True), [], f'{kind} survived: {clean!r}')
-                for secret in (GAME_KEY, DEVICE_TOKEN, 'hunter2isnotgood', 'Benjamin', '10.42.0.57', 'a4:83:e7:12:34:56'):
+                for secret in (GAME_KEY, DEVICE_TOKEN, 'hunter2isnotgood', 'Benjamin', '10.42.0.57', '.0.57',
+                               'a4:83:e7:12:34:56'):
                     self.assertNotIn(secret, clean)
 
     def test_useful_operational_text_survives(self):

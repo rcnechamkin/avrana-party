@@ -52,12 +52,14 @@ _RULES = [
     ('identifier', re.compile(r'\b(?:member|device|guest|seat)-[0-9a-f]{8,}\b')),
     ('email', re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')),
     ('mac', re.compile(r'(?<![0-9A-Fa-f:-])[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}(?![0-9A-Fa-f:-])')),
+    # IPv4 before IPv6: in an IPv4-mapped address (`::ffff:10.42.0.57`, as dual-stack servers log a phone) the
+    # IPv6 rule would take `::ffff:10` alone and leave `.42.0.57` behind. Not only at word boundaries:
+    # `sta_10.42.0.57` is an address too.
+    ('ipv4', re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])')),
     # Full form (six or more groups) or compressed with '::'; a clock time such as 18:00:00 is neither.
     ('ipv6', re.compile(r'(?i)(?<![0-9a-f:])(?:(?:[0-9a-f]{1,4}:){5,7}[0-9a-f]{1,4}|'
                         r'(?:[0-9a-f]{1,4}:){1,6}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,5})?|'
                         r'::(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})(?![0-9a-f:])')),
-    # Not only at word boundaries: `sta_10.42.0.57` is an address too.
-    ('ipv4', re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])')),
     ('long_hex', re.compile(r'(?<![0-9a-fA-F])[0-9a-fA-F]{24,}')),
     ('base64_token', re.compile(r'(?<![A-Za-z0-9_+/-])[A-Za-z0-9_+/-]{22,}={0,2}(?![A-Za-z0-9_+/-])')),
     # A single quote only counts as one when it is not an apostrophe ("Core's", "didn't").
