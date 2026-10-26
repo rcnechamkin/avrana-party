@@ -50,7 +50,8 @@ _RULES = [
     ('secret_assignment', re.compile(r'(?i)\b([a-z_-]*(?:token|secret|password|passwd|passphrase|psk|pwd|pin|key|'
                                      r'ticket|nonce|signature|sid))(\s*[:=]\s*)("[^"]*"|\'[^\']*\'|[^\s,;&]+)')),
     # A PIN said in words, with no ':' or '=' ("Admin PIN 482915", "the passcode is 7391"): the word stays.
-    ('pin', re.compile(r'(?i)(\b(?:pin|passcode)\b(?:\s+(?:is|code|number|no\.?))?[\s:#]*)\d{4,8}(?!\d)')),
+    ('pin', re.compile(r'(?i)(\b(?:pin|passcode)(?:[-_ ]?code)?\b(?:\s+(?:is|was|code|number|no\.?))?[\s:#]*)'
+                       r'\d{4,8}(?!\d)')),
     ('identifier', re.compile(r'\b(?:member|device|guest|seat)-[0-9a-f]{8,}\b')),
     ('email', re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')),
     # Written out to dodge scrapers: "name (at) example (dot) com", "name [at] example.com".

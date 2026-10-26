@@ -56,6 +56,8 @@ PLANTED = {
     'email_bracketed': 'contact cody.example [at] example.com',
     'pin_words': 'Admin PIN 482915 accepted',
     'passcode_words': 'the passcode is 7391',
+    'pin_code_hyphen': 'owner pin-code 5038 set',
+    'pin_was': 'the old PIN was 6274',
     'player_name': 'player "Benjamin" took seat 2',
     'chat': 'chat from seat 2: meet me at the bar later',
 }
@@ -110,7 +112,7 @@ class Redaction(unittest.TestCase):
                     continue                                  # the whole chat line is dropped
                 self.assertEqual(redact.violations_in_text(clean, log=True), [], f'{kind} survived: {clean!r}')
                 for secret in (GAME_KEY, DEVICE_TOKEN, 'hunter2isnotgood', 'Benjamin', '10.42.0.57', '.0.57',
-                               'a4:83:e7:12:34:56', 'a483e7123456', 'a483.e712.3456', 'cody.example', '482915', '7391'):
+                               'a4:83:e7:12:34:56', 'a483e7123456', 'a483.e712.3456', 'cody.example', '482915', '7391', '5038', '6274'):
                     self.assertNotIn(secret, clean)
 
     def test_a_short_commit_a_version_or_a_count_is_not_a_mac_or_a_pin(self):
