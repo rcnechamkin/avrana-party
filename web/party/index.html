@@ -61,6 +61,17 @@
            "Featured" is a recommendation from the catalog's fit, never a game selected for the Party.
            Its one primary action is the Host's own Start ("Select for Party"); Preview opens the
            game's facts in place, under the stage or under the rail cover it was opened from. -->
+      <!-- PROPOSAL home_in_round (AVR-703, Concept K K2): Party Home during a round, opened from the floating
+           Party control. The round goes on; Back to game is the only primary action, and End is not here
+           (it stays in the Party-owned control with its confirmation, Rule 12.3). Off unless the
+           appliance's party-core.json switches the proposal on. -->
+      <section id="k2" class="avrana-stage avrana-k2" aria-labelledby="k2-title" hidden>
+        <p class="avrana-proposal is-inline">Proposal · Home during a round</p>
+        <p class="m-0 text-supporting text-muted">Game on</p>
+        <h2 id="k2-title" class="avrana-display"></h2>
+        <button id="k2-back" type="button" class="btn btn-primary">Back to game</button>
+        <p id="k2-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
+      </section>
       <div id="home-top" hidden>
         <div id="home-lead"></div>
         <div id="home-actions" class="avrana-stage-actions" data-sync="list"></div>

@@ -460,6 +460,30 @@ function exitOpen(view) {
   return true;
 }
 
+/** PROPOSAL home_in_round (AVR-703, Concept K K2): this member opened Party Home from the floating
+ * Party control during a round. Home shows who is here and the round as "Game on", with Back to game
+ * as the one action; nothing here ends the round. Returns true while it holds the page. */
+function homeVisit(view) {
+  const at = locationOf(view).at;
+  const visiting = Boolean(view.me && view.me.home_visit && (at === 'game' || at === 'results'));
+  $('k2').hidden = !visiting;
+  if (!visiting) return false;
+  show('main');
+  renderParty(view);
+  $('home-top').hidden = true;
+  $('k2-title').textContent = gameName(view);
+  return true;
+}
+$('k2-back').addEventListener('click', async () => {
+  $('k2-back').disabled = true;
+  $('k2-error').textContent = '';
+  const res = await party.backToGame();
+  $('k2-back').disabled = false;
+  if (!res.ok) { $('k2-error').textContent = 'Couldn’t reach the Party. Check the Wi-Fi and try again.'; return; }
+  const view = party.view();
+  if (view) onPartyView(view, view);
+});
+
 /** Stay in the Party: close the request; the view that answers takes the page where the party is. */
 async function stayInParty() {
   if (state.leaving) return;            // Leave is on its way: it answers the question
@@ -1164,6 +1188,7 @@ function onPartyView(view, previous = null) {
   if (state.gamesKey !== null && gamesKey !== state.gamesKey) gameOrigins.refresh(); else gameOrigins.retry();
   state.gamesKey = gamesKey;
   if (exitOpen(view)) return;                 // a guest's exit request: asked here, never in the game
+  if (homeVisit(view)) return;                // PROPOSAL home_in_round (AVR-703): Home during a round
   // Until Party Core's answer is known the address is the same-origin path; the phone does not
   // leave on that guess (leaveForRound waits), and once it is known, refusing it keeps Party Home.
   const url = state.declined === moveKey(view) ? null      // this phone went back to Party Home from this move

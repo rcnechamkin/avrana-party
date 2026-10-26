@@ -138,6 +138,9 @@ def check_game_origins(conf):
 
 
 RECOVERY_DEFAULTS = {'close_lost_game': False}      # session_recovery switches (AVR-33): name -> default
+# Owner-gated proposals a test appliance may switch on (`proposals`), each off by default. They
+# change approved behaviour and stay off on a product appliance until the owner accepts them.
+PROPOSAL_DEFAULTS = {'home_in_round': False}        # AVR-703: Party Home reachable during a round
 
 
 def check_session_recovery(conf):
@@ -162,6 +165,25 @@ def check_session_recovery(conf):
     return switches, problems, warnings
 
 
+def check_proposals(conf):
+    """(switches, problems, warnings) for the config's `proposals` block: the same rules as
+    session_recovery (a known switch is a boolean; an unknown one is a warning and is ignored)."""
+    block = conf.get('proposals', {})
+    switches = dict(PROPOSAL_DEFAULTS)
+    if not isinstance(block, dict):
+        return switches, ['proposals: an object of booleans named ' + ', '.join(PROPOSAL_DEFAULTS)], []
+    problems, warnings = [], []
+    for key in sorted(block, key=str):
+        if key not in PROPOSAL_DEFAULTS:
+            warnings.append(f'proposals: unknown key {key!r} ignored (this Party knows '
+                            + ', '.join(PROPOSAL_DEFAULTS) + ')')
+        elif type(block[key]) is not bool:
+            problems.append(f'proposals.{key}: true or false, not {block[key]!r}')
+        else:
+            switches[key] = block[key]
+    return switches, problems, warnings
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -179,6 +201,9 @@ def main(argv=None):
             print(f'{path}: {problem}', file=sys.stderr)
         return 1
     _, recovery_problems, warnings = check_session_recovery(conf)
+    _, proposal_problems, proposal_warnings = check_proposals(conf)
+    recovery_problems += proposal_problems
+    warnings += proposal_warnings
     for warning in warnings:
         print(f'{path}: warning: {warning}', file=sys.stderr)
     problems = check_game_origins(conf) + recovery_problems
