@@ -78,6 +78,19 @@
         <button id="layer-park-right" type="button" class="btn btn-ghost btn-sm">Park on the right edge</button>
         <button id="layer-reset" type="button" class="btn btn-ghost btn-sm">Reset position</button>
       </div>
+      <!-- Controller shortcut (AVR-581): shown once a controller is connected or a shortcut is kept. A
+           connected controller never hides the Party button by itself; hiding is offered only after the
+           shortcut has opened this menu once, and a disconnect brings the button back at once. -->
+      <div id="layer-pad" class="avrana-layer-moves" role="group" aria-labelledby="layer-pad-h" hidden>
+        <h3 id="layer-pad-h" class="m-0 w-full text-supporting font-medium text-muted">Controller shortcut</h3>
+        <p id="layer-pad-status" class="m-0 w-full text-body" aria-live="polite"></p>
+        <button id="layer-pad-learn" type="button" class="btn btn-ghost btn-sm">Set up a shortcut</button>
+        <button id="layer-pad-forget" type="button" class="btn btn-ghost btn-sm" hidden>Forget the shortcut</button>
+        <label id="layer-pad-hide-row" class="flex w-full items-center gap-2 text-body" hidden>
+          <input id="layer-pad-hide" type="checkbox" class="checkbox checkbox-sm">
+          Hide the Party button while this controller is connected
+        </label>
+      </div>
     </div>
     <div id="chat" class="body" hidden>
       <p id="chat-status" class="m-0 text-body text-muted empty:hidden" role="status"></p>
