@@ -26,10 +26,8 @@ class Shelves(unittest.TestCase):
         finally:
             path.unlink()
 
-    def test_the_committed_file_is_valid_and_names_every_shelf_word_it_uses(self):
-        shelves = catalog.load_shelves()
-        self.assertTrue(set(shelves.values()) <= set(catalog.SHELVES))
-        self.assertEqual(shelves['checkers'], 'classics')
+    def test_the_committed_file_is_valid_and_places_nothing_until_the_owner_decides(self):
+        self.assertEqual(catalog.load_shelves(), {})       # D1: the recommendations are in the proposal
 
     def test_a_bad_word_id_or_schema_is_refused(self):
         for games in ({'bluff': 'spotlight'}, {'Bluff': 'lab'}, {'bluff\n': 'lab'}, {'bluff': None}):
@@ -50,10 +48,9 @@ class Shelves(unittest.TestCase):
         self.assertEqual(placed.pop('shelves'), {'ps1-worms': 'hidden', 'checkers': 'classics'})
         self.assertEqual(placed, plain)          # no row is dropped, moved, installed or edited by a placement
 
-    def test_the_committed_catalog_carries_the_committed_shelves(self):
+    def test_the_committed_catalog_is_in_step_and_has_no_shelves_while_none_are_placed(self):
         doc = strictjson.load_path(WEB_DIR / 'catalog.json')
-        self.assertEqual(doc['shelves'], catalog.load_shelves())
-        self.assertIn('ps1-worms', {g['id'] for g in doc['games']})     # hidden is not deleted
+        self.assertNotIn('shelves', doc)
         self.assertEqual(catalog.main(['--check']), 0)
 
 

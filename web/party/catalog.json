@@ -593,17 +593,5 @@
       "summary": "One controller, up to four players taking turns."
     }
   ],
-  "collections": [],
-  "shelves": {
-    "arcade-gauntlet2": "lab",
-    "bestguess": "featured",
-    "bluff": "lab",
-    "checkers": "classics",
-    "colyseus-tanks": "featured",
-    "coup": "featured",
-    "courting": "featured",
-    "expo": "lab",
-    "ps1-bomberman": "hidden",
-    "ps1-worms": "hidden"
-  }
+  "collections": []
 }

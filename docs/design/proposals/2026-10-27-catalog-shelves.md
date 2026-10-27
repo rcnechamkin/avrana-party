@@ -1,6 +1,6 @@
 # Catalog shelves: Featured, Classics, Lab, Hidden (AVR-155)
 
-- **Status:** proposal with a mechanism, 2026-10-27. The mechanism (`contracts/shelves.json` → catalog `shelves` → `visibleGames`) is in this draft PR. **The dispositions in section 3 are recommendations: owner decisions required** (section 5). Nothing is deployed.
+- **Status:** proposal with a mechanism, 2026-10-27. The mechanism (`contracts/shelves.json` → catalog `shelves` → `visibleGames`) is in this draft PR, with `contracts/shelves.json` **empty**: nothing changes on Home or in the Library until the owner places titles. **The dispositions in section 3 are recommendations: owner decisions required** (section 5). Nothing is deployed.
 - **Reads with:** [ADR 0014](../../adr/0014-native-games-isolated-lan-games-retired.md) (the LAN Games donor library is retired from the catalog); `avrana/contracts/catalog.py`; `avrana/ops/catalog_overlay.py` (installed `.avrgame` rows); `web/party/lib/catalog-view.js` and `web/party/lib/library.js` (`homeShelves`, `arrange`).
 
 ## 1. What happens today (origin/main)
@@ -14,7 +14,7 @@ Installed was, in effect, Featured, and in the wrong order.
 
 ## 2. The mechanism (in this PR)
 
-- `contracts/shelves.json` (`avrana.shelves/v0`): `{game id: featured | classics | lab | hidden}`, owner-edited, validated by `catalog.load_shelves` (id shape, shelf word, schema). An id may name a package-only game: it is a **placement, not a grant**.
+- `contracts/shelves.json` (`avrana.shelves/v0`): `{game id: featured | classics | lab | hidden}`, owner-edited, committed empty, validated by `catalog.load_shelves` (id shape, shelf word, schema). An id may name a package-only game: it is a **placement, not a grant**.
 - `python3 -m avrana.contracts.catalog` copies it to the catalog's top-level `shelves`. No row is added, removed, moved or edited (tested: the catalog built with shelves, minus `shelves`, equals the plain build). The overlay rewrites the release document with its keys intact, so package rows are placed by the **owner's** file. A package cannot place itself.
 - `visibleGames` (the one list Home, the Library, the Limited notice and troubles use) puts **featured** first, then titles with no placement, then **classics**, then **lab**, keeping catalog order within each shelf. It leaves **hidden** out. Home's lead and rail follow, because `homeShelves` takes the first installed title that suits the Party from that list.
 - A hidden title keeps its contract, grant, install and code. It is only not listed. An unknown shelf word is no placement. A featured title that is not installed is still not listed.
@@ -42,14 +42,16 @@ Product bar (from the issue): would the tile make Avrana look intentional, does 
 
 - `PYTHONPATH=. python tests/unit/test_catalog_shelves.py`: 5 OK (schema, words, ids, package ids allowed, build changes nothing else, committed catalog in step with `--check`).
 - `test_assimilation`, `test_catalog_overlay` (direct run): OK; the overlay's 10 POSIX-only skips are unchanged.
-- `node --test tests/offline/*.test.mjs`: 326 pass. `join-card.test.mjs` cannot load `jsqr` in a worktree without `node_modules`, the same as on main. The new test covers order, hidden, a placement granting nothing, unknown words and inherited keys, and no shelves meaning the catalog order. The Library and Home tests keep testing their rules on the uncurated six.
-- **Not run:** a browser pass of Home and the Library with the curated catalog, an installed-package overlay on the Pi or the hosted VM, and real phones.
+- `node --test tests/offline/*.test.mjs`: 342 pass. The new module test covers order, hidden, a placement granting nothing, unknown words and inherited keys, and no shelves meaning the catalog order.
+- `tests/offline/shelves.spec.ts` (Chromium, both phone projects): 6 pass. It serves the real catalog with the recommended-style shelves added: the Library lists featured first and leaves hidden out (search too), Home leads with the featured title on a fresh phone, and no shelves means the catalog order. Against main's `catalog-view.js` 2 of its 3 tests fail.
+- Offline `library`, `home`, `assimilation`, `covers`, `a11y`, `coherence`, `shell` and `limited` specs: 130 pass. The committed catalog is byte-for-byte main's.
+- **Not run:** the rest of the offline and party suites, an installed-package overlay on the Pi or the hosted VM, and real phones.
 
 ## 5. Owner decisions
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | Confirm or change each disposition in section 3 (edit `contracts/shelves.json`, then run `python3 -m avrana.contracts.catalog`) | As recommended |
+| D1 | Confirm or change each disposition in section 3 (fill `contracts/shelves.json`, run `python3 -m avrana.contracts.catalog`; the Library/Home specs that list the six titles in catalog order then need the new order) | As recommended |
 | D2 | EXPO: Lab, or Featured as the optional fifth? | Lab until its Private Demo evidence is in |
 | D3 | Hide the PS1 titles now, or keep the honest "Not installed" tiles? | Hide |
 | D4 | Should Classics and Lab get their own heading or tag on the Library, or is order enough for Private Demo v0? | Order only for v0; headings with the Friend Ready catalog |

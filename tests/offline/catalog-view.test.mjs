@@ -4,9 +4,11 @@ import { readFileSync } from 'node:fs';
 import { donorAvailability, visibleGames, filterGames, launchTarget, shelfOf } from '../../web/party/lib/catalog-view.js';
 import { createProfile } from '../../web/party/lib/profile.js';
 import { evaluateSeat } from '../../web/party/lib/evaluate.js';
-const curated = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
-// The listing rules below are the catalog's before the owner's shelves (AVR-155), which have their own tests.
-const catalog = { ...curated, shelves: undefined };
+const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
+// The owner's shelves (AVR-155): the committed file is empty until the owner decides; these are the
+// placements the proposal recommends (docs/design/proposals/2026-10-27-catalog-shelves.md).
+const curated = { ...catalog, shelves: { 'arcade-gauntlet2': 'lab', bestguess: 'featured', bluff: 'lab', checkers: 'classics',
+  'colyseus-tanks': 'featured', coup: 'featured', courting: 'featured', expo: 'lab', 'ps1-bomberman': 'hidden', 'ps1-worms': 'hidden' } };
 // The donor library is retired from the catalog (ADR 0014, AVR-259). The shell still handles a
 // title whose id differs from its provider slug, so these tests add one: EXPO's entry as "chess".
 const chess = { ...catalog.games.find((g) => g.id === 'expo'), id: 'lan-chess', legacySlug: 'chess', name: 'Chess',
