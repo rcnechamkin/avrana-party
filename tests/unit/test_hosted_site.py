@@ -194,7 +194,7 @@ class Gate(unittest.TestCase):
             key, value = line.strip().rstrip(';').rsplit(' ', 1)
             closed.append((key.strip('"'), value))
         self.assertEqual(closed, [('default', '0'), ('~^8081:0:[^/]*/__gate/', '0'),
-                                  (r'~^8081:0:games\.avrana\.party/games/[a-z0-9][a-z0-9_-]*/(api/|onboarding\.json$)', '0'),
+                                  (r'~^8081:0:games\.avrana\.party/games/[a-z0-9][a-z0-9_-]*/(api/|onboarding\.json$|matchmake/joinOrCreate/[a-z0-9_-]+$)', '0'),
                                   ('~^8081:0:', '1')])
 
         def is_closed(port, cookie_ok, uri, host='avrana.party'):
@@ -213,6 +213,10 @@ class Gate(unittest.TestCase):
         self.assertFalse(is_closed(8081, 0, '/games/checkers/api/party', 'games.avrana.party'))
         self.assertFalse(is_closed(8081, 0, '/games/colyseus-tanks/api/redeem', 'games.avrana.party'))
         self.assertFalse(is_closed(8081, 0, '/games/coup/onboarding.json', 'games.avrana.party'))
+        # Colyseus matchmaking (colyseus-tanks) is fetched with credentials 'omit' too (AVR-766); nothing else under it
+        self.assertFalse(is_closed(8081, 0, '/games/colyseus-tanks/matchmake/joinOrCreate/battle', 'games.avrana.party'))
+        self.assertTrue(is_closed(8081, 0, '/games/colyseus-tanks/matchmake/joinOrCreate/battle/x', 'games.avrana.party'))
+        self.assertTrue(is_closed(8081, 0, '/games/colyseus-tanks/matchmake/other', 'games.avrana.party'))
         self.assertTrue(is_closed(8081, 0, '/__gatex'))
         self.assertFalse(is_closed(8081, 0, '/__gate/'))
         self.assertFalse(is_closed(8081, 1, '/party/'))

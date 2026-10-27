@@ -26,6 +26,9 @@ test('a round runs inside /party/play.html and the game loads in its frame', asy
       await expect.poll(() => p.page.frames().some((f) => f.url().startsWith(`${GAMES}/games/${GAME}/`))).toBe(true);
       const frame = p.page.frames().find((f) => f.url().startsWith(`${GAMES}/games/${GAME}/`))!;
       await expect(frame.locator('body')).not.toBeEmpty({ timeout: 20_000 });
+      // joined, not only loaded: Tanks fills its scoreboard once matchmaking answers (it says
+      // "Could not join the game" while it does not)
+      if (GAME === 'colyseus-tanks') await expect(frame.getByText('Yellow', { exact: true })).toBeVisible({ timeout: 20_000 });
       await expect(p.page.locator('iframe[data-avrana-party-layer]')).toHaveAttribute('data-avrana-party-layer', 'button');
     }
     expect(refused, 'no frame was refused').toEqual([]);
