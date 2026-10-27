@@ -149,9 +149,24 @@ copied, not linked, and `ops/deploy.sh` never touches them.
      'import json,sys; d=json.load(sys.stdin); print(d["certificate"], d["services"]["avrana-party-certificate.timer"], d["summary"]["state"])'
    ```
 
-   Expect `status: ok` with `days_left` near the real figure, the timer `active` and the summary
-   `ok`. `python3 -m avrana.ops.smoke` on the Pi now has a passing `certificate` check instead of a
-   skip.
+   Expect `status: ok` with `days_left` near the real figure, `renewal` `inactive` (the job between
+   runs), the timer `active` and the summary `ok`. `python3 -m avrana.ops.smoke` on the Pi now has a
+   passing `certificate` check instead of a skip.
+
+   **Prove a failure shows (AVR-31).** The script stops before lego when its credential file is
+   missing, so this touches neither Let's Encrypt nor the installed certificate:
+
+   ```sh
+   sudo mv /etc/avrana-party/cloudflare.env /etc/avrana-party/cloudflare.env.off
+   sudo systemctl start avrana-party-certificate.service || true    # fails: credential file is missing
+   curl -s --noproxy '*' -H 'Host: party.avrana.net' http://127.0.0.1:8191/party/api/status | python3 -c      'import json,sys; d=json.load(sys.stdin); print(d["certificate"]["renewal"], d["summary"])'
+   sudo mv /etc/avrana-party/cloudflare.env.off /etc/avrana-party/cloudflare.env
+   sudo systemctl start avrana-party-certificate.service            # succeeds again, as in step 4
+   ```
+
+   While the file is away the status says `renewal: failed`, the summary is `degraded`, and the reason names
+   `journalctl -u avrana-party-certificate.service`. After the second run it is `inactive` and `ok` again
+   (the status is cached for 5 s). The timer stayed `active` throughout, which is why the job's own state is read.
 
 6. The first real renewal is not rehearsed here: it happens by itself between 30 and 21 days
    before the end. Check `journalctl -u avrana-party-certificate.service` and the status on the

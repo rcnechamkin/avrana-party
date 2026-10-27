@@ -1,6 +1,8 @@
 # A game that listens but no longer answers (AVR-673): recommendation and test plan
 
-- **Status:** recommendation, 2026-10-21 (Sprint 05). Nothing is implemented. Any probe is a Party↔game protocol
+- **Status:** recommendation, 2026-10-21 (Sprint 05). **2026-10-26:** a Party-side prototype of phase 1 (§4-§5: the opt-in
+  signed `state` probe that raises a flag and closes nothing) is in `avrana/party/state_probe.py`, inert until a contract
+  declares `state` and a kit answers it; not merged without the owner's decision. Otherwise nothing is implemented. Any probe is a Party↔game protocol
   change (ADR 0006, the vendored protocol, Games, both kits, the Arcade runtime) and needs the owner's approval.
 - **Reads with:** [session-probe proposal](2026-10-12-session-probe.md) Part B (the signed `state` probe; it already
   recommends deferring the probe, line 93), AVR-33 finding, `tests/unit/test_failure_injection.py` `LostGameCheck`.
