@@ -14,6 +14,8 @@ const executablePath = process.env.PW_CHROMIUM_EXECUTABLE || undefined;
 const PORT = Number(process.env.AVRANA_PARTY_DEV_PORT || 8184);
 // AVR-307: a second dev server whose games are registered to a game origin (ADR 0013), for follow-origin.spec.ts
 const ORIGIN_PORT = Number(process.env.AVRANA_PARTY_ORIGIN_DEV_PORT || PORT + 1);
+// AVR-468: a third dev server with the owner-gated home_in_round proposal on (AVR-703), for home-in-round.spec.ts
+const VISIT_PORT = Number(process.env.AVRANA_PARTY_VISIT_DEV_PORT || PORT + 2);
 const python = process.env.AVRANA_PYTHON || 'python3';
 
 export default defineConfig({
@@ -44,9 +46,15 @@ export default defineConfig({
     url: `http://127.0.0.1:${ORIGIN_PORT}/party/`,
     reuseExistingServer: false,
     timeout: 15_000,
+  }, {
+    command: `${python} -m avrana.web.devserver --port ${VISIT_PORT} --test-controls --party`,
+    env: { ...process.env, AVRANA_DEV_PROPOSALS: 'home_in_round' },
+    url: `http://127.0.0.1:${VISIT_PORT}/party/`,
+    reuseExistingServer: false,
+    timeout: 15_000,
   }],
   projects: [
-    { name: 'phones-chromium', testIgnore: /(follow-origin|guest-journey-origins)\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    { name: 'phones-chromium', testIgnore: /(follow-origin|guest-journey-origins|home-in-round)\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
     {
       // ADR 0013: games registered to a game origin, which Chromium resolves to the dev server.
       // Plain HTTP on two host names of one site; real Safari and HTTPS are Tier 3 (the owner's).
@@ -56,6 +64,12 @@ export default defineConfig({
         ...devices['Pixel 7'], baseURL: `http://127.0.0.1:${ORIGIN_PORT}`,
         launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] },
       },
+    },
+    {
+      // AVR-468: Party Home during a round is an owner-gated proposal (AVR-703), on only for this server.
+      name: 'home-in-round-chromium',
+      testMatch: /home-in-round\.spec\.ts$/,
+      use: { ...devices['Pixel 7'], baseURL: `http://127.0.0.1:${VISIT_PORT}`, launchOptions: { executablePath } },
     },
   ],
 });
