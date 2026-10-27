@@ -123,5 +123,10 @@ test('PROPOSAL fab_panel: in landscape the sheet runs along the button\'s side',
   const box = (await sheet.boundingBox())!;
   expect(box.x + box.width).toBeCloseTo(844, 0);
   expect(box.width).toBeLessThanOrEqual(844 * 0.55 + 1);
+  // Move menu: two steps clockwise from the first place (top right, then bottom right... bottom left)
+  await layer.getByRole('button', { name: 'Move menu to the next corner' }).click();
+  await layer.getByRole('button', { name: 'Move menu to the next corner' }).click();
+  await layer.getByRole('button', { name: 'Move menu to the next corner' }).click();
+  await expect(sheet).toHaveAttribute('data-side', 'left');
   await ana.context.close();
 });

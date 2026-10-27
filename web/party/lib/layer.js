@@ -164,6 +164,18 @@ export const ACTION_WORDS = {
 export const HOLD_MS = 800;              // a destructive Host verb is held this long to confirm (owner, 2026-10-26)
 export const HOLD_VERBS = ['end', 'lobby', 'handover', 'spectate'];
 
+/** "Move menu": the button goes to the next corner, clockwise from the one it is nearest (top right,
+ * bottom right, bottom left, top left), never parked. One control, no dragging needed. */
+export const CORNERS = [{ nx: 1, ny: 0 }, { nx: 1, ny: 1 }, { nx: 0, ny: 1 }, { nx: 0, ny: 0 }];
+export function nextCorner(spot) {
+  const s = spot && spot.parked ? unpark(spot) : (spot || DEFAULT_SPOT);
+  let near = 0, best = Infinity;
+  CORNERS.forEach((c, i) => { const d = (c.nx - s.nx) ** 2 + (c.ny - s.ny) ** 2; if (d < best - 1e-9) { best = d; near = i; } });
+  const at = best < 1e-9 ? near + 1 : near;          // already in a corner: the next one; else the nearest first
+  const c = CORNERS[at % CORNERS.length];
+  return { nx: c.nx, ny: c.ny, parked: null };
+}
+
 /** Is the bounded panel on for this frame: the proposal is on and the page that mounted it is the Party's. */
 export function panelOn(view, { crossOrigin = true } = {}) {
   return !crossOrigin && Boolean(view && Array.isArray(view.proposals) && view.proposals.includes('fab_panel'));

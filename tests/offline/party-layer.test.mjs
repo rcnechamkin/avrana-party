@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { BUTTON, MARGIN, TAB, layerBox, mountPartyLayer, parseLayerMessage } from '../../web/party/bridge/layer-mount.js';
 import { DEFAULT_SPOT, LONG_PRESS_MS, PROTOCOL, SLOP, STEP, actions, buttonLabel, connectionLine, gesture, keptSpots, nudge,
   orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark, usable,
-  HOLD_MS, HOLD_VERBS, holdState, panelOn, sheetSide } from '../../web/party/lib/layer.js';
+  HOLD_MS, HOLD_VERBS, holdState, nextCorner, panelOn, sheetSide } from '../../web/party/lib/layer.js';
 
 const VP = { w: 375, h: 667, insets: { top: 20, right: 0, bottom: 34, left: 0 } };
 const P = (o) => ({ avrana: PROTOCOL, ...o });
@@ -274,4 +274,13 @@ test('fab_panel: a destructive verb confirms only when held for HOLD_MS', () => 
   assert.equal(holdState({ downAt: 0, upAt: 300, now: 900 }), 'short');
   assert.equal(holdState({ downAt: 0, now: 800 }), 'held');
   assert.equal(holdState({ downAt: 100, upAt: 950, now: 950 }), 'held');
+});
+
+test('fab_panel: Move menu cycles the corners clockwise, starting from the nearest', () => {
+  assert.deepEqual(nextCorner({ nx: 1, ny: 1 / 3, parked: null }), { nx: 1, ny: 0, parked: null });   // the first place: nearest is top right
+  assert.deepEqual(nextCorner({ nx: 1, ny: 0, parked: null }), { nx: 1, ny: 1, parked: null });
+  assert.deepEqual(nextCorner({ nx: 1, ny: 1, parked: null }), { nx: 0, ny: 1, parked: null });
+  assert.deepEqual(nextCorner({ nx: 0, ny: 1, parked: null }), { nx: 0, ny: 0, parked: null });
+  assert.deepEqual(nextCorner({ nx: 0, ny: 0, parked: null }), { nx: 1, ny: 0, parked: null });
+  assert.deepEqual(nextCorner({ nx: 0.3, ny: 0.9, parked: 'right' }), { nx: 1, ny: 1, parked: null });   // a parked tab comes back first
 });

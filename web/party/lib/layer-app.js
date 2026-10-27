@@ -14,7 +14,7 @@ import { leaveWords } from './states.js';
 import { originAllows } from './bridge.js';
 import { PREF_KEY, createLearner, createWatcher, fabHidden, lastInput, livePads, padLine, parsePref } from './controller.js';
 import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine, exitOffered,
-  gesture, HOLD_MS, HOLD_VERBS, holdState, keptSpots, nudge, orientationOf, panelOn, park, parseFromPage, requestFor, sheetSide, spotAt,
+  gesture, HOLD_MS, HOLD_VERBS, holdState, keptSpots, nextCorner, nudge, orientationOf, panelOn, park, parseFromPage, requestFor, sheetSide, spotAt,
   spotFor, toSpot, unpark } from './layer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -191,6 +191,12 @@ for (const side of ['left', 'right']) {
     closeLayer();       // parking also closes the drawer: the tab takes focus
   });
 }
+// PROPOSAL fab_panel (AVR-769): one control cycles the corners
+$('layer-corner').addEventListener('click', () => {
+  setSpot(nextCorner(spot()));
+  render();                                  // a landscape sheet follows the button to its side
+  said('The button moves to the next corner.');
+});
 $('layer-reset').addEventListener('click', () => {
   setSpot({ ...spotFor({}, state.vp) });
   said('The button is back where it started.');
@@ -247,6 +253,7 @@ function render() {
   state.panel = panelOn(view, { crossOrigin: state.crossOrigin !== false });
   document.documentElement.classList.toggle('fab-panel', state.panel);
   $('layer-sheet').dataset.side = state.panel ? sheetSide(spot(), state.vp) : '';
+  $('layer-corner').hidden = !state.panel;
   const loc = locationOf(view);
   $('layer-where').textContent = loc.at === 'results' ? `${gameName(loc.game)}: the round is over.`
     : loc.game ? `Playing ${gameName(loc.game)}.` : '';
