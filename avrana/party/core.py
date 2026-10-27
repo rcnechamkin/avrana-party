@@ -74,9 +74,24 @@ LIVE_WINDOW = 45.0         # s since the last party request before a member coun
 HOST_GRACE = 30.0          # s an away host keeps the role before succession (PARTY-LIFECYCLE.md)
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
+# What a game may ask for instead (AVR-260): its contract's extensions["net.avrana.party"]
+# launch_timeout_s / end_timeout_s, applied inside these limits (s). PROVISIONAL: owner decision 2
+# on AVR-260 sets the limits once Checkers is measured (AVR-238). The end limit stays above the
+# link's 3 s margin (sessions.END_LINK_MARGIN), so the link still gives up before Party Core does.
+LAUNCH_BOUNDS = (10.0, 180.0)
+END_BOUNDS = (6.0, 60.0)
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
 EXIT_INTENT = 60.0         # s a guest's exit request moves their pages to Party Home (AVR-580 guest exit)
 TABLE_ABANDON = 5 * 60.0   # s after the last player turned away before an active round is abandoned (AVR-475)
+
+
+def bound(declared, default, limits):
+    """A game's declared lifecycle bound clamped to Party Core's limits; the default when none."""
+    if declared is None:
+        return default
+    return min(max(float(declared), limits[0]), limits[1])
+
+
 GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
 GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
 # PROTOTYPE (AVR-673 phase 1, avrana.party.state_probe): a game that declared the state probe and
@@ -111,8 +126,28 @@ def new_id(kind):
     return f'{kind}-{secrets.token_hex(16)}'       # 128-bit random; never derived from anything
 
 
+# Letters that draw as nothing although Unicode files them as letters or marks, not as format characters
+# (AVR-140): the Hangul fillers (one alone made a blank name; after "Ada" it made a second "Ada" that the
+# duplicate rule did not see), the braille blank, the combining grapheme joiner, and two Khmer vowels
+# that Unicode says not to draw.
+INVISIBLE = frozenset('\u115f\u1160\u3164\uffa0\u2800\u034f\u17b4\u17b5')
+# Cyrillic and Greek letters that look like Latin ones, upper case and lower case apart (case is folded
+# after this). Only for comparing names, never for showing them: "Ара" in Cyrillic and "Apa" are the same
+# name to the duplicate rule, and "Ноѕт" is a reserved word. A small, deliberate subset of Unicode's
+# confusables (UTS #39), for the three scripts a name may use.
+LOOKALIKE = str.maketrans({
+    'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
+    'У': 'Y', 'Х': 'X', 'Ѕ': 'S', 'І': 'I', 'Ј': 'J', 'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c',
+    'у': 'y', 'х': 'x', 'ѕ': 's', 'і': 'i', 'ј': 'j', 'һ': 'h', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w',
+    'т': 't',
+    'Α': 'A', 'Β': 'B', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O',
+    'Ρ': 'P', 'Τ': 'T', 'Υ': 'Y', 'Χ': 'X', 'α': 'a', 'ι': 'i', 'ο': 'o', 'ρ': 'p', 'υ': 'u', 'ν': 'v',
+})
+
+
 def _name_key(name):
-    return ''.join(ch for ch in name.casefold() if ch.isalnum())
+    """What two names are compared by: look-alike letters as Latin, case folded, letters and digits only."""
+    return ''.join(ch for ch in name.translate(LOOKALIKE).casefold() if ch.isalnum())
 
 
 def clean_name(raw):
@@ -121,7 +156,7 @@ def clean_name(raw):
     if not isinstance(raw, str):
         raise Refused('bad_name', 'Pick a name.')
     text = unicodedata.normalize('NFKC', raw)
-    text = ''.join(ch for ch in text if unicodedata.category(ch) not in ('Cc', 'Cf'))
+    text = ''.join(ch for ch in text if unicodedata.category(ch) not in ('Cc', 'Cf') and ch not in INVISIBLE)
     text = ' '.join(text.split())
     if not 1 <= len(text) <= NAME_MAX:
         raise Refused('bad_name', f'Names are 1 to {NAME_MAX} characters.')
@@ -188,6 +223,8 @@ class GameSession:
         self.state_probe = bool(game.get('state_probe'))   # the game answers the AVR-673 probe
         self.game_answering = None if not self.state_probe else True
         self.state_misses = {}          # 'not_holds' | 'silent' -> times of misses since the last success
+        self.launch_timeout = bound(game.get('launch_timeout_s'), LAUNCH_TIMEOUT, LAUNCH_BOUNDS)
+        self.end_timeout = bound(game.get('end_timeout_s'), END_TIMEOUT, END_BOUNDS)
         self.min_players = game.get('min_players', 1)
         self.max_players = game['max_players']
         self.choices = {}               # member_id -> 'player' | 'spectator' (setup only)
@@ -228,6 +265,7 @@ class PartyCore:
         self._misses = (None, [])       # (session id, times of failed checks inside the window)
         self.abandoned = []             # sessions TABLE_ABANDON closed whose game has not been told yet
         self._announced = None          # _facts() at the last commit (system lines)
+        self.heartbeats = None          # avrana.party.heartbeats.Heartbeats when diagnostics are on (AVR-302)
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
@@ -360,9 +398,9 @@ class PartyCore:
             self._set_host(nxt.id if nxt else None)           # None = vacant until someone is here
             self._commit()
         s = party.session
-        if s is not None and s.state == LAUNCHING and now - s.state_since >= LAUNCH_TIMEOUT:
+        if s is not None and s.state == LAUNCHING and now - s.state_since >= s.launch_timeout:
             self._close(s, 'launch_failed', 'The game did not start in time.')
-        if s is not None and s.state == ENDING and now - s.state_since >= END_TIMEOUT:
+        if s is not None and s.state == ENDING and now - s.state_since >= s.end_timeout:
             s.game_confirmed_end = False
             switching = party.pending is not None
             party.pending = None                  # a switch never starts over a game that
@@ -432,6 +470,8 @@ class PartyCore:
             m = Member(device_id, self._unique(clean, None), now, clean_avatar(avatar), mode)
             self.party.members[m.id] = m
         else:
+            if self.heartbeats is not None:
+                self.heartbeats.rejoin(m.id)
             if m.left:
                 m.left = False
                 m.exit_id = None
@@ -457,6 +497,8 @@ class PartyCore:
             return None
         was_here = self._here(m, self.clock())
         m.last_seen = self.clock()
+        if self.heartbeats is not None:
+            self.heartbeats.beat(m.id, m.last_seen)
         if self.party.host_id is None:
             self._set_host(m.id)
             self._commit()

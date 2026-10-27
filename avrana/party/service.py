@@ -876,7 +876,8 @@ def load_games(entries):
                           'late_join': e.get('late_join', 'spectator_only'),
                           'min_players': int(e.get('min_players', 1)),
                           'pregame': bool(e.get('pregame', False)),
-                          **({'state_probe': True} if e.get('state_probe') else {})}
+                          **({'state_probe': True} if e.get('state_probe') else {}),
+                          **{k: float(e[k]) for k in ('launch_timeout_s', 'end_timeout_s') if k in e}}
     return games
 
 
@@ -922,6 +923,15 @@ def main(argv=None):
     extra, internal = sessions.routes(service, endpoints)
     from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
     extra.update(status.route(service, status.load_config(conf)))
+    diagnostics, problems, warnings = party_config.check_diagnostics(conf)
+    for warning in warnings:
+        log.warning('party-core config: %s', warning)
+    if problems:
+        raise SystemExit('party-core config: ' + '; '.join(problems))
+    if diagnostics['heartbeats']:                        # AVR-302: off unless the config says so
+        from avrana.party import heartbeats
+        service.core.heartbeats = heartbeats.Heartbeats()
+        extra.update(heartbeats.route(service))
     try:                                       # refuse a bad config before binding anything
         limited = limited_config(conf.get('limited'), cfg)
     except ValueError as e:

@@ -214,7 +214,7 @@ function gameName(id) { const g = partyGame(state.catalog, id); return g ? g.nam
 function personItem(m) {
   return h('li', { 'data-away': m.away ? '' : null },
     avatarNode({ avatar: m.avatar || '' }, 'sm'),
-    h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
+    h('span', { class: 'who' }, h('bdi', { text: m.name }), m.me ? ' (you)' : null),
     h('span', { class: 'tags' },
       m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null,
       m.away ? h('span', { class: 'avrana-tag quiet', text: 'Away' }) : null));

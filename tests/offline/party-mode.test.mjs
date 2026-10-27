@@ -309,6 +309,45 @@ test('hostReturn: nobody but the Host now, and never for another round (Play aga
   assert.equal(hostReturn(null, key), null);
 });
 
+test('the host’s end is retried once only when stale and the same session is still on (#208)', async () => {
+  let version = 7;
+  const setup = (v, { host = true, id = 'session-1' } = {}) => view({ version: v, state: 'setup', session: active(id, 'bluff', 'setup'),
+    location: at('setup', 'bluff', id), me: { id: 'member-a', name: 'Ana', host } });
+  const serve = (fresh) => fakeServer((url, init) => {
+    if (url.endsWith('state')) return [200, fresh(version)];
+    if (url.includes('state?')) return 'hang';
+    const body = JSON.parse(init.body);
+    if (body.if_version !== version) { version++; return [409, { error: 'stale', message: 'The party changed.' }]; }
+    return [200, view({ version: version + 1 })];
+  });
+  const posts = (srv) => srv.calls.filter((c) => c.method === 'POST').map((c) => [c.url, c.body.if_version]);
+  // a guest chose just before the tap: the fresh view still shows this round, so it is ended
+  let srv = serve(setup);
+  let client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(setup(6));
+  let res = await client.end();
+  assert.equal(res.ok, true);
+  assert.deepEqual(posts(srv), [['api/session/end', 6], ['api/session/end', 8]]);
+  client.stop(); srv.release();
+  // hosting passed on meanwhile, or another round is on now: the refusal stands, nothing more is sent
+  for (const fresh of [(v) => setup(v, { host: false }), (v) => setup(v, { id: 'session-2' })]) {
+    version = 7;
+    srv = serve(fresh);
+    client = createPartyClient({ fetch: srv.fetch, onView() {} });
+    client.start(setup(6));
+    res = await client.end();
+    assert.deepEqual([res.ok, res.error, posts(srv).length], [false, 'stale', 1]);
+    client.stop(); srv.release();
+  }
+  // and a real refusal is never retried
+  srv = fakeServer((url) => url.includes('state?') ? 'hang' : url.endsWith('state') ? [200, setup(6)] : [409, { error: 'no_game', message: 'No game is on.' }]);
+  client = createPartyClient({ fetch: srv.fetch, onView() {} });
+  client.start(setup(6));
+  res = await client.end();
+  assert.deepEqual([res.error, posts(srv).length], ['no_game', 1]);
+  client.stop(); srv.release();
+});
+
 test('lobby goes to api/lobby with the version, and is retried once only when stale and still not home', async () => {
   let version = 7;
   const on = (v, host = true) => view({ version: v, state: 'active', session: active(), location: at('game'),
