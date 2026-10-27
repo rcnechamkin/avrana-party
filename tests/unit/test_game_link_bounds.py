@@ -260,7 +260,8 @@ class OverallDeadline(unittest.TestCase):
 
     def test_end_is_bounded_the_same_way(self):
         from unittest import mock
-        with mock.patch.object(sessions, 'END_LINK_TIMEOUT', self.TIMEOUT):
+        # end() waits the session's own end_timeout less a margin (the lifecycle bounds, AVR-260), not a module constant.
+        with mock.patch.object(Session, 'end_timeout', self.TIMEOUT + sessions.END_LINK_MARGIN, create=True):
             link = self.link(drip_headers(0.4), timeout=60.0)
             started = time.monotonic()
             self.assertFalse(link.end(Session))
