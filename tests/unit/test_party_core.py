@@ -76,9 +76,31 @@ class Membership(unittest.TestCase):
         with self.assertRaises(Refused):
             pc.launch('device-b', 'bluff', pc.party.version)     # same name, not the host
 
+    def test_a_name_that_only_looks_like_another_is_numbered(self):
+        """AVR-140: a blank letter or a look-alike alphabet must not make a second "Ana" the duplicate rule
+        misses."""
+        for second in ('Ana\u3164', 'Ana\uffa0', 'Ana\u2800', 'Ana\u034f', '\u3164Ana'):
+            with self.subTest(second=ascii(second)):
+                pc, _ = make()
+                pc.join('device-a', 'Ana')
+                b = pc.join('device-b', second)
+                self.assertNotEqual(core._name_key(b.name), core._name_key('Ana'))
+                self.assertTrue(b.name.endswith(' 2'), ascii(b.name))
+        pc, _ = make()
+        pc.join('device-a', 'Apa')
+        self.assertEqual(pc.join('device-b', '\u0410\u0440\u0430').name, '\u0410\u0440\u0430 2')   # Cyrillic "Ара"
+        self.assertEqual(pc.join('device-c', '\u0391\u03a1\u0391').name, '\u0391\u03a1\u0391 3')   # Greek "ΑΡΑ"
+
+    def test_look_alike_folding_only_compares_it_never_rewrites_a_name(self):
+        for name in ('\u0410\u0440\u0430', 'Ελένη', 'Анна', 'Zoë', '李雷'):
+            with self.subTest(name=ascii(name)):
+                self.assertEqual(core.clean_name(name), name)
+
     def test_bad_names_refused(self):
         pc, _ = make()
-        for bad in ('', ' ', 'x' * 17, 'Admin', 'Hostess', 'Sуstem', None, 7, '‮​'):
+        for bad in ('', ' ', 'x' * 17, 'Admin', 'Hostess', 'Sуstem', None, 7, '‮​',
+                    '\u3164', '\u1160\u115f', '\uffa0', '\u2800',      # names that draw as nothing (AVR-140)
+                    'Ноѕт', 'НОЅТ', 'АDMIN'):                          # reserved words in look-alike letters
             with self.subTest(bad=bad):
                 with self.assertRaises(Refused):
                     pc.join('device-z', bad)
