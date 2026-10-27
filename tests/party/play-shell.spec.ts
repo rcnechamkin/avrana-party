@@ -133,3 +133,26 @@ test('PROPOSAL fab_panel: in landscape the sheet runs along the button\'s side',
   await expect(sheet).toHaveAttribute('data-side', 'left');
   await ana.context.close();
 });
+
+test('PROPOSAL fab_panel: on a small phone at 200% text the panel stays bounded and End is still reachable', async ({ browser }) => {
+  const ana = await phone(browser, 'Ana');
+  await ana.page.setViewportSize({ width: 320, height: 568 });
+  expect((await post(ana, 'session/launch', { game: 'expo', if_version: await version(ana) })).status()).toBe(200);
+  await expect(ana.page).toHaveURL(PLAY);
+  const layer = ana.page.frameLocator('iframe[data-avrana-party-layer]');
+  await layer.locator('#layer-button').click();
+  await layer.locator('html').evaluate((el) => { (el as HTMLElement).style.fontSize = '200%'; });
+  const sheet = layer.locator('#layer-sheet');
+  const box = (await sheet.boundingBox())!;
+  expect(box.height).toBeLessThanOrEqual(568 * 0.7 + 1);
+  expect(box.y + box.height).toBeCloseTo(568, 0);
+  const end = layer.getByRole('button', { name: 'End the round for everyone' });
+  await end.scrollIntoViewIfNeeded();
+  await end.click();
+  const yes = layer.locator('#layer-yes');
+  await yes.scrollIntoViewIfNeeded();
+  const yb = (await yes.boundingBox())!;
+  expect(yb.y).toBeGreaterThanOrEqual(box.y - 1);                       // inside the sheet, on screen
+  expect(yb.y + yb.height).toBeLessThanOrEqual(568 + 2);
+  await ana.context.close();
+});

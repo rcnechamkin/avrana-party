@@ -1041,6 +1041,10 @@
   .fab-panel .avrana-layer-sheet[data-side="left"] { left: 0; right: auto; border-left: 0; padding-right: 0; }
   .fab-panel .avrana-layer-sheet[data-side="right"] { left: auto; right: 0; border-right: 0; padding-left: 0; }
   .fab-panel .avrana-layer-sheet:has(#chat:not([hidden]))[data-side="bottom"] { height: min(70dvh, 40rem); }
+  /* People and Host controls: the whole panel scrolls, so at 200% text on a small phone the heading and
+     tabs never squeeze the controls into a sliver (the chat keeps its own scroller and its field). */
+  .fab-panel .avrana-layer-sheet:has(#layer-people:not([hidden])) { overflow-y: auto; overscroll-behavior: contain; }
+  .fab-panel .avrana-layer-sheet:has(#layer-people:not([hidden])) > .body { flex: none; overflow: visible; }
   /* Hold to confirm (owner, 2026-10-26): the button fills while it is held. */
   .avrana-hold { position: relative; overflow: hidden; touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
   .avrana-hold::before { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: rgb(255 255 255 / 0.28); pointer-events: none; }
