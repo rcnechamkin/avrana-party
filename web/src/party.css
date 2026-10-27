@@ -744,6 +744,9 @@
     font-size: var(--text-eyebrow); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
     pointer-events: none;
   }
+  /* a Proposal label in the flow of a page or the drawer, not pinned over it (AVR-703) */
+  .avrana-proposal.is-inline { position: static; transform: none; justify-self: start; align-self: flex-start; }
+  .avrana-k2 { gap: 0.75rem; align-items: flex-start; padding-bottom: 1.5rem; }   /* the stage's column, its items packed at the foot */
   ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--motion-1); }
   /* (the rail clips what leaves it, so it keeps a focus ring's width of room on every side) */
   .avrana-rail { display: flex; gap: 0.625rem; margin: -0.25rem; padding: 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 0.25rem; }
