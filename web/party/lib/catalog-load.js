@@ -37,12 +37,34 @@ export function normalizeCovers(body) {
   return covers;
 }
 
-/** Fetch covers/index.json; never throws. */
-export async function loadCovers(fetchFn, url = 'covers/index.json') {
+// A game's optional wide cover for the wide frame of its page (AVR-308): covers/<id>.wide.<ext>, listed
+// under "wide" in the same index. An index without the key has none.
+const WIDE_COVER = /^covers\/([a-z][a-z0-9_-]{0,39})\.wide\.(jpg|jpeg|png|webp|avif)$/;
+
+/** Pure: a parsed covers/index.json -> Map(game id -> wide cover path), kept by the same rule as the covers. */
+export function normalizeWideCovers(body) {
+  const wide = new Map();
+  if (!body || typeof body !== 'object' || !body.wide || typeof body.wide !== 'object') return wide;
+  for (const [id, path] of Object.entries(body.wide)) {
+    const match = typeof path === 'string' ? WIDE_COVER.exec(path) : null;
+    if (match && match[1] === id) wide.set(id, path);
+  }
+  return wide;
+}
+
+/** Fetch covers/index.json once: {covers, wide}, two Maps; never throws. */
+export async function loadCoverIndex(fetchFn, url = 'covers/index.json') {
   try {
     const res = await fetchFn(url);
-    return res.ok ? normalizeCovers(await res.json()) : new Map();
+    if (!res.ok) return { covers: new Map(), wide: new Map() };
+    const body = await res.json();
+    return { covers: normalizeCovers(body), wide: normalizeWideCovers(body) };
   } catch {
-    return new Map();
+    return { covers: new Map(), wide: new Map() };
   }
+}
+
+/** Fetch covers/index.json; never throws. The square covers only (loadCoverIndex has both). */
+export async function loadCovers(fetchFn, url = 'covers/index.json') {
+  return (await loadCoverIndex(fetchFn, url)).covers;
 }

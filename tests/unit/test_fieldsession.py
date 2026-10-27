@@ -48,6 +48,10 @@ PLANTED = {
     'ipv6_full': 'peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334',
     'mapped_ipv4': 'client ::ffff:10.42.0.57:51234 GET /party/',          # a dual-stack server's access log
     'mapped_ipv4_bracketed': 'peer=[::ffff:10.42.0.57]:443',
+    # AVR-738: a dot beside the address is punctuation; v3 kept all three whole, and the validator passed them.
+    'ipv4_sentence_end': 'Accepted connection from 10.42.0.57.',
+    'ipv4_after_ellipsis': 'retrying...10.42.0.57 answered',
+    'mapped_ipv4_sentence_end': 'client ::ffff:10.42.0.57.',
     'mac': 'station a4:83:e7:12:34:56 associated',
     'mac_bare': 'wlan0: STA a483e7123456 roamed',                          # a driver that prints no separators
     'mac_dotted': 'neighbor a483.e712.3456 learned on wlan0',
@@ -117,7 +121,7 @@ class Redaction(unittest.TestCase):
 
     def test_a_short_commit_a_version_or_a_count_is_not_a_mac_or_a_pin(self):
         for text in (f'deployed {PARTY[:12]} at 18:00', 'python 3.11.2', 'pinned 12345 packages', 'PIN set by the owner',
-                     'Admin PIN [redacted] accepted'):
+                     'Admin PIN [redacted] accepted', 'build 1.2.3.4.5 ok', 'served by the Party AP 10.42.0.1.'):
             with self.subTest(text):
                 self.assertEqual(redact.scrub_text(text), text)
                 self.assertEqual(redact.violations_in_text(text, log=True), [])
@@ -547,6 +551,24 @@ class SupportBundle(unittest.TestCase):
             fs.bundle(self.store, self.probes, self.out, hours=1, now=T0)
         self.assertIn('stop it and export it instead', str(ctx.exception))
         self.assertFalse(self.out.exists())
+
+    def test_a_bundle_keeps_no_working_copy_even_when_refused(self):
+        # AVR-740: a bundle refused for naming a guest left the name in the store's journal.jsonl and timeline.md,
+        # and every bundle left its working session behind.
+        self.probes.entries = [entry(T0 - timedelta(minutes=5), 'Benjamin rejoined after a Wi-Fi drop', priority=4)]
+        with self.assertRaises(fs.Refused):
+            fs.bundle(self.store, self.probes, self.out, hours=1, now=T0, forbid_terms=['Benjamin'])
+        self.assertFalse(self.out.exists())
+        left = [f for f in self.root.rglob('*') if f.is_file() and 'Benjamin' in f.read_text(encoding='utf-8', errors='ignore')]
+        self.assertEqual(left, [])
+        out, *_ = fs.bundle(self.store, self.probes, self.out, hours=1, now=T0 + timedelta(minutes=1))
+        self.assertTrue(out.is_file())
+        self.assertEqual([p for p in self.root.iterdir() if p.is_dir()], [])
+        # A recorded night is never touched by a bundle's clean-up.
+        night = fs.start(self.store, 'a real night', self.probes, now=T0 + timedelta(minutes=2))
+        fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=3))
+        fs.bundle(self.store, self.probes, self.out / 'c', hours=1, now=T0 + timedelta(minutes=4))
+        self.assertEqual([p.name for p in self.root.iterdir() if p.is_dir()], [night['id']])
 
     def test_a_garbled_preflight_never_leaves_a_session_recording(self):
         for n, doc in enumerate(({'schema': fs.PREFLIGHT_SCHEMA, 'checks': 'x'},

@@ -24,7 +24,7 @@ import { trackVisibleHeight } from './lib/viewport.js';
 import { createProfile } from './lib/profile.js';
 import { avatarNode, wireProfile } from './lib/profile-ui.js';
 import { createPartyChat, systemText } from './lib/party-chat.js';
-import { loadCatalog, loadCovers } from './lib/catalog-load.js';
+import { loadCatalog, loadCoverIndex } from './lib/catalog-load.js';
 import { contextOf, heroIsWide, pickArt } from './lib/cover-art.js';
 import { donorAvailability, visibleGames, launchTarget } from './lib/catalog-view.js';
 import { HOME, destination, justPlayed, locationOf, moveKey, partyGame, roster, roundToRemember, setupPanel, tileMode, roundKey, hostReturn } from './lib/party-mode.js';
@@ -65,9 +65,9 @@ const state = { exit: null, staying: false, leaving: false, catalog: null, repor
   // still answers; passed: hosting changed hands while this phone watched (lib/states.js);
   // box: the status document, asked for by the Host only; entries: the shelf as last drawn
   failingSince: null, answered: false, signin: false, lostTimer: null, trying: false, passed: null, box: null, entries: null,
-  // covers: the owner's cover for a game (id -> path), from covers/index.json; badArt: the picture
+  // covers / wideCovers: the owner's square and wide cover for a game (id -> path), from covers/index.json; badArt: the picture
   // addresses (owner, package, first-party) that would not load on this phone since the page last started
-  covers: new Map(), badArt: new Set(),
+  covers: new Map(), wideCovers: new Map(), badArt: new Set(),
   // heroWide: whether each stage's box (Home's, the briefing's) is wide enough for a game's banner
   // (lib/cover-art.js heroIsWide); set from the box's own size once it is on screen, guessed from the window until then
   heroWide: { home: false, scene: false } };
@@ -160,7 +160,7 @@ function favButton(game, cls = '') {
 function tileCover(game, mark, shape = '', small = false, place = 'home') {
   const art = ARTWORK.test(game.artwork || '') ? game.artwork : null;
   const context = contextOf(shape, small);
-  const rung = pickArt(game, context, { own: state.covers.get(game.id) || null, art, wide: shape === 'wide' || (shape === 'stage' && state.heroWide[place]) }, state.badArt);
+  const rung = pickArt(game, context, { own: state.covers.get(game.id) || null, ownWide: state.wideCovers.get(game.id) || null, art, wide: shape === 'wide' || (shape === 'stage' && state.heroWide[place]) }, state.badArt);
   const banner = Boolean(rung.fit);                                           // a banner: the width of the stage, never cropped at the sides ('whole': no cover, a narrow stage)
   const flat = !banner && (rung.kind === 'own' || rung.kind.startsWith('package-'));   // a picture whole in its box, not cropped to fill it
   const hero = context === 'hero';
@@ -1836,11 +1836,12 @@ async function boot() {
   state.trying = false;
   clearTimeout(state.lostTimer);
   const [reachable, loaded, report, partyView, covers] = await Promise.all([
-    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(), loadCovers(fetch),
+    checkReach(), loadCatalog(fetch), probeCapabilities(), party.probe(), loadCoverIndex(fetch),
     gameOrigins.refresh(),
   ]);
   state.reachable = reachable;
-  state.covers = covers;
+  state.covers = covers.covers;
+  state.wideCovers = covers.wide;
   state.badArt = new Set();
   const catalog = loaded.catalog;       // empty, never null, when catalog.json is missing or corrupt (AVR-220)
   state.catalog = catalog;
