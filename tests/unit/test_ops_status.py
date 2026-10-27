@@ -636,6 +636,8 @@ class FastDocument(unittest.TestCase):
                 return {u: ('active', {'restarts': 0, 'result': 'success', 'active_for_s': 3600}) for u in units}
 
             def unit_state(self, unit):
+                if unit == 'avrana-party-certificate.service':    # the renewal job: one probe, run beside the rest
+                    return 'inactive'
                 raise AssertionError('asked unit by unit')
 
         probes = Batched({'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')})
