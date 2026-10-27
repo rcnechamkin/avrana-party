@@ -1,0 +1,16 @@
+{
+  "schema": "avrana.shelves/v0",
+  "comment": "Where each title sits on Party Home and in the Library (AVR-155): featured leads, then titles not listed here, then classics, then lab; hidden is not listed at all (its code, contract and install stay). A placement, never a grant: being here does not install, permit or rights-clear anything, and an installed package cannot change its own placement. Recommended dispositions, owner to confirm: docs/design/proposals/2026-10-27-catalog-shelves.md.",
+  "games": {
+    "arcade-gauntlet2": "lab",
+    "bestguess": "featured",
+    "bluff": "lab",
+    "checkers": "classics",
+    "colyseus-tanks": "featured",
+    "coup": "featured",
+    "courting": "featured",
+    "expo": "lab",
+    "ps1-bomberman": "hidden",
+    "ps1-worms": "hidden"
+  }
+}

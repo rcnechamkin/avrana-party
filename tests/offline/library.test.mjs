@@ -10,7 +10,8 @@ import { visibleGames } from '../../web/party/lib/catalog-view.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
-const all = visibleGames(catalog);                     // the six real titles; nothing here is invented
+// the six real titles, before the owner's shelves (AVR-155, tested in catalog-view.test.mjs); nothing here is invented
+const all = visibleGames({ ...catalog, shelves: undefined });
 const game = (id) => all.find((g) => g.id === id);
 const ids = (games) => games.map((g) => g.id);
 const shelf = (opts = {}) => arrange({ all, ...opts });

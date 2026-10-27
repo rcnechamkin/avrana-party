@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { donorAvailability, visibleGames, filterGames, launchTarget } from '../../web/party/lib/catalog-view.js';
+import { donorAvailability, visibleGames, filterGames, launchTarget, shelfOf } from '../../web/party/lib/catalog-view.js';
 import { createProfile } from '../../web/party/lib/profile.js';
 import { evaluateSeat } from '../../web/party/lib/evaluate.js';
-const catalog = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
+const curated = JSON.parse(readFileSync(new URL('../../web/party/catalog.json', import.meta.url)));
+// The listing rules below are the catalog's before the owner's shelves (AVR-155), which have their own tests.
+const catalog = { ...curated, shelves: undefined };
 // The donor library is retired from the catalog (ADR 0014, AVR-259). The shell still handles a
 // title whose id differs from its provider slug, so these tests add one: EXPO's entry as "chess".
 const chess = { ...catalog.games.find((g) => g.id === 'expo'), id: 'lan-chess', legacySlug: 'chess', name: 'Chess',
@@ -72,4 +74,24 @@ test('all granted browser titles launch directly with explicit context; invalid 
   const api = { games: [{ slug: 'chess' }], external: [], avranaIntegration: 'avrana.lan-launch/v1' };
   assert.equal(donorAvailability(api).get('chess').running, true);
   assert.equal(donorAvailability({ ...api, avranaIntegration: 'unknown' }).get('chess').running, false);
+});
+
+test("the owner's shelves order the list and hide what is hidden; they never install anything (AVR-155)", () => {
+  assert.deepEqual(visibleGames(curated).map((g) => g.id), ['checkers', 'bluff', 'expo', 'arcade-gauntlet2']);
+  assert.equal(shelfOf(curated, curated.games.find((g) => g.id === 'ps1-worms')), 'hidden');
+  assert.ok(curated.games.some((g) => g.id === 'ps1-worms'));            // hidden is not removed from the catalog
+  const pkg = (id, name) => ({ ...curated.games.find((g) => g.id === 'checkers'), id, name, provider: 'native' });
+  const games = [...curated.games, pkg('bestguess', 'Best Guess'), pkg('zeta', 'Zeta'), pkg('courting', 'Courting')];
+  // featured first (catalog order kept within a shelf), then titles with no placement, then classics, then lab
+  assert.deepEqual(visibleGames({ ...curated, games }).map((g) => g.id),
+    ['bestguess', 'courting', 'zeta', 'checkers', 'bluff', 'expo', 'arcade-gauntlet2']);
+  // a featured title that is not installed is still not listed: a placement grants nothing
+  const notHere = { ...pkg('coup', 'Coup'), installed: false, entry: null, status: 'not_installed' };
+  assert.equal(visibleGames({ ...curated, games: [...curated.games, notHere] }).some((g) => g.id === 'coup'), false);
+  // an unknown shelf word, or an inherited key, is no placement at all
+  const odd = { ...curated, shelves: { checkers: 'spotlight', toString: 'featured' } };
+  assert.equal(shelfOf(odd, curated.games.find((g) => g.id === 'checkers')), null);
+  assert.equal(shelfOf({ ...curated, shelves: Object.create({ bluff: 'hidden' }) }, curated.games.find((g) => g.id === 'bluff')), null);
+  // no shelves at all: exactly the catalog's own order
+  assert.deepEqual(visibleGames(catalog).map((g) => g.id), catalog.games.filter((g) => g.installed || g.status === 'experimental').map((g) => g.id));
 });
