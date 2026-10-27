@@ -107,6 +107,9 @@ test('PROPOSAL fab_panel: the Party menu is a bounded sheet over the game, and e
   await ana.page.mouse.down();
   await ana.page.waitForTimeout(1000);
   await ana.page.mouse.up();
+  // every phone says so for a moment, then Party Home
+  await expect(ben.page.locator('#play-banner')).toHaveText('The Host ended the game.');
+  await expect(ana.page.locator('#play-banner')).toHaveText('You ended the game.');
   for (const p of [ana, ben]) await expect(p.page).toHaveURL(new RegExp(`^${PARTY}/party/(#.*)?$`));
   await ana.context.close(); await ben.context.close();
 });

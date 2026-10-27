@@ -41,3 +41,22 @@ html, body.play-shell {
   transition: opacity 0.6s;
 }
 .play-diag.gone { opacity: 0; }
+/* PROPOSAL fab_panel (AVR-769): the Host ended the round. Every phone says so for a moment before
+   Party Home, so the game vanishing is never a surprise. */
+.play-banner {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2147483646;
+  margin: 0;
+  max-width: calc(100vw - 32px);
+  padding: 12px 20px;
+  border-radius: 14px;
+  background: rgba(20, 20, 26, 0.92);
+  border: 1px solid rgba(200, 186, 255, 0.22);
+  color: #fff;
+  font: 600 17px/1.4 "Plus Jakarta Sans", system-ui, sans-serif;
+  text-align: center;
+}
+.play-banner[hidden] { display: none; }
