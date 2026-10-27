@@ -486,7 +486,8 @@ These are made only in the PR that accepts this ADR.
     only to the fallback.
 - **Decided (owner, 2026-10-26; §1.1 item 9):** no browser chrome in the installed app; the play shell is the plan,
   gated by S0b.
-- **Recommended, not yet decided by the owner:**
+- **Decided (owner, 2026-10-26: "Go with your own recommendations"):**
+  - Revision 3 is accepted as the direction (this draft stays in proposals until the accepting ADR PR).
   - During an active round, chat and suggestions update the badge only, with no toast, and the keyboard opens only on a
     tap (D5). Both stay in the FAB.
   - Hold-to-confirm (about 800 ms) for destructive Host verbs, plus the short banner on every phone (D6).
