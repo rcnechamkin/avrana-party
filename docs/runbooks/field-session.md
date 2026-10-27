@@ -36,6 +36,21 @@ $F export --out ~/                                      # ~/avrana-field-<id>.ta
 `$F status` says whether a session is recording. `$F timeline` prints the session as one ordered page.
 `$F validate PACKAGE` re-checks any package. It prints rule ids and counts, never the content.
 
+## After the fact: a support bundle (no session needed)
+
+When something went wrong and nobody ran `start`, one command collects the same package for the last
+hours (AVR-74, PROTOTYPE; the proposal's decisions are open):
+
+```bash
+python3 -m avrana.ops.fieldsession bundle --out ~/ --hours 6            # at most 24; also --attach-preflight, --forbid-terms
+```
+
+It takes one snapshot now, then the journal and power lines from `--hours` ago until now, through the
+same writer, bounds, redaction and validator. The package is `avrana-field-<id>-support-<N>h.tar.gz`,
+and its `session.json` says `"kind": "support"` with the window. It is refused while a session is
+recording (stop and export that one), and nothing is written if validation fails. Nothing is sent
+anywhere: hand the file over yourself.
+
 ## What a package holds
 
 | Member | Content | Source |
