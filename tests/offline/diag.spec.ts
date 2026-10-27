@@ -75,3 +75,41 @@ test('remove offline copy unregisters the worker and its caches', async ({ page 
   }));
   expect(left).toEqual({ registrations: 0, caches: 0 });
 });
+
+test('the input probe starts only on request, observes a synthetic controller and records no id or text', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__pads = [null, null, null, null];
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => (window as any).__pads });
+  });
+  await page.goto('/party/diag/');
+  await expect.poll(async () => (await report(page).catch(() => ({}))).schema).toBe('avrana.diagnostics/v0');
+  expect((await report(page)).input).toBe('not tested');
+  await expect(page.locator('#input')).toBeEmpty();
+
+  await page.locator('#input-start').click();
+  await expect(page.locator('#input')).toContainText('none reported yet');
+  await page.evaluate(() => {
+    const pad = {
+      index: 0, mapping: '', connected: true, id: 'Secret Pad (Vendor: 2dc8 Product: 6006)',
+      buttons: Array.from({ length: 11 }, (_, i) => ({ pressed: i === 3, value: i === 3 ? 1 : 0 })), axes: [0, 0, 0, 0, 0, 0, -1, 0],
+    };
+    (window as any).__pads = [pad, null, null, null];
+    window.dispatchEvent(Object.assign(new Event('gamepadconnected'), { gamepad: pad }));
+  });
+  await page.keyboard.type('pw');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#input')).toContainText('gamepad-nonstandard');
+  await expect(page.locator('#input')).toContainText('pressed [3], moved [6]');
+
+  await page.locator('#input-start').click();
+  await expect(page.locator('#input-start')).toHaveText('Probe stopped: start again');
+  const r = await report(page);
+  expect(r.input.schema).toBe('avrana.input-probe/v0');
+  expect(r.input.path).toBe('gamepad-nonstandard');
+  expect(r.input.keys).toEqual(expect.arrayContaining([{ key: 'character', code: 'character', count: 2 },
+    { key: 'ArrowDown', code: 'ArrowDown', count: 1 }]));
+  const text = JSON.stringify(r.input);
+  for (const leak of ['Secret', '2dc8', '6006', 'KeyP', 'KeyW']) expect(text).not.toContain(leak);
+  expect(r.input.keys.map((k: { key: string }) => k.key)).not.toEqual(expect.arrayContaining(['p']));
+  expect(r.input.keys.map((k: { key: string }) => k.key)).not.toEqual(expect.arrayContaining(['w']));
+});
