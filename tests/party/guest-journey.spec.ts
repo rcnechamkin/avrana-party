@@ -204,6 +204,9 @@ test.describe('the guest journey: BLUFF (Play/Watch setup, spectator-only late j
     await test.step('8 a player loses the Party box and gets it back: still in the round, and hears the Party again', async () => {
       const block = (route: { abort: () => Promise<void> }) => route.abort();
       await bob.context.route('**/party/api/**', block);
+      // A route stops new requests only: the long poll Bob's page already had open would still carry Dee's rename
+      // (AVR-744: 1 run in 70). A phone waking does what a phone does, drops that poll and asks again, now blocked.
+      await bob.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await bob.page.evaluate(() => window.dispatchEvent(new Event('offline')));
       // the Party moves while Bob is out of reach: Dee renames
       expect((await post(dee, 'rename', { name: 'Dee', avatar: 'gaze-07' })).status()).toBe(200);
