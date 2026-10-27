@@ -78,8 +78,14 @@ appliance, and the validator rejects them by name.
 
 **What Party Core reads (AVR-229).** Party Core takes its per-game facts from the contract, not
 from its own config: `players.min`/`players.max`, `late_join`, and
-`extensions["net.avrana.party"].pregame` (boolean, default `false`; ADR 0010). That extension
-allows no other key. The catalog build also reads `extensions["net.avrana.test"].test_only`
+`extensions["net.avrana.party"].pregame` (boolean, default `false`; ADR 0010). The same extension
+may state the game's lifecycle bounds (AVR-260, optional): `launch_timeout_s` (how long Party Core waits
+for the game to accept a launch, default 60) and `end_timeout_s` (how long it waits for an end to be
+confirmed, default 15), numbers of seconds above 0. Party Core applies a declared value inside its own
+limits (`core.LAUNCH_BOUNDS` 10–180 s, `core.END_BOUNDS` 6–60 s; **provisional** until Checkers is
+measured) and the limit outside them; `/party/api/status` shows the values a round runs under. A
+non-numeric, zero, negative or absurd (> 3600) value fails contract validation. That extension allows no
+other key. The catalog build also reads `extensions["net.avrana.test"].test_only`
 (boolean; AVR-236): a contract that sets it to `true` and has no grant in the appliance profile
 is left out of the catalog, so a test game is never offered on a product appliance. Anything
 other than that exact object (a missing key, a value that is not an object) means a product game. `/etc/avrana-party/party-core.json` names only what the appliance owns (`url`,
