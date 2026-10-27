@@ -3,6 +3,10 @@
 - **Status:** DRAFT ADR, pending owner approval. NOT accepted and not source authority; nothing here is built, merged or deployed.
 - **Date:** 2026-10-26. Revised the same day after the owner's direction (§1.1). The owner approved the direction ("Yes"),
   but the document stays a draft until it is merged as an accepted ADR.
+- **Revision 3 (2026-10-26, owner item 9):** the round runs inside a **Party play shell**. The top-level page stays on
+  `/party/` and the game fills it in a cross-origin frame. The FAB is drawn by the shell itself, not by a frame inside the
+  game. This replaces "the game is the top-level page" (D2, D5, D6, §4). It is gated by a real-phone proof (§4, stage
+  S0b) and keeps today's top-level game plus layer frame as the fallback.
 - **Linear:**
   - AVR-705: this decision.
   - AVR-762: the console and viewport proof, [#258](https://github.com/rcnechamkin/avrana-party/pull/258).
@@ -58,6 +62,16 @@ Owner answers to the draft's open questions (2026-10-26, relayed from the owner 
 8. **Undetectable cover.** "Sure. I feel like eventually we really should make it required for every game though. If
    the game wants to hide the FAB, that's an option, but it'll still be accessible via a drawer or something."
 
+Owner direction, revision 3 (2026-10-26, relayed from the owner in chat):
+
+9. **No browser chrome in the installed app.** On an iPhone with the Party installed to the Home Screen, starting Tanks
+   showed iOS's out-of-scope browser bar (close, URL, back, share, reload, open in Safari). The owner: "I'd want to
+   eliminate these things whenever I start a new game in the PWA", and approved making the Party shell the plan.
+   - Cause: the manifest's `"scope": "/party/"` (`web/party/manifest.json`) cannot include another origin, so a
+     top-level navigation to the game origin leaves the app. iOS has no cross-origin scope extension.
+   - So the top-level document must stay inside `/party/` for the whole round, and the game must keep its own origin
+     (ADR 0013). The only design that satisfies both is a Party page that frames the game.
+
 The kickoff's wording, "a player can open Home/Party/Library/Me during gameplay", is therefore **narrowed by owner
 direction**. During a round the Party surface is the FAB's bounded panel, never a navigation away from the game.
 
@@ -77,9 +91,11 @@ This restates ADR 0011's 2026-10-02 amendment and ADR 0014 decision 10.
   game, the session, roles and the Host. It lives in Party Core, and only the Host moves it (PARTY-LIFECYCLE R1/R2).
 - **Outside a round** (`home`, `setup`), a member's phone may show any Party view: Home, Library, Party or Me. They are
   all the same `/party/` document.
-- **During a round** (`game`, `results`), the game page stays the top-level, visible page. The phone follows Host moves
-  exactly as today (ADR 0011 decision 3, kept for rounds). The member's only Party surface is the FAB panel (D5). There
-  is no personal navigation to Party Home, Library or Me in a round.
+- **During a round** (`game`, `results`), the phone shows the Party play shell: a `/party/` page whose content is the
+  game, full screen, in a frame (D5). The phone follows Host moves exactly as today (ADR 0011 decision 3, kept for
+  rounds), by the shell changing or dropping its game frame instead of the browser navigating to another origin. The
+  member's only Party surface is the FAB panel (D5). There is no personal navigation to Party Home, Library or Me in a
+  round.
 
 Neither browsing nor the panel ever moves, pauses, cancels or advances the shared activity, or changes a role or seat.
 
@@ -119,19 +135,40 @@ members may move between Party Home's views and come back to it (AVR-702).
   Host status, a deep link, a reload, a reconnect or a second tab. Host status grants lifecycle verbs, never
   game-private information.
 
-**D5. The in-round Party panel (the FAB).**
+**D5. The Party play shell and the in-round Party panel (the FAB).**
 
-- **The game stays mounted and visible.** During a round the game is the top-level page. Its server stays authoritative
-  for timers, AFK, autopilot, grace and forfeit, and the Party adds no game timer. No design depends on a game running
-  in a hidden or background frame.
-- **One Party entry point.** The Party's in-round surface is the existing Party layer (`web/party/bridge/layer-mount.js`,
-  `web/party/lib/layer-app.js`): a Party-origin frame with a floating button that opens a **bounded panel**.
-- **The panel never covers the whole viewport.**
-  - Today's `open` mode is full-viewport (`layerBox`, `layer-mount.js:41`), and **must change** to a bounded sheet. For
-    example, a bottom sheet in portrait and a side sheet in landscape, with the exact bounds set in design (S4).
-  - The game stays visible beside the sheet, and the frame is only the sheet's box, so a touch outside the sheet
-    reaches the game.
-  - The game hears `avrana-party-layer {open}` and may pause its own input.
+- **The shell (owner item 9).** During a round the top-level document is a Party page inside the manifest scope, for
+  example `/party/play`. It holds:
+  - the game, full screen, in one frame on the game's registered origin;
+  - the FAB and its panel, as ordinary Party DOM above that frame;
+  - the one Party socket, the wake lock (`keep-awake.js`), and the ticket path that `bridge.html` provides today.
+- **The game keeps its own origin.** The frame is
+  `sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"`, with no `allow-top-navigation` and no
+  `allow-popups`, plus `allow="autoplay; fullscreen; screen-wake-lock; gamepad"`. A game cannot navigate the Party, open
+  windows, read Party cookies or storage, or draw outside its frame.
+- **The game stays visible and authoritative.** Its server stays authoritative for timers, AFK, autopilot, grace and
+  forfeit, and the Party adds no game timer. No design depends on a game running in a hidden or background frame: the
+  game frame is never `display:none`, off-screen or zero-sized while a round is on.
+- **The page owns the viewport.** Inside a frame the game's own `<meta viewport>` is ignored and the safe-area insets may
+  read as zero. So the shell sets `viewport-fit=cover`, sizes the frame to the dynamic viewport, and passes the safe-area
+  insets to the game as a versioned bridge value. The phone proof (§4) settles whether the frame spans the full screen or
+  only the safe area.
+- **Following and navigation.** `destination()` still decides where the phone belongs. On a Host move the shell swaps
+  or drops its game frame, or returns to Party Home in the same document. The game's existing `navigate {to:'party'}`
+  becomes a message to the shell. A game never navigates the top-level page.
+- **The FAB is shell DOM, not a frame.** The layer UI (`web/party/lib/layer-app.js`, `layer.js`) is mounted directly by
+  the shell. Its states are the same as today's:
+  - closed button;
+  - parked edge tab;
+  - a **bounded panel**: for example a bottom sheet in portrait and a side sheet in landscape, with the exact bounds set
+    in design (S4).
+- **Touches.** The FAB root is `pointer-events:none` and only its button, tab and sheet take touches. Every touch outside
+  them reaches the game frame, with no frame resizing.
+  - Dragging the button uses pointer capture on the button.
+  - The edge tab opens on a tap, never on an inward swipe, because that swipe is Android's Back gesture.
+  - Positions are clamped to the safe areas and kept per orientation.
+- **The panel never covers the whole viewport.** The game stays visible beside the sheet. The shell tells the game
+  `{open}` and `{closed}` so it can release held joysticks or pause its own input. Shared timers keep running.
 - **Panel contents** ("a one-stop-shop"):
   - Party: people and presence;
   - chat (ADR 0017);
@@ -139,35 +176,44 @@ members may move between Party Home's views and come back to it (AVR-702).
   - quick settings: per-device preferences only, never Party state;
   - typed notifications;
   - Host controls: End, switch, Party Home for everyone, hand over hosting, each with confirmation (D6).
+- **Notifications don't steal a gesture.** While a finger is down on the game, a toast waits until it lifts. During an
+  active round, chat messages and suggestions update the badge only, with no toast. The keyboard never opens unless the
+  member taps the chat field.
 - **Panel accessibility:**
-  - focus is trapped within the panel;
-  - Escape or Close returns focus to the game;
+  - while open, the sheet is `role="dialog" aria-modal="true"` and focus is trapped in it;
+  - Escape, Close or a tap on the visible game closes it, and focus returns to the game frame;
+  - the FAB is the last landmark in the shell, so a screen reader reaches the game first;
+  - a "Move menu" control cycles the corner for players who cannot drag;
   - reduced motion and 200% text are supported;
   - it works on small viewports, in landscape, with safe-area insets, and with the keyboard and IME over chat.
 - **Typed notices** (`your_turn`, `host_started`, `round_over`, plus Party events) carry deadlines on the server clock
   and are worded only by the Party. A game's notice travels **game server → Party Core**, server to server beside the
   session protocol's `ended`, as a typed event (kind, game, participant, deadline). It is never free text, and never
   sent through the bridge. The panel and the button's badge show these notices.
-- **The FAB is a constant, system-wide control (owner item 7).** It is required on every Party game and present on
-  Party pages too. Each game adopts it in its own Games PR, and the contract amendment is in §6.
-- **A game may minimise the FAB, but never remove it (owner item 8).**
-  - The floor is today's edge `tab` mode (`layer-mount.js`, `TAB`), an always-reachable drawer handle.
-  - During a Party round only the Party frame may send `hide`, and only for a phone that is not a member. A game cannot
-    request it.
-  - A game that wants it out of the way asks for the tab, through a versioned layer word or the player's own park
-    action.
-  - Removing or hiding the frame anyway is tampering (D6).
+- **The FAB is a constant, system-wide control (owner item 7).** It is present on every Party page and over every Party
+  game. In the shell it needs no adoption by the game. The contract amendment is in §6.
+- **A game may minimise the FAB, but never remove it (owner item 8).** A game may ask for the parked edge tab through a
+  versioned bridge word. The player may park it too. In the shell a game has no way to hide or cover it.
 - **Leave during a round (owner item 5).** The accepted AVR-580 flow stays:
-  - Leave starts in the FAB and is confirmed on top-level Party Home, never in the coverable frame.
+  - Leave starts in the FAB and is confirmed on Party Home, never in a game-coverable frame.
   - It is the single sanctioned exit from a round to Party Home, because it is quitting the Party, not browsing.
   - The Host's Leave and hand-over also stay as AVR-580 and the 2026-10-18 amendment describe.
+  - In the shell, Party Home is the same document, so the confirmation no longer leaves the installed app.
 - **Restore is the reconnect path, not a browsing mechanism.** A reload, a sleep, an OS tab eviction or a network loss
-  returns the phone to the same participant and role with a fresh single-use ticket from `bridge.html`, and the game
-  resends the full seat state on `hello`: private state only to its own seat. #258's R evidence covers this path.
-  - On return the phone has obligations: re-unlock audio, request the wake lock again (`keep-awake.js`), and treat a
-    bfcache restore as a reconnect.
+  returns the phone to the same participant and role with a fresh single-use ticket, and the game resends the full seat
+  state on `hello`: private state only to its own seat. #258's R evidence covers this path.
+  - On return the shell re-requests the wake lock, and the game re-unlocks its audio on the next tap. A bfcache restore
+    is treated as a reconnect.
+- **Fallback: the top-level game (today's model).** Kept, behind the same flag, until S0b passes and every Party game
+  works framed:
+  - A game page opened top-level during a Party round (a stale tab, a deep link, a game not yet adapted) goes to the
+    shell, unless the shell flag is off or the game is marked not frameable.
+  - In fallback, the FAB is today's layer frame inside the game. The coverable-frame rules in D6 apply to it, and it
+    shows the out-of-scope browser bar in an installed app.
+- **Limited Mode** stays same-origin (ADR 0012). The shell frames the same-origin game, so the browser gives it no
+  isolation from the shell. That is the accepted LIMITED-MODE D5 weakness, unchanged.
 
-**D6. Origin, bridge and layer boundaries; the coverable panel.**
+**D6. Origin, bridge and shell boundaries.**
 
 - **Separate origins and bridge rules stay** as today ([ADR 0013](../../adr/0013-party-and-game-browser-origins.md)):
   - a game never reads Party or Admin cookies, and never calls member, host or admin endpoints as the viewer;
@@ -175,35 +221,42 @@ members may move between Party Home's views and come back to it (AVR-702).
     member's role at the moment of the verb (re-checked by Core), and the exact recipient (never `"*"` for data);
   - tickets stay bound to the session and an opaque per-session participant, are refused for another game or during
     setup, are origin-checked, and die at End, switch or lobby.
-- **Host controls live in the FAB, by owner direction.** This supersedes this draft's earlier recommendation to confirm
-  trusted verbs only on top-level Party pages.
-- **The risk.** The layer frame is an element in the game's DOM. A game can cover, restyle, shrink, hide or remove it.
-  #258 showed a covering element taking a tap, and IntersectionObserver v2 could not detect it.
-- **Mitigations (required):**
-  1. **In-frame confirmation for every destructive Host verb.** End, switch, Party Home for everyone and hand-over use
-     a second step inside the Party frame: today's confirm pattern (`layer-app.js` `ACTION_WORDS`) or a two-tap. A
-     single stolen tap can never complete one.
+- **In the shell the bridge points up, not down.** The game's shim talks to `window.parent`. The shell accepts a message
+  only when `event.source` is its own game frame's window and `event.origin` is that game's registered origin. It
+  answers to that exact origin over a dedicated `MessageChannel`. The verbs are today's closed set (ticket, public view,
+  `navigate` word) plus `fab.park` and the insets value.
+- **Framing headers.**
+  - The game origin sends `frame-ancestors` naming only the Party origin (today it is not framed at all).
+  - The shell page sends `frame-ancestors 'none'` and a `frame-src` listing only the registered game origins.
+  - `bridge.html` and `layer.html` stay frameable by the game origin only while the fallback exists, then are retired.
+- **Host controls live in the FAB, by owner direction.** In the shell they are no longer coverable: the game cannot
+  restyle, cover, shrink, hide or remove shell DOM, or move it under a tap. So the shell gets the full Host controls
+  without the ADR 0013 D3 "coverable" limit.
+- **Mitigations (required in every mode):**
+  1. **Hold to confirm for destructive Host verbs.** End, switch, Party Home for everyone and hand-over open a
+     confirmation inside the panel, completed by about an 800 ms press-and-hold (or an explicit two-step). Each phone
+     then shows a short "the Host is ending the game" banner before the change.
   2. **Core decides.** Every state-changing verb is idempotent, Core-authorized at apply time (host re-check) and
-     carries `if_version`, so a misdirected or replayed tap acts at most once, and only for the current Host.
-  3. **Best-effort tamper detection.**
-     - The panel frame reports the box it expects and compares it with what it measures in its own window (size,
-       `visualViewport`, resize).
-     - A Party-internal heartbeat between the layer frame and the bridge frame (both on the Party origin) lets the
-       bridge notice a layer that was removed, hidden, zero-sized or starved.
-     - On a mismatch the panel refuses destructive verbs, and the Party records the condition, telling the Host on
-       Party Home after the round.
-     - `opacity:0` or a cover over an intact frame cannot be detected from inside it. This is stated, not hidden.
-  4. **Residual risk, accepted by the owner for owner-installed games (owner items 6 and 8).** A malicious installed
-     game can still deny or misdirect taps, and a cover or `opacity:0` over an intact frame stays undetectable. The
-     owner accepts this because games are owner-installed and permissioned (AVR-62).
-     - Host controls in the FAB are "for now" and may be revisited.
-     - A future community or untrusted tier gets **no Host verbs** in the FAB.
+     carries `if_version`. A misdirected, replayed or stale tap acts at most once, and only for the current Host. A
+     hand-over commits and advances the version (`transfer_host` → `_commit`), so a deposed Host's queued confirmation
+     is refused.
+- **Fallback only (top-level game, layer frame).** The frame is an element in the game's DOM, so the old risks remain.
+  The game can cover, restyle, shrink, hide or remove it. #258 showed a covering element taking a tap, and
+  IntersectionObserver v2 could not detect it.
+  - The box self-check and the layer↔bridge heartbeat **detect accidents only**: a removed, hidden, zero-sized or
+    starved frame. They are not a security boundary. `opacity:0`, a cover or a timed move over an intact frame cannot be
+    detected. On a mismatch, destructive verbs are refused and the condition is recorded for the Host. A missing
+    heartbeat never ends a game, because a sleeping phone also stops beating.
+  - The residual risk is accepted by the owner for owner-installed games only (owner items 6 and 8).
+  - **A future community or untrusted tier runs only in the shell, never in fallback.**
 - **Required negative tests** before rollout:
-  - a covering element cannot complete a destructive Host verb (it needs the in-frame second step);
-  - a removed, hidden or zero-sized frame is detected and destructive verbs are refused;
-  - a game cannot `hide` the FAB during a Party round: a minimised FAB stays a reachable edge tab, and the drawer opens
-    from it;
-  - a replayed or stale verb is refused by Core;
+  - in the shell, a game cannot cover, hide, move or take a tap from the FAB, cannot navigate the top-level page, and
+    cannot open a popup;
+  - the shell ignores a message from any window other than its game frame, or from any origin other than the
+    registered one;
+  - a destructive Host verb needs the hold-to-confirm step in every mode;
+  - in fallback, a removed, hidden or zero-sized frame is detected and destructive verbs are refused;
+  - a replayed, stale or deposed-Host verb is refused by Core;
   - cross-role secrecy, focus and announcements across the frame.
 
 **D7. The selected game is always visible.** While a game is selected, in setup, on or holding results, a member
@@ -253,27 +306,60 @@ engine.
 - ADR 0017.
 - AVR-580 Leave semantics, subject to the open question in §7.
 
-## 4. Mounted versus restore: resolved by owner direction (was open for AVR-762)
+## 4. Shell versus top-level game: the shell, gated by a phone proof (revision 3)
 
 **Resolution:**
 
-- The game stays mounted as the top-level page.
-- The FAB is a bounded overlay drawn by a Party frame over it.
-- No hidden-frame dependency is introduced.
+- The round runs in the Party play shell (D5). The game is framed and keeps its own origin. The FAB is shell DOM.
+- The top-level game with the layer frame stays as the fallback until stage S0b passes and every Party game works
+  framed.
 - Restore-from-server is kept as the reconnect path only.
 
-**Evidence** ([#258](https://github.com/rcnechamkin/avrana-party/pull/258), `e240e35`; loopback fixtures, Chromium and
-WebKit on Windows; phones and Pi NOT RUN):
+**Why the earlier "not planned" no longer holds.** #258 listed three objections to a Party page framing the game:
 
-- **The top-level game keeps running under the layer.** With the layer drawer open over the top-level game, it ran at
-  61 rAF/s with 0 missed ticks on Chromium, and 14 rAF/s with 0 missed ticks on WebKit. Opening took 18 ms (Chromium)
-  and 60 ms (WebKit) at p50.
-- **The cover risk is real.** A transparent game element took a tap meant for the drawer (test 10). D6 mitigates it.
+1. **"It needs a new game-origin `frame-ancestors`."** True, and it is a small header change, now part of S4a.
+2. **"The game frame cannot be usefully sandboxed."** It cannot be isolated from its own origin, and does not need to
+   be. The sandbox still does useful work: it removes top navigation and popups, so a game cannot leave the Party or
+   cover it.
+3. **"rAF behaviour depends on the engine."** It does for *hidden* frames (0 fps on Chromium, 61 on WebKit), and D5
+   never hides the game frame. #258's WebKit numbers came from Playwright WebKit on Windows. That build was slow even
+   with the game top-level (20 rAF/s, against 13 with the game framed and occluded), so it says nothing about iOS Safari.
+
+The owner's requirement (item 9) is only met by this shape. It also removes the coverable FAB, the frame-sizing touch
+dead zones and the cross-site cookie question, all at once.
+
+**What is not yet known.** Nothing here has run on a phone. **Stage S0b** is a real-phone proof: an iPhone with the
+Party installed to the Home Screen, plus an Android phone, against the Pi or the hosted VM. Tanks runs framed in a shell
+prototype. Each item passes or fails:
+
+1. **No browser chrome.** No out-of-scope bar appears when the round starts, during it, on a switch, or on return to
+   Party Home.
+2. **Frame rate.** Once the player has touched the game, its frame rate in the frame is within 2 fps of the same game
+   top-level. It stays there after the FAB is opened and closed. Low Power Mode is off, and the iOS version is recorded.
+3. **Two thumbs.** While one thumb holds a joystick, the other thumb taps and drags the FAB 50 times. No joystick track
+   is dropped, and no dead zone appears outside the button.
+4. **Audio and wake.** The game's audio starts on the first tap. The screen stays awake for 5 minutes of passive play,
+   and both survive a sleep and wake.
+5. **Viewport.** Safe areas, notch and home bar are handled in portrait and landscape. Nothing is under the Dynamic
+   Island.
+6. **Keyboard.** A text field inside the game (Best Guess) and the FAB chat field both stay visible above the keyboard,
+   and the page is not left panned after it closes.
+7. **Back.** Android Back and the iOS edge swipe do not navigate the game frame's history or leave the round.
+8. **Reconnect.** A reload or OS eviction returns to the same seat inside the shell.
+
+**Reversal conditions.** For a game that fails item 2, 3 or 7 and cannot be fixed by the game or the shell, that game
+stays on the fallback, and the installed app shows the browser bar for it. The owner is told which games are affected.
+A community or untrusted game is never allowed the fallback.
+
+**Earlier evidence still used** ([#258](https://github.com/rcnechamkin/avrana-party/pull/258), `e240e35`; loopback
+fixtures, Chromium and WebKit on Windows; phones and Pi NOT RUN):
+
+- **The game keeps running under the panel.** In both shapes the game's socket kept 0 missed server ticks while the
+  panel was open.
+- **The cover risk is real for a frame inside the game.** A transparent game element took a tap meant for the drawer
+  (test 10). That is the fallback's risk, and the shell removes it.
 - **Restore is correct.** The same participant and role came back with a fresh ticket, the old one was refused as
   `replayed`, and no private frame reached a spectator. It was 230–650 ms on loopback. This is used for reconnect.
-- **Not planned:** a Party page that frames the game (#258 M-embed). It needs a new game-origin `frame-ancestors`, the
-  game frame cannot be usefully sandboxed, and rAF behaviour depends on the engine (a hidden iframe ran at 0 fps on
-  Chromium and 61 on WebKit).
 
 ## 5. Consequences (if accepted)
 
@@ -291,20 +377,26 @@ None of this is game logic.
 
 - the setup scene becomes leavable within Party Home;
 - the D7 indicator;
-- the layer's `open` mode becomes a bounded sheet;
-- the panel gains suggestions, quick settings, notices and the full Host controls with in-frame confirmation;
-- tamper heartbeat and box check;
-- `bridge.js` slimmed for the ticket path.
+- **a new play shell** (`/party/play`, in the manifest scope): the game frame, the bridge pointing up (D6), the wake
+  lock, following by swapping the frame, and the insets value;
+- the layer UI is mounted as shell DOM, with a bounded sheet, hold-to-confirm, tap-to-open edge tab, safe-area clamping,
+  "Move menu", and gesture-safe toasts;
+- the panel gains suggestions, quick settings, notices and the full Host controls;
+- in fallback only: the layer frame's bounded `open`, box check and heartbeat (accidents only);
+- `bridge.js` logic shared by the shell and, in fallback, `bridge.html`.
 
-`destination()` and `party-follow.js` keep following during rounds.
+`destination()` keeps deciding where a phone belongs during rounds. The shell acts on it without leaving `/party/`.
 
 **Games:**
 
 - a paired change for the typed-event route;
 - `spectators: "none"` handling;
-- any layer-protocol change: a bounded `open` geometry in the vendored `layer-mount.js` changes its pinned digest, so it
-  is a paired PR;
-- more games opting into the layer, because today only BLUFF and EXPO do, so Tanks and Checkers have no FAB.
+- **the shim learns the framed mode:** detect a Party parent, talk to `window.parent`, take the insets value, ask for
+  `fab.park`, and send a top-level Party-round page to the shell;
+- every game origin sends `frame-ancestors` naming the Party origin;
+- each game is checked framed (S0b items 2, 3, 5–7). A game that fails stays on the fallback.
+
+**nginx and devserver:** the game-origin `frame-ancestors`; the shell's `frame-src` and `frame-ancestors 'none'`.
 
 **Machine contracts:** Party Core reads `spectators`. Named-seat claims need a contract extension, not defined here.
 
@@ -327,18 +419,22 @@ These are made only in the PR that accepts this ADR.
   views (the same document) and return to the setup.
 - Decision 4: "full-screen scene" becomes "the setup of the selected game, which members may leave within Party Home".
   Play/Watch wording follows ADR 0010 as amended.
-- Decision 5 and the 2026-10-16 amendment: the floating Party button opens a **bounded panel, never full screen**, and
-  the game stays visible. The panel holds people, chat, suggestions, quick settings, notices and the Host's End, switch,
-  Party Home and hand-over, each confirmed in the frame (D6).
+- Decision 3: also record that during a round the phone is on the Party play shell, which follows by changing its game
+  frame, not by navigating to the game origin.
+- Decision 5 and the 2026-10-16 amendment: the floating Party button is drawn by the play shell and opens a **bounded
+  panel, never full screen**, and the game stays visible. The panel holds people, chat, suggestions, quick settings,
+  notices and the Host's End, switch, Party Home and hand-over, each with hold-to-confirm (D6).
 - Keep decisions 2, 6 and 7 and the Leave, guest-exit and succession amendments, subject to the §7 question.
 
 **ADR 0013:**
 
-- No change to the decision.
+- No change to separate origins or cookies.
+- Add: during a round the Party origin frames the game origin (the play shell). The game origin's `frame-ancestors`
+  names only the Party origin. The shell's bridge accepts only its own frame's window and the registered origin.
 - Note that game notices go server to server, never through the bridge.
-- **Widen D3's accepted "coverable" limit:** over a game origin, the panel may offer the full Host controls *with D6
-  mitigations*, instead of only End and Party Home (`layer.js:126-139` `actions(crossOrigin)`).
-- Community or untrusted games keep the narrow set.
+- D3's "coverable" limit applies **only to the fallback** layer frame. There, the owner widens it "for now" to the full
+  Host controls *with D6 mitigations*, for owner-installed games only (`layer.js:126-139` `actions(crossOrigin)`).
+- Community or untrusted games run only in the shell.
 
 **ADR 0014:** no change.
 
@@ -360,16 +456,17 @@ These are made only in the PR that accepts this ADR.
 
 **PARTY-GAMES-CONTRACT, GAME-UX-CONTRACT and Games `DEVELOPING-A-GAME` (owner item 7):**
 
-- The Party layer (FAB) is **required** for every Party game. `provider/avrana-contract.json` `layer.mounted_by` lists
-  every Party game, not only BLUFF and EXPO.
-- A game keeps the frame above its content.
-- A game may only minimise the FAB to the edge tab, never remove or hide it.
+- Every Party game **must run framed in the play shell**: no top navigation, no popups, no dependence on its own
+  viewport meta or safe-area insets, insets taken from the bridge, joysticks released on `{open}`.
+- The FAB is **required** and is supplied by the shell. A game may only ask for the edge tab (`fab.park`).
 - The FAB is also present on Party pages.
-- Each game adopts it in its own Games PR.
+- Each game adopts the framed mode in its own Games PR. Until it does, it runs on the fallback, where it must mount the
+  layer (`layer.mounted_by` lists it) and keep the frame above its content.
 
 **PARTY-GAMES-CONTRACT and machine contracts:**
 
-- the layer digest bump for the bounded geometry (and a minimise word, if one is added);
+- the framed-mode bridge words (`fab.park`, insets) and the shell handshake, versioned with vectors;
+- in fallback only, the layer digest bump for the bounded geometry;
 - the typed-event route;
 - `party_config.py` derives `spectators`.
 
@@ -382,9 +479,18 @@ These are made only in the PR that accepts this ADR.
 - **Decided (owner, 2026-10-26; §1.1 items 5–8):**
   - Guest Leave keeps AVR-580: it starts in the FAB and is confirmed on top-level Party Home, the single sanctioned
     exit.
-  - The ADR 0013 D3 widening is accepted "for now", for owner-installed games only, and is revisitable.
+  - The ADR 0013 D3 widening is accepted "for now", for owner-installed games only, and is revisitable. After
+    revision 3 it applies only to the fallback.
   - The FAB is required system-wide.
-  - Undetectable cover is accepted as residual risk, with minimise-to-tab as the floor.
+  - Undetectable cover is accepted as residual risk, with minimise-to-tab as the floor. After revision 3 this applies
+    only to the fallback.
+- **Decided (owner, 2026-10-26; §1.1 item 9):** no browser chrome in the installed app; the play shell is the plan,
+  gated by S0b.
+- **Decided (owner, 2026-10-26: "Go with your own recommendations"):**
+  - Revision 3 is accepted as the direction (this draft stays in proposals until the accepting ADR PR).
+  - During an active round, chat and suggestions update the badge only, with no toast, and the keyboard opens only on a
+    tap (D5). Both stay in the FAB.
+  - Hold-to-confirm (about 800 ms) for destructive Host verbs, plus the short banner on every phone (D6).
 - **Not decided here:**
   - the Watch / Not playing wording;
   - voluntary Ready (AVR-700);

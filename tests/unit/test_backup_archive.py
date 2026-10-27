@@ -111,6 +111,27 @@ class Hostile(unittest.TestCase):
                              ('manifest.json', manifest([]), 'file'), ('files/a.json', body, 'file')]),
                      'manifest.json appears twice')
 
+    # -- AVR-741 independent review
+    def test_sparse_members_are_refused_before_they_unpack(self):
+        # GNU sparse 1.0 in PAX: a 513-byte member that tarfile would unpack to 8 MiB of zeros.
+        size = 8 * 1024 * 1024
+        data = f'1\n{size - 1}\n1\n'.encode().ljust(512, b'\0') + b'x'
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode='w', format=tarfile.PAX_FORMAT) as tar:
+            raw = manifest([])
+            info = tarfile.TarInfo('manifest.json')
+            info.size = len(raw)
+            tar.addfile(info, io.BytesIO(raw))
+            for i in range(3):
+                info = tarfile.TarInfo(f'files/e{i}.sparse')
+                info.size = len(data)
+                info.pax_headers = {'GNU.sparse.major': '1', 'GNU.sparse.minor': '0',
+                                    'GNU.sparse.name': f'files/e{i}', 'GNU.sparse.realsize': str(size)}
+                tar.addfile(info, io.BytesIO(data))
+        self.refused(out.getvalue(), 'not a regular file')
+
+    def test_a_manifest_nested_thousands_deep_is_refused_not_a_crash(self):
+        self.refused(tar_of([('manifest.json', b'[' * 100000 + b']' * 100000, 'file')]), 'not JSON')
 
 if __name__ == '__main__':
     unittest.main()

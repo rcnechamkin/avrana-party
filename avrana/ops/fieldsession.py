@@ -39,6 +39,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -437,7 +438,15 @@ def bundle(store, probes, out_dir, hours=BUNDLE_HOURS, now=None, forbid_terms=()
         # Never leave a bundle's session recording: it would block every later bundle and `start`.
         if store.active_id() == session['id']:
             stop(store, probes, now=now)
-    return export(store, out_dir, session['id'], forbid_terms)
+    try:
+        return export(store, out_dir, session['id'], forbid_terms)
+    finally:
+        # The package is the product; the working session is not kept. A refused bundle must not leave behind
+        # the very text the validator refused (a guest's name in journal.jsonl and timeline.md), and repeated
+        # bundles must not pile up copies in the home directory (AVR-740). Only this bundle's own directory.
+        d = store.dir(session['id'])
+        if store.active_id() != session['id'] and _read_session(d).get('kind') == 'support':
+            shutil.rmtree(d, ignore_errors=True)
 
 
 def _append_event_unbounded(d, event):
