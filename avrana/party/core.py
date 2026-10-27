@@ -105,8 +105,28 @@ def new_id(kind):
     return f'{kind}-{secrets.token_hex(16)}'       # 128-bit random; never derived from anything
 
 
+# Letters that draw as nothing although Unicode files them as letters or marks, not as format characters
+# (AVR-140): the Hangul fillers (one alone made a blank name; after "Ada" it made a second "Ada" that the
+# duplicate rule did not see), the braille blank, the combining grapheme joiner, and two Khmer vowels
+# that Unicode says not to draw.
+INVISIBLE = frozenset('\u115f\u1160\u3164\uffa0\u2800\u034f\u17b4\u17b5')
+# Cyrillic and Greek letters that look like Latin ones, upper case and lower case apart (case is folded
+# after this). Only for comparing names, never for showing them: "Ара" in Cyrillic and "Apa" are the same
+# name to the duplicate rule, and "Ноѕт" is a reserved word. A small, deliberate subset of Unicode's
+# confusables (UTS #39), for the three scripts a name may use.
+LOOKALIKE = str.maketrans({
+    'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
+    'У': 'Y', 'Х': 'X', 'Ѕ': 'S', 'І': 'I', 'Ј': 'J', 'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c',
+    'у': 'y', 'х': 'x', 'ѕ': 's', 'і': 'i', 'ј': 'j', 'һ': 'h', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w',
+    'т': 't',
+    'Α': 'A', 'Β': 'B', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O',
+    'Ρ': 'P', 'Τ': 'T', 'Υ': 'Y', 'Χ': 'X', 'α': 'a', 'ι': 'i', 'ο': 'o', 'ρ': 'p', 'υ': 'u', 'ν': 'v',
+})
+
+
 def _name_key(name):
-    return ''.join(ch for ch in name.casefold() if ch.isalnum())
+    """What two names are compared by: look-alike letters as Latin, case folded, letters and digits only."""
+    return ''.join(ch for ch in name.translate(LOOKALIKE).casefold() if ch.isalnum())
 
 
 def clean_name(raw):
@@ -115,7 +135,7 @@ def clean_name(raw):
     if not isinstance(raw, str):
         raise Refused('bad_name', 'Pick a name.')
     text = unicodedata.normalize('NFKC', raw)
-    text = ''.join(ch for ch in text if unicodedata.category(ch) not in ('Cc', 'Cf'))
+    text = ''.join(ch for ch in text if unicodedata.category(ch) not in ('Cc', 'Cf') and ch not in INVISIBLE)
     text = ' '.join(text.split())
     if not 1 <= len(text) <= NAME_MAX:
         raise Refused('bad_name', f'Names are 1 to {NAME_MAX} characters.')
