@@ -10,7 +10,8 @@ import { phone, post, version } from '../lib/phones';
  * The top-level page never leaves /party/ during a round: the game is framed on its own origin and
  * the Party layer floats beside it, out of the game's reach.
  *
- * Not shown, and the reason AVR-766 exists: an installed app on a real iPhone (the browser bar),
+ * Not shown here: a top-level game page re-entering the shell (the stub game here runs no bridge;
+ * tests/offline/party-bridge.test.mjs covers the bridge's side). And the reason AVR-766 exists: an installed app on a real iPhone (the browser bar),
  * Safari's frame rate, two-thumb touch, audio and wake lock, safe areas, the keyboard, Back. Tier 3.
  */
 const PORT = Number(process.env.AVRANA_PARTY_SHELL_DEV_PORT || Number(process.env.AVRANA_PARTY_DEV_PORT || 8184) + 2);
@@ -44,6 +45,12 @@ test('a round runs inside /party/play.html: the game framed on its origin, the P
     const box = (await layer.boundingBox())!;
     expect(box.width).toBe(48);
     expect(box.height).toBe(48);
+    // S23: the game cannot take the top-level page anywhere, whatever it tries
+    await p.page.frame({ url: new RegExp(`^${GAMES}/games/expo/`) })!.evaluate(() => {
+      try { window.top!.location.href = 'https://example.invalid/'; } catch { /* refused outright */ }
+    });
+    await p.page.waitForTimeout(300);
+    await expect(p.page).toHaveURL(PLAY);
   }
   expect(topLevel.filter((u) => !u.startsWith(`${PARTY}/party/`)), 'the top-level page never left /party/').toEqual([]);
 

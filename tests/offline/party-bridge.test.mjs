@@ -254,6 +254,31 @@ test('when the party is elsewhere the page is told to go to Party Home, never gi
   }
 });
 
+test('PROPOSAL play_shell: a top-level game page during the round is sent to Party Home once, which opens the shell', async () => {
+  const w = world({ api: partyApi({ first: { ...coreView(), proposals: ['play_shell'] } }) });
+  w.say(msg('hello', { game: 'bluff' }));
+  await settle();
+  assert.deepEqual(pushed(w, 'navigate'), [msg('navigate', { to: 'party' })]);
+  w.stop();
+  const off = world();                                       // the proposal off: the page stays, as before
+  off.say(msg('hello', { game: 'bluff' }));
+  await settle();
+  assert.equal(pushed(off, 'navigate').length, 0);
+  off.stop();
+});
+
+test('PROPOSAL play_shell: inside the shell the bridge never tells the game to navigate; the shell follows', async () => {
+  for (const first of [{ ...coreView(), proposals: ['play_shell'] }, { ...coreView({ at: 'home' }), proposals: ['play_shell'] }]) {
+    const w = world({ api: partyApi({ first }) });
+    w.frame.top = { location: { pathname: '/party/play.html' } };     // the Party's shell above the game page
+    w.say(msg('hello', { game: 'bluff' }));
+    await settle();
+    assert.equal(pushed(w, 'navigate').length, 0);
+    assert.equal(pushed(w, 'view').length > 0, true);                 // still pushed the view
+    w.stop();
+  }
+});
+
 test('a phone with a profile is made present by the bridge; one without is not joined', async () => {
   const profile = { getItem: (k) => ({ 'wc-name': 'Ben', 'wc-avatar': 'gaze-12' })[k] ?? null, setItem() {} };
   const api = partyApi({ first: coreView({ me: null }), answer: () => [200, coreView({ version: 8 })] });
