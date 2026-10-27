@@ -60,7 +60,10 @@ class HomeInRound(unittest.TestCase):
         self.assertEqual(e.exception.code, 'not_in_round')
 
     def test_the_switch_is_a_boolean_and_unknown_names_are_warnings(self):
-        self.assertEqual(party_config.check_proposals({})[0], {'home_in_round': False})
+        self.assertEqual(party_config.check_proposals({})[0], {'home_in_round': False, 'play_shell': False})
+        # a switch set in party-core.json is applied, not only checked (AVR-766)
+        self.assertEqual(party_config.check_proposals({'proposals': {'play_shell': True}})[0],
+                         {'home_in_round': False, 'play_shell': True})
         self.assertIn('true or false', party_config.check_proposals({'proposals': {'home_in_round': 1}})[1][0])
         self.assertIn("unknown key 'k9'", party_config.check_proposals({'proposals': {'k9': True}})[2][0])
 

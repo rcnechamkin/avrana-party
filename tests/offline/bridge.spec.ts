@@ -142,7 +142,7 @@ test('every other Party page still refuses to be framed', async ({ page }) => {
   }
   const bridge = await page.goto(`${PARTY}/party/bridge.html`);
   const csp = bridge!.headers()['content-security-policy'];
-  expect(csp).toContain(`frame-ancestors ${GAMES}`);
+  expect(csp).toContain(`frame-ancestors 'self' ${GAMES}`);   // 'self': nested in the play shell (AVR-766)
   expect(csp).not.toContain("frame-ancestors 'none'");
 });
 

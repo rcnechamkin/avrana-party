@@ -31,8 +31,10 @@ const SHELL = [
   // The bridge frame for game pages on another origin, and the reference shim (ADR 0013).
   'bridge.html', 'lib/bridge.js', 'lib/bridge-frame.js', 'bridge/shim.js',
   // The Party layer over a game page (AVR-292): its frame, its rules and the page mount.
-  'layer.html', 'lib/layer.js', 'lib/layer-app.js', 'lib/controller.js', 'bridge/layer-mount.js',
-  'diag/', 'diag/index.html', 'diag/diag.js', 'lib/input-probe.js',
+  'layer.html', 'lib/layer.js', 'lib/layer-app.js', 'bridge/layer-mount.js', 'lib/controller.js', 'lib/input-probe.js',
+  // PROPOSAL play_shell (AVR-766): the round page that frames a game on its own origin.
+  'play.html', 'play.css', 'lib/play.js', 'lib/play-app.js',
+  'diag/', 'diag/index.html', 'diag/diag.js',
   // Library artwork (tools/build-art.mjs from contracts/artwork.json).
   'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-bluff.svg',
   // Which games have a cover the owner supplied (AVR-306). The covers themselves are never here:

@@ -111,6 +111,9 @@ server {
     ssl_certificate_key /etc/avrana-party/tls/current/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # Who may frame a native game here (the native-game rule below, AVR-768).
+    set $avrana_game_ancestors "'self'";
+
     # Avrana Full Mode shell: static, Avrana-owned files under /party/, HTTPS only. The port 80
     # server above is unchanged. Installed by ops/install-party-web.sh (a release directory and
     # an atomic "current" symlink; no reload needed per release). Headers must match
@@ -161,7 +164,21 @@ server {
         add_header Referrer-Policy "same-origin" always;
         add_header Cross-Origin-Resource-Policy "same-site" always;
         add_header Cross-Origin-Embedder-Policy "require-corp" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://games.avrana.net" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://games.avrana.net" always;
+    }
+
+    # PROPOSAL play_shell (AVR-766; draft ADR 0018 revision 3): the round page. A phone in a round
+    # stays inside /party/ (an installed app never leaves its scope) and the game fills this page in
+    # a frame on its own origin. It may frame only the game origin and the Party layer; nothing may
+    # frame it. Party Core serves it to no one unless party-core.json switches the proposal on (Party
+    # Home only sends phones here then). The headers are otherwise those of /party/ below and must match
+    # avrana/web/devserver.py (the /party/play.html route) and tests/unit/test_nginx_site.py.
+    location = /party/play.html {
+        alias /var/www/avrana-party/web/current/play.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' https://games.avrana.net" always;
     }
 
     # The Party layer (AVR-292, ADR 0011 amendment of 2026-10-16): the floating Party button and its
@@ -292,6 +309,11 @@ server {
             return 403;
         }
         proxy_hide_header Service-Worker-Allowed;
+        # Only the Party may frame a game (draft ADR 0018 rev 3, AVR-768): sent for every game, whatever
+        # its own CSP says, since a package's server is not trusted to send it. A browser enforces both
+        # policies, so a game's own frame-ancestors can only narrow this. $avrana_game_ancestors is set
+        # per server: 'self' where games share the Party's origin, the Party's origin on the game origin.
+        add_header Content-Security-Policy "frame-ancestors $avrana_game_ancestors" always;
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -365,6 +387,9 @@ server {
     ssl_certificate_key /etc/avrana-party/tls/current/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # Who may frame a native game on this origin: only the Party (the native-game rule below, AVR-768).
+    set $avrana_game_ancestors "https://party.avrana.net";
+
     # The Party and the arcade are not served on this origin. Prefix matches that stop regular
     # expressions: nothing below can answer them.
     location ^~ /party {
@@ -409,6 +434,11 @@ server {
             return 403;
         }
         proxy_hide_header Service-Worker-Allowed;
+        # Only the Party may frame a game (draft ADR 0018 rev 3, AVR-768): sent for every game, whatever
+        # its own CSP says, since a package's server is not trusted to send it. A browser enforces both
+        # policies, so a game's own frame-ancestors can only narrow this. $avrana_game_ancestors is set
+        # per server: 'self' where games share the Party's origin, the Party's origin on the game origin.
+        add_header Content-Security-Policy "frame-ancestors $avrana_game_ancestors" always;
         proxy_pass http://unix:/run/avrana-games/$native_game.sock:$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

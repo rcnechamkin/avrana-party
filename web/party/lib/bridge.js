@@ -24,11 +24,13 @@
 //  * the first valid hello binds the frame; a second hello for another game is ignored;
 //  * replies are posted to the bound origin only, never "*";
 //  * a message with an unknown type, an unknown field or a malformed value is ignored whole;
-//  * `navigate` carries a word from a closed set, never a URL, and the game supplies no URL.
+//  * `navigate` carries a word from a closed set, never a URL, and the game supplies no URL;
+//  * inside the Party's play shell (PROPOSAL play_shell, AVR-766) `navigate` is never sent: the shell follows.
 import { FIRST_RETRY_MS, createPartyClient } from './party-client.js';
 import { destination, locationOf } from './party-mode.js';
 import { profileIdentity } from './party-follow.js';
 import { createDeparture } from './departure.js';
+import { playShellOn } from './play.js';
 
 export const PROTOCOL = 'avrana.party-bridge/v1';
 export const REQUESTS = ['hello', 'ticket', 'end', 'home', 'playAgain'];
@@ -74,6 +76,20 @@ export function publicView(view) {
   };
 }
 
+/** PROPOSAL play_shell (AVR-766): this frame's game page is itself framed by the Party's play.html.
+ * The shell is this frame's top and on this origin; a top of any other origin throws here. */
+export function inPlayShell(win) {
+  try {
+    const top = win.top;
+    return Boolean(top && top !== win.parent && top.location && /\/party\/play\.html$/.test(top.location.pathname));
+  } catch { return false; }
+}
+
+/** The game page is the top-level page (today's model, or a stale tab or deep link). */
+function topLevelGame(win) {
+  try { return !win.top || win.top === win.parent; } catch { return false; }
+}
+
 /** Start the bridge in `win` (the frame). Returns {stop, bound()} for tests. */
 export function startBridge({ win = globalThis, fetch = globalThis.fetch.bind(globalThis),
   storage = globalThis.localStorage, retryMs = FIRST_RETRY_MS, schedule = setTimeout } = {}) {
@@ -102,8 +118,14 @@ export function startBridge({ win = globalThis, fetch = globalThis.fetch.bind(gl
     // With no catalog the answer is only ever "stay" or Party Home: where a game opens is
     // Party Home's business, and a game page is never handed a URL.
     const elsewhere = Boolean(v.departed) || Boolean(destination(v, bound.game, null));   // left on purpose: Party Home asks (AVR-580)
-    if (elsewhere && !lastNavigate) post({ type: 'navigate', to: 'party' });
-    lastNavigate = elsewhere;
+    // PROPOSAL play_shell (AVR-766): inside the shell the shell follows the party, and a frame told to
+    // go to Party Home would only be refused (frame-ancestors 'none'). A top-level game page during a
+    // round goes to Party Home too, which opens the round in the shell.
+    const shell = inPlayShell(win);
+    const toShell = !elsewhere && !shell && playShellOn(v) && Boolean(v.me) && topLevelGame(win);
+    const go = !shell && (elsewhere || toShell);
+    if (go && !lastNavigate) post({ type: 'navigate', to: 'party' });
+    lastNavigate = go;
   }
 
   async function follow() {

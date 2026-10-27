@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="avrana">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="same-origin">
+<meta name="robots" content="noindex">
+<title>Avrana Party</title>
+<!-- PROPOSAL play_shell (AVR-766; draft ADR 0018 revision 3): a round inside the Party's own page,
+     so an installed app never leaves its /party/ scope. The game is framed on its own origin; the
+     server sends this page a frame-src naming only the game origins and frame-ancestors 'none'. -->
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="play.css">
+<script type="module" src="lib/play-app.js"></script>
+</head>
+<body class="play-shell">
+<iframe id="game" title="Game"></iframe>
+<p id="play-diag" class="play-diag" aria-hidden="true"></p>
+<div id="play-insets" class="play-insets" aria-hidden="true"></div>
+</body>
+</html>

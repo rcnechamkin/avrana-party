@@ -77,7 +77,7 @@ test('the Party origin serves the Party with its own guards, and the game origin
     const shell = await req.get(`${BASE}/party/`);
     expect(shell.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
     const bridge = await req.get(`${BASE}/party/bridge.html`);
-    expect(bridge.headers()['content-security-policy']).toContain(`frame-ancestors ${GAMES}`);
+    expect(bridge.headers()['content-security-policy']).toContain(`frame-ancestors 'self' ${GAMES}`);
     expect(bridge.headers()['cross-origin-resource-policy']).toBe('same-site');
     for (const path of ['/party/', '/party/api/state', '/party/bridge.html', '/arcade/', '/games/checkers/avrana/launch', '/internal/ended']) {
       expect((await req.get(`${GAMES}${path}`, { maxRedirects: 0 })).status(), `game origin ${path}`).toBe(404);

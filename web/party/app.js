@@ -32,6 +32,7 @@ import { createPartyClient } from './lib/party-client.js';
 import { createDeparture } from './lib/departure.js';
 import { leaveWords } from './lib/states.js';
 import { createGameOrigins, gameAddress } from './lib/game-origins.js';
+import { roundAddress } from './lib/play.js';
 import { createGoingWatchdog } from './lib/going-watchdog.js';
 import { createDeviceChecker, deviceRequirements } from './lib/device-check.js';
 import { LIMITED, blockedGames, limitedNotice, modeOf, seatChoice } from './lib/limited.js';
@@ -1232,9 +1233,12 @@ function addressOf(game, entry) {
 // even when a game fills the screen) brings them to the Party's way out (goingHost). Everyone else
 // keeps one history entry: Back on a game page never bounces them through here. The watchdog's retry
 // and "Try again" go the same way, so a slow first try cannot cost the Host their way back.
+// PROPOSAL play_shell (AVR-766): with the proposal on, a game on another origin opens inside the
+// Party's own play.html, so an installed app never leaves its /party/ scope.
 function goToRound(to) {
   const view = party.view();
-  if (view && view.me && view.me.host) location.assign(to); else location.replace(to);
+  const go = roundAddress(view, to, location.origin);
+  if (view && view.me && view.me.host) location.assign(go); else location.replace(go);
 }
 
 function leaveForRound() {
