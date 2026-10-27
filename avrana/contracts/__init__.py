@@ -6,3 +6,5 @@ appliance   appliance profile: providers (runtime capability) and grants (entry,
 evaluate    Capability Engine v0: per-seat presentation choice
 catalog     builds web/party/catalog.json for the Full Mode web shell
 """
+
+from avrana.contracts import party_config as _party_config   # noqa: E402,F401  (registers its extension check)

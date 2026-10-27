@@ -62,6 +62,28 @@ class Derivation(unittest.TestCase):
                     party_config.metadata(contract(extensions={'net.avrana.party': ext}))
                 self.assertIn(needle, str(e.exception))
 
+    def test_lifecycle_bounds_are_optional_numbers_of_seconds(self):
+        # AVR-260: declared bounds pass through to Party Core, which clamps them; absent ones stay absent
+        c = contract(extensions={'net.avrana.party': {'launch_timeout_s': 90, 'end_timeout_s': 20.5}})
+        meta = party_config.metadata(c)
+        self.assertEqual((meta['launch_timeout_s'], meta['end_timeout_s']), (90, 20.5))
+        self.assertNotIn('launch_timeout_s', party_config.metadata(contract()))
+        for value in ('60', True, 0, -5, None, 4000, float('nan')):
+            with self.subTest(value=value):
+                with self.assertRaises(ConfigError) as e:
+                    party_config.metadata(contract(extensions={'net.avrana.party': {'end_timeout_s': value}}))
+                self.assertIn('end_timeout_s: a number of seconds', str(e.exception))
+
+    def test_a_bad_bound_fails_contract_validation_itself(self):
+        from avrana.contracts import game
+        doc = json.loads((CONTRACTS_DIR / 'games' / 'checkers.json').read_text(encoding='utf-8'))
+        doc.setdefault('extensions', {}).setdefault('net.avrana.party', {})['launch_timeout_s'] = -1
+        with self.assertRaises(game.ContractError) as e:
+            game.validate(doc, vocabulary.load())
+        self.assertIn('launch_timeout_s', str(e.exception))
+        doc['extensions']['net.avrana.party']['launch_timeout_s'] = 90
+        self.assertEqual(game.validate(doc, vocabulary.load())['extensions']['net.avrana.party']['launch_timeout_s'], 90)
+
 
 class Repository(unittest.TestCase):
     @classmethod

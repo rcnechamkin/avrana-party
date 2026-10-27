@@ -38,6 +38,7 @@ Shape (docs/design/STATUS-ENDPOINT.md):
     games_provider, arcade   health summaries
     summary       ok|degraded|unknown with reasons
 """
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -83,6 +84,11 @@ DEFAULT_CONFIG = {
     # is manual and the certificate's own expiry check is what guards it. Not installed is reported
     # and is not a fault; installed and not running is a fault like any other unit.
     'optional_units': ['avrana-party-certificate.timer'],
+    # The renewal job the timer starts (AVR-31). A oneshot: `inactive` between runs is its normal
+    # state and `not-installed` is the manual-renewal appliance above, so only `failed` is a fault.
+    # The timer stays `active` after a failed run, so without this a renewal that keeps failing is
+    # visible only as the expiry closing in, 21 days out.
+    'renewal_unit': 'avrana-party-certificate.service',
 }
 
 
@@ -127,7 +133,14 @@ def unit_recovery(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S, clock=ti
                      capture_output=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    facts = dict(line.partition('=')[::2] for line in out.stdout.decode('utf-8', 'replace').splitlines() if '=' in line)
+    return _recovery(_properties(out.stdout.decode('utf-8', 'replace').splitlines()), clock)
+
+
+def _properties(lines):
+    return dict(line.partition('=')[::2] for line in lines if '=' in line)
+
+
+def _recovery(facts, clock):
     try:
         restarts = int(facts.get('NRestarts', ''))
     except ValueError:
@@ -141,6 +154,35 @@ def unit_recovery(unit, runner=subprocess.run, timeout=PROBE_TIMEOUT_S, clock=ti
         entered_us = 0
     active_for_s = max(0, int(clock() - entered_us / 1e6)) if entered_us > 0 else None
     return {'restarts': restarts, 'result': result, 'active_for_s': active_for_s}
+
+
+def unit_facts(units, runner=subprocess.run, timeout=PROBE_TIMEOUT_S, clock=time.monotonic):
+    """{unit: (state, recovery)} for every unit from ONE `systemctl show`, the same answers
+    unit_state and unit_recovery give one call at a time; None when that call cannot be read, so
+    the caller asks unit by unit. Each systemctl call costs ~0.5 s of D-Bus on the Pi, and a cold
+    status document asking twice per unit outlasted the deploy smoke's 5 s timeout."""
+    if platform.system() != 'Linux' or not units:
+        return None
+    try:
+        out = runner(['systemctl', 'show', '--property=LoadState', '--property=ActiveState',
+                      '--property=NRestarts', '--property=Result', '--property=ActiveEnterTimestampMonotonic',
+                      '--', *units], capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode not in (0, None):
+        return None
+    # One block per unit, in the order asked, separated by an empty line.
+    blocks = [_properties(block.splitlines())
+              for block in out.stdout.decode('utf-8', 'replace').strip().split('\n\n')]
+    if len(blocks) != len(units) or not all(b.get('ActiveState') for b in blocks):
+        return None
+    facts = {}
+    for unit, props in zip(units, blocks):
+        if props.get('LoadState') == 'not-found':
+            facts[unit] = ('not-installed', None)
+        else:
+            facts[unit] = (props['ActiveState'], _recovery(props, clock))
+    return facts
 
 
 def failed_units(pattern, runner=subprocess.run, timeout=PROBE_TIMEOUT_S):
@@ -202,6 +244,9 @@ class Probes:
 
     def unit_recovery(self, unit):
         return unit_recovery(unit, timeout=self.timeout)
+
+    def unit_facts(self, units):
+        return unit_facts(units, timeout=self.timeout)
 
     def failed_units(self, pattern):
         return failed_units(pattern, timeout=self.timeout)
@@ -336,6 +381,31 @@ def _game_slug(unit):
     return unit.partition('@')[2].rpartition('.')[0]
 
 
+def _unit_answers(probes, units):
+    """{unit: (state, recovery or None)}: one batched systemd question when the probes can ask it,
+    else unit by unit. An uninstalled or unobservable unit is not asked about its recovery."""
+    facts = getattr(probes, 'unit_facts', lambda units: None)(units)
+    if facts is not None:
+        return facts
+    recovery_of = getattr(probes, 'unit_recovery', lambda unit: None)
+    answers = {}
+    for unit in units:
+        state = probes.unit_state(unit)
+        answers[unit] = (state, recovery_of(unit) if state not in ('not-installed', 'unavailable') else None)
+    return answers
+
+
+def _gather(jobs):
+    """{name: result} with every job run at once (None jobs give None). Each probe is a bounded
+    subprocess, file read or loopback request; run in turn their waits added up past the deploy
+    smoke's timeout on the Pi. A probe that raises raises here, as it did run in turn."""
+    jobs = {name: job for name, job in jobs.items() if job is not None}
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = {name: pool.submit(job) for name, job in jobs.items()}
+        got = {name: future.result() for name, future in futures.items()}
+    return dict({name: None for name in ('certificate', 'games_doc', 'arcade_doc')}, **got)
+
+
 def build_status(config=None, probes=None, party_core=None, now=None):
     """The status document. `party_core` is a callable returning {"uptime_s", "members",
     "session"} from inside the service (or None when built outside it)."""
@@ -352,8 +422,28 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         # The error names the file; the public document never carries a filesystem path.
         deployed, manifest_error = None, str(e).replace(str(cfg['manifest']), 'deployment manifest')
         reasons.append('deployment manifest malformed')
-    party = _repo('party', deployed, probes.checkout(cfg['party_checkout']))
-    games = _repo('games', deployed, probes.checkout(cfg['games_checkout']))
+    lkg_path = cfg.get('last_known_good') or str(Path(str(cfg['manifest'])).with_name('last-known-good.json'))
+    probed = _gather({
+        'party': lambda: probes.checkout(cfg['party_checkout']),
+        'games': lambda: probes.checkout(cfg['games_checkout']),
+        'units': lambda: _unit_answers(probes, cfg['units']),
+        'failed_games': lambda: getattr(probes, 'failed_units', lambda pattern: [])(GAME_UNITS),
+        'web': lambda: probes.web_release(cfg['web_root']),
+        'nginx_site': lambda: probes.nginx_site(cfg['nginx_site'], cfg['nginx_site_sources']),
+        'nginx_sha256': lambda: getattr(probes, 'nginx_site_sha256', lambda path: None)(cfg['nginx_site']),
+        'lkg': lambda: getattr(probes, 'last_known_good', lambda path: None)(lkg_path),
+        # Parts set to null in the config are never probed (hosted staging, below).
+        'certificate': None if cfg['certificate'] is None else (
+            lambda: probes.certificate_not_after(cfg['certificate'])),
+        'renewal': None if (cfg['certificate'] is None or not cfg.get('renewal_unit')) else (
+            lambda: probes.unit_state(cfg['renewal_unit'])),
+        'games_doc': None if cfg['games_url'] is None else (
+            lambda: probes.get_json(cfg['games_url'].rstrip('/') + '/api/games')),
+        'arcade_doc': None if cfg['arcade_url'] is None else (
+            lambda: probes.get_json(cfg['arcade_url'].rstrip('/') + '/stats')),
+    })
+    party = _repo('party', deployed, probed['party'])
+    games = _repo('games', deployed, probed['games'])
     notes = []
     for name, repo in (('party', party), ('games', games)):
         if repo['mismatch']:
@@ -367,7 +457,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         if repo['untracked']:
             notes.append(f'{name} checkout has {repo["untracked"]} untracked file(s)')
     contract = party_games.versions()
-    services = {unit: probes.unit_state(unit) for unit in cfg['units']}
+    services = {unit: state for unit, (state, _) in probed['units'].items()}
     for unit, state in services.items():
         if state == 'not-installed' and unit in cfg['optional_units']:
             notes.append(f'{unit} is not installed (optional)')
@@ -376,10 +466,8 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     # What systemd's own recovery did (AVR-33). A crash loop under Restart=on-failure with
     # RestartSec=3 never reaches the default start limit, so `is-active` says `activating`, not
     # `failed`: without NRestarts it would look like a unit that is merely starting.
-    recovery_of = getattr(probes, 'unit_recovery', lambda unit: None)
     restarts = {}
-    for unit, state in services.items():
-        facts = recovery_of(unit) if state not in ('not-installed', 'unavailable') else None
+    for unit, (state, facts) in probed['units'].items():
         if facts is None:
             continue
         restarts[unit] = facts
@@ -397,18 +485,15 @@ def build_status(config=None, probes=None, party_core=None, now=None):
                 reasons.append(f'{unit} restarted recently after failures ({n} automatic restarts, {since})')
             else:
                 notes.append(f'{unit} came back after {n} automatic restart(s) since it was last started')
-    failed_games = getattr(probes, 'failed_units', lambda pattern: [])(GAME_UNITS)
-    web = probes.web_release(cfg['web_root'])
+    failed_games = probed['failed_games']
+    web = probed['web']
     # One deployment unit (AVR-271): the web build must be the deployed Party commit, and the
     # installed nginx site file must be that commit's. Either drift degrades the appliance.
     expected = (deployed['party']['sha'] if deployed else party['checkout_sha'])
     web_commit = web.get('commit') if isinstance(web, dict) else None
     if web_commit and expected and web_commit != expected:
         reasons.append('web build is from a different commit than the deployed Party')
-    nginx_site = probes.nginx_site(cfg['nginx_site'], cfg['nginx_site_sources'])
-    nginx_sha256 = getattr(probes, 'nginx_site_sha256', lambda path: None)(cfg['nginx_site'])
-    lkg_path = cfg.get('last_known_good') or str(Path(str(cfg['manifest'])).with_name('last-known-good.json'))
-    lkg = getattr(probes, 'last_known_good', lambda path: None)(lkg_path)
+    nginx_site, nginx_sha256, lkg = probed['nginx_site'], probed['nginx_sha256'], probed['lkg']
     if nginx_site == 'differs':
         reasons.append('nginx site file differs from the deployed commit (install avrana-party.nginx, docs/runbooks/deploy.md)')
     elif nginx_site == 'unavailable':
@@ -421,7 +506,13 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     # games provider on 8096, no arcade; docs/design/HOSTED-STAGING.md). Reported as not_applicable,
     # never a reason, never ok-by-default on an appliance (whose config keeps the paths).
     certificate = (NOT_APPLICABLE_CERTIFICATE if cfg['certificate'] is None
-                   else _certificate(probes.certificate_not_after(cfg['certificate']), now))
+                   else _certificate(probed['certificate'], now))
+    if cfg['certificate'] is not None and cfg.get('renewal_unit'):
+        renewal = probed['renewal']
+        certificate = dict(certificate, renewal=renewal)
+        if renewal == 'failed':
+            reasons.append(f'certificate renewal failed: journalctl -u {cfg["renewal_unit"]} '
+                           f'(docs/runbooks/party-https.md)')
     if certificate['status'] in ('expiring', 'expired'):
         reasons.append(f'certificate {certificate["status"]}')
     elif certificate['status'] == 'unavailable':
@@ -429,7 +520,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
         # coming: never `ok` (AVR-31). `unknown`, like a unit that cannot be observed.
         reasons.append('certificate expiry unavailable')
     provider = (dict(NOT_APPLICABLE) if cfg['games_url'] is None
-                else _games(probes.get_json(cfg['games_url'].rstrip('/') + '/api/games'), contract))
+                else _games(probed['games_doc'], contract))
     if provider.get('not_applicable'):
         pass
     elif not provider['ok']:
@@ -437,7 +528,7 @@ def build_status(config=None, probes=None, party_core=None, now=None):
     elif provider['compatible'] is False:
         reasons.append('games provider advertises a different launch integration')
     arcade = (dict(NOT_APPLICABLE) if cfg['arcade_url'] is None
-              else _arcade(probes.get_json(cfg['arcade_url'].rstrip('/') + '/stats')))
+              else _arcade(probed['arcade_doc']))
     if arcade.get('not_applicable'):
         pass
     elif not arcade['ok']:
@@ -519,7 +610,10 @@ def route(service, config=None, probes=None, ttl=CACHE_S):
             session = party.session
             return {'uptime_s': round(time.monotonic() - started),
                     'members': len(party.members),
-                    'session': {'game': session.game_id, 'state': session.state} if session else None}
+                    # the lifecycle bounds this round runs under (AVR-260: the game's, clamped)
+                    'session': {'game': session.game_id, 'state': session.state,
+                                'launch_timeout_s': session.launch_timeout,
+                                'end_timeout_s': session.end_timeout} if session else None}
 
     cache = StatusCache(config, probes, core_view, ttl=ttl)
 
