@@ -40,6 +40,7 @@
           <label id="layer-pick-label" for="layer-pick" class="text-supporting text-muted" hidden>Hand over to</label>
           <select id="layer-pick" class="select w-full" hidden></select>
           <div class="flex gap-2"><button id="layer-yes" type="button" class="btn btn-primary"></button><button id="layer-no" type="button" class="btn btn-ghost">Cancel</button></div>
+          <p id="layer-hold-note" class="m-0 text-supporting text-muted" hidden>Press and hold to confirm.</p>
           <p id="layer-confirm-error" class="m-0 text-body text-warning empty:hidden" role="status"></p>
         </div>
       </div>
@@ -70,6 +71,7 @@
       </div>
       <div class="avrana-layer-moves" role="group" aria-labelledby="layer-moves-h">
         <h3 id="layer-moves-h" class="m-0 w-full text-supporting font-medium text-muted">Party button position</h3>
+        <button id="layer-corner" type="button" class="btn btn-ghost btn-sm" hidden>Move menu to the next corner</button>
         <button id="layer-nudge-up" type="button" class="btn btn-ghost btn-sm" data-nudge="up">Move up</button>
         <button id="layer-nudge-down" type="button" class="btn btn-ghost btn-sm" data-nudge="down">Move down</button>
         <button id="layer-nudge-left" type="button" class="btn btn-ghost btn-sm" data-nudge="left">Move left</button>

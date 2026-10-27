@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BUTTON, MARGIN, TAB, layerBox, mountPartyLayer, parseLayerMessage } from '../../web/party/bridge/layer-mount.js';
 import { DEFAULT_SPOT, LONG_PRESS_MS, PROTOCOL, SLOP, STEP, actions, buttonLabel, connectionLine, gesture, keptSpots, nudge,
-  orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark, usable } from '../../web/party/lib/layer.js';
+  orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark, usable,
+  HOLD_MS, HOLD_VERBS, holdOn, holdState, nextCorner, panelOn, sheetSide } from '../../web/party/lib/layer.js';
 
 const VP = { w: 375, h: 667, insets: { top: 20, right: 0, bottom: 34, left: 0 } };
 const P = (o) => ({ avrana: PROTOCOL, ...o });
@@ -243,4 +244,51 @@ test('a panned keyboard moves the open frame with the visible region; a pan alon
   assert.equal(layer.frame.style.top, '0px');
   layer.stop();
   assert.equal(vvl.resize.size + vvl.scroll.size, 0, 'both visualViewport listeners are removed');
+});
+
+// ---- PROPOSAL fab_panel (AVR-769) ----------------------------------------------------------------------
+test('fab_panel: the bounded panel only where the Party mounted the frame and the proposal is on', () => {
+  const on = { proposals: ['fab_panel'], me: { id: 'a' } };
+  assert.equal(panelOn(on, { crossOrigin: false }), true);
+  assert.equal(panelOn(on, { crossOrigin: true }), false);           // over a game page of another origin: the drawer as before
+  assert.equal(panelOn(on), false);                                  // unknown is another origin
+  assert.equal(panelOn({ proposals: ['play_shell'] }, { crossOrigin: false }), false);
+  assert.equal(panelOn(null, { crossOrigin: false }), false);
+});
+
+test('fab_panel: a sheet along the bottom in portrait, along the button\'s side in landscape', () => {
+  const portrait = { w: 390, h: 844, insets: { top: 47, right: 0, bottom: 34, left: 0 } };
+  const landscape = { w: 844, h: 390, insets: { top: 0, right: 47, bottom: 21, left: 47 } };
+  assert.equal(sheetSide({ nx: 0, ny: 0.3, parked: null }, portrait), 'bottom');
+  assert.equal(sheetSide({ nx: 1, ny: 0.3, parked: null }, landscape), 'right');
+  assert.equal(sheetSide({ nx: 0.2, ny: 0.3, parked: null }, landscape), 'left');
+  assert.equal(sheetSide({ nx: 0.9, ny: 0.3, parked: 'left' }, landscape), 'left');
+  assert.equal(sheetSide(null, null), 'bottom');
+});
+
+test('fab_panel: a destructive verb confirms only when held for HOLD_MS', () => {
+  assert.equal(HOLD_MS, 800);
+  assert.deepEqual(HOLD_VERBS.sort(), ['end', 'handover', 'lobby', 'spectate']);
+  assert.equal(holdState({ downAt: null, now: 5 }), 'idle');
+  assert.equal(holdState({ downAt: 0, now: 400 }), 'holding');
+  assert.equal(holdState({ downAt: 0, upAt: 300, now: 900 }), 'short');
+  assert.equal(holdState({ downAt: 0, now: 800 }), 'held');
+  assert.equal(holdState({ downAt: 100, upAt: 950, now: 950 }), 'held');
+});
+
+test('fab_panel: Move menu cycles the corners clockwise, starting from the nearest', () => {
+  assert.deepEqual(nextCorner({ nx: 1, ny: 1 / 3, parked: null }), { nx: 1, ny: 0, parked: null });   // the first place: nearest is top right
+  assert.deepEqual(nextCorner({ nx: 1, ny: 0, parked: null }), { nx: 1, ny: 1, parked: null });
+  assert.deepEqual(nextCorner({ nx: 1, ny: 1, parked: null }), { nx: 0, ny: 1, parked: null });
+  assert.deepEqual(nextCorner({ nx: 0, ny: 1, parked: null }), { nx: 0, ny: 0, parked: null });
+  assert.deepEqual(nextCorner({ nx: 0, ny: 0, parked: null }), { nx: 1, ny: 0, parked: null });
+  assert.deepEqual(nextCorner({ nx: 0.3, ny: 0.9, parked: 'right' }), { nx: 1, ny: 1, parked: null });   // a parked tab comes back first
+});
+
+test('fab_panel: hold-to-confirm is on in every mode once the proposal is on (S10); the panel only in the shell', () => {
+  const on = { proposals: ['fab_panel'] };
+  assert.equal(holdOn(on), true);
+  assert.equal(panelOn(on, { crossOrigin: true }), false);
+  assert.equal(holdOn({ proposals: [] }), false);
+  assert.equal(holdOn(null), false);
 });

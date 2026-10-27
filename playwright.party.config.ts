@@ -56,7 +56,7 @@ export default defineConfig({
     timeout: 15_000,
   }, {
     command: `${python} -m avrana.web.devserver --port ${SHELL_PORT} --test-controls --party --game-origin`,
-    env: { AVRANA_DEV_PROPOSALS: 'play_shell' },
+    env: { AVRANA_DEV_PROPOSALS: 'play_shell,fab_panel' },
     url: `http://127.0.0.1:${SHELL_PORT}/party/`,
     reuseExistingServer: false,
     timeout: 15_000,

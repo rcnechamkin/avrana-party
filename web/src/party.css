@@ -1026,6 +1026,30 @@
   .avrana-layer-moves { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--color-line); }
   .avrana-layer-moves .btn { min-height: 2.75rem; color: var(--color-muted); }
   @media (prefers-reduced-motion: reduce) { .avrana-layer-button { transition: none; } .avrana-layer-button.lifted { transform: none; } }
+  /* PROPOSAL fab_panel (AVR-769, draft ADR 0018 rev 3 D5): in the Party's play shell the menu is a
+     bounded panel and the game stays in sight. Portrait: a sheet along the bottom. Landscape: a sheet
+     along the side the button is on. The lighter backdrop still takes a tap, which closes the panel. */
+  .fab-panel .avrana-layer-backdrop { background: rgb(4 4 6 / 0.28); }
+  .fab-panel .avrana-layer-sheet[data-side="bottom"] {
+    top: auto; bottom: 0; max-height: min(70dvh, 40rem); border-top: 1px solid var(--color-material-edge); border-bottom: 0;
+    border-radius: 1.125rem 1.125rem 0 0; padding-top: 0; padding-bottom: var(--li-bottom, 0px);
+  }
+  .fab-panel .avrana-layer-sheet[data-side="left"], .fab-panel .avrana-layer-sheet[data-side="right"] {
+    top: 0; bottom: 0; width: min(22rem, 55vw); max-width: none; max-height: none; height: 100dvh; margin: 0;
+    padding-bottom: var(--li-bottom, 0px); border-radius: 0;
+  }
+  .fab-panel .avrana-layer-sheet[data-side="left"] { left: 0; right: auto; border-left: 0; padding-right: 0; }
+  .fab-panel .avrana-layer-sheet[data-side="right"] { left: auto; right: 0; border-right: 0; padding-left: 0; }
+  .fab-panel .avrana-layer-sheet:has(#chat:not([hidden]))[data-side="bottom"] { height: min(70dvh, 40rem); }
+  /* People and Host controls: the whole panel scrolls, so at 200% text on a small phone the heading and
+     tabs never squeeze the controls into a sliver (the chat keeps its own scroller and its field). */
+  .fab-panel .avrana-layer-sheet:has(#layer-people:not([hidden])) { overflow-y: auto; overscroll-behavior: contain; }
+  .fab-panel .avrana-layer-sheet:has(#layer-people:not([hidden])) > .body { flex: none; overflow: visible; }
+  /* Hold to confirm (owner, 2026-10-26): the button fills while it is held. */
+  .avrana-hold { position: relative; overflow: hidden; touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+  .avrana-hold::before { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: rgb(255 255 255 / 0.28); pointer-events: none; }
+  .avrana-hold.holding::before { transform: scaleX(1); transition: transform var(--hold-ms, 800ms) linear; }
+  @media (prefers-reduced-motion: reduce) { .avrana-hold.holding::before { transition: none; transform: scaleX(1); opacity: 0.5; } }
 
   /* The Party's chat: a person's line is a face, a name and their words; a system line is the
      Party's own small text, never drawn like a person's words. */

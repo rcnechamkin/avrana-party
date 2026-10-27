@@ -19,6 +19,8 @@ const frame = document.getElementById('game');
 frame.setAttribute('sandbox', FRAME_SANDBOX);
 frame.setAttribute('allow', FRAME_ALLOW);
 const diag = document.getElementById('play-diag');
+const banner = document.getElementById('play-banner');
+const ENDED_BANNER_MS = 1500;
 const insets = document.getElementById('play-insets');   // padding: env(safe-area-inset-*), read as pixels
 const origins = createGameOrigins();
 const awake = createKeepAwake({ onChange: (state) => { shown.wake = state; showDiag(); } });
@@ -28,7 +30,7 @@ const shown = { wake: 'off', framed: '' };
 const addressOf = (game, entry) => gameAddress({ game, entry, origins: origins.get(), partyOrigin: location.origin });
 
 function home() {
-  if (leaving) return;
+  if (leaving || banner.dataset.until) return;
   leaving = true;
   awake.release();
   location.replace('./');
@@ -39,7 +41,7 @@ function decide(view) {
   if (!playShellOn(view)) return home();
   const to = destination(view, HOME, catalog, addressOf);
   const url = to && frameTarget(to, location.origin);
-  if (!url) return home();
+  if (!url) return endedByHost(view) ? endedBanner(view) : home();
   const game = locationOf(view).game;
   if (url !== framed) {
     framed = url;
@@ -52,6 +54,17 @@ function decide(view) {
     layer = mountPartyLayer({ partyOrigin: location.origin, game });
     layerGame = game;
   }
+}
+
+// PROPOSAL fab_panel (AVR-769): the Host ended the round, so every phone says so before Party Home.
+const endedByHost = (view) => (view.proposals || []).includes('fab_panel') && view.session
+  && view.session.outcome === 'ended_by_host' && Boolean(framed);
+function endedBanner(view) {
+  if (leaving || banner.dataset.until) return;
+  banner.textContent = view.me && view.me.host ? 'You ended the game.' : 'The Host ended the game.';
+  banner.hidden = false;
+  banner.dataset.until = String(Date.now() + ENDED_BANNER_MS);
+  setTimeout(() => { delete banner.dataset.until; home(); }, ENDED_BANNER_MS);
 }
 
 const party = createPartyClient({ onView: (view) => { origins.settled().then(() => decide(party.view())); } });
@@ -75,6 +88,16 @@ function flashDiag() {
   clearTimeout(fade);
   fade = setTimeout(() => diag.classList.add('gone'), 8000);
 }
+
+// PROPOSAL fab_panel (AVR-769): when the Party menu closes, the game has the focus again (Escape, Close
+// or a tap outside the panel), so a keyboard or a controller is back in the game at once.
+// While it is open the game frame is inert: aria-modal in the menu's own document cannot reach this one.
+document.addEventListener('avrana-party-layer', (e) => {
+  const view = party.view();
+  if (!e.detail || !view || !(view.proposals || []).includes('fab_panel')) return;
+  frame.inert = e.detail.open === true;
+  if (e.detail.open === false) frame.focus({ preventScroll: true });
+});
 
 addEventListener('resize', showDiag);
 document.addEventListener('visibilitychange', () => {

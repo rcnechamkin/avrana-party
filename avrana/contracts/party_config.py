@@ -153,7 +153,8 @@ RECOVERY_DEFAULTS = {'close_lost_game': False}      # session_recovery switches 
 # Owner-gated proposals a test appliance may switch on (`proposals`), each off by default. They
 # change approved behaviour and stay off on a product appliance until the owner accepts them.
 PROPOSAL_DEFAULTS = {'home_in_round': False,       # AVR-703: Party Home reachable during a round
-                     'play_shell': False}         # AVR-766: a round inside the Party's play.html (draft ADR 0018 rev 3)
+                     'play_shell': False,         # AVR-766: a round inside the Party's play.html (draft ADR 0018 rev 3)
+                     'fab_panel': False}          # AVR-769: the Party menu in the shell is a bounded panel, hold to confirm
 DIAGNOSTICS_DEFAULTS = {'heartbeats': False}        # diagnostics switches (AVR-302): name -> default
 
 
