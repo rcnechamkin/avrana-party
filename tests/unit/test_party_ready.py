@@ -45,7 +45,8 @@ class SummaryTests(unittest.TestCase):
         self.assertIs(r['ready'], True)
         self.assertEqual(r['headline'], 'READY FOR PARTY')
         self.assertEqual({a['state'] for a in r['areas']}, {'ok'})
-        self.assertEqual(area(r, 'trust')['says'], 'Phones will trust the box for the next 7 days')
+        self.assertEqual(area(r, 'trust')['says'],
+                         'Phones will trust the box until at least 2026-11-02 10:00 UTC (7 days from the check)')
         self.assertTrue(all('do' not in a for a in r['areas']))
         self.assertEqual(r['schema'], 'avrana.party-ready/v0')
 
@@ -58,7 +59,7 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(r['headline'], '1 thing to fix before leaving home')
         trust = area(r, 'trust')
         self.assertEqual(trust['state'], 'fix')
-        self.assertEqual(trust['says'], 'Phones will refuse the box for the next 7 days')
+        self.assertEqual(trust['says'], 'Phones will refuse the box before 2026-11-02 10:00 UTC (7 days from the check)')
         self.assertIn('Renew the certificate at home', trust['do'])
         self.assertEqual(trust['details'][0]['id'], 'tls.party.avrana.net')
 
@@ -88,6 +89,62 @@ class SummaryTests(unittest.TestCase):
         self.assertIs(r['ready'], True)
         self.assertEqual(r['waived'], ['wifi.gate'])
         self.assertIn('Accepted without checking: wifi.gate', party_ready.render_text(r))
+        wifi = area(r, 'wifi')
+        self.assertEqual(wifi['state'], 'accepted')        # AVR-742: never the all-clear sentence for a waived check
+        self.assertEqual(wifi['says'], 'The Party Wi-Fi has not been checked recently (accepted without checking)')
+        self.assertIn('[ ~ ] The Party Wi-Fi has not been checked recently', party_ready.render_text(r))
+
+    def test_a_waived_certificate_does_not_promise_trust_for_the_trip(self):
+        checks = healthy()
+        checks[3] = check('tls.party.avrana.net', 'tls', UNKNOWN, 'could not connect')
+        r = party_ready.summarize(doc(checks, horizon=7, waived=['tls.party.avrana.net']))
+        self.assertIs(r['ready'], True)
+        self.assertNotIn('will trust', area(r, 'trust')['says'])
+        self.assertIn('accepted without checking', area(r, 'trust')['says'])
+
+    def test_a_waiver_never_hides_a_fail_even_in_a_hand_edited_report(self):
+        """AVR-742: the preflight only waives a blocking UNKNOWN; a saved report listing a FAIL as waived (and saying
+        READY) is still one thing to fix."""
+        checks = healthy()
+        checks[3] = check('tls.party.avrana.net', 'tls', FAIL, 'expired')
+        edited = dict(doc(checks, horizon=7), waived=['tls.party.avrana.net'], verdict='READY')
+        r = party_ready.summarize(edited)
+        self.assertIs(r['ready'], False)
+        self.assertEqual(area(r, 'trust')['state'], 'fix')
+        self.assertEqual(r['waived'], [])
+
+    def test_a_blocking_check_in_an_unrecognised_state_is_not_called_fine(self):
+        checks = healthy()
+        checks[3] = dict(checks[3], status='SKIPPED')
+        r = party_ready.summarize(dict(doc(healthy()), checks=checks))
+        self.assertIsNone(r['ready'])
+        self.assertEqual(area(r, 'trust')['state'], 'unchecked')
+        checks[3] = dict(checks[3], status=None)
+        self.assertIsNone(party_ready.summarize(dict(doc(healthy()), checks=checks))['ready'])
+
+    def test_the_trip_horizon_is_counted_from_the_check_not_from_reading_it(self):
+        """AVR-742: a saved report read 23 hours later must not promise seven more days."""
+        late = datetime(2026, 10, 27, 9, 0, tzinfo=timezone.utc)
+        r = party_ready.summarize(doc(healthy(), horizon=7), now=late)
+        self.assertIs(r['ready'], True)
+        self.assertNotIn('next 7 days', area(r, 'trust')['says'])
+        self.assertIn('2026-11-02 10:00 UTC', area(r, 'trust')['says'])
+        checks = healthy()
+        checks[3] = check('tls.party.avrana.net', 'tls', FAIL, 'expires inside the horizon')
+        self.assertEqual(area(party_ready.summarize(doc(checks, horizon=7)), 'trust')['says'],
+                         'Phones will refuse the box before 2026-11-02 10:00 UTC (7 days from the check)')
+
+    def test_no_horizon_says_only_the_moment_of_the_check_was_covered(self):
+        trust = area(party_ready.summarize(doc(healthy())), 'trust')
+        self.assertEqual(trust['says'], 'Phones will trust the box right now (no trip length was checked)')
+
+    def test_the_offline_note_does_not_promise_games_that_are_not_served(self):
+        self.assertIn('still gets every game from the box', party_ready.summarize(doc(healthy()))['offline_note'])
+        checks = healthy()
+        checks[2] = check('serving.party_home', 'serving', FAIL, 'not served')
+        note = party_ready.summarize(doc(checks))['offline_note']
+        self.assertNotIn('still gets every game', note)
+        self.assertIn('cannot be counted on', note)
 
     def test_a_fail_is_never_hidden_by_a_waiver_of_something_else(self):
         checks = healthy()
@@ -196,7 +253,7 @@ class PreflightFlagTests(unittest.TestCase):
             code = preflight.main(['--party-ready', '--horizon-days', '3'])
         self.assertEqual(code, 0)
         self.assertIn('READY FOR PARTY', out.getvalue())
-        self.assertIn('for the next 3 days', out.getvalue())
+        self.assertIn('until at least 2026-10-29 10:00 UTC (3 days from the check)', out.getvalue())
 
 
 if __name__ == '__main__':

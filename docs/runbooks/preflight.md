@@ -100,6 +100,13 @@ future or without a time is "Not confirmed", never READY. `--json` gives `avrana
   same.
 - The raw check ids and reasons stay under "Details for whoever helps you", and the real-phone list is kept.
 - It runs no check of its own and needs no Internet.
+- It stays truthful about what was not checked (AVR-742). An area held up only by a `--waive` says "accepted
+  without checking", never its all-clear sentence. A waiver is honoured only for a blocking UNKNOWN, as in the
+  preflight, so a saved report that lists a FAIL as waived still has a thing to fix. A blocking check in any state
+  other than PASS or WARN is "could not be checked".
+- The certificate line names the date the trip horizon reaches, counted from when the preflight ran, because a
+  saved report may be read up to a day later. With no `--horizon-days` it says only the moment of the check was
+  covered. The offline note does not promise games while the games line is not OK.
 
 Not yet built: an owner page for it (AVR-44, AVR-60) and a per-game offline line beyond `packages.*` and `serving.*`.
 

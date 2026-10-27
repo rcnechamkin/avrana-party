@@ -23,6 +23,9 @@ CATALOG = 'avrana.catalog/v0'
 DEFAULT_APPLIANCE = CONTRACTS_DIR / 'appliances' / 'avrana-pi4.json'
 DEFAULT_OUT = WEB_DIR / 'catalog.json'
 DEFAULT_ARTWORK = CONTRACTS_DIR / 'artwork.json'
+DEFAULT_SHELVES = CONTRACTS_DIR / 'shelves.json'
+# Where the owner puts a title on the shelf (AVR-155): installed is not featured. Order is display order.
+SHELVES = ('featured', 'classics', 'lab', 'hidden')
 ARTWORK_REF = re.compile(r'^(lan|kenney):([A-Za-z0-9_]{1,40})$')
 # Avrana-native games the provider lists that also carry an explicit contract here (private hands,
 # spectators, Party roster permission): the donor row supplies only display metadata and players.
@@ -46,6 +49,21 @@ def load_artwork(path=DEFAULT_ARTWORK, web=WEB_DIR):
             raise ValueError(f'artwork.json: {rel} is missing (run npm run build:art)')
         out[cid] = rel
     return out
+
+
+def load_shelves(path=DEFAULT_SHELVES):
+    """The owner's curation: {game id: one of SHELVES}. An id may name a game that only an installed
+    .avrgame package supplies (it is a placement, not a grant), so ids are checked for shape, not
+    against the contracts. A title not listed keeps its catalog place; nothing is hidden by omission."""
+    doc = strictjson.load_path(path)
+    if doc.get('schema') != 'avrana.shelves/v0' or not isinstance(doc.get('games'), dict):
+        raise ValueError('shelves.json: wrong schema')
+    for gid, shelf in doc['games'].items():
+        if not game_mod.ID.fullmatch(gid):
+            raise ValueError(f'shelves.json: bad game id {gid!r}')
+        if shelf not in SHELVES:
+            raise ValueError(f'shelves.json: {gid}: shelf must be one of {list(SHELVES)}')
+    return dict(sorted(doc['games'].items()))
 
 
 # A contract that exists to prove the platform (the AVR-236 stand-in). It has no grant on a
@@ -85,7 +103,7 @@ def _test_only(contract):
     return isinstance(extension, dict) and extension.get('test_only') is True
 
 
-def build(vocab, appliance, contracts, include=('live',), artwork=None, extra_grants=None):
+def build(vocab, appliance, contracts, include=('live',), artwork=None, extra_grants=None, shelves=None):
     """The catalog document. `extra_grants` ({game id: grant}) are grants made outside the appliance
     profile, today only the install records of .avrgame packages (AVR-39, EXPERIMENTAL); without
     them the output is exactly what it always was. An id in both is an error."""
@@ -156,7 +174,7 @@ def build(vocab, appliance, contracts, include=('live',), artwork=None, extra_gr
                    for col in appliance.get('collections') or []]
     used_device = sorted({n for g in games for p in g['presentations']
                           for n in p['requires']['device'] + p['optional']['device']})
-    return {
+    doc = {
         'schema': CATALOG,
         'appliance': {'id': appliance['id'], 'name': appliance['name']},
         'providers': [{'id': p['id'], 'kind': p['kind'], 'status': p['status'], 'offers': p['offers']}
@@ -167,6 +185,9 @@ def build(vocab, appliance, contracts, include=('live',), artwork=None, extra_gr
         'games': games,
         'collections': collections,
     }
+    if shelves:
+        doc['shelves'] = dict(shelves)        # read by the page (lib/catalog-view.js visibleGames)
+    return doc
 
 
 def main(argv=None):
@@ -196,7 +217,8 @@ def main(argv=None):
             print(f'{args.packages}: {problem}', file=sys.stderr)
     include = ('live', 'experiment') if args.include_experiments else ('live',)
     artwork = load_artwork() if Path(args.games).resolve() == (CONTRACTS_DIR / 'games').resolve() else {}
-    text = strictjson.dumps(build(vocab, appliance, contracts, include, artwork, extra))
+    shelves = load_shelves() if Path(args.games).resolve() == (CONTRACTS_DIR / 'games').resolve() else {}
+    text = strictjson.dumps(build(vocab, appliance, contracts, include, artwork, extra, shelves))
     out = Path(args.out)
     if args.check:
         current = out.read_text(encoding='utf-8') if out.exists() else ''

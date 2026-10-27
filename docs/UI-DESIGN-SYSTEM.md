@@ -407,6 +407,10 @@ location is deployed; until then each answers 404 and the tile draws what it dre
   (`own-art`), and is decoration (`alt=""`): the name beside it stays text. A cover that does
   not load gives way to the art below, and is not asked for again until the page next starts
   or the Party box answers again after a break.
+  **A wide cover (AVR-308)**, `<game id>.wide.<ext>` beside the square one, passes the same checks
+  and is listed under `"wide"` in the index (`loadCoverIndex`). It leads only a wide hero (a
+  game's page, a wide stage), where it fills the box like a banner (`data-art="own-wide"`); the
+  square cover follows it, so a wide cover that does not load gives way to the square one.
   Covers are not in the offline copy. How they reach the Pi:
   [deploy runbook](runbooks/deploy.md#game-covers-the-owners-never-committed).
 

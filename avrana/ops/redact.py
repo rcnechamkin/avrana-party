@@ -24,7 +24,7 @@ import json
 import re
 import unicodedata
 
-RULES_VERSION = 'avrana.redaction/v3'
+RULES_VERSION = 'avrana.redaction/v4'
 REDACTED = '[redacted]'
 ALLOWED_ADDRESSES = {'127.0.0.1', '10.42.0.1', '0.0.0.0', '10.42.0.0', '255.255.255.0'}
 # Keys whose value is a commit (40 hex, or a 12-character short form) wherever they appear.
@@ -64,8 +64,10 @@ _RULES = [
     ('mac_bare', re.compile(r'(?i)(\b(?:mac|bssid|sta|station|hwaddr|ether|lladdr)\b[\s:=]*)[0-9a-f]{12}(?![0-9a-f])')),
     # IPv4 before IPv6: in an IPv4-mapped address (`::ffff:10.42.0.57`, as dual-stack servers log a phone) the
     # IPv6 rule would take `::ffff:10` alone and leave `.42.0.57` behind. Not only at word boundaries:
-    # `sta_10.42.0.57` is an address too.
-    ('ipv4', re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])')),
+    # `sta_10.42.0.57` is an address too. A dot next to it is punctuation unless a digit is on its far side
+    # (AVR-738 review: "from 10.42.0.57." and "...10.42.0.57" were kept whole, by the validator too); a dotted run
+    # of five or more numbers is a version, not an address.
+    ('ipv4', re.compile(r'(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\d)(?!\.\d)')),
     # Full form (six or more groups) or compressed with '::'; a clock time such as 18:00:00 is neither.
     ('ipv6', re.compile(r'(?i)(?<![0-9a-f:])(?:(?:[0-9a-f]{1,4}:){5,7}[0-9a-f]{1,4}|'
                         r'(?:[0-9a-f]{1,4}:){1,6}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,5})?|'

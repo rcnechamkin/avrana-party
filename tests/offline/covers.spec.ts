@@ -77,6 +77,40 @@ test('a cover the owner supplied stands for its game on Home, in the Library and
   expect(await broken(page)).toEqual([]);
 });
 
+test('a wide cover fills the game page’s wide frame; the square cover stays on the shelves (AVR-308)', async ({ page }) => {
+  await withCovers(page, { ...INDEX, wide: { 'arcade-gauntlet2': 'covers/arcade-gauntlet2.wide.png', expo: 'covers/ps1-worms.wide.png' } });
+  await page.route('**/party/covers/arcade-gauntlet2.wide.png',
+    (route) => route.fulfill({ path: path.join(FIXTURES, 'ps1-worms.png'), contentType: 'image/png' }));
+  await open(page);
+  await place(page, 'library');
+  await expect(cover(page, '#games', 'arcade-gauntlet2').locator('img')).toHaveAttribute('src', 'covers/arcade-gauntlet2.png');
+  await expect(cover(page, '#games', 'expo').locator('img')).toHaveCount(0);       // another game's wide file: ignored
+  await page.locator('#lib-view').click();
+  await page.locator('#view-choices [data-v="medium"]').click();
+  await page.keyboard.press('Escape');
+  const card = await openGame(page, 'arcade-gauntlet2');
+  const wide = card.locator('.avrana-cover.wide');
+  await expect(wide).toHaveAttribute('data-art', 'own-wide');
+  await expect(wide.locator('img')).toHaveAttribute('src', 'covers/arcade-gauntlet2.wide.png');
+  await expect(wide).toHaveClass(/banner-art/);
+  expect(await sideways(page)).toBeLessThanOrEqual(0);
+  expect(await broken(page)).toEqual([]);
+});
+
+test('a wide cover that will not load gives way to the square cover on the game page', async ({ page }) => {
+  await withCovers(page, { ...INDEX, wide: { 'arcade-gauntlet2': 'covers/arcade-gauntlet2.wide.png' } });
+  await page.route('**/party/covers/arcade-gauntlet2.wide.png', (route) => route.fulfill({ status: 404, body: '' }));
+  await open(page);
+  await place(page, 'library');
+  await page.locator('#lib-view').click();
+  await page.locator('#view-choices [data-v="medium"]').click();
+  await page.keyboard.press('Escape');
+  const card = await openGame(page, 'arcade-gauntlet2');
+  const wide = card.locator('.avrana-cover.wide');
+  await expect(wide.locator('img')).toHaveAttribute('src', 'covers/arcade-gauntlet2.png');
+  expect(await broken(page)).toEqual([]);
+});
+
 test('a cover that will not load, or is not a picture, gives way to the art the game had: never a broken image', async ({ page }) => {
   await withCovers(page);
   await page.route('**/party/covers/arcade-gauntlet2.png', (route) => route.abort());                                   // out of reach

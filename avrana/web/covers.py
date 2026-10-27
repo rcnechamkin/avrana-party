@@ -4,6 +4,11 @@ A cover is one image file named for the game it stands for, in one folder:
 
     <game id>.jpg | .jpeg | .png | .webp | .avif
 
+and, optionally, a second WIDE one for the wide frame of the game's page (AVR-308), drawn only where
+the box is wide; the square one stays on tiles and rows:
+
+    <game id>.wide.jpg | .jpeg | .png | .webp | .avif
+
 On a development machine the folder is web/party/covers/ (ignored by Git, served by the dev
 server). On the appliance it is /srv/avrana/covers, beside the owner's ROM, and
 ops/install-party-web.sh copies it into each web release. It is the one thing in a release that
@@ -15,7 +20,8 @@ A picture saved from somewhere is often not what its name says (a WebP called .j
 decides: it is published as <game id>.<the extension of what it really is>, so it is always
 served as its true type.
 
-The shell reads covers/index.json ({"schema": "avrana.covers/v0", "covers": {id: path}}), which
+The shell reads covers/index.json ({"schema": "avrana.covers/v0", "covers": {id: path}}, plus
+"wide": {id: path} when there is a wide cover; a reader that does not know the key ignores it), which
 the build and the dev server write from the same scan, so a page never has to guess at a file.
 """
 import json
@@ -26,7 +32,8 @@ import stat
 from pathlib import Path
 
 SCHEMA = 'avrana.covers/v0'
-NAME = re.compile(r'^([a-z][a-z0-9_-]{0,39})\.(jpg|jpeg|png|webp|avif)$')   # the id: avrana.contracts.game.ID
+NAME = re.compile(r'^([a-z][a-z0-9_-]{0,39})(\.wide)?\.(jpg|jpeg|png|webp|avif)$')   # the id: avrana.contracts.game.ID
+WIDE = '.wide'
 MAX_BYTES = 1024 * 1024
 MAX_FILES = 64
 EXTENSION = {'jpeg': 'jpg', 'png': 'png', 'webp': 'webp', 'avif': 'avif'}
@@ -61,7 +68,7 @@ def read(path):
     path = Path(path)
     match = NAME.fullmatch(path.name)
     if not match:
-        raise CoverError('its name is not <game id>.jpg, .jpeg, .png, .webp or .avif')
+        raise CoverError('its name is not <game id>.jpg, .jpeg, .png, .webp or .avif (or <game id>.wide.<the same>)')
     try:
         if not stat.S_ISREG(os.lstat(path).st_mode):
             raise CoverError('it is not a plain file (links are never followed)')
@@ -81,12 +88,12 @@ def read(path):
     what = kind(data)
     if what is None:
         raise CoverError('it is not a JPEG, PNG, WebP or AVIF picture')
-    return data, f'{match.group(1)}.{EXTENSION[what]}'
+    return data, f'{match.group(1)}{match.group(2) or ""}.{EXTENSION[what]}'
 
 
 def scan(folder):
-    """What a covers folder holds: ({game id: (file name, published name)}, [why each other file
-    was left out]). A folder that is missing or cannot be listed holds nothing; a folder inside
+    """What a covers folder holds: ({game id, or <game id>.wide for a wide cover: (file name, published
+    name)}, [why each other file was left out]). A folder that is missing or cannot be listed holds nothing; a folder inside
     it is not looked in."""
     found, skipped = {}, []
     if folder is None:
@@ -100,10 +107,11 @@ def scan(folder):
         if path.name == 'index.json' or (path.is_dir() and not path.is_symlink()):
             continue
         match = NAME.fullmatch(path.name)
-        game = match.group(1) if match else None
+        game = match.group(1) + (match.group(2) or '') if match else None
         # decided by the name alone, so a file past the limit is never opened
         if game in found:
-            skipped.append(f'{shown(path.name)}: {found[game][0]} is already the cover for {game}')
+            what = f'the wide cover for {game[:-len(WIDE)]}' if game.endswith(WIDE) else f'the cover for {game}'
+            skipped.append(f'{shown(path.name)}: {found[game][0]} is already {what}')
             continue
         if match and len(found) >= MAX_FILES:
             skipped.append(f'{shown(path.name)}: there are already {MAX_FILES} covers')
@@ -118,8 +126,14 @@ def scan(folder):
 
 
 def index(found):
-    """The document the shell reads."""
-    return {'schema': SCHEMA, 'covers': {game: f'covers/{published}' for game, (_, published) in sorted(found.items())}}
+    """The document the shell reads. `wide` is there only when a game has a wide cover, so a folder of
+    square covers gives exactly the index it always did."""
+    doc = {'schema': SCHEMA, 'covers': {game: f'covers/{published}' for game, (_, published) in sorted(found.items())
+                                        if not game.endswith(WIDE)}}
+    wide = {game[:-len(WIDE)]: f'covers/{published}' for game, (_, published) in sorted(found.items()) if game.endswith(WIDE)}
+    if wide:
+        doc['wide'] = wide
+    return doc
 
 
 def install(out, folder):
