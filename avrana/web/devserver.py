@@ -30,6 +30,7 @@ import argparse
 import http.client
 import json
 import mimetypes
+import os
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -108,8 +109,10 @@ class SimulatedParty:
         self.service_module = service
         from avrana.party import protocol, sessions
         hosts = {f'127.0.0.1:{public_port}', f'{PARTY_HOST}:{public_port}'}
+        # Owner-gated proposals to try in a browser (AVR-703: AVRANA_DEV_PROPOSALS=home_in_round); none by default.
+        proposals = [p for p in os.environ.get('AVRANA_DEV_PROPOSALS', '').split(',') if p]
         self.svc = service.PartyService(identity.DeviceStore(None), service.load_games(PARTY_GAMES),
-                                        AcceptingLink())
+                                        AcceptingLink(), proposals=proposals)
         self.game_origin = f'http://{GAMES_HOST}:{public_port}'
         self.party_origin = f'http://{PARTY_HOST}:{public_port}'
         cfg = service.Config(hosts, {f'http://{h}' for h in hosts}, secure_cookie=False,
@@ -150,7 +153,8 @@ class SimulatedParty:
             self.skew = 0.0
             self.simulated = True
             self.svc.core = core.PartyCore(lambda: time.monotonic() + self.skew,
-                                           self.service_module.load_games(PARTY_GAMES))
+                                           self.service_module.load_games(PARTY_GAMES),
+                                           proposals=self.svc.core.proposals)
             self.svc._notify()
 
     def advance(self, seconds):
