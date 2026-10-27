@@ -32,7 +32,7 @@
   "layer": {
     "protocol": "avrana.party-layer/v1",
     "reference": "web/party/bridge/layer-mount.js",
-    "reference_sha256": "2b60de2dfc2f360a85fdfec706444a6f119445e14de1bd3698ac4809fb123088",
+    "reference_sha256": "f03669d43540ce4ab795d384fded93dc80f1b94df082074a2179629127131c5f",
     "frame": "/party/layer.html",
     "decision": "docs/design/proposals/2026-10-16-control-center.md",
     "note": "Optional for a games repository. A game page on another origin that vendors this file byte for byte may mount the Party layer; bridge v1 is untouched."

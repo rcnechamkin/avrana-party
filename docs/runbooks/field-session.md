@@ -49,7 +49,9 @@ It takes one snapshot now, then the journal and power lines from `--hours` ago u
 same writer, bounds, redaction and validator. The package is `avrana-field-<id>-support-<N>h.tar.gz`,
 and its `session.json` says `"kind": "support"` with the window. It is refused while a session is
 recording (stop and export that one), and nothing is written if validation fails. Nothing is sent
-anywhere: hand the file over yourself.
+anywhere: hand the file over yourself. The bundle keeps no working copy: its session directory under
+`~/avrana-field-sessions/` is deleted once the package is written or refused, so a refused bundle does
+not leave the refused text on the Pi (AVR-740). Recorded sessions are never touched.
 
 ## What a package holds
 
@@ -68,7 +70,7 @@ ownership zeroed.
 
 ## What never leaves the appliance
 
-The rules live in `avrana/ops/redact.py` (`avrana.redaction/v3`). Every string is scrubbed before
+The rules live in `avrana/ops/redact.py` (`avrana.redaction/v4`). Every string is scrubbed before
 it is written. The export runs the validator, and a package with any hit is not written.
 
 - **Credentials and keys:**
@@ -82,7 +84,7 @@ it is written. The export runs the validator, and a package with any hit is not 
   `Cookie:` or `Set-Cookie:` line.
 - **Per-member and per-device identifiers:** `member-…` and `device-…`. `devices.json` is never read.
 - **Device records:**
-  - IPv4 addresses other than `127.0.0.1` and `10.42.0.1`;
+  - IPv4 addresses other than `127.0.0.1` and `10.42.0.1`, also beside punctuation (`from 10.42.0.57.`, `...10.42.0.57`); a dotted run of five or more numbers is a version and is kept;
   - IPv6 addresses, including an IPv4-mapped one (`::ffff:10.42.0.57`) as a whole;
   - MAC addresses: colon or dash pairs, Cisco dotted groups, and twelve bare hex digits after a word
     such as `STA`, `station`, `bssid` or `mac`;
