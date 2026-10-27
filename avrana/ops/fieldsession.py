@@ -7,6 +7,7 @@
     python3 -m avrana.ops.fieldsession timeline              # the session as one ordered Markdown page
     python3 -m avrana.ops.fieldsession export --out ~/       # avrana-field-<id>.tar.gz, validated first
     python3 -m avrana.ops.fieldsession validate PACKAGE.tar.gz [--forbid-terms names.txt]
+    python3 -m avrana.ops.fieldsession bundle --out ~/ [--hours 6]   # a support bundle: no `start` needed
     python3 -m avrana.ops.fieldsession status
 
 Nothing is recorded until the operator runs `start` (there is no service, timer or endpoint), and
@@ -29,7 +30,7 @@ capped per run and per line, and an export is refused above 2 MiB. Party Core an
 are not changed and nothing is recorded per member: the status document carries only counts.
 """
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import gzip
 import hashlib
 import io
@@ -301,8 +302,9 @@ def _preflight_summary(doc):
         return {'error': f'not an {PREFLIGHT_SCHEMA} document'}
     return {'generated_at': doc.get('generated_at'), 'verdict': doc.get('verdict'), 'overall': doc.get('overall'),
             'blocking': doc.get('blocking'), 'counts': doc.get('counts'),
-            'checks': [{k: c.get(k) for k in ('id', 'status', 'blocking', 'reason')} for c in doc.get('checks', [])
-                       if c.get('status') != 'PASS']}
+            'checks': [{k: c.get(k) for k in ('id', 'status', 'blocking', 'reason')}
+                       for c in (doc.get('checks') if isinstance(doc.get('checks'), list) else [])
+                       if isinstance(c, dict) and c.get('status') != 'PASS']}
 
 
 def start(store, label, probes, now=None, max_bytes=DEFAULT_MAX_BYTES, max_hours=DEFAULT_MAX_HOURS):
@@ -403,6 +405,39 @@ def stop(store, probes, now=None, units=UNITS):
     except OSError:
         pass
     return session
+
+
+BUNDLE_HOURS = 6
+BUNDLE_MAX_HOURS = 24
+
+
+def bundle(store, probes, out_dir, hours=BUNDLE_HOURS, now=None, forbid_terms=(), attach_preflight=None):
+    """A support bundle (AVR-74): the same package as a field session, for the last `hours`, when nobody
+    pressed `start` before the problem. One snapshot now (with a preflight if attached), then the
+    journal and power excerpts from `hours` ago until now, through the same writer, bounds, redaction
+    and validator; a package that fails validation is not written. Refused while a session records
+    (stop and export that one instead). Returns export()'s result."""
+    now = now or _now()
+    if not 0 < float(hours) <= BUNDLE_MAX_HOURS:
+        raise Refused(f'--hours must be more than 0 and at most {BUNDLE_MAX_HOURS}')
+    if store.active_id():
+        raise Refused(f'session {store.active_id()} is recording; stop it and export it instead')
+    session = start(store, f'support {float(hours):g}h', probes, now=now)
+    try:
+        if attach_preflight is not None:
+            snapshot(store, probes, now=now, attach_preflight=attach_preflight)
+        d = store.dir(session['id'])
+        session = _read_session(d)
+        # The window reaches back before the start: stop() takes the journal and power lines from started_at.
+        session['kind'] = 'support'
+        session['window'] = {'since': _iso(now - timedelta(hours=float(hours))), 'until': _iso(now), 'hours': float(hours)}
+        session['started_at'] = session['window']['since']
+        _write_json(d / 'session.json', session)
+    finally:
+        # Never leave a bundle's session recording: it would block every later bundle and `start`.
+        if store.active_id() == session['id']:
+            stop(store, probes, now=now)
+    return export(store, out_dir, session['id'], forbid_terms)
 
 
 def _append_event_unbounded(d, event):
@@ -696,6 +731,11 @@ def main(argv=None):
     e.add_argument('session', nargs='?')
     e.add_argument('--out', default='.')
     e.add_argument('--forbid-terms', metavar='FILE', help='words that must not appear, one per line (e.g. guest names)')
+    b = sub.add_parser('bundle', help='a support bundle of the last hours, without a session (AVR-74)')
+    b.add_argument('--out', default='.', help='directory for the package')
+    b.add_argument('--hours', type=float, default=BUNDLE_HOURS, help=f'how far back (at most {BUNDLE_MAX_HOURS})')
+    b.add_argument('--attach-preflight', metavar='JSON', help='an avrana.preflight/v0 document to include')
+    b.add_argument('--forbid-terms', metavar='FILE', help='guest names, one per line: refuse a package naming any')
     v = sub.add_parser('validate', help='check a package or session directory; prints rule ids, never the content')
     v.add_argument('path')
     v.add_argument('--forbid-terms', metavar='FILE')
@@ -734,6 +774,12 @@ def main(argv=None):
         elif a.command == 'export':
             out, digest, count, size = export(store, a.out, a.session, _read_terms(a.forbid_terms))
             print(f'{out}  sha256 {digest}  {count} members, {size} bytes; privacy validation clean')
+        elif a.command == 'bundle':
+            doc = json.loads(Path(a.attach_preflight).read_text(encoding='utf-8')) if a.attach_preflight else None
+            out, digest, count, size = bundle(store, probes, a.out, a.hours, forbid_terms=_read_terms(a.forbid_terms),
+                                              attach_preflight=doc)
+            print(f'{out}  sha256 {digest}  {count} members, {size} bytes; the last {a.hours:g} h; '
+                  'privacy validation clean')
         elif a.command == 'validate':
             members, problems = validate(a.path, _read_terms(a.forbid_terms))
             for p in problems:
