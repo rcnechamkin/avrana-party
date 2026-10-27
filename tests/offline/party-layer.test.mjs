@@ -165,6 +165,7 @@ test('the mount frames the layer page for this game, hidden until placed', () =>
   const layer = mountPartyLayer({ partyOrigin: 'https://party.test', game: 'bluff', window: page.win });
   assert.equal(layer.frame.src, 'https://party.test/party/layer.html?game=bluff');
   assert.equal(layer.frame.attrs.sandbox, 'allow-scripts allow-same-origin allow-forms');
+  assert.equal(layer.frame.attrs.allow, 'gamepad');   // the controller shortcut is read in the frame (AVR-581)
   assert.equal(layer.frame.style.visibility, 'hidden');
   page.say(P({ type: 'ready' }));
   assert.deepEqual(page.posted.at(-1), [P({ type: 'viewport', ...VP }), 'https://party.test']);

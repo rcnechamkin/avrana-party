@@ -56,6 +56,9 @@ export function mountPartyLayer({ partyOrigin, game, window: win = globalThis, d
   // Its own origin (the Party cookie lives there), scripts and its chat form (submitted to its own
   // script; the Party's CSP keeps form-action 'self'); it may not navigate this page or open windows.
   frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+  // The controller shortcut (AVR-581) is read in the frame, never posted by this page: a frame of
+  // another origin needs the Gamepad API delegated to it.
+  frame.setAttribute('allow', 'gamepad');
   frame.src = `${partyOrigin}/party/layer.html?game=${encodeURIComponent(game)}`;
   frame.dataset.avranaPartyLayer = 'button';
   Object.assign(frame.style, { position: 'fixed', border: '0', margin: '0', padding: '0', background: 'transparent',
