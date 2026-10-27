@@ -17,8 +17,9 @@ test('a round runs inside /party/play.html and the game loads in its frame', asy
     test.skip(!(view?.proposals || []).includes('play_shell'), 'the play_shell proposal is off here');
     const refused: string[] = [];
     for (const p of [ana, ben]) p.page.on('console', (m) => { if (/frame-ancestors|Refused to frame/i.test(m.text())) refused.push(m.text()); });
-    const host = view.me.host ? ana : ben;
-    const launched = await post(host, 'session/launch', { game: GAME, if_version: (await state(host)).version });
+    const host = view.me.host ? ana : (await state(ben))?.me?.host ? ben : null;
+    test.skip(!host, 'someone else is the Host of this Party: the test phones cannot start a round');
+    const launched = await post(host!, 'session/launch', { game: GAME, if_version: (await state(host!)).version });
     expect(launched.status(), await launched.text()).toBe(200);
     for (const p of [ana, ben]) {
       await expect(p.page).toHaveURL(`${BASE}/party/play.html`, { timeout: 30_000 });
@@ -32,7 +33,7 @@ test('a round runs inside /party/play.html and the game loads in its frame', asy
       await expect(p.page.locator('iframe[data-avrana-party-layer]')).toHaveAttribute('data-avrana-party-layer', 'button');
     }
     expect(refused, 'no frame was refused').toEqual([]);
-    const ended = await post(host, 'session/end', { if_version: (await state(host)).version });
+    const ended = await post(host!, 'session/end', { if_version: (await state(host!)).version });
     expect(ended.status(), await ended.text()).toBe(200);
     for (const p of [ana, ben]) await expect(p.page).toHaveURL(new RegExp(`^${BASE}/party/(#.*)?$`), { timeout: 30_000 });
   } finally {
