@@ -11,6 +11,8 @@ them. Now there is one source per field:
     min_players, max_players   contract `players.min` / `players.max`
     late_join                  contract `late_join`
     pregame                    contract `extensions["net.avrana.party"].pregame` (default false)
+    launch_timeout_s,          contract `extensions["net.avrana.party"]` (AVR-260; optional, seconds;
+    end_timeout_s              Party Core clamps them, core.LAUNCH_BOUNDS / END_BOUNDS)
 
 The Party Core config keeps only what the appliance owns: where the game server is (`url`), its
 key file and the link `timeout`. A config that still repeats a derived field is accepted only when
@@ -28,7 +30,8 @@ import sys
 from avrana import CONTRACTS_DIR
 
 EXTENSION = 'net.avrana.party'
-EXTENSION_KEYS = {'pregame'}
+EXTENSION_KEYS = {'pregame', 'state', 'launch_timeout_s', 'end_timeout_s'}      # state: answers the AVR-673 probe (PROTOTYPE)
+BOUND_KEYS = ('launch_timeout_s', 'end_timeout_s')
 DERIVED = ('min_players', 'max_players', 'late_join', 'pregame')
 APPLIANCE_KEYS = {'url', 'socket', 'key_file', 'timeout'}     # where the game is; never facts about it
 
@@ -51,6 +54,12 @@ def party_extension(contract):
                 for key in sorted(set(ext) - EXTENSION_KEYS)]
     if 'pregame' in ext and type(ext['pregame']) is not bool:
         problems.append(f'{cid}: extensions[{EXTENSION!r}].pregame: true or false')
+    if 'state' in ext and type(ext['state']) is not bool:
+        problems.append(f'{cid}: extensions[{EXTENSION!r}].state: true or false')
+    for key in BOUND_KEYS:
+        value = ext.get(key)
+        if key in ext and (type(value) not in (int, float) or not 0 < value <= 3600):
+            problems.append(f'{cid}: extensions[{EXTENSION!r}].{key}: a number of seconds above 0 (at most 3600)')
     if problems:
         raise ConfigError(problems)
     return ext
@@ -58,9 +67,12 @@ def party_extension(contract):
 
 def metadata(contract):
     """What Party Core needs to know about one game, from its (normalised) contract."""
+    ext = party_extension(contract)
     return {'min_players': contract['players']['min'], 'max_players': contract['players']['max'],
             'late_join': contract['late_join'],
-            'pregame': bool(party_extension(contract).get('pregame', False))}
+            'pregame': bool(ext.get('pregame', False)),
+            **({'state_probe': True} if ext.get('state') else {}),
+            **{key: ext[key] for key in BOUND_KEYS if key in ext}}
 
 
 def load_contracts(directory=None, packages=None):
@@ -138,6 +150,10 @@ def check_game_origins(conf):
 
 
 RECOVERY_DEFAULTS = {'close_lost_game': False}      # session_recovery switches (AVR-33): name -> default
+# Owner-gated proposals a test appliance may switch on (`proposals`), each off by default. They
+# change approved behaviour and stay off on a product appliance until the owner accepts them.
+PROPOSAL_DEFAULTS = {'home_in_round': False}        # AVR-703: Party Home reachable during a round
+DIAGNOSTICS_DEFAULTS = {'heartbeats': False}        # diagnostics switches (AVR-302): name -> default
 
 
 def check_session_recovery(conf):
@@ -162,6 +178,42 @@ def check_session_recovery(conf):
     return switches, problems, warnings
 
 
+def check_proposals(conf):
+    """(switches, problems, warnings) for the config's `proposals` block: the same rules as
+    session_recovery (a known switch is a boolean; an unknown one is a warning and is ignored)."""
+    block = conf.get('proposals', {})
+    switches = dict(PROPOSAL_DEFAULTS)
+    if not isinstance(block, dict):
+        return switches, ['proposals: an object of booleans named ' + ', '.join(PROPOSAL_DEFAULTS)], []
+    problems, warnings = [], []
+    for key in sorted(block, key=str):
+        if key not in PROPOSAL_DEFAULTS:
+            warnings.append(f'proposals: unknown key {key!r} ignored (this Party knows '
+                            + ', '.join(PROPOSAL_DEFAULTS) + ')')
+        elif type(block[key]) is not bool:
+            problems.append(f'proposals.{key}: true or false, not {block[key]!r}')
+    return switches, problems, warnings
+
+
+def check_diagnostics(conf):
+    """(switches, problems, warnings) for the config's `diagnostics` block (AVR-302): the same rules
+    as session_recovery (a known switch is a boolean; an unknown one is a warning and is ignored)."""
+    block = conf.get('diagnostics', {})
+    switches = dict(DIAGNOSTICS_DEFAULTS)
+    if not isinstance(block, dict):
+        return switches, ['diagnostics: an object of booleans named ' + ', '.join(DIAGNOSTICS_DEFAULTS)], []
+    problems, warnings = [], []
+    for key in sorted(block, key=str):
+        if key not in DIAGNOSTICS_DEFAULTS:
+            warnings.append(f'diagnostics: unknown key {key!r} ignored (this Party knows '
+                            + ', '.join(DIAGNOSTICS_DEFAULTS) + ')')
+        elif type(block[key]) is not bool:
+            problems.append(f'diagnostics.{key}: true or false, not {block[key]!r}')
+        else:
+            switches[key] = block[key]
+    return switches, problems, warnings
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -179,6 +231,12 @@ def main(argv=None):
             print(f'{path}: {problem}', file=sys.stderr)
         return 1
     _, recovery_problems, warnings = check_session_recovery(conf)
+    _, proposal_problems, proposal_warnings = check_proposals(conf)
+    recovery_problems += proposal_problems
+    warnings += proposal_warnings
+    _, diagnostics_problems, diagnostics_warnings = check_diagnostics(conf)
+    recovery_problems += diagnostics_problems
+    warnings += diagnostics_warnings
     for warning in warnings:
         print(f'{path}: warning: {warning}', file=sys.stderr)
     problems = check_game_origins(conf) + recovery_problems
@@ -196,3 +254,7 @@ def main(argv=None):
 
 if __name__ == '__main__':
     sys.exit(main())
+
+
+from avrana.contracts import game as _game   # noqa: E402  (registers this extension's check)
+_game.EXTENSION_CHECKS[EXTENSION] = party_extension

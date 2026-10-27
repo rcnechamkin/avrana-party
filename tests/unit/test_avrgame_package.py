@@ -609,6 +609,32 @@ class LaunchAndHygieneTests(Tmp):
             avrgame.pack(root, root / 'avrgame.json', ['game_pkg/a.key', 'game_pkg/__init__.py'], self.tmp / 'y.avrgame')
         self.assertEqual(common.secret_problem('game_pkg/keyboard.py'), None)       # only the listed names
 
+    def test_a_private_key_inside_any_file_is_refused_by_the_packer_and_by_the_validator(self):
+        body = b'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7' * 3
+        cases = {
+            'plain PEM in a text file': b'notes\n-----BEGIN PRIVATE KEY-----\n' + body + b'\n-----END PRIVATE KEY-----\n',
+            'OpenSSH key renamed': b'-----BEGIN OPENSSH PRIVATE KEY-----\n' + body + b'\n',
+            'RSA key in a JS string': b'const k = "-----BEGIN RSA PRIVATE KEY-----\\n' + body + b'\\n";\n',
+            'PGP block': b'-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n' + body + b'\n',
+        }
+        for label, data in cases.items():
+            root = self.make_tree(f'pk-{len(label)}-{label[:3].strip()}')
+            (root / 'game_pkg' / 'readme.txt').write_bytes(data)
+            with self.assertRaises(avrgame.Refused, msg=label) as ctx:
+                avrgame.pack(root, root / 'avrgame.json', ['game_pkg', 'shared'], self.tmp / 'pk.avrgame')
+            self.assertIn('contains a private key', '\n'.join(ctx.exception.problems), label)
+            self.assertFalse((self.tmp / 'pk.avrgame').exists())
+            self.refused(make_zip(extra=[('game_pkg/readme.txt', data)]), 'contains a private key')
+        # split across the reader's chunks: still seen
+        pad = b'x' * (archive.CHUNK - 30)
+        self.refused(make_zip(extra=[('game_pkg/big.txt', pad + cases['plain PEM in a text file'])]), 'contains a private key')
+
+    def test_naming_the_pem_header_without_a_key_body_is_allowed(self):
+        # A PEM parser names the armour; only a key body after it is key material.
+        lib = (b'const LABELS = ["-----BEGIN PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----"];\n'
+               b'const PUBLIC = "-----BEGIN PUBLIC KEY-----\\n' + b'A' * 80 + b'";\n')
+        avrgame.read(self.write_zip(make_zip(extra=[('game_pkg/pem.js', lib)]), 'lib.avrgame'))
+
     # -- 13. a plain sentence for a bad id
     def test_a_bad_game_id_is_explained_in_words(self):
         for bad in ('Hello', 'hello world', '1hello', 'x' * 41, 'home'):

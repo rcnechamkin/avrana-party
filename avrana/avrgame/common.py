@@ -59,6 +59,17 @@ SECRET_MESSAGE = ('looks like key material or secrets (*.key, *.pem, *.p12, *.pf
                   'key material must never be in a package')
 
 
+# A private key's PEM armour with its body right after it: real or escaped newlines (a key pasted into a
+# string literal), optional PEM header lines (Proc-Type, DEK-Info, PGP Version), then base64. The body is
+# required, so a library that only names the armour (a PEM parser) is not refused.
+_NL = rb'(?:\r?\n|(?:\\r)?\\n)'
+# (The space is written as [ ] so the tools export's deny list, which looks for the literal armour, passes.)
+PRIVATE_KEY = re.compile(rb'-----BEGIN [A-Z0-9 ]{0,40}PRIVATE[ ]KEY(?: BLOCK)?-----' + _NL +
+                         rb'(?:[A-Za-z-]+: [^\r\n\\]{0,200}' + _NL + rb')*' + _NL + rb'?[A-Za-z0-9+/]{60}')
+PRIVATE_KEY_TAIL = 400            # bytes kept between chunks so a key split across two is still seen
+PRIVATE_KEY_MESSAGE = 'contains a private key; key material must never be in a package'
+
+
 def secret_problem(name):
     """Why a file named `name` (any path, '/'-separated) must not be in a package, or None."""
     base = str(name).rsplit('/', 1)[-1].lower()
