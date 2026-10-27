@@ -85,6 +85,7 @@ CURSOR = re.compile(r'^-?[0-9]{1,18}$')
 REQUEST_QUEUE_SIZE = 128    # AVR-218: listen backlog (socketserver default 5 drops reconnect storms)
 RELEASE_THREAD = 'avrana-end-lost-game'
 PROBE_EVERY = 2.0           # s: at most one reachability check of a session's game this often (AVR-33)
+STATE_EVERY = 5.0           # s: at most one AVR-673 state question to a round's game this often (PROTOTYPE)
 
 
 class NoGameLink:
@@ -101,14 +102,17 @@ class PartyService:
     """Thread-safe wrapper: one lock around the core, a condition for long polls, and game-link
     calls made outside the lock (a slow game must not freeze the party)."""
 
-    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, close_lost_game=False):
+    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, close_lost_game=False,
+                 proposals=()):
         self.store = store
         # AVR-33 switch session_recovery.close_lost_game (off unless the appliance's config turns it
         # on, recovery_config): a game that stays down closes the active session.
         self._probed = None                  # (session id, when) of the last reachability check
         self._probing = False                # a reachability check is in flight: never two at once
+        self._state_asked = None             # (session id, when) of the last AVR-673 state question
+        self._state_asking = False           # one state question in flight at a time
         self.limited = limited or identity.LimitedStore()     # Limited Mode credentials (memory)
-        self.core = core.PartyCore(clock, games, close_lost_game=close_lost_game)
+        self.core = core.PartyCore(clock, games, close_lost_game=close_lost_game, proposals=proposals)
         self.link = link or NoGameLink()
         self.lock = threading.Lock()
         self.changed = threading.Condition(self.lock)
@@ -427,7 +431,38 @@ class PartyService:
         for s in closed:
             log.warning('game %s: session %s abandoned, every player left', s.game_id, s.id)
             threading.Thread(target=self.link.end, args=(s,), daemon=True, name=RELEASE_THREAD).start()
+        self.ask_state()
         return closed
+
+    def ask_state(self, wait=False):
+        """PROTOTYPE (AVR-673 phase 1): every STATE_EVERY s of an ACTIVE round whose game declared
+        the probe, ask the game whether it holds the session, off the lock, one question at a time.
+        Party Core counts the answer (core.state_answer); it raises a flag and closes nothing."""
+        with self.lock:
+            s = self.core.party.session
+            now = self.core.clock()
+            if (s is None or s.state != core.ACTIVE or not s.state_probe or self._state_asking
+                    or (self._state_asked and self._state_asked[0] == s.id and now - self._state_asked[1] < STATE_EVERY)):
+                return None
+            self._state_asked, self._state_asking = (s.id, now), True
+
+        def run():
+            from avrana.party import state_probe
+            try:
+                outcome = state_probe.ask(self.link, s)
+            finally:
+                with self.lock:
+                    self._state_asking = False
+            with self.lock:
+                if self.core.state_answer(s.id, outcome, at=now):
+                    if s.game_answering is False:
+                        log.warning('game %s: session %s is not answering the state probe', s.game_id, s.id)
+                    self._notify()
+            return outcome
+        if wait:
+            return run()
+        threading.Thread(target=run, daemon=True, name='avrana-state-probe').start()
+        return None
 
 
 BRIDGE_ROUTE = '/party/api/bridge'
@@ -651,6 +686,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('request_exit', device)
             elif path == '/party/api/leave/stay':        # closes that request; the pages follow the party again
                 svc.call('stay', device)
+            elif path == '/party/api/home/visit':        # PROPOSAL home_in_round (AVR-703): look at Home in a round
+                svc.call('visit_home', device)
+            elif path == '/party/api/home/back':         # Back to game: this device follows the round again
+                svc.call('back_to_game', device)
             elif path == '/party/api/host':
                 svc.call('transfer_host', device, body.get('to'), body.get('if_version'))
             elif path == '/party/api/host/spectate':
@@ -841,7 +880,9 @@ def load_games(entries):
         games[game_id] = {'id': game_id, 'max_players': int(e['max_players']),
                           'late_join': e.get('late_join', 'spectator_only'),
                           'min_players': int(e.get('min_players', 1)),
-                          'pregame': bool(e.get('pregame', False))}
+                          'pregame': bool(e.get('pregame', False)),
+                          **({'state_probe': True} if e.get('state_probe') else {}),
+                          **{k: float(e[k]) for k in ('launch_timeout_s', 'end_timeout_s') if k in e}}
     return games
 
 
@@ -880,13 +921,28 @@ def main(argv=None):
     except registry.RegistryError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
     recovery = recovery_config(conf)
+    proposals, problems, warnings = party_config.check_proposals(conf)
+    for warning in warnings:
+        log.warning('party-core config: %s', warning)
+    if problems:
+        raise SystemExit('party-core config: ' + '; '.join(problems))
     service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True),
-                           close_lost_game=recovery['close_lost_game'])
+                           close_lost_game=recovery['close_lost_game'],
+                           proposals=[name for name, on in proposals.items() if on])
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True),
                  conf.get('game_origins'))
     extra, internal = sessions.routes(service, endpoints)
     from avrana.ops import status                        # GET /party/api/status (avrana.status/v0)
     extra.update(status.route(service, status.load_config(conf)))
+    diagnostics, problems, warnings = party_config.check_diagnostics(conf)
+    for warning in warnings:
+        log.warning('party-core config: %s', warning)
+    if problems:
+        raise SystemExit('party-core config: ' + '; '.join(problems))
+    if diagnostics['heartbeats']:                        # AVR-302: off unless the config says so
+        from avrana.party import heartbeats
+        service.core.heartbeats = heartbeats.Heartbeats()
+        extra.update(heartbeats.route(service))
     try:                                       # refuse a bad config before binding anything
         limited = limited_config(conf.get('limited'), cfg)
     except ValueError as e:
