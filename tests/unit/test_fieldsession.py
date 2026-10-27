@@ -48,6 +48,10 @@ PLANTED = {
     'ipv6_full': 'peer 2001:0db8:85a3:0000:0000:8a2e:0370:7334',
     'mapped_ipv4': 'client ::ffff:10.42.0.57:51234 GET /party/',          # a dual-stack server's access log
     'mapped_ipv4_bracketed': 'peer=[::ffff:10.42.0.57]:443',
+    # AVR-738: a dot beside the address is punctuation; v3 kept all three whole, and the validator passed them.
+    'ipv4_sentence_end': 'Accepted connection from 10.42.0.57.',
+    'ipv4_after_ellipsis': 'retrying...10.42.0.57 answered',
+    'mapped_ipv4_sentence_end': 'client ::ffff:10.42.0.57.',
     'mac': 'station a4:83:e7:12:34:56 associated',
     'mac_bare': 'wlan0: STA a483e7123456 roamed',                          # a driver that prints no separators
     'mac_dotted': 'neighbor a483.e712.3456 learned on wlan0',
@@ -117,7 +121,7 @@ class Redaction(unittest.TestCase):
 
     def test_a_short_commit_a_version_or_a_count_is_not_a_mac_or_a_pin(self):
         for text in (f'deployed {PARTY[:12]} at 18:00', 'python 3.11.2', 'pinned 12345 packages', 'PIN set by the owner',
-                     'Admin PIN [redacted] accepted'):
+                     'Admin PIN [redacted] accepted', 'build 1.2.3.4.5 ok', 'served by the Party AP 10.42.0.1.'):
             with self.subTest(text):
                 self.assertEqual(redact.scrub_text(text), text)
                 self.assertEqual(redact.violations_in_text(text, log=True), [])

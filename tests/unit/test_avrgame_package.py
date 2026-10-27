@@ -629,6 +629,29 @@ class LaunchAndHygieneTests(Tmp):
         pad = b'x' * (archive.CHUNK - 30)
         self.refused(make_zip(extra=[('game_pkg/big.txt', pad + cases['plain PEM in a text file'])]), 'contains a private key')
 
+    def test_a_private_key_pasted_line_by_line_into_source_is_refused(self):
+        # AVR-739: the usual way a key lands in source is one string per line, not one string with \n in it.
+        body = b'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7MIIEvQIBADANBgkq'
+        armour = b'-----BEGIN RSA PRIVATE KEY-----'
+        cases = {
+            'JS concatenation': b'const k = "' + armour + b'\\n" +\n  "' + body + b'\\n" +\n  "-----END";\n',
+            'JS array of lines': b'const k = [\n  "' + armour + b'",\n  "' + body + b'",\n].join("\\n");\n',
+            'Python implicit concatenation': b'K = ("' + armour + b'\\n"\n     "' + body + b'\\n")\n',
+            'template literal': b'const k = `' + armour + b'\n' + body + b'`;\n',
+        }
+        for label, data in cases.items():
+            with self.subTest(label):
+                self.refused(make_zip(extra=[('game_pkg/key.js', data)]), 'contains a private key')
+
+    def test_a_key_with_long_header_lines_split_across_chunks_is_still_seen(self):
+        # Header lines can push the body past the old 400-byte overlap; the overlap now covers the longest match.
+        key = (b'-----BEGIN PGP PRIVATE KEY BLOCK-----\nComment: ' + b'c' * 190 + b'\nComment: ' + b'd' * 190 +
+               b'\n\n' + b'lQOYBF' * 20 + b'\n')
+        for cut in (60, 250, 450):
+            pad = b'x' * (archive.CHUNK - cut)
+            with self.subTest(cut=cut):
+                self.refused(make_zip(extra=[('game_pkg/big.txt', pad + key)]), 'contains a private key')
+
     def test_naming_the_pem_header_without_a_key_body_is_allowed(self):
         # A PEM parser names the armour; only a key body after it is key material.
         lib = (b'const LABELS = ["-----BEGIN PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----"];\n'
