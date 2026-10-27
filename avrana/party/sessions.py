@@ -211,7 +211,8 @@ class GameEndpoint:
 # The link waits for an `end` less long than Party Core does (core.END_TIMEOUT): a game that does
 # not stop in time is then reported as unconfirmed (and a pending switch says why) instead of the
 # party's timer closing the session first and dropping the switch silently (AVR-223).
-END_LINK_TIMEOUT = core.END_TIMEOUT - 3.0
+END_LINK_MARGIN = 3.0
+END_LINK_TIMEOUT = core.END_TIMEOUT - END_LINK_MARGIN
 
 
 class HttpGameLink:
@@ -255,7 +256,9 @@ class HttpGameLink:
         if ep is None:
             return False
         msg = protocol.end_message(ep.key, ep.game_id, session.id)
-        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, END_LINK_TIMEOUT),
+        # A game that declared a longer end (AVR-260) is waited for that long, less the same margin.
+        end_wait = getattr(session, 'end_timeout', core.END_TIMEOUT) - END_LINK_MARGIN
+        return self._post(ep.url + END_PATH, msg, min(ep.timeout or self.timeout, end_wait),
                           ep.socket_path).ok
 
     def reachable(self, session, seconds=None):
