@@ -13,7 +13,7 @@ for whoever helps the owner, and the preflight's list of what only a real phone 
 preflight read from a file must be recent (MAX_AGE_H) to be READY.
 """
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import sys
 
@@ -29,8 +29,8 @@ AREAS = (
      'Could not check that the games are being served',
      'Ask for help with the details below before you go; reinstalling a game does not need the Internet.'),
     ('trust', ('tls.',),
-     'Phones will trust the box{horizon}',
-     'Phones will refuse the box{horizon}',
+     'Phones will trust the box{until}',
+     'Phones will refuse the box{before}',
      'Could not check the box\'s security certificate',
      'Renew the certificate at home, while the box has the Internet (docs/runbooks/party-https.md).'),
     ('wifi', ('network.', 'wifi.', 'dns.'),
@@ -56,6 +56,7 @@ AREAS = (
 )
 
 ORDER = {'FAIL': 0, 'UNKNOWN': 1, 'WARN': 2, 'PASS': 3}
+SETTLED = ('PASS', 'WARN')        # a blocking check in any other state (FAIL, UNKNOWN, unrecognised) is not fine
 MAX_AGE_H = 24                    # a saved preflight older than this (or dated ahead) confirms nothing
 
 
@@ -63,12 +64,17 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _age_hours(generated_at, now):
+def _when(generated_at):
     try:
         then = datetime.fromisoformat(str(generated_at).replace('Z', '+00:00'))
     except ValueError:
         return None
-    return (now - then).total_seconds() / 3600 if then.tzinfo else None
+    return then if then.tzinfo else None
+
+
+def _age_hours(generated_at, now):
+    then = _when(generated_at)
+    return None if then is None else (now - then).total_seconds() / 3600
 
 
 def area_of(check_id):
@@ -78,8 +84,17 @@ def area_of(check_id):
     return 'health'          # an unknown check is still shown, never dropped
 
 
-def _horizon(days):
-    return f' for the next {days} days' if days else ''
+def _horizon(days, generated_at):
+    """The certificate sentence's ending. The preflight measured the horizon from when it ran, not from now, so a
+    saved report names the date it covers; with no horizon only the moment of the check was covered."""
+    if not days:
+        return {'until': ' right now (no trip length was checked)', 'before': ''}
+    then = _when(generated_at)
+    if then is None:
+        return {'until': f' for {days} days from the check', 'before': f' within {days} days of the check'}
+    end = (then + timedelta(days=days)).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    return {'until': f' until at least {end} ({days} days from the check)',
+            'before': f' before {end} ({days} days from the check)'}
 
 
 def summarize(doc, now=None, max_age_h=MAX_AGE_H):
@@ -87,13 +102,17 @@ def summarize(doc, now=None, max_age_h=MAX_AGE_H):
     With `now` (a saved report), one older than `max_age_h`, dated ahead or undated is never READY."""
     if not isinstance(doc, dict) or doc.get('schema') != PREFLIGHT_SCHEMA or not isinstance(doc.get('checks'), list):
         raise ValueError(f'not an {PREFLIGHT_SCHEMA} document')
-    waived = set(doc.get('waived') or ())
     horizon = doc.get('horizon_days') or 0
     grouped = {name: [] for name, *_ in AREAS}
     for c in doc['checks']:
         if not isinstance(c, dict):
             raise ValueError('a preflight check is not an object')
         grouped[area_of(str(c.get('id', '')))].append(c)
+    # The preflight only lets a blocking UNKNOWN be waived; a waiver of anything else (a hand-edited or foreign
+    # report) is not honoured, so a FAIL listed as waived is still a FAIL.
+    listed = {str(w) for w in doc.get('waived') or ()}
+    waived = {c.get('id') for c in doc['checks'] if c.get('blocking') and c.get('status') == 'UNKNOWN' and c.get('id') in listed}
+    ending = _horizon(horizon, doc.get('generated_at'))
 
     areas, fix, unchecked = [], [], []
     for name, _prefixes, ok_text, fail_text, unknown_text, action in AREAS:
@@ -101,13 +120,16 @@ def summarize(doc, now=None, max_age_h=MAX_AGE_H):
         blocking = [c for c in checks if c.get('blocking') and c.get('id') not in waived]
         if any(c.get('status') == 'FAIL' for c in blocking):
             state, says = 'fix', fail_text
-        elif any(c.get('status') == 'UNKNOWN' for c in blocking):
+        elif any(c.get('status') not in SETTLED for c in blocking):
             state, says = 'unchecked', unknown_text
         elif not checks:
             state, says = 'unchecked', unknown_text
+        elif any(c.get('blocking') and c.get('id') in waived for c in checks):
+            # Ready by the preflight's rule, but nobody checked it: say so rather than the all-clear sentence.
+            state, says = 'accepted', unknown_text + ' (accepted without checking)'
         else:
             state, says = 'ok', ok_text
-        says = says.format(horizon=_horizon(horizon))
+        says = says.format(**ending)
         warnings = [c for c in checks if c.get('status') == 'WARN']
         entry = {
             'area': name, 'state': state, 'says': says,
@@ -117,11 +139,12 @@ def summarize(doc, now=None, max_age_h=MAX_AGE_H):
         }
         if state != 'ok':
             entry['do'] = action
-        if warnings and state == 'ok':
+        if warnings and state in ('ok', 'accepted'):
             entry['note'] = f'{len(warnings)} thing(s) to keep an eye on; see the details'
         areas.append(entry)
         (fix if state == 'fix' else unchecked if state == 'unchecked' else []).append(entry)
 
+    games_ok = areas[0]['state'] in ('ok', 'accepted')
     verdict = doc.get('verdict')
     stale = None
     if now is not None:
@@ -155,13 +178,16 @@ def summarize(doc, now=None, max_age_h=MAX_AGE_H):
         'waived': sorted(waived),
         # The preflight prepends its own Wi-Fi gate result to this list; the Wi-Fi area already says it.
         'phones_still_to_try': [u for u in doc.get('physically_unverified') or () if not str(u).startswith('Wi-Fi qualification:')],
-        'offline_note': 'Phones keep no copy that counts: a phone that has never joined, or has cleared its '
-                        'browser, still gets every game from the box. Nothing here needed the Internet.',
+        'offline_note': ('Phones keep no copy that counts: a phone that has never joined, or has cleared its '
+                         'browser, still gets every game from the box. ' if games_ok else
+                         'Phones keep no copy that counts and get every game from the box, so until the games line '
+                         'above is OK they cannot be counted on. ')
+                        + 'Reading this needed no Internet.',
     }
 
 
 def render_text(ready_doc):
-    mark = {'ok': 'OK ', 'fix': 'FIX', 'unchecked': ' ? '}
+    mark = {'ok': 'OK ', 'fix': 'FIX', 'unchecked': ' ? ', 'accepted': ' ~ '}
     lines = [ready_doc['headline'], '']
     for a in ready_doc['areas']:
         lines.append(f'  [{mark[a["state"]]}] {a["says"]}')

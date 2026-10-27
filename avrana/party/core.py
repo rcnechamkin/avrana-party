@@ -142,7 +142,18 @@ LOOKALIKE = str.maketrans({
     'т': 't',
     'Α': 'A', 'Β': 'B', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O',
     'Ρ': 'P', 'Τ': 'T', 'Υ': 'Y', 'Χ': 'X', 'α': 'a', 'ι': 'i', 'ο': 'o', 'ρ': 'p', 'υ': 'u', 'ν': 'v',
+    # Lisu and Cherokee capitals drawn as Latin capitals (UTS #39; AVR-743): without them "HOST" written in Lisu
+    # passed the reserved-word check, and "ADA" in Lisu was a second "Ada". Written as escapes: they look like Latin.
+    '\ua4ee': 'A', '\ua4d0': 'B', '\ua4da': 'C', '\ua4d3': 'D', '\ua4f0': 'E', '\ua4dd': 'F', '\ua4d6': 'G',
+    '\ua4e7': 'H', '\ua4f2': 'I', '\ua4d9': 'J', '\ua4d7': 'K', '\ua4e1': 'L', '\ua4df': 'M', '\ua4e0': 'N',
+    '\ua4f3': 'O', '\ua4d1': 'P', '\ua4e3': 'R', '\ua4e2': 'S', '\ua4d4': 'T', '\ua4f4': 'U', '\ua4e6': 'V',
+    '\ua4ea': 'W', '\ua4eb': 'X', '\ua4ec': 'Y', '\ua4dc': 'Z',
+    '\u13aa': 'A', '\u13f4': 'B', '\u13df': 'C', '\u13a0': 'D', '\u13ac': 'E', '\u13c0': 'G', '\u13bb': 'H',
+    '\u13ab': 'J', '\u13e6': 'K', '\u13de': 'L', '\u13b7': 'M', '\u13e2': 'P', '\u13a1': 'R', '\u13da': 'S',
+    '\u13a2': 'T', '\u13d9': 'V', '\u13b3': 'W', '\u13c3': 'Z',
 })
+# Scripts whose letters pass for Latin ones: a name may use one of them, never two (the mixed-alphabet rule).
+LOOKALIKE_SCRIPTS = frozenset({'LATIN', 'CYRILLIC', 'GREEK', 'LISU', 'CHEROKEE'})
 
 
 def _name_key(name):
@@ -161,7 +172,7 @@ def clean_name(raw):
     if not 1 <= len(text) <= NAME_MAX:
         raise Refused('bad_name', f'Names are 1 to {NAME_MAX} characters.')
     scripts = {unicodedata.name(ch, 'UNKNOWN').split()[0] for ch in text if ch.isalpha()}
-    if len(scripts & {'LATIN', 'CYRILLIC', 'GREEK'}) > 1:
+    if len(scripts & LOOKALIKE_SCRIPTS) > 1:
         raise Refused('bad_name', 'Please use one alphabet in your name.')
     key = _name_key(text)
     if not key or key.startswith(RESERVED_NAMES):

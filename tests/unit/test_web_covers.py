@@ -49,6 +49,28 @@ class Folder(unittest.TestCase):
             'arcade-gauntlet2': 'covers/arcade-gauntlet2.png', 'bluff': 'covers/bluff.avif',
             'expo': 'covers/expo.webp', 'ps1-worms': 'covers/ps1-worms.jpg'}})
 
+    def test_a_game_may_also_have_a_wide_cover_for_its_page(self):
+        """AVR-308: <id>.wide.<ext> beside <id>.<ext>; the index names it under "wide", and only then."""
+        self.put('bluff.png', PNG)
+        self.put('bluff.wide.jpeg', WEBP)          # published as what it really is
+        self.put('expo.wide.png', PNG)             # a wide cover alone is allowed
+        self.put('bluff.wide.png', PNG)            # a second wide cover for one game is left out
+        self.put('bluff.wider.png', PNG)
+        found, skipped = covers.scan(self.folder)
+        self.assertEqual(covers.index(found), {'schema': 'avrana.covers/v0',
+                                               'covers': {'bluff': 'covers/bluff.png'},
+                                               'wide': {'bluff': 'covers/bluff.wide.webp', 'expo': 'covers/expo.wide.png'}})
+        self.assertEqual(sorted(s.split(':')[0] for s in skipped), ['bluff.wide.png', 'bluff.wider.png'])
+        self.assertIn('is already the wide cover for bluff', next(s for s in skipped if s.startswith('bluff.wide.png')))
+        out = Path(self.tmp.name) / 'out'
+        covers.install(out, self.folder)
+        self.assertEqual({p.name for p in out.iterdir()}, {'index.json', 'bluff.png', 'bluff.wide.webp', 'expo.wide.png'})
+        self.assertEqual(json.loads((out / 'index.json').read_text(encoding='utf-8'))['wide']['bluff'], 'covers/bluff.wide.webp')
+
+    def test_a_folder_of_square_covers_gives_the_index_it_always_did(self):
+        self.put('bluff.png', PNG)
+        self.assertNotIn('wide', covers.index(covers.scan(self.folder)[0]))
+
     def test_what_a_picture_is_decides_how_it_is_published_not_its_name(self):
         self.put('ps1-bomberman.jpg', WEBP)       # a WebP saved as .jpg, as pictures from the web often are
         self.put('arcade-gauntlet2.jpeg', AVIF)
