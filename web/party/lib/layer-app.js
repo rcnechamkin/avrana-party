@@ -14,7 +14,8 @@ import { leaveWords } from './states.js';
 import { originAllows } from './bridge.js';
 import { PREF_KEY, createLearner, createWatcher, fabHidden, lastInput, livePads, padLine, parsePref } from './controller.js';
 import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine, exitOffered,
-  gesture, keptSpots, nudge, orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark } from './layer.js';
+  gesture, HOLD_MS, HOLD_VERBS, holdState, keptSpots, nudge, orientationOf, panelOn, park, parseFromPage, requestFor, sheetSide, spotAt,
+  spotFor, toSpot, unpark } from './layer.js';
 
 const $ = (id) => document.getElementById(id);
 const game = new URLSearchParams(location.search).get('game');
@@ -242,6 +243,10 @@ function render() {
   button.setAttribute('aria-label', buttonLabel(unread));
   $('layer-unread').textContent = unreadMark(unread);
   if (!member) return;
+  // PROPOSAL fab_panel (AVR-769): the bounded panel, only when the page that mounted this frame is the Party's
+  state.panel = panelOn(view, { crossOrigin: state.crossOrigin !== false });
+  document.documentElement.classList.toggle('fab-panel', state.panel);
+  $('layer-sheet').dataset.side = state.panel ? sheetSide(spot(), state.vp) : '';
   const loc = locationOf(view);
   $('layer-where').textContent = loc.at === 'results' ? `${gameName(loc.game)}: the round is over.`
     : loc.game ? `Playing ${gameName(loc.game)}.` : '';
@@ -269,6 +274,10 @@ function renderHost(view) {
   })));
   if (state.confirm && !offered.includes(state.confirm)) state.confirm = null;   // the Party moved on
   $('layer-confirm').hidden = !state.confirm;
+  const held = Boolean(state.panel) && HOLD_VERBS.includes(state.confirm);
+  $('layer-yes').classList.toggle('avrana-hold', held);
+  $('layer-hold-note').hidden = !held;
+  if (held) $('layer-yes').setAttribute('aria-describedby', 'layer-hold-note'); else $('layer-yes').removeAttribute('aria-describedby');
   $('layer-actions').hidden = Boolean(state.confirm);
 }
 
@@ -375,7 +384,44 @@ $('layer-no').addEventListener('click', () => {
   const again = $('layer-actions').querySelector(`[data-action="${was}"]`);
   if (again) again.focus({ preventScroll: true });
 });
-$('layer-yes').addEventListener('click', async () => {
+// PROPOSAL fab_panel (AVR-769): in the shell a destructive Host verb is held for HOLD_MS to confirm. A
+// press, a mouse button or Enter/Space held down all count; a click an assistive technology sends on
+// its own (no press before it) confirms at once, since this is already the second step.
+const yes = $('layer-yes');
+const hold = { downAt: null, timer: null };
+const holdArmed = () => Boolean(state.panel) && HOLD_VERBS.includes(state.confirm);
+function holdStart() {
+  if (!holdArmed() || state.busy || hold.timer) return;
+  hold.downAt = performance.now();
+  $('layer-confirm-error').textContent = '';
+  yes.style.setProperty('--hold-ms', `${HOLD_MS}ms`);
+  yes.classList.add('holding');
+  hold.timer = setTimeout(() => { holdStop(true); confirmYes(); }, HOLD_MS);
+}
+function holdStop(done = false) {
+  if (!hold.timer) return;
+  clearTimeout(hold.timer);
+  hold.timer = null;
+  yes.classList.remove('holding');
+  if (!done && holdState({ downAt: hold.downAt, upAt: performance.now(), now: performance.now() }) === 'short') {
+    $('layer-confirm-error').textContent = 'Keep holding to confirm.';
+  }
+}
+yes.addEventListener('pointerdown', (e) => { if (holdArmed() && e.button === 0) { e.preventDefault(); holdStart(); } });
+for (const type of ['pointerup', 'pointerleave', 'pointercancel']) yes.addEventListener(type, () => holdStop());
+yes.addEventListener('contextmenu', (e) => { if (holdArmed()) e.preventDefault(); });
+yes.addEventListener('keydown', (e) => {
+  if (!holdArmed() || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault();                       // no click from the key: the hold decides
+  if (!e.repeat) holdStart();
+});
+yes.addEventListener('keyup', (e) => { if (holdArmed() && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); holdStop(); } });
+yes.addEventListener('blur', () => holdStop());
+yes.addEventListener('click', (e) => {
+  if (!holdArmed()) { confirmYes(); return; }
+  if (e.detail === 0 && !hold.timer) confirmYes();   // an assistive technology's activation
+});
+async function confirmYes() {
   if (state.busy || !state.confirm) return;
   state.busy = true;
   $('layer-yes').disabled = true;
@@ -390,7 +436,7 @@ $('layer-yes').addEventListener('click', async () => {
   if (res.ok) { state.confirm = null; render(); return; }
   $('layer-confirm-error').textContent = res.error === 'stale' ? 'The Party changed. Have another look and try again.'
     : res.error === 'offline' ? 'Not connected. Nothing changed.' : res.message || 'That did not work. Please try again.';
-});
+}
 
 // ---- the chat (the same Party room as Party Home, lib/party-chat.js) -----------------------------------
 function renderChat(snapshot) {

@@ -76,6 +76,13 @@ function flashDiag() {
   fade = setTimeout(() => diag.classList.add('gone'), 8000);
 }
 
+// PROPOSAL fab_panel (AVR-769): when the Party menu closes, the game has the focus again (Escape, Close
+// or a tap outside the panel), so a keyboard or a controller is back in the game at once.
+document.addEventListener('avrana-party-layer', (e) => {
+  const view = party.view();
+  if (e.detail && e.detail.open === false && view && (view.proposals || []).includes('fab_panel')) frame.focus({ preventScroll: true });
+});
+
 addEventListener('resize', showDiag);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { party.poke(); flashDiag(); }

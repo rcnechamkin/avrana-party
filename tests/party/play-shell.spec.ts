@@ -75,3 +75,53 @@ test('opened with no round on, the shell goes to Party Home', async ({ browser }
   await expect(ana.page).toHaveURL(new RegExp(`^${PARTY}/party/(#.*)?$`));
   await ana.context.close();
 });
+
+test('PROPOSAL fab_panel: the Party menu is a bounded sheet over the game, and ending the round is held to confirm', async ({ browser }) => {
+  const ana = await phone(browser, 'Ana'), ben = await phone(browser, 'Ben');
+  await ana.page.setViewportSize({ width: 390, height: 844 });
+  expect((await post(ana, 'session/launch', { game: 'expo', if_version: await version(ana) })).status()).toBe(200);
+  await expect(ana.page).toHaveURL(PLAY);
+  const layer = ana.page.frameLocator('iframe[data-avrana-party-layer]');
+  await layer.locator('#layer-button').click();
+  await expect(ana.page.locator('iframe[data-avrana-party-layer]')).toHaveAttribute('data-avrana-party-layer', 'open');
+  const sheet = layer.locator('#layer-sheet');
+  await expect(sheet).toHaveAttribute('data-side', 'bottom');
+  const box = (await sheet.boundingBox())!;
+  expect(box.y + box.height).toBeCloseTo(844, 0);                        // along the bottom
+  expect(box.height).toBeLessThanOrEqual(844 * 0.7 + 1);                // never the whole screen: the game is in sight
+  // Escape closes it and the game has the focus again
+  await ana.page.keyboard.press('Escape');
+  await expect(ana.page.locator('iframe[data-avrana-party-layer]')).toHaveAttribute('data-avrana-party-layer', 'button');
+  await expect.poll(() => ana.page.evaluate(() => document.activeElement && document.activeElement.id)).toBe('game');
+
+  // End: a tap is not enough, a hold is
+  await layer.locator('#layer-button').click();
+  await layer.getByRole('button', { name: 'End the round for everyone' }).click();
+  const yes = layer.locator('#layer-yes');
+  await expect(layer.locator('#layer-hold-note')).toBeVisible();
+  await yes.click();
+  await expect(layer.locator('#layer-confirm-error')).toHaveText('Keep holding to confirm.');
+  await expect(ana.page).toHaveURL(PLAY);
+  const yb = (await yes.boundingBox())!;
+  await ana.page.mouse.move(yb.x + yb.width / 2, yb.y + yb.height / 2);
+  await ana.page.mouse.down();
+  await ana.page.waitForTimeout(1000);
+  await ana.page.mouse.up();
+  for (const p of [ana, ben]) await expect(p.page).toHaveURL(new RegExp(`^${PARTY}/party/(#.*)?$`));
+  await ana.context.close(); await ben.context.close();
+});
+
+test('PROPOSAL fab_panel: in landscape the sheet runs along the button\'s side', async ({ browser }) => {
+  const ana = await phone(browser, 'Ana');
+  await ana.page.setViewportSize({ width: 844, height: 390 });
+  expect((await post(ana, 'session/launch', { game: 'expo', if_version: await version(ana) })).status()).toBe(200);
+  await expect(ana.page).toHaveURL(PLAY);
+  const layer = ana.page.frameLocator('iframe[data-avrana-party-layer]');
+  await layer.locator('#layer-button').click();
+  const sheet = layer.locator('#layer-sheet');
+  await expect(sheet).toHaveAttribute('data-side', 'right');            // the button starts on the right
+  const box = (await sheet.boundingBox())!;
+  expect(box.x + box.width).toBeCloseTo(844, 0);
+  expect(box.width).toBeLessThanOrEqual(844 * 0.55 + 1);
+  await ana.context.close();
+});

@@ -156,6 +156,35 @@ export const ACTION_WORDS = {
   spectate: { label: 'Stop hosting and watch', confirm: 'Hosting passes to the next person here. You watch the next round.', yes: 'Stop hosting' },
 };
 
+// ---- PROPOSAL fab_panel (AVR-769, draft ADR 0018 revision 3 D5/D6) -----------------------------------------
+// In the Party's play shell the menu is a bounded panel with the game in sight: a sheet along the bottom
+// in portrait, along the button's side in landscape. The shell's layer frame is the shell's own (the
+// game is a sandboxed sibling frame and cannot cover it); over a game page of another origin the
+// drawer stays as it was.
+export const HOLD_MS = 800;              // a destructive Host verb is held this long to confirm (owner, 2026-10-26)
+export const HOLD_VERBS = ['end', 'lobby', 'handover', 'spectate'];
+
+/** Is the bounded panel on for this frame: the proposal is on and the page that mounted it is the Party's. */
+export function panelOn(view, { crossOrigin = true } = {}) {
+  return !crossOrigin && Boolean(view && Array.isArray(view.proposals) && view.proposals.includes('fab_panel'));
+}
+
+/** Where the panel sits: 'bottom' in portrait, else the side of the screen the button is on. */
+export function sheetSide(spot, vp) {
+  if (!vp || orientationOf(vp) === 'portrait') return 'bottom';
+  if (spot && spot.parked) return spot.parked;
+  return spot && num(spot.nx) && spot.nx < 0.5 ? 'left' : 'right';
+}
+
+/** A hold on the confirm button, from its press and its release: 'held' once long enough, 'short' when
+ * let go too soon (nothing happens), 'holding' until then. */
+export function holdState({ downAt, upAt = null, now }) {
+  if (!num(downAt)) return 'idle';
+  const end = num(upAt) ? upAt : now;
+  if (end - downAt >= HOLD_MS) return 'held';
+  return num(upAt) ? 'short' : 'holding';
+}
+
 /** The button's name for a screen reader: what it is, and anything new. */
 export function buttonLabel(unread = 0) {
   if (unread > 0) return `Your Party, ${unread === 1 ? '1 new message' : `${unread} new messages`}`;

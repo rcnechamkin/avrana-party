@@ -263,6 +263,8 @@ class PartyCore:
         # 'home_in_round' (AVR-703, Concept K K2): it conflicts with ADR 0011 decisions 3 and 5.
         # 'play_shell' (AVR-766, draft ADR 0018 revision 3): Core only names it in the view; play.html
         # frames the round's game inside /party/.
+        # 'fab_panel' (AVR-769, revision 3 D5/D6): Core only names it; the Party menu in the shell is a
+        # bounded sheet and its destructive Host verbs are held to confirm.
         self.proposals = frozenset(proposals)
         self.close_lost_game = close_lost_game    # AVR-33 switch (session_recovery.close_lost_game)
         self.games = dict(games)        # game_id -> {'id', 'max_players', 'late_join'}
