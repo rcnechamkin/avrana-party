@@ -14,6 +14,8 @@ const executablePath = process.env.PW_CHROMIUM_EXECUTABLE || undefined;
 const PORT = Number(process.env.AVRANA_PARTY_DEV_PORT || 8184);
 // AVR-307: a second dev server whose games are registered to a game origin (ADR 0013), for follow-origin.spec.ts
 const ORIGIN_PORT = Number(process.env.AVRANA_PARTY_ORIGIN_DEV_PORT || PORT + 1);
+// AVR-766: a third, with games on a game origin and the play_shell proposal on, for play-shell.spec.ts
+const SHELL_PORT = Number(process.env.AVRANA_PARTY_SHELL_DEV_PORT || PORT + 2);
 const python = process.env.AVRANA_PYTHON || 'python3';
 
 export default defineConfig({
@@ -44,9 +46,15 @@ export default defineConfig({
     url: `http://127.0.0.1:${ORIGIN_PORT}/party/`,
     reuseExistingServer: false,
     timeout: 15_000,
+  }, {
+    command: `${python} -m avrana.web.devserver --port ${SHELL_PORT} --test-controls --party --game-origin`,
+    env: { AVRANA_DEV_PROPOSALS: 'play_shell' },
+    url: `http://127.0.0.1:${SHELL_PORT}/party/`,
+    reuseExistingServer: false,
+    timeout: 15_000,
   }],
   projects: [
-    { name: 'phones-chromium', testIgnore: /(follow-origin|guest-journey-origins)\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    { name: 'phones-chromium', testIgnore: /(follow-origin|guest-journey-origins|play-shell)\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
     {
       // ADR 0013: games registered to a game origin, which Chromium resolves to the dev server.
       // Plain HTTP on two host names of one site; real Safari and HTTPS are Tier 3 (the owner's).
@@ -54,6 +62,15 @@ export default defineConfig({
       testMatch: /(follow-origin|guest-journey-origins)\.spec\.ts$/,
       use: {
         ...devices['Pixel 7'], baseURL: `http://127.0.0.1:${ORIGIN_PORT}`,
+        launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] },
+      },
+    },
+    {
+      // PROPOSAL play_shell (AVR-766): the round inside the Party's play.html, game on a game origin.
+      name: 'play-shell-chromium',
+      testMatch: /play-shell\.spec\.ts$/,
+      use: {
+        ...devices['Pixel 7'], baseURL: `http://127.0.0.1:${SHELL_PORT}`,
         launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] },
       },
     },

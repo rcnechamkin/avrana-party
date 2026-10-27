@@ -1,0 +1,43 @@
+/* PROPOSAL play_shell (AVR-766): the round page. Hand-written, not part of the Tailwind build. */
+.play-insets {
+  position: fixed;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+html, body.play-shell {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #0b0d12;
+}
+/* The game fills the whole screen, under the notch and the home bar; S0b records whether games
+   cope with that or the frame should keep to the safe area. */
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  border: 0;
+  display: block;
+  background: #0b0d12;
+}
+.play-diag {
+  position: fixed;
+  left: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  transform: translateX(-50%);
+  z-index: 2147483646;
+  margin: 0;
+  max-width: calc(100vw - 32px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font: 12px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+  transition: opacity 0.6s;
+}
+.play-diag.gone { opacity: 0; }

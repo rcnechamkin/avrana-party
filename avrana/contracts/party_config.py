@@ -152,7 +152,8 @@ def check_game_origins(conf):
 RECOVERY_DEFAULTS = {'close_lost_game': False}      # session_recovery switches (AVR-33): name -> default
 # Owner-gated proposals a test appliance may switch on (`proposals`), each off by default. They
 # change approved behaviour and stay off on a product appliance until the owner accepts them.
-PROPOSAL_DEFAULTS = {'home_in_round': False}        # AVR-703: Party Home reachable during a round
+PROPOSAL_DEFAULTS = {'home_in_round': False,       # AVR-703: Party Home reachable during a round
+                     'play_shell': False}         # AVR-766: a round inside the Party's play.html (draft ADR 0018 rev 3)
 DIAGNOSTICS_DEFAULTS = {'heartbeats': False}        # diagnostics switches (AVR-302): name -> default
 
 

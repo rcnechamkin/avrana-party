@@ -114,7 +114,7 @@ async def shell_headers(request, call_next):
         if args.game_origin and path == '/party/bridge.html':
             # the one Party page a game origin may frame (nginx sends this on the appliance)
             response.headers['Content-Security-Policy'] = SHELL_HEADERS['Content-Security-Policy'].replace(
-                "frame-ancestors 'none'", f'frame-ancestors http://{GAMES_HOST}')
+                "frame-ancestors 'none'", f"frame-ancestors 'self' http://{GAMES_HOST}")   # 'self': the play shell (AVR-766)
         if path == '/party/layer.html':
             # the Party layer (AVR-292): framed by a game page on this origin or the game origin,
             # as avrana-party.nginx sends it

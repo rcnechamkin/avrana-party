@@ -106,7 +106,8 @@ class Rules(unittest.TestCase):
             self.assertEqual(re.findall(r'proxy_set_header (\S+) "";', cleared), list(hs.ACCESS_HEADERS))
 
     def test_frames_name_the_hosted_game_origin(self):
-        self.assertIn('frame-ancestors https://games.avrana.party"', body(self.party, '= /party/bridge.html'))
+        self.assertIn("frame-ancestors 'self' https://games.avrana.party\"", body(self.party, '= /party/bridge.html'))
+        self.assertIn("frame-ancestors 'none'; frame-src 'self' https://games.avrana.party\"", body(self.party, '= /party/play.html'))
         self.assertIn("frame-ancestors 'self' https://games.avrana.party\"", body(self.party, '= /party/layer.html'))
 
     def test_the_forwarded_scheme_is_https_and_cookies_never_reach_a_game(self):
@@ -155,7 +156,7 @@ class Rendering(unittest.TestCase):
     def test_other_names_and_ports_render(self):
         text = hs.render(SITE, party_host='staging.example.org', game_host='games.staging.example.org', listen='127.0.0.1:9090')
         self.assertIn('server_name staging.example.org;', text)
-        self.assertIn('frame-ancestors https://games.staging.example.org"', text)
+        self.assertIn("frame-ancestors 'self' https://games.staging.example.org\"", text)
         self.assertNotIn('8080', text)
 
     def test_refusals(self):

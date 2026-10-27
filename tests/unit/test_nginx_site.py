@@ -132,7 +132,7 @@ class StaticRules(unittest.TestCase):
         self.assertNotIn('$http_service_worker', blocks[0])    # plain HTTP serves no native game at all
         # the Party's own worker, its shell and its API are other locations and carry neither line
         party = blocks[1]
-        for name in ('/party/', '= /party/bridge.html', '= /party/layer.html', '= /party/catalog.json', '/party/api/', '/arcade/', '/',
+        for name in ('/party/', '= /party/bridge.html', '= /party/play.html', '= /party/layer.html', '= /party/catalog.json', '/party/api/', '/arcade/', '/',
                      '~ "^/games/(bluff|expo)(/(?!avrana/)|$)"'):
             body = location_body(party, name)
             self.assertNotIn('service_worker', body, name)
@@ -158,7 +158,7 @@ class StaticRules(unittest.TestCase):
 
     def test_party_is_https_only(self):
         self.assertEqual(locations(self.https), ['= /party', '= /party/api/origin.json', '/party/api/',
-                                                 '= /party/bridge.html', '= /party/layer.html', '= /party/catalog.json', PKGART, '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
+                                                 '= /party/bridge.html', '= /party/play.html', '= /party/layer.html', '= /party/catalog.json', PKGART, '/party/', '/arcade/', *self.GAMES, *self.HUB, '/'])
         from avrana.contracts import game             # the slug nginx accepts is a Game Contract id
         self.assertIn(game.ID.pattern.strip('^$'), self.GAMES[2])
         self.assertFalse(any('/party' in loc for loc in locations(self.http)))
@@ -210,6 +210,13 @@ class StaticRules(unittest.TestCase):
         # the catalog Party Home reads has the same headers (AVR-337)
         body = location_body(self.https, '= /party/catalog.json')
         self.assertEqual(dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body)), SHELL_HEADERS)
+        # PROPOSAL play_shell (AVR-766): the round page adds only frame-src (the game origin and the
+        # Party layer); the bridge may also be framed by the Party itself (it is nested in the shell)
+        body = location_body(self.https, '= /party/play.html')
+        play = dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body))
+        self.assertEqual(play, dict(SHELL_HEADERS, **{'Content-Security-Policy':
+            SHELL_HEADERS['Content-Security-Policy'] + "; frame-src 'self' https://games.avrana.net"}))
+        self.assertIn("frame-ancestors 'self' https://games.avrana.net\"", location_body(self.https, '= /party/bridge.html'))
         self.assertNotRegex(SITE, r'add_header\s+Service-Worker-Allowed')
         self.assertNotRegex(SITE, r'add_header\s+Strict-Transport-Security')  # expiry must stay escapable
 
@@ -1126,7 +1133,7 @@ http {{
 
 # ---- AVR-319: the game origin (games.avrana.net), static rules ---------------------------------
 BRIDGE_CSP = SHELL_HEADERS['Content-Security-Policy'].replace(
-    "frame-ancestors 'none'", 'frame-ancestors https://games.avrana.net')
+    "frame-ancestors 'none'", "frame-ancestors 'self' https://games.avrana.net")   # 'self': nested in the play shell (AVR-766)
 LAYER_CSP = SHELL_HEADERS['Content-Security-Policy'].replace(
     "frame-ancestors 'none'", "frame-ancestors 'self' https://games.avrana.net")
 
@@ -1167,9 +1174,11 @@ class GameOriginStaticRules(unittest.TestCase):
         headers = dict(re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', body))
         self.assertEqual(headers, dict(SHELL_HEADERS, **BRIDGE_ISOLATION_HEADERS, **{'Content-Security-Policy': BRIDGE_CSP}))
         self.assertIn('alias /var/www/avrana-party/web/current/bridge.html;', body)
-        self.assertEqual(self.party.count('frame-ancestors https://games.avrana.net'), 1)    # in that location only
-        self.assertEqual(self.party.count("frame-ancestors 'self' https://games.avrana.net"), 1)   # the layer (AVR-292)
-        self.assertEqual(self.party.count("frame-ancestors 'none'"), 2)                      # every other Party page: /party/ and the catalog (AVR-337)
+        self.assertEqual(self.party.count('frame-ancestors https://games.avrana.net'), 0)
+        # the bridge and the layer (AVR-292); the bridge also by the Party, as it is nested in the play shell (AVR-766)
+        self.assertEqual(self.party.count("frame-ancestors 'self' https://games.avrana.net"), 2)
+        # every other Party page: /party/, the catalog (AVR-337) and the play shell (AVR-766)
+        self.assertEqual(self.party.count("frame-ancestors 'none'"), 3)
         self.assertNotIn('frame-ancestors', self.games)
         self.assertNotIn('X-Frame-Options', SITE)
 

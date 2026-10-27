@@ -32,6 +32,8 @@ const SHELL = [
   'bridge.html', 'lib/bridge.js', 'lib/bridge-frame.js', 'bridge/shim.js',
   // The Party layer over a game page (AVR-292): its frame, its rules and the page mount.
   'layer.html', 'lib/layer.js', 'lib/layer-app.js', 'bridge/layer-mount.js',
+  // PROPOSAL play_shell (AVR-766): the round page that frames a game on its own origin.
+  'play.html', 'play.css', 'lib/play.js', 'lib/play-app.js',
   'diag/', 'diag/index.html', 'diag/diag.js',
   // Library artwork (tools/build-art.mjs from contracts/artwork.json).
   'art/kenney-exploding.svg', 'art/kenney-sword.svg', 'art/lan-bluff.svg',

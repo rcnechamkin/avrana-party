@@ -94,7 +94,21 @@ server {
         add_header Referrer-Policy "same-origin" always;
         add_header Cross-Origin-Resource-Policy "same-site" always;
         add_header Cross-Origin-Embedder-Policy "require-corp" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://games.avrana.party" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://games.avrana.party" always;
+    }
+
+    # PROPOSAL play_shell (AVR-766; draft ADR 0018 revision 3): the round page. A phone in a round
+    # stays inside /party/ (an installed app never leaves its scope) and the game fills this page in
+    # a frame on its own origin. It may frame only the game origin and the Party layer; nothing may
+    # frame it. Party Core serves it to no one unless party-core.json switches the proposal on (Party
+    # Home only sends phones here then). The headers are otherwise those of /party/ below and must match
+    # avrana/web/devserver.py (the /party/play.html route) and tests/unit/test_nginx_site.py.
+    location = /party/play.html {
+        alias /var/www/avrana-party/web/current/play.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' https://games.avrana.party" always;
     }
 
     # The Party layer (AVR-292, ADR 0011 amendment of 2026-10-16): the floating Party button and its

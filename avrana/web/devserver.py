@@ -329,10 +329,15 @@ class Handler(BaseHTTPRequestHandler):
             slug = path.split('/')[2].encode('ascii', 'replace')
             return self._send(200, GAME_STUB % (slug, slug, slug), 'text/html; charset=utf-8', {'Cache-Control': 'no-store'})
         if path == '/party/bridge.html' and cfg['party'] is not None:
-            # The one Party page a game origin may frame (ADR 0013); everything else stays 'none'.
+            # The one Party page a game origin may frame (ADR 0013); everything else stays 'none'. 'self'
+            # too: in the play shell (AVR-766) the game page that embeds it is itself framed by the Party.
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
-                "frame-ancestors 'none'", 'frame-ancestors ' + cfg['party'].game_origin)
+                "frame-ancestors 'none'", "frame-ancestors 'self' " + cfg['party'].game_origin)
             return self._file(cfg['web'], 'bridge.html', dict(SHELL_HEADERS, **BRIDGE_ISOLATION_HEADERS, **{'Content-Security-Policy': csp}))
+        if path == '/party/play.html' and cfg['party'] is not None:
+            # PROPOSAL play_shell (AVR-766): the round page frames the game origin and the Party layer, nothing else.
+            csp = SHELL_HEADERS['Content-Security-Policy'] + "; frame-src 'self' " + cfg['party'].game_origin
+            return self._file(cfg['web'], 'play.html', dict(SHELL_HEADERS, **{'Content-Security-Policy': csp}))
         if path == '/party/layer.html' and cfg['party'] is not None:
             # The Party layer (AVR-292): framed by a game page on this origin or the game origin.
             csp = SHELL_HEADERS['Content-Security-Policy'].replace(
