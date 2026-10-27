@@ -548,6 +548,24 @@ class SupportBundle(unittest.TestCase):
         self.assertIn('stop it and export it instead', str(ctx.exception))
         self.assertFalse(self.out.exists())
 
+    def test_a_bundle_keeps_no_working_copy_even_when_refused(self):
+        # AVR-740: a bundle refused for naming a guest left the name in the store's journal.jsonl and timeline.md,
+        # and every bundle left its working session behind.
+        self.probes.entries = [entry(T0 - timedelta(minutes=5), 'Benjamin rejoined after a Wi-Fi drop', priority=4)]
+        with self.assertRaises(fs.Refused):
+            fs.bundle(self.store, self.probes, self.out, hours=1, now=T0, forbid_terms=['Benjamin'])
+        self.assertFalse(self.out.exists())
+        left = [f for f in self.root.rglob('*') if f.is_file() and 'Benjamin' in f.read_text(encoding='utf-8', errors='ignore')]
+        self.assertEqual(left, [])
+        out, *_ = fs.bundle(self.store, self.probes, self.out, hours=1, now=T0 + timedelta(minutes=1))
+        self.assertTrue(out.is_file())
+        self.assertEqual([p for p in self.root.iterdir() if p.is_dir()], [])
+        # A recorded night is never touched by a bundle's clean-up.
+        night = fs.start(self.store, 'a real night', self.probes, now=T0 + timedelta(minutes=2))
+        fs.stop(self.store, self.probes, now=T0 + timedelta(minutes=3))
+        fs.bundle(self.store, self.probes, self.out / 'c', hours=1, now=T0 + timedelta(minutes=4))
+        self.assertEqual([p.name for p in self.root.iterdir() if p.is_dir()], [night['id']])
+
     def test_a_garbled_preflight_never_leaves_a_session_recording(self):
         for n, doc in enumerate(({'schema': fs.PREFLIGHT_SCHEMA, 'checks': 'x'},
                                  {'schema': fs.PREFLIGHT_SCHEMA, 'checks': ['x', None]}, 'not a dict')):
