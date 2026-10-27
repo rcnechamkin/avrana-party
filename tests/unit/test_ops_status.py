@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -589,6 +590,74 @@ class RecoveryProbeParsing(unittest.TestCase):
             self.assertEqual(status.failed_units('avrana-game@*', runner=self.run_with('')[0]), [])
             self.assertIsNone(status.failed_units('avrana-game@*', runner=self.run_with('', returncode=1)[0]))
         self.assertIn('--state=failed', calls[0])
+
+    SHOW = ('LoadState=loaded\nActiveState=active\nNRestarts=0\nResult=success\nActiveEnterTimestampMonotonic=1000000\n\n'
+            'LoadState=not-found\nActiveState=inactive\nNRestarts=0\nResult=success\nActiveEnterTimestampMonotonic=0\n\n'
+            'LoadState=loaded\nActiveState=activating\nNRestarts=4\nResult=exit-code\nActiveEnterTimestampMonotonic=0\n')
+
+    def test_one_systemctl_call_answers_state_and_recovery_for_every_unit(self):
+        runner, calls = self.run_with(self.SHOW)
+        with mock.patch.object(status.platform, 'system', return_value='Linux'):
+            facts = status.unit_facts(['nginx', 'avrana-party-certificate.timer', 'avranaparty-arcade'],
+                                      runner=runner, clock=lambda: 61.0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][:2], ['systemctl', 'show'])
+        self.assertEqual(calls[0][-3:], ['nginx', 'avrana-party-certificate.timer', 'avranaparty-arcade'])
+        self.assertEqual(facts, {
+            'nginx': ('active', {'restarts': 0, 'result': 'success', 'active_for_s': 60}),
+            'avrana-party-certificate.timer': ('not-installed', None),
+            'avranaparty-arcade': ('activating', {'restarts': 4, 'result': 'exit-code', 'active_for_s': None}),
+        })
+
+    def test_an_unreadable_batch_is_none_so_units_are_asked_one_at_a_time(self):
+        with mock.patch.object(status.platform, 'system', return_value='Linux'):
+            for stdout, code in ((self.SHOW, 1), ('', 0), ('LoadState=loaded\nActiveState=active\n', 0)):
+                self.assertIsNone(status.unit_facts(['a', 'b', 'c'], runner=self.run_with(stdout, code)[0]))
+        with mock.patch.object(status.platform, 'system', return_value='Windows'):
+            self.assertIsNone(status.unit_facts(['a']))
+
+
+class FastDocument(unittest.TestCase):
+    """A cold document must answer inside the deploy smoke's timeout: on the Pi each systemctl call
+    costs ~0.5 s, and asking in turn took ~9 s against smoke's 5 s."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.manifest = Path(self.temp.name) / 'deployment.json'
+        manifest.write(self.manifest, sample())
+        self.cfg = {'manifest': str(self.manifest), 'party_checkout': '/p', 'games_checkout': '/g',
+                    'units': ['avrana-party-core', 'avranaparty-arcade', 'nginx']}
+
+    def test_batched_unit_facts_replace_the_per_unit_questions(self):
+        class Batched(RecoveryProbes):
+            def unit_facts(self, units):
+                self.asked = list(units)
+                return {u: ('active', {'restarts': 0, 'result': 'success', 'active_for_s': 3600}) for u in units}
+
+            def unit_state(self, unit):
+                raise AssertionError('asked unit by unit')
+
+        probes = Batched({'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')})
+        doc = status.build_status(self.cfg, probes, now=NOW)
+        self.assertEqual(probes.asked, self.cfg['units'])
+        self.assertEqual(doc['summary']['state'], 'ok')
+        self.assertEqual(doc['recovery']['units']['nginx']['restarts'], 0)
+
+    def test_slow_probes_are_waited_for_together_not_in_turn(self):
+        class Slow(RecoveryProbes):
+            pass
+        for name in ('checkout', 'web_release', 'nginx_site', 'certificate_not_after', 'get_json', 'failed_units'):
+            def slow(self, *a, _real=getattr(RecoveryProbes, name)):
+                time.sleep(0.3)
+                return _real(self, *a)
+            setattr(Slow, name, slow)
+        probes = Slow({'/p': checkout(SHA_A), '/g': checkout(SHA_B, ref=None, path='/g')}, failed=())
+        started = time.monotonic()
+        doc = status.build_status(self.cfg, probes, now=NOW)
+        # Eight 0.3 s probes: 2.4 s in turn, about one probe's wait together.
+        self.assertLess(time.monotonic() - started, 1.2)
+        self.assertEqual(doc['summary']['state'], 'ok')
 
 
 class LiveRoute(unittest.TestCase):

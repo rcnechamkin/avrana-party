@@ -84,6 +84,25 @@ free on `/`, WARN under 2 GiB or 10 %.
   every time and stays the owner's (the field-test gate on PR #174, steps 5-6;
   [friend-ready owner checklist](friend-ready-owner-checklist.md)).
 
+## Party Ready: the same result in plain words (AVR-86)
+
+`python3 -m avrana.ops.preflight --horizon-days 7 --party-ready` prints the answer for an owner instead of the
+report. `python3 -m avrana.ops.party_ready preflight-<stamp>.json` does the same for a saved preflight, for
+example one written by `tools/preflight.py --out`. A saved preflight more than 24 hours old, dated in the
+future or without a time is "Not confirmed", never READY. `--json` gives `avrana.party-ready/v0`.
+
+- It groups the checks into six areas: games, phones trusting the box (for the trip horizon), the Party Wi-Fi,
+  free space, the box's health and its software.
+- It gives each area one sentence and, when it is not fine, what to do.
+- The headline is `READY FOR PARTY`, `N things to fix before leaving home`, or `Not confirmed` (a blocking fact
+  could not be checked).
+- It applies the preflight's own rules, so it is never more optimistic than the verdict, and the exit codes are the
+  same.
+- The raw check ids and reasons stay under "Details for whoever helps you", and the real-phone list is kept.
+- It runs no check of its own and needs no Internet.
+
+Not yet built: an owner page for it (AVR-44, AVR-60) and a per-game offline line beyond `packages.*` and `serving.*`.
+
 ## Boundaries
 
 - No Internet: it contacts only loopback and the Party AP address (a unit test intercepts every
