@@ -194,6 +194,24 @@ server {
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
     }
 
+    # Bundled artwork of installed .avrgame packages (AVR-466, EXPERIMENTAL; docs/design/AVRGAME-PACKAGE.md,
+    # "How an image reaches a phone"). The catalog overlay copies each validated cover and icon to
+    # /var/lib/avrana-party/catalog/art/<game id>/<16 hex of its sha256>.<ext>, root-owned; this serves
+    # exactly those files and nothing else: the regular expression admits only a game id, a 16-digit
+    # hex name and one of three extensions, so no request-derived text can leave that directory. The
+    # URL is the content hash, hence immutable. nginx (not the package) chooses the Content-Type.
+    # An image is a picture, never a page: nosniff, and a CSP that is "default-src 'none'; sandbox".
+    # No autoindex, no Service-Worker-Allowed. The name is pkgart because /party/art/ is the shell's own.
+    location ~ "^/party/pkgart/(?<art_game>[a-z][a-z0-9_-]{0,39})/(?<art_file>[0-9a-f]{16}\.(webp|png|jpg))$" {
+        alias /var/lib/avrana-party/catalog/art/$art_game/$art_file;
+        types { image/webp webp; image/png png; image/jpeg jpg; }
+        default_type application/octet-stream;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+        add_header Referrer-Policy "same-origin" always;
+    }
+
     location /party/ {
         alias /var/www/avrana-party/web/current/;
         index index.html;

@@ -58,7 +58,7 @@ test('a shell profile edit reaches a game page, and the return to Party survives
   page.on('websocket', (ws) => ws.on('framesent', ({ payload }) => {
     try { const msg = JSON.parse(String(payload)); if (msg.t === 'hello') hellos.push(msg); } catch {}
   }));
-  await place(page, 'party');
+  await place(page, 'me');
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Robin Updated');
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -77,12 +77,14 @@ test('the shell opens no legacy chat connection, on its own pages or across a ga
   await seed(page); await home(page);
   let globalSockets = 0;
   page.on('websocket', (ws) => { if (ws.url().endsWith('/chat/ws')) globalSockets++; });
-  await expect(page.locator('#hud')).toBeHidden();
+  await expect(page.locator('#nav-unread')).toBeHidden();
+  await expect(page.locator('#party-chat-row')).toBeHidden();
   await page.goto('/games/expo/?avrana=1');
   await expect(page.locator('#avrana-navigation a')).toBeVisible();
   await page.locator('#avrana-navigation a').click();
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
-  await expect(page.locator('#hud')).toBeHidden();
+  await expect(page.locator('#nav-unread')).toBeHidden();
+  await expect(page.locator('#party-chat-row')).toBeHidden();
   expect(globalSockets).toBe(0);
 });
 

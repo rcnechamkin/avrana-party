@@ -61,7 +61,7 @@ test('a capable phone sees ready games and a secure connection', async ({ page }
   await expect(bluff.locator('img[src$="art/lan-bluff.svg"]')).toHaveCount(1);
   await expect(bluff.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/games/bluff/?avrana=1');
   await page.keyboard.press('Escape');
-  await place(page, 'system');
+  await place(page, 'me');
   await expect(page.locator('#phone-summary')).toHaveText('All set');
   await expect(page.locator('#phone-list [data-cap="video.h264"]')).toHaveAttribute('data-status', 'yes');
 });
@@ -77,7 +77,7 @@ test('a phone that cannot play the video is told why, and can still try', async 
   await expect(card).toContainText('This browser can’t play the Party’s video format.');
   await expect(card.getByRole('link', { name: 'Try anyway' })).toHaveAttribute('href', '/arcade/');
   await page.keyboard.press('Escape');
-  await place(page, 'system');
+  await place(page, 'me');
   await expect(page.locator('#phone-summary')).toHaveText('Some things are limited');
 });
 
@@ -103,7 +103,7 @@ test('guest words only, and basic accessibility', async ({ page }) => {
   await h264(page, false);
   await open(page);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  for (const name of ['home', 'party', 'library', 'system'] as const) {
+  for (const name of ['home', 'party', 'library', 'me'] as const) {
     await place(page, name);
     expect(await page.locator('#main').innerText(), name).not.toMatch(JARGON);
     // every control in the frame, bars included: at least 44 px each way
@@ -117,7 +117,7 @@ test('the frame: four places in one page, and the bar says which one you are in'
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
   await expect(page.locator('#top-title')).toHaveText('Avrana Party');
   await expect(page.locator('#nav a[aria-current="page"]')).toHaveText('Home');
-  for (const [name, title] of [['party', 'Party'], ['library', 'Library'], ['system', 'System']] as const) {
+  for (const [name, title] of [['party', 'Party'], ['library', 'Library'], ['me', 'Me']] as const) {
     await place(page, name);
     await expect(page.locator('#top-title')).toHaveText(title);
     await expect(page.locator('#top-title')).toBeFocused();              // a screen reader hears the new place
@@ -172,7 +172,7 @@ test('the frame holds at 200% text on a small phone: nothing sideways, the bars 
   await page.setViewportSize({ width: 360, height: 640 });
   await open(page);
   await page.evaluate(() => document.documentElement.style.setProperty('font-size', '200%'));
-  for (const name of ['home', 'party', 'library', 'system'] as const) {
+  for (const name of ['home', 'party', 'library', 'me'] as const) {
     await place(page, name);
     expect(await sideways(page), name).toBeLessThanOrEqual(0);
     const title = await page.locator('#top-title').evaluate((el) => {
@@ -182,6 +182,12 @@ test('the frame holds at 200% text on a small phone: nothing sideways, the bars 
     expect(title.lines, `${name}: the title breaks only between words`).toBeLessThanOrEqual(title.words);
     const bar = await page.locator('#nav').boundingBox();
     expect(bar!.y + bar!.height, name).toBeLessThanOrEqual(640);            // the bar is on screen
+    // each place's word in the bar is one whole line inside its tab (never broken or clipped)
+    expect(await page.locator('#nav a').evaluateAll((links) => links.filter((a) => {
+      const range = document.createRange(); range.selectNodeContents(a.lastChild!);
+      const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+      return lines !== 1 || a.scrollWidth > a.clientWidth + 1;
+    }).map((a) => a.textContent)), name).toEqual([]);
     expect(bar!.height / 640, name).toBeLessThan(0.3);                       // and leaves the page its room
   }
 });

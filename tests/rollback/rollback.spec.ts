@@ -91,7 +91,7 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   await page.goto(`${BASE}/party/`);
   await ready(page);
   expect((await served(page)).build).toBe(releases.new.build);
-  await page.locator('#nav a[data-go="party"]').click();
+  await page.locator('#nav a[data-go="me"]').click();
   await page.locator('#player-chip').click();
   await page.locator('#profile-name').fill('Rae');
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -118,7 +118,8 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   expect(JSON.parse(before.favorites || '[]').length).toBe(1);
   expect(JSON.parse(before.recent || '[]').length).toBe(1);
   expect(before).toMatchObject({ name: 'Rae', view: 'list' });
-  await expect(page.locator('#home-lead')).toContainText('You played this last.');
+  // the new build's Home after a round this tab played is K3 (AVR-709): "Just played", from what the tab kept
+  await expect(page.locator('#home-lead [data-just]')).toContainText('Just played');
 
   // ---- 1. flip: `current` points at the release before; nothing else is touched -----------------
   flip('old');
@@ -146,7 +147,8 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   // shelves; an older one, which has neither, is only asked for its games and a briefing.
   const framed = (await page.locator('#nav a[data-go="library"]').count()) > 0;
   if (framed) {
-    await expect(page.locator('#party-lede')).toBeVisible();
+    // who is here: said in a sentence before Concept K, in a presence row since (AVR-708)
+    await expect(page.locator('#party-lede, #home-presence').first()).toBeVisible();
     await page.locator('#nav a[data-go="party"]').click();
     await expect(page.locator('#party-members')).toContainText('Rae (you)');
     await page.locator('#nav a[data-go="library"]').click();
@@ -177,7 +179,8 @@ test('flip back, reload, verify: the restored build runs, and favorites and rece
   expect(await running(page)).toBe(releases.new.build);
   await expect.poll(() => caches(page), { timeout: 20_000 }).toEqual([`avrana-party-shell-${releases.new.build}`]);
   expect(await kept(page)).toEqual(before);
-  await expect(page.locator('#home-lead')).toContainText('You played this last.');
+  // (K3 again: the last round this tab played is still EXPO; the cancelled briefing was not a round)
+  await expect(page.locator('#home-lead [data-just]')).toContainText('Just played');
   await page.locator('#nav a[data-go="library"]').click();
   await expect(page.locator('#games')).toHaveAttribute('data-view', 'list');   // the new build's own setting waited through the rollback
 });

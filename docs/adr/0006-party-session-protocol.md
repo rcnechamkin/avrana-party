@@ -80,8 +80,14 @@ Game concepts do not move into Party Core because BLUFF happens to use them.
 - **Presence** is `here` while any authenticated party request arrived within 45 s: Party Home's
   long poll, a heartbeat from a game page, or a ticket fetch. Otherwise it is `away`.
 - **Playing:** a member holding a place in the active session is `playing`. A host who is
-  playing keeps the role (no succession mid-game). The party never runs its own copy of the
-  game's disconnect timers.
+  playing keeps the role while their game page reaches the party. *Amended 2026-10-22 (owner
+  acceptance of this change is its merge):* a playing host whose page has been silent past the
+  liveness window and host grace is succeeded like any other, keeping their seat; before, the
+  role never moved mid-game, so a game waiting for that host (Checkers' mover, Best Guess's
+  Guesser) held the party with nobody able to end it. A successor must be live (their page
+  reached the party within the liveness window); a seat alone does not make a member eligible.
+  Succession moves Party authority only: no seat, in-game role or turn moves with it. The party
+  never runs its own copy of the game's disconnect timers.
 - **Host:** host grace (30 s past the liveness window), then deterministic succession to the
   earliest-joined member who is here. It is vacant if nobody is here. A returning old host does
   not take the role back.

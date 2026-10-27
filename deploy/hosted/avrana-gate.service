@@ -1,0 +1,33 @@
+# The hosted staging password gate (avrana/ops/hosted_gate.py; docs/runbooks/hosted-staging.md, "Password gate").
+# Inside the VM only, never on the Pi. It answers /__gate/ on the Party host over a Unix socket that nginx
+# connects to. It starts once a password exists: `sudo python3 -m avrana.ops.hosted_gate set` writes
+# /etc/avrana-party/gate.json and restarts this unit. Without that file the unit cannot start, and the gate
+# stays shut for everyone (nginx sends every request to /__gate/, which then fails with 502).
+[Unit]
+Description=Avrana Party hosted staging password gate
+After=network.target
+ConditionPathExists=/etc/avrana-party/gate.json
+
+[Service]
+DynamicUser=yes
+LoadCredential=gate.json:/etc/avrana-party/gate.json
+RuntimeDirectory=avrana-gate
+RuntimeDirectoryMode=0755
+WorkingDirectory=/opt/avrana-party/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m avrana.ops.hosted_gate serve --socket /run/avrana-gate/gate.sock --config ${CREDENTIALS_DIRECTORY}/gate.json
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

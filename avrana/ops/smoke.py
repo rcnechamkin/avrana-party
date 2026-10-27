@@ -3,12 +3,20 @@
     python3 -m avrana.ops.smoke                      # on the Pi after ops/deploy.sh (default --pi)
     python3 -m avrana.ops.smoke --local http://127.0.0.1:8180   # against the dev server
     python3 -m avrana.ops.smoke --json
+    python3 -m avrana.ops.smoke --hosted --config /etc/avrana-party/party-core.json   # hosted staging
 
 Each check is pass, fail or skip with one line of detail; a skip is never a pass. Nothing here
 changes the appliance, logs in, or touches hardware (streaming, radios and phones stay Tier 3).
 The Pi set assumes the nginx site in avrana-party.nginx: HTTP :80 for the captive probe, HTTPS
 :443 as party.avrana.net for the shell and Party Core, loopback provider ports for Games and the
 arcade. ops/deploy.sh runs the Pi set and records the result in the deployment manifest.
+
+The hosted set (docs/design/HOSTED-STAGING.md) is the same Party behind a different edge: TLS ends at
+the access gateway, which reaches the rendered hosted site over plain HTTP on loopback (default
+http://127.0.0.1:8080). It checks the shell, Party Core and status through that edge with the Party's
+public Host, that nginx answers origin.json without a private address, that the game origin refuses
+the Party, that an unknown Host and /internal/ get nothing, and the units the hosted config names.
+No captive probe, DNS, certificate, games-provider or arcade check: none of those exist there.
 """
 import argparse
 import http.client
@@ -259,6 +267,66 @@ def run_local(base, http=None):
             check_status(http, scheme, address, port, f'{address}:{port}', verify=False)]
 
 
+def check_origin_json(http, scheme, address, port, host):
+    """nginx answers origin.json itself (the shell's "is the Party there" check); hosted, it says
+    so and carries no private address."""
+    try:
+        code, _, body = http.get(scheme, address, port, '/party/api/origin.json', host=host)
+    except OSError as e:
+        return Result('origin_json', FAIL, f'unreachable ({type(e).__name__})')
+    doc = _json(body)
+    if code != 200 or not isinstance(doc, dict) or doc.get('schema') != 'avrana.origin/v0':
+        return Result('origin_json', FAIL, f'/party/api/origin.json -> {code}; not avrana.origin/v0')
+    if doc.get('network') != 'hosted':
+        return Result('origin_json', FAIL, 'origin.json does not say network "hosted"')
+    addr = str(doc.get('serverAddr', ''))
+    if re.match(r'^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)', addr):
+        return Result('origin_json', FAIL, 'origin.json discloses a private address')
+    return Result('origin_json', PASS, 'answered by nginx, no private address')
+
+
+def check_refused(http, name, scheme, address, port, host, path, expect=(404,)):
+    """A request the hosted edge must not serve: anything but one of `expect` fails."""
+    try:
+        code, _, _ = http.get(scheme, address, port, path, host=host)
+    except OSError as e:
+        return Result(name, FAIL, f'unreachable ({type(e).__name__})')
+    return Result(name, PASS if code in expect else FAIL, f'{host} {path} -> {code}')
+
+
+def hosted_targets(conf):
+    """(party host, game host or None) from party-core.json: its first `hosts` entry and the host of
+    its first `game_origins` key."""
+    from urllib.parse import urlsplit
+    hosts = conf.get('hosts') or []
+    if not hosts:
+        raise ValueError('party-core.json names no hosts')
+    origins = list((conf.get('game_origins') or {}).keys())
+    return hosts[0], (urlsplit(origins[0]).hostname if origins else None)
+
+
+def run_hosted(conf, edge='http://127.0.0.1:8080', http=None, runner=subprocess.run):
+    from urllib.parse import urlsplit
+    u = urlsplit(edge)
+    scheme, address, port = u.scheme or 'http', u.hostname or '127.0.0.1', u.port or 80
+    http = http or Http()
+    party_host, game_host = hosted_targets(conf)
+    cfg = status_module.load_config(conf)
+    results = [check_party_home(http, scheme, address, port, party_host),
+               check_party_core(http, scheme, address, port, party_host),
+               check_status(http, scheme, address, port, party_host),
+               check_origin_json(http, scheme, address, port, party_host),
+               check_refused(http, 'internal_not_proxied', scheme, address, port, party_host, '/internal/ended'),
+               check_refused(http, 'unknown_host_refused', scheme, address, port, 'not-a-party.invalid', '/party/',
+                             expect=(404, 421, 444))]
+    if game_host:
+        results.append(check_refused(http, 'game_origin_refuses_party', scheme, address, port, game_host, '/party/'))
+    else:
+        results.append(Result('game_origin_refuses_party', SKIP, 'no game_origins in the config'))
+    results += check_units(cfg['units'], runner=runner, optional=cfg['optional_units'])
+    return results
+
+
 def summarize(results):
     counts = {s: sum(1 for r in results if r.status == s) for s in (PASS, FAIL, SKIP)}
     return {'ok': counts[FAIL] == 0, 'counts': counts, 'checks': [r.as_dict() for r in results]}
@@ -267,10 +335,19 @@ def summarize(results):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--local', metavar='BASE_URL', help='dev-server subset instead of the Pi set')
+    ap.add_argument('--hosted', action='store_true', help='hosted staging set (needs --config)')
+    ap.add_argument('--config', help='party-core.json (hosts, game_origins, status units) for --hosted')
+    ap.add_argument('--edge', default='http://127.0.0.1:8080', help='the hosted site as the tunnel reaches it')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args(argv)
+    if args.hosted and not args.config:
+        ap.error('--hosted needs --config')
     started = time.monotonic()
-    results = run_local(args.local) if args.local else run_pi()
+    if args.hosted:
+        with open(args.config, encoding='utf-8') as f:
+            results = run_hosted(json.load(f), args.edge)
+    else:
+        results = run_local(args.local) if args.local else run_pi()
     summary = summarize(results)
     summary['seconds'] = round(time.monotonic() - started, 1)
     if args.json:

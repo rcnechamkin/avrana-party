@@ -1,4 +1,4 @@
-/* Avrana Party system UI: source stylesheet (UX/UI redesign tokens, 2026-10; the brand face is temporary).
+/* Avrana Party system UI: source stylesheet (Concept K · Avrana Console tokens, AVR-706, 2026-10-21).
  *
  *   web/src/party.css  --(npm run build:css, Tailwind CSS 4 + daisyUI 5, build time only)-->  web/party/styles.css
  *
@@ -8,7 +8,7 @@
  * Layers, most general first: the `avrana` daisyUI theme (colour, radius, control size) ->
  * Tailwind @theme tokens (text/line colours, fonts) -> base element rules -> a small `avrana-*`
  * component layer for patterns the pages repeat. Layout and one-offs use Tailwind utilities in the
- * markup. One bundled font (Geist, served by the Pi like every other file), no remote assets, no
+ * markup. Bundled fonts (Plus Jakarta Sans, served by the Pi like every other file), no remote assets, no
  * inline styles (the /party/ CSP forbids them). */
 
 @import "tailwindcss" source(none);
@@ -19,22 +19,21 @@
 @source "../party/lib/ui.js";
 @source "../party/lib/profile-ui.js";
 
-/* Interface type: Geist (SIL OFL 1.1, web/party/fonts/OFL.txt), one variable file. */
+/* Interface type: Plus Jakarta Sans (SIL OFL 1.1, web/party/fonts/OFL.txt), two variable files
+   (Latin and Latin Extended, the same subsets Fontsource splits them into). Weights 200 to 800. */
 @font-face {
-  font-family: "Geist";
-  src: url("fonts/Geist-Variable.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Plus Jakarta Sans";
+  src: url("fonts/PlusJakartaSans-Latin-Variable.woff2") format("woff2");
+  font-weight: 200 800;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
-/* The words "Avrana Party" only (temporary, UX/UI brief): a light Helvetica where the phone really
-   has one, Geist Light everywhere else. local() matches installed faces only, so Windows and
-   Android never fall back to Arial. */
 @font-face {
-  font-family: "Avrana Brand";
-  src: local("Helvetica Neue Light"), local("HelveticaNeue-Light"), local("Helvetica Light"), local("Helvetica-Light"),
-       url("fonts/Geist-Variable.woff2") format("woff2");
-  font-weight: 300;
+  font-family: "Plus Jakarta Sans";
+  src: url("fonts/PlusJakartaSans-LatinExt-Variable.woff2") format("woff2");
+  font-weight: 200 800;
   font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 /* Only the daisyUI parts the pages use; JS words such as "toggle", "list" or "status" would
@@ -49,8 +48,8 @@
   name: "avrana";
   default: true;
   color-scheme: dark;
-  /* Surfaces: near-black neutrals, each level a step up. */
-  --color-base-100: #0d0d0f;
+  /* Surfaces: near-black neutrals, each level a step up (Concept K: ink, surface, raised). */
+  --color-base-100: #121214;
   --color-base-200: #161618;
   --color-base-300: #1e1e21;
   --color-base-content: #edeae4;
@@ -97,9 +96,10 @@
   --color-material-solid: #1c1a26;
   --color-material-edge: rgb(200 186 255 / 0.22);
   --color-select: rgb(185 169 232 / 0.16);
-  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-display: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-brand: "Avrana Brand", "Geist", system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* Concept K (owner, 2026-10-21): Plus Jakarta Sans everywhere, the brand words included (Light 300). */
+  --font-brand: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* Type roles (Design Foundation; docs/design/foundation/PARTY-MAPPING.md): name a size by what the
      text is, not by its value. Sizes only: a role sets no line height, so a rule's own line height holds. */
@@ -109,10 +109,60 @@
   --text-body: 0.9375rem;
   --text-supporting: 0.8125rem;
   --text-caption: 0.6875rem;
-  /* Motion: the one transition the shell uses (values unchanged until the owner sets them). */
+  /* Concept K type roles (avrana-console-style/02-tokens.md), in rem so they follow the phone's
+     text size. Big things are Light, small things Medium or SemiBold. */
+  --text-display: 3rem;             /* 48, Light: the hero title */
+  --text-display-fallback: 2.75rem; /* 44, Light: a title drawn in place of missing art */
+  --text-page: 1.75rem;             /* 28, Regular: Library, Party, Me */
+  --text-shelf: 1.25rem;            /* 20, Regular: a shelf's heading */
+  --text-button: 1.0625rem;         /* 17: a 52 px button's word */
+  --text-secondary: 0.875rem;       /* 14: "4 here" */
+  --text-eyebrow: 0.75rem;          /* 12, Medium, caps +16%: FEATURED */
+
+  /* Concept K colour names (Figma "Avrana brand v1.0"). The daisyUI names above stay the ones the
+     markup uses; these say the same colours in the design's own words, plus the few it adds. */
+  --color-depth: #0d0d0f;           /* behind sheets, letterboxing */
+  --color-ink: #121214;             /* the page; words on the cream button; scrims */
+  --color-surface: #161618;         /* opaque cards and panels */
+  --color-raised: #1e1e21;          /* secondary buttons, the preview card, banners, icon wells */
+  --color-graphite: #5e5b57;        /* a title drawn in place of art; decorative only (2.7:1) */
+  --color-ash: #8f8c89;             /* tertiary words */
+  --color-stone: #aeaba7;           /* secondary words, eyebrows, reasons, quiet bar labels */
+  --color-cream: #edeae4;           /* words; the one primary button */
+  --color-purple: #b9a9e8;          /* chosen, Party-owned, selected: never decoration */
+  --color-purple-deep: #5a439d;
+  --color-purple-selected: rgb(185 169 232 / 0.22);
+  --color-ready: #34d399;           /* eligible / ready marks, always beside a word */
+  --color-warn: #f59e0b;            /* reconnecting edge and icon, blocking conditions */
+  --color-danger: #ef4444;          /* confirming End or Leave only */
+
+  /* Concept K shape, named by what it rounds (Tailwind's own rounded-* sizes are untouched). */
+  --radius-preview: 1.25rem;        /* 20: the inline preview card */
+  --radius-panel: 1rem;             /* 16: panels, summaries, grouped lists, feedback */
+  --radius-button: 0.875rem;        /* 14: 52 px buttons, banners, the selected-game row */
+  --radius-control: 0.75rem;        /* 12: 44-48 px buttons, cover art */
+  --radius-chip: 0.5rem;            /* 8: fact chips, 40 px thumbnails */
+  --spacing-gutter: 1rem;           /* cards, panels, the bar */
+  --spacing-gutter-hero: 1.25rem;   /* the hero's words, stage actions, shelf headings, page titles */
+
+  /* Motion: three tiers (avrana-console-style/06-motion.md). Tier 1 is everyday (tabs, chips, a
+     press), tier 2 answers a touch in place (a preview opening, Start to pending), tier 3 marks a
+     moment (a selection, a launch). GAME-UX-CONTRACT rule 11.5 (proposed) caps the platform at
+     200 ms until AVR-704 amends it, so tier 3 is 200 ms here; its Concept K length is kept beside
+     it, unused, for when the owner decides. */
   --motion-quick: 150ms;
   --motion-surface: 220ms; /* coherent sheets; reduced-motion override remains authoritative */
   --ease-standard: ease;
+  --motion-1: 150ms;
+  --motion-2: 300ms;
+  --motion-3: 200ms;
+  --motion-3-proposal: 600ms;       /* AVR-704: only with ?concept=motion (the owner, 2026-10-21) */
+  --ease-responsive: cubic-bezier(0.2, 0, 0, 1);
+  --ease-meaningful: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The bar's lens: a spring (mass 1, stiffness 420, damping 28) sampled as linear(), a slight
+     overshoot that settles, over --motion-spring. */
+  --ease-spring: linear(0, 0.076, 0.246, 0.445, 0.632, 0.786, 0.902, 0.979, 1.025, 1.047, 1.053, 1.049, 1.04, 1.029, 1.019, 1.011, 1.005, 1.001, 0.999, 0.997, 0.997, 0.997, 0.998, 0.998, 1);
+  --motion-spring: 480ms;
 }
 
 @layer base {
@@ -138,6 +188,7 @@
             --color-line-strong: rgb(255 255 255 / 0.5); --color-control: #a5a3a8; }
   }
   @media (prefers-reduced-motion: reduce) {
+    :root { --motion-2: 150ms; --motion-3: 150ms; --motion-spring: 150ms; --ease-spring: linear; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 }
@@ -146,6 +197,51 @@
   /* An inline Lucide icon (lib/icons.js); it scales with the text around it. */
   .avrana-icon { width: 1.25em; height: 1.25em; flex: none; display: inline-block; vertical-align: -0.25em; }
 
+  /* ---- Concept K foundations (AVR-706) ---------------------------------------------------------
+     Liquid glass: only the shell's three floating controls wear it (the bottom bar, the top-right
+     utility, the top-left Home button; owner rule, 2026-10-21). Nothing else is glass. It clips to
+     its own shape (a square of blur around a round button was a real bug on iPhone): the radius,
+     overflow and isolation are on the element itself, and the rim is a masked edge, never
+     border-image (which drops the radius). The blur is never animated. */
+  .avrana-glass {
+    position: relative; isolation: isolate; overflow: hidden;
+    background: rgb(18 18 20 / 0.58);
+    -webkit-backdrop-filter: blur(28px) saturate(1.2); backdrop-filter: blur(28px) saturate(1.2);
+    box-shadow: 0 16px 40px rgb(0 0 0 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -8px 16px rgb(255 255 255 / 0.07);
+  }
+  .avrana-glass::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: linear-gradient(to bottom, rgb(255 255 255 / 0.4), rgb(255 255 255 / 0.06));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  /* A phone without backdrop blur, or one that asks for less transparency or more contrast: the
+     same shape, opaque, with a strong edge. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .avrana-glass { background: var(--color-raised); }
+    .avrana-glass::before { background: var(--color-line-strong); }
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .avrana-glass { background: var(--color-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .avrana-glass::before { background: var(--color-line-strong); }
+  }
+  /* The selected tab's lens (Figma "Glass lens (selected)"): one capsule, under the tabs. */
+  .avrana-lens {
+    background: rgb(255 255 255 / 0.14);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -4px 10px rgb(255 255 255 / 0.1);
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .avrana-lens { background: var(--color-purple-selected); box-shadow: inset 0 0 0 1px var(--color-purple); }
+  }
+
+  /* Type roles as classes, for the words the Concept K screens repeat. */
+  .avrana-display { margin: 0; font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.02em; color: var(--color-cream); overflow-wrap: anywhere; }
+  .avrana-page-title { margin: 0; font-size: var(--text-page); font-weight: 400; line-height: 1.2; letter-spacing: -0.01em; }
+  .avrana-shelf-title { margin: 0; font-size: var(--text-shelf); font-weight: 400; line-height: 1.25; letter-spacing: -0.01em; }
+  .avrana-eyebrow { margin: 0; font-size: var(--text-eyebrow); font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-stone); }
+  .avrana-eyebrow.selected { color: var(--color-purple); }
+  .avrana-meta { margin: 0; font-size: var(--text-body); line-height: 1.35; color: var(--color-stone); font-variant-numeric: tabular-nums; }
+
   /* A plain page (diagnostics): phone first, safe areas respected. */
   .avrana-screen {
     margin-inline: auto; width: 100%; max-width: 40rem;
@@ -153,29 +249,60 @@
              max(2.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
   }
 
-  /* The frame: people on top, the page in the middle, the four places at the bottom. The middle
-     scrolls; the bars stay. Until a wide layout is designed it is a phone-width column. */
+  /* The frame (Concept K, AVR-707): the page scrolls under the shell's floating controls, which
+     never scroll. --avrana-head is the height of the top row (12 + 44 + 12 under the status bar, or
+     the place's name when larger text makes it taller), --avrana-bar-gap the bar's distance from the
+     bottom edge (24, or the home indicator's inset + 8), --avrana-bar-h the bar's height (64, or its
+     labels' when text is larger), and --avrana-end the room the page keeps below its last row so that
+     row ends 16 px above the bar at the end of a scroll (owner review: the bottom row was never fully
+     visible). The shell's own sizes are in px: larger text grows its words, not its 44 px targets,
+     so the page keeps its room (docs/findings/2026-10-14-square-viewport-evidence.md). */
   .avrana-app {
-    height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
-    padding-top: env(safe-area-inset-top); container: frame / size;
+    --avrana-head: calc(env(safe-area-inset-top) + 24px + max(44px, var(--text-page) * 1.2));
+    --avrana-bar-gap: max(24px, calc(env(safe-area-inset-bottom) + 8px));
+    --avrana-bar-h: max(64px, calc(46px + min(var(--text-caption), 15px) * 1.2));
+    --avrana-end: calc(var(--avrana-bar-gap) + var(--avrana-bar-h) + 16px);
+    position: relative; height: 100vh; height: 100dvh; overflow: hidden; container: frame / size;
   }
   .avrana-top {
-    min-height: 3.25rem; display: flex; align-items: center; gap: 0.5rem; container: top / inline-size;
-    padding: 0 max(0.5rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+    position: absolute; z-index: 3; top: 0; left: 0; right: 0; min-height: var(--avrana-head);
+    display: flex; align-items: center; gap: 0.75rem; container: top / inline-size; pointer-events: none;
+    padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 12px max(20px, env(safe-area-inset-left));
+    /* the fixed top edge: ink, so what scrolls under never collides with the title or the utility */
+    background: linear-gradient(to bottom, var(--color-ink) 62%, rgb(18 18 20 / 0));
   }
+  .avrana-top > * { pointer-events: auto; }
+  .avrana-top > .avrana-top-title { pointer-events: none; }   /* a swipe that starts on it scrolls the page */
   .avrana-top-title {
-    flex: 1; min-width: 0; margin: 0; font-size: var(--text-title); font-weight: 600; line-height: 1.15;
-    letter-spacing: -0.01em; overflow-wrap: break-word;
+    flex: 1; min-width: 0; margin: 0; font-size: var(--text-page); font-weight: 400; line-height: 1.2;
+    letter-spacing: -0.01em; overflow-wrap: normal; hyphens: none;     /* a place's name breaks only between words */
   }
-  /* A narrow bar, or large text (the width is measured in the text's own size): the title keeps
-     its whole words, the Party control shows one face and the Limited mark its icon. Both controls
-     keep their names for screen readers. */
-  @container top (max-width: 18rem) {
-    .avrana-hud .faces .avrana-avatar:nth-child(n + 2), .avrana-hud .n, .avrana-limmark .word { display: none; }
-  }
-  .avrana-top-title.brand { font-family: var(--font-brand); font-weight: 300; font-size: 1.4375rem; letter-spacing: 0.005em; }
   /* Over a briefing the bar only says what is going on; the game's name is the page's heading. */
   .avrana-top-title.quiet { font-size: var(--text-section); font-weight: 500; color: var(--color-muted); letter-spacing: 0; }
+  /* Home's own top: the Spire-A Home button on the left, the utility on the right; no title. */
+  html[data-place="home"]:not([data-screen="scene"]) .avrana-top { justify-content: space-between; }
+  .avrana-homebtn {
+    flex: none; width: 44px; height: 44px; border-radius: 50%; margin-left: -4px;
+    display: grid; place-items: center; color: var(--color-cream);
+  }
+  .avrana-homebtn svg { width: 12px; height: 22px; }
+  .avrana-homebtn:focus-visible { outline-offset: 2px; }
+  /* The utility: one glass capsule of 44 px targets. Empty, it is not drawn. Its buttons keep their
+     size when the text is made larger (the place's name beside them needs the room); the icons do too. */
+  .avrana-utility { flex: none; margin-left: auto; display: flex; align-items: center; border-radius: 22px; }
+  .avrana-utility:not(:has(> :not([hidden]))) { display: none; }
+  .avrana-utility > button {
+    position: relative; min-width: 44px; height: 44px; display: grid; place-items: center; padding: 0 11px;
+    color: var(--color-cream); cursor: pointer; border-radius: 1.375rem;
+  }
+  .avrana-utility > button .avrana-icon { width: 20px; height: 20px; vertical-align: 0; }
+  .avrana-utility > button:focus-visible { outline-offset: -3px; }
+  .avrana-utility .count {
+    position: absolute; top: 0.375rem; right: 0.25rem; min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem;
+    background: var(--color-cream); color: var(--color-ink); font-size: var(--text-caption); font-weight: 600; line-height: 1rem; text-align: center;
+  }
+  /* A short screen: the Home button gives its place to the page (Concept K, < 650 px). */
+  @media (max-height: 40.6rem) { #top-home { display: none; } }
   /* The way back from a game's page: a chevron and the name of the place it returns to. */
   .avrana-back {
     display: inline-flex; align-items: center; gap: 0.125rem; min-width: 2.75rem; min-height: 2.75rem;
@@ -184,20 +311,30 @@
   }
   .avrana-back .avrana-icon { flex: none; }
   .avrana-main {
+    position: absolute; inset: 0;
     overflow-y: auto;          /* no overscroll-behavior here: the phone's pull-to-refresh must still work */
-    padding: 0.25rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
+    padding: calc(var(--avrana-head) + 0.5rem) max(1rem, env(safe-area-inset-right)) var(--avrana-end) max(1rem, env(safe-area-inset-left));
+    /* what is scrolled to, or focused, comes to rest clear of the top edge and the bar */
+    scroll-padding: var(--avrana-head) 0 var(--avrana-end);
   }
   @media (min-width: 44rem) {
-    .avrana-top, .avrana-main > .wrap { width: 100%; max-width: 42.5rem; margin-inline: auto; }
+    .avrana-main > .wrap { width: 100%; max-width: 42.5rem; margin-inline: auto; }
+    .avrana-top { padding-inline: max(1rem, calc((100% - 42.5rem) / 2)); }
   }
+  /* What passes under the bar fades into the ink (it starts 28 px above the bar, so the last row at
+     rest is never dimmed). Only on the places, where the bar is. */
+  .avrana-app::after {
+    content: ""; position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; pointer-events: none;
+    height: calc(var(--avrana-bar-gap) + var(--avrana-bar-h) + 1.75rem);
+    background: linear-gradient(to bottom, rgb(18 18 20 / 0), rgb(18 18 20 / 0.85) 55%, rgb(18 18 20 / 0.96));
+  }
+  html:not([data-screen="main"]) .avrana-app::after { display: none; }
 
-  /* Limited Mode, folded: the same mark in the top bar of every page but Home (which says it in
+  /* Limited Mode, folded: the same mark in the utility of every page but Home (which says it in
      full), opening the same words over that page. A word with its icon; the icon alone, still
      named for screen readers, where the bar is narrow or the text is large. */
-  .avrana-limmark {
-    flex: none; min-width: 2.75rem; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center;
-    color: var(--color-warning); cursor: pointer;
-  }
+  .avrana-utility > .avrana-limmark { color: var(--color-warning); }
+  @container top (max-width: 18rem) { .avrana-limmark .word { display: none; } }
   .avrana-limmark .pill {
     display: inline-flex; align-items: center; gap: 0.25rem; min-height: 1.5rem; padding: 0 0.4375rem;
     border: 1px solid currentColor; border-radius: var(--radius-selector);
@@ -205,51 +342,45 @@
   }
   .avrana-limmark .avrana-icon { width: 0.8125rem; height: 0.8125rem; vertical-align: 0; }
 
-  /* The Party control: one control on every page. Faces and a count. */
-  .avrana-hud {
-    flex: none; min-width: 2.75rem; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center;
-    gap: 0.5rem; padding: 0 0.5rem; border-radius: var(--radius-field); color: var(--color-muted); cursor: pointer;
-  }
-  .avrana-hud .faces { display: inline-flex; align-items: center; }
-  .avrana-hud .faces .avrana-avatar { margin-left: -0.5rem; border: 0; box-shadow: 0 0 0 2px var(--color-base-100); }
-  .avrana-hud .faces .avrana-avatar:first-child { margin-left: 0; }
-  .avrana-hud .faces .avrana-icon { width: 1.375rem; height: 1.375rem; }
-  .avrana-hud .n { font-size: var(--text-supporting); font-variant-numeric: tabular-nums; }
-  .avrana-hud .n:empty { display: none; }
-
-  /* The four places, on the one smoky surface. The place you are in is said three ways: weight,
-     the tinted mark behind its icon (the same tint as every other chosen thing) and aria-current.
-     On a wide screen the four stay under the column they belong to. */
+  /* The bar (Concept K): one floating glass capsule, four equal tabs. The place you are in is
+     said three ways: the lens (one capsule under the tabs that slides to it on a spring), a
+     heavier word, and aria-current. On a wide screen it keeps a phone's width, centred. */
   .avrana-nav {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-    background: var(--color-material); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
-    border-top: 1px solid var(--color-material-edge);
-    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    position: absolute; z-index: 3; left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right));
+    bottom: var(--avrana-bar-gap); max-width: 416px; margin-inline: auto;
+    display: flex; height: var(--avrana-bar-h); padding: 5px 6px; border-radius: 32px;
   }
-  @media (min-width: 44rem) { .avrana-nav { padding-inline: max(1rem, calc((100% - 42.5rem) / 2)); } }
   .avrana-nav a {
-    position: relative; min-width: 0; min-height: 4rem; padding: 0.5rem 0.125rem 0.4375rem;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3125rem;
-    color: var(--color-muted); text-decoration: none; text-align: center;
-    font-size: var(--text-caption); font-weight: 500; letter-spacing: 0.01em; line-height: 1.2; overflow-wrap: anywhere;
-    transition: color var(--motion-quick) var(--ease-standard);
+    position: relative; z-index: 1; flex: 1 1 0; min-width: 0; min-height: 54px; padding: 4px 2px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border-radius: 27px; color: var(--color-stone); text-decoration: none; text-align: center;
+    /* one line, whole words: larger text grows the label to 15 px at most, as a phone's own tab bar
+       does (the place is also said by its icon, the lens and aria-current) */
+    font-size: min(var(--text-caption), 15px); font-weight: 500; line-height: 1.2; white-space: nowrap;
+    transition: color var(--motion-1) var(--ease-standard);
   }
-  .avrana-nav a .avrana-icon { position: relative; width: 1.375rem; height: 1.375rem; vertical-align: 0; }
-  .avrana-nav a:hover { color: var(--color-base-content); }
-  .avrana-nav a[aria-current="page"] { color: var(--color-base-content); font-weight: 600; }
-  .avrana-nav a[aria-current="page"]::before {
-    content: ""; position: absolute; top: 0.375rem; left: 50%; width: 3.5rem; max-width: 80%; height: 1.875rem;
-    transform: translateX(-50%); background: var(--color-select); border-radius: var(--radius-field);
-  }
+  .avrana-nav a .avrana-icon { position: relative; width: 24px; height: 24px; vertical-align: 0; }
+  .avrana-nav a:hover { color: var(--color-cream); }
+  .avrana-nav a[aria-current="page"] { color: var(--color-cream); font-weight: 600; }
   .avrana-nav a:focus-visible { outline-offset: -3px; }
-  @media (max-height: 38.75rem) {
-    .avrana-top { min-height: 2.875rem; }
-    .avrana-nav a { min-height: 3.5rem; padding-block: 0.25rem; gap: 0.25rem; }
-    .avrana-nav a[aria-current="page"]::before { top: 0.1875rem; height: 1.75rem; }
+  .avrana-nav .mark { position: relative; display: inline-flex; }
+  .avrana-nav .unread { position: absolute; top: -0.25rem; left: calc(100% - 0.5rem); }
+  /* Me: this phone's own face, 26 px, ringed when it is the place on screen. */
+  .avrana-nav .me { display: inline-grid; place-items: center; width: 26px; height: 26px; }
+  .avrana-avatar.nav { width: 26px; height: 26px; font-size: 16px; border: 0; }
+  .avrana-nav a[aria-current="page"] .avrana-avatar.nav { box-shadow: 0 0 0 2px var(--color-ink), 0 0 0 3.5px var(--color-purple); }
+  /* The lens: the width of one tab; it travels by transform only, never by its blur or its size. */
+  .avrana-nav > .avrana-lens {
+    position: absolute; z-index: 0; top: 5px; bottom: 5px; left: 6px; width: calc((100% - 12px) / 4);
+    border-radius: 27px; pointer-events: none; transform: translateX(calc(var(--at, 0) * 100%));
+    transition: transform var(--motion-spring) var(--ease-spring);
   }
+  .avrana-nav[data-at="party"] { --at: 1; }
+  .avrana-nav[data-at="library"] { --at: 2; }
+  .avrana-nav[data-at="me"] { --at: 3; }
+  .avrana-nav:not([data-at="home"], [data-at="party"], [data-at="library"], [data-at="me"]) > .avrana-lens { opacity: 0; }
 
-  /* Home's one statement, and the line under it. */
-  .avrana-lede { margin: 0; font-size: var(--text-headline); font-weight: 600; line-height: 1.12; letter-spacing: -0.02em; text-wrap: balance; }
+  /* A quieter line under a heading. */
   .avrana-sub { margin: 0.375rem 0 0; color: var(--color-muted); text-wrap: pretty; overflow-wrap: anywhere; }
   .avrana-textlink { color: var(--color-base-content); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-line-strong); display: inline-block; padding: 0.75rem 0; margin: -0.75rem 0; }
   button.avrana-textlink { min-width: 2.75rem; min-height: 2.75rem; text-align: end; cursor: pointer; }   /* a short word is still a thumb wide */
@@ -421,9 +552,9 @@
     transition: border-color var(--motion-quick) var(--ease-standard), transform var(--motion-quick) var(--ease-standard);
   }
   /* A cover you can open answers the pointer and the press: a stronger edge, then a small give. */
-  :is(.avrana-tile, .avrana-hero, .avrana-row > .open):hover .avrana-cover { border-color: var(--color-control); }
-  :is(.avrana-tile, .avrana-hero, .avrana-row > .open):active .avrana-cover { transform: scale(0.975); border-color: var(--color-control); }
-  :is(.avrana-tile, .avrana-hero, .avrana-row > .open):focus-visible { outline-offset: 3px; }
+  :is(.avrana-tile, .avrana-card, .avrana-row > .open):hover .avrana-cover { border-color: var(--color-control); }
+  :is(.avrana-tile, .avrana-card, .avrana-row > .open):active .avrana-cover { transform: scale(0.975); border-color: var(--color-control); }
+  :is(.avrana-tile, .avrana-card, .avrana-row > .open):focus-visible { outline-offset: 3px; }
   .avrana-cover.has-art { background: var(--color-base-300); }
   .avrana-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .avrana-cover > .avrana-icon { width: 38%; height: 38%; }
@@ -439,6 +570,9 @@
   .avrana-cover.wide.icon-art > img { object-fit: contain; padding: 0.75rem; }
   /* A cover the owner supplied (box art) is shown whole in a wide frame, never cut to a strip. */
   .avrana-cover.wide.own-art > img { object-fit: contain; object-position: 50% 50%; }
+  /* A package's banner (16:9) where the box is wide is drawn to fill it: in a game's page the frame is 16:9
+     too, so nothing is cut; in a wide stage the sides or the edges give a little, never more than ~27%. */
+  .avrana-cover.banner-art > img { object-fit: cover; object-position: 50% 50%; }
   .avrana-grid { display: grid; gap: 0.875rem 0.625rem; margin: 0; padding: 0; list-style: none; container: shelf / inline-size; }
   .avrana-grid > li { min-width: 0; }
   .avrana-grid.medium { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -481,23 +615,136 @@
   .avrana-blank h3 { margin: 0; font-size: var(--text-section); font-weight: 600; overflow-wrap: anywhere; }
   .avrana-blank p { margin: 0; color: var(--color-muted); font-size: var(--text-supporting); }
   .avrana-blank .btn { margin-top: 0.625rem; }
-  /* Home: the lead cover, then shelves that scroll sideways inside themselves. */
-  .avrana-hero { display: block; width: 100%; text-align: left; color: inherit; text-decoration: none; cursor: pointer; border-radius: var(--radius-box); }
-  .avrana-hero .row { display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; margin-top: 0.5rem; }
-  /* Wide screens: the lead cover is a band, so the shelf under it is on screen without scrolling. */
-  @media (min-width: 44rem) { .avrana-hero .avrana-cover.wide { aspect-ratio: 5 / 2; } }
   /* While the list of games is on its way: the shape of a shelf, not a grey block. */
   .avrana-loading { display: grid; gap: 0.625rem; margin-top: 1.125rem; }
   .avrana-loading > .skeleton:first-child { width: 8rem; height: 1.25rem; }
   .avrana-loading .avrana-grid .skeleton { aspect-ratio: 1; border-radius: var(--radius-box); }
   .avrana-loading .avrana-grid li:nth-child(n + 4) { display: none; }
   @media (min-width: 44rem) { .avrana-loading .avrana-grid li:nth-child(n + 4) { display: block; } }
-  .avrana-hero .row > span:first-child { flex: 1; min-width: 0; }
-  .avrana-hero .t { display: block; font-size: var(--text-section); font-weight: 600; overflow-wrap: anywhere; }
-  .avrana-hero .m { display: block; color: var(--color-muted); font-size: var(--text-supporting); }
-  .avrana-hero .m.warn { color: var(--color-warning); }
-  .avrana-hero .m.warn .avrana-icon { width: 0.75rem; height: 0.75rem; margin-right: 0.1875rem; }
-  .avrana-hero .row > .avrana-icon { color: var(--color-muted); flex: none; }
+  /* Home's stage (Concept K K0, AVR-708): the game that matters now, full bleed under the top row.
+     Opaque, never glass. Its words sit on two fixed ink gradients, whatever the art: the top 150 px
+     (78% to nothing) under the top row, and the bottom 300 px, or three quarters of a short stage (nothing, 82% at 55%, then ink) under
+     the title, so their contrast is the ink's own. A title with no art is its name, set large. */
+  html[data-place="home"][data-stage="on"]:not([data-screen="scene"]) .avrana-main { padding-top: 0; }
+  /* (at the top of Home the stage draws its own top gradient; once it scrolls, the top row's is back) */
+  html[data-place="home"][data-stage="on"]:not([data-screen="scene"], [data-scrolled]) .avrana-top { background: none; }
+  .avrana-stage {
+    position: relative; isolation: isolate; display: flex; flex-direction: column; justify-content: flex-end;
+    min-height: clamp(280px, 55svh, 468px);
+    margin-inline: calc(-1 * max(1rem, env(safe-area-inset-left))) calc(-1 * max(1rem, env(safe-area-inset-right)));
+    padding: var(--avrana-head) var(--spacing-gutter-hero) 0.25rem; background: var(--color-depth); overflow: hidden;
+  }
+  .avrana-stage > .art { position: absolute; inset: 0; z-index: -1; cursor: pointer; }
+  .avrana-stage > .art::before, .avrana-stage > .art::after { content: ""; position: absolute; left: 0; right: 0; pointer-events: none; }
+  .avrana-stage > .art::before { top: 0; height: 150px; background: linear-gradient(to bottom, rgb(18 18 20 / 0.78), rgb(18 18 20 / 0)); }
+  .avrana-stage > .art::after { bottom: 0; height: min(300px, 75%); background: linear-gradient(to bottom, rgb(18 18 20 / 0), rgb(18 18 20 / 0.82) 55%, var(--color-ink)); }
+  .avrana-cover.stage { position: absolute; inset: 0; width: auto; aspect-ratio: auto; border: 0; border-radius: 0; }
+  .avrana-cover.stage > img { object-fit: cover; object-position: 50% 30%; }
+  /* A banner on the stage is fitted to the stage's width and hung from its top: all of it shows across (never
+     cut at the sides), the art's own lower edge melts into the ink gradient under the title, and a box wider than
+     16:9 loses its lower part first (the copy covers it), never its sign. Its subject is above the copy, not behind it. */
+  .avrana-cover.stage.banner-art > img { inset: 0 0 auto 0; height: auto; aspect-ratio: 16 / 9; object-position: 50% 0; }
+  /* (a banner with no cover, on a narrow stage: the same, hung below the top row instead of under it) */
+  .avrana-cover.stage.banner-art.banner-low > img { top: var(--avrana-head); mask-image: linear-gradient(to bottom, #000 72%, transparent); }
+  /* A stage wider than 16:9 (a short landscape phone) is shorter than the banner at its width: it fills the stage,
+     its middle kept, a little more of its top than its bottom cut, so the sign is not left under the title. */
+  .avrana-stage > .art { container-type: size; }
+  @container (min-aspect-ratio: 16 / 9) { .avrana-cover.stage.banner-art > img { inset: 0; height: 100%; aspect-ratio: auto; object-position: 50% 35%; } }
+  .avrana-cover.stage.icon-art > img, .avrana-cover.stage.own-art > img { object-fit: contain; padding: calc(var(--avrana-head) + 1rem) 15% 9rem; }
+  .avrana-cover.stage:not(.has-art) { background: var(--color-surface); place-items: start; }
+  .avrana-cover.stage:not(.has-art) > .avrana-icon { display: none; }
+  .avrana-stage .noart {
+    position: absolute; top: calc(var(--avrana-head) + 0.5rem); left: var(--spacing-gutter-hero); right: var(--spacing-gutter-hero);
+    font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; color: var(--color-graphite); overflow-wrap: anywhere;
+  }
+  .avrana-stage .art:has(> .avrana-cover.has-art) > .noart { display: none; }
+  .avrana-stage .copy { display: grid; gap: 6px; }
+  .avrana-stage .avrana-meta.warn { color: var(--color-warning); }
+  .avrana-stage .avrana-meta.warn .avrana-icon { width: 0.875rem; height: 0.875rem; margin-right: 0.25rem; }
+  @media (min-width: 44rem) {
+    .avrana-stage { margin-inline: 0; margin-top: calc(var(--avrana-head) + 0.5rem); padding-top: 3rem; border-radius: var(--radius-preview); }
+  }
+  /* The stage's actions: one primary (the Host's Select) and Preview. Dimmed and out of reach
+     while a preview is open, so two primary actions are never live at once. */
+  .avrana-stage-actions { display: flex; gap: 0.625rem; margin-top: 1rem; transition: opacity var(--motion-1) var(--ease-standard); }
+  .avrana-stage-actions > .btn { min-height: 52px; border-radius: var(--radius-button); font-size: var(--text-button); font-weight: 500; }
+  .avrana-stage-actions > .btn-primary { flex: 1 1 auto; }
+  .avrana-stage-actions > #stage-preview { flex: 0 0 auto; padding-inline: 1.25rem; }
+  .avrana-stage-actions:not(:has(.btn-primary)) > #stage-preview { flex: 1 1 auto; }
+  .avrana-stage-actions[data-dim] { opacity: 0.3; }
+  /* Who is here, in a row under the stage; the Host sees that they are. */
+  .avrana-presence.home { width: 100%; margin-top: 0.75rem; }
+  .avrana-presence.home .n { flex: 1; }
+  .avrana-tag { display: inline-grid; place-items: center; min-height: 1.375rem; padding: 0 0.5rem; border-radius: 0.375rem; font-size: var(--text-eyebrow); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+  .avrana-tag.host { background: var(--color-purple); color: var(--color-ink); }
+  @media (max-height: 40.6rem) { .avrana-presence.home .avrana-tag.host { display: none; } }
+  /* Home's rail of covers: 2.2 to a row, portrait art, a title and a line under each. */
+  .avrana-rail.cards { gap: 0.75rem; }
+  .avrana-rail.cards > li { width: calc((100% - 1.5rem) / 2.2); }
+  .avrana-rail.cards.small > li { width: calc((100% - 2.25rem) / 3.2); }
+  .avrana-card { display: block; width: 100%; min-width: 0; min-height: 2.75rem; text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius-box); }
+  .avrana-card .t { display: block; margin-top: 0.5rem; font-size: var(--text-body); font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
+  .avrana-card .m { display: block; color: var(--color-stone); font-size: var(--text-secondary); line-height: 1.3; }
+  .avrana-card .m.warn { color: var(--color-warning); margin-top: 0.125rem; }
+  .avrana-card .m.warn .avrana-icon { width: 0.75rem; height: 0.75rem; margin-right: 0.1875rem; }
+  .avrana-card[aria-expanded="true"] .avrana-cover { border-color: var(--color-cream); }
+  .avrana-cover.tall { aspect-ratio: 3 / 4; border-radius: 12px; }
+  /* The inline preview: a game's facts, opened in place. Opaque. */
+  .avrana-preview {
+    display: grid; gap: 14px; margin-top: 1rem; padding: 16px; border-radius: var(--radius-preview);
+    background: var(--color-raised); border: 1px solid var(--color-line-strong);
+  }
+  .avrana-preview[hidden] { display: none; }
+  .avrana-preview .head { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+  .avrana-preview .thumb { display: block; width: 72px; }
+  .avrana-preview .thumb .avrana-cover { border-radius: 10px; }
+  .avrana-preview h2 { margin: 0; font-size: var(--text-shelf); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere; }
+  .avrana-preview h2:focus { outline: none; }
+  .avrana-preview h2:focus-visible { outline: 2px solid var(--color-base-content); outline-offset: 2px; }
+  .avrana-preview .close { margin: -6px -6px 0 0; border-radius: 50%; }
+  .avrana-preview .d { margin: 0; font-size: var(--text-body); line-height: 1.45; color: var(--color-cream); }
+  .avrana-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .avrana-chips > li { padding: 6px 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-chip); font-size: var(--text-secondary); color: var(--color-cream); }
+  .avrana-chips > li.warn { color: var(--color-warning); border-color: color-mix(in oklab, var(--color-warning) 45%, transparent); }
+  .avrana-device { display: flex; align-items: center; gap: 12px; margin: 0; font-size: var(--text-body); }
+  .avrana-device .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--color-surface); color: var(--color-ready); }
+  .avrana-device[data-fit="unavailable"] .well { color: var(--color-warning); }
+  .avrana-device[data-fit="watch"] .well { color: var(--color-stone); }
+  .avrana-device > span:last-child { display: grid; }
+  .avrana-device .why { color: var(--color-stone); font-size: var(--text-secondary); }
+  .avrana-preview .acts { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+  .avrana-preview .acts:empty { display: none; }
+  .avrana-preview .acts > .btn { flex: 1 1 auto; min-height: 48px; border-radius: 12px; font-size: var(--text-button); font-weight: 500; }
+  .avrana-preview .more { justify-self: start; }
+  /* The art's flight between a cover and the preview (tier 2; none under Reduce Motion). */
+  ::view-transition-group(avrana-art) { animation-duration: var(--motion-2); animation-timing-function: var(--ease-meaningful); }
+
+  /* Tier 3 (Concept K, AVR-711): the Party moving is a scene change. The briefing comes up from
+     below, the frame fades back in when it ends, and Home's stage fades to "Just played". 200 ms
+     (--motion-3) by default; 600 ms only as the AVR-704 proposal (?concept=motion). Nothing moves
+     under Reduce Motion (the rule above stops every animation). */
+  @keyframes avrana-rise { from { opacity: 0; transform: translateY(16px); } }
+  @keyframes avrana-fade { from { opacity: 0; } }
+  #scene[data-enter] { animation: avrana-rise var(--motion-3) var(--ease-meaningful); }
+  #content[data-enter] { animation: avrana-fade var(--motion-3) var(--ease-meaningful); }
+  #home-lead[data-enter] > .avrana-stage, #home-lead[data-enter] > .round-over { animation: avrana-fade var(--motion-3) var(--ease-meaningful); }
+  :root[data-concept~="motion"] { --motion-3: var(--motion-3-proposal); }
+  /* Tier 2: the bar's lens swells a little on its way to the new place (scale, not transform, so
+     it composes with the slide) */
+  @keyframes avrana-swell { 40% { scale: 1.06 1.08; } }
+  #nav[data-enter] > .avrana-lens { animation: avrana-swell var(--motion-spring) var(--ease-meaningful); }
+
+  /* Tier 1: a press answers at once (and never under Reduce Motion) */
+  .btn, .avrana-card, .avrana-list > li > button, .avrana-list > li > a { transition: transform var(--motion-1) var(--ease-standard), background-color var(--motion-1) var(--ease-standard), color var(--motion-1) var(--ease-standard); }
+  .btn:active:not(:disabled):not([aria-disabled="true"]), .avrana-card:active { transform: scale(0.98); }
+
+  .avrana-proposal {
+    position: fixed; z-index: 70; top: calc(env(safe-area-inset-top) + 4px); left: 50%; transform: translateX(-50%);
+    margin: 0; padding: 2px 10px; border-radius: 999px; background: var(--color-purple); color: var(--color-ink);
+    font-size: var(--text-eyebrow); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+    pointer-events: none;
+  }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--motion-1); }
   /* (the rail clips what leaves it, so it keeps a focus ring's width of room on every side) */
   .avrana-rail { display: flex; gap: 0.625rem; margin: -0.25rem; padding: 0.25rem; list-style: none; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 0.25rem; }
   .avrana-rail::-webkit-scrollbar { display: none; }
@@ -540,22 +787,39 @@
 
   /* The briefing (ADR 0011): a round's setup, under the frame's top bar. What and who scroll; the
      decision stays at the bottom, within reach of a thumb. */
-  .avrana-brief { grid-row: 2 / 4; min-height: 0; display: flex; flex-direction: column; }
+  .avrana-brief { position: absolute; z-index: 1; inset: 0; min-height: 0; display: flex; flex-direction: column; }
   .avrana-brief[hidden] { display: none; }
   .avrana-brief > .scroll {
-    flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 0.625rem;
-    padding: 0.25rem max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
+    flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-auto-rows: max-content; align-content: start; gap: 0.625rem;   /* (rows as tall as what is in them: the stage clips its art, so it would otherwise be squeezed) */
+    padding: 0 max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
   }
-  /* the art gives way on a short screen: the name, the rules and the line-up matter more */
-  .avrana-brief .avrana-cover.wide { aspect-ratio: auto; height: clamp(4.5rem, 18vh, 9.5rem); height: clamp(4.5rem, 18dvh, 9.5rem); }
-  .avrana-brief h2 { margin: 0.25rem 0 0; font-size: var(--text-headline); font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+  /* K1 (Concept K, AVR-709): a compact stage under the top row; the art gives way on a short
+     screen, where the decision and its reason matter more. Its eyebrow says it is selected. */
+  .avrana-stage.compact { min-height: clamp(200px, 33svh, 280px); }
+  @container frame (max-height: 40.6rem) { .avrana-stage.compact { min-height: 0; padding-top: calc(var(--avrana-head) + 0.5rem); } }
+  .avrana-brief h2.avrana-display { overflow-wrap: anywhere; line-height: 1.25; }   /* (its letters inside its box: the title is a label the layout checks) */
+  .avrana-eyebrow.selected { display: flex; align-items: center; gap: 8px; }
+  .avrana-eyebrow.selected::before { content: ""; flex: none; width: 3px; height: 1em; border-radius: 2px; background: var(--color-purple); }
+  /* Where the round stands: rows of a well and two lines, in one opaque panel. */
+  .avrana-panel { display: grid; padding: 4px 16px; border-radius: var(--radius-panel); background: var(--color-surface); border: 1px solid var(--color-line); }
+  .avrana-panel .prow { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 0; font-size: var(--text-body); }
+  .avrana-panel .prow + .prow { border-top: 1px solid var(--color-line); }
+  .avrana-panel .prow > span:last-child { display: grid; min-width: 0; overflow-wrap: anywhere; }
+  .avrana-panel .sub { color: var(--color-stone); font-size: var(--text-secondary); }
+  .avrana-panel .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--color-raised); color: var(--color-stone); }
+  .avrana-panel .well[data-fit="ready"] { color: var(--color-ready); }
+  .avrana-panel .well[data-fit="watch"] { color: var(--color-warning); }
+  /* K3 on Home: "Round over" under the stage, then the Host's two choices, one above the other */
+  .avrana-panel.round-over { margin-top: 1rem; }
+  .avrana-panel .thumb { flex: none; width: 40px; border-radius: 8px; overflow: hidden; }
+  .avrana-stage-actions[data-just] { flex-direction: column; }
   .avrana-brief .avrana-sec { margin-top: 0.25rem; }
   .avrana-brief .avrana-list { border-block: 1px solid var(--color-line); }
   .avrana-dock {
     flex: none; display: grid; gap: 0.5rem; container: dock / inline-size;
     padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-    background: var(--color-material); border-top: 1px solid var(--color-material-edge);
-    -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+    /* opaque: glass is the shell's three controls only (Concept K) */
+    background: var(--color-ink); border-top: 1px solid var(--color-line);
   }
   .avrana-dock p { margin: 0; }
   .avrana-dock .live, .avrana-dock .lost { display: grid; gap: 0.5rem; }
@@ -575,8 +839,21 @@
   @container frame (max-height: 32rem) {
     .avrana-brief { display: block; overflow-y: auto; }
     .avrana-brief > .scroll { overflow: visible; }
-    .avrana-dock { background: none; border-top: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .avrana-dock { background: none; border-top: 0; }
   }
+
+  /* The compact presence row (Concept K component "Party / Compact Presence"): overlapping 32 px
+     faces ringed in ink, then the count in words. Away is a dimmed face and the word "away". */
+  .avrana-presence {
+    display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; padding: 0.375rem 0; width: fit-content;
+    color: var(--color-stone); font-size: var(--text-secondary); text-align: left; cursor: pointer; border-radius: var(--radius-control);
+  }
+  .avrana-presence .faces { display: inline-flex; align-items: center; }
+  .avrana-presence .faces > * { width: 2rem; height: 2rem; margin-left: -0.5rem; border: 0; box-shadow: 0 0 0 2px var(--color-ink); }
+  .avrana-presence .faces > :first-child { margin-left: 0; }
+  .avrana-presence .faces > [data-away] { opacity: 0.45; }
+  .avrana-presence .faces > .more { display: inline-grid; place-items: center; border-radius: 50%; background: var(--color-raised); color: var(--color-cream); font-size: var(--text-supporting); font-weight: 500; }
+  .avrana-presence .n { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
   /* People on the Party page: faces first, the name under each, then what is true of them. */
   .avrana-faces {
@@ -587,6 +864,35 @@
   .avrana-faces .who { margin-top: 0.5rem; max-width: 100%; font-weight: 600; overflow-wrap: anywhere; }
   .avrana-faces .tags { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem; min-height: 1.25rem; margin-top: 0.125rem; }
   .avrana-faces li[data-away] .avrana-avatar, .avrana-people li[data-away] .avrana-avatar { filter: grayscale(1) brightness(0.6); }
+
+  /* Concept K's grouped lists (AVR-710): a small-caps heading over rows in one opaque panel. */
+  .avrana-group-h { margin: 0 0 0.5rem; font-size: var(--text-eyebrow); font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-stone); }
+  .avrana-group { margin: 0; padding: 0 16px; list-style: none; border-radius: var(--radius-panel); background: var(--color-surface); border: 1px solid var(--color-line); }
+  .avrana-group > li + li { border-top: 1px solid var(--color-line); }
+  .avrana-group.avrana-list > li > a, .avrana-group.avrana-list > li > button { padding-left: 0; padding-right: 0; }
+  .avrana-group .well { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--color-raised); color: var(--color-stone); }
+  .avrana-roster > li { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; }
+  .avrana-roster .line { display: grid; flex: 1; min-width: 0; }
+  .avrana-roster .who { font-size: var(--text-body); font-weight: 500; overflow-wrap: anywhere; }
+  .avrana-roster .sub { color: var(--color-stone); font-size: var(--text-secondary); overflow-wrap: anywhere; }
+  .avrana-roster .mode { color: var(--color-warning); }
+  .avrana-roster li[data-away] .avrana-avatar { opacity: 0.45; filter: grayscale(1); }
+  .avrana-roster .hand { flex: none; min-height: 44px; border-radius: var(--radius-button); }
+  .avrana-quiet-row { display: flex; justify-content: center; margin-top: 1.5rem; }
+  .avrana-quiet { min-height: 44px; padding: 0 1rem; color: var(--color-stone); font-size: var(--text-body); background: none; border: 0; cursor: pointer; }
+  .avrana-quiet:hover { color: var(--color-cream); }
+
+  /* Me's head: the person, large; the whole of it opens the profile. */
+  .avrana-me-head { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 96px; padding: 4px 0; text-align: left; background: none; border: 0; color: var(--color-cream); cursor: pointer; }
+  .avrana-me-head .name { font-size: var(--text-page); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+  .avrana-me-head .edit { display: inline-grid; place-items: center; min-height: 40px; padding: 0 14px; border-radius: var(--radius-button); background: var(--color-raised); border: 1px solid var(--color-line); font-size: var(--text-body); }
+  .avrana-me-head .sub { color: var(--color-stone); font-size: var(--text-body); }
+  .avrana-avatar.hero { width: 80px; height: 80px; font-size: 2.75rem; }
+  .avrana-group .t { display: grid; flex: 1; min-width: 0; text-align: left; }
+  .avrana-group .sub { color: var(--color-stone); font-size: var(--text-secondary); overflow-wrap: anywhere; }
+  .avrana-group.avrana-list button:disabled { cursor: default; opacity: 1; color: inherit; }
+  .avrana-row-static { display: flex; align-items: center; gap: 12px; min-height: 64px; margin: 0; padding: 10px 0; }
+
 
   /* People in the drawer: one row each. */
   .avrana-people { margin: 0; padding: 0; list-style: none; }
@@ -659,15 +965,16 @@
   .avrana-tabs button:hover { color: var(--color-base-content); }
   .avrana-tabs button[aria-pressed="true"] { background: var(--color-select); border-color: var(--color-secondary); color: var(--color-base-content); font-weight: 600; }
 
-  /* Something new in the Party's chat (AVR-54): one small count, the same on the Party control and
-     the Chat word. It says a number only; the control's name says it to a screen reader. */
-  .avrana-hud .unread, .avrana-tabs .unread {
+  /* Something new in the Party's chat (AVR-54): one small count, the same on the Party tab, the
+     Party page's Chat row and the Chat word. It says a number only; the control's name says it to
+     a screen reader. */
+  .avrana-nav .unread, .avrana-list .unread, .avrana-tabs .unread {
     min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem;
     background: var(--color-base-content); color: var(--color-primary-content);
     font-size: var(--text-caption); font-weight: 600; line-height: 1rem; text-align: center; font-variant-numeric: tabular-nums;
   }
   .avrana-tabs .unread { margin-left: 0.375rem; }
-  .avrana-hud .unread:empty, .avrana-tabs .unread:empty { display: none; }
+  .avrana-nav .unread:empty, .avrana-list .unread:empty, .avrana-tabs .unread:empty { display: none; }
 
   /* The Party layer over a game (AVR-292, layer.html): a frame the game page places. Its document
      is transparent; it is only as big as what it shows (the button, the tab, or the open drawer).
@@ -760,6 +1067,10 @@
   .avrana-checks li { display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.5rem; align-items: start; }
   .avrana-checks li .avrana-icon { margin-top: 0.125rem; color: var(--color-muted); }
   .avrana-checks li[data-status="yes"] .avrana-icon { color: var(--color-success); }
+  /* (Me's checks sit in a group panel, Concept K AVR-710) */
+  .avrana-group-h { display: block; }
+  .avrana-group.avrana-checks { gap: 0; padding: 4px 16px; }
+  .avrana-group.avrana-checks > li { align-items: center; min-height: 48px; padding: 10px 0; }
   .avrana-checks li[data-status="no"] .avrana-icon { color: var(--color-warning); }
 
   /* Diagnostics: denser, still legible; wide tables scroll sideways on phones. */

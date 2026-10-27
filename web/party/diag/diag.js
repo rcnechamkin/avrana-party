@@ -7,11 +7,13 @@ import { evaluateSeat } from '../lib/evaluate.js';
 import { createKeepAwake } from '../lib/keep-awake.js';
 import { describeShell, readVersion, registerShell, removeShell } from '../lib/shell.js';
 import { hydrateIcons } from '../lib/icons.js';
+import { createInputProbe } from '../lib/input-probe.js';
 import { h } from '../lib/ui.js';
 
 const $ = (id) => document.getElementById(id);
 const data = { report: null, catalog: null, origin: null, version: null, shell: null, evaluations: [], status: null };
 let awake = null;
+let input = null;          // the input probe, only after "Start input probe" (AVR-330)
 
 async function json(url) {
   try {
@@ -70,6 +72,7 @@ function renderProviders() {
 function network(origin) {
   if (!origin || origin.error) return `unknown (${origin ? origin.error : 'no answer'})`;
   if (origin.serverAddr === '10.42.0.1') return 'Party Wi-Fi (10.42.0.1)';
+  if (origin.network === 'hosted') return 'hosted staging, over the internet (not the Party Wi-Fi)';
   return `reached the Pi at ${origin.serverAddr} (not the Party Wi-Fi address)`;
 }
 
@@ -159,7 +162,74 @@ function fullReport() {
     appliance: data.catalog && !data.catalog.error
       ? { id: data.catalog.appliance.id, runtime: data.catalog.runtime, providers: data.catalog.providers } : null,
     keepAwake: awake ? awake.state : 'not tested',
+    input: input ? input.probe.report() : 'not tested',
   };
+}
+
+/** The safe-area insets in CSS pixels, measured from env() on a hidden element. */
+function measureInsets() {
+  const probe = document.createElement('div');
+  for (const side of ['top', 'right', 'bottom', 'left']) probe.style[`padding${side[0].toUpperCase()}${side.slice(1)}`] = `env(safe-area-inset-${side})`;
+  probe.style.position = 'fixed';
+  probe.style.visibility = 'hidden';
+  document.body.append(probe);
+  const cs = getComputedStyle(probe);
+  const insets = { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0,
+    bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 };
+  probe.remove();
+  return insets;
+}
+
+function renderInput() {
+  const r = input.probe.report();
+  const v = r.viewport;
+  const pads = r.pads.map((p) => `slot ${p.slot}: ${p.mapping}, ${p.buttons} buttons, ${p.axes} axes; pressed [${p.pressed.join(', ')}], moved [${p.moved.join(', ')}]`);
+  dl($('input'), [
+    ['Observed path', r.path],
+    ['Viewport', `${v.css.w}×${v.css.h} CSS px @${v.dpr}x (${v.device.w}×${v.device.h} device px), ${v.orientation}`],
+    ['Safe area', v.safeArea ? `top ${v.safeArea.top}, right ${v.safeArea.right}, bottom ${v.safeArea.bottom}, left ${v.safeArea.left}` : '—'],
+    ['Gamepad API', `${r.support.gamepadApi}${r.support.secureContext ? '' : ' (not a secure context)'}`],
+    ['Controllers', pads.join('; ') || 'none reported yet'],
+    ['Keys', r.keys.map((k) => `${k.key}${k.code && k.code !== k.key ? ` (${k.code})` : ''} ×${k.count}`).join(', ') || '—'],
+    ['Touch / pointer', `${r.touches} touches; pointers touch ${r.pointers.touch}, pen ${r.pointers.pen}, mouse ${r.pointers.mouse}; ${r.support.touchPoints} touch points, ${r.support.pointer} pointer`],
+    ['Timeline', r.events.slice(-8).map((e) => `${(e.at / 1000).toFixed(1)} s ${e.kind}${e.detail ? ` ${e.detail}` : ''}`).join(' · ') || '—'],
+    ['Notes', r.notes.join(' ') || '—'],
+  ]);
+  $('report').textContent = JSON.stringify(fullReport(), null, 2);
+}
+
+/** Start or stop the input probe. Listeners exist only while it runs; nothing is stored or sent. */
+function toggleInput() {
+  if (input) {
+    cancelAnimationFrame(input.frame);
+    clearInterval(input.timer);
+    for (const [target, type, fn] of input.listeners) target.removeEventListener(type, fn);
+    input.listeners = [];
+    renderInput();
+    $('input-start').textContent = 'Probe stopped: start again';
+    input = null;
+    return;
+  }
+  const probe = createInputProbe({ insets: measureInsets() });
+  input = { probe, listeners: [], frame: 0, timer: 0 };
+  const on = (target, type, fn) => { target.addEventListener(type, fn, { passive: true }); input.listeners.push([target, type, fn]); };
+  on(window, 'gamepadconnected', (e) => probe.gamepadConnected(e.gamepad));
+  on(window, 'gamepaddisconnected', (e) => probe.gamepadDisconnected(e.gamepad));
+  on(window, 'keydown', (e) => probe.key(e));
+  on(window, 'touchstart', () => probe.touch());
+  on(window, 'pointerdown', (e) => probe.pointer(e.pointerType));
+  on(document, 'visibilitychange', () => probe.visibility(document.visibilityState));
+  on(window, 'focus', () => probe.focus(true));
+  on(window, 'blur', () => probe.focus(false));
+  on(window, 'resize', () => { probe.setInsets(measureInsets()); probe.resize(); });
+  const poll = () => {
+    try { probe.sample(navigator.getGamepads ? navigator.getGamepads() : []); } catch { /* blocked by policy */ }
+    input.frame = requestAnimationFrame(poll);
+  };
+  poll();
+  input.timer = setInterval(renderInput, 500);
+  renderInput();
+  $('input-start').textContent = 'Stop input probe';
 }
 
 function renderAll() {
@@ -211,6 +281,8 @@ $('awake').addEventListener('click', async () => {
   $('awake-state').textContent = `Keep-awake: ${awake.state}`;
   renderAll();
 });
+
+$('input-start').addEventListener('click', toggleInput);
 
 $('remove').addEventListener('click', async () => {
   const removed = await removeShell();

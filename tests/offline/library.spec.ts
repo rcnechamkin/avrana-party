@@ -465,19 +465,22 @@ test('back from a game’s page returns to the same cover at the same scroll, ho
   await expect(page.locator('#game-detail > *')).toHaveCount(0);
   // from a game's page, the bar goes anywhere
   await page.locator('#games [data-game="bluff"]').click();
-  await page.locator('#nav a[data-go="system"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-place', 'system');
+  await page.locator('#nav a[data-go="me"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-place', 'me');
   await expect(page.locator('#top-back')).toBeHidden();
-  await expect(page.locator('#top-title')).toHaveText('System');
+  await expect(page.locator('#top-title')).toHaveText('Me');
 });
 
-test('Home’s shelves: a lead title, the games, and what this phone played, all from the same list', async ({ page }) => {
+test('Home’s stage and rail: a Featured title, the games, and what this phone played, all from the same list', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('wc-name', 'Robin'));         // a phone that has a name can play
   await open(page, 'home');
   const lead = page.locator('#home-lead [data-game]');
   await expect(page.locator('#home-games')).toBeVisible();
   await expect(lead).toHaveAttribute('data-game', 'bluff');                         // the first one that can be played
-  await expect(lead).toHaveAccessibleName('BLUFF 2–6 players');
+  await expect(lead).toHaveAccessibleName('BLUFF');                                 // the stage is named by its title (Concept K, AVR-708)
+  await expect(lead.locator('.avrana-eyebrow')).toHaveText('Featured');             // a recommendation, never "Selected"
+  await expect(lead.locator('.avrana-meta').first()).toHaveText('2–6 players · Phone only');   // no party: no fit to say
+  await expect(page.locator('#home-actions button')).toHaveText(['Preview']);       // no Party: nobody to select for
   await expect(page.locator('#home-great-h')).toHaveText('Games');                  // no party: nothing to be "great for"
   expect(await page.locator('#home-great [data-game]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.game)))
     .toEqual(['checkers', 'expo', 'arcade-gauntlet2', 'ps1-bomberman', 'ps1-worms']);           // the lead is not repeated
@@ -485,8 +488,14 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await expect(page.locator('#home-recent-sec')).toBeHidden();                      // nothing played here yet
   expect(await smallTargets(page, `#view-home :is(${CONTROLS})`)).toEqual([]);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
-  // a cover on Home opens the same game the Library does, and focus comes back to it
-  await lead.click();
+  // the stage opens its facts in place (it never starts anything); they lead to the same page the
+  // Library opens, and focus comes back to where it left
+  await page.locator('#stage-preview').click();
+  await expect(page.locator('#home-preview')).toBeVisible();
+  await expect(page.locator('#preview-title')).toBeFocused();
+  await expect(page.locator('#stage-preview')).toHaveAttribute('aria-expanded', 'true');
+  const more = page.locator('#home-preview').getByRole('link', { name: 'More about BLUFF' });
+  await more.click();
   await expect(page.locator('#game-detail[data-id="bluff"]')).toBeVisible();
   await expect(page.locator('#top-back')).toHaveAccessibleName('Home');             // back to where it was opened from
   await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
@@ -497,8 +506,11 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
   await expect(page.locator('#nav a[aria-current="page"]')).toHaveAttribute('data-go', 'home');
   await page.locator('#top-back').click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'home');
-  await expect(lead).toBeFocused();
-  await page.locator('#home-games').getByRole('link', { name: 'Library' }).click();
+  await expect(more).toBeFocused();
+  await page.keyboard.press('Escape');                                              // the facts go away; focus goes back to Preview
+  await expect(page.locator('#home-preview')).toBeHidden();
+  await expect(page.locator('#stage-preview')).toBeFocused();
+  await page.locator('#home-games').getByRole('link', { name: 'All games' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-place', 'library');
   // playing one is remembered on this phone, and Home then leads with it
   await (await openGame(page, 'arcade-gauntlet2')).getByRole('link', { name: 'Play' }).click();
@@ -518,7 +530,7 @@ test('Home’s shelves: a lead title, the games, and what this phone played, all
     .toEqual(['arcade-gauntlet2']);                                                 // what was played before that
   // a keyboard's focus ring on a rail's first cover is whole: the rail leaves it room
   const room = await page.locator('#home-great').evaluate((rail) => {
-    const a = rail.getBoundingClientRect(), b = rail.querySelector('a')!.getBoundingClientRect();
+    const a = rail.getBoundingClientRect(), b = rail.querySelector('[data-game]')!.getBoundingClientRect();
     return [b.left - a.left, b.top - a.top];
   });
   for (const px of room) expect(px).toBeGreaterThanOrEqual(4);
@@ -602,14 +614,17 @@ test('with reduced motion nothing in the Library animates', async ({ page }) => 
   expect(moving).toEqual([]);
 });
 
-test('reading order: search, filters, view, the tabs, then the shelf; the skip link lands on the games', async ({ page }) => {
+test('reading order: filters and view (the top bar’s utility), then search, the tabs, then the shelf; the skip link lands on the games', async ({ page }) => {
   await open(page);
-  const order = await page.locator('#view-library').evaluate((root) =>
-    [...root.querySelectorAll('input, button, a[data-game]')].filter((el) => el.getClientRects().length)
+  // Concept K (AVR-707) moved Filters and View into the glass utility at the top right, which comes
+  // before the page in reading order, as it does on screen.
+  const order = await page.evaluate(() =>
+    [...document.querySelectorAll('#utility button, #view-library input, #view-library button, #view-library a[data-game]')]
+      .filter((el) => el.getClientRects().length)
       .map((el) => el.id || (el as HTMLElement).dataset.view || (el as HTMLElement).dataset.game).slice(0, 8));
-  expect(order).toEqual(['game-search', 'lib-filter', 'lib-view', 'all', 'favorites', 'recent', 'bluff', 'checkers']);
-  await page.locator('#game-search').focus();
-  for (const want of ['lib-filter', 'lib-view']) {
+  expect(order).toEqual(['lib-filter', 'lib-view', 'game-search', 'all', 'favorites', 'recent', 'bluff', 'checkers']);
+  await page.locator('#lib-filter').focus();
+  for (const want of ['lib-view', 'game-search']) {
     await page.keyboard.press('Tab');
     expect(await page.evaluate(() => document.activeElement?.id)).toBe(want);
   }

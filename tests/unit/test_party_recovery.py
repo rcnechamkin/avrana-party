@@ -134,9 +134,9 @@ class HostGoneMidGame(unittest.TestCase):
         clock.advance(core.LIVE_WINDOW + core.HOST_GRACE)       # Ana's phone never comes back
         pc.touch('device-b')
         pc.tick()
-        self.assertEqual(pc.party.host_id, ana.id)              # in the game: the role stays (design)
+        self.assertEqual(pc.party.host_id, ben.id)              # silent past grace, in the game or not
+        self.assertEqual(nxt.state, core.ACTIVE)                # (ADR 0006 amendment); the round goes on
         pc.game_reported_end(nxt.id, 'completed')
-        clock.advance(core.LIVE_WINDOW + core.HOST_GRACE)       # the results screen is up
         pc.touch('device-b')
         pc.tick()
         self.assertEqual(pc.party.host_id, ben.id)
@@ -154,7 +154,7 @@ class HostGoneMidGame(unittest.TestCase):
         self.assertIsNone(pc.party.host_id)
         clock.advance(core.LIVE_WINDOW * 4)
         pc.tick()
-        pc.join('device-a', 'Ana')
+        pc.reconnect('device-a', 'Ana')
         self.assertEqual(pc.party.host_id, solo.id)
         _, p = pc.participant_for('device-a', 'bluff')
         self.assertEqual((p.id, p.role), (pid, 'player'))

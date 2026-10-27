@@ -3,13 +3,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PAGES, chatOffered, hereLine, hostLine, hudLabel, namesLine, pageOf, pageTitle, startTab, gameOf, backWord, unreadMark } from '../../web/party/lib/frame.js';
+import { PAGES, chatOffered, hereLine, hostLine, partyTabLabel, presenceLabel, presenceLine, namesLine, pageOf, pageTitle, startTab, gameOf, backWord, unreadMark } from '../../web/party/lib/frame.js';
 
 const html = readFileSync(new URL('../../web/party/index.html', import.meta.url), 'utf8');
 
 test('a fragment names a place, and anything else is Home', () => {
-  assert.deepEqual(PAGES, ['home', 'party', 'library', 'system']);
+  // Concept K (AVR-707): System became Me, and #system, still linked from older words, lands there
+  assert.deepEqual(PAGES, ['home', 'party', 'library', 'me']);
   for (const page of PAGES) assert.equal(pageOf(`#${page}`), page);
+  assert.equal(pageOf('#system'), 'me');
   assert.equal(pageOf('library'), 'library');
   for (const odd of ['', '#', '#diag', '#Library', '#library/x', '#__proto__', null, undefined, 7])
     assert.equal(pageOf(odd), 'home', String(odd));
@@ -17,7 +19,7 @@ test('a fragment names a place, and anything else is Home', () => {
 
 test('every place has a title, a view and a link in the bar', () => {
   assert.equal(pageTitle('home'), 'Avrana Party');
-  assert.deepEqual(PAGES.slice(1).map(pageTitle), ['Party', 'Library', 'System']);
+  assert.deepEqual(PAGES.slice(1).map(pageTitle), ['Party', 'Library', 'Me']);
   assert.equal(pageTitle('nowhere'), 'Avrana Party');
   for (const page of PAGES) {
     assert.match(html, new RegExp(`<section id="view-${page}"[^>]*data-page="${page}"`), `view ${page}`);
@@ -77,14 +79,15 @@ test('the drawer opens on the side asked for when it exists, else chat, else peo
   assert.equal(startTab(), null);
 });
 
-test('the Party control names itself for a screen reader', () => {
-  assert.equal(hudLabel({ party: true, count: 4, chat: true }), 'Your Party: 4 people here. Open people and chat');
-  assert.equal(hudLabel({ party: true, count: 1, chat: false }), 'Your Party: 1 person here. Open people');
-  assert.equal(hudLabel({ party: true, count: 3, chat: true, unread: 2 }), 'Your Party: 3 people here, 2 new messages. Open people and chat');
-  assert.equal(hudLabel({ party: true, count: 3, chat: true, unread: 1 }), 'Your Party: 3 people here, 1 new message. Open people and chat');
-  assert.equal(hudLabel({ party: false, chat: true }), 'Party chat');
-  assert.equal(hudLabel({ party: false, chat: false }), '');
-  assert.equal(hudLabel(), '');
+// Concept K retired the Party control at the top (AVR-707): what is new in the chat is said on the
+// bar's Party tab, as a badge and in the tab's name.
+test('the Party tab names what is new in the chat for a screen reader', () => {
+  assert.equal(partyTabLabel(0), 'Party');
+  assert.equal(partyTabLabel(), 'Party');
+  assert.equal(partyTabLabel(1), 'Party, 1 new message');
+  assert.equal(partyTabLabel(2), 'Party, 2 new messages');
+  assert.match(html, /<a[^>]*data-go="party"[^>]*>[\s\S]*?id="nav-unread"/);
+  assert.doesNotMatch(html, /id="hud"/);
 });
 
 test('a game’s page is named by its address, and only by a well-formed one', () => {
@@ -104,6 +107,17 @@ test('the way back from a game’s page is named after the place it returns to',
   assert.equal(backWord('library'), 'Library');
   assert.equal(backWord('home'), 'Home');
   assert.equal(backWord('party'), 'Party');
-  assert.equal(backWord('system'), 'System');
+  assert.equal(backWord('me'), 'Me');
   for (const odd of ['game', '', undefined, 'nowhere']) assert.equal(backWord(odd), 'Library', String(odd));
+});
+
+test('the presence row says how many are here and who is away, in words, and its name says the same', () => {
+  const m = (name, away = false) => ({ name, away });
+  assert.equal(presenceLine([]), '0 here');
+  assert.equal(presenceLine([m('Ana')]), '1 here');
+  assert.equal(presenceLine([m('Ana'), m('Riley', true), m('Ben'), m('Cy')]), '4 here · Riley away');
+  assert.equal(presenceLine([m('A'), m('B', true), m('C', true), ...Array.from({ length: 9 }, (_, i) => m(`P${i}`))]), '12 here · 2 away');
+  assert.equal(presenceLabel([m('Ana'), m('Riley', true)]), '2 here · Riley away. Open people');
+  assert.equal(presenceLabel([m('Ana'), m('Ben')], { host: true }), '2 here · You host. Open people');   // Home's HOST tag, said
+  assert.equal(presenceLine(null), '0 here');
 });

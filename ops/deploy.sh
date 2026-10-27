@@ -41,6 +41,15 @@
 # predates the tooling, and can deploy back to such a commit.
 # docs/runbooks/deploy.md explains the arguments, the paths and what to do when a step fails.
 # Keys, certificates, NetworkManager and systemd unit files are never touched here.
+#
+# Deployment profile (docs/design/HOSTED-STAGING.md). The host says what it is, in one file read by every
+# invocation (deploy, --rollback, --recover, --finish, the nested auto-rollback), so no command line can forget it:
+#   /etc/avrana-party/deploy-profile   absent, or "pi": the appliance, everything above, unchanged.
+#                                      "hosted": the same deployment for hosted staging (an ordinary Linux VM behind
+#                                      an access gateway): the restarted units are Party Core and the running native
+#                                      games, the nginx site file is deploy/hosted/avrana-party.hosted.nginx of the
+#                                      Party commit, and smoke is the hosted set (avrana.ops.smoke --hosted). No
+#                                      arcade, no games provider on 8096, no certificate names (TLS ends at the edge).
 set -Eeuo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
@@ -59,7 +68,7 @@ games_releases=${AVRANA_GAMES_RELEASES:-/opt/avrana-party-games}
 manifest=${AVRANA_DEPLOYMENT_MANIFEST:-/var/lib/avrana-party/deployment.json}
 backup_root=${AVRANA_BACKUP_ROOT:-/var/backups/avrana-party}
 party_core_url=${AVRANA_PARTY_CORE_URL:-http://127.0.0.1:8191}
-party_host=${AVRANA_PARTY_HOST:-party.avrana.net}
+party_host=${AVRANA_PARTY_HOST:-}
 checkout_user=${AVRANA_CHECKOUT_USER:-cody}
 journal_file=$backup_root/deploy.journal
 # The nginx site file is installed by this script (AVR-271) and validated by `nginx -t` first.
@@ -73,6 +82,37 @@ lock_file=${AVRANA_DEPLOY_LOCK:-/run/lock/avrana-deploy.lock}
 lkg_file=${AVRANA_LAST_KNOWN_GOOD:-$(dirname "$manifest")/last-known-good.json}
 party_units=(avrana-party-core avranaparty-arcade)   # code in this repository
 games_units=(avranaparty-games)                      # code in the games repository
+start_order=(avranaparty-games avranaparty-arcade avrana-party-core)   # providers first, then the party
+site_source=avrana-party.nginx                       # the Party commit's site file this host installs
+party_core_config=${AVRANA_PARTY_CORE_CONFIG:-/etc/avrana-party/party-core.json}
+profile_file=${AVRANA_DEPLOY_PROFILE_FILE:-/etc/avrana-party/deploy-profile}
+profile=pi
+if [[ -e $profile_file ]]; then
+    profile=$(tr -d '[:space:]' < "$profile_file")
+fi
+case $profile in
+    pi) ;;
+    hosted)
+        party_units=(avrana-party-core)
+        games_units=()     # the running native games: found when the run decides what to restart (hosted_game_units)
+        start_order=(avrana-party-core)
+        site_source=deploy/hosted/avrana-party.hosted.nginx
+        ;;
+    *) echo "deploy: $profile_file says '$profile'; the profiles are pi and hosted (nothing changed)" >&2; exit 1 ;;
+esac
+if [[ -z $party_host ]]; then
+    if [[ $profile == hosted ]]; then
+        party_host=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["hosts"][0])' "$party_core_config" 2>/dev/null) \
+            || { echo "deploy: hosted: cannot read the first of \"hosts\" in $party_core_config (nothing changed)" >&2; exit 1; }
+    else
+        party_host=party.avrana.net
+    fi
+fi
+# hosted_game_units: the native games running now (avrana-game@<slug>.service). They run the Games code release, so a
+# Games change restarts them; a stopped one is started again by its socket on the next connection.
+hosted_game_units() {
+    systemctl list-units --plain --no-legend --no-pager --state=active 'avrana-game@*.service' 2>/dev/null | awk '{print $1}'
+}
 
 party_sha='' games_sha='' dry_run=0 allow_dirty=0 allow_branch=0 force_busy=0 skip_smoke=0 skip_contract=0
 status_only=0 skip_nginx=0 prune=1 keep=${AVRANA_DEPLOY_KEEP:-5} auto=0 recover=0 rollback_kind='' force=0 finish=0
@@ -94,7 +134,7 @@ if [[ ${AVRANA_DEPLOY_TESTING:-0} == 1 && $backup_root != /var/backups/avrana-pa
         && $games_releases != /opt/avrana-party-games && $web_root != /var/www/avrana-party/web \
         && $manifest != /var/lib/avrana-party/deployment.json ]]; then testing=1; fi
 for v in AVRANA_DEPLOY_SMOKE AVRANA_NGINX AVRANA_SYSTEMCTL AVRANA_DEPLOY_TEST_HOOK_DIR AVRANA_DEPLOY_UNPRIVILEGED \
-        AVRANA_OPENSSL AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE AVRANA_DEPLOY_CATALOG_OWNER_UID AVRANA_CATALOG_SETTLE_WAIT AVRANA_CATALOG_PYTHON; do
+        AVRANA_OPENSSL AVRANA_DEPLOY_PROFILE_FILE AVRANA_DEPLOY_FAIL_STEP AVRANA_DEPLOY_UNIT_GRACE AVRANA_DEPLOY_SMOKE_PAUSE AVRANA_DEPLOY_CATALOG_OWNER_UID AVRANA_CATALOG_SETTLE_WAIT AVRANA_CATALOG_PYTHON; do
     if [[ -n ${!v:-} && $testing -eq 0 ]]; then
         die "$v is a test-only setting; it is honoured only with AVRANA_DEPLOY_TESTING=1 on a scratch root (never on the appliance). Unset it"
     fi
@@ -363,7 +403,6 @@ fi
 #   - the temporary Party/Games pair directory of the contract check is removed first, always.
 # SIGKILL and power loss cannot be trapped: the journal (below) is what the next run reads.
 stopped=() backup='' armed=0 committed=0 rollback_done=0 sig='' pair=''
-start_order=(avranaparty-games avranaparty-arcade avrana-party-core)   # providers first, then the party
 declare -gA J=()      # -g: main() is a function, and the EXIT trap runs after its locals are gone
 
 # The journal: where this run is, written atomically (temp file, fsync, rename) at every phase, as
@@ -431,15 +470,16 @@ plan_site() {
         return 0
     fi
     site_tmp=$(mktemp)
-    if ! g "$party_checkout" show "$party_sha:avrana-party.nginx" > "$site_tmp" 2>/dev/null || [[ ! -s $site_tmp ]]; then
+    if ! g "$party_checkout" show "$party_sha:$site_source" > "$site_tmp" 2>/dev/null || [[ ! -s $site_tmp ]]; then
         rm -f "$site_tmp"; site_tmp=''
+        [[ $profile == pi ]] || die "nginx site: $party_sha has no $site_source; a $profile host never keeps a site file of another profile"
         log "nginx site: $party_sha has no avrana-party.nginx; the live site file is left alone"
         return 0
     fi
     # The two tracked copies are byte-identical (docs/GENERATED.md; CI checks it on main). A commit where they
     # are not is a repository defect: install neither.
     other=$(mktemp)
-    if g "$party_checkout" show "$party_sha:arcade/nginx-site" > "$other" 2>/dev/null && ! cmp -s "$site_tmp" "$other"; then
+    if [[ $profile == pi ]] && g "$party_checkout" show "$party_sha:arcade/nginx-site" > "$other" 2>/dev/null && ! cmp -s "$site_tmp" "$other"; then
         rm -f "$other"
         die "avrana-party.nginx and arcade/nginx-site differ at $party_sha; they must be byte-identical (docs/GENERATED.md). Nothing was changed"
     fi
@@ -603,7 +643,9 @@ record_attempt() {
 
 # ---- smoke ------------------------------------------------------------------------------------------
 # AVRANA_DEPLOY_SMOKE names a stand-in for the smoke command (tests only; refused unless AVRANA_DEPLOY_TESTING=1).
-run_smoke_json() { if [[ -n ${AVRANA_DEPLOY_SMOKE:-} ]]; then "$AVRANA_DEPLOY_SMOKE" --json; else py -m avrana.ops.smoke --json; fi; }
+smoke_args=(--json)
+[[ $profile == pi ]] || smoke_args+=(--hosted --config "$party_core_config")
+run_smoke_json() { if [[ -n ${AVRANA_DEPLOY_SMOKE:-} ]]; then "$AVRANA_DEPLOY_SMOKE" "${smoke_args[@]}"; else py -m avrana.ops.smoke "${smoke_args[@]}"; fi; }
 # smoke_names <json file> <pass|fail>: the names of the checks with that result; non-zero when unreadable.
 smoke_names() {
     python3 -c 'import json, sys
@@ -821,6 +863,20 @@ g "$games_checkout" cat-file -e "$games_sha^{commit}" 2>/dev/null \
 party_changed=0; games_changed=0
 [[ $before_party == "$party_sha" ]] || party_changed=1
 [[ $before_games == "$games_sha" ]] || games_changed=1
+# A checkout at the target is not a deployment of it: a fresh clone (a new appliance or VM) or a run that died
+# before linking has the commit on disk and nothing running from it. Already there means the running code
+# release (and for Party its web release, named <stamp>-<sha12>) is the target's too.
+running_party=$(basename "$(readlink -f "$party_releases/current" 2>/dev/null || echo -)")
+running_games=$(basename "$(readlink -f "$games_releases/current" 2>/dev/null || echo -)")
+running_web=$(basename "$(readlink -f "$web_root/current" 2>/dev/null || echo -)")
+if [[ $party_changed -eq 0 && ( $running_party != "$party_sha" || ! $running_web =~ -${party_sha:0:12}(-[0-9]+)?$ ) ]]; then
+    log "party checkout is at $party_sha but the running release is not (code: $running_party, web: $running_web): deploying it"
+    party_changed=1
+fi
+if [[ $games_changed -eq 0 && $running_games != "$games_sha" ]]; then
+    log "games checkout is at $games_sha but the running release is not ($running_games): deploying it"
+    games_changed=1
+fi
 # --recover re-applies everything: after a dead deployment the checkouts, links, web build and units
 # cannot be trusted to agree, so nothing is skipped as "already there".
 [[ $recover -eq 0 ]] || { party_changed=1; games_changed=1; }
@@ -882,7 +938,11 @@ fi
 
 restart=()
 [[ $party_changed -eq 1 ]] && restart+=("${party_units[@]}") || true
-[[ $games_changed -eq 1 ]] && restart+=("${games_units[@]}") || true
+if [[ $profile == hosted && $games_changed -eq 1 ]]; then
+    mapfile -t games_units < <(hosted_game_units)
+    start_order=(${games_units[@]+"${games_units[@]}"} avrana-party-core)
+fi
+[[ $games_changed -eq 1 ]] && restart+=(${games_units[@]+"${games_units[@]}"}) || true
 log "plan: party $before_party -> $party_sha (changed=$party_changed), games $before_games -> $games_sha (changed=$games_changed)"
 log "plan: restart ${restart[*]:-nothing}; web release $([[ $party_changed -eq 1 ]] && echo yes || echo no)"
 plan_site
@@ -1023,6 +1083,7 @@ for n in ${cert_mismatch[@]+"${cert_mismatch[@]}"}; do info+=(--cert-name-mismat
 [[ $allow_dirty -eq 0 ]] || info+=(--option allow_dirty)
 [[ $allow_branch -eq 0 ]] || info+=(--option allow_branch)
 [[ $skip_nginx -eq 0 ]] || info+=(--option skip_nginx_site)
+[[ $profile == pi ]] || info+=(--option hosted_profile)
 [[ -z $rollback_kind ]] || info+=(--rollback-kind "$rollback_kind")
 { inject deploy-info && py -m avrana.ops.manifest deploy-info "$manifest" "${info[@]}"; } \
     || log 'WARNING: the manifest tooling of this release cannot record the nginx site and the options'

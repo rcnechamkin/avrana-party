@@ -1,0 +1,71 @@
+<!--
+  Host-side network policy for the hosted staging VM (docs/design/HOSTED-STAGING.md, "Isolation from
+  Media"). libvirt applies it to the VM's interface on the Media host, outside the VM, so root inside
+  the VM cannot lift it. Defined with `virsh nwfilter-define` and referenced from the domain's
+  <interface> by create-vm.sh. An owner-approved host change (runbook step 2).
+
+  Direction is the VM's: out = from the VM, in = to the VM.
+  The VM may:   take a DHCP lease from libvirt; ask the libvirt gateway (192.168.122.1) for DNS; open
+                new connections to public internet addresses on TCP 80/443 (apt, GitHub), TCP and UDP
+                7844 (Cloudflare's tunnel edge) and UDP 123 (time), and nothing else; answer SSH from
+                the host's gateway address (the owner's admin path).
+  The VM may not: reach the Media host (any other port on 192.168.122.1, or 10.0.0.218), the LAN
+                (10.0.0.0/8 and every other private, link-local, CGNAT, loopback and multicast range),
+                the cloud metadata address, or anything over IPv6; spoof MAC, IP or ARP (clean-traffic).
+  Nothing reaches the VM from outside: libvirt's NAT offers no inbound path, and this filter drops
+  every new inbound connection except SSH from the host.
+-->
+<filter name='avrana-staging-egress' chain='root'>
+  <filterref filter='clean-traffic'/>
+
+  <rule action='drop' direction='inout' priority='-900'>
+    <ipv6/>
+  </rule>
+
+  <rule action='accept' direction='inout' priority='100'>
+    <all state='ESTABLISHED,RELATED'/>
+  </rule>
+
+  <!-- DHCP with libvirt's own server only: broadcast or the gateway, never a LAN address. -->
+  <rule action='accept' direction='out' priority='200'>
+    <udp dstipaddr='255.255.255.255' srcportstart='68' dstportstart='67'/>
+  </rule>
+  <rule action='accept' direction='out' priority='200'>
+    <udp dstipaddr='192.168.122.1' srcportstart='68' dstportstart='67'/>
+  </rule>
+  <rule action='accept' direction='in' priority='200'>
+    <udp srcipaddr='192.168.122.1' srcportstart='67' dstportstart='68'/>
+  </rule>
+
+  <rule action='accept' direction='out' priority='210'>
+    <udp dstipaddr='192.168.122.1' dstportstart='53' state='NEW'/>
+  </rule>
+  <rule action='accept' direction='out' priority='210'>
+    <tcp dstipaddr='192.168.122.1' dstportstart='53' state='NEW'/>
+  </rule>
+
+  <rule action='accept' direction='in' priority='220'>
+    <tcp srcipaddr='192.168.122.1' dstportstart='22' state='NEW'/>
+  </rule>
+
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='0.0.0.0' dstipmask='8'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='10.0.0.0' dstipmask='8'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='100.64.0.0' dstipmask='10'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='127.0.0.0' dstipmask='8'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='169.254.0.0' dstipmask='16'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='172.16.0.0' dstipmask='12'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='192.168.0.0' dstipmask='16'/></rule>
+  <rule action='drop' direction='out' priority='300'><all dstipaddr='224.0.0.0' dstipmask='3'/></rule>
+
+  <!-- New connections to public addresses, on the ports the VM needs and no others: web (apt, GitHub),
+       the tunnel edge (7844 over TCP or QUIC) and time. -->
+  <rule action='accept' direction='out' priority='500'><tcp dstportstart='80' state='NEW'/></rule>
+  <rule action='accept' direction='out' priority='500'><tcp dstportstart='443' state='NEW'/></rule>
+  <rule action='accept' direction='out' priority='500'><tcp dstportstart='7844' state='NEW'/></rule>
+  <rule action='accept' direction='out' priority='500'><udp dstportstart='7844' state='NEW'/></rule>
+  <rule action='accept' direction='out' priority='500'><udp dstportstart='123' state='NEW'/></rule>
+
+  <rule action='drop' direction='inout' priority='1000'>
+    <all/>
+  </rule>
+</filter>

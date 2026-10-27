@@ -37,12 +37,11 @@ export function wireProfile(profile, changed) {
     const me = profile.snapshot();
     // Who you are at this party; a new guest's first step is choosing a name.
     $('player-chip').classList.toggle('border-primary', !me.name);
-    $('player-chip').replaceChildren(avatarNode(me, 'lg'),
-      h('span', { class: 'grid min-w-0 flex-1' },
-        h('span', { class: 'truncate', text: me.name || 'Choose your name' }),
-        h('span', { class: 'text-body font-normal text-muted',
-          text: me.name ? 'Your profile' : 'Pick a name to join a game' })),
-      icon('user-round-pen', { cls: 'text-muted' }));
+    $('player-chip').replaceChildren(avatarNode(me, 'hero'),
+      h('span', { class: 'grid min-w-0 flex-1 justify-items-start gap-2' },
+        h('span', { class: 'name', text: me.name || 'Choose your name' }),
+        me.name ? h('span', { class: 'edit', text: 'Edit profile' })
+          : h('span', { class: 'sub', text: 'Pick a name to join a game' })));
     $('profile-stats').textContent = me.favorites.length + ' favorites · ' + me.playTotal + ' games opened';
     $('remove-photo').hidden = !me.pfp;
     if (!$('profile').open) {

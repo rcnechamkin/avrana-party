@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
-/** The shell's four places (web/party/lib/frame.js). They are views of one document. */
-export type Place = 'home' | 'party' | 'library' | 'system';
+/** The shell's four places (web/party/lib/frame.js; Concept K: Home, Party, Library, Me). They are views of one document. */
+export type Place = 'home' | 'party' | 'library' | 'me';
 
 /** Go to a place the way a person does: the bar at the bottom of the frame. It does not close a
  * sheet for the test: a sheet that should have closed by itself, and did not, fails here. */
@@ -28,8 +28,14 @@ export async function startForEveryone(page: Page, id: string) {
   await (await openGame(page, id)).getByRole('button', { name: 'Start for everyone' }).click();
 }
 
-/** Controls a thumb would miss: visible and less than 44 px tall or wide. */
+/** Controls a thumb would miss: visible and less than 44 px tall or wide. Measured once the
+ * controls have settled: a sheet slides in with a transform (AVR-429), and mid-slide a fractional
+ * translate rounds a 44 px button to 43.99 (AVR-694). A transform that stays is still measured. */
 export async function smallTargets(page: Page, selector: string) {
+  await page.$$eval(selector, (els) => Promise.all(document.getAnimations()
+    .filter((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime as number))
+    .filter((a) => { const t = (a.effect as KeyframeEffect | null)?.target; return !!t && els.some((el) => t.contains(el)); })
+    .map((a) => a.finished.catch(() => undefined))));
   return page.$$eval(selector, (els) => els
     .filter((el) => {
       const box = el.getBoundingClientRect();

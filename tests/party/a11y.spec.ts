@@ -37,8 +37,12 @@ test.describe('three phones at one party', () => {
   async function audit(p: Phone, screen: string, reach: string[] = []) {
     const page: Page = p.page;
     const over = (await page.locator('dialog[open]').count()) > 0;
-    // a sheet or the drawer opened a moment ago may still be arriving (AVR-429): measure it once it is in place
-    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => null))));
+    // a sheet or the drawer opened a moment ago may still be arriving (AVR-429), and the briefing rises in
+    // from opacity 0 (#scene[data-enter], a keyframe animation, not a transition): measure once all is in
+    // place. Mid-rise the helper reads the fade as low contrast (#211). Endless animations never settle.
+    await page.evaluate(() => Promise.all(document.getAnimations()
+      .filter((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime as number))
+      .map((a) => a.finished.catch(() => null))));
     const root = over ? 'dialog[open]' : '#main';
     const bad = [...await lowContrast(page, root), ...await faintEdges(page), ...await unnamed(page, root),
       ...await outOfOrder(page, over ? [root] : undefined)];
@@ -63,7 +67,7 @@ test.describe('three phones at one party', () => {
     await everyone('Home');
     for (const p of [host, bob, cleo]) await place(p.page, 'party');
     await everyone('Party');
-    for (const p of [bob, cleo]) { await p.page.locator('#hud').click(); await expect(p.page.locator('#social')).toBeVisible(); }
+    for (const p of [bob, cleo]) { await p.page.locator('#party-chat').click(); await expect(p.page.locator('#social')).toBeVisible(); }
     await everyone('the drawer', [bob, cleo]);
     for (const p of [bob, cleo]) await p.page.keyboard.press('Escape');
     for (const p of [host, bob, cleo]) { await place(p.page, 'library'); await openGame(p.page, 'bluff'); }
@@ -73,7 +77,7 @@ test.describe('three phones at one party', () => {
     await everyone('the briefing, nobody has answered');
     await bob.page.locator('#choose-play').click();
     await cleo.page.locator('#choose-watch').click();
-    await expect(host.page.locator('#scene-count')).toHaveText('1 playing · 1 watching');
+    await expect(host.page.locator('#scene-count')).toHaveText('Playing 1 · Watching 1 · Choosing 1');   // K1's words: the Host has not chosen yet
     await everyone('the briefing, answers in');
     for (const p of [bob, cleo]) { await p.page.locator('#scene-rules').click(); await expect(p.page.locator('#rules')).toBeVisible(); await expect(p.page.locator('#rules-ok')).toBeInViewport({ ratio: 1 }); }
     await everyone('How to play', [bob, cleo]);
@@ -130,7 +134,7 @@ test.describe('three phones at one party', () => {
     const hosting = (await host.page.locator('#party-host').innerText()).includes('You’re the host') ? host : bob, guest = hosting === host ? bob : host;
     await expect(hosting.page.locator('#trouble')).toBeVisible();
     await audit(hosting, 'Home, the Host’s notice', ['button#trouble-x']);
-    for (const p of [hosting, guest]) { await place(p.page, 'system'); await expect(p.page.locator('#health [data-health="warn"]')).toBeVisible(); }
+    for (const p of [hosting, guest]) { await place(p.page, 'me'); await expect(p.page.locator('#health [data-health="warn"]')).toBeVisible(); }
     await everyone('System, something is off', [hosting, guest]);
     expect((await request.post('/__test__/arcade/up')).status()).toBe(204);
     for (const p of [hosting, guest]) { await p.page.reload(); await expect(p.page.locator('#health [data-health="ok"]')).toBeVisible(); }

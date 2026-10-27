@@ -46,12 +46,12 @@ export default defineConfig({
     timeout: 15_000,
   }],
   projects: [
-    { name: 'phones-chromium', testIgnore: /follow-origin\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
+    { name: 'phones-chromium', testIgnore: /(follow-origin|guest-journey-origins)\.spec\.ts$/, use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
     {
       // ADR 0013: games registered to a game origin, which Chromium resolves to the dev server.
       // Plain HTTP on two host names of one site; real Safari and HTTPS are Tier 3 (the owner's).
       name: 'two-origins-chromium',
-      testMatch: /follow-origin\.spec\.ts$/,
+      testMatch: /(follow-origin|guest-journey-origins)\.spec\.ts$/,
       use: {
         ...devices['Pixel 7'], baseURL: `http://127.0.0.1:${ORIGIN_PORT}`,
         launchOptions: { executablePath, args: ['--host-resolver-rules=MAP *.avrana.test 127.0.0.1'] },
