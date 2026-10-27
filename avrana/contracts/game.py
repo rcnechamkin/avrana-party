@@ -14,6 +14,8 @@ import unicodedata
 
 from avrana.contracts import strictjson
 
+EXTENSION_CHECKS = {}      # extension key -> check(contract) raising ValueError with .problems; filled by the owner
+
 CONTRACT = 'avrana.game/v0'
 
 ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')      # use fullmatch: `$` alone accepts a trailing newline
@@ -358,14 +360,15 @@ def validate(doc, vocab=None):
     for key in extensions:
         if not EXTENSION_KEY.match(key):
             problems.append(f'extensions: {key!r} is not a reverse-DNS name like "net.avrana.example"')
-    if 'net.avrana.party' in extensions:
-        # The Party's own extension (pregame, lifecycle bounds) fails validation here too, so a bad
-        # value is caught wherever contracts are checked, in both repositories (AVR-260).
-        from avrana.contracts import party_config
-        try:
-            party_config.party_extension({'id': cid, 'extensions': extensions})
-        except party_config.ConfigError as e:
-            problems += [p.split(': ', 1)[1] if p.startswith(f'{cid}: ') else p for p in e.problems]
+    for key, check in EXTENSION_CHECKS.items():
+        if key in extensions:
+            # An extension's owner registers its check, so a bad value fails validation wherever
+            # contracts are checked (AVR-260). The .avrgame tools export registers none.
+            try:
+                check({'id': cid, 'extensions': extensions})
+            except ValueError as e:
+                problems += [p.split(': ', 1)[1] if p.startswith(f'{cid}: ') else p
+                             for p in getattr(e, 'problems', [str(e)])]
 
     if problems:
         raise ContractError(problems)
