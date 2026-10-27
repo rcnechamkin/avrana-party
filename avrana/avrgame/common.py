@@ -62,11 +62,20 @@ SECRET_MESSAGE = ('looks like key material or secrets (*.key, *.pem, *.p12, *.pf
 # A private key's PEM armour with its body right after it: real or escaped newlines (a key pasted into a
 # string literal), optional PEM header lines (Proc-Type, DEK-Info, PGP Version), then base64. The body is
 # required, so a library that only names the armour (a PEM parser) is not refused.
+# Between the armour (or its last header line) and the body, one string may also be closed and the next opened, as
+# when a key is pasted line by line into source: JS/TS `"...\n" + "MII..."`, an array `["...", "MII..."]`, Python's
+# implicit concatenation (AVR-739). A label list such as `["-----BEGIN ...-----", "-----BEGIN ...-----"]` still
+# passes: the next string must start with the 60-character base64 body.
 _NL = rb'(?:\r?\n|(?:\\r)?\\n)'
+_JOIN = rb'(?:(?:\\r)?(?:\\n)?["\'`]\s{0,64}[+,]?\s{0,64}["\'`])'
+_SEP = rb'(?:' + _NL + rb'|' + _JOIN + rb')'
+_HEADER = rb'(?:[A-Za-z-]{1,40}: [^\r\n\\]{0,200}' + _NL + rb')'
 # (The space is written as [ ] so the tools export's deny list, which looks for the literal armour, passes.)
-PRIVATE_KEY = re.compile(rb'-----BEGIN [A-Z0-9 ]{0,40}PRIVATE[ ]KEY(?: BLOCK)?-----' + _NL +
-                         rb'(?:[A-Za-z-]+: [^\r\n\\]{0,200}' + _NL + rb')*' + _NL + rb'?[A-Za-z0-9+/]{60}')
-PRIVATE_KEY_TAIL = 400            # bytes kept between chunks so a key split across two is still seen
+PRIVATE_KEY = re.compile(rb'-----BEGIN [A-Z0-9 ]{0,40}PRIVATE[ ]KEY(?: BLOCK)?-----' + _SEP +
+                         _HEADER + rb'{0,8}' + _SEP + rb'?[A-Za-z0-9+/]{60}')
+# Bytes kept between chunks so a key split across two is still seen. Every match is bounded (armour <= 73,
+# separators <= 140 each, at most 8 header lines of <= 246, body 60: about 2.4 KB), so 4 KiB always holds one.
+PRIVATE_KEY_TAIL = 4096
 PRIVATE_KEY_MESSAGE = 'contains a private key; key material must never be in a package'
 
 
