@@ -36,6 +36,21 @@ $F export --out ~/                                      # ~/avrana-field-<id>.ta
 `$F status` says whether a session is recording. `$F timeline` prints the session as one ordered page.
 `$F validate PACKAGE` re-checks any package. It prints rule ids and counts, never the content.
 
+## After the fact: a support bundle (no session needed)
+
+When something went wrong and nobody ran `start`, one command collects the same package for the last
+hours (AVR-74, PROTOTYPE; the proposal's decisions are open):
+
+```bash
+python3 -m avrana.ops.fieldsession bundle --out ~/ --hours 6            # at most 24; also --attach-preflight, --forbid-terms
+```
+
+It takes one snapshot now, then the journal and power lines from `--hours` ago until now, through the
+same writer, bounds, redaction and validator. The package is `avrana-field-<id>-support-<N>h.tar.gz`,
+and its `session.json` says `"kind": "support"` with the window. It is refused while a session is
+recording (stop and export that one), and nothing is written if validation fails. Nothing is sent
+anywhere: hand the file over yourself.
+
 ## What a package holds
 
 | Member | Content | Source |
@@ -53,7 +68,7 @@ ownership zeroed.
 
 ## What never leaves the appliance
 
-The rules live in `avrana/ops/redact.py` (`avrana.redaction/v2`). Every string is scrubbed before
+The rules live in `avrana/ops/redact.py` (`avrana.redaction/v3`). Every string is scrubbed before
 it is written. The export runs the validator, and a package with any hit is not written.
 
 - **Credentials and keys:**
@@ -61,15 +76,17 @@ it is written. The export runs the validator, and a package with any hit is not 
   - 32 or more hex characters outside a revision field (game keys are 64);
   - device tokens, caught by shape;
   - `Authorization`, bearer and basic tokens;
-  - `password=` / `token=` / `ticket=` values.
+  - `password=` / `token=` / `ticket=` values;
+  - a PIN or passcode written in words ("Admin PIN 482915").
 - **Membership cookies:** `__Host-avrana_device`, `avrana_device`, `avrana_limited`, and every
   `Cookie:` or `Set-Cookie:` line.
 - **Per-member and per-device identifiers:** `member-…` and `device-…`. `devices.json` is never read.
 - **Device records:**
   - IPv4 addresses other than `127.0.0.1` and `10.42.0.1`;
-  - IPv6 addresses;
-  - MAC addresses;
-  - e-mail addresses;
+  - IPv6 addresses, including an IPv4-mapped one (`::ffff:10.42.0.57`) as a whole;
+  - MAC addresses: colon or dash pairs, Cisco dotted groups, and twelve bare hex digits after a word
+    such as `STA`, `station`, `bssid` or `mac`;
+  - e-mail addresses, including ones spelled out (`name (at) example (dot) com`);
   - all NetworkManager and dnsmasq logs, which are not collected.
 - **Raw chat and player data:**
   - every journal line that mentions chat is dropped whole;
