@@ -841,7 +841,8 @@ def load_games(entries):
         games[game_id] = {'id': game_id, 'max_players': int(e['max_players']),
                           'late_join': e.get('late_join', 'spectator_only'),
                           'min_players': int(e.get('min_players', 1)),
-                          'pregame': bool(e.get('pregame', False))}
+                          'pregame': bool(e.get('pregame', False)),
+                          **{k: float(e[k]) for k in ('launch_timeout_s', 'end_timeout_s') if k in e}}
     return games
 
 
