@@ -91,6 +91,19 @@ class Membership(unittest.TestCase):
         self.assertEqual(pc.join('device-b', '\u0410\u0440\u0430').name, '\u0410\u0440\u0430 2')   # Cyrillic "Ара"
         self.assertEqual(pc.join('device-c', '\u0391\u03a1\u0391').name, '\u0391\u03a1\u0391 3')   # Greek "ΑΡΑ"
 
+    def test_lisu_and_cherokee_capitals_are_look_alikes_too(self):
+        """AVR-743: Lisu letters are drawn as Latin capitals, so "HOST" in Lisu passed the reserved-word check and
+        "ADA" in Lisu was a second "Ada"; Lisu could also be mixed with Latin."""
+        for bad in ('\ua4e7\ua4f3\ua4e2\ua4d4', '\ua4ee\ua4d3\ua4df\ua4f2\ua4e0', '\ua4e2\ua4ec\ua4e2\ua4d4\ua4f0\ua4df',
+                    '\u13bb\ua4f3ST', 'A\ua4d3A', '\u13bbOST'):
+            with self.subTest(bad=ascii(bad)):
+                with self.assertRaises(Refused):
+                    core.clean_name(bad)
+        pc, _ = make()
+        pc.join('device-a', 'Ada')
+        self.assertEqual(pc.join('device-b', '\ua4ee\ua4d3\ua4ee').name, '\ua4ee\ua4d3\ua4ee 2')       # Lisu "ADA"
+        self.assertEqual(core.clean_name('\u13a3\u13cd\u13d7'), '\u13a3\u13cd\u13d7')                # a Cherokee name stays
+
     def test_look_alike_folding_only_compares_it_never_rewrites_a_name(self):
         for name in ('\u0410\u0440\u0430', 'Ελένη', 'Анна', 'Zoë', '李雷'):
             with self.subTest(name=ascii(name)):
