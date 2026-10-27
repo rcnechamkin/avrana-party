@@ -190,7 +190,23 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     },
     /** The host, from a round's results: everyone back to Party Home. */
     goHome: () => act('home', { if_version: view ? view.version : null }),
-    end: () => act('session/end', { if_version: view ? view.version : null }),
+    /** The host ends the game that is on ("Choose another game" from its setup). A guest's choice
+     * moves the version, so a tap just after one is refused as "stale" (#208): re-checked against a
+     * fresh view and tried once more while this phone is still the host and the same session is
+     * still on. Every other refusal stands, and another session is never ended in its place. */
+    async end() {
+      const was = view && view.session ? view.session.id : null;
+      let res = await act('session/end', { if_version: view ? view.version : null });
+      if (res.ok || res.error !== 'stale') return res;
+      epoch++;
+      const fresh = await request('state');
+      epoch++;
+      if (fresh.ok) accept(readView(fresh.body), true);
+      const v = view;
+      if (!v || !v.me || !v.me.host || !was || !v.session || v.session.id !== was
+          || !['setup', 'launching', 'active'].includes(v.state)) return res;
+      return act('session/end', { if_version: v.version });
+    },
     /** The host, from anywhere (a setup, a round, its results): everyone back to Party Home. The
      * Party's own way out; it asks nothing of the game's page. */
     async lobby() {

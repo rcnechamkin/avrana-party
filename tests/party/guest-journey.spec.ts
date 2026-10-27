@@ -188,6 +188,9 @@ test.describe('the guest journey: BLUFF (Play/Watch setup, spectator-only late j
     await test.step('7b a watcher’s phone is suspended (page gone, nothing leaves it) and woken: back in the round, once', async () => {
       const wake = await goQuiet(cleo);
       await later(request, 60);                                           // longer than the 45 s a quiet phone is allowed
+      // The jump also skipped the awake phones' heartbeats. A real phone polls again within seconds; here the
+      // next poll may still be waiting when step 9 asks Core who hosts next, so let each awake phone be heard.
+      for (const p of [ada, bob, dee]) await view(p);
       // a seat in a live round counts as playing, not away (core.presence), so the roster is unchanged
       const v = await view(ada);
       expect(v.members.find((m: Member) => m.name === 'Cleo').presence).toBe('playing');
