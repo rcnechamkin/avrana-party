@@ -251,6 +251,7 @@ function render() {
   renderHost(view);
   renderLeave(view);
   renderExit(view);
+  $('layer-home').hidden = !(view.proposals || []).includes('home_in_round') || !['game', 'results'].includes(loc.at);
 }
 
 function renderHost(view) {
@@ -328,6 +329,19 @@ $('layer-exit-ask').addEventListener('click', async () => {
   }
   $('layer-exit-error').textContent = res.error === 'offline' || res.status >= 500
     ? 'Couldn’t reach the Party. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
+});
+
+/** PROPOSAL home_in_round (AVR-703): ask Party Core; the page then follows this phone to Party Home. */
+$('layer-home-go').addEventListener('click', async () => {
+  if (state.busy) return;
+  state.busy = true;
+  $('layer-home-error').textContent = '';
+  const res = await client.visitHome();
+  state.busy = false;
+  if (!res.ok) {
+    $('layer-home-error').textContent = res.error === 'offline' || res.status >= 500
+      ? 'Couldn’t reach the Party. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
+  }
 });
 
 function askConfirm(action) {

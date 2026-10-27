@@ -102,7 +102,8 @@ class PartyService:
     """Thread-safe wrapper: one lock around the core, a condition for long polls, and game-link
     calls made outside the lock (a slow game must not freeze the party)."""
 
-    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, close_lost_game=False):
+    def __init__(self, store, games, link=None, clock=time.monotonic, limited=None, close_lost_game=False,
+                 proposals=()):
         self.store = store
         # AVR-33 switch session_recovery.close_lost_game (off unless the appliance's config turns it
         # on, recovery_config): a game that stays down closes the active session.
@@ -111,7 +112,7 @@ class PartyService:
         self._state_asked = None             # (session id, when) of the last AVR-673 state question
         self._state_asking = False           # one state question in flight at a time
         self.limited = limited or identity.LimitedStore()     # Limited Mode credentials (memory)
-        self.core = core.PartyCore(clock, games, close_lost_game=close_lost_game)
+        self.core = core.PartyCore(clock, games, close_lost_game=close_lost_game, proposals=proposals)
         self.link = link or NoGameLink()
         self.lock = threading.Lock()
         self.changed = threading.Condition(self.lock)
@@ -685,6 +686,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 svc.call('request_exit', device)
             elif path == '/party/api/leave/stay':        # closes that request; the pages follow the party again
                 svc.call('stay', device)
+            elif path == '/party/api/home/visit':        # PROPOSAL home_in_round (AVR-703): look at Home in a round
+                svc.call('visit_home', device)
+            elif path == '/party/api/home/back':         # Back to game: this device follows the round again
+                svc.call('back_to_game', device)
             elif path == '/party/api/host':
                 svc.call('transfer_host', device, body.get('to'), body.get('if_version'))
             elif path == '/party/api/host/spectate':
@@ -916,8 +921,14 @@ def main(argv=None):
     except registry.RegistryError as e:
         raise SystemExit('party-core config: ' + '; '.join(e.problems))
     recovery = recovery_config(conf)
+    proposals, problems, warnings = party_config.check_proposals(conf)
+    for warning in warnings:
+        log.warning('party-core config: %s', warning)
+    if problems:
+        raise SystemExit('party-core config: ' + '; '.join(problems))
     service = PartyService(store, games, sessions.HttpGameLink(endpoints, share=True),
-                           close_lost_game=recovery['close_lost_game'])
+                           close_lost_game=recovery['close_lost_game'],
+                           proposals=[name for name, on in proposals.items() if on])
     cfg = Config(conf['hosts'], conf['origins'], conf.get('secure_cookie', True),
                  conf.get('game_origins'))
     extra, internal = sessions.routes(service, endpoints)

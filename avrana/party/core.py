@@ -176,7 +176,7 @@ def clean_avatar(raw):
 
 class Member:
     __slots__ = ('id', 'device_id', 'name', 'avatar', 'joined_at', 'last_seen', 'left', 'mode',
-                 'watch_next', 'exit_id', 'exit_until')
+                 'watch_next', 'exit_id', 'exit_until', 'visiting')
 
     def __init__(self, device_id, name, now, avatar=None, mode=FULL):
         self.id = new_id('member')
@@ -190,6 +190,7 @@ class Member:
         self.watch_next = False         # Quit & Spectate at results: a spectator in the next round
         self.exit_id = None             # a guest's open exit request (request_exit), until Stay or Leave
         self.exit_until = 0.0           # until when that request moves this device's pages to Party Home
+        self.visiting = False           # PROPOSAL home_in_round (AVR-703): looking at Party Home during a round
 
 
 class Participant:
@@ -256,8 +257,11 @@ class PartyCore:
     """One appliance, one party. Every public method applies due timers first, so a deadline
     holds at the moment someone acts, not only when the background tick runs (model rule R4)."""
 
-    def __init__(self, clock, games, close_lost_game=False):
+    def __init__(self, clock, games, close_lost_game=False, proposals=()):
         self.clock = clock
+        # Owner-gated proposals switched on in party-core.json (`proposals`), default none. Today only
+        # 'home_in_round' (AVR-703, Concept K K2): it conflicts with ADR 0011 decisions 3 and 5.
+        self.proposals = frozenset(proposals)
         self.close_lost_game = close_lost_game    # AVR-33 switch (session_recovery.close_lost_game)
         self.games = dict(games)        # game_id -> {'id', 'max_players', 'late_join'}
         self.party = Party(clock(), clock)
@@ -269,6 +273,9 @@ class PartyCore:
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
+        if self.location()['at'] not in ('game', 'results'):
+            for m in self.party.members.values():      # a visit to Home ends with the round (AVR-703)
+                m.visiting = False
         self.party.version += 1
         now = self.clock()
         self._shown = {m.id: self.presence(m, now) for m in self.party.members.values()}
@@ -567,6 +574,37 @@ class PartyCore:
         m.exit_until = now + EXIT_INTENT
         if not live:
             self._commit()                  # wakes this device's pages; a renewal moves nothing new
+
+    def visit_home(self, device_id):
+        """PROPOSAL home_in_round (AVR-703): this member looks at Party Home during a round, from the
+        floating Party control. It moves only this device's pages (destination(), the bridge's
+        existing `navigate`, as an exit request does); Party Home then shows the round as "Game on"
+        with Back to game as its one action and no End. Seats, roles and the party's location are
+        untouched; the game decides what a seat whose page is away does, as for any phone that
+        locks. Refused while the proposal is off, and outside a round."""
+        self._timed()
+        if 'home_in_round' not in self.proposals:
+            raise Refused('not_offered', 'Party Home opens when the round is over.')
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.left:
+            raise Refused('left_party', 'You left the party. Reconnect to come back.')
+        if self.location()['at'] not in ('game', 'results'):
+            raise Refused('not_in_round', 'You are on Party Home already.')
+        if not m.visiting:
+            m.visiting = True
+            self._commit()
+
+    def back_to_game(self, device_id):
+        """Back to game (AVR-703): this device's pages follow the round again. Idempotent."""
+        self._timed()
+        m = self._member_of(device_id)
+        if m is None:
+            raise Refused('not_member', 'Join the party first.')
+        if m.visiting:
+            m.visiting = False
+            self._commit()
 
     def stay(self, device_id):
         """Stay in the Party: close this device's exit request, so its pages follow the party again.
@@ -1140,8 +1178,11 @@ class PartyCore:
                         'mode': me.mode, 'watch_next': me.watch_next,
                         'leave': self.leave_impact(device_id),
                         # this device's own exit request, never shown to others; `live`: it moves pages
-                        'exit': ({'id': me.exit_id, 'live': now < me.exit_until} if me.exit_id else None)}
+                        'exit': ({'id': me.exit_id, 'live': now < me.exit_until} if me.exit_id else None),
+                        # additive, only with the proposal on (AVR-703): this device is looking at Home
+                        **({'home_visit': me.visiting} if 'home_in_round' in self.proposals else {})}
                        if me else None),
+                **({'proposals': sorted(self.proposals)} if self.proposals else {}),
                 'departed': departed,     # this device left on purpose: no automatic join (AVR-580)
                 'session': session,
                 'nav': dict(party.nav),

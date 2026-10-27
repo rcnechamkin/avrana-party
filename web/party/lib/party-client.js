@@ -182,6 +182,9 @@ export function createPartyClient({ fetch = globalThis.fetch.bind(globalThis), b
     requestExit: () => act('leave/request', {}),
     /** Stay in the Party: closes that request, and the pages follow the party again. */
     stay: () => act('leave/stay', {}),
+    /** PROPOSAL home_in_round (AVR-703): look at Party Home during a round, and go back to it. */
+    visitHome: () => act('home/visit', {}),
+    backToGame: () => act('home/back', {}),
     /** The person's own opt back in after Leave: the only way back (an automatic join is refused). */
     async reconnect(name, avatar) {
       const res = await act('reconnect', { name, avatar });
