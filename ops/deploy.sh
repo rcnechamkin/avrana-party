@@ -863,6 +863,20 @@ g "$games_checkout" cat-file -e "$games_sha^{commit}" 2>/dev/null \
 party_changed=0; games_changed=0
 [[ $before_party == "$party_sha" ]] || party_changed=1
 [[ $before_games == "$games_sha" ]] || games_changed=1
+# A checkout at the target is not a deployment of it: a fresh clone (a new appliance or VM) or a run that died
+# before linking has the commit on disk and nothing running from it. Already there means the running code
+# release (and for Party its web release, named <stamp>-<sha12>) is the target's too.
+running_party=$(basename "$(readlink -f "$party_releases/current" 2>/dev/null || echo -)")
+running_games=$(basename "$(readlink -f "$games_releases/current" 2>/dev/null || echo -)")
+running_web=$(basename "$(readlink -f "$web_root/current" 2>/dev/null || echo -)")
+if [[ $party_changed -eq 0 && ( $running_party != "$party_sha" || ! $running_web =~ -${party_sha:0:12}(-[0-9]+)?$ ) ]]; then
+    log "party checkout is at $party_sha but the running release is not (code: $running_party, web: $running_web): deploying it"
+    party_changed=1
+fi
+if [[ $games_changed -eq 0 && $running_games != "$games_sha" ]]; then
+    log "games checkout is at $games_sha but the running release is not ($running_games): deploying it"
+    games_changed=1
+fi
 # --recover re-applies everything: after a dead deployment the checkouts, links, web build and units
 # cannot be trusted to agree, so nothing is skipped as "already there".
 [[ $recover -eq 0 ]] || { party_changed=1; games_changed=1; }
