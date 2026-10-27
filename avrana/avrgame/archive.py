@@ -96,10 +96,12 @@ def _entry_problem(info):
 
 
 def _stream(zf, info, limit_file, total_left):
-    """(size, sha256 hex, first bytes) of the ACTUAL bytes of an entry, refusing past either limit."""
+    """(size, sha256 hex, first bytes) of the ACTUAL bytes of an entry, refusing past either limit or
+    when the bytes hold a private key (whatever the file is called)."""
     h = hashlib.sha256()
     n = 0
     head = b''
+    tail = b''
     try:
         with zf.open(info) as f:
             while True:
@@ -113,6 +115,9 @@ def _stream(zf, info, limit_file, total_left):
                     raise Refused(f'archive: more than {common.MAX_TOTAL_BYTES} bytes once unpacked')
                 if len(head) < node.MAGIC_BYTES:
                     head += chunk[:node.MAGIC_BYTES - len(head)]
+                if common.PRIVATE_KEY.search(tail + chunk):
+                    raise Refused(f'entry {clip(info.orig_filename)}: {common.PRIVATE_KEY_MESSAGE}')
+                tail = (tail + chunk)[-common.PRIVATE_KEY_TAIL:]
                 h.update(chunk)
     except _DAMAGE as exc:
         raise Refused(f'entry {clip(info.orig_filename)}: damaged ({type(exc).__name__})') from None
