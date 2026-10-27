@@ -48,6 +48,16 @@ Accepted source authority is narrower than that contract in three places:
 3. "The FAB should be a one-stop-shop for actual Party controls including party, chat, menus, quick settings, etc."
 4. Keep the vanilla JS console (no Svelte rewrite).
 
+Owner answers to the draft's open questions (2026-10-26, relayed from the owner in chat):
+
+5. **Guest Leave.** "Whatever you think is the better design choice." The orchestrator's decision: keep the accepted
+   AVR-580 flow (D5).
+6. **Host controls in the FAB.** "Yes for now. We may reevaluate how we integrate the menu later though."
+7. **Games without the layer.** "Go with your recommended idea. We want the FAB as a constant throughout the entire
+   system."
+8. **Undetectable cover.** "Sure. I feel like eventually we really should make it required for every game though. If
+   the game wants to hide the FAB, that's an option, but it'll still be accessible via a drawer or something."
+
 The kickoff's wording, "a player can open Home/Party/Library/Me during gameplay", is therefore **narrowed by owner
 direction**. During a round the Party surface is the FAB's bounded panel, never a navigation away from the game.
 
@@ -138,6 +148,19 @@ members may move between Party Home's views and come back to it (AVR-702).
   and are worded only by the Party. A game's notice travels **game server → Party Core**, server to server beside the
   session protocol's `ended`, as a typed event (kind, game, participant, deadline). It is never free text, and never
   sent through the bridge. The panel and the button's badge show these notices.
+- **The FAB is a constant, system-wide control (owner item 7).** It is required on every Party game and present on
+  Party pages too. Each game adopts it in its own Games PR, and the contract amendment is in §6.
+- **A game may minimise the FAB, but never remove it (owner item 8).**
+  - The floor is today's edge `tab` mode (`layer-mount.js`, `TAB`), an always-reachable drawer handle.
+  - During a Party round only the Party frame may send `hide`, and only for a phone that is not a member. A game cannot
+    request it.
+  - A game that wants it out of the way asks for the tab, through a versioned layer word or the player's own park
+    action.
+  - Removing or hiding the frame anyway is tampering (D6).
+- **Leave during a round (owner item 5).** The accepted AVR-580 flow stays:
+  - Leave starts in the FAB and is confirmed on top-level Party Home, never in the coverable frame.
+  - It is the single sanctioned exit from a round to Party Home, because it is quitting the Party, not browsing.
+  - The Host's Leave and hand-over also stay as AVR-580 and the 2026-10-18 amendment describe.
 - **Restore is the reconnect path, not a browsing mechanism.** A reload, a sleep, an OS tab eviction or a network loss
   returns the phone to the same participant and role with a fresh single-use ticket from `bridge.html`, and the game
   resends the full seat state on `hello`: private state only to its own seat. #258's R evidence covers this path.
@@ -170,13 +193,16 @@ members may move between Party Home's views and come back to it (AVR-702).
      - On a mismatch the panel refuses destructive verbs, and the Party records the condition, telling the Host on
        Party Home after the round.
      - `opacity:0` or a cover over an intact frame cannot be detected from inside it. This is stated, not hidden.
-  4. **Residual risk, accepted only with permissioning.** A malicious installed game can still deny or misdirect taps.
-     That is acceptable because games are owner-installed and permissioned (AVR-62; ADR 0013 D3's "coverable for
-     first-party games"). A future community or untrusted tier gets no Host verbs in the panel until a stronger
-     isolation tier exists.
+  4. **Residual risk, accepted by the owner for owner-installed games (owner items 6 and 8).** A malicious installed
+     game can still deny or misdirect taps, and a cover or `opacity:0` over an intact frame stays undetectable. The
+     owner accepts this because games are owner-installed and permissioned (AVR-62).
+     - Host controls in the FAB are "for now" and may be revisited.
+     - A future community or untrusted tier gets **no Host verbs** in the FAB.
 - **Required negative tests** before rollout:
   - a covering element cannot complete a destructive Host verb (it needs the in-frame second step);
   - a removed, hidden or zero-sized frame is detected and destructive verbs are refused;
+  - a game cannot `hide` the FAB during a Party round: a minimised FAB stays a reachable edge tab, and the drawer opens
+    from it;
   - a replayed or stale verb is refused by Core;
   - cross-role secrecy, focus and announcements across the frame.
 
@@ -332,28 +358,33 @@ These are made only in the PR that accepts this ADR.
 - An arrival during setup defaults to Play intent.
 - Late joiners are qualified by `spectators`.
 
+**PARTY-GAMES-CONTRACT, GAME-UX-CONTRACT and Games `DEVELOPING-A-GAME` (owner item 7):**
+
+- The Party layer (FAB) is **required** for every Party game. `provider/avrana-contract.json` `layer.mounted_by` lists
+  every Party game, not only BLUFF and EXPO.
+- A game keeps the frame above its content.
+- A game may only minimise the FAB to the edge tab, never remove or hide it.
+- The FAB is also present on Party pages.
+- Each game adopts it in its own Games PR.
+
 **PARTY-GAMES-CONTRACT and machine contracts:**
 
-- the layer digest bump for the bounded geometry;
+- the layer digest bump for the bounded geometry (and a minimise word, if one is added);
 - the typed-event route;
 - `party_config.py` derives `spectators`.
 
 **Core docstring:** "Not here (deliberately): … votes … seat assignment" changes.
 
-## 7. Dependencies and what the owner must still decide
+## 7. Dependencies, owner decisions and what is not decided
 
 - **ADR 0019 (AVR-21/AVR-763).** Suggestions surviving a restart, and the selected game or setup surviving a Core
   restart, wait for it. Until then the Party is memory-only.
-- **Guest Leave during a round versus "no Party Home in game".** The accepted AVR-580 guest exit (owner, 2026-10-21)
-  confirms Leave on *top-level Party Home*, because the frame is coverable. Under item 2 of §1.1, either:
-  - Leave is the one sanctioned exit to Party Home, since it ends that person's participation; or
-  - Leave is confirmed in the panel with D6 mitigations, re-deciding AVR-580's "never in the coverable frame".
-
-  Recommended: keep AVR-580 as is, because leaving the Party is not browsing.
-- **The ADR 0013 D3 widening (§6)** puts the Host's full controls in a coverable frame. The owner accepts the residual
-  risk for owner-installed games only (AVR-62).
-- **Layer opt-in.** Games without the layer (Tanks, Checkers) have no FAB. Either the layer becomes mandatory for Party
-  games, or they keep only the integration bar's single Host End.
+- **Decided (owner, 2026-10-26; §1.1 items 5–8):**
+  - Guest Leave keeps AVR-580: it starts in the FAB and is confirmed on top-level Party Home, the single sanctioned
+    exit.
+  - The ADR 0013 D3 widening is accepted "for now", for owner-installed games only, and is revisitable.
+  - The FAB is required system-wide.
+  - Undetectable cover is accepted as residual risk, with minimise-to-tab as the floor.
 - **Not decided here:**
   - the Watch / Not playing wording;
   - voluntary Ready (AVR-700);

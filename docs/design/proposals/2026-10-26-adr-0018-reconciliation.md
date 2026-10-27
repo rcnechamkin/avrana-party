@@ -103,7 +103,7 @@
 | C8 | Over a game origin the Host gets only End and Party Home in the frame (the D3 "coverable" limit) | the full Host controls in the FAB (owner item 3) with D6 mitigations | `layer.js:126-139` `actions(crossOrigin)`; ADR 0011 amendment 2026-10-18 l.175-177; ADR 0013 D3 |
 | C9 | Core docstring: "Not here (deliberately): … votes … seat assignment" | suggestions (D8), claims (D4) | `core.py:66-67` |
 | C10 | ADR 0010 d4: the setup panel on every game page | already superseded by ADR 0011; the text is stale | ADR 0010 l.37-44 |
-| C11 | AVR-580 guest exit confirms Leave on top-level Party Home | "No players should be able to actually go back to the Party Home Menu while in game" | ADR 0011 amendment 2026-10-18; `layer.js:146-150` `exitOffered`. **Owner to decide** (draft ADR §7). |
+| C11 | AVR-580 guest exit confirms Leave on top-level Party Home | "No players should be able to actually go back to the Party Home Menu while in game" | ADR 0011 amendment 2026-10-18; `layer.js:146-150` `exitOffered`. **Decided (owner, 2026-10-26):** keep AVR-580 as the single sanctioned exit (draft ADR D5). |
 
 These need **no change**: ADR 0013's origins (D3 is widened, see C8), ADR 0014, ADR 0015, ADR 0017, the one-activity
 amendment, held results, Host-only End, and ADR 0011 decision 3's following during rounds.
@@ -164,6 +164,7 @@ reconnect path only. The evidence is in draft ADR §4: #258 measured 61 rAF/s on
 | S18 | Panel state, suggestions and intent toggles never advance the version that Host actions compare | **no test** |
 | S19 | Panel accessibility: focus trapped in the bounded panel, Escape returns focus to the game, game keys paused while open | `game-origin-layer.spec.ts` l.420, 441; `party-layer.spec.ts` l.427 (full-viewport drawer today). **No test** for a bounded sheet. |
 | S20 | **Tamper detection:** a removed, hidden, zero-sized or starved layer frame is noticed (box self-check, layer↔bridge heartbeat), and destructive verbs are refused while it is | **no test** (new) |
+| S22 | **FAB floor:** during a Party round a game cannot `hide` the FAB or remove it without detection; minimised, it stays a reachable edge tab from which the drawer opens | partly: `party-layer.spec.ts` parking and tab tests. **No test** that a game cannot hide or remove it. |
 | S21 | State-changing FAB verbs are idempotent and Core-authorized with `if_version`; a replayed or stale tap acts at most once | partly: `test_party_core.py` host checks, the #218 stale retry. **No test** for suggestions or hand-over idempotence from the frame. |
 
 ## 6. Acceptance criteria (FAB during a round; restore for reconnect)
@@ -188,8 +189,10 @@ Each criterion is pass or fail, with recorded revisions. Unrun hardware is repor
    refused), and the server resends the seat state, private state only to its seat (S12, S14).
 8. **Accessibility.** Focus is trapped in the panel, and Escape or Close returns it to the game. Reduced motion, 200%
    text, safe areas, and the keyboard and IME over chat all work.
-9. **Limited Mode.** The same-origin FAB works with the Limited credential and degrades visibly.
-10. **Phones.** iOS Safari and Android Chrome on the appliance Wi-Fi: panel open and close timing, game frame rate and
+9. **The FAB is constant.** It is present on every Party game and on Party pages. A game can minimise it only to the
+   edge tab, which stays reachable; the drawer opens from it, and `hide` is refused during a round (S22).
+10. **Limited Mode.** The same-origin FAB works with the Limited credential and degrades visibly.
+11. **Phones.** iOS Safari and Android Chrome on the appliance Wi-Fi: panel open and close timing, game frame rate and
     ticks with the panel open, orientation, IME, audio and wake lock after reconnect, and memory on a low-end phone.
     NOT RUN until physically run.
 
@@ -203,7 +206,7 @@ The console technology is settled: the owner kept vanilla JS and rejected Svelte
 | S1 universal setup | `_open_session` → `setup` for every game | the K1 briefing for every game | update the one-tap drivers | `universal_setup` off; paired driver PR |
 | S2 default intent and fill | no blocking on unanswered members; claims, reassign, fill, `spectators`; a lifecycle version not advanced by intent | Watch / Not playing opt-out; claim and reassign UI | "not playing" for `spectators: "none"` | `seat_intent` off; contract and vector update |
 | S3 browse during setup | none | #248 adapted (no blocking); the briefing becomes a dismissible sheet within Party Home; D7 indicator | none | client flag |
-| S4 bounded FAB panel | nominate and approve (memory-only until ADR 0019); idempotent, `if_version` on Host verbs | bounded sheet replacing full-viewport `open` (`layerBox`); focus trap within the panel; Escape returns focus to the game; reduced motion, 200% text, small viewports and landscape, safe areas; suggestions; quick settings (per device); full Host controls with in-frame confirmation; box self-check and layer↔bridge heartbeat; S10/S19/S20/S21 tests | vendored `layer-mount.js` digest bump (paired PR); more games opt into the layer | `fab_panel` off; owner accepts the ADR 0013 D3 widening for owner-installed games (AVR-62) |
+| S4 bounded FAB panel | nominate and approve (memory-only until ADR 0019); idempotent, `if_version` on Host verbs | bounded sheet replacing full-viewport `open` (`layerBox`); focus trap within the panel; Escape returns focus to the game; reduced motion, 200% text, small viewports and landscape, safe areas; suggestions; quick settings (per device); full Host controls with in-frame confirmation; box self-check and layer↔bridge heartbeat; S10/S19/S20/S21 tests | vendored `layer-mount.js` digest bump (paired PR); **the layer becomes required: every Party game adopts it in its own Games PR**; minimise-to-tab floor; S22 test | `fab_panel` off; owner accepts the ADR 0013 D3 widening for owner-installed games (AVR-62) |
 | S5 typed notices | #252 feed wired; internal game → Core typed-event route, authenticated like `ended` | notices in the FAB panel and badge | send typed events server to server | `activity` off; paired PRs |
 | S6 suggestions durable | restart recovery | none | none | after ADR 0019 only |
 | S7 iframe-embedded mounted | none | none | none | **not planned** (#258) |
