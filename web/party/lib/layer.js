@@ -176,6 +176,12 @@ export function nextCorner(spot) {
   return { nx: c.nx, ny: c.ny, parked: null };
 }
 
+/** Is hold-to-confirm on: in every mode (the shell and the top-level game's layer frame alike) once the
+ * proposal is on, as ADR 0018 rev 3 D6 mitigation 1 and S10 require. Only the bounded panel is shell-only. */
+export function holdOn(view) {
+  return Boolean(view && Array.isArray(view.proposals) && view.proposals.includes('fab_panel'));
+}
+
 /** Is the bounded panel on for this frame: the proposal is on and the page that mounted it is the Party's. */
 export function panelOn(view, { crossOrigin = true } = {}) {
   return !crossOrigin && Boolean(view && Array.isArray(view.proposals) && view.proposals.includes('fab_panel'));

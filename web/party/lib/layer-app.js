@@ -14,7 +14,7 @@ import { leaveWords } from './states.js';
 import { originAllows } from './bridge.js';
 import { PREF_KEY, createLearner, createWatcher, fabHidden, lastInput, livePads, padLine, parsePref } from './controller.js';
 import { ACTION_WORDS, LONG_PRESS_MS, POSITION_KEY, PROTOCOL, SLOP, actions, buttonLabel, connectionLine, exitOffered,
-  gesture, HOLD_MS, HOLD_VERBS, holdState, keptSpots, nextCorner, nudge, orientationOf, panelOn, park, parseFromPage, requestFor, sheetSide, spotAt,
+  gesture, HOLD_MS, HOLD_VERBS, holdOn, holdState, keptSpots, nextCorner, nudge, orientationOf, panelOn, park, parseFromPage, requestFor, sheetSide, spotAt,
   spotFor, toSpot, unpark } from './layer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -251,6 +251,7 @@ function render() {
   if (!member) return;
   // PROPOSAL fab_panel (AVR-769): the bounded panel, only when the page that mounted this frame is the Party's
   state.panel = panelOn(view, { crossOrigin: state.crossOrigin !== false });
+  state.hold = holdOn(view);                 // every mode: over a game page of another origin too (S10)
   document.documentElement.classList.toggle('fab-panel', state.panel);
   $('layer-sheet').dataset.side = state.panel ? sheetSide(spot(), state.vp) : '';
   $('layer-corner').hidden = !state.panel;
@@ -281,7 +282,7 @@ function renderHost(view) {
   })));
   if (state.confirm && !offered.includes(state.confirm)) state.confirm = null;   // the Party moved on
   $('layer-confirm').hidden = !state.confirm;
-  const held = Boolean(state.panel) && HOLD_VERBS.includes(state.confirm);
+  const held = Boolean(state.hold) && HOLD_VERBS.includes(state.confirm);
   $('layer-yes').classList.toggle('avrana-hold', held);
   $('layer-hold-note').hidden = !held;
   if (held) $('layer-yes').setAttribute('aria-describedby', 'layer-hold-note'); else $('layer-yes').removeAttribute('aria-describedby');
@@ -391,12 +392,12 @@ $('layer-no').addEventListener('click', () => {
   const again = $('layer-actions').querySelector(`[data-action="${was}"]`);
   if (again) again.focus({ preventScroll: true });
 });
-// PROPOSAL fab_panel (AVR-769): in the shell a destructive Host verb is held for HOLD_MS to confirm. A
+// PROPOSAL fab_panel (AVR-769): in every mode a destructive Host verb is held for HOLD_MS to confirm (D6, S10). A
 // press, a mouse button or Enter/Space held down all count; a click an assistive technology sends on
 // its own (no press before it) confirms at once, since this is already the second step.
 const yes = $('layer-yes');
 const hold = { downAt: null, timer: null };
-const holdArmed = () => Boolean(state.panel) && HOLD_VERBS.includes(state.confirm);
+const holdArmed = () => Boolean(state.hold) && HOLD_VERBS.includes(state.confirm);
 function holdStart() {
   if (!holdArmed() || state.busy || hold.timer) return;
   hold.downAt = performance.now();

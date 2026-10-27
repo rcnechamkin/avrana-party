@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { BUTTON, MARGIN, TAB, layerBox, mountPartyLayer, parseLayerMessage } from '../../web/party/bridge/layer-mount.js';
 import { DEFAULT_SPOT, LONG_PRESS_MS, PROTOCOL, SLOP, STEP, actions, buttonLabel, connectionLine, gesture, keptSpots, nudge,
   orientationOf, park, parseFromPage, requestFor, spotAt, spotFor, toSpot, unpark, usable,
-  HOLD_MS, HOLD_VERBS, holdState, nextCorner, panelOn, sheetSide } from '../../web/party/lib/layer.js';
+  HOLD_MS, HOLD_VERBS, holdOn, holdState, nextCorner, panelOn, sheetSide } from '../../web/party/lib/layer.js';
 
 const VP = { w: 375, h: 667, insets: { top: 20, right: 0, bottom: 34, left: 0 } };
 const P = (o) => ({ avrana: PROTOCOL, ...o });
@@ -283,4 +283,12 @@ test('fab_panel: Move menu cycles the corners clockwise, starting from the neare
   assert.deepEqual(nextCorner({ nx: 0, ny: 1, parked: null }), { nx: 0, ny: 0, parked: null });
   assert.deepEqual(nextCorner({ nx: 0, ny: 0, parked: null }), { nx: 1, ny: 0, parked: null });
   assert.deepEqual(nextCorner({ nx: 0.3, ny: 0.9, parked: 'right' }), { nx: 1, ny: 1, parked: null });   // a parked tab comes back first
+});
+
+test('fab_panel: hold-to-confirm is on in every mode once the proposal is on (S10); the panel only in the shell', () => {
+  const on = { proposals: ['fab_panel'] };
+  assert.equal(holdOn(on), true);
+  assert.equal(panelOn(on, { crossOrigin: true }), false);
+  assert.equal(holdOn({ proposals: [] }), false);
+  assert.equal(holdOn(null), false);
 });

@@ -91,9 +91,12 @@ function flashDiag() {
 
 // PROPOSAL fab_panel (AVR-769): when the Party menu closes, the game has the focus again (Escape, Close
 // or a tap outside the panel), so a keyboard or a controller is back in the game at once.
+// While it is open the game frame is inert: aria-modal in the menu's own document cannot reach this one.
 document.addEventListener('avrana-party-layer', (e) => {
   const view = party.view();
-  if (e.detail && e.detail.open === false && view && (view.proposals || []).includes('fab_panel')) frame.focus({ preventScroll: true });
+  if (!e.detail || !view || !(view.proposals || []).includes('fab_panel')) return;
+  frame.inert = e.detail.open === true;
+  if (e.detail.open === false) frame.focus({ preventScroll: true });
 });
 
 addEventListener('resize', showDiag);
