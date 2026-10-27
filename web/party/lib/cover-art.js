@@ -7,9 +7,11 @@
 //
 //   tile, rail   own -> package cover -> package icon -> own art -> kind icon     (square and 3:4 boxes)
 //   row          own -> package icon -> package cover -> own art -> kind icon     (4 rem, a list row)
-//   hero, wide   own -> package banner -> package cover -> package icon -> own art -> kind icon
+//   hero, wide   own wide -> own -> package banner -> package cover -> package icon -> own art -> kind icon
 //   hero, narrow own -> package cover -> package banner (whole) -> package icon -> own art -> kind icon
 //
+// The owner's wide cover (AVR-308) is drawn only in a wide hero, where it fills the box like a banner; anywhere
+// else the owner's square cover leads as before.
 // A banner is never cut into a square or a 3:4: a tile, a rail and a row do not use it. In a narrow hero (a
 // phone held upright) it is the last picture that is not an icon, and is drawn whole rather than cropped.
 // A rung whose picture failed to load (its address is in `failed`) is skipped, so a 404 where nginx does not
@@ -63,11 +65,13 @@ const PACKAGE_ORDER = {
 };
 
 /** The rungs for a game in a context, best first, ending with the kind icon (`kind: 'icon'`, no `src`).
- * `own`: the owner's cover path or null; `art`: the title's own art path (already checked) or null;
+ * `own`: the owner's cover path or null; `ownWide`: the owner's wide cover path or null (used only in a wide hero);
+ * `art`: the title's own art path (already checked) or null;
  * `wide`: for a hero, whether its box is wide (heroIsWide). A package banner's rung says how to draw it:
  * `fit: 'bleed'` fills a wide box, `fit: 'whole'` shows it uncropped in a narrow one. */
-export function artRungs(game, context = 'tile', { own = null, art = null, wide = false } = {}) {
+export function artRungs(game, context = 'tile', { own = null, ownWide = null, art = null, wide = false } = {}) {
   const rungs = [];
+  if (ownWide && context === 'hero' && wide) rungs.push({ kind: 'own-wide', src: ownWide, w: null, h: null, fit: 'bleed' });
   if (own) rungs.push({ kind: 'own', src: own, w: null, h: null });
   const order = context === 'hero' ? (wide ? ['banner', 'cover', 'icon'] : ['cover', 'banner', 'icon'])
     : PACKAGE_ORDER[context] || PACKAGE_ORDER.tile;

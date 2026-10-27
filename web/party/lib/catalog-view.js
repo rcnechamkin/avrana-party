@@ -14,8 +14,21 @@ export function donorAvailability(body) {
   }
   return available;
 }
+// The owner's shelves (AVR-155, contracts/shelves.json): featured first, then titles with no placement,
+// then classics, then lab, each in catalog order; hidden is not listed. A placement only: it never
+// makes a title installed, playable or launchable.
+const SHELF_RANK = { featured: 0, classics: 2, lab: 3 };
+export function shelfOf(catalog, game) {
+  const shelf = catalog.shelves && Object.hasOwn(catalog.shelves, game.id) ? catalog.shelves[game.id] : null;
+  return shelf === 'hidden' || Object.hasOwn(SHELF_RANK, shelf) ? shelf : null;
+}
 export function visibleGames(catalog) {
-  return catalog.games.filter((game) => game.installed || game.status === 'experimental');
+  const rank = (game) => SHELF_RANK[shelfOf(catalog, game)] ?? 1;
+  return catalog.games
+    .filter((game) => (game.installed || game.status === 'experimental') && shelfOf(catalog, game) !== 'hidden')
+    .map((game, i) => ({ game, i }))
+    .sort((a, b) => rank(a.game) - rank(b.game) || a.i - b.i)
+    .map(({ game }) => game);
 }
 export function filterGames(games, { query = '', players = 0, view = 'all' }, profile) {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);

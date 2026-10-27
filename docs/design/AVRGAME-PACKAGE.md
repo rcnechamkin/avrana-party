@@ -113,7 +113,7 @@ All stdlib, no execution or decoding of package content, in the same spirit as t
 
 ### Shell
 
-Three pictures, three jobs. The shell asks **where the picture is drawn**, not what kind of phone it is, and takes the first usable rung of that place's ladder (`web/party/lib/cover-art.js`, pure and unit-tested; `tileCover` in `app.js` draws it). The owner's cover (AVR-306) leads every ladder (D9); the title's own first-party art and then the kind icon close every one.
+Three pictures, three jobs. The shell asks **where the picture is drawn**, not what kind of phone it is, and takes the first usable rung of that place's ladder (`web/party/lib/cover-art.js`, pure and unit-tested; `tileCover` in `app.js` draws it). The owner's cover (AVR-306) leads every ladder (D9); in a wide hero the owner's optional wide cover (AVR-308) comes before it. The title's own first-party art and then the kind icon close every one.
 
 | Place | Box | Ladder after the owner's cover |
 |---|---|---|
