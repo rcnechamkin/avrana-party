@@ -157,3 +157,14 @@ test('a cover’s shape says its place', () => {
   assert.equal(contextOf(''), 'tile');
   assert.equal(contextOf(), 'tile');
 });
+
+test('the owner’s wide cover leads only in a wide hero; the square cover follows it (AVR-308)', () => {
+  const kinds = (ctx, o) => artRungs(game, ctx, o).map((r) => r.kind);
+  const opts = { own: 'covers/demo.png', ownWide: 'covers/demo.wide.png' };
+  assert.deepEqual(kinds('hero', { ...opts, wide: true }).slice(0, 2), ['own-wide', 'own']);
+  assert.equal(artRungs(game, 'hero', { ...opts, wide: true })[0].fit, 'bleed');
+  for (const [ctx, wide] of [['hero', false], ['tile', true], ['rail', true], ['row', true]])
+    assert.ok(!kinds(ctx, { ...opts, wide }).includes('own-wide'), `${ctx} wide=${wide}`);
+  assert.equal(pickArt(game, 'hero', { ...opts, wide: true }, new Set(['covers/demo.wide.png'])).kind, 'own');
+  assert.equal(artRungs(game, 'hero', { ownWide: 'covers/demo.wide.png', wide: true })[0].kind, 'own-wide');   // a wide cover alone
+});

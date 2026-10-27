@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadCatalog, loadCovers, normalizeCatalog, normalizeCovers } from '../../web/party/lib/catalog-load.js';
+import { loadCatalog, loadCoverIndex, loadCovers, normalizeCatalog, normalizeCovers, normalizeWideCovers } from '../../web/party/lib/catalog-load.js';
 
 const good = { games: [{ id: 'a' }], labels: {} };
 const respond = (body, ok = true) => async () => ({ ok, json: async () => body });
@@ -54,4 +54,17 @@ test('covers: a missing, refused, corrupt or unreachable index is no covers, nev
   assert.equal((await loadCovers(async () => ({ ok: false, json: async () => good }))).size, 0);
   assert.equal((await loadCovers(async () => ({ ok: true, json: async () => JSON.parse('{nope') }))).size, 0);
   assert.equal((await loadCovers(async () => { throw new TypeError('offline'); })).size, 0);
+});
+
+test('wide covers: only a wide cover’s own path, named for its game, is taken; an index without "wide" has none (AVR-308)', async () => {
+  const wide = normalizeWideCovers({ covers: {}, wide: {
+    bluff: 'covers/bluff.wide.webp', expo: 'covers/expo.png', pong: 'covers/bluff.wide.png', deep: 'covers/x/deep.wide.jpg', number: 3,
+  } });
+  assert.deepEqual([...wide], [['bluff', 'covers/bluff.wide.webp']]);
+  assert.equal(normalizeWideCovers({ covers: { bluff: 'covers/bluff.png' } }).size, 0);
+  for (const junk of [null, 3, [], { wide: 'all' }, { wide: null }]) assert.equal(normalizeWideCovers(junk).size, 0);
+  const both = await loadCoverIndex(async () => ({ ok: true, json: async () => ({ covers: { bluff: 'covers/bluff.png' }, wide: { bluff: 'covers/bluff.wide.png' } }) }));
+  assert.deepEqual([[...both.covers], [...both.wide]], [[['bluff', 'covers/bluff.png']], [['bluff', 'covers/bluff.wide.png']]]);
+  const none = await loadCoverIndex(async () => { throw new TypeError('offline'); });
+  assert.deepEqual([none.covers.size, none.wide.size], [0, 0]);
 });
