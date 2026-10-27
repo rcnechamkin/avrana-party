@@ -193,6 +193,8 @@ def check_proposals(conf):
                             + ', '.join(PROPOSAL_DEFAULTS) + ')')
         elif type(block[key]) is not bool:
             problems.append(f'proposals.{key}: true or false, not {block[key]!r}')
+        else:
+            switches[key] = block[key]
     return switches, problems, warnings
 
 
