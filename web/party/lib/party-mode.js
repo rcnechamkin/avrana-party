@@ -111,6 +111,8 @@ export function destination(view, here, catalog, address = null) {
   if (!view || !view.me || !view.location) return null;
   // A guest asked to leave from a game page (AVR-580 guest exit): Party Home, to confirm or stay.
   if (view.me.exit && view.me.exit.live) return here === HOME ? null : '/party/';
+  // PROPOSAL home_in_round (AVR-703): this member chose to look at Party Home during the round.
+  if (view.me.home_visit) return here === HOME ? null : '/party/';
   const loc = locationOf(view);
   if (loc.at === HOME || loc.at === 'setup') {
     if (here === HOME) return null;
