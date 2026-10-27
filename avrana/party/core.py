@@ -256,6 +256,7 @@ class PartyCore:
         self._misses = (None, [])       # (session id, times of failed checks inside the window)
         self.abandoned = []             # sessions TABLE_ABANDON closed whose game has not been told yet
         self._announced = None          # _facts() at the last commit (system lines)
+        self.heartbeats = None          # avrana.party.heartbeats.Heartbeats when diagnostics are on (AVR-302)
 
     # ---- helpers ------------------------------------------------------------------------------
     def _commit(self):
@@ -460,6 +461,8 @@ class PartyCore:
             m = Member(device_id, self._unique(clean, None), now, clean_avatar(avatar), mode)
             self.party.members[m.id] = m
         else:
+            if self.heartbeats is not None:
+                self.heartbeats.rejoin(m.id)
             if m.left:
                 m.left = False
                 m.exit_id = None
@@ -485,6 +488,8 @@ class PartyCore:
             return None
         was_here = self._here(m, self.clock())
         m.last_seen = self.clock()
+        if self.heartbeats is not None:
+            self.heartbeats.beat(m.id, m.last_seen)
         if self.party.host_id is None:
             self._set_host(m.id)
             self._commit()
