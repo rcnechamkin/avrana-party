@@ -1,0 +1,27 @@
+{
+  "name": "avrana-console-proof",
+  "private": true,
+  "description": "AVR-762 experiment: vanilla vs Svelte 5 console, mounted vs restored game view. Not production; no root runtime dependency.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config svelte/vite.config.ts",
+    "check": "svelte-check --tsconfig svelte/tsconfig.json",
+    "serve": "node server/start.mjs",
+    "test": "playwright test -c tests/playwright.config.ts",
+    "measure": "node tests/measure.mjs"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "22.20.5",
+    "@types/ws": "8.18.2",
+    "svelte": "5.57.3",
+    "svelte-check": "4.7.7",
+    "typescript": "6.0.3",
+    "vite": "8.3.5",
+    "ws": "8.22.0"
+  }
+}

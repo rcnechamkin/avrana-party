@@ -1,0 +1,200 @@
+{
+  "runs": 20,
+  "at": "2026-10-26T22:01:05.379Z",
+  "phone": "390x844 DPR3 isMobile hasTouch (Chromium: CDP device metrics emulation)",
+  "engines": {
+    "chromium": {
+      "version": "153.0.8010.12",
+      "vanilla": {
+        "load": {
+          "requests": 17,
+          "raw": 209858,
+          "gzip": 77343,
+          "jsRaw": 80696,
+          "jsGzip": 30458,
+          "heap": {
+            "jsHeapUsedKB": 1432,
+            "nodes": 127,
+            "documents": 2,
+            "frames": 2
+          },
+          "readyColdMs": 133.1,
+          "readyWarmMs": 73.6
+        },
+        "M": {
+          "openMs": 18.4,
+          "openP90": 19,
+          "tabMs": 8.1,
+          "backMs": 12.8,
+          "backP90": 14,
+          "ticksMissed": 0,
+          "reconnects": 0,
+          "wsOpens": 1,
+          "heapGameWithLayerOpen": {
+            "jsHeapUsedKB": 2975,
+            "nodes": 247,
+            "documents": 3,
+            "frames": 3
+          }
+        },
+        "R": {
+          "openMs": 84.8,
+          "openP90": 123.4,
+          "backMs": 165.4,
+          "backP90": 191.2,
+          "awayMs": 303.7,
+          "ticksNotReceivedWhileAway": 6,
+          "wsOpensPerReturn": 1,
+          "heapGamePage": {
+            "jsHeapUsedKB": 1958,
+            "nodes": 146,
+            "documents": 3,
+            "frames": 3
+          },
+          "heapConsolePage": {
+            "jsHeapUsedKB": 1591,
+            "nodes": 127,
+            "documents": 2,
+            "frames": 2
+          }
+        }
+      },
+      "svelte": {
+        "load": {
+          "requests": 5,
+          "raw": 186586,
+          "gzip": 68920,
+          "jsRaw": 59661,
+          "jsGzip": 22773,
+          "heap": {
+            "jsHeapUsedKB": 1581,
+            "nodes": 178,
+            "documents": 3,
+            "frames": 2
+          },
+          "readyColdMs": 121.7,
+          "readyWarmMs": 49.8
+        },
+        "M": {
+          "openMs": 17.9,
+          "openP90": 19.5,
+          "tabMs": 25.1,
+          "backMs": 12.7,
+          "backP90": 14.4,
+          "ticksMissed": 0,
+          "reconnects": 0,
+          "wsOpens": 1,
+          "heapGameWithLayerOpen": {
+            "jsHeapUsedKB": 3498,
+            "nodes": 275,
+            "documents": 4,
+            "frames": 3
+          }
+        },
+        "R": {
+          "openMs": 55.1,
+          "openP90": 78.7,
+          "backMs": 130.2,
+          "backP90": 180.4,
+          "awayMs": 228.2,
+          "ticksNotReceivedWhileAway": 5,
+          "wsOpensPerReturn": 1,
+          "heapGamePage": {
+            "jsHeapUsedKB": 2125,
+            "nodes": 106,
+            "documents": 4,
+            "frames": 3
+          },
+          "heapConsolePage": {
+            "jsHeapUsedKB": 1769,
+            "nodes": 178,
+            "documents": 3,
+            "frames": 2
+          }
+        }
+      }
+    },
+    "webkit": {
+      "version": "26.6",
+      "vanilla": {
+        "load": {
+          "requests": 17,
+          "raw": 209858,
+          "gzip": 77343,
+          "jsRaw": 80696,
+          "jsGzip": 30458,
+          "readyColdMs": 136,
+          "readyWarmMs": 127
+        },
+        "M": {
+          "openMs": 60,
+          "openP90": 74,
+          "tabMs": 57,
+          "backMs": 58,
+          "backP90": 72,
+          "ticksMissed": 0,
+          "reconnects": 0,
+          "wsOpens": 1
+        },
+        "R": {
+          "openMs": 139,
+          "openP90": 174,
+          "backMs": 421,
+          "backP90": 450,
+          "awayMs": 648,
+          "ticksNotReceivedWhileAway": 12,
+          "wsOpensPerReturn": 1
+        }
+      },
+      "svelte": {
+        "load": {
+          "requests": 5,
+          "raw": 186586,
+          "gzip": 68920,
+          "jsRaw": 59661,
+          "jsGzip": 22773,
+          "readyColdMs": 119,
+          "readyWarmMs": 84
+        },
+        "M": {
+          "openMs": 59,
+          "openP90": 63,
+          "tabMs": 131,
+          "backMs": 121,
+          "backP90": 136,
+          "ticksMissed": 0,
+          "reconnects": 0,
+          "wsOpens": 1
+        },
+        "R": {
+          "openMs": 87,
+          "openP90": 108,
+          "backMs": 342,
+          "backP90": 372,
+          "awayMs": 501,
+          "ticksNotReceivedWhileAway": 10,
+          "wsOpensPerReturn": 1
+        }
+      }
+    }
+  },
+  "baseline": {
+    "url": "http://127.0.0.1:8380/party/",
+    "requests": 35,
+    "raw": 440969,
+    "gzip": 149683,
+    "jsRaw": 259544,
+    "jsGzip": 89617,
+    "dclMs": 332,
+    "loadMs": 396,
+    "loadColdMs": 255.7,
+    "loadWarmMs": 459.1,
+    "heap": {
+      "jsHeapUsedKB": 1424,
+      "nodes": 1701,
+      "documents": 7,
+      "frames": 7
+    },
+    "note": "the real Party Home (/party/) on the devserver; ready = load event (no app ready mark)"
+  }
+}

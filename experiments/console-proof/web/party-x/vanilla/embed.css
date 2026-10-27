@@ -1,0 +1,7 @@
+.cp-embed { margin: 0; height: 100dvh; overflow: hidden; background: #000; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+#game.hide-display { display: none; }
+#game.hide-visibility { visibility: hidden; }
+#game.hide-offscreen { transform: translateX(-200vw); }
+.cp-embed-open { position: fixed; right: 6px; top: 33%; z-index: 2; }
+.cp-embed-console { position: fixed; inset: 0; z-index: 3; padding: 1rem; display: grid; align-content: start; gap: 1rem; }

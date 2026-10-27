@@ -12,4 +12,6 @@ disposable Linux machine, never on the Pi.
 [owner-app-flutter](owner-app-flutter/README.md) (AVR-424) is a non-production Flutter prototype of
 the planned owner app on synthetic data: no Bluetooth, Wi-Fi, appliance or Party service is
 touched, and it is not built or tested by this repository's CI.
+[console-proof](console-proof/REPORT.md) (AVR-762) compares a vanilla and a Svelte 5 console and a mounted
+versus restored game view on fixture Party and game origins; self-contained (own `package.json`), not production.
 See [AGENTS](../AGENTS.md) and [Linear](https://linear.app/avranakern) before starting work.

@@ -1,0 +1,5 @@
+node_modules/
+svelte/dist/
+test-results/
+playwright-report/
+*.tmp.mjs
