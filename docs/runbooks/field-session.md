@@ -68,7 +68,7 @@ ownership zeroed.
 
 ## What never leaves the appliance
 
-The rules live in `avrana/ops/redact.py` (`avrana.redaction/v2`). Every string is scrubbed before
+The rules live in `avrana/ops/redact.py` (`avrana.redaction/v3`). Every string is scrubbed before
 it is written. The export runs the validator, and a package with any hit is not written.
 
 - **Credentials and keys:**
@@ -76,15 +76,17 @@ it is written. The export runs the validator, and a package with any hit is not 
   - 32 or more hex characters outside a revision field (game keys are 64);
   - device tokens, caught by shape;
   - `Authorization`, bearer and basic tokens;
-  - `password=` / `token=` / `ticket=` values.
+  - `password=` / `token=` / `ticket=` values;
+  - a PIN or passcode written in words ("Admin PIN 482915").
 - **Membership cookies:** `__Host-avrana_device`, `avrana_device`, `avrana_limited`, and every
   `Cookie:` or `Set-Cookie:` line.
 - **Per-member and per-device identifiers:** `member-…` and `device-…`. `devices.json` is never read.
 - **Device records:**
   - IPv4 addresses other than `127.0.0.1` and `10.42.0.1`;
-  - IPv6 addresses;
-  - MAC addresses;
-  - e-mail addresses;
+  - IPv6 addresses, including an IPv4-mapped one (`::ffff:10.42.0.57`) as a whole;
+  - MAC addresses: colon or dash pairs, Cisco dotted groups, and twelve bare hex digits after a word
+    such as `STA`, `station`, `bssid` or `mac`;
+  - e-mail addresses, including ones spelled out (`name (at) example (dot) com`);
   - all NetworkManager and dnsmasq logs, which are not collected.
 - **Raw chat and player data:**
   - every journal line that mentions chat is dropped whole;

@@ -72,13 +72,56 @@ class DeployScript(unittest.TestCase):
         r = self.run_script('--party', self.party_sha, '--dry-run')
         self.assertIn('--games', r.stderr)
 
+    def running(self, party=None, games=None, web=None):
+        """Scratch release roots whose `current` points at these releases (None: nothing deployed)."""
+        roots = {}
+        for var, name, release in (('AVRANA_PARTY_RELEASES', 'party-releases', party),
+                                   ('AVRANA_GAMES_RELEASES', 'games-releases', games),
+                                   ('AVRANA_WEB_ROOT', 'web', web)):
+            root = Path(self.temp.name) / name
+            (root / 'releases').mkdir(parents=True)
+            if release:
+                target = root / 'releases' / release
+                target.mkdir()
+                try:
+                    os.symlink(target, root / 'current', target_is_directory=True)
+                except OSError:                 # Windows without the symlink privilege: a junction reads the same
+                    subprocess.run(['cmd', '/c', 'mklink', '/J', str(root / 'current'), str(target)],
+                                   check=True, capture_output=True)
+            roots[var] = str(root)
+        self.env.update(roots)
+
     def test_dry_run_plans_without_changing_anything(self):
+        self.running(self.party_sha, self.games_sha, f'20261025T000000Z-{self.party_sha[:12]}')
         r = self.run_script('--party', self.party_sha, '--games', self.games_sha, '--dry-run')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('already at the requested commits', r.stdout)
         self.assertIn('restart nothing', r.stdout)
+        self.assertIn('web release no', r.stdout)
         self.assertIn('dry run: nothing changed', r.stdout)
         self.assertFalse((Path(self.temp.name) / 'backups').exists())
+
+    def test_a_fresh_clone_at_the_target_is_deployed_not_skipped(self):
+        """A new appliance or VM: both checkouts already sit at the requested commits, and nothing runs
+        from them. That is a whole deployment (releases, web build, every unit), not "already there"."""
+        self.running()
+        r = self.run_script('--party', self.party_sha, '--games', self.games_sha, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('party checkout is at', r.stdout)
+        self.assertIn('games checkout is at', r.stdout)
+        self.assertIn('(changed=1), games', r.stdout)
+        self.assertRegex(r.stdout, r'games \S+ -> \S+ \(changed=1\)')
+        self.assertIn('web release yes', r.stdout)
+        self.assertNotIn('restart nothing', r.stdout)
+
+    def test_a_run_that_died_before_its_web_release_redeploys_party(self):
+        """Code release linked but the web release is another commit's: Party is not deployed yet."""
+        self.running(self.party_sha, self.games_sha, '20261025T000000Z-0123456789ab')
+        r = self.run_script('--party', self.party_sha, '--games', self.games_sha, '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('(changed=1), games', r.stdout)
+        self.assertRegex(r.stdout, r'games \S+ -> \S+ \(changed=0\)')
+        self.assertIn('web release yes', r.stdout)
 
     def test_dry_run_refuses_dirty_and_unknown_commits(self):
         (self.games / 'file').write_text('dirty\n')
