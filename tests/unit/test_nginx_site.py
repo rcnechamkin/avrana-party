@@ -422,6 +422,7 @@ class RealNginx(unittest.TestCase):
                 .replace('/var/www/avrana-party/web/current/', f'{tmp}/web/current/')
                 .replace('/var/lib/avrana-party/catalog/', f'{tmp}/overlay/'))
         site += (f'\nserver {{\n    listen 127.0.0.1:{cls.pgames};\n    server_name games.avrana.net;\n'
+                 f'    set $avrana_game_ancestors "https://party.avrana.net";\n'
                  f'    include {tmp}/native.location;\n}}\n')
         (tmp / 'site.conf').write_text(site)
         mime = '/etc/nginx/mime.types'
@@ -1066,6 +1067,19 @@ http {{
         got = json.loads(payload)
         self.assertEqual((got['upgrade'], got['cookie']), ('websocket', None))
 
+    def test_only_the_party_may_frame_a_native_game(self):
+        """AVR-768: nginx sends frame-ancestors for every native game, whatever the game sends: the
+        Party's origin on the game origin, 'self' where the game shares the Party's origin."""
+        for host, want in (('games.avrana.net', 'frame-ancestors https://party.avrana.net'),
+                           ('party.avrana.net', "frame-ancestors 'self'")):
+            for path in ('/games/demo/play?seat=1', '/games/demo/web/think.worker.js'):
+                res, _ = self.on(host, path)
+                self.assertEqual(res.status, 200, (host, path))
+                self.assertIn(want, res.headers.get_all('Content-Security-Policy') or [], (host, path))
+        res, _ = self.on('games.avrana.net', '/games/dead/')          # nginx's own 502 says so too
+        self.assertEqual(res.status, 502)
+        self.assertIn('frame-ancestors https://party.avrana.net', res.headers.get_all('Content-Security-Policy') or [])
+
     def test_the_game_origin_refuses_the_party_and_the_arcade_and_reaches_no_other_upstream(self):
         lan, arcade, native = len(self.lan.seen), len(self.arcade.seen), len(self.native.seen)
         for path in ('/party', '/party/', '/party/index.html', '/party/bridge.html', '/party/layer.html', '/party/api/state',
@@ -1146,7 +1160,9 @@ class GameOriginStaticRules(unittest.TestCase):
 
     def test_the_game_origin_is_its_own_https_block_that_is_never_the_default(self):
         self.assertIn('server_name games.avrana.net;', self.games)
-        self.assertNotIn('party.avrana.net', self.games)
+        # the Party's name appears once: who may frame a game here (AVR-768), never a route to the Party
+        self.assertEqual(self.games.count('party.avrana.net'), 1)
+        self.assertIn('    set $avrana_game_ancestors "https://party.avrana.net";\n', self.games)
         self.assertIn('listen 443 ssl;', self.games)
         self.assertNotIn('default_server', self.games)
         for key in ('ssl_certificate ', 'ssl_certificate_key ', 'ssl_protocols '):
@@ -1162,7 +1178,10 @@ class GameOriginStaticRules(unittest.TestCase):
         rules = '\n'.join(l for l in self.games.splitlines() if not l.lstrip().startswith('#'))
         self.assertEqual(re.findall(r'proxy_pass\s+(\S+);', rules),
                          ['http://unix:/run/avrana-games/$native_game.sock:$request_uri'])
-        self.assertNotRegex(rules, r'8096|8097|8191|alias|root |auth_request|add_header|bluff|expo')
+        self.assertNotRegex(rules, r'8096|8097|8191|alias|root |auth_request|bluff|expo')
+        # one header, and only in the native-game rule: only the Party may frame a game (AVR-768)
+        self.assertEqual(re.findall(r'add_header[^;]*;', rules),
+                         ['add_header Content-Security-Policy "frame-ancestors $avrana_game_ancestors" always;'])
         self.assertIn('proxy_set_header Cookie "";', rules)
 
     def test_no_hsts_and_no_service_worker_scope_header_in_any_block(self):
@@ -1179,7 +1198,9 @@ class GameOriginStaticRules(unittest.TestCase):
         self.assertEqual(self.party.count("frame-ancestors 'self' https://games.avrana.net"), 2)
         # every other Party page: /party/, the catalog (AVR-337) and the play shell (AVR-766)
         self.assertEqual(self.party.count("frame-ancestors 'none'"), 3)
-        self.assertNotIn('frame-ancestors', self.games)
+        # the game origin frames nothing of the Party's; its one frame-ancestors is the native-game rule's (AVR-768)
+        rules = '\n'.join(l for l in self.games.splitlines() if not l.lstrip().startswith('#'))
+        self.assertEqual(rules.count('frame-ancestors'), 1)
         self.assertNotIn('X-Frame-Options', SITE)
 
     def test_the_layer_page_may_be_framed_by_the_party_and_the_game_origin(self):
@@ -1191,3 +1212,23 @@ class GameOriginStaticRules(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GameFrameAncestors(unittest.TestCase):
+    """AVR-768 (draft ADR 0018 revision 3): every native game, whatever its own server sends, may be framed
+    only by the Party: the Party's origin on the game origin, 'self' where games share the Party's origin.
+    A browser enforces every Content-Security-Policy it gets, so a game's own policy can only narrow it."""
+
+    def test_the_native_game_rule_sends_frame_ancestors_from_a_per_server_value(self):
+        native = (REPO_ROOT / 'deploy/games/nginx-native-games.location').read_text(encoding='utf-8')
+        slug = '~ "^/games/(?<native_game>[a-z][a-z0-9_-]{0,39})/"'
+        rule = location_body(native, slug)
+        self.assertEqual(re.findall(r'add_header[^;]*;', rule),
+                         ['add_header Content-Security-Policy "frame-ancestors $avrana_game_ancestors" always;'])
+
+    def test_each_server_that_serves_native_games_says_who_may_frame_them(self):
+        blocks = server_blocks(SITE)
+        party, games = blocks[1], blocks[2]
+        self.assertEqual(re.findall(r'^\s*set \$avrana_game_ancestors (.*);$', party, re.M), ['"\'self\'"'])
+        self.assertEqual(re.findall(r'^\s*set \$avrana_game_ancestors (.*);$', games, re.M), ['"https://party.avrana.net"'])
+        self.assertNotIn('$avrana_game_ancestors', blocks[0])     # the port 80 server serves no native game
