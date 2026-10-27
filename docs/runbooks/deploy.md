@@ -386,6 +386,10 @@ sudo bash /home/cody/avrana-party/ops/install-party-web.sh /home/cody/avrana-par
 - A cover is named for its game: `<game id>.jpg`, `.jpeg`, `.png`, `.webp` or `.avif`. The ids
   are the file names in `contracts/games/` (for example `arcade-gauntlet2`, `ps1-bomberman`,
   `ps1-worms`).
+- A game may also have a **wide** cover for the wide frame on its page: `<game id>.wide.jpg` (or
+  `.jpeg`, `.png`, `.webp`, `.avif`) beside the square one (AVR-308). It is drawn only where the
+  frame is wide (a game's page, Home's stage on a wide screen), filling it; tiles and rows keep the
+  square cover. Make it 16:9. A game with only the square cover looks as before.
 - Only plain picture files pass, at most 1 MB each and 64 in all; a link is never followed, a
   folder inside is not looked in. A file that does not pass is left out and the install says so
   (`cover left out: <name>: <why>`); it never fails the install. A picture is published as what
