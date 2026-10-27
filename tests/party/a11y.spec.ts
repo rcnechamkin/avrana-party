@@ -37,8 +37,12 @@ test.describe('three phones at one party', () => {
   async function audit(p: Phone, screen: string, reach: string[] = []) {
     const page: Page = p.page;
     const over = (await page.locator('dialog[open]').count()) > 0;
-    // a sheet or the drawer opened a moment ago may still be arriving (AVR-429): measure it once it is in place
-    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => null))));
+    // a sheet or the drawer opened a moment ago may still be arriving (AVR-429), and the briefing rises in
+    // from opacity 0 (#scene[data-enter], a keyframe animation, not a transition): measure once all is in
+    // place. Mid-rise the helper reads the fade as low contrast (#211). Endless animations never settle.
+    await page.evaluate(() => Promise.all(document.getAnimations()
+      .filter((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime as number))
+      .map((a) => a.finished.catch(() => null))));
     const root = over ? 'dialog[open]' : '#main';
     const bad = [...await lowContrast(page, root), ...await faintEdges(page), ...await unnamed(page, root),
       ...await outOfOrder(page, over ? [root] : undefined)];
