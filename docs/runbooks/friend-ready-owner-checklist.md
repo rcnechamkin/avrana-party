@@ -9,8 +9,9 @@ done by an agent; tick each box yourself and write PASS / FAIL / SKIPPED beside 
 
 ## Before the night (needs your yes, one time)
 
-- [ ] **Deploy Party `main` (Games stays `bd7e01d`)** with `ops/deploy.sh` and the explicit 40-character
-      Party SHA, dry run first ([deploy](deploy.md)). This is the only way the abandoned-table and
+- [ ] **Deploy Party `main` with a Games commit that contains Games #84** (Games `main`; `bd7e01d` predates it,
+      and Party #162 and Games #84 are one merge set; [field-test-gate](field-test-gate.md) step 0) with
+      `ops/deploy.sh` and the explicit 40-character SHAs, dry run first ([deploy](deploy.md)). This is the only way the abandoned-table and
       Host-escape fixes reach the Pi. Afterwards `https://party.avrana.net/party/api/status` shows
       `summary: ok` and the new Party SHA. *Write the SHA here:* ______________
 - [ ] Have: the Pi with its power supply, **four phones** (at least one iPhone with Safari and one
