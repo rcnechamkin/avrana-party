@@ -831,13 +831,34 @@ games own their gameplay soundscape." **[Proposed]**: that covers every sound an
 tied to a game event, and a game MAY have none. It MUST honour sound-off and haptics-off, MUST NOT play before a user gesture, and
 MUST NOT reuse or imitate a system cue for a game event.
 
-**Rule 11.5 [Proposed] System transitions.** The platform animates only its own state changes:
-a sheet opening, a roster entry arriving, the move between phases. Each is at most 200 ms,
-opacity or a short translate, never blocks input, and is removed entirely under reduced motion.
-The move into a game is a cut or a short fade to the game's own first frame; the platform does
-not play a branded interstitial. **[Implemented]** baseline: 150 ms colour and border
-transitions and a chevron turn on the Party page; a "Taking you to <game>…" holding screen
-(`#going`).
+**Rule 11.5 [Proposed; amended for AVR-704, Concept K "context-aware cinematic"] System transitions.**
+The platform animates only its own state changes, in three tiers. Everyday interactions stay fast;
+meaningful moments may take longer:
+
+| Tier | For | Duration | Movement |
+|---|---|---|---|
+| 1 · Everyday | a tab, a chip, a press, a menu | 120–180 ms | opacity, or a translate of at most 8 px |
+| 2 · Responsive | a preview opening, Start to pending, a banner, a reconnect resolving | 250–350 ms | the tapped thing grows into its detail in place; nothing teleports |
+| 3 · Meaningful | the Host selecting a game, the spotlight arriving, a launch, a game handing back, Play again | 500–700 ms | anchored on the hero artwork, which persists and moves while words and panels cross-fade around it |
+
+Every transition is interruptible: any tap applies the destination state at once, and no
+transition blocks input. At most two groups are staggered (no more than 60 ms apart); the shell has
+no parallax, particles or looping ambient motion. The bar's selection is one lens that travels
+between tabs on a spring. Under reduced motion (the system setting or Me → Motion), tier 1 is
+unchanged (a fade of at most 150 ms is not motion), and tiers 2 and 3 and the lens become a
+crossfade of at most 150 ms; the spotlight shows the title without movement and is still announced
+in text. The move into a game is a cut or a short fade to the game's own first frame: the platform
+plays no branded interstitial, and a pending state shows words and an indeterminate indicator, never
+a countdown the platform does not own. Sound and haptics are separate cues (Rule 11.4), and motion
+never depends on them.
+**[Implemented]** baseline: the tier tokens in `web/src/party.css` (`--motion-1` 150 ms, `--motion-2`
+300 ms, `--motion-3`, `--ease-responsive`, `--ease-meaningful`, `--ease-spring` with
+`--motion-spring` for the lens) and their reduced-motion overrides. Until this amendment is
+accepted, `--motion-3` is 200 ms (the previous cap), and 600 ms runs only with `?concept=motion`;
+accepting it means making 600 ms the default (`--motion-3: var(--motion-3-proposal)`) and updating
+`tests/offline/motion.spec.ts`. The "Taking you to <game>…" holding screen (`#going`) is unchanged.
+Previously: "each is at most 200 ms, opacity or a short translate … removed entirely under reduced
+motion".
 
 ## 12. Results, end and return
 
