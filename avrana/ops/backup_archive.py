@@ -85,18 +85,29 @@ def read(data):
     if len(members) > MAX_ENTRIES + 1:
         raise Refused(f'more than {MAX_ENTRIES} entries')
     files, manifest = {}, None
+    unpacked = 0
     for m in members:
-        if not m.isreg():
+        if not m.isreg() or m.issparse():
+            # A sparse member is "regular" to tarfile but unpacks to its declared size from a few bytes of map:
+            # 512 of them in a 110 KB file would be 4 GiB in memory (AVR-741). Backups never write one.
             raise Refused(f'{m.name!r}: not a regular file')
         if m.size > max(MAX_ENTRY, 4 * 1024 * 1024):
             raise Refused(f'{m.name!r}: too large')
+        unpacked += m.size
+        if unpacked > MAX_TOTAL + MAX_ENTRY:          # checked before reading, whatever the headers claim
+            raise Refused(f'more than {MAX_TOTAL} bytes in all')
+        try:
+            body = tar.extractfile(m).read()
+        except (tarfile.TarError, EOFError, OSError):  # a header promising more bytes than the file holds
+            raise Refused(f'{m.name!r}: truncated') from None
+        if len(body) != m.size:
+            raise Refused(f'{m.name!r}: truncated')
         if m.name == MANIFEST:
             if manifest is not None:
                 raise Refused('manifest.json appears twice')
-            raw = tar.extractfile(m).read()
             try:
-                manifest = json.loads(raw)
-            except ValueError:
+                manifest = json.loads(body)
+            except (ValueError, RecursionError):        # RecursionError: a manifest nested thousands deep
                 raise Refused('manifest.json is not JSON') from None
             continue
         if not m.name.startswith('files/'):
@@ -104,7 +115,7 @@ def read(data):
         name = m.name[len('files/'):]
         if name in files:
             raise Refused(f'{name!r} appears twice')
-        files[name] = tar.extractfile(m).read()
+        files[name] = body
     if not isinstance(manifest, dict):
         raise Refused('no manifest.json')
     if manifest.get('schema') != SCHEMA:
