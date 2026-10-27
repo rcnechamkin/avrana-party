@@ -597,7 +597,10 @@ def route(service, config=None, probes=None, ttl=CACHE_S):
             session = party.session
             return {'uptime_s': round(time.monotonic() - started),
                     'members': len(party.members),
-                    'session': {'game': session.game_id, 'state': session.state} if session else None}
+                    # the lifecycle bounds this round runs under (AVR-260: the game's, clamped)
+                    'session': {'game': session.game_id, 'state': session.state,
+                                'launch_timeout_s': session.launch_timeout,
+                                'end_timeout_s': session.end_timeout} if session else None}
 
     cache = StatusCache(config, probes, core_view, ttl=ttl)
 

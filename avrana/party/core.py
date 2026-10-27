@@ -74,9 +74,24 @@ LIVE_WINDOW = 45.0         # s since the last party request before a member coun
 HOST_GRACE = 30.0          # s an away host keeps the role before succession (PARTY-LIFECYCLE.md)
 LAUNCH_TIMEOUT = 60.0      # s for the game to accept a launch
 END_TIMEOUT = 15.0         # s for the game to confirm an end before the party stops waiting
+# What a game may ask for instead (AVR-260): its contract's extensions["net.avrana.party"]
+# launch_timeout_s / end_timeout_s, applied inside these limits (s). PROVISIONAL: owner decision 2
+# on AVR-260 sets the limits once Checkers is measured (AVR-238). The end limit stays above the
+# link's 3 s margin (sessions.END_LINK_MARGIN), so the link still gives up before Party Core does.
+LAUNCH_BOUNDS = (10.0, 180.0)
+END_BOUNDS = (6.0, 60.0)
 PARTY_IDLE = 3 * 3600.0    # s with nobody here and no session before the party ends
 EXIT_INTENT = 60.0         # s a guest's exit request moves their pages to Party Home (AVR-580 guest exit)
 TABLE_ABANDON = 5 * 60.0   # s after the last player turned away before an active round is abandoned (AVR-475)
+
+
+def bound(declared, default, limits):
+    """A game's declared lifecycle bound clamped to Party Core's limits; the default when none."""
+    if declared is None:
+        return default
+    return min(max(float(declared), limits[0]), limits[1])
+
+
 GAME_LOST_FAILS = 3        # failed reachability checks, with no success between, ...
 GAME_LOST_SPAN = 10.0      # ... all inside a window of this many s, close an active session (AVR-33)
 NAME_MAX = 16
@@ -199,6 +214,8 @@ class GameSession:
         self.game_confirmed_end = None  # True/False once an end-for-everyone was attempted
         self.replaced = None            # the session a host switch ended for this one (AVR-128)
         self.pregame = bool(game.get('pregame'))   # opened in setup (AVR-129)
+        self.launch_timeout = bound(game.get('launch_timeout_s'), LAUNCH_TIMEOUT, LAUNCH_BOUNDS)
+        self.end_timeout = bound(game.get('end_timeout_s'), END_TIMEOUT, END_BOUNDS)
         self.min_players = game.get('min_players', 1)
         self.max_players = game['max_players']
         self.choices = {}               # member_id -> 'player' | 'spectator' (setup only)
@@ -371,9 +388,9 @@ class PartyCore:
             self._set_host(nxt.id if nxt else None)           # None = vacant until someone is here
             self._commit()
         s = party.session
-        if s is not None and s.state == LAUNCHING and now - s.state_since >= LAUNCH_TIMEOUT:
+        if s is not None and s.state == LAUNCHING and now - s.state_since >= s.launch_timeout:
             self._close(s, 'launch_failed', 'The game did not start in time.')
-        if s is not None and s.state == ENDING and now - s.state_since >= END_TIMEOUT:
+        if s is not None and s.state == ENDING and now - s.state_since >= s.end_timeout:
             s.game_confirmed_end = False
             switching = party.pending is not None
             party.pending = None                  # a switch never starts over a game that
