@@ -355,7 +355,7 @@ function partyAction(game, mode, host) {
   }
   if (mode.kind === 'wait') {
     return h('p', { class: 'wait', 'data-wait': '' }, icon('users'),
-      h('span', { text: `The host starts it. ${host ? `${host.name} chooses what the Party plays.` : 'Nobody is hosting right now.'}` }));
+      h('span', {}, 'The host starts it. ', ...(host ? [h('bdi', { text: host.name }), ' chooses what the Party plays.'] : ['Nobody is hosting right now.'])));
   }
   return h('button', { type: 'button', class: 'btn', disabled: true, text: 'Starting…' });
 }
@@ -460,6 +460,30 @@ function exitOpen(view) {
   return true;
 }
 
+/** PROPOSAL home_in_round (AVR-703, Concept K K2): this member opened Party Home from the floating
+ * Party control during a round. Home shows who is here and the round as "Game on", with Back to game
+ * as the one action; nothing here ends the round. Returns true while it holds the page. */
+function homeVisit(view) {
+  const at = locationOf(view).at;
+  const visiting = Boolean(view.me && view.me.home_visit && (at === 'game' || at === 'results'));
+  $('k2').hidden = !visiting;
+  if (!visiting) return false;
+  show('main');
+  renderParty(view);
+  $('home-top').hidden = true;
+  $('k2-title').textContent = gameName(view);
+  return true;
+}
+$('k2-back').addEventListener('click', async () => {
+  $('k2-back').disabled = true;
+  $('k2-error').textContent = '';
+  const res = await party.backToGame();
+  $('k2-back').disabled = false;
+  if (!res.ok) { $('k2-error').textContent = 'Couldn’t reach the Party. Check the Wi-Fi and try again.'; return; }
+  const view = party.view();
+  if (view) onPartyView(view, view);
+});
+
 /** Stay in the Party: close the request; the view that answers takes the page where the party is. */
 async function stayInParty() {
   if (state.leaving) return;            // Leave is on its way: it answers the question
@@ -501,7 +525,7 @@ function personRow(m, hands) {
   return h('li', { 'data-id': m.id, 'data-away': m.away ? '' : null, 'data-mode': m.limited ? LIMITED : null },
     avatarNode({ avatar: m.avatar || '' }, 'sm'),
     h('span', { class: 'line' },
-      h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
+      h('span', { class: 'who' }, h('bdi', { text: m.name }), m.me ? ' (you)' : null),
       // ("Limited", as the drawer and the line-up say it: ADR 0012 D4)
       h('span', { class: 'sub' }, h('span', { text: m.away ? 'Away' : 'Here' }),
         m.limited ? h('span', { 'aria-hidden': 'true', text: ' · ' }) : null, m.limited ? h('span', { class: 'mode', text: 'Limited' }) : null)),
@@ -533,7 +557,7 @@ function personItem(m, size = '') {
   return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null,
     'data-mode': m.limited ? LIMITED : null },
     avatarNode({ avatar: m.avatar || '' }, size),
-    h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
+    h('span', { class: 'who' }, h('bdi', { text: m.name }), m.me ? ' (you)' : null),
     h('span', { class: 'tags' },
       m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null,
       // ADR 0012 D4: how each member reaches the party is visible to everyone
@@ -1075,7 +1099,7 @@ async function renderScene(view) {
     const [ic, text] = words[m.choice] || ['hourglass', 'Choosing'];
     return h('li', { 'data-choice': m.choice || null, 'data-away': m.away ? '' : null, 'data-host': m.host ? '' : null },
       avatarNode({ avatar: m.avatar || '' }),
-      h('span', { class: 'who' }, h('span', { text: m.me ? 'You' : m.name }),
+      h('span', { class: 'who' }, h(m.me ? 'span' : 'bdi', { text: m.me ? 'You' : m.name }),
         m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null,
         // ADR 0012 D4: how each member reaches the Party is visible to everyone, here too
         limited.has(m.id) ? h('span', { class: 'avrana-tag mode', text: 'Limited' }) : null),
@@ -1164,6 +1188,7 @@ function onPartyView(view, previous = null) {
   if (state.gamesKey !== null && gamesKey !== state.gamesKey) gameOrigins.refresh(); else gameOrigins.retry();
   state.gamesKey = gamesKey;
   if (exitOpen(view)) return;                 // a guest's exit request: asked here, never in the game
+  if (homeVisit(view)) return;                // PROPOSAL home_in_round (AVR-703): Home during a round
   // Until Party Core's answer is known the address is the same-origin path; the phone does not
   // leave on that guess (leaveForRound waits), and once it is known, refusing it keeps Party Home.
   const url = state.declined === moveKey(view) ? null      // this phone went back to Party Home from this move

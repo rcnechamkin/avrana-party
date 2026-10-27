@@ -219,7 +219,7 @@ function gameName(id) { const g = partyGame(state.catalog, id); return g ? g.nam
 function personItem(m) {
   return h('li', { 'data-away': m.away ? '' : null },
     avatarNode({ avatar: m.avatar || '' }, 'sm'),
-    h('span', { class: 'who', text: m.name + (m.me ? ' (you)' : '') }),
+    h('span', { class: 'who' }, h('bdi', { text: m.name }), m.me ? ' (you)' : null),
     h('span', { class: 'tags' },
       m.host ? h('span', { class: 'avrana-tag', text: 'Host' }) : null,
       m.away ? h('span', { class: 'avrana-tag quiet', text: 'Away' }) : null));
@@ -256,6 +256,7 @@ function render() {
   renderHost(view);
   renderLeave(view);
   renderExit(view);
+  $('layer-home').hidden = !(view.proposals || []).includes('home_in_round') || !['game', 'results'].includes(loc.at);
   renderPad();
 }
 
@@ -334,6 +335,19 @@ $('layer-exit-ask').addEventListener('click', async () => {
   }
   $('layer-exit-error').textContent = res.error === 'offline' || res.status >= 500
     ? 'Couldn’t reach the Party. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
+});
+
+/** PROPOSAL home_in_round (AVR-703): ask Party Core; the page then follows this phone to Party Home. */
+$('layer-home-go').addEventListener('click', async () => {
+  if (state.busy) return;
+  state.busy = true;
+  $('layer-home-error').textContent = '';
+  const res = await client.visitHome();
+  state.busy = false;
+  if (!res.ok) {
+    $('layer-home-error').textContent = res.error === 'offline' || res.status >= 500
+      ? 'Couldn’t reach the Party. Check the Wi-Fi and try again.' : res.message || 'That did not work. Please try again.';
+  }
 });
 
 function askConfirm(action) {
