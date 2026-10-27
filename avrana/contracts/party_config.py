@@ -254,3 +254,7 @@ def main(argv=None):
 
 if __name__ == '__main__':
     sys.exit(main())
+
+
+from avrana.contracts import game as _game   # noqa: E402  (registers this extension's check)
+_game.EXTENSION_CHECKS[EXTENSION] = party_extension
